@@ -274,4 +274,30 @@ def test_cmd_service_parser_dispatch():
     assert args_t.port == 19999
 
 
+def test_ticker_first_and_mnemonic_dispatch():
+    from cli import KNOWN_SYMBOLS, MNEMONIC_MAP, QUICK_ACTIONS, render_command_palette
+    from term import Console
+
+    # Verify symbol mappings
+    assert KNOWN_SYMBOLS["BTC"] == "BTC/USD"
+    assert KNOWN_SYMBOLS["AAPL"] == "AAPL"
+
+    # Verify Bloomberg mnemonics
+    assert MNEMONIC_MAP["bbo"] == "bbo"
+    assert MNEMONIC_MAP["cnd"] == "ohlcv"
+    assert MNEMONIC_MAP["stat"] == "status"
+    assert MNEMONIC_MAP["spr"] == "spread"
+    assert MNEMONIC_MAP["vol"] == "vol"
+
+    # Verify quick actions
+    assert QUICK_ACTIONS["1"] == ["live", "BTC/USD"]
+    assert QUICK_ACTIONS["2"] == ["bbo", "BTC/USD"]
+    assert QUICK_ACTIONS["3"] == ["top"]
+
+    # Verify palette render does not crash
+    c = Console()
+    render_command_palette(c)
+
+
+
 

@@ -1,7 +1,7 @@
 # Market Data Reliability & Acceleration Platform (MDRAP)
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue.svg)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-93%2F93%20passing-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-109%2F109%20passing-brightgreen.svg)](tests/)
 [![Hot Path Latency](https://img.shields.io/badge/hot--path-89.2%20ns-orange.svg)](src/fastpath.c)
 [![Architecture](https://img.shields.io/badge/architecture-V1%20%7C%20V2%20%7C%20V4-purple.svg)](docs/architecture.md)
 [![Dependencies](https://img.shields.io/badge/dependencies-zero%20mandatory-success.svg)](requirements.txt)
@@ -135,24 +135,32 @@ cd mdrap
 pip install -r requirements.txt
 ```
 
-### 1. Interactive Warm Shell (Sub-Millisecond CLI)
-Run `mdrap` (or `.\mdrap.bat`) with zero arguments to enter the pre-warmed interactive shell:
+### 1. Interactive Wall Street & Quant Terminal
+Run `mdrap` (or `.\mdrap.bat`) with zero arguments to enter the pre-warmed shell:
 ```bash
 .\mdrap.bat
 ```
 ```text
-┌────────────────────────────────────────────────────────────┐
-│ MDRAP Real-Time Interactive Shell                          │
-│ Pre-warmed in-memory engine | Sub-millisecond latency      │
-└────────────────────────────────────────────────────────────┘
-mdrap> /status
-mdrap> /bbo BTC/USD
-mdrap> /live BTC/USD -l 10
-mdrap> /security
-mdrap> /audit --verify
-mdrap> /chaos all
-mdrap> /test
-mdrap> /exit
+mdrap> BTC BBO           # 5-Venue Consolidated NBBO across Binance, Coinbase, Kraken, OKX, Bybit
+mdrap> AAPL LIVE         # Real equity tick ingestion (Apple, Nvidia, Tesla, S&P 500)
+mdrap> AAPL CND          # OHLCV candlestick aggregation
+mdrap> ETH LIVE          # Live multi-exchange crypto streaming
+mdrap> TOP               # Full-screen service cockpit
+mdrap> STR               # Multi-directional stress testing & 1B-scale analysis
+mdrap> 1                 # 1-Key Quick Launch: Streams live multi-market ticks
+mdrap> 2                 # 1-Key Quick Launch: Consolidated BBO quote
+mdrap> 3                 # 1-Key Quick Launch: Terminal cockpit monitor
+mdrap> 5                 # 1-Key Quick Launch: Storage segregation & venue health
+mdrap> ?                 # 4-Quadrant clean command palette
+mdrap> daemno            # Typo autocorrect: "Did you mean '/daemon'?"
+```
+
+You can also run all commands directly from your OS shell:
+```bash
+.\mdrap.bat btc bbo      # Instant 5-venue BBO quote
+.\mdrap.bat live aapl    # Real equity ticks
+.\mdrap.bat top          # Launch terminal cockpit
+.\mdrap.bat stress       # Multi-directional stress benchmarks
 ```
 
 ### 2. Headless Daemon & Live IPC Streaming
@@ -161,7 +169,7 @@ In **Terminal 1**, start the background ingestion daemon:
 # High-speed simulated multi-venue feed
 .\mdrap.bat daemon --speed 2000
 
-# Or live public Binance & Coinbase feeds
+# Or live multi-venue market feeds (Binance, Coinbase, Kraken, OKX, Bybit)
 .\mdrap.bat daemon --live
 ```
 

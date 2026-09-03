@@ -142,13 +142,13 @@ def render_gemini_banner(console: Any) -> None:
 
 
 def render_gemini_tips(console: Any) -> None:
-    """Render Gemini-style getting started tips."""
+    """Render Wall Street & modern terminal getting started tips."""
     tips = (
-        "[dim]Tips for getting started:[/dim]\n"
-        "[dim]1. Stream live real-time tickers with[/dim] [bold cyan]/live[/bold cyan] [dim](Binance & Coinbase feeds).[/dim]\n"
-        "[dim]2. Query multi-venue consolidated top-of-book with[/dim] [bold cyan]/bbo[/bold cyan] [dim][SYM] (e.g. /bbo BTC/USD).[/dim]\n"
-        "[dim]3. Analyze candles and volatility with[/dim] [bold cyan]/ohlcv[/bold cyan][dim],[/dim] [bold cyan]/spread[/bold cyan][dim], and[/dim] [bold cyan]/vol[/bold cyan][dim].[/dim]\n"
-        "[dim]4.[/dim] [bold cyan]/help[/bold cyan] [dim]for full command list or enter commands directly.[/dim]\n"
+        "[dim]Tips for getting started (Wall Street Quick Commands):[/dim]\n"
+        "  [bold #38bdf8]• Instant Mnemonics:[/bold #38bdf8] [bold green]BBO[/bold green][dim],[/dim] [bold green]LIVE[/bold green][dim],[/dim] [bold green]TOP[/bold green][dim],[/dim] [bold green]CND[/bold green][dim],[/dim] [bold green]VOL[/bold green][dim],[/dim] [bold green]STAT[/bold green][dim],[/dim] [bold green]SUB[/bold green][dim],[/dim] [bold green]TEST[/bold green]\n"
+        "  [bold #38bdf8]• Ticker-First Syntax:[/bold #38bdf8] [bold cyan]BTC BBO[/bold cyan][dim],[/dim] [bold cyan]AAPL CND[/bold cyan][dim],[/dim] [bold cyan]ETH LIVE[/bold cyan] [dim](or /bbo BTC, /live)[/dim]\n"
+        "  [bold #38bdf8]• Fast 1-Key Launch:[/bold #38bdf8] [dim]Type[/dim] [bold yellow]1[/bold yellow] [dim]for Live Stream,[/dim] [bold yellow]2[/bold yellow] [dim]for BBO,[/dim] [bold yellow]3[/bold yellow] [dim]for Cockpit,[/dim] [bold yellow]5[/bold yellow] [dim]for Status[/dim]\n"
+        "  [bold #38bdf8]• Command Palette:[/bold #38bdf8] [dim]Type[/dim] [bold cyan]?[/bold cyan] [dim]or[/dim] [bold cyan]/help[/bold cyan] [dim]for categorized command matrix[/dim]\n"
     )
     console.print(tips)
 
