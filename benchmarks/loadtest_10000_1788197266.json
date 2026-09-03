@@ -1,0 +1,124 @@
+{
+  "label": "loadtest_10000",
+  "timestamp": 1788197266.2756658,
+  "code_version": "f38402e",
+  "environment": {
+    "python_version": "3.12.3",
+    "platform": "Linux-6.18.44-fc-v22-x86_64-with-glibc2.39",
+    "cpu_count": 1,
+    "mem_total_kb": 4093820
+  },
+  "config": {
+    "seed": 42,
+    "num_events": 10000,
+    "instruments": [
+      "AAPL",
+      "MSFT",
+      "GOOGL",
+      "AMZN",
+      "NVDA",
+      "TSLA",
+      "META",
+      "JPM"
+    ],
+    "sources": [
+      "FEEDX",
+      "FEEDY",
+      "FEEDZ"
+    ],
+    "start_price": 100.0,
+    "duplicate_rate": 0.002,
+    "missing_rate": 0.001,
+    "out_of_order_rate": 0.0005,
+    "malformed_rate": 0.0005,
+    "price_anomaly_rate": 0.0005,
+    "crossed_quote_rate": 0.0003,
+    "quote_ratio": 0.5,
+    "mean_latency_s": 0.0008,
+    "latency_jitter_s": 0.0006
+  },
+  "warmup_events": 1000,
+  "dataset_seed": 42,
+  "performance": {
+    "processed": 9000,
+    "dropped": 0,
+    "elapsed_s": 0.4719,
+    "throughput_eps": 19073.4,
+    "quality_counts": {
+      "VALID": 8959,
+      "SUSPICIOUS": 20,
+      "INVALID": 21
+    },
+    "e2e_latency_us": {
+      "p50": 784.6,
+      "p95": 1776.9,
+      "p99": 2166.8,
+      "p999": 2584.5,
+      "max": 2764.9
+    },
+    "processing_latency_us": {
+      "p50": 10.7,
+      "p95": 14.8,
+      "p99": 26.7,
+      "max": 834.9
+    },
+    "max_rss_mb": 30.5
+  },
+  "quality": {
+    "detection_by_fault_type": {
+      "duplicate": {
+        "injected": 19,
+        "detected": 19,
+        "detection_rate": 1.0
+      },
+      "out_of_order": {
+        "injected": 4,
+        "detected": 4,
+        "detection_rate": 1.0
+      },
+      "malformed": {
+        "injected": 2,
+        "detected": 2,
+        "detection_rate": 1.0
+      },
+      "price_anomaly": {
+        "injected": 3,
+        "detected": 3,
+        "detection_rate": 1.0
+      },
+      "crossed_quote": {
+        "injected": 0,
+        "detected": 0,
+        "detection_rate": null
+      },
+      "missing_sequence_gap_proxy": {
+        "injected_missing_events": 11,
+        "sequence_gap_flags_raised": 15,
+        "note": "approximate: consecutive misses can collapse into one gap flag"
+      }
+    },
+    "false_positive_rate_on_clean_events": 0.001672,
+    "false_positive_breakdown": {
+      "SCHEMA_VIOLATION": 0,
+      "DUPLICATE": 0,
+      "SEQUENCE_GAP": 13,
+      "OUT_OF_ORDER": 0,
+      "STALE": 0,
+      "PRICE_ANOMALY": 0,
+      "CROSSED_QUOTE": 0,
+      "CROSS_FEED_DISAGREEMENT": 2,
+      "MALFORMED": 0
+    },
+    "clean_events_evaluated": 8972
+  },
+  "storage_counts": {
+    "INVALID": 22,
+    "SUSPICIOUS": 33,
+    "VALID": 9941
+  },
+  "source_reliability": {
+    "FEEDZ": 0.9837,
+    "FEEDX": 0.9856,
+    "FEEDY": 0.9867
+  }
+}

@@ -1,0 +1,159 @@
+"""
+Data-Quality Engine.
+
+Stateful, per-(source, instrument) checks applied to every normalized
+event. Classifies each event VALID / SUSPICIOUS / INVALID and attaches
+reason codes -- never silently drops anything (see quarantine.py).
+
+Design principle from the spec: an anomaly is not automatically an
+error. Sequence gaps, out-of-order arrivals, and price outliers are
+SUSPICIOUS (flagged, kept, explainable) rather than INVALID. Only
+structural problems -- failed schema parsing, exact duplicates, and
+crossed quotes -- are INVALID.
+"""
+from __future__ import annotations
+
+import math
+from collections import deque
+from dataclasses import dataclass, field
+from typing import Dict, Optional, Tuple
+
+from models import CanonicalEvent, QualityStatus, Reason
+
+
+@dataclass
+class QualityConfig:
+    staleness_threshold_s: float = 0.05        # receive - exchange ts
+    price_anomaly_stddev: float = 6.0            # flag price beyond k * rolling stddev
+    price_window: int = 50                       # rolling window size per instrument
+    dedup_cache_size: int = 200_000               # bounded LRU-ish window per source
+
+
+class _RollingStats:
+    """Fixed-window mean/stddev tracker using Welford's online algorithm.
+
+    Numerically stable: avoids the naive sum-of-squares cancellation
+    that can produce negative variance on long streams.
+
+    `check_and_update(x)` returns the mean/stddev of the *prior*
+    baseline (before x is folded in), so an anomalous point is judged
+    against established history, not a window biased by the point
+    being tested.
+    """
+    __slots__ = ("window", "values", "_mean", "_m2", "_n")
+
+    def __init__(self, window: int):
+        self.window = window
+        self.values: deque[float] = deque()
+        self._mean = 0.0
+        self._m2 = 0.0     # sum of squared deviations from mean
+        self._n = 0
+
+    def check_and_update(self, x: float) -> Tuple[float, float]:
+        # Return stats from the *prior* window, before x is added.
+        if self._n == 0:
+            mean, std = x, 0.0
+        else:
+            mean = self._mean
+            var = self._m2 / self._n if self._n > 0 else 0.0
+            std = math.sqrt(max(0.0, var))
+
+        # Add x to the window (Welford's online update).
+        self.values.append(x)
+        self._n += 1
+        delta = x - self._mean
+        self._mean += delta / self._n
+        self._m2 += delta * (x - self._mean)
+
+        # Evict oldest if window is full (reverse Welford update).
+        if self._n > self.window:
+            old = self.values.popleft()
+            self._n -= 1
+            delta_old = old - self._mean
+            self._mean -= delta_old / self._n if self._n > 0 else 0.0
+            self._m2 -= delta_old * (old - self._mean)
+            self._m2 = max(0.0, self._m2)  # guard against float drift
+
+        return mean, std
+
+
+class QualityEngine:
+    def __init__(self, config: Optional[QualityConfig] = None):
+        self.cfg = config or QualityConfig()
+        self._last_seq: Dict[Tuple[str, str], int] = {}
+        self._last_ts: Dict[Tuple[str, str], float] = {}
+        # Keyed per (source, instrument): each feed has its own independent
+        # price series/microstructure noise, so mixing sources into one
+        # rolling window would blur genuine per-feed anomalies with
+        # ordinary cross-feed price differences (that's reconciliation's
+        # job, not this check's).
+        self._price_stats: Dict[Tuple[str, str], _RollingStats] = {}
+        self._seen_keys: dict = {}  # insertion-ordered dict acts as LRU
+        # per-run counters for observability / benchmark scoring
+        self.counts = {"VALID": 0, "SUSPICIOUS": 0, "INVALID": 0}
+        self.reason_counts: Dict[str, int] = {}
+
+    # Priority map: never downgrade INVALID -> SUSPICIOUS or SUSPICIOUS -> VALID
+    _STATUS_PRIORITY = {QualityStatus.VALID: 0, QualityStatus.SUSPICIOUS: 1, QualityStatus.INVALID: 2}
+
+    def _mark(self, event: CanonicalEvent, status: QualityStatus, reason: Reason):
+        if self._STATUS_PRIORITY[status] > self._STATUS_PRIORITY.get(event.quality_status, 0):
+            event.quality_status = status
+        event.reasons.append(reason.value)
+
+    def _bump(self, reason: Reason):
+        self.reason_counts[reason.value] = self.reason_counts.get(reason.value, 0) + 1
+
+    def evaluate(self, event: CanonicalEvent) -> CanonicalEvent:
+        key = (event.source, event.instrument_id)
+
+        # -- Duplicate detection (exact identity within the dedup window).
+        dedup_key = event.dedup_key()
+        if dedup_key in self._seen_keys:
+            self._mark(event, QualityStatus.INVALID, Reason.DUPLICATE)
+            self._bump(Reason.DUPLICATE)
+        else:
+            self._seen_keys[dedup_key] = None
+            if len(self._seen_keys) > self.cfg.dedup_cache_size:
+                # Evict oldest entry (first inserted key)
+                oldest = next(iter(self._seen_keys))
+                del self._seen_keys[oldest]
+
+        # -- Sequence-gap detection.
+        last_seq = self._last_seq.get(key)
+        if event.sequence_number is not None:
+            if last_seq is not None and event.sequence_number > last_seq + 1:
+                self._mark(event, QualityStatus.SUSPICIOUS, Reason.SEQUENCE_GAP)
+                self._bump(Reason.SEQUENCE_GAP)
+            if last_seq is None or event.sequence_number > last_seq:
+                self._last_seq[key] = event.sequence_number
+
+        # -- Ordering detection (event time regression per source+instrument).
+        last_ts = self._last_ts.get(key)
+        if last_ts is not None and event.exchange_timestamp < last_ts:
+            self._mark(event, QualityStatus.SUSPICIOUS, Reason.OUT_OF_ORDER)
+            self._bump(Reason.OUT_OF_ORDER)
+        else:
+            self._last_ts[key] = event.exchange_timestamp
+
+        # -- Staleness.
+        if event.receive_timestamp - event.exchange_timestamp > self.cfg.staleness_threshold_s:
+            self._mark(event, QualityStatus.SUSPICIOUS, Reason.STALE)
+            self._bump(Reason.STALE)
+
+        # -- Quote consistency: crossed book is structurally invalid.
+        if event.bid_price is not None and event.ask_price is not None:
+            if event.bid_price > event.ask_price:
+                self._mark(event, QualityStatus.INVALID, Reason.CROSSED_QUOTE)
+                self._bump(Reason.CROSSED_QUOTE)
+
+        # -- Price sanity (trades only): flag outliers, never auto-invalidate.
+        if event.price is not None:
+            stats = self._price_stats.setdefault(key, _RollingStats(self.cfg.price_window))
+            mean, stddev = stats.check_and_update(event.price)
+            if stddev > 0 and abs(event.price - mean) > self.cfg.price_anomaly_stddev * stddev:
+                self._mark(event, QualityStatus.SUSPICIOUS, Reason.PRICE_ANOMALY)
+                self._bump(Reason.PRICE_ANOMALY)
+
+        self.counts[event.quality_status.value] += 1
+        return event

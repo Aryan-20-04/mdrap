@@ -1,0 +1,40 @@
+# MDRAP Benchmark Methodology
+
+Based on the *Market Data Reliability & Acceleration Platform Reference (Section 9, 10, 11, 12, 13, 21)*.
+
+## 1. Guiding Principles
+
+1. **Measure before claiming**: No performance claims without empirical JSON log files.
+2. **Deterministic workloads**: Fixed pseudo-random seeds (`seed=42`) ensure byte-level replayability.
+3. **Ground-truth scoring**: Compare detected faults directly against injected fault labels from the simulator.
+4. **Tail latency focus**: p50, p95, p99, and p99.9 are mandatory metrics.
+
+---
+
+## 2. Benchmark Harness Execution (`cli.py benchmark`)
+
+```bash
+# Standard 1,000,000-event benchmark
+python cli.py benchmark --events 1000000 --seed 42 --label baseline_v1
+
+# Benchmark with cProfile breakdown
+python cli.py benchmark --events 100000 --seed 42 --profile --label profile_v1
+```
+
+### Metrics Recorded
+- **Throughput**: Sustained events per second.
+- **End-to-End Latency**: Time from simulated event exchange timestamp to database commit.
+- **Processing Latency**: Time spent purely in normalization, quality checking, and reconciliation.
+- **Quality Precision & Recall**:
+  - Detection Rate: `detected_known_errors / actual_injected_errors`
+  - False Positive Rate: `valid_events_incorrectly_flagged / total_valid_events`
+- **Environment Metadata**: OS, Python runtime version, commit / timestamp, CPU architecture.
+
+---
+
+## 3. Load Testing Protocol (`cli.py loadtest`)
+
+```bash
+python cli.py loadtest --levels 10000,50000,100000,250000,500000
+```
+Measures throughput scaling and latency degradation curves across increasing event counts. Identifies SQLite batch saturation limits and queue growth boundaries.

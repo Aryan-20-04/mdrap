@@ -1,0 +1,6 @@
+# MDRAP is 100% runnable on pure Python stdlib (0 mandatory runtime dependencies).
+# Optional dependencies:
+rich>=13.0      # Optional: Enhanced terminal styling and colors (falls back to pure stdlib if absent)
+pytest>=8.0    # Dev/Test: Test runner (93 automated tests)
+
+

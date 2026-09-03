@@ -1,0 +1,47 @@
+# ==========================================
+# MDRAP - Market Data Reliability & Acceleration Platform
+# Git Ignore Configuration
+# ==========================================
+
+# Byte-compiled / optimized / C-extensions
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.pyd
+
+# Local Databases & Persistent Runtime Storage
+data/*.db
+data/*.db-*
+data/*.log
+data/raw_archive/
+*.tmp
+tmp*.db
+
+# Benchmarks & Profiler Artefacts
+*.prof
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Environments & Dependencies
+.env
+.venv
+env/
+venv/
+ENV/
+build/
+dist/
+*.egg-info/
+
+# IDE & Editor Configurations
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Operating System Files
+.DS_Store
+Thumbs.db
+desktop.ini

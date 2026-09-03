@@ -1,0 +1,124 @@
+{
+  "label": "loadtest_50000",
+  "timestamp": 1788197269.0306304,
+  "code_version": "f38402e",
+  "environment": {
+    "python_version": "3.12.3",
+    "platform": "Linux-6.18.44-fc-v22-x86_64-with-glibc2.39",
+    "cpu_count": 1,
+    "mem_total_kb": 4093820
+  },
+  "config": {
+    "seed": 42,
+    "num_events": 50000,
+    "instruments": [
+      "AAPL",
+      "MSFT",
+      "GOOGL",
+      "AMZN",
+      "NVDA",
+      "TSLA",
+      "META",
+      "JPM"
+    ],
+    "sources": [
+      "FEEDX",
+      "FEEDY",
+      "FEEDZ"
+    ],
+    "start_price": 100.0,
+    "duplicate_rate": 0.002,
+    "missing_rate": 0.001,
+    "out_of_order_rate": 0.0005,
+    "malformed_rate": 0.0005,
+    "price_anomaly_rate": 0.0005,
+    "crossed_quote_rate": 0.0003,
+    "quote_ratio": 0.5,
+    "mean_latency_s": 0.0008,
+    "latency_jitter_s": 0.0006
+  },
+  "warmup_events": 1000,
+  "dataset_seed": 42,
+  "performance": {
+    "processed": 49000,
+    "dropped": 0,
+    "elapsed_s": 2.6981,
+    "throughput_eps": 18160.6,
+    "quality_counts": {
+      "VALID": 48766,
+      "SUSPICIOUS": 108,
+      "INVALID": 126
+    },
+    "e2e_latency_us": {
+      "p50": 795.6,
+      "p95": 1787.9,
+      "p99": 2182.7,
+      "p999": 2649.4,
+      "max": 3094.9
+    },
+    "processing_latency_us": {
+      "p50": 10.7,
+      "p95": 16.0,
+      "p99": 28.4,
+      "max": 5095.5
+    },
+    "max_rss_mb": 73.9
+  },
+  "quality": {
+    "detection_by_fault_type": {
+      "duplicate": {
+        "injected": 102,
+        "detected": 102,
+        "detection_rate": 1.0
+      },
+      "out_of_order": {
+        "injected": 30,
+        "detected": 30,
+        "detection_rate": 1.0
+      },
+      "malformed": {
+        "injected": 19,
+        "detected": 19,
+        "detection_rate": 1.0
+      },
+      "price_anomaly": {
+        "injected": 15,
+        "detected": 15,
+        "detection_rate": 1.0
+      },
+      "crossed_quote": {
+        "injected": 5,
+        "detected": 5,
+        "detection_rate": 1.0
+      },
+      "missing_sequence_gap_proxy": {
+        "injected_missing_events": 44,
+        "sequence_gap_flags_raised": 65,
+        "note": "approximate: consecutive misses can collapse into one gap flag"
+      }
+    },
+    "false_positive_rate_on_clean_events": 0.001413,
+    "false_positive_breakdown": {
+      "SCHEMA_VIOLATION": 0,
+      "DUPLICATE": 0,
+      "SEQUENCE_GAP": 63,
+      "OUT_OF_ORDER": 0,
+      "STALE": 0,
+      "PRICE_ANOMALY": 0,
+      "CROSSED_QUOTE": 0,
+      "CROSS_FEED_DISAGREEMENT": 6,
+      "MALFORMED": 0
+    },
+    "clean_events_evaluated": 48829
+  },
+  "storage_counts": {
+    "INVALID": 110,
+    "SUSPICIOUS": 121,
+    "VALID": 49748
+  },
+  "source_reliability": {
+    "FEEDZ": 0.9857,
+    "FEEDX": 0.9872,
+    "FEEDY": 0.9873
+  }
+}
