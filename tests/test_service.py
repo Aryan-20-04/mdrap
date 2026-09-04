@@ -93,3 +93,54 @@ def test_client_abrupt_disconnect(running_daemon):
     ticks = list(c3.stream(symbol="ALL", limit=3))
     assert len(ticks) == 3
     c3.close()
+
+
+def test_daemon_token_auth_success():
+    """Verifies that client with valid auth_token can authenticate and stream."""
+    fd, db_path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    port = 19877
+    daemon = MarketDataDaemon(
+        host="127.0.0.1", port=port, db_path=db_path,
+        sim_speed_eps=5000.0, auth_token="test_secret_token_123"
+    )
+    daemon.start(blocking=False)
+    time.sleep(0.3)
+    try:
+        client = StreamClient(host="127.0.0.1", port=port, auth_token="test_secret_token_123")
+        client.connect()
+        ticks = list(client.stream(symbol="ALL", limit=2))
+        assert len(ticks) == 2
+        client.close()
+    finally:
+        daemon.stop()
+        if os.path.exists(db_path):
+            os.remove(db_path)
+
+
+def test_daemon_token_auth_rejection():
+    """Verifies that client without valid token is rejected by secured daemon."""
+    fd, db_path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    port = 19878
+    daemon = MarketDataDaemon(
+        host="127.0.0.1", port=port, db_path=db_path,
+        sim_speed_eps=5000.0, auth_token="mandatory_token_xyz"
+    )
+    daemon.start(blocking=False)
+    time.sleep(0.3)
+    try:
+        # Client connects with bad token
+        with pytest.raises(PermissionError):
+            bad_client = StreamClient(host="127.0.0.1", port=port, auth_token="wrong_token")
+            bad_client.connect()
+
+        # Unauthenticated query returns error
+        unauth_client = StreamClient(host="127.0.0.1", port=port, auth_token=None)
+        res = unauth_client._send_query("STATUS")
+        assert "error" in res
+    finally:
+        daemon.stop()
+        if os.path.exists(db_path):
+            os.remove(db_path)
+

@@ -28,6 +28,7 @@ class ConsolidatedBBO:
     is_crossed: bool
     is_locked: bool
     timestamp: float
+    is_stale: bool = False
 
     def to_dict(self) -> dict:
         return {
@@ -43,6 +44,7 @@ class ConsolidatedBBO:
             "is_crossed": self.is_crossed,
             "is_locked": self.is_locked,
             "timestamp": self.timestamp,
+            "is_stale": self.is_stale,
         }
 
 
@@ -111,6 +113,8 @@ class BBOEngine:
             inst_book.pop(s, None)
 
         if not inst_book:
+            if inst in self._current_bbos:
+                self._current_bbos[inst].is_stale = True
             return None
 
         best_bid = -1.0
@@ -152,6 +156,7 @@ class BBOEngine:
             is_crossed=is_crossed,
             is_locked=is_locked,
             timestamp=market_now,
+            is_stale=False,
         )
 
         self._current_bbos[inst] = bbo
@@ -176,8 +181,33 @@ class BBOEngine:
 
         return bbo
 
-    def current_bbo(self, instrument_id: str) -> Optional[ConsolidatedBBO]:
-        return self._current_bbos.get(instrument_id)
+    def current_bbo(
+        self, instrument_id: str, allow_stale: bool = True, now: Optional[float] = None
+    ) -> Optional[ConsolidatedBBO]:
+        bbo = self._current_bbos.get(instrument_id)
+        if bbo is None:
+            return None
+        if now is not None:
+            bbo.is_stale = (now - bbo.timestamp) > self.quote_ttl_s
+        if not allow_stale and bbo.is_stale:
+            return None
+        return bbo
+
+    def prune_stale(self, now: Optional[float] = None) -> int:
+        """Evict expired quotes and mark depleted BBOs as stale."""
+        t = now if now is not None else time.time()
+        pruned = 0
+        for inst, book in list(self._books.items()):
+            dead = [
+                s for s, q in book.items()
+                if (t - q.exchange_timestamp) > self.quote_ttl_s or not self._is_source_eligible(s)
+            ]
+            for s in dead:
+                del book[s]
+                pruned += 1
+            if not book and inst in self._current_bbos:
+                self._current_bbos[inst].is_stale = True
+        return pruned
 
     def all_bbos(self) -> Dict[str, ConsolidatedBBO]:
         return dict(self._current_bbos)

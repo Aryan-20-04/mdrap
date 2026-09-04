@@ -6,7 +6,7 @@ Implements Spec §14 — Analytical query and aggregation engine for market data
 import math
 from typing import Dict, List, Tuple
 
-from models import CanonicalEvent, EventType
+from models import CanonicalEvent, EventType, QualityStatus
 
 
 class OHLCVAggregator:
@@ -18,6 +18,8 @@ class OHLCVAggregator:
 
     def observe(self, event: CanonicalEvent) -> None:
         if event.event_type != EventType.TRADE or event.price is None:
+            return
+        if event.quality_status == QualityStatus.INVALID:
             return
             
         bucket_start = float(int(event.exchange_timestamp // self.interval_s) * self.interval_s)
@@ -39,10 +41,12 @@ class OHLCVAggregator:
             }
         else:
             b = self._buckets[key]
-            if event.exchange_timestamp < b["_first_ts"]:
+            first_ts = b.get("_first_ts", b.get("bucket_start", 0.0))
+            last_ts = b.get("_last_ts", b.get("bucket_start", 0.0))
+            if event.exchange_timestamp < first_ts:
                 b["open"] = event.price
                 b["_first_ts"] = event.exchange_timestamp
-            if event.exchange_timestamp >= b["_last_ts"]:
+            if event.exchange_timestamp >= last_ts:
                 b["close"] = event.price
                 b["_last_ts"] = event.exchange_timestamp
                 

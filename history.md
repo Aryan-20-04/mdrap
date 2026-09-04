@@ -433,11 +433,121 @@ Implemented three remaining spec milestones in dependency order. Test suite expa
 - Updated `cmd_live` in `cli.py` to display multi-venue stream and 5-venue NBBO ladder.
 - **Full test suite expanded to 109 tests (100% passing).**
 
+---
 
+## Session: 2026-09-04 — Phase 14: Credibility Remediation, Config Surface, Standalone Merkle Audit, and Daemon Auth
 
+### 1. Benchmark Taxonomy & Physics of the "5 Nanosecond" Myth
+- Established the Three-Tier Latency Taxonomy in `README.md`:
+  1. Core C L1 Algorithm (`fastpath.c`): 89.2 ns (11.2M eps)
+  2. In-Memory Streaming Pipeline: 15.7 µs (63,000 eps)
+  3. Durable Ingest-to-Disk (SQLite WAL): ~783 µs (18,000–22,000 eps)
+- Published mathematical proof on the physical impossibility of 5ns software pipelines (5ns = 20 CPU cycles at 4 GHz; software kernel/PCIe transit alone takes 100–250ns; 5ns only exists in hardware FPGA gate logic).
+- Documented V1 (sync) vs V2 (decoupled queue) trade-offs: V1 achieves higher raw throughput due to zero thread lock overhead, whereas V2 provides vital backpressure protection and fault containment.
 
+### 2. Externalized Configuration Surface (`config.yaml` & `src/config.py`)
+- Created `config.yaml` specifying all 7 quality thresholds, 3σ rolling windows, and quote TTLs.
+- Created `src/config.py` with typed dataclasses and standard library fallback parser.
+- Added asset-class override resolution (`crypto` vs `equities`).
 
+### 3. Cryptographic Merkle Audit Specification & Standalone Verifier
+- Published formal ledger specification: [`docs/audit-log-format.md`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/docs/audit-log-format.md).
+- Added `Store.export_audit_proof()` and `Store.verify_standalone_proof()`.
+- Added CLI subcommands `mdrap audit --export-proof <file>` and `mdrap audit --verify-proof <file>`.
 
+### 4. Pluggable Secrets & Daemon Security
+- Added `MDRAP_SECRET_<SOURCE>` environment variable secret loading.
+- Enforced cryptographic audit logging on HMAC failure.
+- Added pre-shared bearer token authentication to `MarketDataDaemon`, `StreamClient`, and `TerminalCockpit`.
 
+### 5. Verification & Test Expansion
+- Added `tests/test_config.py` (5 tests).
+- Expanded `tests/test_security.py` (+3 tests, total 10).
+- Expanded `tests/test_service.py` (+2 tests, total 6).
+- **Full test suite expanded to 119 passed out of 119 tests (100% green).**
 
+---
 
+## Session: 2026-09-04 — Phase 15: Consolidated Level-2 Market Depth & Real-Time VWAP Slicing (Phase E)
+
+### 1. Multi-Venue Order Book Depth Engine (`src/depth.py`)
+- Built `ConsolidatedDepthEngine`, `ConsolidatedLadder`, and `Level2Book` to aggregate bids and asks across venues into a single sorted book.
+- Implemented `VWAPCurve` for dynamic calculation of executed price, basis-point slippage, and market impact across any requested order size.
+- Real-time bid/ask liquidity imbalance metrics.
+
+### 2. CLI & Shell Integration
+- Added `mdrap depth <SYM>` (alias `l2`, `ladder`) for viewing aggregated L2 depth ladders.
+- Added `mdrap vwap <SYM> [--size N]` (alias `curve`, `slip`) for computing slippage schedules.
+- Added 15 automated unit & integration tests in `tests/test_depth.py` and `tests/test_vwap.py`.
+
+---
+
+## Session: 2026-09-04 — Phase 16: Binary Shared-Memory Transport, IPC Protocol & Resilient Client SDK (Phase F)
+
+### 1. High-Performance Binary IPC Transport (`src/shm.py`, `src/protocol.py`)
+- Created lock-free memory-mapped circular ring buffer with cross-process sequence tracking and wrap-around handling.
+- Implemented compact binary framing protocol (`MarketDataProtocol`) with packed struct headers for low-latency tick and depth streaming.
+- Built `StreamClient` SDK (`src/client.py`) with automatic background reconnect, keepalives, and non-blocking iteration.
+- Built async WebSocket connector (`src/ws_feed.py`) for live Binance/Coinbase public feeds.
+
+### 2. Verification & Test Expansion
+- Added tests in `tests/test_shm.py`, `tests/test_protocol.py`, `tests/test_client.py`, `tests/test_ws_feed.py`, and `tests/test_entitlements.py`.
+- Test suite expanded to 165 tests.
+
+---
+
+## Session: 2026-09-04 — Phase 17: Institutional Financial Model & 5-Tab Excel Exporter (Phase G)
+
+### 1. 5-Tab Excel Financial Exporter (`src/exporter.py`)
+- Engineered institutional-grade multi-tab Microsoft Excel (`.xlsx`) workbook generator:
+  - **Tab 1: Executive Summary & Microstructure KPIs**: Total volume, VWAP, spreads, crossed quote count, tick count.
+  - **Tab 2: Consolidated Market Depth**: Multi-venue aggregated bid/ask ladders with depth visualization.
+  - **Tab 3: VWAP Slippage Curve**: Execution slippage schedule across order tranches.
+  - **Tab 4: Quality & Quarantine Audit**: Detailed record of rejected/quarantined events with exact failure reasons.
+  - **Tab 5: OHLCV Candlesticks**: 5-second candle aggregates (Open, High, Low, Close, Volume, Trades).
+- Institutional visual design: corporate color palette, bold headers with thin dividers, right-aligned numeric data, and auto-fitted columns.
+- Automatic fallback to structured CSV report packages if `openpyxl` is not installed.
+- Integrated desktop launch via `mdrap export <SYM> --open`.
+- Added 7 tests in `tests/test_export.py`.
+
+---
+
+## Session: 2026-09-04 — Phase 18: In-Place Live Terminal Ticker & Candlestick Graph Overhaul (Phase H)
+
+### 1. In-Place Rich Terminal Display Engine (`src/terminal_display.py`)
+- Engineered zero-scroll in-place updating terminal view using ANSI cursor repositioning (`\033[H\033[J` / `\033[F`).
+- Overhauled candlestick chart visualizer: 3-character columns (` █ `, ` │ `, ` ┼ `) with distinct body margins and box-drawing wicks.
+- Outlier-resilient Y-axis percentile scaling (10th–90th percentiles) so flash-crash anomalies never crush normal candles into a flat line.
+- Aligned volume histogram bars positioned directly underneath each candle column.
+- Added dedicated modes: `cli.py live <SYM> --ticker-only` for single-table dashboard and `cli.py chart <SYM>` for standalone candlestick viewer.
+- Guarded `OHLCVAggregator.observe` in `src/analytics.py` from quarantined `INVALID` price spikes.
+- Added tests in `tests/test_terminal_display.py` and `tests/test_hardening.py`.
+
+---
+
+## Session: 2026-09-05 — Phase 19: Full 8,192-Symbol Native C Fastpath Capacity Expansion (Phase I)
+
+### 1. Native C Engine Scaling (`src/fastpath.c`, `src/fastpath.py`)
+- Expanded capacity to `MAX_INSTRUMENTS = 8192` ($2^{13}$) and `MAX_SOURCES = 32` ($2^5$).
+- Replaced fixed BSS arrays with dynamic heap-backed memory buffers allocated via `calloc` in `fastpath_init`. Added `fastpath_cleanup()`.
+- Bitshift zero-division slot indexing: `(source_id << 13) | instrument_id` in 1 CPU cycle.
+- Recompiled `src/fastpath.dll` with GCC 14.2.0 `-O3`.
+- Updated `src/fastpath.py` with dynamic symbol allocation and boundary fallback to pure Python if beyond 8,192 symbols.
+- Measured batch throughput: **18,669,082 events/sec (50.0 nanoseconds/event)** (120.4x faster than pure Python).
+- Created `tests/test_system_limitations.py` validating 500+ symbol hot-path execution and 8,192 boundary fallback.
+- Full automated test suite reaches **200/200 tests passing (100% green)** in ~32 seconds.
+
+---
+
+## Session: 2026-09-05 — Phase 20: Documentation & Configuration Finalization
+
+### 1. Configuration & Repository Hygiene
+- Created comprehensive `.gitignore` covering Python bytecode, C build objects, SQLite databases, generated Excel reports, and temporary logs.
+- Added `data/reports/.gitkeep` ensuring directory persistence without tracking generated `.xlsx`/`.csv` files.
+- Updated `requirements.txt` documenting zero-mandatory stdlib baseline and optional visualization/export/dev packages.
+- Updated `pyproject.toml` with `export`, `stream`, `config`, and `dev` optional dependency extras.
+
+### 2. Comprehensive Documentation Update
+- Overhauled `README.md` with 200/200 passing tests badge, 50ns/18.6M eps latency badge, modern architecture diagram, detailed feature breakdown, full 26-command CLI table, and verified repository tree.
+- Updated `docs/architecture.md` with Sections 2.6–2.8 and Roadmap V1–V4 details.
+- Verified 100% test pass rate across all 200 automated unit & integration tests.

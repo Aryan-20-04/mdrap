@@ -10,21 +10,41 @@ from __future__ import annotations
 
 import json
 import os
+import queue
 import select
 import socket
 import sys
 import threading
 import time
-from dataclasses import asdict
+from collections import deque
+from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, Iterator, List, Optional, Set, Tuple
 
 from bbo import BBOEngine, ConsolidatedBBO
+from depth import ConsolidatedDepthEngine, ConsolidatedLadder
+from fastpath import NativeReplayBuffer
 from models import CanonicalEvent, EventType, QualityStatus, RawEvent
 from pipeline import Pipeline
+from protocol import pack_depth_frame, pack_tick_frame
 from reconciliation import ReliabilityTracker
+from security import ClientEntitlement, SecurityManager, Tier, TokenBucketRateLimiter
 from simulator import FeedSimulator, SimulatorConfig
 from storage import Store
 from watchdog import SourceWatchdog
+
+
+@dataclass
+class _ClientSession:
+    """Session state for an individual connected TCP client."""
+    sock: socket.socket
+    symbols: Set[str] = field(default_factory=set)
+    queue: queue.Queue = field(default_factory=lambda: queue.Queue(maxsize=1000))
+    dropped_ticks: int = 0
+    is_alive: bool = True
+    is_binary: bool = False
+    entitlement: Optional[ClientEntitlement] = None
+    rate_limiter: Optional[TokenBucketRateLimiter] = None
+    rate_limited_ticks: int = 0
 
 
 class MarketDataDaemon:
@@ -42,6 +62,10 @@ class MarketDataDaemon:
         use_live: bool = False,
         sim_events: int = 0,  # 0 = infinite continuous stream
         sim_speed_eps: float = 1000.0,
+        auth_token: Optional[str] = None,
+        require_auth: bool = False,
+        enable_shm: bool = True,
+        shm_name: str = "mdrap_feed",
     ):
         self.host = host
         self.port = port
@@ -49,20 +73,44 @@ class MarketDataDaemon:
         self.use_live = use_live
         self.sim_events = sim_events
         self.sim_speed_eps = sim_speed_eps
+        self.enable_shm = enable_shm
+        self.shm_name = shm_name
+        self.require_auth = require_auth
+        import os
+        self.auth_token = auth_token if auth_token is not None else os.environ.get("MDRAP_DAEMON_TOKEN", "")
 
         self.store = Store(db_path)
+        self.security_manager = SecurityManager(store=self.store)
         self.reliability = ReliabilityTracker()
         self.watchdog = SourceWatchdog(reliability=self.reliability, silence_threshold_s=3.0)
         self.bbo = BBOEngine(quote_ttl_s=10.0, watchdog=self.watchdog)
+        self.depth = ConsolidatedDepthEngine(depth_ttl_s=10.0, watchdog=self.watchdog)
         self.pipeline = Pipeline(store=self.store, reliability=self.reliability, bbo=self.bbo, watchdog=self.watchdog)
+
+        self.shm_writer = None
+        if self.enable_shm:
+            try:
+                from shm import SHMWriter
+                self.shm_writer = SHMWriter(name=self.shm_name)
+            except Exception:
+                self.shm_writer = None
 
         self._running = False
         self._server_sock: Optional[socket.socket] = None
+        self._sessions: Dict[socket.socket, _ClientSession] = {}
         self._subscribers: Dict[socket.socket, Set[str]] = {}
+        self._authenticated_clients: Set[socket.socket] = set()
         self._sub_lock = threading.Lock()
+
+        self._global_seq = 0
+        self._seq_lock = threading.Lock()
+        self._replay_buffer = NativeReplayBuffer(capacity=65536)
+        self._replay_lock = threading.Lock()
 
         self._t0 = 0.0
         self._total_broadcast = 0
+        self._total_dropped = 0
+        self._total_rate_limited = 0
         self._ingest_thread: Optional[threading.Thread] = None
         self._server_thread: Optional[threading.Thread] = None
 
@@ -106,12 +154,29 @@ class MarketDataDaemon:
                 pass
 
         with self._sub_lock:
-            for s in list(self._subscribers.keys()):
+            for sess in list(self._sessions.values()):
+                sess.is_alive = False
                 try:
-                    s.close()
+                    sess.queue.put_nowait(None)
                 except Exception:
                     pass
+                try:
+                    sess.sock.close()
+                except Exception:
+                    pass
+            self._sessions.clear()
             self._subscribers.clear()
+            self._authenticated_clients.clear()
+
+        if self._ingest_thread and self._ingest_thread.is_alive():
+            self._ingest_thread.join(timeout=2.0)
+
+        if self.shm_writer:
+            try:
+                self.shm_writer.close()
+            except Exception:
+                pass
+            self.shm_writer = None
 
         if self.pipeline:
             self.pipeline.finish()
@@ -119,66 +184,234 @@ class MarketDataDaemon:
             self.store.close()
 
     def _socket_accept_loop(self) -> None:
-        """Accept new client connections and spawn non-blocking command listeners."""
+        """Accept new client connections, spawn non-blocking writer and reader threads."""
         while self._running and self._server_sock:
             try:
                 client_sock, _addr = self._server_sock.accept()
                 client_sock.settimeout(None)
                 client_sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+                sess = _ClientSession(sock=client_sock)
                 with self._sub_lock:
-                    self._subscribers[client_sock] = set()
-                t = threading.Thread(target=self._client_handler, args=(client_sock,), daemon=True)
-                t.start()
+                    self._sessions[client_sock] = sess
+                    self._subscribers[client_sock] = sess.symbols
+                # Start non-blocking writer thread (isolates slow consumers)
+                threading.Thread(target=self._client_writer, args=(sess,), daemon=True, name="mdrap-client-writer").start()
+                # Start incoming command reader thread
+                threading.Thread(target=self._client_handler, args=(client_sock,), daemon=True, name="mdrap-client-reader").start()
             except (socket.timeout, OSError):
                 continue
             except Exception:
                 break
 
-    def _client_handler(self, client_sock: socket.socket) -> None:
-        """Handle incoming command protocol from a connected client."""
-        buf = ""
-        while self._running:
+    def _client_writer(self, session: _ClientSession) -> None:
+        """Dedicated non-blocking writer thread for an individual connected client."""
+        while self._running and session.is_alive:
             try:
-                data = client_sock.recv(4096).decode("utf-8")
-                if not data:
-                    break
-                buf += data
-                while "\n" in buf:
-                    line, buf = buf.split("\n", 1)
-                    line = line.strip()
-                    if not line:
-                        continue
-                    self._handle_client_cmd(client_sock, line)
-            except Exception:
+                msg = session.queue.get(timeout=0.2)
+            except queue.Empty:
+                continue
+            if msg is None:
                 break
+            try:
+                session.sock.sendall(msg)
+            except Exception:
+                session.is_alive = False
+                break
+        self._disconnect_client(session.sock)
 
-        # Disconnected
+    def _disconnect_client(self, client_sock: socket.socket) -> None:
+        """Cleanly disconnect client, drain session, and release socket."""
         with self._sub_lock:
+            sess = self._sessions.pop(client_sock, None)
             self._subscribers.pop(client_sock, None)
+            self._authenticated_clients.discard(client_sock)
+            if sess:
+                self._total_dropped += sess.dropped_ticks
+                self._total_rate_limited += sess.rate_limited_ticks
+        if sess:
+            sess.is_alive = False
+            try:
+                sess.queue.put_nowait(None)
+            except Exception:
+                pass
         try:
             client_sock.close()
         except Exception:
             pass
+
+    def _client_handler(self, client_sock: socket.socket) -> None:
+        """Handle incoming command protocol from a connected client with safe byte buffering."""
+        raw_buf = bytearray()
+        while self._running:
+            try:
+                chunk = client_sock.recv(4096)
+                if not chunk:
+                    break
+                raw_buf.extend(chunk)
+                while b"\n" in raw_buf:
+                    line_bytes, _, rest = raw_buf.partition(b"\n")
+                    raw_buf = bytearray(rest)
+                    line = line_bytes.decode("utf-8", errors="replace").strip()
+                    if line:
+                        self._handle_client_cmd(client_sock, line)
+            except Exception:
+                break
+
+        self._disconnect_client(client_sock)
+
+    def _next_seq(self) -> int:
+        with self._seq_lock:
+            self._global_seq += 1
+            return self._global_seq
+
+    def _record_replay(self, msg_dict: dict) -> None:
+        self._replay_buffer.record(
+            seq=msg_dict.get("seq", 0),
+            symbol=msg_dict.get("sym", ""),
+            source=msg_dict.get("source", ""),
+            event_type=msg_dict.get("type", "TICK"),
+            price=msg_dict.get("price"),
+            size=msg_dict.get("size"),
+            bid=msg_dict.get("bid"),
+            ask=msg_dict.get("ask"),
+            bid_size=msg_dict.get("bid_size"),
+            ask_size=msg_dict.get("ask_size"),
+            status=msg_dict.get("status", "VALID"),
+            is_crossed=bool(msg_dict.get("is_crossed", False)),
+            exchange_ts=msg_dict.get("exchange_ts", 0.0),
+            ingest_ts=msg_dict.get("ingest_ts", 0.0),
+            broadcast_ts=msg_dict.get("broadcast_ts", 0.0),
+            engine_us=msg_dict.get("engine_us", 0.0),
+            raw_dict=msg_dict,
+        )
 
     def _handle_client_cmd(self, client_sock: socket.socket, cmd_str: str) -> None:
         """Parse client command protocol."""
         parts = cmd_str.split()
         verb = parts[0].upper()
 
-        if verb in ("SUB", "SUBSCRIBE"):
+        if verb == "AUTH":
+            token = parts[1] if len(parts) > 1 else ""
+            ent = self.security_manager.get_entitlement(token)
+            if ent:
+                if not ent.is_active:
+                    resp = json.dumps({"status": "ERROR", "error": "REVOKED_TOKEN"}) + "\n"
+                    client_sock.sendall(resp.encode("utf-8"))
+                    client_sock.close()
+                    return
+                if ent.expires_at and time.time() > ent.expires_at:
+                    resp = json.dumps({"status": "ERROR", "error": "TOKEN_EXPIRED"}) + "\n"
+                    client_sock.sendall(resp.encode("utf-8"))
+                    client_sock.close()
+                    return
+                with self._sub_lock:
+                    sess = self._sessions.get(client_sock)
+                    if sess:
+                        sess.entitlement = ent
+                        if ent.rate_limit_eps > 0:
+                            sess.rate_limiter = TokenBucketRateLimiter(rate=ent.rate_limit_eps, capacity=ent.rate_limit_eps * 2)
+                    self._authenticated_clients.add(client_sock)
+                resp = json.dumps({
+                    "status": "OK",
+                    "action": "AUTH",
+                    "client_id": ent.client_id,
+                    "tier": ent.tier.value if hasattr(ent.tier, "value") else str(ent.tier),
+                    "rate_limit_eps": ent.rate_limit_eps,
+                    "can_l2": ent.can_access_l2,
+                    "can_binary": ent.can_use_binary,
+                }) + "\n"
+                client_sock.sendall(resp.encode("utf-8"))
+                return
+            elif self.auth_token and token == self.auth_token:
+                # Legacy static token fallback
+                with self._sub_lock:
+                    self._authenticated_clients.add(client_sock)
+                resp = json.dumps({"status": "OK", "action": "AUTH", "tier": "INSTITUTIONAL"}) + "\n"
+                client_sock.sendall(resp.encode("utf-8"))
+                return
+            else:
+                resp = json.dumps({"status": "ERROR", "error": "INVALID_TOKEN"}) + "\n"
+                client_sock.sendall(resp.encode("utf-8"))
+                client_sock.close()
+                return
+
+        # Enforce authentication if require_auth or auth_token configured
+        if (self.require_auth or self.auth_token) and client_sock not in self._authenticated_clients:
+            resp = json.dumps({"status": "ERROR", "error": "UNAUTHORIZED: Authentication token required (use AUTH <token>)"}) + "\n"
+            client_sock.sendall(resp.encode("utf-8"))
+            return
+
+        if verb == "FORMAT":
+            fmt = parts[1].upper() if len(parts) > 1 else "JSON"
+            with self._sub_lock:
+                sess = self._sessions.get(client_sock)
+            if fmt == "BINARY" and sess and sess.entitlement and not sess.entitlement.can_use_binary:
+                resp = json.dumps({
+                    "status": "ERROR",
+                    "action": "FORMAT",
+                    "error": "FORBIDDEN: MDRAP-BIN binary wire protocol requires PRO or INSTITUTIONAL entitlement"
+                }) + "\n"
+                client_sock.sendall(resp.encode("utf-8"))
+                return
+            if sess:
+                sess.is_binary = (fmt == "BINARY")
+            resp = json.dumps({"status": "OK", "action": "FORMAT", "format": fmt}) + "\n"
+            client_sock.sendall(resp.encode("utf-8"))
+
+        elif verb in ("SUB", "SUBSCRIBE"):
             sym = parts[1].upper() if len(parts) > 1 else "ALL"
             with self._sub_lock:
-                if client_sock not in self._subscribers:
-                    self._subscribers[client_sock] = set()
-                self._subscribers[client_sock].add(sym)
+                sess = self._sessions.get(client_sock)
+
+            # Check L2 and VWAP permission
+            if (sym.startswith("L2:") or sym == "L2" or sym.startswith("VWAP:") or sym == "VWAP") and sess and sess.entitlement and not sess.entitlement.can_access_l2:
+                resp = json.dumps({
+                    "status": "ERROR",
+                    "action": "SUB",
+                    "error": "FORBIDDEN: Consolidated L2 Depth and Real-Time VWAP Curves require PRO or INSTITUTIONAL entitlement"
+                }) + "\n"
+                client_sock.sendall(resp.encode("utf-8"))
+                return
+
+            if sym.startswith("BINARY:"):
+                if sess and sess.entitlement and not sess.entitlement.can_use_binary:
+                    resp = json.dumps({
+                        "status": "ERROR",
+                        "action": "SUB",
+                        "error": "FORBIDDEN: MDRAP-BIN binary wire protocol requires PRO or INSTITUTIONAL entitlement"
+                    }) + "\n"
+                    client_sock.sendall(resp.encode("utf-8"))
+                    return
+                sym = sym[7:]
+                if sess:
+                    sess.is_binary = True
+            elif sym == "BINARY":
+                if sess and sess.entitlement and not sess.entitlement.can_use_binary:
+                    resp = json.dumps({
+                        "status": "ERROR",
+                        "action": "SUB",
+                        "error": "FORBIDDEN: MDRAP-BIN binary wire protocol requires PRO or INSTITUTIONAL entitlement"
+                    }) + "\n"
+                    client_sock.sendall(resp.encode("utf-8"))
+                    return
+                if sess:
+                    sess.is_binary = True
+                sym = "ALL"
+
+            with self._sub_lock:
+                if sess:
+                    sess.symbols.add(sym)
+                    self._subscribers[client_sock] = sess.symbols
             resp = json.dumps({"status": "OK", "action": "SUB", "symbol": sym}) + "\n"
             client_sock.sendall(resp.encode("utf-8"))
 
         elif verb in ("UNSUB", "UNSUBSCRIBE"):
             sym = parts[1].upper() if len(parts) > 1 else "ALL"
             with self._sub_lock:
-                if client_sock in self._subscribers:
-                    self._subscribers[client_sock].discard(sym)
+                sess = self._sessions.get(client_sock)
+                if sess:
+                    sess.symbols.discard(sym)
+                    self._subscribers[client_sock] = sess.symbols
             resp = json.dumps({"status": "OK", "action": "UNSUB", "symbol": sym}) + "\n"
             client_sock.sendall(resp.encode("utf-8"))
 
@@ -199,6 +432,88 @@ class MarketDataDaemon:
                 } if bbo_quote else None
             }
             client_sock.sendall((json.dumps(data) + "\n").encode("utf-8"))
+
+        elif verb == "DEPTH":
+            with self._sub_lock:
+                sess = self._sessions.get(client_sock)
+            if sess and sess.entitlement and not sess.entitlement.can_access_l2:
+                resp = json.dumps({
+                    "status": "ERROR",
+                    "action": "DEPTH",
+                    "error": "FORBIDDEN: Consolidated L2 Depth requires PRO or INSTITUTIONAL entitlement"
+                }) + "\n"
+                client_sock.sendall(resp.encode("utf-8"))
+                return
+            sym = parts[1].upper() if len(parts) > 1 else "BTC/USD"
+            ladder = self.depth.current_ladder(sym)
+            data = {
+                "status": "OK",
+                "symbol": sym,
+                "depth": ladder.to_dict() if ladder else None,
+            }
+            client_sock.sendall((json.dumps(data) + "\n").encode("utf-8"))
+
+        elif verb == "VWAP":
+            with self._sub_lock:
+                sess = self._sessions.get(client_sock)
+            if sess and sess.entitlement and not sess.entitlement.can_access_l2:
+                resp = json.dumps({
+                    "status": "ERROR",
+                    "action": "VWAP",
+                    "error": "FORBIDDEN: Real-Time VWAP Slicing Curves require PRO or INSTITUTIONAL entitlement"
+                }) + "\n"
+                client_sock.sendall(resp.encode("utf-8"))
+                return
+            sym = parts[1].upper() if len(parts) > 1 else "BTC/USD"
+            sizes = None
+            if len(parts) > 2:
+                try:
+                    sizes = [float(x) for x in parts[2:]]
+                except ValueError:
+                    sizes = None
+            curve = self.depth.current_vwap_curve(sym, sizes=sizes)
+            data = {
+                "status": "OK",
+                "symbol": sym,
+                "vwap_curve": curve.to_dict() if curve else None,
+            }
+            client_sock.sendall((json.dumps(data) + "\n").encode("utf-8"))
+
+        elif verb == "REPLAY":
+            try:
+                from_seq = int(parts[1]) if len(parts) > 1 else 1
+                to_seq = int(parts[2]) if len(parts) > 2 else from_seq
+                sym_filter = parts[3].upper() if len(parts) > 3 else None
+                requested = max(1, to_seq - from_seq + 1)
+                with self._sub_lock:
+                    sess = self._sessions.get(client_sock)
+                if sess and sess.entitlement and requested > sess.entitlement.max_replay_events:
+                    resp = json.dumps({
+                        "status": "ERROR",
+                        "action": "REPLAY",
+                        "error": f"FORBIDDEN: Requested replay range ({requested}) exceeds tier limit of {sess.entitlement.max_replay_events} events"
+                    }) + "\n"
+                    client_sock.sendall(resp.encode("utf-8"))
+                    return
+
+                if sess and sess.is_binary:
+                    bin_data = self._replay_buffer.replay_binary(from_seq, to_seq, sym_filter)
+                    client_sock.sendall(bin_data)
+                    return
+
+                replayed = self._replay_buffer.replay(from_seq, to_seq, sym_filter)
+                resp = json.dumps({
+                    "status": "OK",
+                    "action": "REPLAY",
+                    "from_seq": from_seq,
+                    "to_seq": to_seq,
+                    "count": len(replayed),
+                    "events": replayed,
+                }) + "\n"
+                client_sock.sendall(resp.encode("utf-8"))
+            except Exception as e:
+                resp = json.dumps({"status": "ERROR", "action": "REPLAY", "error": str(e)}) + "\n"
+                client_sock.sendall(resp.encode("utf-8"))
 
         elif verb == "HEALTH":
             health = self.watchdog.source_states()
@@ -247,69 +562,247 @@ class MarketDataDaemon:
                     break
 
     def _process_and_broadcast(self, raw: RawEvent) -> None:
-        """Ingest raw event, evaluate quality, update BBO, and broadcast to subscribed sockets."""
+        """Ingest raw event, evaluate quality, update BBO & L2 depth, and broadcast to subscribed sockets via non-blocking queues."""
         t0_ns = time.perf_counter_ns()
         ev = self.pipeline.process_one(raw)
         if not ev:
             return
 
+        try:
+            ladder = self.depth.observe(raw)
+        except Exception:
+            ladder = None
         lat_us = (time.perf_counter_ns() - t0_ns) / 1000.0
+        bbo_q = self.bbo.current_bbo(ev.instrument_id)
+        t_broadcast = time.time()
+        seq = self._next_seq()
         self._total_broadcast += 1
 
-        with self._sub_lock:
-            if not self._subscribers:
-                return
-            active_clients = list(self._subscribers.items())
-
-        bbo_q = self.bbo.current_bbo(ev.instrument_id)
         payload = {
             "type": "TICK",
+            "seq": seq,
             "sym": ev.instrument_id,
             "event": ev.event_type.value,
             "price": ev.price,
             "size": ev.quantity,
             "bid": ev.bid_price,
             "ask": ev.ask_price,
+            "bid_size": ev.bid_size,
+            "ask_size": ev.ask_size,
             "source": ev.source,
             "status": ev.quality_status.value,
             "exchange_ts": ev.exchange_timestamp,
+            "ingest_ts": raw.receive_timestamp,
+            "broadcast_ts": t_broadcast,
             "proc_us": round(lat_us, 1),
+            "engine_us": round(lat_us, 1),
             "bbo": {
                 "bid": bbo_q.best_bid,
                 "ask": bbo_q.best_ask,
                 "spread": bbo_q.spread,
+                "mid": bbo_q.mid_price,
                 "crossed": bbo_q.is_crossed,
-            } if bbo_q else None
+            } if bbo_q else None,
         }
+        self._record_replay(payload)
+        if self.shm_writer:
+            try:
+                self.shm_writer.write_tick(
+                    seq=seq,
+                    symbol=ev.instrument_id,
+                    source=ev.source,
+                    price=ev.price,
+                    size=ev.quantity,
+                    bid=ev.bid_price,
+                    ask=ev.ask_price,
+                    bid_size=ev.bid_size,
+                    ask_size=ev.ask_size,
+                    status=ev.quality_status.value,
+                    is_crossed=bool(bbo_q.is_crossed) if bbo_q else False,
+                    exchange_ts=ev.exchange_timestamp,
+                    ingest_ts=raw.receive_timestamp,
+                    broadcast_ts=t_broadcast,
+                    engine_us=lat_us,
+                )
+            except Exception:
+                pass
+
+        if self.shm_writer and ladder:
+            try:
+                self.shm_writer.write_depth(
+                    seq=seq,
+                    symbol=ev.instrument_id,
+                    best_bid=ladder.bids[0].price if ladder.bids else None,
+                    best_ask=ladder.asks[0].price if ladder.asks else None,
+                    bid_size=ladder.bids[0].size if ladder.bids else None,
+                    ask_size=ladder.asks[0].size if ladder.asks else None,
+                    micro_price=ladder.micro_price,
+                    ofi=ladder.imbalance_ratio,
+                    is_crossed=ladder.is_crossed,
+                    exchange_ts=ladder.timestamp,
+                    ingest_ts=raw.receive_timestamp,
+                    broadcast_ts=t_broadcast,
+                    engine_us=lat_us,
+                )
+            except Exception:
+                pass
+
         msg = (json.dumps(payload) + "\n").encode("utf-8")
 
-        dead_sockets = []
-        for s, subs in active_clients:
-            if "ALL" in subs or ev.instrument_id in subs:
-                try:
-                    s.sendall(msg)
-                except Exception:
-                    dead_sockets.append(s)
+        with self._sub_lock:
+            active_sessions = [s for s in self._sessions.values() if s.is_alive] if self._sessions else []
 
-        if dead_sockets:
-            with self._sub_lock:
-                for s in dead_sockets:
-                    self._subscribers.pop(s, None)
-                    try:
-                        s.close()
-                    except Exception:
-                        pass
+        if not active_sessions:
+            return
+
+        has_binary_clients = any(s.is_binary for s in active_sessions)
+        bin_msg = None
+        if has_binary_clients:
+            try:
+                bin_msg = pack_tick_frame(
+                    seq=seq,
+                    symbol=ev.instrument_id,
+                    source=ev.source,
+                    price=ev.price,
+                    size=ev.quantity,
+                    bid=ev.bid_price,
+                    ask=ev.ask_price,
+                    status=ev.quality_status.value,
+                    is_crossed=bool(bbo_q.is_crossed) if bbo_q else False,
+                    exchange_ts=ev.exchange_timestamp,
+                    ingest_ts=raw.receive_timestamp,
+                    broadcast_ts=t_broadcast,
+                    engine_us=lat_us,
+                )
+            except Exception:
+                bin_msg = None
+
+        # L2 Depth broadcast if updated and clients subscribed to L2
+        depth_msg = None
+        depth_bin_msg = None
+        has_l2_subs = any(
+            "L2:ALL" in s.symbols or f"L2:{ev.instrument_id}" in s.symbols
+            for s in active_sessions
+        )
+        if has_l2_subs and ladder:
+            seq_depth = self._next_seq()
+            depth_payload = {
+                "type": "DEPTH",
+                "seq": seq_depth,
+                "sym": ev.instrument_id,
+                "bids": [[b.price, b.size, b.venue] for b in ladder.bids[:10]],
+                "asks": [[a.price, a.size, a.venue] for a in ladder.asks[:10]],
+                "aggregated_bids": [b.to_dict() for b in ladder.aggregated_bids[:10]],
+                "aggregated_asks": [a.to_dict() for a in ladder.aggregated_asks[:10]],
+                "micro_price": round(ladder.micro_price, 4),
+                "ofi": round(ladder.imbalance_ratio, 4),
+                "is_crossed": ladder.is_crossed,
+                "arbitrage": ladder.crossed_opportunities,
+                "vwap_curve": ladder.vwap_curve.to_dict() if ladder.vwap_curve else None,
+                "total_bid_notional": round(ladder.total_bid_notional, 2),
+                "total_ask_notional": round(ladder.total_ask_notional, 2),
+                "exchange_ts": ladder.timestamp,
+                "ingest_ts": raw.receive_timestamp,
+                "broadcast_ts": t_broadcast,
+                "proc_us": round(lat_us, 1),
+                "engine_us": round(lat_us, 1),
+            }
+            self._record_replay(depth_payload)
+            depth_msg = (json.dumps(depth_payload) + "\n").encode("utf-8")
+            if has_binary_clients:
+                try:
+                    depth_bin_msg = pack_depth_frame(
+                        seq=seq_depth,
+                        symbol=ev.instrument_id,
+                        best_bid=ladder.bids[0].price if ladder.bids else None,
+                        best_ask=ladder.asks[0].price if ladder.asks else None,
+                        bid_size=ladder.bids[0].size if ladder.bids else None,
+                        ask_size=ladder.asks[0].size if ladder.asks else None,
+                        micro_price=ladder.micro_price,
+                        ofi=ladder.imbalance_ratio,
+                        is_crossed=ladder.is_crossed,
+                        exchange_ts=ladder.timestamp,
+                        ingest_ts=raw.receive_timestamp,
+                        broadcast_ts=t_broadcast,
+                        engine_us=lat_us,
+                    )
+                except Exception:
+                    depth_bin_msg = None
+
+        # Real-time VWAP broadcast if updated and clients subscribed to VWAP
+        vwap_msg = None
+        has_vwap_subs = any(
+            "VWAP:ALL" in s.symbols or f"VWAP:{ev.instrument_id}" in s.symbols
+            for s in active_sessions
+        )
+        if has_vwap_subs and ladder and ladder.vwap_curve:
+            seq_vwap = self._next_seq()
+            vwap_payload = {
+                "type": "VWAP",
+                "seq": seq_vwap,
+                "sym": ev.instrument_id,
+                "vwap_curve": ladder.vwap_curve.to_dict(),
+                "exchange_ts": ladder.timestamp,
+                "ingest_ts": raw.receive_timestamp,
+                "broadcast_ts": t_broadcast,
+                "proc_us": round(lat_us, 1),
+                "engine_us": round(lat_us, 1),
+            }
+            self._record_replay(vwap_payload)
+            vwap_msg = (json.dumps(vwap_payload) + "\n").encode("utf-8")
+
+        for sess in active_sessions:
+            # Per-session token bucket rate limiter
+            if sess.rate_limiter and not sess.rate_limiter.allow():
+                sess.rate_limited_ticks += 1
+                continue
+
+            out_tick = bin_msg if (sess.is_binary and bin_msg) else msg
+            out_depth = depth_bin_msg if (sess.is_binary and depth_bin_msg) else depth_msg
+
+            # L1 Tick delivery
+            if "ALL" in sess.symbols or ev.instrument_id in sess.symbols:
+                try:
+                    sess.queue.put_nowait(out_tick)
+                except queue.Full:
+                    sess.dropped_ticks += 1
+
+            # L2 Depth delivery
+            if out_depth and ("L2:ALL" in sess.symbols or f"L2:{ev.instrument_id}" in sess.symbols):
+                try:
+                    sess.queue.put_nowait(out_depth)
+                except queue.Full:
+                    sess.dropped_ticks += 1
+
+            # Real-time VWAP delivery
+            if vwap_msg and ("VWAP:ALL" in sess.symbols or f"VWAP:{ev.instrument_id}" in sess.symbols):
+                try:
+                    sess.queue.put_nowait(vwap_msg)
+                except queue.Full:
+                    sess.dropped_ticks += 1
 
     def stats(self) -> dict:
         uptime = time.time() - self._t0 if self._t0 > 0 else 0.0
         eps = (self._total_broadcast / uptime) if uptime > 0 else 0.0
         with self._sub_lock:
-            client_count = len(self._subscribers)
+            client_count = len(self._sessions)
+            total_dropped = self._total_dropped + sum(s.dropped_ticks for s in self._sessions.values())
+            total_rate_limited = self._total_rate_limited + sum(s.rate_limited_ticks for s in self._sessions.values())
+            tier_breakdown: Dict[str, int] = {}
+            for s in self._sessions.values():
+                t = s.entitlement.tier.value if (s.entitlement and hasattr(s.entitlement.tier, "value")) else "DEFAULT"
+                tier_breakdown[t] = tier_breakdown.get(t, 0) + 1
         return {
             "uptime_s": round(uptime, 2),
             "total_broadcast": self._total_broadcast,
+            "global_seq": self._global_seq,
+            "replay_buffer_size": len(self._replay_buffer),
+            "replay_buffer": self._replay_buffer.stats(),
             "throughput_eps": round(eps, 1),
             "active_clients": client_count,
+            "dropped_ticks": total_dropped,
+            "rate_limited_ticks": total_rate_limited,
+            "client_tiers": tier_breakdown,
             "host": self.host,
             "port": self.port,
             "sources": self.watchdog.source_states(),
@@ -322,10 +815,12 @@ class StreamClient:
     Yields parsed canonical ticks as JSON/dicts.
     """
 
-    def __init__(self, host: str = "127.0.0.1", port: int = 9876, timeout: float = 5.0):
+    def __init__(self, host: str = "127.0.0.1", port: int = 9876, timeout: float = 5.0, auth_token: Optional[str] = None):
         self.host = host
         self.port = port
         self.timeout = timeout
+        import os
+        self.auth_token = auth_token if auth_token is not None else os.environ.get("MDRAP_DAEMON_TOKEN", "")
         self.sock: Optional[socket.socket] = None
 
     def connect(self) -> None:
@@ -333,12 +828,35 @@ class StreamClient:
         self.sock.settimeout(self.timeout)
         self.sock.connect((self.host, self.port))
         self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        if self.auth_token:
+            self.sock.sendall(f"AUTH {self.auth_token}\n".encode("utf-8"))
+            buf = ""
+            while "\n" not in buf:
+                chunk = self.sock.recv(4096).decode("utf-8")
+                if not chunk:
+                    break
+                buf += chunk
+            ack = json.loads(buf.strip().split("\n")[0])
+            if ack.get("status") != "OK":
+                raise PermissionError(f"Daemon authentication failed: {ack.get('error')}")
 
     def _send_query(self, cmd: str) -> dict:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(self.timeout)
         sock.connect((self.host, self.port))
         sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        if self.auth_token:
+            sock.sendall(f"AUTH {self.auth_token}\n".encode("utf-8"))
+            buf = ""
+            while "\n" not in buf:
+                chunk = sock.recv(4096).decode("utf-8")
+                if not chunk:
+                    break
+                buf += chunk
+            ack = json.loads(buf.strip().split("\n")[0])
+            if ack.get("status") != "OK":
+                sock.close()
+                return {"error": "UNAUTHORIZED"}
         sock.sendall((cmd.strip() + "\n").encode("utf-8"))
         buf = ""
         while "\n" not in buf:
@@ -358,6 +876,16 @@ class StreamClient:
 
     def get_bbo(self, symbol: str = "BTC/USD") -> Optional[dict]:
         return self._send_query(f"BBO {symbol}").get("bbo")
+
+    def get_depth(self, symbol: str = "BTC/USD") -> Optional[dict]:
+        return self._send_query(f"DEPTH {symbol}").get("depth")
+
+    def request_replay(self, from_seq: int, to_seq: int, symbol: Optional[str] = None) -> list[dict]:
+        cmd = f"REPLAY {from_seq} {to_seq}"
+        if symbol:
+            cmd += f" {symbol}"
+        res = self._send_query(cmd)
+        return res.get("events", [])
 
     def get_health(self) -> dict:
         return self._send_query("HEALTH").get("health", {})
@@ -422,8 +950,8 @@ class TerminalCockpit:
     Displays real-time throughput, latency sparklines, venue health, and consolidated BBO.
     """
 
-    def __init__(self, host: str = "127.0.0.1", port: int = 9876):
-        self.client = StreamClient(host=host, port=port)
+    def __init__(self, host: str = "127.0.0.1", port: int = 9876, auth_token: Optional[str] = None):
+        self.client = StreamClient(host=host, port=port, auth_token=auth_token)
 
     def run(self) -> None:
         if hasattr(sys.stdout, "reconfigure"):

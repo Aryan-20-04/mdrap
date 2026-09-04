@@ -15,10 +15,12 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define MAX_SOURCES 16
-#define MAX_INSTRUMENTS 64
+#define MAX_SOURCES 32
+#define MAX_INSTRUMENTS 8192
+#define INSTRUMENT_SHIFT 13
+#define TOTAL_SLOTS (MAX_SOURCES * MAX_INSTRUMENTS)
 #define MAX_WINDOW 128
-#define DEDUP_CACHE_SIZE 131072 // Power of 2 (2^17)
+#define DEDUP_CACHE_SIZE 262144 // Power of 2 (2^18)
 #define DEDUP_MASK (DEDUP_CACHE_SIZE - 1)
 
 // Quality Status
@@ -73,9 +75,14 @@ static double g_staleness_threshold_s = 0.05;
 static double g_price_anomaly_stddev = 6.0;
 static int32_t g_price_window = 50;
 
-static int64_t g_last_seq[MAX_SOURCES][MAX_INSTRUMENTS];
-static double g_last_ts[MAX_SOURCES][MAX_INSTRUMENTS];
-static FastRollingStats g_price_stats[MAX_SOURCES][MAX_INSTRUMENTS];
+// Dynamic Heap-backed state buffers (allocated in fastpath_init)
+static int64_t *g_last_seq = NULL;
+static double *g_last_ts = NULL;
+static FastRollingStats *g_price_stats = NULL;
+
+static inline uint32_t get_slot(int32_t s_id, int32_t i_id) {
+    return (uint32_t)((s_id << INSTRUMENT_SHIFT) | i_id);
+}
 
 // Deduplication Hash Table (open-addressing with linear probing)
 static uint64_t g_dedup_keys[DEDUP_CACHE_SIZE];
@@ -149,20 +156,37 @@ static inline void mark(FastResult *res, int32_t status, uint32_t reason) {
 #define EXPORT
 #endif
 
+EXPORT void fastpath_cleanup(void) {
+    if (g_last_seq) { free(g_last_seq); g_last_seq = NULL; }
+    if (g_last_ts) { free(g_last_ts); g_last_ts = NULL; }
+    if (g_price_stats) { free(g_price_stats); g_price_stats = NULL; }
+}
+
 EXPORT void fastpath_init(double staleness_threshold_s, double anomaly_stddev, int32_t price_window) {
     g_staleness_threshold_s = staleness_threshold_s;
     g_price_anomaly_stddev = anomaly_stddev;
     g_price_window = price_window > MAX_WINDOW ? MAX_WINDOW : price_window;
 
-    for (int s = 0; s < MAX_SOURCES; ++s) {
-        for (int i = 0; i < MAX_INSTRUMENTS; ++i) {
-            g_last_seq[s][i] = -1;
-            g_last_ts[s][i] = 0.0;
-            g_price_stats[s][i].mean = 0.0;
-            g_price_stats[s][i].m2 = 0.0;
-            g_price_stats[s][i].n = 0;
-            g_price_stats[s][i].head = 0;
-            g_price_stats[s][i].window = g_price_window;
+    size_t total_slots = (size_t)TOTAL_SLOTS;
+    if (!g_last_seq) {
+        g_last_seq = (int64_t *)malloc(total_slots * sizeof(int64_t));
+    }
+    if (!g_last_ts) {
+        g_last_ts = (double *)malloc(total_slots * sizeof(double));
+    }
+    if (!g_price_stats) {
+        g_price_stats = (FastRollingStats *)calloc(total_slots, sizeof(FastRollingStats));
+    }
+
+    if (g_last_seq && g_last_ts && g_price_stats) {
+        for (size_t idx = 0; idx < total_slots; ++idx) {
+            g_last_seq[idx] = -1;
+            g_last_ts[idx] = 0.0;
+            g_price_stats[idx].mean = 0.0;
+            g_price_stats[idx].m2 = 0.0;
+            g_price_stats[idx].n = 0;
+            g_price_stats[idx].head = 0;
+            g_price_stats[idx].window = g_price_window;
         }
     }
     memset(g_dedup_occupied, 0, sizeof(g_dedup_occupied));
@@ -184,6 +208,16 @@ EXPORT void fastpath_evaluate(const FastEvent *ev, FastResult *res) {
         return;
     }
 
+    if (!g_last_seq || !g_last_ts || !g_price_stats) {
+        fastpath_init(g_staleness_threshold_s, g_price_anomaly_stddev, g_price_window);
+        if (!g_last_seq || !g_last_ts || !g_price_stats) {
+            mark(res, STATUS_INVALID, REASON_SCHEMA_VIOLATION);
+            return;
+        }
+    }
+
+    uint32_t slot = get_slot(s_id, i_id);
+
     // 1. Deduplication
     uint64_t key = compute_dedup_key(ev);
     if (check_and_insert_dedup(key)) {
@@ -191,22 +225,22 @@ EXPORT void fastpath_evaluate(const FastEvent *ev, FastResult *res) {
     }
 
     // 2. Sequence-gap detection
-    int64_t last_s = g_last_seq[s_id][i_id];
+    int64_t last_s = g_last_seq[slot];
     if (ev->sequence_num >= 0) {
         if (last_s >= 0 && ev->sequence_num > last_s + 1) {
             mark(res, STATUS_SUSPICIOUS, REASON_SEQUENCE_GAP);
         }
         if (last_s < 0 || ev->sequence_num > last_s) {
-            g_last_seq[s_id][i_id] = ev->sequence_num;
+            g_last_seq[slot] = ev->sequence_num;
         }
     }
 
     // 3. Ordering regression
-    double last_t = g_last_ts[s_id][i_id];
+    double last_t = g_last_ts[slot];
     if (last_t > 0.0 && ev->exchange_ts < last_t) {
         mark(res, STATUS_SUSPICIOUS, REASON_OUT_OF_ORDER);
     } else {
-        g_last_ts[s_id][i_id] = ev->exchange_ts;
+        g_last_ts[slot] = ev->exchange_ts;
     }
 
     // 4. Staleness
@@ -223,7 +257,7 @@ EXPORT void fastpath_evaluate(const FastEvent *ev, FastResult *res) {
 
     // 6. Price sanity (Welford's algorithm)
     if (!isnan(ev->price)) {
-        FastRollingStats *st = &g_price_stats[s_id][i_id];
+        FastRollingStats *st = &g_price_stats[slot];
         double mean_prior, std_prior;
 
         if (st->n == 0) {
@@ -235,28 +269,29 @@ EXPORT void fastpath_evaluate(const FastEvent *ev, FastResult *res) {
             std_prior = sqrt(var > 0.0 ? var : 0.0);
         }
 
-        // Add to window
-        st->values[st->head] = ev->price;
-        st->head = (st->head + 1) % st->window;
-        st->n++;
-        double delta = ev->price - st->mean;
-        st->mean += delta / st->n;
-        st->m2 += delta * (ev->price - st->mean);
-
-        // Reverse Welford update if window exceeded
-        if (st->n > st->window) {
-            int32_t old_idx = st->head;
-            double old_val = st->values[old_idx];
-            st->n--;
-            double delta_old = old_val - st->mean;
-            st->mean -= delta_old / st->n;
-            st->m2 -= delta_old * (old_val - st->mean);
-            if (st->m2 < 0.0) st->m2 = 0.0;
-        }
-
         // Anomaly threshold
-        if (std_prior > 0.0 && fabs(ev->price - mean_prior) > g_price_anomaly_stddev * std_prior) {
+        int is_anomaly = (std_prior > 0.0 && fabs(ev->price - mean_prior) > g_price_anomaly_stddev * std_prior);
+        if (is_anomaly) {
             mark(res, STATUS_SUSPICIOUS, REASON_PRICE_ANOMALY);
+        } else {
+            // Add to clean baseline window only
+            st->values[st->head] = ev->price;
+            st->head = (st->head + 1) % st->window;
+            st->n++;
+            double delta = ev->price - st->mean;
+            st->mean += delta / st->n;
+            st->m2 += delta * (ev->price - st->mean);
+
+            // Reverse Welford update if window exceeded
+            if (st->n > st->window) {
+                int32_t old_idx = st->head;
+                double old_val = st->values[old_idx];
+                st->n--;
+                double delta_old = old_val - st->mean;
+                st->mean -= delta_old / st->n;
+                st->m2 -= delta_old * (old_val - st->mean);
+                if (st->m2 < 0.0) st->m2 = 0.0;
+            }
         }
     }
 }
@@ -292,4 +327,221 @@ EXPORT uint64_t fastpath_eval_fast(
 
     return (((uint64_t)res.status) << 32) | ((uint64_t)res.reason_mask);
 }
+
+
+// ============================================================================
+// Phase F: High-Performance Native C Circular Replay Buffer (Spec §18)
+// ============================================================================
+
+#define REPLAY_RING_SIZE 65536 // Power of 2 (2^16 slots)
+#define REPLAY_RING_MASK (REPLAY_RING_SIZE - 1)
+
+#pragma pack(push, 1)
+typedef struct {
+    uint64_t seq;
+    char symbol[16];
+    char source[16];
+    char event_type[8]; // "TRADE", "QUOTE", "DEPTH"
+    double price;
+    double size;
+    double bid;
+    double ask;
+    double bid_size;
+    double ask_size;
+    uint8_t status;     // 1=VALID, 2=SUSPICIOUS, 3=INVALID
+    uint8_t is_crossed; // 1 or 0
+    double exchange_ts;
+    double ingest_ts;
+    double broadcast_ts;
+    double engine_us;
+    uint8_t is_valid;
+} FastReplayRecord;
+
+// Exact 92-byte MDRAP-BIN V1 TICK Frame matching protocol.py
+typedef struct {
+    char magic[2];       // 'M', 'D'
+    uint8_t msg_type;    // 1 (MSG_TYPE_TICK)
+    uint8_t payload_len; // 88
+    uint64_t seq;
+    uint8_t status;
+    uint8_t is_crossed;
+    char pad[2];
+    float engine_us;
+    double exchange_ts;
+    double ingest_ts;
+    double broadcast_ts;
+    double price;
+    double size;
+    double bid;
+    double ask;
+    char symbol[8];
+    char source[8];
+} FastBinTickFrame;
+#pragma pack(pop)
+
+static FastReplayRecord g_replay_ring[REPLAY_RING_SIZE];
+static uint64_t g_replay_min_seq = 0;
+static uint64_t g_replay_max_seq = 0;
+static uint64_t g_replay_total_recorded = 0;
+
+EXPORT void fastpath_replay_record(
+    uint64_t seq,
+    const char *symbol,
+    const char *source,
+    const char *event_type,
+    double price,
+    double size,
+    double bid,
+    double ask,
+    double bid_size,
+    double ask_size,
+    uint8_t status,
+    uint8_t is_crossed,
+    double exchange_ts,
+    double ingest_ts,
+    double broadcast_ts,
+    double engine_us
+) {
+    uint32_t slot = (uint32_t)(seq & REPLAY_RING_MASK);
+    FastReplayRecord *rec = &g_replay_ring[slot];
+
+    rec->seq = seq;
+    strncpy(rec->symbol, symbol ? symbol : "", sizeof(rec->symbol) - 1);
+    rec->symbol[sizeof(rec->symbol) - 1] = '\0';
+    strncpy(rec->source, source ? source : "", sizeof(rec->source) - 1);
+    rec->source[sizeof(rec->source) - 1] = '\0';
+    strncpy(rec->event_type, event_type ? event_type : "TICK", sizeof(rec->event_type) - 1);
+    rec->event_type[sizeof(rec->event_type) - 1] = '\0';
+
+    rec->price = price;
+    rec->size = size;
+    rec->bid = bid;
+    rec->ask = ask;
+    rec->bid_size = bid_size;
+    rec->ask_size = ask_size;
+    rec->status = status;
+    rec->is_crossed = is_crossed;
+    rec->exchange_ts = exchange_ts;
+    rec->ingest_ts = ingest_ts;
+    rec->broadcast_ts = broadcast_ts;
+    rec->engine_us = engine_us;
+    rec->is_valid = 1;
+
+    if (g_replay_total_recorded == 0 || seq > g_replay_max_seq) {
+        g_replay_max_seq = seq;
+    }
+    if (seq >= REPLAY_RING_SIZE) {
+        g_replay_min_seq = seq - REPLAY_RING_SIZE + 1;
+    } else if (g_replay_min_seq == 0) {
+        g_replay_min_seq = seq;
+    }
+    g_replay_total_recorded++;
+}
+
+EXPORT int32_t fastpath_replay_slice(
+    uint64_t from_seq,
+    uint64_t to_seq,
+    const char *symbol,
+    FastReplayRecord *out_records,
+    int32_t max_out
+) {
+    if (to_seq < from_seq || max_out <= 0 || !out_records) {
+        return 0;
+    }
+
+    int32_t count = 0;
+    int filter_sym = (symbol != NULL && symbol[0] != '\0' && strcmp(symbol, "ALL") != 0);
+
+    for (uint64_t s = from_seq; s <= to_seq; ++s) {
+        if (count >= max_out) {
+            break;
+        }
+        uint32_t slot = (uint32_t)(s & REPLAY_RING_MASK);
+        FastReplayRecord *rec = &g_replay_ring[slot];
+
+        if (rec->is_valid && rec->seq == s) {
+            if (!filter_sym || strcmp(rec->symbol, symbol) == 0) {
+                out_records[count] = *rec;
+                count++;
+            }
+        }
+    }
+    return count;
+}
+
+EXPORT int32_t fastpath_replay_binary_slice(
+    uint64_t from_seq,
+    uint64_t to_seq,
+    const char *symbol,
+    uint8_t *out_bytes,
+    int32_t max_bytes
+) {
+    int32_t frame_len = (int32_t)sizeof(FastBinTickFrame); // 92 bytes
+    if (to_seq < from_seq || max_bytes < frame_len || !out_bytes) {
+        return 0;
+    }
+
+    int32_t frames_written = 0;
+    int32_t offset = 0;
+    int filter_sym = (symbol != NULL && symbol[0] != '\0' && strcmp(symbol, "ALL") != 0);
+
+    for (uint64_t s = from_seq; s <= to_seq; ++s) {
+        if (offset + frame_len > max_bytes) {
+            break;
+        }
+        uint32_t slot = (uint32_t)(s & REPLAY_RING_MASK);
+        FastReplayRecord *rec = &g_replay_ring[slot];
+
+        if (rec->is_valid && rec->seq == s) {
+            if (!filter_sym || strcmp(rec->symbol, symbol) == 0) {
+                FastBinTickFrame *frame = (FastBinTickFrame *)(out_bytes + offset);
+                frame->magic[0] = 'M';
+                frame->magic[1] = 'D';
+                frame->msg_type = 1;      // MSG_TYPE_TICK
+                frame->payload_len = 88;   // TICK_PAYLOAD_LEN
+                frame->seq = rec->seq;
+                frame->status = rec->status;
+                frame->is_crossed = rec->is_crossed;
+                frame->pad[0] = 0;
+                frame->pad[1] = 0;
+                frame->engine_us = (float)rec->engine_us;
+                frame->exchange_ts = rec->exchange_ts;
+                frame->ingest_ts = rec->ingest_ts;
+                frame->broadcast_ts = rec->broadcast_ts;
+                frame->price = rec->price;
+                frame->size = rec->size;
+                frame->bid = rec->bid;
+                frame->ask = rec->ask;
+                memset(frame->symbol, 0, 8);
+                strncpy(frame->symbol, rec->symbol, 8);
+                memset(frame->source, 0, 8);
+                strncpy(frame->source, rec->source, 8);
+
+                offset += frame_len;
+                frames_written++;
+            }
+        }
+    }
+    return frames_written;
+}
+
+EXPORT void fastpath_replay_stats(
+    uint64_t *out_min_seq,
+    uint64_t *out_max_seq,
+    uint64_t *out_total_recorded,
+    int32_t *out_capacity
+) {
+    if (out_min_seq) *out_min_seq = g_replay_min_seq;
+    if (out_max_seq) *out_max_seq = g_replay_max_seq;
+    if (out_total_recorded) *out_total_recorded = g_replay_total_recorded;
+    if (out_capacity) *out_capacity = REPLAY_RING_SIZE;
+}
+
+EXPORT void fastpath_replay_clear(void) {
+    memset(g_replay_ring, 0, sizeof(g_replay_ring));
+    g_replay_min_seq = 0;
+    g_replay_max_seq = 0;
+    g_replay_total_recorded = 0;
+}
+
 

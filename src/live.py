@@ -393,24 +393,30 @@ class LiveConnector:
         return None
 
     def fetch_snapshot(self, symbol: str) -> List[RawEvent]:
-        """Fetch current top of book quotes across all active venues for a symbol."""
+        """Fetch current top of book quotes across all active venues concurrently in parallel."""
+        import concurrent.futures
         mapping = resolve_venue_symbols(symbol)
-        events = []
         if mapping["type"] == "EQUITY":
             raw_eq = self.fetch_equity_quote(symbol)
-            if raw_eq:
-                events.append(raw_eq)
-        else:
-            for fetcher in [
-                self.fetch_binance_quote,
-                self.fetch_coinbase_quote,
-                self.fetch_kraken_quote,
-                self.fetch_okx_quote,
-                self.fetch_bybit_quote,
-            ]:
-                raw = fetcher(symbol)
-                if raw:
-                    events.append(raw)
+            return [raw_eq] if raw_eq else []
+
+        fetchers = [
+            self.fetch_binance_quote,
+            self.fetch_coinbase_quote,
+            self.fetch_kraken_quote,
+            self.fetch_okx_quote,
+            self.fetch_bybit_quote,
+        ]
+        events: List[RawEvent] = []
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(fetchers)) as executor:
+            future_to_fetcher = {executor.submit(f, symbol): f for f in fetchers}
+            for future in concurrent.futures.as_completed(future_to_fetcher):
+                try:
+                    res = future.result()
+                    if res:
+                        events.append(res)
+                except Exception:
+                    pass
         return events
 
     def stream_ticks(

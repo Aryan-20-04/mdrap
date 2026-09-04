@@ -32,20 +32,28 @@ class SourceStats:
     duplicate: int = 0
     gap: int = 0
     ewma_latency_s: float = 0.0
+    ewma_error_rate: float = 0.0
+    ewma_gap_rate: float = 0.0
+    ewma_dup_rate: float = 0.0
+
+    @property
+    def cumulative_error_rate(self) -> float:
+        return 0.0 if self.total == 0 else (self.invalid + self.suspicious) / self.total
 
     @property
     def error_rate(self) -> float:
-        return 0.0 if self.total == 0 else (self.invalid + self.suspicious) / self.total
+        return self.ewma_error_rate if self.total > 0 else 0.0
 
     @property
     def score(self) -> float:
         """Composite reliability score in [0, 1]. Higher is better.
-        Weights are a starting point, not a claimed-optimal scheme --
-        section 6.6 of the spec calls for experimenting with weighting,
-        which belongs in benchmarks/ once real data is available."""
-        completeness = 1.0 - min(1.0, self.gap / max(1, self.total))
-        accuracy = 1.0 - min(1.0, self.error_rate)
-        dup_penalty = 1.0 - min(1.0, self.duplicate / max(1, self.total))
+        Uses EWMA rates to ensure responsiveness to sudden degradation
+        rather than diluting over large cumulative historical counts."""
+        if self.total == 0:
+            return 1.0
+        completeness = max(0.0, 1.0 - min(1.0, self.ewma_gap_rate))
+        accuracy = max(0.0, 1.0 - min(1.0, self.ewma_error_rate))
+        dup_penalty = max(0.0, 1.0 - min(1.0, self.ewma_dup_rate))
         latency_penalty = 1.0 / (1.0 + self.ewma_latency_s * 100)
         return round(0.4 * accuracy + 0.25 * completeness + 0.2 * dup_penalty + 0.15 * latency_penalty, 4)
 
@@ -59,17 +67,38 @@ class ReliabilityTracker:
     def observe(self, event: CanonicalEvent):
         s = self.stats.setdefault(event.source, SourceStats(source=event.source))
         s.total += 1
-        if event.quality_status == QualityStatus.INVALID:
+
+        is_invalid = (event.quality_status == QualityStatus.INVALID)
+        is_suspicious = (event.quality_status == QualityStatus.SUSPICIOUS)
+        is_dup = (Reason.DUPLICATE.value in event.reasons)
+        is_gap = (Reason.SEQUENCE_GAP.value in event.reasons)
+
+        if is_invalid:
             s.invalid += 1
-            if Reason.DUPLICATE.value in event.reasons:
+            if is_dup:
                 s.duplicate += 1
-        if event.quality_status == QualityStatus.SUSPICIOUS:
+        if is_suspicious:
             s.suspicious += 1
-            if Reason.SEQUENCE_GAP.value in event.reasons:
+            if is_gap:
                 s.gap += 1
+
+        is_error = 1.0 if (is_invalid or is_suspicious) else 0.0
+        gap_val = 1.0 if is_gap else 0.0
+        dup_val = 1.0 if is_dup else 0.0
+
         latency = max(0.0, event.receive_timestamp - event.exchange_timestamp)
         a = self.cfg.alpha
-        s.ewma_latency_s = latency if s.total == 1 else (1 - a) * s.ewma_latency_s + a * latency
+        if s.total == 1:
+            s.ewma_latency_s = latency
+            s.ewma_error_rate = is_error
+            s.ewma_gap_rate = gap_val
+            s.ewma_dup_rate = dup_val
+        else:
+            s.ewma_latency_s = (1.0 - a) * s.ewma_latency_s + a * latency
+            s.ewma_error_rate = (1.0 - a) * s.ewma_error_rate + a * is_error
+            s.ewma_gap_rate = (1.0 - a) * s.ewma_gap_rate + a * gap_val
+            s.ewma_dup_rate = (1.0 - a) * s.ewma_dup_rate + a * dup_val
+
         self._cached_scores[event.source] = s.score
 
     def scores(self) -> Dict[str, float]:

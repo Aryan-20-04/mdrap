@@ -58,7 +58,8 @@ class Pipeline:
                  analytics: Optional['MarketAnalytics'] = None,
                  bbo: Optional['BBOEngine'] = None,
                  watchdog: Optional['SourceWatchdog'] = None,
-                 security: Optional['SecurityManager'] = None):
+                 security: Optional['SecurityManager'] = None,
+                 flush_interval_s: float = 1.0):
         self.store = store
         self.quality = quality or QualityEngine()
         self.reliability = reliability or ReliabilityTracker()
@@ -70,6 +71,8 @@ class Pipeline:
         self.bbo = bbo
         self.watchdog = watchdog
         self.security = security
+        self.flush_interval_s = flush_interval_s
+        self._last_flush_ts = time.time()
 
         self._canonical_batch: List[CanonicalEvent] = []
         self._quarantine_batch: List[tuple] = []
@@ -83,7 +86,34 @@ class Pipeline:
         if self.security:
             if not self.security.rate_limiter.allow(raw.source):
                 self.security._rate_limited_count += 1
-                return None
+                fake = CanonicalEvent(
+                    event_id=raw.raw_id,
+                    instrument_id=str(raw.payload.get("instrument", "RATE_LIMITED")) if isinstance(raw.payload, dict) else "RATE_LIMITED",
+                    event_type=EventType.TRADE,
+                    exchange_timestamp=0.0, receive_timestamp=raw.receive_timestamp,
+                    processing_timestamp=time.time(), source=raw.source, sequence_number=None,
+                    quality_status=QualityStatus.INVALID, reasons=[Reason.SCHEMA_VIOLATION.value],
+                    raw_id=raw.raw_id,
+                )
+                self._quarantine_batch.append((
+                    fake.event_id, fake.instrument_id, fake.source, fake.quality_status.value,
+                    json.dumps(["Security: Rate limit exceeded"]),
+                    json.dumps(raw.payload, default=str), raw.receive_timestamp,
+                ))
+                raw_id_json = f'["{fake.raw_id}"]'
+                self._lineage_batch.append((
+                    fake.event_id, fake.instrument_id, raw_id_json, fake.raw_id,
+                    _TRANSFORMATIONS_JSON[False],
+                    _VALIDATIONS_RUN_JSON,
+                    0,
+                    "quarantined (security: rate limit exceeded)",
+                    fake.source,
+                    self.code_version, fake.processing_timestamp,
+                ))
+                self.metrics.quality_counts["INVALID"] = self.metrics.quality_counts.get("INVALID", 0) + 1
+                self.metrics.processed += 1
+                self._maybe_flush()
+                return fake
             valid, err_msg = self.security.sanitizer.sanitize(raw.payload)
             if not valid:
                 fake = CanonicalEvent(
@@ -99,6 +129,16 @@ class Pipeline:
                     fake.event_id, fake.instrument_id, fake.source, fake.quality_status.value,
                     json.dumps([f"Security sanitization: {err_msg}"]),
                     json.dumps(raw.payload, default=str), raw.receive_timestamp,
+                ))
+                raw_id_json = f'["{fake.raw_id}"]'
+                self._lineage_batch.append((
+                    fake.event_id, fake.instrument_id, raw_id_json, fake.raw_id,
+                    _TRANSFORMATIONS_JSON[False],
+                    _VALIDATIONS_RUN_JSON,
+                    0,
+                    f"quarantined (security sanitization: {err_msg})",
+                    fake.source,
+                    self.code_version, fake.processing_timestamp,
                 ))
                 self.metrics.quality_counts["INVALID"] = self.metrics.quality_counts.get("INVALID", 0) + 1
                 self.metrics.processed += 1
@@ -120,6 +160,16 @@ class Pipeline:
                         fake.event_id, fake.instrument_id, fake.source, fake.quality_status.value,
                         json.dumps(["Cryptographic HMAC verification failed: tampered payload"]),
                         json.dumps(raw.payload, default=str), raw.receive_timestamp,
+                    ))
+                    raw_id_json = f'["{fake.raw_id}"]'
+                    self._lineage_batch.append((
+                        fake.event_id, fake.instrument_id, raw_id_json, fake.raw_id,
+                        _TRANSFORMATIONS_JSON[False],
+                        _VALIDATIONS_RUN_JSON,
+                        0,
+                        "quarantined (security: HMAC verification failed)",
+                        fake.source,
+                        self.code_version, fake.processing_timestamp,
                     ))
                     self.metrics.quality_counts["INVALID"] = self.metrics.quality_counts.get("INVALID", 0) + 1
                     self.metrics.processed += 1
@@ -202,10 +252,21 @@ class Pipeline:
         return event
 
     def _maybe_flush(self):
-        if len(self._canonical_batch) >= BATCH_SIZE or len(self._quarantine_batch) >= BATCH_SIZE:
+        now = time.time()
+        batch_full = (
+            len(self._canonical_batch) >= BATCH_SIZE
+            or len(self._quarantine_batch) >= BATCH_SIZE
+            or len(self._lineage_batch) >= BATCH_SIZE
+        )
+        time_elapsed = (
+            (now - self._last_flush_ts >= self.flush_interval_s)
+            and (bool(self._canonical_batch) or bool(self._quarantine_batch) or bool(self._lineage_batch))
+        )
+        if batch_full or time_elapsed:
             self.flush()
 
     def flush(self):
+        self._last_flush_ts = time.time()
         self.store.write_canonical_batch(self._canonical_batch)
         self.store.write_quarantine_batch(self._quarantine_batch)
         self.store.write_lineage_batch(self._lineage_batch)

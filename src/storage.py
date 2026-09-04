@@ -141,6 +141,17 @@ CREATE TABLE IF NOT EXISTS consolidated_bbo (
     updated_at REAL
 );
 
+CREATE TABLE IF NOT EXISTS consolidated_depth (
+    instrument_id TEXT PRIMARY KEY,
+    bids_json TEXT,
+    asks_json TEXT,
+    micro_price REAL,
+    imbalance_ratio REAL,
+    is_crossed INTEGER,
+    timestamp REAL,
+    updated_at REAL
+);
+
 CREATE TABLE IF NOT EXISTS audit_log (
     entry_id INTEGER PRIMARY KEY AUTOINCREMENT,
     timestamp REAL,
@@ -152,20 +163,70 @@ CREATE TABLE IF NOT EXISTS audit_log (
     entry_hash TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_log(timestamp);
+
+CREATE TABLE IF NOT EXISTS api_keys (
+    token TEXT PRIMARY KEY,
+    client_id TEXT NOT NULL,
+    tier TEXT NOT NULL,
+    rate_limit_eps REAL NOT NULL,
+    can_access_l2 INTEGER NOT NULL,
+    can_use_binary INTEGER NOT NULL,
+    can_use_shm INTEGER NOT NULL,
+    max_replay_events INTEGER NOT NULL,
+    is_active INTEGER NOT NULL,
+    created_at REAL NOT NULL,
+    expires_at REAL
+);
+CREATE INDEX IF NOT EXISTS idx_api_keys_client ON api_keys(client_id);
+
+CREATE TABLE IF NOT EXISTS vwap_curves (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    instrument_id TEXT NOT NULL,
+    timestamp REAL NOT NULL,
+    mid_price REAL NOT NULL,
+    best_bid REAL NOT NULL,
+    best_ask REAL NOT NULL,
+    curve_json TEXT NOT NULL,
+    created_at REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_vwap_curves_sym ON vwap_curves(instrument_id, timestamp);
 """
+
+
+import threading
+
+def _synchronized(method):
+    """Decorator ensuring thread-safe reentrant serialization with auto-retry on SQLite lock."""
+    def wrapper(self, *args, **kwargs):
+        with self._lock:
+            retries = 3
+            while True:
+                try:
+                    return method(self, *args, **kwargs)
+                except sqlite3.OperationalError as exc:
+                    if "locked" in str(exc).lower() and retries > 0:
+                        retries -= 1
+                        time.sleep(0.05)
+                    else:
+                        raise
+    wrapper.__name__ = method.__name__
+    wrapper.__doc__ = method.__doc__
+    return wrapper
 
 
 class Store:
     def __init__(self, path: str = ":memory:"):
-        self.conn = sqlite3.connect(path, timeout=30.0, check_same_thread=False)
-        self.conn.execute("PRAGMA busy_timeout=5000;")
-        try:
-            self.conn.execute("PRAGMA journal_mode=WAL;")
-        except sqlite3.OperationalError:
-            pass  # in-memory or read-only filesystems do not support WAL
-        self.conn.execute("PRAGMA synchronous=NORMAL;")
-        self.conn.executescript(SCHEMA)
-        self.conn.commit()
+        self._lock = threading.RLock()
+        with self._lock:
+            self.conn = sqlite3.connect(path, timeout=30.0, check_same_thread=False)
+            self.conn.execute("PRAGMA busy_timeout=5000;")
+            try:
+                self.conn.execute("PRAGMA journal_mode=WAL;")
+            except sqlite3.OperationalError:
+                pass  # in-memory or read-only filesystems do not support WAL
+            self.conn.execute("PRAGMA synchronous=NORMAL;")
+            self.conn.executescript(SCHEMA)
+            self.conn.commit()
 
     def __enter__(self):
         return self
@@ -174,6 +235,7 @@ class Store:
         self.close()
         return False
 
+    @_synchronized
     def write_canonical_batch(self, events: List[CanonicalEvent]):
         if not events:
             return
@@ -186,6 +248,7 @@ class Store:
               e.quality_status.value, json.dumps(e.reasons), e.raw_id) for e in events],
         )
 
+    @_synchronized
     def write_quarantine_batch(self, rows: List[tuple]):
         if not rows:
             return
@@ -193,6 +256,7 @@ class Store:
             "INSERT OR REPLACE INTO quarantine VALUES (?,?,?,?,?,?,?)", rows,
         )
 
+    @_synchronized
     def write_lineage_batch(self, rows: List[tuple]):
         if not rows:
             return
@@ -200,6 +264,7 @@ class Store:
             "INSERT OR REPLACE INTO lineage VALUES (?,?,?,?,?,?,?,?,?,?,?)", rows,
         )
 
+    @_synchronized
     def upsert_source_health(self, rows: List[tuple]):
         if not rows:
             return
@@ -207,11 +272,13 @@ class Store:
             "INSERT OR REPLACE INTO source_health VALUES (?,?,?,?,?,?,?,?,?)", rows,
         )
 
+    @_synchronized
     def commit(self):
         self.conn.commit()
 
     # -- Query helpers (backs the CLI `query` subcommand / future API) --
 
+    @_synchronized
     def latest(self, instrument_id: str, limit: int = 1):
         cur = self.conn.execute(
             """SELECT * FROM canonical_events WHERE instrument_id=?
@@ -221,6 +288,7 @@ class Store:
         cols = [d[0] for d in cur.description]
         return [dict(zip(cols, row)) for row in cur.fetchall()]
 
+    @_synchronized
     def event_lineage(self, event_id: str) -> Optional[dict]:
         cur = self.conn.execute("SELECT * FROM lineage WHERE event_id=?", (event_id,))
         row = cur.fetchone()
@@ -229,30 +297,36 @@ class Store:
         cols = [d[0] for d in cur.description]
         return dict(zip(cols, row))
 
+    @_synchronized
     def feed_health(self):
         cur = self.conn.execute("SELECT * FROM source_health")
         cols = [d[0] for d in cur.description]
         return [dict(zip(cols, row)) for row in cur.fetchall()]
 
+    @_synchronized
     def quarantine_sample(self, limit: int = 20):
         cur = self.conn.execute("SELECT * FROM quarantine LIMIT ?", (limit,))
         cols = [d[0] for d in cur.description]
         return [dict(zip(cols, row)) for row in cur.fetchall()]
 
+    @_synchronized
     def query_quarantine(self, limit: int = 50):
         return self.quarantine_sample(limit)
 
+    @_synchronized
     def counts(self):
         cur = self.conn.execute(
             "SELECT quality_status, COUNT(*) FROM canonical_events GROUP BY quality_status")
         return dict(cur.fetchall())
 
+    @_synchronized
     def close(self):
         self.conn.commit()
         self.conn.close()
 
     # -- V3 Analytical write methods --
 
+    @_synchronized
     def write_ohlcv_batch(self, candles: list[dict]) -> None:
         if not candles:
             return
@@ -263,6 +337,7 @@ class Store:
               c["volume"], c["event_count"]) for c in candles],
         )
 
+    @_synchronized
     def write_spread_batch(self, spreads: list[dict]) -> None:
         if not spreads:
             return
@@ -273,6 +348,7 @@ class Store:
               s["crossed_pct"]) for s in spreads],
         )
 
+    @_synchronized
     def write_volatility_batch(self, stats: list[dict]) -> None:
         if not stats:
             return
@@ -285,6 +361,7 @@ class Store:
 
     # -- V3 Analytical query methods --
 
+    @_synchronized
     def query_ohlcv(self, instrument_id: str = None, limit: int = 50) -> list[dict]:
         if instrument_id:
             cur = self.conn.execute(
@@ -297,6 +374,7 @@ class Store:
         cols = [d[0] for d in cur.description]
         return [dict(zip(cols, row)) for row in cur.fetchall()]
 
+    @_synchronized
     def query_spread(self, instrument_id: str = None) -> list[dict]:
         if instrument_id:
             cur = self.conn.execute("SELECT * FROM spread_stats WHERE instrument_id=?", (instrument_id,))
@@ -305,6 +383,7 @@ class Store:
         cols = [d[0] for d in cur.description]
         return [dict(zip(cols, row)) for row in cur.fetchall()]
 
+    @_synchronized
     def query_volatility(self, instrument_id: str = None) -> list[dict]:
         if instrument_id:
             cur = self.conn.execute("SELECT * FROM volatility_stats WHERE instrument_id=?", (instrument_id,))
@@ -315,6 +394,7 @@ class Store:
 
     # -- Phase 7 Watchdog alert methods --
 
+    @_synchronized
     def write_alert_batch(self, alerts) -> None:
         if not alerts:
             return
@@ -323,6 +403,7 @@ class Store:
             [(a.source, a.alert_type, a.timestamp, a.details, a.action_taken) for a in alerts],
         )
 
+    @_synchronized
     def query_alerts(self, limit: int = 20) -> list[dict]:
         cur = self.conn.execute(
             "SELECT source, alert_type, timestamp, details, action_taken FROM watchdog_alerts ORDER BY rowid DESC LIMIT ?",
@@ -332,6 +413,7 @@ class Store:
 
     # -- Consolidated BBO methods --
 
+    @_synchronized
     def write_bbo_batch(self, bbos: list) -> None:
         if not bbos:
             return
@@ -358,6 +440,7 @@ class Store:
             rows,
         )
 
+    @_synchronized
     def query_bbo(self, instrument_id: Optional[str] = None) -> list[dict]:
         if instrument_id:
             cur = self.conn.execute("SELECT * FROM consolidated_bbo WHERE instrument_id=?", (instrument_id,))
@@ -366,6 +449,100 @@ class Store:
         cols = [d[0] for d in cur.description]
         return [dict(zip(cols, row)) for row in cur.fetchall()]
 
+    # -- Consolidated Level-2 Market Depth methods --
+
+    @_synchronized
+    def write_depth_batch(self, ladders: list) -> None:
+        if not ladders:
+            return
+        now = time.time()
+        rows = []
+        for lad in ladders:
+            if hasattr(lad, "instrument_id"):
+                bids_json = json.dumps([b.to_dict() for b in lad.bids])
+                asks_json = json.dumps([a.to_dict() for a in lad.asks])
+                rows.append((
+                    lad.instrument_id, bids_json, asks_json,
+                    lad.micro_price, lad.imbalance_ratio,
+                    1 if lad.is_crossed else 0, lad.timestamp, now
+                ))
+            elif isinstance(lad, dict):
+                rows.append((
+                    lad["instrument_id"],
+                    json.dumps(lad.get("bids", [])),
+                    json.dumps(lad.get("asks", [])),
+                    lad.get("micro_price", 0.0),
+                    lad.get("imbalance_ratio", 0.0),
+                    1 if lad.get("is_crossed") else 0,
+                    lad.get("timestamp", now),
+                    now
+                ))
+        self.conn.executemany(
+            """INSERT OR REPLACE INTO consolidated_depth VALUES
+               (?,?,?,?,?,?,?,?)""",
+            rows,
+        )
+
+    @_synchronized
+    def query_depth(self, instrument_id: Optional[str] = None) -> list[dict]:
+        if instrument_id:
+            cur = self.conn.execute("SELECT * FROM consolidated_depth WHERE instrument_id=?", (instrument_id,))
+        else:
+            cur = self.conn.execute("SELECT * FROM consolidated_depth ORDER BY instrument_id ASC")
+        cols = [d[0] for d in cur.description]
+        return [dict(zip(cols, row)) for row in cur.fetchall()]
+
+    # -- Real-Time VWAP Slicing & Liquidity Depth methods --
+
+    @_synchronized
+    def write_vwap_batch(self, curves: list) -> None:
+        if not curves:
+            return
+        now = time.time()
+        rows = []
+        for c in curves:
+            if hasattr(c, "instrument_id"):
+                rows.append((
+                    c.instrument_id,
+                    c.timestamp,
+                    c.mid_price,
+                    c.best_bid,
+                    c.best_ask,
+                    json.dumps(c.to_dict()),
+                    now,
+                ))
+            elif isinstance(c, dict):
+                rows.append((
+                    c["instrument_id"],
+                    c.get("timestamp", now),
+                    c.get("mid_price", 0.0),
+                    c.get("best_bid", 0.0),
+                    c.get("best_ask", 0.0),
+                    json.dumps(c),
+                    now,
+                ))
+        self.conn.executemany(
+            """INSERT INTO vwap_curves (instrument_id, timestamp, mid_price, best_bid, best_ask, curve_json, created_at)
+               VALUES (?,?,?,?,?,?,?)""",
+            rows,
+        )
+
+    @_synchronized
+    def query_vwap_curves(self, instrument_id: Optional[str] = None, limit: int = 50) -> list[dict]:
+        if instrument_id:
+            cur = self.conn.execute(
+                "SELECT * FROM vwap_curves WHERE instrument_id=? ORDER BY timestamp DESC LIMIT ?",
+                (instrument_id, limit),
+            )
+        else:
+            cur = self.conn.execute(
+                "SELECT * FROM vwap_curves ORDER BY timestamp DESC LIMIT ?",
+                (limit,),
+            )
+        cols = [d[0] for d in cur.description]
+        return [dict(zip(cols, row)) for row in cur.fetchall()]
+
+    @_synchronized
     def write_audit_entry(self, timestamp: float, actor: str, role: str, action: str,
                           details: str, prev_hash: str, entry_hash: str) -> None:
         self.conn.execute(
@@ -374,16 +551,19 @@ class Store:
             (timestamp, actor, role, action, details, prev_hash, entry_hash),
         )
 
+    @_synchronized
     def get_latest_audit_hash(self) -> str:
         cur = self.conn.execute("SELECT entry_hash FROM audit_log ORDER BY entry_id DESC LIMIT 1")
         row = cur.fetchone()
         return row[0] if row else "GENESIS_0000000000000000000000000000000000000000000000000000000000000000"
 
+    @_synchronized
     def query_audit_log(self, limit: int = 50) -> list[dict]:
         cur = self.conn.execute("SELECT * FROM audit_log ORDER BY entry_id DESC LIMIT ?", (limit,))
         cols = [d[0] for d in cur.description]
         return [dict(zip(cols, row)) for row in cur.fetchall()]
 
+    @_synchronized
     def verify_audit_integrity(self) -> tuple[bool, str, int]:
         import hashlib
         cur = self.conn.execute(
@@ -404,5 +584,121 @@ class Store:
             expected_prev = entry_h
 
         return True, f"Cryptographic audit chain verified ({len(rows)} entries intact)", len(rows)
+
+    @_synchronized
+    def export_audit_proof(self, output_file: Optional[str] = None) -> dict:
+        """Export cryptographic audit trail as an independently verifiable JSON proof."""
+        import json
+        cur = self.conn.execute(
+            "SELECT entry_id, timestamp, actor, role, action, details, prev_hash, entry_hash FROM audit_log ORDER BY entry_id ASC"
+        )
+        cols = ["entry_id", "timestamp", "actor", "role", "action", "details", "prev_hash", "entry_hash"]
+        entries = [dict(zip(cols, r)) for r in cur.fetchall()]
+
+        latest_hash = entries[-1]["entry_hash"] if entries else "GENESIS_0000000000000000000000000000000000000000000000000000000000000000"
+        proof = {
+            "version": "1.0.0",
+            "specification": "MDRAP-Spec-19.3",
+            "algorithm": "sha256",
+            "genesis_hash": "GENESIS_0000000000000000000000000000000000000000000000000000000000000000",
+            "total_entries": len(entries),
+            "latest_hash": latest_hash,
+            "entries": entries,
+        }
+        if output_file:
+            with open(output_file, "w", encoding="utf-8") as f:
+                json.dump(proof, f, indent=2)
+        return proof
+
+    @staticmethod
+    def verify_standalone_proof(proof_data_or_path: Any) -> tuple[bool, str, int]:
+        """Independently verify a JSON audit proof without database access."""
+        import hashlib
+        import json
+        if isinstance(proof_data_or_path, str):
+            with open(proof_data_or_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        else:
+            data = proof_data_or_path
+
+        entries = data.get("entries", [])
+        if not entries:
+            return True, "Audit proof is empty (valid)", 0
+
+        expected_prev = data.get("genesis_hash", "GENESIS_0000000000000000000000000000000000000000000000000000000000000000")
+        for item in entries:
+            entry_id = item["entry_id"]
+            prev_h = item["prev_hash"]
+            entry_h = item["entry_hash"]
+
+            if prev_h != expected_prev:
+                return False, f"Broken chain link at entry #{entry_id}: expected prev '{expected_prev[:12]}...', got '{prev_h[:12]}...'", entry_id
+
+            payload_str = f"{prev_h}|{item['timestamp']:.6f}|{item['actor']}|{item['role']}|{item['action']}|{item['details']}"
+            calc_hash = hashlib.sha256(payload_str.encode("utf-8")).hexdigest()
+            if calc_hash != entry_h:
+                return False, f"Tampered entry #{entry_id}: hash mismatch (stored '{entry_h[:12]}...', calculated '{calc_hash[:12]}...')", entry_id
+
+            expected_prev = entry_h
+
+        return True, f"Independent cryptographic audit proof verified ({len(entries)} entries intact)", len(entries)
+
+    @_synchronized
+    def save_api_key(self, ent: Any) -> None:
+        """Save or update a client API key entitlement."""
+        tier_str = ent.tier.value if hasattr(ent.tier, "value") else str(ent.tier)
+        self.conn.execute(
+            """INSERT OR REPLACE INTO api_keys
+               (token, client_id, tier, rate_limit_eps, can_access_l2, can_use_binary, can_use_shm, max_replay_events, is_active, created_at, expires_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                ent.token,
+                ent.client_id,
+                tier_str,
+                float(ent.rate_limit_eps),
+                1 if ent.can_access_l2 else 0,
+                1 if ent.can_use_binary else 0,
+                1 if ent.can_use_shm else 0,
+                int(ent.max_replay_events),
+                1 if ent.is_active else 0,
+                float(ent.created_at),
+                float(ent.expires_at) if ent.expires_at is not None else None,
+            ),
+        )
+        self.conn.commit()
+
+    @_synchronized
+    def load_api_keys(self) -> list:
+        """Load all registered API keys from the store."""
+        from security import ClientEntitlement, Tier
+        cur = self.conn.execute(
+            """SELECT token, client_id, tier, rate_limit_eps, can_access_l2, can_use_binary, can_use_shm, max_replay_events, is_active, created_at, expires_at
+               FROM api_keys"""
+        )
+        results = []
+        for row in cur.fetchall():
+            results.append(
+                ClientEntitlement(
+                    token=row[0],
+                    client_id=row[1],
+                    tier=Tier(row[2]) if row[2] in Tier._value2member_map_ else Tier.FREE,
+                    rate_limit_eps=float(row[3]),
+                    can_access_l2=bool(row[4]),
+                    can_use_binary=bool(row[5]),
+                    can_use_shm=bool(row[6]),
+                    max_replay_events=int(row[7]),
+                    is_active=bool(row[8]),
+                    created_at=float(row[9]),
+                    expires_at=float(row[10]) if row[10] is not None else None,
+                )
+            )
+        return results
+
+    @_synchronized
+    def revoke_api_key(self, token: str) -> bool:
+        """Mark an API key as inactive."""
+        cur = self.conn.execute("UPDATE api_keys SET is_active = 0 WHERE token = ?", (token,))
+        self.conn.commit()
+        return cur.rowcount > 0
 
 

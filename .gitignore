@@ -1,47 +1,91 @@
-# ==========================================
-# MDRAP - Market Data Reliability & Acceleration Platform
-# Git Ignore Configuration
-# ==========================================
+# ==============================================================================
+# MDRAP (Market Data Reliability & Acceleration Platform) - .gitignore
+# ==============================================================================
 
-# Byte-compiled / optimized / C-extensions
+# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
+*.pyo
+
+# C / Native Build Artifacts & Intermediate Objects
+*.o
+*.obj
 *.so
-*.pyd
-
-# Local Databases & Persistent Runtime Storage
-data/*.db
-data/*.db-*
-data/*.log
-data/raw_archive/
-*.tmp
-tmp*.db
-
-# Benchmarks & Profiler Artefacts
-*.prof
-.coverage
-htmlcov/
-.pytest_cache/
-
-# Environments & Dependencies
-.env
-.venv
-env/
-venv/
-ENV/
+*.dylib
+*.a
+*.lib
+*.exp
+# Note: src/fastpath.dll is tracked as a precompiled baseline; ignore temporary builds
 build/
-dist/
-*.egg-info/
+bin/
+obj/
+
+# Python Virtual Environments
+.venv/
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# Environment Variables & Local Secrets
+.env
+.env.local
+.env.*.local
+*.secret
+*.pem
+*.key
+
+# Testing & Coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+
+# Profiling & Diagnostics
+*.prof
+*.pstats
+
+# SQLite Databases & Ephemeral Market Data
+data/*.db
+data/*.db-wal
+data/*.db-shm
+data/*.db-journal
+data/raw_archive/
+!data/.gitkeep
+
+# Generated Reports & Financial Exports
+data/reports/*
+!data/reports/.gitkeep
+*.xlsx
+*.csv
+
+# Operating System Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+[Dd]esktop.ini
 
 # IDE & Editor Configurations
 .vscode/
 .idea/
+*.sublime-workspace
+*.sublime-project
 *.swp
 *.swo
 *~
 
-# Operating System Files
-.DS_Store
-Thumbs.db
-desktop.ini
+# Temporary & Scratch Files
+scratch/
+tmp/
+*.tmp
+*.log

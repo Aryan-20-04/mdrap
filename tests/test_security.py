@@ -149,3 +149,73 @@ def test_pipeline_with_security(store):
     quar = store.query_quarantine()
     assert len(quar) >= 1
     assert any("HMAC verification failed" in q["reasons"] for q in quar)
+
+    # 3. Verify audit log entry was generated for HMAC failure
+    audit_rows = store.query_audit_log()
+    assert any(r["action"] == "HMAC_SIGNATURE_INVALID" for r in audit_rows)
+
+
+def test_audit_proof_export_and_standalone_verify(store):
+    """Verifies exporting a JSON audit proof and verifying it independently without database."""
+    sec = SecurityManager(store=store)
+    sec.log_audit("SYS_START", actor="kernel", role=Role.ADMIN, details="Node boot")
+    sec.log_audit("FEED_ADD", actor="admin", role=Role.ADMIN, details="Added KRAKEN feed")
+    sec.log_audit("HEARTBEAT", actor="watchdog", role=Role.OPERATOR, details="Ping OK")
+
+    fd, proof_file = tempfile.mkstemp(suffix=".json")
+    os.close(fd)
+    try:
+        proof = store.export_audit_proof(proof_file)
+        assert proof["total_entries"] == 3
+        assert os.path.exists(proof_file)
+
+        # Standalone verification
+        valid, msg, count = Store.verify_standalone_proof(proof_file)
+        assert valid is True
+        assert count == 3
+        assert "verified" in msg.lower()
+    finally:
+        if os.path.exists(proof_file):
+            os.unlink(proof_file)
+
+
+def test_audit_proof_standalone_tamper_detection(store):
+    """Verifies that tampering with an exported JSON proof file is detected."""
+    import json
+    sec = SecurityManager(store=store)
+    sec.log_audit("INIT", actor="system", role=Role.ADMIN, details="System genesis")
+    sec.log_audit("TRADE", actor="bot", role=Role.OPERATOR, details="Executed order")
+
+    fd, proof_file = tempfile.mkstemp(suffix=".json")
+    os.close(fd)
+    try:
+        store.export_audit_proof(proof_file)
+
+        # Modify entry details in the JSON proof directly
+        with open(proof_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        data["entries"][1]["details"] = "FORGED ORDER DETAILS"
+        with open(proof_file, "w", encoding="utf-8") as f:
+            json.dump(data, f)
+
+        # Standalone verify should fail
+        valid, msg, bad_id = Store.verify_standalone_proof(proof_file)
+        assert valid is False
+        assert bad_id == 2
+        assert "tampered" in msg.lower() or "mismatch" in msg.lower()
+    finally:
+        if os.path.exists(proof_file):
+            os.unlink(proof_file)
+
+
+def test_env_var_secret_loading():
+    """Verifies secrets can be loaded from MDRAP_SECRET_<SOURCE> environment variables."""
+    os.environ["MDRAP_SECRET_MYFEED"] = "super_secret_env_key_123"
+    try:
+        sec = SecurityManager()
+        payload = {"instrument": "BTC/USD", "price": 80000.0}
+        sig = sec.sign_payload("MYFEED", payload)
+        assert sec.verify_payload("MYFEED", payload, sig) is True
+    finally:
+        os.environ.pop("MDRAP_SECRET_MYFEED", None)
+

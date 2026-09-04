@@ -49,44 +49,49 @@ class _RollingStats:
         self._m2 = 0.0     # sum of squared deviations from mean
         self._n = 0
 
-    def check_and_update(self, x: float) -> Tuple[float, float]:
-        # Return stats from the *prior* window, before x is added.
+    def get_stats(self, x: float) -> Tuple[float, float]:
+        """Return prior clean baseline (mean, stddev) before x."""
         if self._n == 0:
-            mean, std = x, 0.0
-        else:
-            mean = self._mean
-            var = self._m2 / self._n if self._n > 0 else 0.0
-            std = math.sqrt(max(0.0, var))
+            return x, 0.0
+        mean = self._mean
+        var = self._m2 / self._n if self._n > 0 else 0.0
+        return mean, math.sqrt(max(0.0, var))
 
-        # Add x to the window (Welford's online update).
+    def update(self, x: float) -> None:
+        """Fold x into clean baseline window (Welford online update)."""
         self.values.append(x)
         self._n += 1
         delta = x - self._mean
         self._mean += delta / self._n
         self._m2 += delta * (x - self._mean)
 
-        # Evict oldest if window is full (reverse Welford update).
         if self._n > self.window:
             old = self.values.popleft()
             self._n -= 1
             delta_old = old - self._mean
             self._mean -= delta_old / self._n if self._n > 0 else 0.0
             self._m2 -= delta_old * (old - self._mean)
-            self._m2 = max(0.0, self._m2)  # guard against float drift
+            self._m2 = max(0.0, self._m2)
 
+    def check_and_update(self, x: float) -> Tuple[float, float]:
+        """Backward-compatible helper."""
+        mean, std = self.get_stats(x)
+        self.update(x)
         return mean, std
 
 
 class QualityEngine:
     def __init__(self, config: Optional[QualityConfig] = None):
-        self.cfg = config or QualityConfig()
+        if config is None:
+            try:
+                from config import load_config
+                self.cfg = load_config().quality
+            except Exception:
+                self.cfg = QualityConfig()
+        else:
+            self.cfg = config
         self._last_seq: Dict[Tuple[str, str], int] = {}
         self._last_ts: Dict[Tuple[str, str], float] = {}
-        # Keyed per (source, instrument): each feed has its own independent
-        # price series/microstructure noise, so mixing sources into one
-        # rolling window would blur genuine per-feed anomalies with
-        # ordinary cross-feed price differences (that's reconciliation's
-        # job, not this check's).
         self._price_stats: Dict[Tuple[str, str], _RollingStats] = {}
         self._seen_keys: dict = {}  # insertion-ordered dict acts as LRU
         # per-run counters for observability / benchmark scoring
@@ -136,8 +141,11 @@ class QualityEngine:
         else:
             self._last_ts[key] = event.exchange_timestamp
 
+        # Resolve instrument-specific config overrides (e.g. crypto vs equities)
+        cfg = self.cfg.for_instrument(event.instrument_id) if hasattr(self.cfg, "for_instrument") else self.cfg
+
         # -- Staleness.
-        if event.receive_timestamp - event.exchange_timestamp > self.cfg.staleness_threshold_s:
+        if event.receive_timestamp - event.exchange_timestamp > cfg.staleness_threshold_s:
             self._mark(event, QualityStatus.SUSPICIOUS, Reason.STALE)
             self._bump(Reason.STALE)
 
@@ -149,11 +157,14 @@ class QualityEngine:
 
         # -- Price sanity (trades only): flag outliers, never auto-invalidate.
         if event.price is not None:
-            stats = self._price_stats.setdefault(key, _RollingStats(self.cfg.price_window))
-            mean, stddev = stats.check_and_update(event.price)
-            if stddev > 0 and abs(event.price - mean) > self.cfg.price_anomaly_stddev * stddev:
+            stats = self._price_stats.setdefault(key, _RollingStats(cfg.price_window))
+            mean, stddev = stats.get_stats(event.price)
+            if stddev > 0 and abs(event.price - mean) > cfg.price_anomaly_stddev * stddev:
                 self._mark(event, QualityStatus.SUSPICIOUS, Reason.PRICE_ANOMALY)
                 self._bump(Reason.PRICE_ANOMALY)
+                # Outlier is flagged as SUSPICIOUS and clean baseline is preserved
+            else:
+                stats.update(event.price)
 
         self.counts[event.quality_status.value] += 1
         return event

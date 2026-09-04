@@ -39,13 +39,32 @@ classifiers = [
 dependencies = [
     # MDRAP is 100% runnable on pure Python standard library.
     # Optional styling library:
-    "rich>=13.0",
+    "rich>=13.0.0",
 ]
 
 [project.optional-dependencies]
+export = [
+    "openpyxl>=3.1.0",
+]
+stream = [
+    "websockets>=12.0",
+]
+config = [
+    "pyyaml>=6.0",
+]
 dev = [
-    "pytest>=8.0",
-    "pytest-timeout>=2.3",
+    "pytest>=8.0.0",
+    "pytest-timeout>=2.3.0",
+    "pytest-cov>=5.0.0",
+]
+all = [
+    "rich>=13.0.0",
+    "openpyxl>=3.1.0",
+    "websockets>=12.0",
+    "pyyaml>=6.0",
+    "pytest>=8.0.0",
+    "pytest-timeout>=2.3.0",
+    "pytest-cov>=5.0.0",
 ]
 
 [project.scripts]

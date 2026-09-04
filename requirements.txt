@@ -1,8 +1,24 @@
-# MDRAP is 100% runnable on pure Python stdlib (0 mandatory runtime dependencies).
-# Optional dependencies:
-rich>=13.0      # Optional: Enhanced terminal styling and colors (falls back to pure stdlib if absent)
-pytest>=8.0    # Dev/Test: Test runner (109 automated tests)
+# ==============================================================================
+# MDRAP (Market Data Reliability & Acceleration Platform)
+#
+# Core Design Principle (Spec §26): Zero Mandatory Runtime Dependencies.
+# MDRAP's core engine, normalization gateway, 7-rule quality validator,
+# cross-reconciler, and WAL storage are 100% runnable on pure Python stdlib.
+# ==============================================================================
 
+# --- UI & Terminal Visualization (Optional) ---
+rich>=13.0.0            # High-performance terminal cockpit, live ticker, & ANSI charts (graceful fallback if absent)
 
+# --- Financial Modeling & Analytics Exporter (Optional) ---
+openpyxl>=3.1.0         # 5-Tab Institutional Microsoft Excel (.xlsx) financial model exporter (falls back to CSV)
 
+# --- Live Streaming Ingestion (Optional) ---
+websockets>=12.0        # Real-time WebSocket streaming feed handlers for Binance/Coinbase public feeds
 
+# --- Configuration Management (Optional) ---
+pyyaml>=6.0             # Parses external config.yaml (graceful stdlib fallback parser included)
+
+# --- Automated Testing & Quality Assurance (Dev) ---
+pytest>=8.0.0           # Production test suite runner (200 automated unit & integration tests)
+pytest-timeout>=2.3.0   # Enforces execution deadlines on streaming, chaos, and IPC tests
+pytest-cov>=5.0.0       # Automated code coverage and branch evaluation
