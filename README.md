@@ -19,44 +19,44 @@ A high-performance financial market infrastructure platform designed to ingest, 
 ```mermaid
 flowchart TD
     subgraph INGESTION ["1. Market Ingestion & Direct Streaming Feeds"]
-        POLY[Polygon.io WebSocket<br/>US Equities & Crypto Q/T/AM]
-        DBN[Databento Binary DBN<br/>CME/Nasdaq MBP-1/10 & Trades]
-        B[Binance / Coinbase / Kraken<br/>Crypto WebSockets & REST]
-        SIM[Deterministic Feed Simulator<br/>Seeded Faults & Injections]
-        FSUP[Streaming Feed Supervisor<br/>Thread-Safe Low-Contention Queue]
+        POLY["Polygon.io WebSocket<br/>US Equities & Crypto Q/T/AM"]
+        DBN["Databento Binary DBN<br/>CME/Nasdaq MBP-1/10 & Trades"]
+        B["Binance / Coinbase / Kraken<br/>Crypto WebSockets & REST"]
+        SIM["Deterministic Feed Simulator<br/>Seeded Faults & Injections"]
+        FSUP["Streaming Feed Supervisor<br/>Thread-Safe Low-Contention Queue"]
     end
 
     subgraph SECURITY ["2. Security & Gatekeeper (Spec §19)"]
-        RL[Token Bucket Rate Limiter<br/>20,000 eps per IP/Key]
-        SAN[Regex & Range Payload Sanitizer]
-        HMAC[HMAC-SHA256 Signature Verification<br/>Constant-Time Digest]
-        RBAC[RBAC Entitlement Guard<br/>VIEWER / OPERATOR / ADMIN]
+        RL["Token Bucket Rate Limiter<br/>20,000 eps per IP/Key"]
+        SAN["Regex & Range Payload Sanitizer"]
+        HMAC["HMAC-SHA256 Signature Verification<br/>Constant-Time Digest"]
+        RBAC["RBAC Entitlement Guard<br/>VIEWER / OPERATOR / ADMIN"]
     end
 
     subgraph PIPELINE ["3. Validation, Acceleration & Consensus Pipeline"]
-        GW[Gateway & Normalization<br/>RawEvent -> CanonicalEvent]
-        QE[7-Rule Quality Engine<br/>Schema, Dedup, Gap, Order, Stale, Crossed, 3-Sigma]
-        FP[Native C Hot Path Accelerator<br/>8,192 Symbols | 18.6M eps | 50.0 ns]
-        WD[Source Watchdog & Failover Circuit Breaker<br/>Silence & Degradation Monitoring]
-        BBO[Synthetic Consolidated BBO<br/>5-Venue Multi-Exchange NBBO]
-        DEPTH[Consolidated L2 Order Book<br/>Multi-Venue Depth Aggregation & VWAP Curves]
+        GW["Gateway & Normalization<br/>RawEvent -> CanonicalEvent"]
+        QE["7-Rule Quality Engine<br/>Schema, Dedup, Gap, Order, Stale, Crossed, 3-Sigma"]
+        FP["Native C Hot Path Accelerator<br/>8,192 Symbols | 18.6M eps | 50.0 ns"]
+        WD["Source Watchdog & Failover Circuit Breaker<br/>Silence & Degradation Monitoring"]
+        BBO["Synthetic Consolidated BBO<br/>5-Venue Multi-Exchange NBBO"]
+        DEPTH["Consolidated L2 Order Book<br/>Multi-Venue Depth Aggregation & VWAP Curves"]
     end
 
     subgraph STORAGE ["4. Columnar & Batched Storage, Archive & Audit (Spec §14, §19, §26)"]
-        CAN[(canonical_events<br/>WAL SQLite Batch)]
-        QUAR[(quarantine<br/>Never Silently Drop)]
-        LIN[(lineage<br/>Transformation Lineage Proof)]
-        AUD[(audit_log<br/>Merkle Hash Chained)]
-        ARC[[Immutable Raw JSONL Archive<br/>Write-Ahead Partitioned Log]]
-        COL[(DuckDB Columnar Store<br/>SIMD Resampling & Parquet Export)]
+        CAN[("canonical_events<br/>WAL SQLite Batch")]
+        QUAR[("quarantine<br/>Never Silently Drop")]
+        LIN[("lineage<br/>Transformation Lineage Proof")]
+        AUD[("audit_log<br/>Merkle Hash Chained")]
+        ARC[["Immutable Raw JSONL Archive<br/>Write-Ahead Partitioned Log"]]
+        COL[("DuckDB Columnar Store<br/>SIMD Resampling & Parquet Export")]
     end
 
     subgraph PRESENTATION ["5. Presentation, IPC & Institutional Export"]
-        DAEMON[Headless Streaming Daemon<br/>Non-blocking Socket IPC]
-        SHM[Binary Shared Memory Transport<br/>Zero-Copy Ring Buffer]
-        LIVE[In-Place Live Terminal Ticker<br/>Cursor-Repositioned Rich HUD]
-        CHART[Visual Candlestick Terminal Chart<br/>Unicode Wicks & Outlier Percentile Scaling]
-        EXCEL[Institutional 5-Tab Excel Exporter<br/>XLSX Financial Model & CSV Packages]
+        DAEMON["Headless Streaming Daemon<br/>Non-blocking Socket IPC"]
+        SHM["Binary Shared Memory Transport<br/>Zero-Copy Ring Buffer"]
+        LIVE["In-Place Live Terminal Ticker<br/>Cursor-Repositioned Rich HUD"]
+        CHART["Visual Candlestick Terminal Chart<br/>Unicode Wicks & Outlier Percentile Scaling"]
+        EXCEL["Institutional 5-Tab Excel Exporter<br/>XLSX Financial Model & CSV Packages"]
     end
 
     POLY & DBN & B & SIM --> FSUP --> RL
@@ -183,13 +183,22 @@ Measured on identical 10,000-event workloads (`seed=42`) with fixed ground-truth
 
 ### Installation
 
-Clone the repository and install optional dependencies:
+**1. Install from PyPI (Recommended)**
+MDRAP is officially published on PyPI and can be installed with zero external setup:
+```bash
+pip install mdrap
+```
+
+> **Note for Microsoft Store Python users on Windows:** If you installed Python via the Microsoft Store, `pip` might install the `mdrap` script into a folder that isn't automatically added to your system's `PATH`. If the `mdrap` command is not recognized, you can always run the platform using:
+> ```bash
+> python -m cli
+> ```
+
+**2. Clone from Source (For Development)**
+Clone the repository to get the latest source and install optional visualization and test dependencies:
 ```bash
 git clone https://github.com/Aryan-20-04/mdrap.git
 cd mdrap
-
-# MDRAP has ZERO mandatory dependencies (runs 100% on standard library).
-# Install optional visualization, financial exporter, and test packages:
 pip install -r requirements.txt
 ```
 
