@@ -59,6 +59,14 @@ data/*.db-journal
 data/raw_archive/
 !data/.gitkeep
 
+# DuckDB & Columnar Parquet Data
+data/*.duckdb
+data/*.duckdb.wal
+data/parquet/*
+!data/parquet/.gitkeep
+*.duckdb
+*.parquet
+
 # Generated Reports & Financial Exports
 data/reports/*
 !data/reports/.gitkeep
@@ -89,3 +97,10 @@ scratch/
 tmp/
 *.tmp
 *.log
+
+# Packaging & Distribution
+dist/
+*.egg-info/
+src/*.egg-info/
+*.whl
+*.tar.gz

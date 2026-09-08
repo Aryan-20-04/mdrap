@@ -88,6 +88,8 @@ class SpreadAnalyzer:
     def observe(self, event: CanonicalEvent) -> None:
         if event.event_type != EventType.QUOTE or event.bid_price is None or event.ask_price is None:
             return
+        if not math.isfinite(event.bid_price) or not math.isfinite(event.ask_price):
+            return
             
         spread = event.ask_price - event.bid_price
         crossed = 1 if event.bid_price > event.ask_price else 0
@@ -134,8 +136,11 @@ class VolatilityTracker:
     def observe(self, event: CanonicalEvent) -> None:
         if event.event_type != EventType.TRADE or event.price is None:
             return
+        if not math.isfinite(event.price) or event.price <= 0:
+            return
             
         p = event.price
+
         instr = event.instrument_id
         
         if instr not in self._stats:

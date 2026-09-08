@@ -299,3 +299,82 @@ def test_live_connector_network_error_resilience():
         assert connector.fetch_okx_quote("BTC") is None
         assert connector.fetch_bybit_quote("BTC") is None
         assert connector.fetch_equity_quote("AAPL") is None
+        assert connector.fetch_equity_events("NNOX") == []
+        assert connector.fetch_equity_candles("NNOX") == []
+
+
+def test_dynamic_arbitrary_equity_resolution():
+    """Verify that arbitrary stocks/equities (e.g. NNOX, PLTR, AMD, BRK.B) dynamically resolve as EQUITY."""
+    for ticker, expected_yahoo in [("NNOX", "NNOX"), ("PLTR", "PLTR"), ("AMD", "AMD"), ("BRK.B", "BRK-B"), ("GME", "GME")]:
+        info = resolve_venue_symbols(ticker)
+        assert info["canonical"] == ticker.upper()
+        assert info["type"] == "EQUITY"
+        assert info["yahoo"] == expected_yahoo
+        assert info["binance"] == ""
+        assert info["coinbase"] == ""
+
+
+def test_mock_equity_events_and_candles():
+    """Verify that fetch_equity_events and fetch_equity_candles properly parse responses."""
+    connector = LiveConnector()
+    mock_chart_data = json.dumps({
+        "chart": {
+            "result": [
+                {
+                    "meta": {
+                        "regularMarketPrice": 0.83,
+                        "bid": 0.82,
+                        "ask": 0.84,
+                        "regularMarketVolume": 150000,
+                    },
+                    "timestamp": [1700000000, 1700000060],
+                    "indicators": {
+                        "quote": [
+                            {
+                                "open": [0.81, 0.82],
+                                "high": [0.84, 0.85],
+                                "low": [0.80, 0.81],
+                                "close": [0.82, 0.83],
+                                "volume": [50000, 100000],
+                            }
+                        ]
+                    }
+                }
+            ]
+        }
+    }).encode("utf-8")
+
+    with mock.patch("urllib.request.urlopen") as mock_urlopen:
+        mock_resp = mock.MagicMock()
+        mock_resp.read.return_value = mock_chart_data
+        mock_resp.__enter__.return_value = mock_resp
+        mock_urlopen.return_value = mock_resp
+
+        # 1. Test events (both quote and trade)
+        events = connector.fetch_equity_events("NNOX")
+        assert len(events) == 2
+        q_evt, t_evt = events[0], events[1]
+
+        assert q_evt.source == "EQUITIES"
+        assert q_evt.payload["instrument"] == "NNOX"
+        assert q_evt.payload["event_type"] == "QUOTE"
+        assert q_evt.payload["bid"] == 0.82
+        assert q_evt.payload["ask"] == 0.84
+        assert len(q_evt.payload["bids"]) == 5
+        assert len(q_evt.payload["asks"]) == 5
+
+        assert t_evt.source == "EQUITIES"
+        assert t_evt.payload["instrument"] == "NNOX"
+        assert t_evt.payload["event_type"] == "TRADE"
+        assert t_evt.payload["price"] == 0.83
+
+        # 2. Test candles
+        candles = connector.fetch_equity_candles("NNOX", limit=10)
+        assert len(candles) == 2
+        assert candles[0]["instrument_id"] == "NNOX"
+        assert candles[0]["open"] == 0.81
+        assert candles[0]["high"] == 0.84
+        assert candles[0]["low"] == 0.80
+        assert candles[0]["close"] == 0.82
+        assert candles[0]["volume"] == 50000.0
+        assert candles[1]["close"] == 0.83

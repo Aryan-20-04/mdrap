@@ -1,0 +1,766 @@
+[
+  {
+    "tier": "Tier 1 (Pilot Desk)",
+    "report": {
+      "total_devices": 2,
+      "normal_count": 1,
+      "fast_count": 1,
+      "monitor_count": 0,
+      "duration_s": 3.68,
+      "total_ops": 286,
+      "ops_per_sec": 77.6,
+      "total_errors": 0,
+      "daemon_broadcast_eps": 857.7,
+      "daemon_active_clients": 0,
+      "overall_latency": {
+        "p50_ms": 3.226,
+        "p90_ms": 23.551,
+        "p95_ms": 25.19,
+        "p99_ms": 45.221,
+        "max_ms": 703.69,
+        "avg_ms": 12.667
+      },
+      "normal_user_latency": {
+        "p50_ms": 7.609,
+        "p95_ms": 44.223,
+        "p99_ms": 703.69,
+        "ops": 21
+      },
+      "fast_bot_latency": {
+        "p50_ms": 3.047,
+        "p95_ms": 24.776,
+        "p99_ms": 27.862,
+        "ops": 265
+      },
+      "monitor_latency": {
+        "p50_ms": 0.0,
+        "p95_ms": 0.0,
+        "p99_ms": 0.0,
+        "ops": 0
+      },
+      "operation_breakdown": {
+        "VENUE_HEALTH": 7,
+        "SPREAD_ANALYTICS": 2,
+        "STATUS": 3,
+        "BBO_QUOTE": 4,
+        "CANDLESTICK_OHLCV": 4,
+        "PROMETHEUS_HEALTH": 1,
+        "VWAP_CURVE": 64,
+        "L2_DEPTH_LADDER": 79,
+        "TICK_GAP_REPLAY": 40,
+        "STREAM_TICK_DRAIN": 56,
+        "DUCKDB_SIMD_VWAP": 26
+      },
+      "operation_p95_ms": {
+        "VENUE_HEALTH": 25.199,
+        "SPREAD_ANALYTICS": 703.69,
+        "STATUS": 12.53,
+        "BBO_QUOTE": 21.692,
+        "CANDLESTICK_OHLCV": 11.166,
+        "PROMETHEUS_HEALTH": 44.223,
+        "VWAP_CURVE": 25.516,
+        "L2_DEPTH_LADDER": 24.776,
+        "TICK_GAP_REPLAY": 27.612,
+        "STREAM_TICK_DRAIN": 0.559,
+        "DUCKDB_SIMD_VWAP": 6.644
+      },
+      "device_results": [
+        {
+          "device_id": "desk-user-01",
+          "archetype": "NORMAL_USER",
+          "total_ops": 21,
+          "ops_per_sec": 5.7,
+          "p50_ms": 7.609,
+          "p95_ms": 44.223,
+          "p99_ms": 703.69,
+          "max_ms": 703.69,
+          "errors": 0
+        },
+        {
+          "device_id": "hft-bot-01",
+          "archetype": "FAST_PACED_BOT",
+          "total_ops": 265,
+          "ops_per_sec": 75.8,
+          "p50_ms": 3.047,
+          "p95_ms": 24.776,
+          "p99_ms": 27.862,
+          "max_ms": 694.317,
+          "errors": 0
+        }
+      ]
+    }
+  },
+  {
+    "tier": "Tier 2 (Trading Desk)",
+    "report": {
+      "total_devices": 6,
+      "normal_count": 3,
+      "fast_count": 3,
+      "monitor_count": 0,
+      "duration_s": 3.59,
+      "total_ops": 1101,
+      "ops_per_sec": 306.8,
+      "total_errors": 0,
+      "daemon_broadcast_eps": 867.2,
+      "daemon_active_clients": 0,
+      "overall_latency": {
+        "p50_ms": 4.221,
+        "p90_ms": 20.547,
+        "p95_ms": 24.451,
+        "p99_ms": 27.372,
+        "max_ms": 31.602,
+        "avg_ms": 7.106
+      },
+      "normal_user_latency": {
+        "p50_ms": 6.013,
+        "p95_ms": 21.642,
+        "p99_ms": 25.57,
+        "ops": 68
+      },
+      "fast_bot_latency": {
+        "p50_ms": 4.199,
+        "p95_ms": 24.531,
+        "p99_ms": 27.381,
+        "ops": 1033
+      },
+      "monitor_latency": {
+        "p50_ms": 0.0,
+        "p95_ms": 0.0,
+        "p99_ms": 0.0,
+        "ops": 0
+      },
+      "operation_breakdown": {
+        "STATUS": 8,
+        "VENUE_HEALTH": 16,
+        "SPREAD_ANALYTICS": 8,
+        "BBO_QUOTE": 26,
+        "PROMETHEUS_HEALTH": 2,
+        "CANDLESTICK_OHLCV": 8,
+        "L2_DEPTH_LADDER": 337,
+        "TICK_GAP_REPLAY": 137,
+        "STREAM_TICK_DRAIN": 173,
+        "VWAP_CURVE": 270,
+        "DUCKDB_SIMD_VWAP": 116
+      },
+      "operation_p95_ms": {
+        "STATUS": 25.57,
+        "VENUE_HEALTH": 25.193,
+        "SPREAD_ANALYTICS": 13.222,
+        "BBO_QUOTE": 21.284,
+        "PROMETHEUS_HEALTH": 15.262,
+        "CANDLESTICK_OHLCV": 8.728,
+        "L2_DEPTH_LADDER": 26.034,
+        "TICK_GAP_REPLAY": 24.453,
+        "STREAM_TICK_DRAIN": 0.569,
+        "VWAP_CURVE": 26.093,
+        "DUCKDB_SIMD_VWAP": 8.48
+      },
+      "device_results": [
+        {
+          "device_id": "desk-user-01",
+          "archetype": "NORMAL_USER",
+          "total_ops": 23,
+          "ops_per_sec": 6.5,
+          "p50_ms": 4.143,
+          "p95_ms": 14.314,
+          "p99_ms": 16.929,
+          "max_ms": 16.929,
+          "errors": 0
+        },
+        {
+          "device_id": "desk-user-02",
+          "archetype": "NORMAL_USER",
+          "total_ops": 22,
+          "ops_per_sec": 6.3,
+          "p50_ms": 7.161,
+          "p95_ms": 19.655,
+          "p99_ms": 21.284,
+          "max_ms": 21.284,
+          "errors": 0
+        },
+        {
+          "device_id": "desk-user-03",
+          "archetype": "NORMAL_USER",
+          "total_ops": 23,
+          "ops_per_sec": 6.5,
+          "p50_ms": 6.531,
+          "p95_ms": 25.193,
+          "p99_ms": 25.57,
+          "max_ms": 25.57,
+          "errors": 0
+        },
+        {
+          "device_id": "hft-bot-01",
+          "archetype": "FAST_PACED_BOT",
+          "total_ops": 348,
+          "ops_per_sec": 99.9,
+          "p50_ms": 3.874,
+          "p95_ms": 24.739,
+          "p99_ms": 26.894,
+          "max_ms": 28.389,
+          "errors": 0
+        },
+        {
+          "device_id": "hft-bot-02",
+          "archetype": "FAST_PACED_BOT",
+          "total_ops": 341,
+          "ops_per_sec": 97.7,
+          "p50_ms": 4.491,
+          "p95_ms": 24.453,
+          "p99_ms": 28.187,
+          "max_ms": 28.453,
+          "errors": 0
+        },
+        {
+          "device_id": "hft-bot-03",
+          "archetype": "FAST_PACED_BOT",
+          "total_ops": 344,
+          "ops_per_sec": 98.8,
+          "p50_ms": 4.26,
+          "p95_ms": 23.548,
+          "p99_ms": 27.601,
+          "max_ms": 31.602,
+          "errors": 0
+        }
+      ]
+    }
+  },
+  {
+    "tier": "Tier 3 (Institutional Floor)",
+    "report": {
+      "total_devices": 12,
+      "normal_count": 6,
+      "fast_count": 5,
+      "monitor_count": 1,
+      "duration_s": 3.73,
+      "total_ops": 1302,
+      "ops_per_sec": 348.7,
+      "total_errors": 0,
+      "daemon_broadcast_eps": 760.7,
+      "daemon_active_clients": 0,
+      "overall_latency": {
+        "p50_ms": 10.099,
+        "p90_ms": 27.207,
+        "p95_ms": 33.477,
+        "p99_ms": 49.068,
+        "max_ms": 426.717,
+        "avg_ms": 15.304
+      },
+      "normal_user_latency": {
+        "p50_ms": 15.864,
+        "p95_ms": 38.217,
+        "p99_ms": 288.37,
+        "ops": 126
+      },
+      "fast_bot_latency": {
+        "p50_ms": 9.354,
+        "p95_ms": 30.245,
+        "p99_ms": 40.719,
+        "ops": 1165
+      },
+      "monitor_latency": {
+        "p50_ms": 343.945,
+        "p95_ms": 426.717,
+        "p99_ms": 426.717,
+        "ops": 11
+      },
+      "operation_breakdown": {
+        "PROMETHEUS_HEALTH": 8,
+        "VENUE_HEALTH": 23,
+        "BBO_QUOTE": 50,
+        "CANDLESTICK_OHLCV": 16,
+        "SPREAD_ANALYTICS": 12,
+        "STATUS": 19,
+        "DUCKDB_SIMD_VWAP": 137,
+        "L2_DEPTH_LADDER": 359,
+        "VWAP_CURVE": 303,
+        "TICK_GAP_REPLAY": 141,
+        "STREAM_TICK_DRAIN": 225,
+        "PROMETHEUS_SCRAPE": 9
+      },
+      "operation_p95_ms": {
+        "PROMETHEUS_HEALTH": 336.241,
+        "VENUE_HEALTH": 34.673,
+        "BBO_QUOTE": 36.689,
+        "CANDLESTICK_OHLCV": 23.625,
+        "SPREAD_ANALYTICS": 19.636,
+        "STATUS": 35.458,
+        "DUCKDB_SIMD_VWAP": 13.191,
+        "L2_DEPTH_LADDER": 34.767,
+        "VWAP_CURVE": 34.798,
+        "TICK_GAP_REPLAY": 33.732,
+        "STREAM_TICK_DRAIN": 1.395,
+        "PROMETHEUS_SCRAPE": 426.717
+      },
+      "device_results": [
+        {
+          "device_id": "desk-user-01",
+          "archetype": "NORMAL_USER",
+          "total_ops": 18,
+          "ops_per_sec": 5.1,
+          "p50_ms": 17.589,
+          "p95_ms": 336.241,
+          "p99_ms": 336.241,
+          "max_ms": 336.241,
+          "errors": 0
+        },
+        {
+          "device_id": "desk-user-02",
+          "archetype": "NORMAL_USER",
+          "total_ops": 21,
+          "ops_per_sec": 6.0,
+          "p50_ms": 15.926,
+          "p95_ms": 32.605,
+          "p99_ms": 42.16,
+          "max_ms": 42.16,
+          "errors": 0
+        },
+        {
+          "device_id": "desk-user-03",
+          "archetype": "NORMAL_USER",
+          "total_ops": 23,
+          "ops_per_sec": 6.6,
+          "p50_ms": 20.506,
+          "p95_ms": 32.568,
+          "p99_ms": 34.673,
+          "max_ms": 34.673,
+          "errors": 0
+        },
+        {
+          "device_id": "desk-user-04",
+          "archetype": "NORMAL_USER",
+          "total_ops": 22,
+          "ops_per_sec": 6.1,
+          "p50_ms": 14.541,
+          "p95_ms": 30.544,
+          "p99_ms": 49.068,
+          "max_ms": 49.068,
+          "errors": 0
+        },
+        {
+          "device_id": "desk-user-05",
+          "archetype": "NORMAL_USER",
+          "total_ops": 22,
+          "ops_per_sec": 6.2,
+          "p50_ms": 15.864,
+          "p95_ms": 36.689,
+          "p99_ms": 136.172,
+          "max_ms": 136.172,
+          "errors": 0
+        },
+        {
+          "device_id": "desk-user-06",
+          "archetype": "NORMAL_USER",
+          "total_ops": 20,
+          "ops_per_sec": 5.7,
+          "p50_ms": 15.548,
+          "p95_ms": 288.37,
+          "p99_ms": 288.37,
+          "max_ms": 288.37,
+          "errors": 0
+        },
+        {
+          "device_id": "hft-bot-01",
+          "archetype": "FAST_PACED_BOT",
+          "total_ops": 234,
+          "ops_per_sec": 67.2,
+          "p50_ms": 9.125,
+          "p95_ms": 29.324,
+          "p99_ms": 40.49,
+          "max_ms": 40.85,
+          "errors": 0
+        },
+        {
+          "device_id": "hft-bot-02",
+          "archetype": "FAST_PACED_BOT",
+          "total_ops": 231,
+          "ops_per_sec": 66.1,
+          "p50_ms": 9.476,
+          "p95_ms": 28.89,
+          "p99_ms": 43.082,
+          "max_ms": 46.866,
+          "errors": 0
+        },
+        {
+          "device_id": "hft-bot-03",
+          "archetype": "FAST_PACED_BOT",
+          "total_ops": 237,
+          "ops_per_sec": 67.8,
+          "p50_ms": 9.198,
+          "p95_ms": 32.378,
+          "p99_ms": 40.794,
+          "max_ms": 45.327,
+          "errors": 0
+        },
+        {
+          "device_id": "hft-bot-04",
+          "archetype": "FAST_PACED_BOT",
+          "total_ops": 230,
+          "ops_per_sec": 65.8,
+          "p50_ms": 9.753,
+          "p95_ms": 29.735,
+          "p99_ms": 44.59,
+          "max_ms": 47.844,
+          "errors": 0
+        },
+        {
+          "device_id": "hft-bot-05",
+          "archetype": "FAST_PACED_BOT",
+          "total_ops": 233,
+          "ops_per_sec": 66.8,
+          "p50_ms": 9.521,
+          "p95_ms": 31.363,
+          "p99_ms": 38.383,
+          "max_ms": 39.951,
+          "errors": 0
+        },
+        {
+          "device_id": "sre-mon-01",
+          "archetype": "DEVOPS_MONITOR",
+          "total_ops": 11,
+          "ops_per_sec": 3.0,
+          "p50_ms": 343.945,
+          "p95_ms": 426.717,
+          "p99_ms": 426.717,
+          "max_ms": 426.717,
+          "errors": 0
+        }
+      ]
+    }
+  },
+  {
+    "tier": "Tier 4 (Surge Stress)",
+    "report": {
+      "total_devices": 24,
+      "normal_count": 10,
+      "fast_count": 12,
+      "monitor_count": 2,
+      "duration_s": 4.09,
+      "total_ops": 1220,
+      "ops_per_sec": 298.3,
+      "total_errors": 0,
+      "daemon_broadcast_eps": 706.2,
+      "daemon_active_clients": 0,
+      "overall_latency": {
+        "p50_ms": 37.983,
+        "p90_ms": 78.096,
+        "p95_ms": 97.05,
+        "p99_ms": 529.742,
+        "max_ms": 800.104,
+        "avg_ms": 46.886
+      },
+      "normal_user_latency": {
+        "p50_ms": 52.002,
+        "p95_ms": 121.314,
+        "p99_ms": 708.14,
+        "ops": 170
+      },
+      "fast_bot_latency": {
+        "p50_ms": 34.552,
+        "p95_ms": 86.086,
+        "p99_ms": 109.014,
+        "ops": 1034
+      },
+      "monitor_latency": {
+        "p50_ms": 418.794,
+        "p95_ms": 800.104,
+        "p99_ms": 800.104,
+        "ops": 16
+      },
+      "operation_breakdown": {
+        "BBO_QUOTE": 63,
+        "SPREAD_ANALYTICS": 16,
+        "CANDLESTICK_OHLCV": 23,
+        "PROMETHEUS_HEALTH": 14,
+        "STATUS": 23,
+        "VENUE_HEALTH": 36,
+        "DUCKDB_SIMD_VWAP": 122,
+        "VWAP_CURVE": 260,
+        "L2_DEPTH_LADDER": 303,
+        "TICK_GAP_REPLAY": 134,
+        "STREAM_TICK_DRAIN": 215,
+        "PROMETHEUS_SCRAPE": 11
+      },
+      "operation_p95_ms": {
+        "BBO_QUOTE": 108.468,
+        "SPREAD_ANALYTICS": 17.171,
+        "CANDLESTICK_OHLCV": 17.81,
+        "PROMETHEUS_HEALTH": 714.456,
+        "STATUS": 111.897,
+        "VENUE_HEALTH": 86.789,
+        "DUCKDB_SIMD_VWAP": 12.121,
+        "VWAP_CURVE": 95.45,
+        "L2_DEPTH_LADDER": 95.405,
+        "TICK_GAP_REPLAY": 81.147,
+        "STREAM_TICK_DRAIN": 1.901,
+        "PROMETHEUS_SCRAPE": 800.104
+      },
+      "device_results": [
+        {
+          "device_id": "desk-user-01",
+          "archetype": "NORMAL_USER",
+          "total_ops": 16,
+          "ops_per_sec": 4.5,
+          "p50_ms": 53.039,
+          "p95_ms": 714.456,
+          "p99_ms": 714.456,
+          "max_ms": 714.456,
+          "errors": 0
+        },
+        {
+          "device_id": "desk-user-02",
+          "archetype": "NORMAL_USER",
+          "total_ops": 15,
+          "ops_per_sec": 3.7,
+          "p50_ms": 55.048,
+          "p95_ms": 652.074,
+          "p99_ms": 652.074,
+          "max_ms": 652.074,
+          "errors": 0
+        },
+        {
+          "device_id": "desk-user-03",
+          "archetype": "NORMAL_USER",
+          "total_ops": 19,
+          "ops_per_sec": 5.5,
+          "p50_ms": 47.1,
+          "p95_ms": 108.468,
+          "p99_ms": 108.468,
+          "max_ms": 108.468,
+          "errors": 0
+        },
+        {
+          "device_id": "desk-user-04",
+          "archetype": "NORMAL_USER",
+          "total_ops": 16,
+          "ops_per_sec": 4.4,
+          "p50_ms": 55.707,
+          "p95_ms": 708.14,
+          "p99_ms": 708.14,
+          "max_ms": 708.14,
+          "errors": 0
+        },
+        {
+          "device_id": "desk-user-05",
+          "archetype": "NORMAL_USER",
+          "total_ops": 17,
+          "ops_per_sec": 4.7,
+          "p50_ms": 41.628,
+          "p95_ms": 529.742,
+          "p99_ms": 529.742,
+          "max_ms": 529.742,
+          "errors": 0
+        },
+        {
+          "device_id": "desk-user-06",
+          "archetype": "NORMAL_USER",
+          "total_ops": 16,
+          "ops_per_sec": 4.4,
+          "p50_ms": 50.214,
+          "p95_ms": 506.438,
+          "p99_ms": 506.438,
+          "max_ms": 506.438,
+          "errors": 0
+        },
+        {
+          "device_id": "desk-user-07",
+          "archetype": "NORMAL_USER",
+          "total_ops": 19,
+          "ops_per_sec": 5.3,
+          "p50_ms": 54.325,
+          "p95_ms": 115.636,
+          "p99_ms": 115.636,
+          "max_ms": 115.636,
+          "errors": 0
+        },
+        {
+          "device_id": "desk-user-08",
+          "archetype": "NORMAL_USER",
+          "total_ops": 15,
+          "ops_per_sec": 4.2,
+          "p50_ms": 59.339,
+          "p95_ms": 546.12,
+          "p99_ms": 546.12,
+          "max_ms": 546.12,
+          "errors": 0
+        },
+        {
+          "device_id": "desk-user-09",
+          "archetype": "NORMAL_USER",
+          "total_ops": 18,
+          "ops_per_sec": 5.1,
+          "p50_ms": 54.465,
+          "p95_ms": 111.573,
+          "p99_ms": 111.573,
+          "max_ms": 111.573,
+          "errors": 0
+        },
+        {
+          "device_id": "desk-user-10",
+          "archetype": "NORMAL_USER",
+          "total_ops": 19,
+          "ops_per_sec": 5.3,
+          "p50_ms": 53.7,
+          "p95_ms": 117.983,
+          "p99_ms": 117.983,
+          "max_ms": 117.983,
+          "errors": 0
+        },
+        {
+          "device_id": "hft-bot-01",
+          "archetype": "FAST_PACED_BOT",
+          "total_ops": 87,
+          "ops_per_sec": 25.0,
+          "p50_ms": 35.751,
+          "p95_ms": 78.16,
+          "p99_ms": 107.889,
+          "max_ms": 107.889,
+          "errors": 0
+        },
+        {
+          "device_id": "hft-bot-02",
+          "archetype": "FAST_PACED_BOT",
+          "total_ops": 92,
+          "ops_per_sec": 26.4,
+          "p50_ms": 30.173,
+          "p95_ms": 88.926,
+          "p99_ms": 110.453,
+          "max_ms": 110.453,
+          "errors": 0
+        },
+        {
+          "device_id": "hft-bot-03",
+          "archetype": "FAST_PACED_BOT",
+          "total_ops": 91,
+          "ops_per_sec": 26.2,
+          "p50_ms": 32.861,
+          "p95_ms": 82.162,
+          "p99_ms": 115.525,
+          "max_ms": 115.525,
+          "errors": 0
+        },
+        {
+          "device_id": "hft-bot-04",
+          "archetype": "FAST_PACED_BOT",
+          "total_ops": 90,
+          "ops_per_sec": 26.0,
+          "p50_ms": 32.789,
+          "p95_ms": 81.93,
+          "p99_ms": 115.841,
+          "max_ms": 115.841,
+          "errors": 0
+        },
+        {
+          "device_id": "hft-bot-05",
+          "archetype": "FAST_PACED_BOT",
+          "total_ops": 81,
+          "ops_per_sec": 23.1,
+          "p50_ms": 40.065,
+          "p95_ms": 91.443,
+          "p99_ms": 109.014,
+          "max_ms": 109.014,
+          "errors": 0
+        },
+        {
+          "device_id": "hft-bot-06",
+          "archetype": "FAST_PACED_BOT",
+          "total_ops": 92,
+          "ops_per_sec": 26.7,
+          "p50_ms": 29.176,
+          "p95_ms": 83.673,
+          "p99_ms": 109.014,
+          "max_ms": 109.014,
+          "errors": 0
+        },
+        {
+          "device_id": "hft-bot-07",
+          "archetype": "FAST_PACED_BOT",
+          "total_ops": 85,
+          "ops_per_sec": 24.4,
+          "p50_ms": 35.561,
+          "p95_ms": 83.047,
+          "p99_ms": 113.132,
+          "max_ms": 113.132,
+          "errors": 0
+        },
+        {
+          "device_id": "hft-bot-08",
+          "archetype": "FAST_PACED_BOT",
+          "total_ops": 82,
+          "ops_per_sec": 23.4,
+          "p50_ms": 38.7,
+          "p95_ms": 78.63,
+          "p99_ms": 116.602,
+          "max_ms": 116.602,
+          "errors": 0
+        },
+        {
+          "device_id": "hft-bot-09",
+          "archetype": "FAST_PACED_BOT",
+          "total_ops": 79,
+          "ops_per_sec": 22.7,
+          "p50_ms": 41.63,
+          "p95_ms": 95.583,
+          "p99_ms": 110.547,
+          "max_ms": 110.547,
+          "errors": 0
+        },
+        {
+          "device_id": "hft-bot-10",
+          "archetype": "FAST_PACED_BOT",
+          "total_ops": 89,
+          "ops_per_sec": 25.7,
+          "p50_ms": 31.047,
+          "p95_ms": 86.18,
+          "p99_ms": 106.672,
+          "max_ms": 106.672,
+          "errors": 0
+        },
+        {
+          "device_id": "hft-bot-11",
+          "archetype": "FAST_PACED_BOT",
+          "total_ops": 89,
+          "ops_per_sec": 25.8,
+          "p50_ms": 29.935,
+          "p95_ms": 87.796,
+          "p99_ms": 111.722,
+          "max_ms": 111.722,
+          "errors": 0
+        },
+        {
+          "device_id": "hft-bot-12",
+          "archetype": "FAST_PACED_BOT",
+          "total_ops": 77,
+          "ops_per_sec": 22.1,
+          "p50_ms": 42.074,
+          "p95_ms": 88.014,
+          "p99_ms": 108.319,
+          "max_ms": 108.319,
+          "errors": 0
+        },
+        {
+          "device_id": "sre-mon-01",
+          "archetype": "DEVOPS_MONITOR",
+          "total_ops": 9,
+          "ops_per_sec": 2.2,
+          "p50_ms": 364.71,
+          "p95_ms": 766.368,
+          "p99_ms": 766.368,
+          "max_ms": 766.368,
+          "errors": 0
+        },
+        {
+          "device_id": "sre-mon-02",
+          "archetype": "DEVOPS_MONITOR",
+          "total_ops": 7,
+          "ops_per_sec": 1.9,
+          "p50_ms": 651.688,
+          "p95_ms": 800.104,
+          "p99_ms": 800.104,
+          "max_ms": 800.104,
+          "errors": 0
+        }
+      ]
+    }
+  }
+]

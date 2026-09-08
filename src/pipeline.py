@@ -59,6 +59,7 @@ class Pipeline:
                  bbo: Optional['BBOEngine'] = None,
                  watchdog: Optional['SourceWatchdog'] = None,
                  security: Optional['SecurityManager'] = None,
+                 async_storage: Optional['AsyncStorageWorker'] = None,
                  flush_interval_s: float = 1.0):
         self.store = store
         self.quality = quality or QualityEngine()
@@ -71,6 +72,7 @@ class Pipeline:
         self.bbo = bbo
         self.watchdog = watchdog
         self.security = security
+        self.async_storage = async_storage
         self.flush_interval_s = flush_interval_s
         self._last_flush_ts = time.time()
 
@@ -79,6 +81,24 @@ class Pipeline:
         self._lineage_batch: List[tuple] = []
         # Suppress erratic GC pauses during hot tick loops; collect deterministically during flushes
         gc.set_threshold(100_000, 10, 10)
+
+    def _enqueue_canonical(self, event: CanonicalEvent) -> None:
+        if self.async_storage:
+            self.async_storage.write_canonical(event)
+        else:
+            self._canonical_batch.append(event)
+
+    def _enqueue_quarantine(self, row: tuple) -> None:
+        if self.async_storage:
+            self.async_storage.write_quarantine(row)
+        else:
+            self._quarantine_batch.append(row)
+
+    def _enqueue_lineage(self, row: tuple) -> None:
+        if self.async_storage:
+            self.async_storage.write_lineage(row)
+        else:
+            self._lineage_batch.append(row)
 
     def process_one(self, raw: RawEvent, source_label: Optional[str] = None) -> Optional[CanonicalEvent]:
         t_start_ns = time.perf_counter_ns()
@@ -95,13 +115,13 @@ class Pipeline:
                     quality_status=QualityStatus.INVALID, reasons=[Reason.SCHEMA_VIOLATION.value],
                     raw_id=raw.raw_id,
                 )
-                self._quarantine_batch.append((
+                self._enqueue_quarantine((
                     fake.event_id, fake.instrument_id, fake.source, fake.quality_status.value,
                     json.dumps(["Security: Rate limit exceeded"]),
                     json.dumps(raw.payload, default=str), raw.receive_timestamp,
                 ))
                 raw_id_json = f'["{fake.raw_id}"]'
-                self._lineage_batch.append((
+                self._enqueue_lineage((
                     fake.event_id, fake.instrument_id, raw_id_json, fake.raw_id,
                     _TRANSFORMATIONS_JSON[False],
                     _VALIDATIONS_RUN_JSON,
@@ -125,13 +145,13 @@ class Pipeline:
                     quality_status=QualityStatus.INVALID, reasons=[Reason.SCHEMA_VIOLATION.value],
                     raw_id=raw.raw_id,
                 )
-                self._quarantine_batch.append((
+                self._enqueue_quarantine((
                     fake.event_id, fake.instrument_id, fake.source, fake.quality_status.value,
                     json.dumps([f"Security sanitization: {err_msg}"]),
                     json.dumps(raw.payload, default=str), raw.receive_timestamp,
                 ))
                 raw_id_json = f'["{fake.raw_id}"]'
-                self._lineage_batch.append((
+                self._enqueue_lineage((
                     fake.event_id, fake.instrument_id, raw_id_json, fake.raw_id,
                     _TRANSFORMATIONS_JSON[False],
                     _VALIDATIONS_RUN_JSON,
@@ -156,13 +176,13 @@ class Pipeline:
                         quality_status=QualityStatus.INVALID, reasons=[Reason.SCHEMA_VIOLATION.value],
                         raw_id=raw.raw_id,
                     )
-                    self._quarantine_batch.append((
+                    self._enqueue_quarantine((
                         fake.event_id, fake.instrument_id, fake.source, fake.quality_status.value,
                         json.dumps(["Cryptographic HMAC verification failed: tampered payload"]),
                         json.dumps(raw.payload, default=str), raw.receive_timestamp,
                     ))
                     raw_id_json = f'["{fake.raw_id}"]'
-                    self._lineage_batch.append((
+                    self._enqueue_lineage((
                         fake.event_id, fake.instrument_id, raw_id_json, fake.raw_id,
                         _TRANSFORMATIONS_JSON[False],
                         _VALIDATIONS_RUN_JSON,
@@ -195,7 +215,7 @@ class Pipeline:
                 quality_status=QualityStatus.INVALID, reasons=[Reason.SCHEMA_VIOLATION.value],
                 raw_id=raw.raw_id,
             )
-            self._quarantine_batch.append((
+            self._enqueue_quarantine((
                 fake.event_id, fake.instrument_id, fake.source, fake.quality_status.value,
                 json.dumps(fake.reasons), json.dumps(raw.payload, default=str), raw.receive_timestamp,
             ))
@@ -228,17 +248,17 @@ class Pipeline:
         self.metrics.record(e2e_latency, proc_latency, event.quality_status.value)
 
         if event.quality_status != QualityStatus.INVALID:
-            self._canonical_batch.append(event)
+            self._enqueue_canonical(event)
 
         if event.quality_status in (QualityStatus.SUSPICIOUS, QualityStatus.INVALID):
             reasons_json = json.dumps(event.reasons) if event.reasons else "[]"
-            self._quarantine_batch.append((
+            self._enqueue_quarantine((
                 event.event_id, event.instrument_id, event.source, event.quality_status.value,
                 reasons_json, json.dumps(raw.payload, default=str), event.receive_timestamp,
             ))
 
         raw_id_json = f'["{event.raw_id}"]'
-        self._lineage_batch.append((
+        self._enqueue_lineage((
             event.event_id, event.instrument_id, raw_id_json, event.raw_id,
             _TRANSFORMATIONS_JSON[bool(decision)],
             _VALIDATIONS_RUN_JSON,
@@ -252,6 +272,8 @@ class Pipeline:
         return event
 
     def _maybe_flush(self):
+        if self.async_storage:
+            return
         now = time.time()
         batch_full = (
             len(self._canonical_batch) >= BATCH_SIZE
@@ -266,6 +288,17 @@ class Pipeline:
             self.flush()
 
     def flush(self):
+        if self.async_storage:
+            health_rows = []
+            now = time.time()
+            for src, st in self.reliability.stats.items():
+                health_rows.append((src, st.total, st.invalid, st.suspicious, st.duplicate,
+                                     st.gap, round(st.ewma_latency_s, 6), st.score, now))
+            if health_rows:
+                self.async_storage.write_health(health_rows)
+            self.async_storage.flush()
+            return
+
         self._last_flush_ts = time.time()
         self.store.write_canonical_batch(self._canonical_batch)
         self.store.write_quarantine_batch(self._quarantine_batch)

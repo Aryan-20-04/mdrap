@@ -299,5 +299,72 @@ def test_ticker_first_and_mnemonic_dispatch():
     render_command_palette(c)
 
 
+def test_cmd_throughput_dispatch(capsys):
+    parser = build_parser()
+    args = parser.parse_args(["throughput", "-e", "5000", "--compare"])
+    args.func(args)
+    captured = capsys.readouterr()
+    assert "MDRAP Ultra-High Throughput Vectorized SBE Engine" in captured.out
+    assert "Throughput (eps)" in captured.out
+    assert "TARGET" in captured.out
 
+
+def test_cmd_tca_dispatch(capsys):
+    parser = build_parser()
+    args = parser.parse_args(["tca", "AAPL", "--demo", "--count", "50"])
+    args.func(args)
+    captured = capsys.readouterr()
+    assert "MDRAP Institutional Best Execution & TCA Slippage Engine" in captured.out
+    assert "SEC Rule 606" in captured.out
+    assert "Merkle Root Hash" in captured.out
+
+
+def test_cmd_flow_dispatch(capsys):
+    parser = build_parser()
+    args = parser.parse_args(["flow", "AAPL", "--count", "100"])
+    args.func(args)
+    captured = capsys.readouterr()
+    assert "MDRAP Institutional Order Flow & Cumulative Volume Delta" in captured.out
+    assert "Institutional Broker & Market Participant Attribution" in captured.out
+
+
+def test_cmd_bridge_parser():
+    parser = build_parser()
+    args = parser.parse_args(["bridge", "--port", "8089"])
+    assert args.port == 8089
+    assert args.command == "bridge"
+
+
+def test_cmd_web_parser():
+    parser = build_parser()
+    args = parser.parse_args(["web", "--port", "8088", "--no-browser"])
+    assert args.port == 8088
+    assert args.browser is False
+    assert args.command == "web"
+
+
+def test_cmd_strategy_dispatch(capsys):
+    parser = build_parser()
+    # 1. list
+    args = parser.parse_args(["strategy", "list"])
+    args.func(args)
+    captured = capsys.readouterr()
+    assert "MDRAP Institutional Algorithmic Strategy Catalog" in captured.out
+    assert "whale_momentum" in captured.out
+    assert "spread_capture" in captured.out
+
+    # 2. run
+    args = parser.parse_args(["strategy", "run", "-s", "whale_momentum", "-i", "AAPL", "-e", "100"])
+    args.func(args)
+    captured = capsys.readouterr()
+    assert "MDRAP Paper Trading Strategy Engine" in captured.out
+    assert "Performance Tear-Sheet" in captured.out
+
+
+def test_cmd_shard_parser():
+    parser = build_parser()
+    args = parser.parse_args(["shard", "-w", "2", "-e", "1000"])
+    assert args.workers == 2
+    assert args.events == 1000
+    assert args.command == "shard"
 

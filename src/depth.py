@@ -10,6 +10,7 @@ and slippage curves across multi-tier order sizing slices.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import json
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -134,6 +135,9 @@ class ConsolidatedLadder:
     total_bid_notional: float = 0.0
     total_ask_notional: float = 0.0
     vwap_curve: Optional[VWAPCurve] = None
+    ofi: float = 0.0                           # Level-1 Order Flow Imbalance for current update
+    cumulative_ofi: float = 0.0                # Running sum of OFI
+    cvd: float = 0.0                           # Cumulative Volume Delta
 
     def depth_within_bps(self, bps: float) -> Tuple[float, float]:
         """
@@ -246,6 +250,9 @@ class ConsolidatedLadder:
             "crossed_opportunities": self.crossed_opportunities,
             "total_bid_notional": round(self.total_bid_notional, 2),
             "total_ask_notional": round(self.total_ask_notional, 2),
+            "ofi": round(self.ofi, 4),
+            "cumulative_ofi": round(self.cumulative_ofi, 4),
+            "cvd": round(self.cvd, 4),
         }
         if self.vwap_curve:
             d["vwap_curve"] = self.vwap_curve.to_dict()
@@ -309,8 +316,52 @@ class ConsolidatedDepthEngine:
         self._venue_books: Dict[str, Dict[str, dict]] = {}
         # Cached current ladders per instrument
         self._current_ladders: Dict[str, ConsolidatedLadder] = {}
+        # Pre-serialized wire JSON byte buffers per instrument (zero-allocation fastpath)
+        self._cached_depth_json: Dict[str, bytes] = {}
+        self._cached_vwap_json: Dict[str, bytes] = {}
         self._total_updates = 0
         self._crossed_depth_count = 0
+        self._prev_tob: Dict[str, Tuple[float, float, float, float]] = {}
+        self._cum_ofi: Dict[str, float] = {}
+        self._cum_cvd: Dict[str, float] = {}
+
+    def observe_trade(
+        self,
+        instrument: str,
+        price: float,
+        quantity: float,
+        side: Optional[str] = None,
+    ) -> float:
+        """
+        Record a trade event and update Cumulative Volume Delta (CVD).
+        Uses trade side if provided, or tick/quote rule relative to top-of-book.
+        """
+        delta = 0.0
+        if side:
+            s = str(side).upper()
+            if s in ("BUY", "B", "1"):
+                delta = quantity
+            elif s in ("SELL", "S", "-1"):
+                delta = -quantity
+        else:
+            ladder = self._current_ladders.get(instrument)
+            if ladder and ladder.bids and ladder.asks:
+                best_bid = ladder.bids[0].price
+                best_ask = ladder.asks[0].price
+                mid = (best_bid + best_ask) / 2.0
+                if price >= best_ask:
+                    delta = quantity
+                elif price <= best_bid:
+                    delta = -quantity
+                elif price >= mid:
+                    delta = quantity
+                else:
+                    delta = -quantity
+            else:
+                delta = quantity
+
+        self._cum_cvd[instrument] = self._cum_cvd.get(instrument, 0.0) + delta
+        return self._cum_cvd[instrument]
 
     def _is_source_eligible(self, source: str) -> bool:
         if not self.watchdog:
@@ -334,6 +385,16 @@ class ConsolidatedDepthEngine:
             except (ValueError, TypeError):
                 t_event = float(event.receive_timestamp)
 
+            evt_t = str(p.get("type") or p.get("event_type") or "").upper()
+            if evt_t == "TRADE" or ("price" in p and "quantity" in p and "bids" not in p and "asks" not in p):
+                try:
+                    px = float(p["price"])
+                    qty = float(p.get("quantity", 1.0))
+                    if px > 0 and qty > 0:
+                        self.observe_trade(inst, px, qty, p.get("side"))
+                except (ValueError, TypeError):
+                    pass
+
             bids_raw = p.get("bids", [])
             asks_raw = p.get("asks", [])
             # Fallback to single top-of-book level if bids/asks lists are missing
@@ -350,6 +411,10 @@ class ConsolidatedDepthEngine:
             src = event.source.upper()
             inst = event.instrument_id
             t_event = event.exchange_timestamp
+            if event.event_type == EventType.TRADE and event.price is not None:
+                q = event.quantity or 1.0
+                if event.price > 0 and q > 0:
+                    self.observe_trade(inst, event.price, q, None)
             bids_raw = [[event.bid_price, event.bid_size or 1.0]] if event.bid_price is not None else []
             asks_raw = [[event.ask_price, event.ask_size or 1.0]] if event.ask_price is not None else []
         else:
@@ -424,13 +489,40 @@ class ConsolidatedDepthEngine:
         else:
             micro_price = (best_bid + best_ask) / 2.0
 
-        # Calculate Order Flow Imbalance (OFI) across aggregated depth
+        # Calculate Static Book Imbalance Ratio across aggregated depth
         tot_bid_vol = sum(b.size for b in merged_bids)
         tot_ask_vol = sum(a.size for a in merged_asks)
         if (tot_bid_vol + tot_ask_vol) > 0:
             imbalance = (tot_bid_vol - tot_ask_vol) / (tot_bid_vol + tot_ask_vol)
         else:
             imbalance = 0.0
+
+        # Calculate Level-1 Order Flow Imbalance (OFI) - Cont, Kukanov & Stoikov (2014)
+        prev_tob = self._prev_tob.get(inst)
+        if prev_tob is not None:
+            prev_bb, prev_bbs, prev_ba, prev_bas = prev_tob
+            if best_bid > prev_bb:
+                delta_w_b = best_bid_sz
+            elif best_bid == prev_bb:
+                delta_w_b = best_bid_sz - prev_bbs
+            else:
+                delta_w_b = -prev_bbs
+
+            if best_ask < prev_ba:
+                delta_w_a = -best_ask_sz
+            elif best_ask == prev_ba:
+                delta_w_a = best_ask_sz - prev_bas
+            else:
+                delta_w_a = prev_bas
+
+            delta_ofi = delta_w_b - delta_w_a
+        else:
+            delta_ofi = 0.0
+
+        self._prev_tob[inst] = (best_bid, best_bid_sz, best_ask, best_ask_sz)
+        self._cum_ofi[inst] = self._cum_ofi.get(inst, 0.0) + delta_ofi
+        cum_ofi = self._cum_ofi[inst]
+        cum_cvd = self._cum_cvd.get(inst, 0.0)
 
         # Detect cross-exchange depth arbitrage opportunities
         crossed_opps = []
@@ -473,14 +565,33 @@ class ConsolidatedDepthEngine:
             aggregated_asks=agg_asks,
             total_bid_notional=tot_bid_notional,
             total_ask_notional=tot_ask_notional,
+            ofi=round(delta_ofi, 4),
+            cumulative_ofi=round(cum_ofi, 4),
+            cvd=round(cum_cvd, 4),
         )
         ladder.vwap_curve = ladder.compute_vwap_curve()
 
         self._current_ladders[inst] = ladder
+
+        # Pre-render wire JSON byte buffers (RCU pattern: atomic swap, zero-allocation reader fastpath)
+        depth_dict = {"status": "OK", "symbol": inst, "depth": ladder.to_dict()}
+        self._cached_depth_json[inst] = (json.dumps(depth_dict) + "\n").encode("utf-8")
+
+        if ladder.vwap_curve:
+            vwap_dict = {"status": "OK", "symbol": inst, "vwap_curve": ladder.vwap_curve.to_dict()}
+            self._cached_vwap_json[inst] = (json.dumps(vwap_dict) + "\n").encode("utf-8")
+
         return ladder
 
     def current_ladder(self, instrument_id: str) -> Optional[ConsolidatedLadder]:
         return self._current_ladders.get(instrument_id)
+
+    def get_ladder_wire_bytes(self, instrument_id: str) -> bytes:
+        """Return pre-rendered UTF-8 JSON wire bytes for L2 depth with zero serialization overhead."""
+        cached = self._cached_depth_json.get(instrument_id)
+        if cached:
+            return cached
+        return (json.dumps({"status": "OK", "symbol": instrument_id, "depth": None}) + "\n").encode("utf-8")
 
     def current_vwap_curve(self, instrument_id: str, sizes: Optional[List[float]] = None) -> Optional[VWAPCurve]:
         ladder = self._current_ladders.get(instrument_id)
@@ -489,6 +600,15 @@ class ConsolidatedDepthEngine:
         if sizes:
             return ladder.compute_vwap_curve(sizes=sizes)
         return ladder.vwap_curve
+
+    def get_vwap_wire_bytes(self, instrument_id: str, sizes: Optional[List[float]] = None) -> bytes:
+        """Return pre-rendered UTF-8 JSON wire bytes for VWAP slicing curve."""
+        if sizes is None:
+            cached = self._cached_vwap_json.get(instrument_id)
+            if cached:
+                return cached
+        curve = self.current_vwap_curve(instrument_id, sizes=sizes)
+        return (json.dumps({"status": "OK", "symbol": instrument_id, "vwap_curve": curve.to_dict() if curve else None}) + "\n").encode("utf-8")
 
     def all_ladders(self) -> Dict[str, ConsolidatedLadder]:
         return dict(self._current_ladders)

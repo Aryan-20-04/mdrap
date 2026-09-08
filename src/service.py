@@ -42,6 +42,7 @@ class _ClientSession:
     dropped_ticks: int = 0
     is_alive: bool = True
     is_binary: bool = False
+    is_sbe: bool = False
     entitlement: Optional[ClientEntitlement] = None
     rate_limiter: Optional[TokenBucketRateLimiter] = None
     rate_limited_ticks: int = 0
@@ -85,7 +86,28 @@ class MarketDataDaemon:
         self.watchdog = SourceWatchdog(reliability=self.reliability, silence_threshold_s=3.0)
         self.bbo = BBOEngine(quote_ttl_s=10.0, watchdog=self.watchdog)
         self.depth = ConsolidatedDepthEngine(depth_ttl_s=10.0, watchdog=self.watchdog)
-        self.pipeline = Pipeline(store=self.store, reliability=self.reliability, bbo=self.bbo, watchdog=self.watchdog)
+
+        from async_storage import AsyncStorageWorker
+        from feed_workers import MultiFeedManager
+
+        duck_path = None
+        if self.db_path != ":memory:":
+            duck_path = os.path.join(os.path.dirname(self.db_path) or ".", "mdrap.duckdb")
+
+        self.async_storage = AsyncStorageWorker(
+            store=self.store,
+            batch_size=2000,
+            flush_interval_s=0.25,
+            duck_path=duck_path,
+        )
+        self.pipeline = Pipeline(
+            store=self.store,
+            reliability=self.reliability,
+            bbo=self.bbo,
+            watchdog=self.watchdog,
+            async_storage=self.async_storage,
+        )
+        self.feed_manager = MultiFeedManager()
 
         self.shm_writer = None
         if self.enable_shm:
@@ -115,7 +137,7 @@ class MarketDataDaemon:
         self._server_thread: Optional[threading.Thread] = None
 
     def start(self, blocking: bool = True) -> None:
-        """Start the background socket server and ingestion engine."""
+        """Start the background socket server, feed workers, and ingestion engine."""
         self._running = True
         self._t0 = time.time()
 
@@ -126,11 +148,27 @@ class MarketDataDaemon:
         self._server_sock.listen(64)
         self._server_sock.settimeout(0.2)
 
-        # 2. Start socket listener thread
+        # 2. Start decoupled async storage worker
+        self.async_storage.start()
+
+        # 3. Register and start independent feed ingestion workers
+        if self.use_live:
+            from feed_workers import LiveExchangeFeedWorker
+            self.feed_manager.add_worker(LiveExchangeFeedWorker("BINANCE", ["BTC/USD", "ETH/USD", "SOL/USD"], poll_interval_s=0.5))
+            self.feed_manager.add_worker(LiveExchangeFeedWorker("COINBASE", ["BTC/USD", "ETH/USD", "SOL/USD"], poll_interval_s=0.5))
+            self.feed_manager.add_worker(LiveExchangeFeedWorker("EQUITIES", ["AAPL", "MSFT", "NVDA", "SPY"], poll_interval_s=1.0))
+        else:
+            from feed_workers import SimulatorFeedWorker
+            sim_eps = self.sim_speed_eps if self.sim_speed_eps > 0 else 10000.0
+            self.feed_manager.add_worker(SimulatorFeedWorker("SIM", target_eps=sim_eps, total_events=self.sim_events))
+
+        self.feed_manager.start_all()
+
+        # 4. Start socket listener thread
         self._server_thread = threading.Thread(target=self._socket_accept_loop, daemon=True, name="mdrap-socket-listener")
         self._server_thread.start()
 
-        # 3. Start ingestion thread
+        # 5. Start decoupled sequencer ingestion thread
         self._ingest_thread = threading.Thread(target=self._ingestion_loop, daemon=True, name="mdrap-feed-ingest")
         self._ingest_thread.start()
 
@@ -168,6 +206,12 @@ class MarketDataDaemon:
             self._subscribers.clear()
             self._authenticated_clients.clear()
 
+        if self.feed_manager:
+            try:
+                self.feed_manager.stop_all(timeout=1.0)
+            except Exception:
+                pass
+
         if self._ingest_thread and self._ingest_thread.is_alive():
             self._ingest_thread.join(timeout=2.0)
 
@@ -180,6 +224,13 @@ class MarketDataDaemon:
 
         if self.pipeline:
             self.pipeline.finish()
+
+        if self.async_storage:
+            try:
+                self.async_storage.stop(timeout=2.0)
+            except Exception:
+                pass
+
         if self.store:
             self.store.close()
 
@@ -345,16 +396,17 @@ class MarketDataDaemon:
             fmt = parts[1].upper() if len(parts) > 1 else "JSON"
             with self._sub_lock:
                 sess = self._sessions.get(client_sock)
-            if fmt == "BINARY" and sess and sess.entitlement and not sess.entitlement.can_use_binary:
+            if fmt in ("BINARY", "SBE") and sess and sess.entitlement and not sess.entitlement.can_use_binary:
                 resp = json.dumps({
                     "status": "ERROR",
                     "action": "FORMAT",
-                    "error": "FORBIDDEN: MDRAP-BIN binary wire protocol requires PRO or INSTITUTIONAL entitlement"
+                    "error": f"FORBIDDEN: {fmt} binary wire protocol requires PRO or INSTITUTIONAL entitlement"
                 }) + "\n"
                 client_sock.sendall(resp.encode("utf-8"))
                 return
             if sess:
                 sess.is_binary = (fmt == "BINARY")
+                sess.is_sbe = (fmt == "SBE")
             resp = json.dumps({"status": "OK", "action": "FORMAT", "format": fmt}) + "\n"
             client_sock.sendall(resp.encode("utf-8"))
 
@@ -417,21 +469,7 @@ class MarketDataDaemon:
 
         elif verb == "BBO":
             sym = parts[1].upper() if len(parts) > 1 else "BTC/USD"
-            bbo_quote = self.bbo.current_bbo(sym)
-            data = {
-                "status": "OK",
-                "symbol": sym,
-                "bbo": {
-                    "bid": bbo_quote.best_bid,
-                    "bid_source": bbo_quote.best_bid_source,
-                    "ask": bbo_quote.best_ask,
-                    "ask_source": bbo_quote.best_ask_source,
-                    "spread": bbo_quote.spread,
-                    "mid": bbo_quote.mid_price,
-                    "crossed": bbo_quote.is_crossed,
-                } if bbo_quote else None
-            }
-            client_sock.sendall((json.dumps(data) + "\n").encode("utf-8"))
+            client_sock.sendall(self.bbo.get_bbo_wire_bytes(sym))
 
         elif verb == "DEPTH":
             with self._sub_lock:
@@ -445,13 +483,7 @@ class MarketDataDaemon:
                 client_sock.sendall(resp.encode("utf-8"))
                 return
             sym = parts[1].upper() if len(parts) > 1 else "BTC/USD"
-            ladder = self.depth.current_ladder(sym)
-            data = {
-                "status": "OK",
-                "symbol": sym,
-                "depth": ladder.to_dict() if ladder else None,
-            }
-            client_sock.sendall((json.dumps(data) + "\n").encode("utf-8"))
+            client_sock.sendall(self.depth.get_ladder_wire_bytes(sym))
 
         elif verb == "VWAP":
             with self._sub_lock:
@@ -471,13 +503,7 @@ class MarketDataDaemon:
                     sizes = [float(x) for x in parts[2:]]
                 except ValueError:
                     sizes = None
-            curve = self.depth.current_vwap_curve(sym, sizes=sizes)
-            data = {
-                "status": "OK",
-                "symbol": sym,
-                "vwap_curve": curve.to_dict() if curve else None,
-            }
-            client_sock.sendall((json.dumps(data) + "\n").encode("utf-8"))
+            client_sock.sendall(self.depth.get_vwap_wire_bytes(sym, sizes=sizes))
 
         elif verb == "REPLAY":
             try:
@@ -532,34 +558,33 @@ class MarketDataDaemon:
             client_sock.close()
 
     def _ingestion_loop(self) -> None:
-        """Main feed ingestion loop."""
-        if self.use_live:
-            from live import LiveConnector
-            conn = LiveConnector()
-            while self._running:
-                try:
-                    for raw in conn.fetch_snapshot("BTC/USD"):
-                        if not self._running:
-                            break
-                        self._process_and_broadcast(raw)
-                    time.sleep(0.5)
-                except Exception:
-                    time.sleep(1.0)
-        else:
-            total_events = self.sim_events if self.sim_events > 0 else 100_000_000
-            sim_cfg = SimulatorConfig(seed=42, num_events=total_events)
-            sim = FeedSimulator(sim_cfg)
-            delay = (1.0 / self.sim_speed_eps) if self.sim_speed_eps > 0 else 0.0
+        """Main feed ingestion loop: drains decoupled feed workers via SPSC ring buffers."""
+        # Ensure feed workers are initialized if start() was not invoked directly
+        if not self.feed_manager or not self.feed_manager.workers:
+            if self.use_live:
+                from feed_workers import LiveExchangeFeedWorker
+                self.feed_manager.add_worker(LiveExchangeFeedWorker("BINANCE", ["BTC/USD", "ETH/USD", "SOL/USD"], poll_interval_s=0.5))
+                self.feed_manager.add_worker(LiveExchangeFeedWorker("COINBASE", ["BTC/USD", "ETH/USD", "SOL/USD"], poll_interval_s=0.5))
+                self.feed_manager.add_worker(LiveExchangeFeedWorker("EQUITIES", ["AAPL", "MSFT", "NVDA", "SPY"], poll_interval_s=1.0))
+            else:
+                from feed_workers import SimulatorFeedWorker
+                sim_eps = self.sim_speed_eps if self.sim_speed_eps > 0 else 10000.0
+                self.feed_manager.add_worker(SimulatorFeedWorker("SIM", target_eps=sim_eps, total_events=self.sim_events))
+            self.feed_manager.start_all()
 
-            while self._running:
-                for raw, _ in sim.generate():
+        batch: List[RawEvent] = []
+        while self._running:
+            drained = self.feed_manager.drain_batch(batch, max_items=250)
+            if drained > 0:
+                for raw in batch:
                     if not self._running:
                         break
                     self._process_and_broadcast(raw)
-                    if delay > 0.0001:
-                        time.sleep(delay)
-                if self.sim_events > 0:
+                batch.clear()
+            else:
+                if self.sim_events > 0 and self._total_broadcast >= self.sim_events:
                     break
+                time.sleep(0.0005)
 
     def _process_and_broadcast(self, raw: RawEvent) -> None:
         """Ingest raw event, evaluate quality, update BBO & L2 depth, and broadcast to subscribed sockets via non-blocking queues."""
@@ -751,13 +776,44 @@ class MarketDataDaemon:
             self._record_replay(vwap_payload)
             vwap_msg = (json.dumps(vwap_payload) + "\n").encode("utf-8")
 
+        # SBE binary wire frame preparation
+        sbe_msg = None
+        if any(s.is_sbe for s in active_sessions):
+            try:
+                from sbe import pack_sbe_tick
+                sbe_msg = pack_sbe_tick(
+                    seq=seq,
+                    symbol=ev.instrument_id,
+                    source=ev.source,
+                    price=ev.price,
+                    size=ev.quantity,
+                    bid=ev.bid_price,
+                    ask=ev.ask_price,
+                    bid_size=ev.bid_size,
+                    ask_size=ev.ask_size,
+                    status=ev.quality_status.value,
+                    is_crossed=bool(bbo_q.is_crossed) if bbo_q else False,
+                    exchange_ts=ev.exchange_timestamp,
+                    ingest_ts=raw.receive_timestamp,
+                    broadcast_ts=t_broadcast,
+                    engine_us=lat_us,
+                )
+            except Exception:
+                sbe_msg = None
+
         for sess in active_sessions:
             # Per-session token bucket rate limiter
             if sess.rate_limiter and not sess.rate_limiter.allow():
                 sess.rate_limited_ticks += 1
                 continue
 
-            out_tick = bin_msg if (sess.is_binary and bin_msg) else msg
+            if sess.is_sbe and sbe_msg:
+                out_tick = sbe_msg
+            elif sess.is_binary and bin_msg:
+                out_tick = bin_msg
+            else:
+                out_tick = msg
+
             out_depth = depth_bin_msg if (sess.is_binary and depth_bin_msg) else depth_msg
 
             # L1 Tick delivery
@@ -806,6 +862,8 @@ class MarketDataDaemon:
             "host": self.host,
             "port": self.port,
             "sources": self.watchdog.source_states(),
+            "async_storage": self.async_storage.stats() if self.async_storage else None,
+            "feeds": self.feed_manager.stats() if self.feed_manager else None,
         }
 
 
@@ -822,6 +880,8 @@ class StreamClient:
         import os
         self.auth_token = auth_token if auth_token is not None else os.environ.get("MDRAP_DAEMON_TOKEN", "")
         self.sock: Optional[socket.socket] = None
+        self._query_sock: Optional[socket.socket] = None
+        self._query_lock = threading.Lock()
 
     def connect(self) -> None:
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -840,7 +900,10 @@ class StreamClient:
             if ack.get("status") != "OK":
                 raise PermissionError(f"Daemon authentication failed: {ack.get('error')}")
 
-    def _send_query(self, cmd: str) -> dict:
+    def _get_query_sock(self) -> socket.socket:
+        """Get or lazily establish a persistent, authenticated keep-alive query socket."""
+        if self._query_sock is not None:
+            return self._query_sock
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(self.timeout)
         sock.connect((self.host, self.port))
@@ -856,20 +919,50 @@ class StreamClient:
             ack = json.loads(buf.strip().split("\n")[0])
             if ack.get("status") != "OK":
                 sock.close()
-                return {"error": "UNAUTHORIZED"}
-        sock.sendall((cmd.strip() + "\n").encode("utf-8"))
-        buf = ""
-        while "\n" not in buf:
-            chunk = sock.recv(4096).decode("utf-8")
-            if not chunk:
-                break
-            buf += chunk
-        sock.close()
-        line = buf.strip().split("\n")[0] if buf else "{}"
-        try:
-            return json.loads(line)
-        except json.JSONDecodeError:
+                raise PermissionError(f"Daemon authentication failed: {ack.get('error')}")
+        self._query_sock = sock
+        return self._query_sock
+
+    def _send_query(self, cmd: str) -> dict:
+        """Send command over persistent keep-alive socket (<0.1ms latency)."""
+        with self._query_lock:
+            for attempt in range(2):
+                try:
+                    sock = self._get_query_sock()
+                    sock.sendall((cmd.strip() + "\n").encode("utf-8"))
+                    buf = ""
+                    while "\n" not in buf:
+                        chunk = sock.recv(4096).decode("utf-8")
+                        if not chunk:
+                            raise ConnectionResetError("Socket closed by daemon")
+                        buf += chunk
+                    line = buf.strip().split("\n")[0]
+                    return json.loads(line)
+                except Exception:
+                    if self._query_sock:
+                        try:
+                            self._query_sock.close()
+                        except Exception:
+                            pass
+                        self._query_sock = None
+                    if attempt == 1:
+                        return {}
             return {}
+
+    def close(self) -> None:
+        if self.sock:
+            try:
+                self.sock.close()
+            except Exception:
+                pass
+            self.sock = None
+        with self._query_lock:
+            if self._query_sock:
+                try:
+                    self._query_sock.close()
+                except Exception:
+                    pass
+                self._query_sock = None
 
     def get_status(self) -> dict:
         return self._send_query("STATUS").get("telemetry", {})
@@ -968,24 +1061,48 @@ class TerminalCockpit:
 
         print("\033[?25l", end="")  # Hide cursor
         try:
-            while True:
-                # 1. Fetch status and BBO snapshots
-                try:
-                    telemetry = self.client.get_status()
-                    bbo_btc = self.client.get_bbo("BTC/USD")
-                    bbo_aapl = self.client.get_bbo("AAPL")
-                except Exception:
-                    break
+            from terminal_display import poll_keypress
+        except Exception:
+            poll_keypress = lambda: None
 
-                # 2. Render cockpit frame
-                out = self._render_frame(telemetry, bbo_btc, bbo_aapl)
-                if sys.platform == "win32":
-                    os.system("cls")
-                    sys.stdout.write(out)
-                else:
-                    sys.stdout.write("\033[H\033[2J" + out)
-                sys.stdout.flush()
-                time.sleep(0.5)
+        paused = False
+        try:
+            while True:
+                # 1. Fetch status and BBO snapshots (unless paused)
+                if not paused:
+                    try:
+                        telemetry = self.client.get_status()
+                        bbo_btc = self.client.get_bbo("BTC/USD")
+                        bbo_aapl = self.client.get_bbo("AAPL")
+                    except Exception:
+                        break
+
+                    # 2. Render cockpit frame
+                    out = self._render_frame(telemetry, bbo_btc, bbo_aapl, paused=paused)
+                    if sys.platform == "win32":
+                        os.system("cls")
+                        sys.stdout.write(out)
+                    else:
+                        sys.stdout.write("\033[H\033[2J" + out)
+                    sys.stdout.flush()
+
+                # Poll keyboard input across 500ms cycle
+                for _ in range(10):
+                    key = poll_keypress()
+                    if key:
+                        if key in ("q", "Q", "\x1b"):
+                            return
+                        elif key == " ":
+                            paused = not paused
+                            # Re-render immediately when paused/unpaused
+                            out = self._render_frame(telemetry, bbo_btc, bbo_aapl, paused=paused)
+                            if sys.platform == "win32":
+                                os.system("cls")
+                                sys.stdout.write(out)
+                            else:
+                                sys.stdout.write("\033[H\033[2J" + out)
+                            sys.stdout.flush()
+                    time.sleep(0.05)
         except (KeyboardInterrupt, SystemExit):
             pass
         finally:
@@ -997,7 +1114,7 @@ class TerminalCockpit:
         pad = " " * max(0, width - visible_len)
         return f"\033[1;36m│\033[0m{content}{pad}\033[1;36m│\033[0m"
 
-    def _render_frame(self, st: dict, bbo_btc: Optional[dict], bbo_aapl: Optional[dict]) -> str:
+    def _render_frame(self, st: dict, bbo_btc: Optional[dict], bbo_aapl: Optional[dict], paused: bool = False) -> str:
         uptime = st.get("uptime_s", 0)
         eps = st.get("throughput_eps", 0)
         total = st.get("total_broadcast", 0)
@@ -1011,12 +1128,17 @@ class TerminalCockpit:
         lines = [
             border_top,
             self._render_box_row("  \033[1;37mMDRAP Terminal Service Cockpit (htop-style monitor)\033[0m"),
+        ]
+        if paused:
+            lines.append(self._render_box_row("  \033[1;37;41m  ⏸ TELEMETRY FROZEN — PRESS SPACE TO RESUME ⏸  \033[0m"))
+
+        lines.extend([
             self._render_box_row(f"  Daemon: \033[92mONLINE\033[0m (127.0.0.1:{st.get('port', 9876)})  |  Uptime: \033[93m{uptime:.1f}s\033[0m  |  Clients: \033[95m{clients}\033[0m"),
             border_mid,
             self._render_box_row(f"  Throughput: \033[1;92m{eps:>8,.1f} eps\033[0m  |  Total Ingested: \033[1;97m{total:>10,}\033[0m ticks"),
             border_mid,
             self._render_box_row("  \033[1;33mVenue Health & Watchdog Failover Matrix\033[0m"),
-        ]
+        ])
 
         if sources:
             src_parts = []
@@ -1041,8 +1163,9 @@ class TerminalCockpit:
             else:
                 lines.append(self._render_box_row(f"  {sym:<8} \033[90mAwaiting market ticks from active venues...\033[0m"))
 
+        pause_tag = "Resume" if paused else "Freeze"
         lines.extend([
             border_bot,
-            "\033[90m[Controls] Press Ctrl+C or 'q' to detach (daemon keeps running in background)\033[0m",
+            f"\033[90m[Hotkeys] [bold white]q[/bold white]: Detach  |  [bold white]Space[/bold white]: {pause_tag} Telemetry\033[0m",
         ])
         return "\n".join(lines) + "\n"

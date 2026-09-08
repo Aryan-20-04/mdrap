@@ -88,6 +88,24 @@ class DaemonConfig:
 
 
 @dataclass
+class FeedsConfig:
+    default_provider: str = "crypto"
+    mock_mode: bool = False
+    max_queue_size: int = 50000
+    polygon: Dict[str, Any] = field(default_factory=dict)
+    databento: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class ColumnarConfig:
+    enabled: bool = True
+    db_path: str = "data/mdrap.duckdb"
+    parquet_dir: str = "data/parquet"
+    threads: int = 4
+    memory_limit: str = "2GB"
+
+
+@dataclass
 class PlatformConfig:
     quality: QualityConfig = field(default_factory=QualityConfig)
     bbo: BBOConfig = field(default_factory=BBOConfig)
@@ -95,6 +113,8 @@ class PlatformConfig:
     storage: StorageConfig = field(default_factory=StorageConfig)
     security: SecurityConfig = field(default_factory=SecurityConfig)
     daemon: DaemonConfig = field(default_factory=DaemonConfig)
+    feeds: FeedsConfig = field(default_factory=FeedsConfig)
+    columnar: ColumnarConfig = field(default_factory=ColumnarConfig)
 
 
 def _simple_yaml_parse(text: str) -> dict:
@@ -223,6 +243,16 @@ def load_config(config_path: Optional[str] = None) -> PlatformConfig:
         auth_token=env_token or str(d_data.get("auth_token", "")),
     )
 
+    # 7. Feeds
+    f_data = raw_dict.get("feeds", {})
+    feeds_cfg = FeedsConfig(
+        default_provider=str(f_data.get("default_provider", "crypto")),
+        mock_mode=bool(f_data.get("mock_mode", False)),
+        max_queue_size=int(f_data.get("max_queue_size", 50000)),
+        polygon=dict(f_data.get("polygon", {})),
+        databento=dict(f_data.get("databento", {})),
+    )
+
     return PlatformConfig(
         quality=quality_cfg,
         bbo=bbo_cfg,
@@ -230,4 +260,5 @@ def load_config(config_path: Optional[str] = None) -> PlatformConfig:
         storage=storage_cfg,
         security=security_cfg,
         daemon=daemon_cfg,
+        feeds=feeds_cfg,
     )

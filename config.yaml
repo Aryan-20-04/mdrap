@@ -48,3 +48,28 @@ daemon:
   port: 9876                        # Default streaming socket port
   require_auth: false               # Enable pre-shared bearer token authentication
   auth_token: ""                    # Token string (or read from MDRAP_DAEMON_TOKEN env var)
+
+# 7. High-Throughput Streaming Feeds (Spec §6, §14)
+feeds:
+  default_provider: "crypto"        # crypto, polygon, databento, simulator
+  mock_mode: false                  # Set true to use high-fidelity wire-format mock generators
+  max_queue_size: 50000             # Bounded in-memory event buffer size
+  polygon:
+    stocks_endpoint: "wss://socket.polygon.io/stocks"
+    crypto_endpoint: "wss://socket.polygon.io/crypto"
+    default_symbols: ["AAPL", "MSFT", "NVDA", "TSLA"]
+  databento:
+    gateway_host: "live.databento.com"
+    gateway_port: 13000
+    dataset: "GLBX.MDP3"
+    schema: "mbp-1"
+    default_symbols: ["ES.c.0", "NQ.c.0", "AAPL"]
+
+# 8. Columnar Time-Series Storage & Vectorized Analytics (DuckDB & Parquet) (Spec §14)
+columnar:
+  enabled: true
+  db_path: "data/mdrap.duckdb"
+  parquet_dir: "data/parquet"
+  threads: 4
+  memory_limit: "2GB"
+

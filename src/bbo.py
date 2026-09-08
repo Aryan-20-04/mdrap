@@ -8,6 +8,7 @@ unhealthy sources via Watchdog integration, and tracks venue price attribution.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import json
 import time
 from typing import Any, Dict, List, Optional
 
@@ -60,6 +61,8 @@ class BBOEngine:
         self._books: Dict[str, Dict[str, CanonicalEvent]] = {}
         # Latest consolidated top of book per instrument
         self._current_bbos: Dict[str, ConsolidatedBBO] = {}
+        # Pre-serialized wire JSON byte buffers per instrument (zero-allocation fastpath)
+        self._cached_bbo_json: Dict[str, bytes] = {}
         # Venue attribution counters: source -> {'bid_count': int, 'ask_count': int, 'both_count': int}
         self._attribution: Dict[str, Dict[str, int]] = {}
         self._update_count = 0
@@ -160,6 +163,23 @@ class BBOEngine:
         )
 
         self._current_bbos[inst] = bbo
+
+        # Pre-render wire JSON byte buffer (zero-allocation fastpath)
+        bbo_wire = {
+            "status": "OK",
+            "symbol": inst,
+            "bbo": {
+                "bid": bbo.best_bid,
+                "bid_source": bbo.best_bid_source,
+                "ask": bbo.best_ask,
+                "ask_source": bbo.best_ask_source,
+                "spread": bbo.spread,
+                "mid": bbo.mid_price,
+                "crossed": bbo.is_crossed,
+            }
+        }
+        self._cached_bbo_json[inst] = (json.dumps(bbo_wire) + "\n").encode("utf-8")
+
         self._update_count += 1
         if is_crossed:
             self._crossed_count += 1
@@ -181,6 +201,13 @@ class BBOEngine:
 
         return bbo
 
+    def get_bbo_wire_bytes(self, instrument_id: str) -> bytes:
+        """Return pre-rendered UTF-8 JSON wire bytes for BBO quote."""
+        cached = self._cached_bbo_json.get(instrument_id)
+        if cached:
+            return cached
+        return (json.dumps({"status": "OK", "symbol": instrument_id, "bbo": None}) + "\n").encode("utf-8")
+
     def current_bbo(
         self, instrument_id: str, allow_stale: bool = True, now: Optional[float] = None
     ) -> Optional[ConsolidatedBBO]:
@@ -192,6 +219,8 @@ class BBOEngine:
         if not allow_stale and bbo.is_stale:
             return None
         return bbo
+
+    get_bbo = current_bbo
 
     def prune_stale(self, now: Optional[float] = None) -> int:
         """Evict expired quotes and mark depleted BBOs as stale."""

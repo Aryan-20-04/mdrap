@@ -268,7 +268,7 @@ class SecurityManager:
         src = source.upper()
         secret = self._secrets.get(src)
         if not secret:
-            secret = f"default_secret_{src}".encode("utf-8")
+            secret = secrets.token_bytes(32)
             self._secrets[src] = secret
 
         # Exclude existing signature field if present to avoid recursive self-reference

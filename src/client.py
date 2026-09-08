@@ -180,6 +180,7 @@ class MDRAPClient:
         use_shm: bool = False,
         shm_name: str = "mdrap_feed",
         use_binary: bool = False,
+        transport: str = "auto",  # 'auto', 'shm', 'binary', 'tcp'
     ):
         self.host = host
         self.port = port
@@ -188,9 +189,11 @@ class MDRAPClient:
         self.auto_replay = auto_replay
         self.max_replay_gap = max_replay_gap
         self.timeout = timeout
-        self.use_shm = use_shm
+        self.transport = transport
+        self.use_shm = use_shm or (transport == "shm") or (transport == "auto" and port == 9876)
         self.shm_name = shm_name
-        self.use_binary = use_binary
+        self.use_binary = use_binary or (transport == "binary")
+        self.transport_type: str = "DISCONNECTED"
 
         self.sock: Optional[socket.socket] = None
         self.shm_reader = None
@@ -214,15 +217,33 @@ class MDRAPClient:
         self.close()
 
     def connect(self) -> None:
-        """Establish connection with MDRAP streaming daemon (via SHM or TCP)."""
-        if self.use_shm:
-            try:
-                from shm import SHMReader
-                self.shm_reader = SHMReader(name=self.shm_name)
-                return
-            except Exception:
-                self.shm_reader = None
+        """
+        Establish connection with MDRAP streaming daemon using decoupled fallback hierarchy:
+        1. Shared Memory (<1µs) if localhost and available.
+        2. Binary Wire Protocol (<30µs) over TCP.
+        3. Standard JSON TCP (<2ms) fallback.
+        """
+        # 1. Tier 1: Try Zero-Copy Shared Memory
+        is_local = self.host in ("127.0.0.1", "localhost", "::1")
+        if (self.use_shm or self.transport in ("auto", "shm")) and is_local:
+            if self.use_shm or self.transport == "shm":
+                try:
+                    from shm import SHMReader
+                    reader = SHMReader(name=self.shm_name)
+                    # Verify writer is active
+                    if reader.is_writer_alive():
+                        self.shm_reader = reader
+                        self.transport_type = "SHM"
+                        return
+                    else:
+                        reader.close()
+                except Exception:
+                    self.shm_reader = None
 
+        if self.transport == "shm":
+            raise ConnectionError(f"Shared memory '{self.shm_name}' unavailable or publisher not running.")
+
+        # 2. Tier 2 / 3: Fallback to TCP Socket
         if self.sock is not None:
             return
 
@@ -247,7 +268,13 @@ class MDRAPClient:
             self.client_id = ack.get("client_id")
 
         if self.use_binary:
-            sock.sendall(b"FORMAT BINARY\n")
+            try:
+                sock.sendall(b"FORMAT BINARY\n")
+                self.transport_type = "BINARY_TCP"
+            except Exception:
+                self.transport_type = "JSON_TCP"
+        else:
+            self.transport_type = "JSON_TCP"
 
         self.sock = sock
 
@@ -350,7 +377,7 @@ class MDRAPClient:
         Set include_depth=True to receive Consolidated L2 Depth ladders.
         Set include_vwap=True to receive Real-Time VWAP Slicing Curves.
         """
-        if not self.sock:
+        if not self.is_connected():
             self.connect()
 
         if isinstance(symbols, str):
@@ -359,17 +386,21 @@ class MDRAPClient:
         for s in symbols:
             s_clean = s.upper()
             self._subscribed_symbols.add(s_clean)
-            self.sock.sendall(f"SUB {s_clean}\n".encode("utf-8"))
             if include_depth:
                 self._subscribed_symbols.add(f"L2:{s_clean}")
-                self.sock.sendall(f"SUB L2:{s_clean}\n".encode("utf-8"))
             if include_vwap:
                 self._subscribed_symbols.add(f"VWAP:{s_clean}")
-                self.sock.sendall(f"SUB VWAP:{s_clean}\n".encode("utf-8"))
+
+            if self.sock:
+                self.sock.sendall(f"SUB {s_clean}\n".encode("utf-8"))
+                if include_depth:
+                    self.sock.sendall(f"SUB L2:{s_clean}\n".encode("utf-8"))
+                if include_vwap:
+                    self.sock.sendall(f"SUB VWAP:{s_clean}\n".encode("utf-8"))
 
     def unsubscribe(self, symbols: list[str] | str, include_depth: bool = False, include_vwap: bool = False) -> None:
         """Unsubscribe from specified symbols."""
-        if not self.sock:
+        if not self.is_connected():
             return
 
         if isinstance(symbols, str):
@@ -378,13 +409,17 @@ class MDRAPClient:
         for s in symbols:
             s_clean = s.upper()
             self._subscribed_symbols.discard(s_clean)
-            self.sock.sendall(f"UNSUB {s_clean}\n".encode("utf-8"))
             if include_depth:
                 self._subscribed_symbols.discard(f"L2:{s_clean}")
-                self.sock.sendall(f"UNSUB L2:{s_clean}\n".encode("utf-8"))
             if include_vwap:
                 self._subscribed_symbols.discard(f"VWAP:{s_clean}")
-                self.sock.sendall(f"UNSUB VWAP:{s_clean}\n".encode("utf-8"))
+
+            if self.sock:
+                self.sock.sendall(f"UNSUB {s_clean}\n".encode("utf-8"))
+                if include_depth:
+                    self.sock.sendall(f"UNSUB L2:{s_clean}\n".encode("utf-8"))
+                if include_vwap:
+                    self.sock.sendall(f"UNSUB VWAP:{s_clean}\n".encode("utf-8"))
 
     def request_replay(
         self,
@@ -420,19 +455,70 @@ class MDRAPClient:
 
         # If streaming via Shared Memory (sub-microsecond IPC)
         if self.shm_reader:
+            # Check epoch before streaming in case publisher restarted while client was idle
+            if not self.shm_reader.check_epoch_valid():
+                try:
+                    self.shm_reader.close()
+                    from shm import SHMReader
+                    self.shm_reader = SHMReader(name=self.shm_name)
+                except Exception:
+                    pass
+
             count = 0
-            for item in self.shm_reader.stream(timeout=timeout, max_events=max_events):
-                sym = item.get("sym")
-                if "ALL" in self._subscribed_symbols or not self._subscribed_symbols or sym in self._subscribed_symbols:
-                    t_recv = item.get("recv_ts", time.time())
-                    ev = MarketEvent.from_dict(item, recv_ts=t_recv)
-                    self._events_received += 1
-                    self._record_latency(ev)
-                    yield ev
-                    count += 1
+            t_start = time.time()
+            while True:
+                rem_timeout = max(0.001, timeout - (time.time() - t_start)) if timeout is not None else None
+                rem_events = (max_events - count) if max_events is not None else None
+                epoch_reset = False
+
+                try:
+                    for item in self.shm_reader.stream(timeout=rem_timeout, max_events=rem_events):
+                        # Detect publisher restart via epoch generation check
+                        if not self.shm_reader.check_epoch_valid():
+                            # Publisher restarted! Re-attach cleanly without crashing
+                            try:
+                                self.shm_reader.close()
+                                from shm import SHMReader
+                                self.shm_reader = SHMReader(name=self.shm_name)
+                                epoch_reset = True
+                                break  # Break to outer while loop to resume with new reader
+                            except Exception:
+                                break
+
+                        sym = item.get("sym")
+                        if "ALL" in self._subscribed_symbols or not self._subscribed_symbols or sym in self._subscribed_symbols:
+                            t_recv = item.get("recv_ts", time.time())
+                            ev = MarketEvent.from_dict(item, recv_ts=t_recv)
+                            self._events_received += 1
+                            self._record_latency(ev)
+                            yield ev
+                            count += 1
+                            if max_events and count >= max_events:
+                                return
+
                     if max_events and count >= max_events:
                         return
-            return
+
+                    if epoch_reset:
+                        if timeout is not None and (time.time() - t_start) >= timeout:
+                            return
+                        continue
+
+                    if timeout is not None:
+                        return
+                except Exception:
+                    # If SHM stream encountered fatal error, attempt graceful fallback to TCP
+                    try:
+                        if self.shm_reader:
+                            self.shm_reader.close()
+                            self.shm_reader = None
+                    except Exception:
+                        pass
+                    break
+
+            if not self.shm_reader:
+                # Fallback to TCP if SHM degraded
+                self.connect()
 
         # If streaming via Binary Wire Protocol
         if self.use_binary:
@@ -578,10 +664,16 @@ class MDRAPClient:
             idx = int(len(arr) * pct)
             return arr[min(idx, len(arr) - 1)]
 
+        overruns = self.shm_reader.overrun_stats.total_laps if self.shm_reader else 0
+        skipped = self.shm_reader.overrun_stats.skipped_ticks if self.shm_reader else 0
+
         return {
+            "transport_type": self.transport_type,
             "events_received": self._events_received,
             "gaps_detected": self._gaps_detected,
             "events_replayed": self._events_replayed,
+            "overruns": overruns,
+            "skipped_ticks": skipped,
             "wire_latency_p50_us": p(wire_sorted, 0.50),
             "wire_latency_p95_us": p(wire_sorted, 0.95),
             "wire_latency_p99_us": p(wire_sorted, 0.99),

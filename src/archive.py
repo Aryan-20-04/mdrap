@@ -141,10 +141,14 @@ def replay(base_dir: str, date: Optional[str] = None, source: Optional[str] = No
             with open(file_path, 'r', encoding='utf-8') as f:
                 for line in f:
                     if line.strip():
-                        data = json.loads(line)
-                        yield RawEvent(
-                            raw_id=data["raw_id"],
-                            source=data["source"],
-                            payload=data["payload"],
-                            receive_timestamp=data["receive_timestamp"]
-                        )
+                        try:
+                            data = json.loads(line)
+                            yield RawEvent(
+                                raw_id=data["raw_id"],
+                                source=data["source"],
+                                payload=data["payload"],
+                                receive_timestamp=data["receive_timestamp"]
+                            )
+                        except (json.JSONDecodeError, KeyError):
+                            # Skip corrupted/truncated archive lines without crashing replay
+                            continue

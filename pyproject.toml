@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mdrap"
-version = "1.0.0"
+version = "1.0.0rc3"
 description = "Market Data Reliability & Acceleration Platform - Financial market infrastructure for converting noisy market feeds into validated canonical streams"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -71,7 +71,18 @@ all = [
 mdrap = "cli:main"
 
 [tool.setuptools]
-py-modules = ["cli"]
+py-modules = [
+    "cli", "analytics", "archive", "async_storage", "bbo", "benchmark", "broker", 
+    "chaos", "client", "columnar", "config", "dashboard", "databento_feed", "depth", 
+    "excel_bridge", "exporter", "fastpath", "feed_handler", "feed_workers", 
+    "flow_tracker", "gateway", "gateway_tcp", "live", "mbo", "metrics", "models", 
+    "multicast_arbitrator", "pipeline", "pipeline_v2", "polygon_feed", "prometheus", 
+    "protocol", "quality", "reconciliation", "sbe", "sdk_dashboard", "security", 
+    "service", "sharded_pipeline", "shm", "simulator", "spsc_ring", "storage", 
+    "strategy_sdk", "stresstest", "tca", "term", "terminal_display", "watchdog", 
+    "web_cockpit", "workload_simulator", "ws_feed"
+]
+package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]

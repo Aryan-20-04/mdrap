@@ -208,6 +208,15 @@ EXPORT void fastpath_evaluate(const FastEvent *ev, FastResult *res) {
         return;
     }
 
+    // Numerical Validity Bounds: reject inf or negative prices / quantities
+    if ((!isnan(ev->price) && (isinf(ev->price) || ev->price < 0.0)) ||
+        (!isnan(ev->quantity) && (isinf(ev->quantity) || ev->quantity < 0.0)) ||
+        (!isnan(ev->bid_price) && (isinf(ev->bid_price) || ev->bid_price < 0.0)) ||
+        (!isnan(ev->ask_price) && (isinf(ev->ask_price) || ev->ask_price < 0.0))) {
+        mark(res, STATUS_INVALID, REASON_SCHEMA_VIOLATION);
+        return;
+    }
+
     if (!g_last_seq || !g_last_ts || !g_price_stats) {
         fastpath_init(g_staleness_threshold_s, g_price_anomaly_stddev, g_price_window);
         if (!g_last_seq || !g_last_ts || !g_price_stats) {
@@ -543,5 +552,361 @@ EXPORT void fastpath_replay_clear(void) {
     g_replay_max_seq = 0;
     g_replay_total_recorded = 0;
 }
+
+
+// ---------------------------------------------------------------------------
+// Native Zero-Copy Shared Memory (SHM) Hot-Path Routines (Spec §18, Phase 1)
+// ---------------------------------------------------------------------------
+
+#pragma pack(push, 1)
+typedef struct {
+    uint64_t commit_seq;
+    uint8_t event_type;
+    uint8_t status;
+    uint8_t is_crossed;
+    uint8_t pad1[5];
+    double exchange_ts;
+    double ingest_ts;
+    double broadcast_ts;
+    float engine_us;
+    uint8_t pad2[4];
+    double price;
+    double size;
+    double bid;
+    double ask;
+    double bid_sz;
+    double ask_sz;
+    char symbol[16];
+    char source[8];
+    uint8_t pad3[8];
+} NativeShmSlot; // exactly 128 bytes
+#pragma pack(pop)
+
+EXPORT int32_t fastpath_shm_write_tick(
+    uint8_t *shm_buf,
+    uint32_t slot_count,
+    uint64_t seq,
+    const char *symbol,
+    const char *source,
+    double price,
+    double size,
+    double bid,
+    double ask,
+    double bid_sz,
+    double ask_sz,
+    uint8_t status,
+    uint8_t is_crossed,
+    double exchange_ts,
+    double ingest_ts,
+    double broadcast_ts,
+    float engine_us
+) {
+    if (!shm_buf || slot_count == 0) return 0;
+
+    uint32_t mask = slot_count - 1;
+    uint32_t slot_idx = (uint32_t)(seq & mask);
+    NativeShmSlot *slot = (NativeShmSlot *)(shm_buf + 128 + (slot_idx * 128));
+
+    // Phase 1: Write all payload fields
+    slot->event_type = 1; // TICK
+    slot->status = status;
+    slot->is_crossed = is_crossed;
+    memset(slot->pad1, 0, sizeof(slot->pad1));
+    slot->exchange_ts = exchange_ts;
+    slot->ingest_ts = ingest_ts;
+    slot->broadcast_ts = broadcast_ts;
+    slot->engine_us = engine_us;
+    memset(slot->pad2, 0, sizeof(slot->pad2));
+    slot->price = price;
+    slot->size = size;
+    slot->bid = bid;
+    slot->ask = ask;
+    slot->bid_sz = bid_sz;
+    slot->ask_sz = ask_sz;
+
+    memset(slot->symbol, 0, sizeof(slot->symbol));
+    if (symbol) strncpy(slot->symbol, symbol, 15);
+    memset(slot->source, 0, sizeof(slot->source));
+    if (source) strncpy(slot->source, source, 7);
+    memset(slot->pad3, 0, sizeof(slot->pad3));
+
+    // Atomic commit_seq write
+    slot->commit_seq = seq;
+
+    // Phase 2: Update write_seq in Header Line 1 (offset 20)
+    *(uint64_t *)(shm_buf + 20) = seq;
+    return 1;
+}
+
+EXPORT int32_t fastpath_shm_read_slot(
+    const uint8_t *shm_buf,
+    uint32_t slot_count,
+    uint64_t target_seq,
+    NativeShmSlot *out_slot
+) {
+    if (!shm_buf || !out_slot || slot_count == 0) return 0;
+
+    uint64_t head_seq = *(const uint64_t *)(shm_buf + 20);
+    if (target_seq > head_seq) return 0; // Not published yet
+    if (head_seq - target_seq >= slot_count) return -1; // Overrun (lapped)
+
+    uint32_t mask = slot_count - 1;
+    uint32_t slot_idx = (uint32_t)(target_seq & mask);
+    const NativeShmSlot *slot = (const NativeShmSlot *)(shm_buf + 128 + (slot_idx * 128));
+
+    if (slot->commit_seq != target_seq) return 0; // Uncommitted or being overwritten
+
+    memcpy(out_slot, slot, sizeof(NativeShmSlot));
+
+    if (out_slot->commit_seq != target_seq || slot->commit_seq != target_seq) {
+        return 0; // Torn read detected
+    }
+    return 1; // Success
+}
+
+// ---------------------------------------------------------------------------
+// Simple Binary Encoding (SBE) Wire Protocol Acceleration (Spec §18, §26)
+// ---------------------------------------------------------------------------
+
+#pragma pack(push, 1)
+typedef struct {
+    uint16_t block_length;
+    uint16_t template_id;
+    uint16_t schema_id;
+    uint16_t version;
+} SbeHeader;
+
+typedef struct {
+    uint64_t seq;
+    double exchange_ts;
+    double ingest_ts;
+    double broadcast_ts;
+    double price;
+    double size;
+    double bid;
+    double ask;
+    double bid_size;
+    double ask_size;
+    uint8_t status;
+    uint8_t is_crossed;
+    uint16_t reserved;
+    float engine_us;
+    char symbol[16];
+    char source[16];
+} SbeTickPayload;
+
+typedef struct {
+    SbeHeader header;
+    SbeTickPayload payload;
+} SbeTickFrame;
+#pragma pack(pop)
+
+EXPORT int32_t fastpath_sbe_pack_tick(
+    uint8_t *out_buf,
+    uint64_t seq,
+    const char *symbol,
+    const char *source,
+    double price,
+    double size,
+    double bid,
+    double ask,
+    double bid_size,
+    double ask_size,
+    uint8_t status_code,
+    uint8_t is_crossed,
+    double exchange_ts,
+    double ingest_ts,
+    double broadcast_ts,
+    float engine_us
+) {
+    if (!out_buf) return 0;
+    SbeTickFrame *frame = (SbeTickFrame *)out_buf;
+    frame->header.block_length = sizeof(SbeTickPayload);
+    frame->header.template_id = 101;
+    frame->header.schema_id = 1;
+    frame->header.version = 1;
+
+    frame->payload.seq = seq;
+    frame->payload.exchange_ts = exchange_ts;
+    frame->payload.ingest_ts = ingest_ts;
+    frame->payload.broadcast_ts = broadcast_ts;
+    frame->payload.price = price;
+    frame->payload.size = size;
+    frame->payload.bid = bid;
+    frame->payload.ask = ask;
+    frame->payload.bid_size = bid_size;
+    frame->payload.ask_size = ask_size;
+    frame->payload.status = status_code;
+    frame->payload.is_crossed = is_crossed;
+    frame->payload.reserved = 0;
+    frame->payload.engine_us = engine_us;
+
+    memset(frame->payload.symbol, 0, 16);
+    if (symbol) strncpy(frame->payload.symbol, symbol, 15);
+    memset(frame->payload.source, 0, 16);
+    if (source) strncpy(frame->payload.source, source, 15);
+
+    return sizeof(SbeTickFrame);
+}
+
+EXPORT int32_t fastpath_sbe_unpack_tick(
+    const uint8_t *in_buf,
+    size_t in_len,
+    SbeTickPayload *out_payload
+) {
+    if (!in_buf || !out_payload || in_len < sizeof(SbeTickFrame)) return 0;
+    const SbeTickFrame *frame = (const SbeTickFrame *)in_buf;
+    if (frame->header.template_id != 101) return 0;
+    memcpy(out_payload, &frame->payload, sizeof(SbeTickPayload));
+    return 1;
+}
+
+EXPORT int32_t fastpath_process_sbe_stream(
+    const uint8_t *sbe_buffer,
+    int32_t count,
+    FastResult *out_results,
+    uint8_t *shm_buffer,
+    uint32_t shm_slot_count
+) {
+    if (!sbe_buffer || count <= 0) return 0;
+
+    const SbeTickFrame *frames = (const SbeTickFrame *)sbe_buffer;
+    int32_t valid_count = 0;
+
+    for (int32_t i = 0; i < count; ++i) {
+        const SbeTickPayload *p = &frames[i].payload;
+        int32_t status = STATUS_VALID;
+        uint32_t reason_mask = REASON_NONE;
+
+        // 1. Numerical Validity Bounds
+        if ((!isnan(p->price) && (isinf(p->price) || p->price < 0.0)) ||
+            (!isnan(p->bid) && (isinf(p->bid) || p->bid < 0.0)) ||
+            (!isnan(p->ask) && (isinf(p->ask) || p->ask < 0.0))) {
+            status = STATUS_INVALID;
+            reason_mask |= REASON_SCHEMA_VIOLATION;
+        }
+
+        // 2. Crossed Quotes
+        if (!isnan(p->bid) && !isnan(p->ask) && p->bid > 0.0 && p->ask > 0.0) {
+            if (p->bid > p->ask) {
+                status = STATUS_INVALID;
+                reason_mask |= REASON_CROSSED_QUOTE;
+            }
+        }
+
+        // 3. Deduplication Check
+        if (p->seq > 0) {
+            uint64_t key = p->seq;
+            if (check_and_insert_dedup(key)) {
+                status = STATUS_INVALID;
+                reason_mask |= REASON_DUPLICATE;
+            }
+        }
+
+        if (out_results) {
+            out_results[i].status = status;
+            out_results[i].reason_mask = reason_mask;
+        }
+
+        if (status == STATUS_VALID) {
+            valid_count++;
+        }
+
+        // 4. Zero-Copy Shared Memory Write
+        if (shm_buffer && shm_slot_count > 0 && status != STATUS_INVALID) {
+            fastpath_shm_write_tick(
+                shm_buffer,
+                shm_slot_count,
+                p->seq,
+                p->symbol,
+                p->source,
+                p->price,
+                p->size,
+                p->bid,
+                p->ask,
+                p->bid_size,
+                p->ask_size,
+                (uint8_t)status,
+                p->is_crossed,
+                p->exchange_ts,
+                p->ingest_ts,
+                p->broadcast_ts,
+                p->engine_us
+            );
+        }
+    }
+
+    return valid_count;
+}
+
+EXPORT int32_t fastpath_sbe_generate_stream(
+    uint8_t *sbe_buffer,
+    int32_t count,
+    double anomaly_rate
+) {
+    if (!sbe_buffer || count <= 0) return 0;
+    SbeTickFrame *frames = (SbeTickFrame *)sbe_buffer;
+    const char *symbols[] = {"AAPL", "MSFT", "NVDA", "BTC/USD", "ES.c.0"};
+    const char *sources[] = {"NASDAQ", "BATS", "ARCA", "EDGX", "IEX"};
+    int num_syms = 5;
+    int num_srcs = 5;
+    double base_prices[] = {150.0, 420.0, 130.0, 65000.0, 5800.0};
+
+    for (int32_t i = 0; i < count; ++i) {
+        int sym_idx = i % num_syms;
+        int src_idx = (i / num_syms) % num_srcs;
+        double base = base_prices[sym_idx];
+        double drift = (double)((i % 100) - 50) * 0.01;
+        double price = base + drift;
+        double bid = price - 0.05;
+        double ask = price + 0.05;
+        uint64_t seq = (uint64_t)(i + 1);
+
+        if (anomaly_rate > 0.0 && ((i % 1000) < (int)(anomaly_rate * 1000.0))) {
+            int kind = i % 3;
+            if (kind == 0) {
+                // Crossed quote
+                bid = ask + 0.10;
+            } else if (kind == 1) {
+                // Negative price
+                price = -1.0;
+            } else {
+                // Duplicate sequence
+                if (i > 10) seq = (uint64_t)(i - 5);
+            }
+        }
+
+        frames[i].header.block_length = (uint16_t)sizeof(SbeTickPayload);
+        frames[i].header.template_id = 101;
+        frames[i].header.schema_id = 1;
+        frames[i].header.version = 1;
+
+        SbeTickPayload *p = &frames[i].payload;
+        p->seq = seq;
+        p->price = price;
+        p->size = 100.0f;
+        p->bid = bid;
+        p->ask = ask;
+        p->bid_size = 50.0f;
+        p->ask_size = 50.0f;
+        p->status = 0;
+        p->is_crossed = (bid > ask) ? 1 : 0;
+        p->reserved = 0;
+        p->exchange_ts = 1700000000.0 + (double)i * 0.00001;
+        p->ingest_ts = p->exchange_ts + 0.000002;
+        p->broadcast_ts = p->exchange_ts + 0.000005;
+        p->engine_us = 0.05f;
+
+        memset(p->symbol, 0, 16);
+        strncpy(p->symbol, symbols[sym_idx], 15);
+        memset(p->source, 0, 16);
+        strncpy(p->source, sources[src_idx], 15);
+    }
+    return count;
+}
+
+
+
+
 
 

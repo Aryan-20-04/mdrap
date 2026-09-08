@@ -654,3 +654,342 @@ class MarketDataExporter:
         generated_files.append(quarantine_path)
 
         return generated_files
+
+    def export_tca_workbook(
+        self,
+        tca_report: dict,
+        symbol: str = "AAPL",
+        output_path: Optional[str] = None,
+        auto_open: bool = False,
+    ) -> str:
+        """
+        Generate an audit-grade Best Execution & TCA Microsoft Excel (.xlsx) report.
+        """
+        try:
+            import openpyxl
+            from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+            from openpyxl.utils import get_column_letter
+        except ImportError:
+            return ""
+
+        clean_sym = symbol.replace("/", "_").replace("-", "_")
+        timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+        if output_path is None:
+            output_path = os.path.abspath(f"data/reports/MDRAP_TCA_{clean_sym}_{timestamp_str}.xlsx")
+        else:
+            output_path = os.path.abspath(output_path)
+
+        wb = openpyxl.Workbook()
+        wb.remove(wb.active)
+
+        font_title = Font(name="Segoe UI", size=14, bold=True, color="1E293B")
+        font_hdr = Font(name="Segoe UI", size=10, bold=True, color="FFFFFF")
+        font_cell = Font(name="Segoe UI", size=10, color="1E293B")
+        font_bold = Font(name="Segoe UI", size=10, bold=True, color="1E293B")
+        font_improved = Font(name="Segoe UI", size=10, color="065F46", bold=True)
+        font_disimproved = Font(name="Segoe UI", size=10, color="991B1B", bold=True)
+
+        fill_hdr = PatternFill(start_color="1E293B", end_color="1E293B", fill_type="solid")
+        fill_improved = PatternFill(start_color="ECFDF5", end_color="ECFDF5", fill_type="solid")
+        fill_disimproved = PatternFill(start_color="FEF2F2", end_color="FEF2F2", fill_type="solid")
+        border_thin = Border(
+            left=Side(style="thin", color="E2E8F0"),
+            right=Side(style="thin", color="E2E8F0"),
+            top=Side(style="thin", color="E2E8F0"),
+            bottom=Side(style="thin", color="E2E8F0"),
+        )
+        align_center = Alignment(horizontal="center", vertical="center")
+
+        # TAB 1: EXECUTIVE SUMMARY & REGULATORY COMPLIANCE
+        ws1 = wb.create_sheet(title="Executive Summary")
+        ws1.views.sheetView[0].showGridLines = True
+        ws1["A1"] = f"MDRAP Best Execution & TCA Audit Report: {symbol}"
+        ws1["A1"].font = font_title
+        ws1["A2"] = f"Regulatory Compliance Benchmark (SEC Rule 606 & MiFID II RTS 28) | Merkle Proof: {tca_report.get('merkle_root', '')[:24]}..."
+        ws1["A2"].font = Font(name="Segoe UI", size=9, italic=True, color="64748B")
+
+        summary_rows = [
+            ("Execution Quality Score", f"{tca_report.get('overall_quality_score', 0):.1f} / 100", "Composite execution benchmark vs true consolidated NBBO"),
+            ("Regulatory Compliance Verdict", tca_report.get("compliance_status", "COMPLIANT"), "SEC Rule 605/606 & MiFID II RTS 27/28 Best Execution standard"),
+            ("Cryptographic Merkle Root", tca_report.get("merkle_root", ""), "Immutable SHA-256 tamper-evident verification hash"),
+            ("Total Orders Evaluated", f"{tca_report.get('total_trades', 0):,}", "Executed fills matched to contemporary microsecond quotes"),
+            ("Total Executed Shares", f"{tca_report.get('total_shares', 0):,}", "Cumulative share volume"),
+            ("Total Traded Notional ($)", f"${tca_report.get('total_notional', 0):,.2f}", "Gross traded dollar volume"),
+            ("Mean Slippage vs Arrival", f"{tca_report.get('mean_slippage_bps', 0):.2f} bps", "Average basis points slipped vs arrival price"),
+            ("p50 Median Slippage", f"{tca_report.get('p50_slippage_bps', 0):.2f} bps", "Median execution slippage"),
+            ("p95 Tail Slippage", f"{tca_report.get('p95_slippage_bps', 0):.2f} bps", "95th percentile slippage"),
+            ("Effective Spread", f"{tca_report.get('mean_effective_spread_bps', 0):.2f} bps", "2 * |Price - Midpoint|"),
+            ("Quoted NBBO Spread", f"{tca_report.get('mean_quoted_spread_bps', 0):.2f} bps", "Consolidated prevailing bid-ask spread"),
+            ("Price Improvement Rate", f"{tca_report.get('price_improvement_rate_pct', 0):.1f}%", f"{tca_report.get('price_improvement_count', 0)} orders filled inside the spread"),
+            ("Total Price Improvement ($)", f"${tca_report.get('total_price_improvement_usd', 0):,.2f}", "Total money saved vs prevailing quote"),
+            ("Total Slippage Cost ($)", f"${tca_report.get('total_slippage_cost_usd', 0):,.2f}", "Total execution drag"),
+        ]
+
+        ws1.cell(row=4, column=1, value="Metric").fill = fill_hdr
+        ws1.cell(row=4, column=1).font = font_hdr
+        ws1.cell(row=4, column=2, value="Result").fill = fill_hdr
+        ws1.cell(row=4, column=2).font = font_hdr
+        ws1.cell(row=4, column=3, value="Description / Audit Rule").fill = fill_hdr
+        ws1.cell(row=4, column=3).font = font_hdr
+
+        for r_idx, (m_lbl, m_val, m_desc) in enumerate(summary_rows, start=5):
+            c1 = ws1.cell(row=r_idx, column=1, value=m_lbl)
+            c2 = ws1.cell(row=r_idx, column=2, value=m_val)
+            c3 = ws1.cell(row=r_idx, column=3, value=m_desc)
+            c1.font = font_bold
+            c2.font = font_cell
+            c3.font = font_cell
+            c1.border = border_thin
+            c2.border = border_thin
+            c3.border = border_thin
+
+        # TAB 2: BROKER SCORECARD
+        ws2 = wb.create_sheet(title="Broker Scorecard")
+        ws2.views.sheetView[0].showGridLines = True
+        ws2["A1"] = f"Broker & Venue Execution Quality Scorecard: {symbol}"
+        ws2["A1"].font = font_title
+        ws2["A2"] = "Comparative routing quality, PFOF markup detection, and price improvement ranking"
+        ws2["A2"].font = Font(name="Segoe UI", size=9, italic=True, color="64748B")
+
+        b_headers = ["Broker / Execution Desk", "Orders", "Volume (Shares)", "Notional ($)", "Avg Slippage (bps)", "Avg Eff Spread (bps)", "Improvement Rate", "Total Improvement ($)", "Slippage Cost ($)", "Score", "Rating"]
+        for col_i, h in enumerate(b_headers, 1):
+            cell = ws2.cell(row=4, column=col_i, value=h)
+            cell.fill = fill_hdr
+            cell.font = font_hdr
+            cell.alignment = align_center
+
+        for r_idx, sc in enumerate(tca_report.get("broker_scorecards", []), start=5):
+            ws2.cell(row=r_idx, column=1, value=sc.get("broker")).font = font_bold
+            ws2.cell(row=r_idx, column=2, value=sc.get("orders")).number_format = "#,##0"
+            ws2.cell(row=r_idx, column=3, value=sc.get("shares")).number_format = "#,##0"
+            ws2.cell(row=r_idx, column=4, value=sc.get("notional")).number_format = "$#,##0.00"
+            ws2.cell(row=r_idx, column=5, value=sc.get("avg_slippage_bps")).number_format = '0.00" bps"'
+            ws2.cell(row=r_idx, column=6, value=sc.get("avg_eff_spread_bps")).number_format = '0.00" bps"'
+            ws2.cell(row=r_idx, column=7, value=sc.get("improvement_rate_pct", 0) / 100.0).number_format = "0.0%"
+            ws2.cell(row=r_idx, column=8, value=sc.get("total_improvement_usd")).number_format = "$#,##0.00"
+            ws2.cell(row=r_idx, column=9, value=sc.get("slippage_cost_usd")).number_format = "$#,##0.00"
+            ws2.cell(row=r_idx, column=10, value=sc.get("score")).number_format = "0.0"
+            ws2.cell(row=r_idx, column=11, value=sc.get("rating")).font = font_bold
+
+            for ci in range(1, 12):
+                ws2.cell(row=r_idx, column=ci).border = border_thin
+
+        # TAB 3: EXECUTION LOG
+        ws3 = wb.create_sheet(title="Execution Audit Log")
+        ws3.views.sheetView[0].showGridLines = True
+        ws3["A1"] = f"Microsecond Execution Fill Audit Log: {symbol}"
+        ws3["A1"].font = font_title
+
+        log_headers = ["Trade ID", "Side", "Exec Price", "Shares", "Arrival Price", "NBBO Bid", "NBBO Ask", "Spread (bps)", "Slippage (bps)", "Improvement ($)", "Broker", "Venue", "Score", "Merkle Leaf Hash"]
+        for col_i, h in enumerate(log_headers, 1):
+            cell = ws3.cell(row=3, column=col_i, value=h)
+            cell.fill = fill_hdr
+            cell.font = font_hdr
+            cell.alignment = align_center
+
+        for r_idx, m in enumerate(tca_report.get("metrics", [])[:500], start=4):
+            ws3.cell(row=r_idx, column=1, value=m.get("trade_id")).font = font_cell
+            ws3.cell(row=r_idx, column=2, value=m.get("side")).font = font_bold
+            ws3.cell(row=r_idx, column=3, value=m.get("price")).number_format = "$#,##0.0000"
+            ws3.cell(row=r_idx, column=4, value=m.get("shares")).number_format = "#,##0"
+            ws3.cell(row=r_idx, column=5, value=m.get("arrival_price")).number_format = "$#,##0.0000"
+            ws3.cell(row=r_idx, column=6, value=m.get("bid")).number_format = "$#,##0.0000"
+            ws3.cell(row=r_idx, column=7, value=m.get("ask")).number_format = "$#,##0.0000"
+            ws3.cell(row=r_idx, column=8, value=m.get("quoted_spread_bps")).number_format = "0.00"
+            ws3.cell(row=r_idx, column=9, value=m.get("slippage_bps")).number_format = "0.00"
+
+            imp_cell = ws3.cell(row=r_idx, column=10, value=m.get("price_improvement_usd"))
+            imp_cell.number_format = "$#,##0.00"
+            if m.get("is_improved"):
+                imp_cell.fill = fill_improved
+                imp_cell.font = font_improved
+            elif m.get("is_disimproved"):
+                imp_cell.fill = fill_disimproved
+                imp_cell.font = font_disimproved
+
+            ws3.cell(row=r_idx, column=11, value=m.get("broker")).font = font_cell
+            ws3.cell(row=r_idx, column=12, value=m.get("venue")).font = font_cell
+            ws3.cell(row=r_idx, column=13, value=m.get("score")).number_format = "0.0"
+            ws3.cell(row=r_idx, column=14, value=m.get("merkle_hash", "")[:16] + "...").font = font_cell
+
+            for ci in range(1, 15):
+                ws3.cell(row=r_idx, column=ci).border = border_thin
+
+        for sheet in wb.worksheets:
+            for col in sheet.columns:
+                max_len = max(len(str(cell.value or "")) for cell in col)
+                col_letter = get_column_letter(col[0].column)
+                sheet.column_dimensions[col_letter].width = max(max_len + 3, 12)
+
+        wb.save(output_path)
+        if auto_open and sys.platform == "win32":
+            os.system(f'start "" "{output_path}"')
+
+        return output_path
+
+    def export_flow_workbook(
+        self,
+        flow_summary: dict,
+        symbol: str = "AAPL",
+        output_path: Optional[str] = None,
+        auto_open: bool = False,
+    ) -> str:
+        """
+        Generate an Institutional Order Flow & Cumulative Volume Delta (CVD) Excel workbook.
+        """
+        try:
+            import openpyxl
+            from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+            from openpyxl.utils import get_column_letter
+        except ImportError:
+            return ""
+
+        if hasattr(flow_summary, "summary"):
+            if hasattr(flow_summary, "symbol"):
+                symbol = flow_summary.symbol
+            flow_summary = flow_summary.summary()
+
+        clean_sym = symbol.replace("/", "_").replace("-", "_")
+        timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+        if output_path is None:
+            output_path = os.path.abspath(f"data/reports/MDRAP_FLOW_{clean_sym}_{timestamp_str}.xlsx")
+        else:
+            output_path = os.path.abspath(output_path)
+
+        wb = openpyxl.Workbook()
+        wb.remove(wb.active)
+
+        font_title = Font(name="Segoe UI", size=14, bold=True, color="1E293B")
+        font_hdr = Font(name="Segoe UI", size=10, bold=True, color="FFFFFF")
+        font_cell = Font(name="Segoe UI", size=10, color="1E293B")
+        font_bold = Font(name="Segoe UI", size=10, bold=True, color="1E293B")
+        font_buy = Font(name="Segoe UI", size=10, color="065F46", bold=True)
+        font_sell = Font(name="Segoe UI", size=10, color="991B1B", bold=True)
+
+        fill_hdr = PatternFill(start_color="1E293B", end_color="1E293B", fill_type="solid")
+        fill_accum = PatternFill(start_color="ECFDF5", end_color="ECFDF5", fill_type="solid")
+        fill_distrib = PatternFill(start_color="FEF2F2", end_color="FEF2F2", fill_type="solid")
+        border_thin = Border(
+            left=Side(style="thin", color="E2E8F0"),
+            right=Side(style="thin", color="E2E8F0"),
+            top=Side(style="thin", color="E2E8F0"),
+            bottom=Side(style="thin", color="E2E8F0"),
+        )
+        align_center = Alignment(horizontal="center", vertical="center")
+
+        # TAB 1: ORDER FLOW & CVD DASHBOARD
+        ws1 = wb.create_sheet(title="Order Flow Overview")
+        ws1.views.sheetView[0].showGridLines = True
+        ws1["A1"] = f"MDRAP Institutional Order Flow & CVD: {symbol}"
+        ws1["A1"].font = font_title
+        ws1["A2"] = f"Lee-Ready (1991) Aggressor Classification | Stance: {flow_summary.get('institutional_bias', '')}"
+        ws1["A2"].font = Font(name="Segoe UI", size=9, italic=True, color="64748B")
+
+        summary_rows = [
+            ("Institutional Flow Bias", flow_summary.get("institutional_bias", "BALANCED")),
+            ("Cumulative Volume Delta (CVD)", f"{flow_summary.get('cvd', 0):+,.2f} shares"),
+            ("Cumulative Notional Delta (CND)", f"${flow_summary.get('cnd', 0):+,.2f}"),
+            ("Aggressor Ratio (% Buyer Initiated)", f"{flow_summary.get('aggressor_ratio_pct', 50):.1f}%"),
+            ("Total Trade Count", f"{flow_summary.get('total_trades', 0):,}"),
+            ("Total Traded Volume", f"{flow_summary.get('total_volume', 0):,.2f} shares"),
+            ("Buyer-Initiated Volume (Lifting Ask)", f"{flow_summary.get('buy_volume', 0):,.2f} shares"),
+            ("Seller-Initiated Volume (Hitting Bid)", f"{flow_summary.get('sell_volume', 0):,.2f} shares"),
+            ("Whale / Institutional Block Trades", f"{flow_summary.get('whale_trades', 0) + flow_summary.get('block_trades', 0):,}"),
+            ("Retail Sized Trades (<100 shares)", f"{flow_summary.get('retail_trades', 0):,}"),
+        ]
+
+        ws1.cell(row=4, column=1, value="Order Flow Metric").fill = fill_hdr
+        ws1.cell(row=4, column=1).font = font_hdr
+        ws1.cell(row=4, column=2, value="Current Session Value").fill = fill_hdr
+        ws1.cell(row=4, column=2).font = font_hdr
+
+        for r_idx, (m_lbl, m_val) in enumerate(summary_rows, start=5):
+            c1 = ws1.cell(row=r_idx, column=1, value=m_lbl)
+            c2 = ws1.cell(row=r_idx, column=2, value=m_val)
+            c1.font = font_bold
+            c2.font = font_cell
+            c1.border = border_thin
+            c2.border = border_thin
+
+        # TAB 2: PARTICIPANT ATTRIBUTION
+        ws2 = wb.create_sheet(title="Broker Attribution")
+        ws2.views.sheetView[0].showGridLines = True
+        ws2["A1"] = f"Market Participant (MPID) Accumulation vs Distribution: {symbol}"
+        ws2["A1"].font = font_title
+
+        p_headers = ["MPID", "Participant Name", "Buy Vol", "Sell Vol", "Net Delta (Shares)", "Net Notional ($)", "Buy Ratio", "Trades", "Whales", "Stance"]
+        for col_i, h in enumerate(p_headers, 1):
+            cell = ws2.cell(row=3, column=col_i, value=h)
+            cell.fill = fill_hdr
+            cell.font = font_hdr
+            cell.alignment = align_center
+
+        for r_idx, p in enumerate(flow_summary.get("top_participants", []), start=4):
+            ws2.cell(row=r_idx, column=1, value=p.get("mpid")).font = font_bold
+            ws2.cell(row=r_idx, column=2, value=p.get("name")).font = font_cell
+            ws2.cell(row=r_idx, column=3, value=p.get("buy_volume")).number_format = "#,##0"
+            ws2.cell(row=r_idx, column=4, value=p.get("sell_volume")).number_format = "#,##0"
+
+            delta_cell = ws2.cell(row=r_idx, column=5, value=p.get("net_volume"))
+            delta_cell.number_format = "+#,##0;-#,##0;0"
+            if p.get("net_volume", 0) > 0:
+                delta_cell.font = font_buy
+            elif p.get("net_volume", 0) < 0:
+                delta_cell.font = font_sell
+
+            ws2.cell(row=r_idx, column=6, value=p.get("net_notional")).number_format = "$#,##0.00"
+            ws2.cell(row=r_idx, column=7, value=p.get("buy_ratio_pct", 50) / 100.0).number_format = "0.0%"
+            ws2.cell(row=r_idx, column=8, value=p.get("trades")).number_format = "#,##0"
+            ws2.cell(row=r_idx, column=9, value=p.get("whales")).number_format = "#,##0"
+
+            stance_cell = ws2.cell(row=r_idx, column=10, value=p.get("stance"))
+            stance_cell.font = font_bold
+            if p.get("stance") == "ACCUMULATING":
+                stance_cell.fill = fill_accum
+                stance_cell.font = font_buy
+            elif p.get("stance") == "DISTRIBUTING":
+                stance_cell.fill = fill_distrib
+                stance_cell.font = font_sell
+
+            for ci in range(1, 11):
+                ws2.cell(row=r_idx, column=ci).border = border_thin
+
+        # TAB 3: BLOCK TRADES
+        ws3 = wb.create_sheet(title="Whale & Block Log")
+        ws3.views.sheetView[0].showGridLines = True
+        ws3["A1"] = f"Whale & Institutional Block Trades: {symbol}"
+        ws3["A1"].font = font_title
+
+        b_headers = ["Trade ID", "Side", "Price", "Size", "Notional ($)", "Category", "Broker MPID", "Venue"]
+        for col_i, h in enumerate(b_headers, 1):
+            cell = ws3.cell(row=3, column=col_i, value=h)
+            cell.fill = fill_hdr
+            cell.font = font_hdr
+            cell.alignment = align_center
+
+        for r_idx, b in enumerate(flow_summary.get("recent_blocks", []), start=4):
+            ws3.cell(row=r_idx, column=1, value=b.get("trade_id")).font = font_cell
+            ws3.cell(row=r_idx, column=2, value=b.get("side")).font = font_bold
+            ws3.cell(row=r_idx, column=3, value=b.get("price")).number_format = "$#,##0.0000"
+            ws3.cell(row=r_idx, column=4, value=b.get("size")).number_format = "#,##0"
+            ws3.cell(row=r_idx, column=5, value=b.get("notional")).number_format = "$#,##0.00"
+            ws3.cell(row=r_idx, column=6, value=b.get("category")).font = font_bold
+            ws3.cell(row=r_idx, column=7, value=b.get("broker")).font = font_cell
+            ws3.cell(row=r_idx, column=8, value=b.get("venue")).font = font_cell
+
+            for ci in range(1, 9):
+                ws3.cell(row=r_idx, column=ci).border = border_thin
+
+        for sheet in wb.worksheets:
+            for col in sheet.columns:
+                max_len = max(len(str(cell.value or "")) for cell in col)
+                col_letter = get_column_letter(col[0].column)
+                sheet.column_dimensions[col_letter].width = max(max_len + 3, 12)
+
+        wb.save(output_path)
+        if auto_open and sys.platform == "win32":
+            os.system(f'start "" "{output_path}"')
+
+        return output_path

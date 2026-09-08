@@ -1,2 +1,2 @@
 @echo off
-python "%~dp0cli.py" %*
+python "%~dp0src\cli.py" %*

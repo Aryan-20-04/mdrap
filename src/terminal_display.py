@@ -33,6 +33,38 @@ from models import CanonicalEvent, EventType, QualityStatus, RawEvent
 
 
 # ---------------------------------------------------------------------------
+# Cross-Platform Non-Blocking Keyboard Input (Windows msvcrt / POSIX select)
+# ---------------------------------------------------------------------------
+
+def poll_keypress() -> Optional[str]:
+    """Check if a keyboard key was pressed without blocking (Windows & POSIX)."""
+    if sys.platform == "win32":
+        try:
+            import msvcrt
+            if msvcrt.kbhit():
+                ch = msvcrt.getch()
+                if ch in (b"\xe0", b"\x00"):  # Special key prefix (arrows, F-keys)
+                    if msvcrt.kbhit():
+                        msvcrt.getch()  # consume scan code
+                    return None
+                try:
+                    return ch.decode("utf-8", errors="ignore")
+                except Exception:
+                    return None
+        except Exception:
+            return None
+    else:
+        try:
+            import select
+            r, _, _ = select.select([sys.stdin], [], [], 0)
+            if r:
+                return sys.stdin.read(1)
+        except Exception:
+            return None
+    return None
+
+
+# ---------------------------------------------------------------------------
 # ASCII / Unicode Candlestick & Sparkline Engine
 # ---------------------------------------------------------------------------
 
@@ -319,7 +351,13 @@ class LiveTickerDashboard:
     # Rendering: Single-Ticker Focus Mode
     # -----------------------------------------------------------------------
 
-    def render_single_ticker(self, symbol: str) -> RenderableType:
+    def render_single_ticker(
+        self,
+        symbol: str,
+        paused: bool = False,
+        show_chart: bool = True,
+        show_depth: bool = False,
+    ) -> RenderableType:
         """
         Build an institutional single-ticker terminal layout.
         Contains:
@@ -462,13 +500,42 @@ class LiveTickerDashboard:
 
         # Combine into main focus cockpit
         cockpit = Table.grid(padding=(0, 0))
+        if paused:
+            cockpit.add_row(Panel("[bold white on red] ⏸ STREAM PAUSED / FROZEN — PRESS SPACE TO RESUME ⏸ [/bold white on red]", style="bold red", border_style="red"))
         cockpit.add_row(Panel(header_text, style="blue", border_style="cyan"))
         cockpit.add_row(Panel(nbbo_table, title="[bold]Consolidated Market Microstructure[/bold]", border_style="blue"))
-        cockpit.add_row(Panel(Text.from_markup(chart_str), title="[bold]Real-Time Technical Candlestick Graph[/bold]", border_style="green"))
+        if show_chart:
+            cockpit.add_row(Panel(Text.from_markup(chart_str), title="[bold]Real-Time Technical Candlestick Graph[/bold]", border_style="green"))
+        if show_depth:
+            depth_table = Table(box=None, expand=True, show_header=True)
+            depth_table.add_column("Bid Size", justify="right", style="green")
+            depth_table.add_column("Bid Price", justify="right", style="bold green")
+            depth_table.add_column("Ladder", justify="center", style="dim")
+            depth_table.add_column("Ask Price", justify="right", style="bold red")
+            depth_table.add_column("Ask Size", justify="right", style="red")
+            if ladder and (ladder.bids or ladder.asks):
+                bids = ladder.bids[:5]
+                asks = ladder.asks[:5]
+                for i in range(max(len(bids), len(asks))):
+                    b = bids[i] if i < len(bids) else None
+                    a = asks[i] if i < len(asks) else None
+                    b_sz = f"{b.total_size:,.2f}" if b else "-"
+                    b_px = f"${b.price:,.2f}" if b else "-"
+                    a_px = f"${a.price:,.2f}" if a else "-"
+                    a_sz = f"{a.total_size:,.2f}" if a else "-"
+                    depth_table.add_row(b_sz, b_px, f"L{i+1}", a_px, a_sz)
+            else:
+                depth_table.add_row("-", "-", "[dim]No L2 depth[/dim]", "-", "-")
+            cockpit.add_row(Panel(depth_table, title="[bold]Consolidated Level-2 Depth Book[/bold]", border_style="cyan"))
         cockpit.add_row(Panel(venue_table, border_style="dim"))
+        c_tag = "[green]ON[/green]" if show_chart else "[dim]OFF[/dim]"
+        d_tag = "[green]ON[/green]" if show_depth else "[dim]OFF[/dim]"
         cockpit.add_row(Text.from_markup(
-            "[dim]Press [bold white]Ctrl+C[/bold white] to pause/exit stream | "
-            "Focused single-ticker mode (flicker-free in-place updating)[/dim]"
+            f"[dim]Hotkeys: [bold white][q][/bold white] Quit  "
+            f"[bold white][Space][/bold white] {'[bold yellow]Resume[/bold yellow]' if paused else 'Freeze'}  "
+            f"[bold white][c][/bold white] Chart ({c_tag})  "
+            f"[bold white][d][/bold white] Depth ({d_tag})  "
+            f"[bold white][Tab][/bold white] Next Symbol[/dim]"
         ))
 
         return cockpit
@@ -477,7 +544,7 @@ class LiveTickerDashboard:
     # Rendering: Multi-Ticker Overview Table
     # -----------------------------------------------------------------------
 
-    def render_multi_ticker_table(self, symbols: List[str]) -> RenderableType:
+    def render_multi_ticker_table(self, symbols: List[str], paused: bool = False) -> RenderableType:
         """
         Build an in-place updating multi-symbol market matrix table.
         Each symbol has its dedicated row that updates in-place.
@@ -491,16 +558,17 @@ class LiveTickerDashboard:
             show_lines=True,
         )
         table.add_column("Symbol", style="bold white", width=10)
-        table.add_column("Last Price", justify="right", width=14)
-        table.add_column("Net Chg", justify="right", width=10)
-        table.add_column("Best Bid", justify="right", style="green", width=14)
-        table.add_column("Best Ask", justify="right", style="red", width=14)
-        table.add_column("Spread", justify="right", width=12)
-        table.add_column("Micro-Price", justify="right", style="cyan", width=14)
+        table.add_column("Last Price", justify="right", width=12)
+        table.add_column("Net Chg", justify="right", width=9)
+        table.add_column("Best Bid", justify="right", style="green", width=12)
+        table.add_column("Best Ask", justify="right", style="red", width=12)
+        table.add_column("Spread", justify="right", width=10)
+        table.add_column("Micro-Price", justify="right", style="cyan", width=12)
         table.add_column("OFI", justify="center", width=8)
-        table.add_column("Trend", justify="center", width=12)
-        table.add_column("Venues", justify="left", width=18)
-        table.add_column("Status", justify="center", width=10)
+        table.add_column("CVD", justify="right", width=9)
+        table.add_column("Trend", justify="center", width=11)
+        table.add_column("Venues", justify="left", width=16)
+        table.add_column("Status", justify="center", width=9)
 
         for sym in symbols:
             s_clean = sym.replace("-", "/")
@@ -546,9 +614,13 @@ class LiveTickerDashboard:
                 f"${bbo.mid_price:,.2f}" if (bbo and bbo.mid_price) else "-"
             )
 
-            ofi_val = ladder.imbalance_ratio if ladder else 0.0
-            ofi_style = "green" if ofi_val > 0.1 else ("red" if ofi_val < -0.1 else "dim")
+            ofi_val = ladder.ofi if (ladder and ladder.ofi != 0.0) else (ladder.imbalance_ratio if ladder else 0.0)
+            ofi_style = "green" if ofi_val > 0.05 else ("red" if ofi_val < -0.05 else "dim")
             ofi_str = f"[{ofi_style}]{ofi_val:+.2f}[/{ofi_style}]"
+
+            cvd_val = ladder.cvd if ladder else 0.0
+            cvd_style = "bold green" if cvd_val > 0 else ("bold red" if cvd_val < 0 else "dim")
+            cvd_str = f"[{cvd_style}]{cvd_val:+,.0f}[/{cvd_style}]" if cvd_val != 0 else "[dim]0[/dim]"
 
             # Sparkline
             spark = render_sparkline(self.price_histories.get(sym, self.price_histories.get(s_clean, [])), width=10)
@@ -569,16 +641,21 @@ class LiveTickerDashboard:
                 spr_str,
                 micro_str,
                 ofi_str,
+                cvd_str,
                 spark,
                 venue_str,
                 arb_str,
             )
 
         footer = Text.from_markup(
-            "\n[dim]Press [bold white]Ctrl+C[/bold white] to stop | "
-            "Run [bold cyan]mdrap live <SYM>[/bold cyan] or [bold cyan]mdrap ticker <SYM>[/bold cyan] for Single-Ticker Candlestick Focus[/dim]"
+            f"\n[dim]Hotkeys: [bold white][q][/bold white] Quit  "
+            f"[bold white][Space][/bold white] {'[bold yellow]Resume[/bold yellow]' if paused else 'Freeze'}  "
+            f"[bold white][1-9][/bold white] Focus Symbol | "
+            f"Run [bold cyan]mdrap live <SYM>[/bold cyan] for Single-Ticker Candlestick Focus[/dim]"
         )
         grid = Table.grid()
+        if paused:
+            grid.add_row(Panel("[bold white on red] ⏸ STREAM PAUSED / FROZEN — PRESS SPACE TO RESUME ⏸ [/bold white on red]", style="bold red", border_style="red"))
         grid.add_row(table)
         grid.add_row(footer)
         return grid
@@ -586,6 +663,25 @@ class LiveTickerDashboard:
     # -----------------------------------------------------------------------
     # Stream Runner Loop
     # -----------------------------------------------------------------------
+
+    def run_watchlist_stream(
+        self,
+        event_stream: Generator[RawEvent, None, None],
+        pipeline: Any,
+        symbols: List[str],
+        limit: Optional[int] = None,
+    ) -> None:
+        """
+        Execute live multi-ticker portfolio watchlist stream.
+        Renders an in-place updating matrix of all tracked symbols with OFI, CVD, and venue health.
+        """
+        return self.run_live_stream(
+            event_stream=event_stream,
+            pipeline=pipeline,
+            symbols=symbols,
+            single_ticker=None,
+            limit=limit,
+        )
 
     def run_live_stream(
         self,
@@ -597,20 +693,71 @@ class LiveTickerDashboard:
     ) -> None:
         """
         Execute the live ingestion stream with persistent, in-place terminal updates.
-        Never prints new scrolling lines.
+        Never prints new scrolling lines. Supports interactive hotkeys (Space freeze, q quit, c/d toggles).
         """
         console = Console()
         is_single = bool(single_ticker) or (len(symbols) == 1 and symbols[0].upper() not in ("ALL", "*"))
         target_sym = single_ticker or (symbols[0] if is_single else None)
 
+        paused = False
+        show_chart = True
+        show_depth = False
+
         initial_render = (
-            self.render_single_ticker(target_sym) if is_single
-            else self.render_multi_ticker_table(symbols)
+            self.render_single_ticker(target_sym, paused=paused, show_chart=show_chart, show_depth=show_depth) if is_single
+            else self.render_multi_ticker_table(symbols, paused=paused)
         )
 
-        with Live(initial_render, console=console, refresh_per_second=6, transient=False) as live:
+        with Live(initial_render, console=console, refresh_per_second=8, transient=False) as live:
             count = 0
-            for raw in event_stream:
+            stream_iter = iter(event_stream)
+            while True:
+                # 1. Non-blocking keypress check
+                key = poll_keypress()
+                if key:
+                    if key in ("q", "Q", "\x1b"):  # 'q' or Escape
+                        break
+                    elif key == " ":
+                        paused = not paused
+                        if is_single and target_sym:
+                            live.update(self.render_single_ticker(target_sym, paused=paused, show_chart=show_chart, show_depth=show_depth))
+                        else:
+                            live.update(self.render_multi_ticker_table(symbols, paused=paused))
+                    elif key in ("c", "C"):
+                        show_chart = not show_chart
+                        if is_single and target_sym:
+                            live.update(self.render_single_ticker(target_sym, paused=paused, show_chart=show_chart, show_depth=show_depth))
+                    elif key in ("d", "D"):
+                        show_depth = not show_depth
+                        if is_single and target_sym:
+                            live.update(self.render_single_ticker(target_sym, paused=paused, show_chart=show_chart, show_depth=show_depth))
+                    elif key == "\t":
+                        if len(symbols) > 1:
+                            if target_sym in symbols:
+                                idx = (symbols.index(target_sym) + 1) % len(symbols)
+                                target_sym = symbols[idx]
+                            else:
+                                target_sym = symbols[0]
+                            is_single = True
+                            live.update(self.render_single_ticker(target_sym, paused=paused, show_chart=show_chart, show_depth=show_depth))
+                    elif key.isdigit() and 1 <= int(key) <= len(symbols):
+                        idx = int(key) - 1
+                        target_sym = symbols[idx]
+                        is_single = True
+                        live.update(self.render_single_ticker(target_sym, paused=paused, show_chart=show_chart, show_depth=show_depth))
+
+                if paused:
+                    time.sleep(0.05)
+                    continue
+
+                # 2. Ingest next event
+                try:
+                    raw = next(stream_iter)
+                except (StopIteration, GeneratorExit):
+                    break
+                except Exception:
+                    break
+
                 t0 = time.perf_counter_ns()
                 ev = pipeline.process_one(raw)
                 engine_ns = time.perf_counter_ns() - t0
@@ -620,9 +767,13 @@ class LiveTickerDashboard:
 
                 # Update terminal in place
                 if is_single and target_sym:
-                    live.update(self.render_single_ticker(target_sym))
+                    live.update(self.render_single_ticker(target_sym, paused=paused, show_chart=show_chart, show_depth=show_depth))
                 else:
-                    live.update(self.render_multi_ticker_table(symbols))
+                    live.update(self.render_multi_ticker_table(symbols, paused=paused))
 
                 if limit and count >= limit:
                     break
+
+
+# Convenience alias
+TerminalDisplay = LiveTickerDashboard

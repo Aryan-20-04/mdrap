@@ -144,19 +144,44 @@ class QualityEngine:
         # Resolve instrument-specific config overrides (e.g. crypto vs equities)
         cfg = self.cfg.for_instrument(event.instrument_id) if hasattr(self.cfg, "for_instrument") else self.cfg
 
+        # -- Numerical Validity Bounds (Strict Financial Data Validation)
+        invalid_num = False
+        if event.price is not None:
+            if math.isnan(event.price) or math.isinf(event.price) or event.price < 0:
+                self._mark(event, QualityStatus.INVALID, Reason.SCHEMA_VIOLATION)
+                self._bump(Reason.SCHEMA_VIOLATION)
+                invalid_num = True
+
+        if event.quantity is not None:
+            if math.isnan(event.quantity) or math.isinf(event.quantity) or event.quantity < 0:
+                self._mark(event, QualityStatus.INVALID, Reason.SCHEMA_VIOLATION)
+                self._bump(Reason.SCHEMA_VIOLATION)
+                invalid_num = True
+
+        if event.bid_price is not None and (math.isnan(event.bid_price) or math.isinf(event.bid_price) or event.bid_price < 0):
+            self._mark(event, QualityStatus.INVALID, Reason.SCHEMA_VIOLATION)
+            self._bump(Reason.SCHEMA_VIOLATION)
+            invalid_num = True
+
+        if event.ask_price is not None and (math.isnan(event.ask_price) or math.isinf(event.ask_price) or event.ask_price < 0):
+            self._mark(event, QualityStatus.INVALID, Reason.SCHEMA_VIOLATION)
+            self._bump(Reason.SCHEMA_VIOLATION)
+            invalid_num = True
+
         # -- Staleness.
         if event.receive_timestamp - event.exchange_timestamp > cfg.staleness_threshold_s:
             self._mark(event, QualityStatus.SUSPICIOUS, Reason.STALE)
             self._bump(Reason.STALE)
 
         # -- Quote consistency: crossed book is structurally invalid.
-        if event.bid_price is not None and event.ask_price is not None:
+        if event.bid_price is not None and event.ask_price is not None and not invalid_num:
             if event.bid_price > event.ask_price:
                 self._mark(event, QualityStatus.INVALID, Reason.CROSSED_QUOTE)
                 self._bump(Reason.CROSSED_QUOTE)
 
         # -- Price sanity (trades only): flag outliers, never auto-invalidate.
-        if event.price is not None:
+        # Only fold clean, finite, non-negative prices into rolling stats
+        if event.price is not None and not invalid_num:
             stats = self._price_stats.setdefault(key, _RollingStats(cfg.price_window))
             mean, stddev = stats.get_stats(event.price)
             if stddev > 0 and abs(event.price - mean) > cfg.price_anomaly_stddev * stddev:
