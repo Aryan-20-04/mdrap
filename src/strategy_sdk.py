@@ -410,43 +410,63 @@ class WhaleMomentumStrategy(Strategy):
     """
 
     def __init__(self, symbol: str = "AAPL", trade_size: float = 100.0, stop_loss_pct: float = 0.5):
-        super().__init__(name="WhaleMomentum", symbols=[symbol])
         self.symbol = symbol
+        self.is_all = symbol.upper() in ("ALL", "*", "MARKET")
+        syms = None if self.is_all else [s.strip() for s in symbol.split(",")]
+        super().__init__(name="WhaleMomentum", symbols=syms)
         self.trade_size = trade_size
         self.stop_loss_pct = stop_loss_pct
-        self.entry_price: Optional[float] = None
+        self.entry_prices: Dict[str, float] = {}
+
+    @property
+    def entry_price(self) -> Optional[float]:
+        return self.entry_prices.get(self.symbol)
+
+    @entry_price.setter
+    def entry_price(self, val: Optional[float]):
+        if val is None:
+            self.entry_prices.pop(self.symbol, None)
+        else:
+            self.entry_prices[self.symbol] = val
 
     def on_whale(self, whale_trade: Dict[str, Any]) -> None:
-        if whale_trade.get("instrument") != self.symbol:
+        inst = whale_trade.get("instrument")
+        if not inst:
+            return
+        if not self.is_all and inst != self.symbol and inst not in self.symbols:
             return
 
         side = whale_trade.get("side", "BUY")
-        pos = self.executor.get_position(self.symbol)
+        pos = self.executor.get_position(inst)
 
         if side == "BUY" and pos.quantity <= 0:
             # Institutional accumulation detected: enter Long
             if pos.quantity < 0:
-                self.buy(self.symbol, abs(pos.quantity))  # Close short
-            order = self.buy(self.symbol, self.trade_size)
+                self.buy(inst, abs(pos.quantity))  # Close short
+            order = self.buy(inst, self.trade_size)
             if order.status == OrderStatus.FILLED:
-                self.entry_price = order.filled_price
+                self.entry_prices[inst] = order.filled_price
         elif side == "SELL" and pos.quantity >= 0:
             # Institutional distribution detected: exit Long or enter Short
             if pos.quantity > 0:
-                self.sell(self.symbol, pos.quantity)
-            self.entry_price = None
+                self.sell(inst, pos.quantity)
+            self.entry_prices.pop(inst, None)
 
     def on_tick(self, event: CanonicalEvent) -> None:
-        if event.instrument_id != self.symbol or event.price is None:
+        inst = event.instrument_id
+        if not self.is_all and inst != self.symbol and inst not in self.symbols:
+            return
+        if event.price is None:
             return
 
-        pos = self.executor.get_position(self.symbol)
-        if pos.quantity > 0 and self.entry_price is not None:
+        pos = self.executor.get_position(inst)
+        entry_price = self.entry_prices.get(inst)
+        if pos.quantity > 0 and entry_price is not None:
             # Stop-loss check
-            drop_pct = (self.entry_price - event.price) / self.entry_price * 100.0
+            drop_pct = (entry_price - event.price) / entry_price * 100.0
             if drop_pct >= self.stop_loss_pct:
-                self.sell(self.symbol, pos.quantity)
-                self.entry_price = None
+                self.sell(inst, pos.quantity)
+                self.entry_prices.pop(inst, None)
 
 
 class SpreadCaptureMarketMaker(Strategy):
@@ -457,32 +477,37 @@ class SpreadCaptureMarketMaker(Strategy):
     """
 
     def __init__(self, symbol: str = "AAPL", min_spread_bps: float = 3.0, quote_size: float = 50.0):
-        super().__init__(name="SpreadCaptureMM", symbols=[symbol])
         self.symbol = symbol
+        self.is_all = symbol.upper() in ("ALL", "*", "MARKET")
+        syms = None if self.is_all else [s.strip() for s in symbol.split(",")]
+        super().__init__(name="SpreadCaptureMM", symbols=syms)
         self.min_spread_bps = min_spread_bps
         self.quote_size = quote_size
 
     def on_quote(self, event: CanonicalEvent) -> None:
         super().on_quote(event)
-        if event.instrument_id != self.symbol or not event.bid_price or not event.ask_price:
+        inst = event.instrument_id
+        if not self.is_all and inst != self.symbol and inst not in self.symbols:
+            return
+        if not event.bid_price or not event.ask_price:
             return
 
         spread = event.ask_price - event.bid_price
         mid = (event.bid_price + event.ask_price) / 2.0
         spread_bps = (spread / mid) * 10_000.0
 
-        pos = self.executor.get_position(self.symbol)
+        pos = self.executor.get_position(inst)
 
         # Only quote if spread is attractive and position within limits
         if spread_bps >= self.min_spread_bps:
             if pos.quantity <= 0:
                 # Quote buy limit just above bid
                 buy_px = round(event.bid_price + 0.01, 2)
-                self.buy(self.symbol, self.quote_size, price=buy_px)
+                self.buy(inst, self.quote_size, price=buy_px)
             if pos.quantity >= 0:
                 # Quote sell limit just below ask
                 sell_px = round(event.ask_price - 0.01, 2)
-                self.sell(self.symbol, self.quote_size, price=sell_px)
+                self.sell(inst, self.quote_size, price=sell_px)
 
 
 class StrategyRunner:

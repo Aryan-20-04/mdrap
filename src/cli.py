@@ -3254,9 +3254,13 @@ def cmd_strategy(args):
         return
 
     # Execute Paper Strategy Run
+    is_all_market = sym.upper() in ("ALL", "*", "MARKET")
+    sym_list = [s.strip().upper() for s in sym.split(",")] if not is_all_market else []
+    display_sym = "WHOLE MARKET UNIVERSE" if is_all_market else sym
+
     console.print(Panel(
         f"[bold cyan]MDRAP Paper Trading Strategy Engine (§26)[/bold cyan]\n"
-        f"• Strategy: [bold yellow]{strat_name}[/bold yellow]  |  Symbol: [bold green]{sym}[/bold green]  |  Events: [white]{events_count:,}[/white]",
+        f"• Strategy: [bold yellow]{strat_name}[/bold yellow]  |  Universe: [bold green]{display_sym}[/bold green]  |  Events: [white]{events_count:,}[/white]",
         expand=False,
     ))
 
@@ -3265,34 +3269,65 @@ def cmd_strategy(args):
     else:
         strat = WhaleMomentumStrategy(symbol=sym, trade_size=100.0, stop_loss_pct=0.5)
 
-    runner = StrategyRunner(strat)
     flow_tracker = OrderFlowTracker()
 
+    # Single-pass streaming: generate → ingest → normalize → strategy dispatch
+    # No intermediate list, no second pass. ~2x faster and zero memory bloat.
     sim = FeedSimulator(SimulatorConfig(seed=42, num_events=events_count))
-    canonical_events = []
+    active_symbols = set()
+    event_count = 0
+
+    t_start = time.perf_counter()
+    strat.on_start()
+
     for raw, _ in sim.generate():
         try:
             raw_ing = ingest(raw)
             can = normalize(raw_ing)
-            if can.instrument_id == sym:
-                canonical_events.append(can)
-                if can.event_type == EventType.TRADE and can.price and can.quantity:
-                    flow_tracker.observe_trade(can.price, can.quantity, can.exchange_timestamp, can.source)
-                elif can.event_type == EventType.QUOTE and can.bid_price and can.ask_price:
-                    flow_tracker.observe_quote(can.bid_price, can.ask_price)
         except Exception:
             continue
 
-    t_start = time.perf_counter()
-    metrics = runner.run_events(canonical_events, flow_tracker=flow_tracker)
-    elapsed_ms = (time.perf_counter() - t_start) * 1000.0
+        if not (is_all_market or can.instrument_id == sym or can.instrument_id in sym_list):
+            continue
 
-    table = Table(title=f"Performance Tear-Sheet: {strat_name.upper()} on {sym}")
+        event_count += 1
+        active_symbols.add(can.instrument_id)
+
+        # Dispatch directly to strategy (single pass)
+        if can.event_type == EventType.QUOTE:
+            strat.on_quote(can)
+        elif can.event_type == EventType.TRADE:
+            strat.on_tick(can)
+            if can.price and can.quantity:
+                flow_tracker.observe_trade(can.price, can.quantity, can.exchange_timestamp, can.source)
+                notional = can.price * can.quantity
+                if notional >= 100_000.0 or can.quantity >= 500:
+                    whale_info = {
+                        "instrument": can.instrument_id,
+                        "price": can.price,
+                        "quantity": can.quantity,
+                        "notional": notional,
+                        "side": "BUY" if can.price >= strat._current_mid.get(can.instrument_id, can.price) else "SELL",
+                        "timestamp": can.exchange_timestamp,
+                    }
+                    strat.on_whale(whale_info)
+
+    strat.on_stop()
+    elapsed_ms = (time.perf_counter() - t_start) * 1000.0
+    metrics = strat.performance_summary()
+
+    table_title = f"Performance Tear-Sheet: {strat_name.upper()} on Whole Market Universe" if is_all_market else f"Performance Tear-Sheet: {strat_name.upper()} on {sym}"
+    table = Table(title=table_title)
     table.add_column("Performance Metric", style="cyan")
     table.add_column("Result Value", style="bold white", justify="right")
     table.add_column("Institutional Benchmark", style="dim")
 
-    table.add_row("Events Ingested & Evaluated", f"{len(canonical_events):,}", f"Simulated in {elapsed_ms:.2f} ms")
+    if is_all_market or len(sym_list) > 1:
+        sorted_syms = sorted(active_symbols)
+        table.add_row("Simulated Market Universe", f"{len(sorted_syms)} instruments ({', '.join(sorted_syms)})", "Cross-market feed")
+
+    eps = event_count / (elapsed_ms / 1000.0) if elapsed_ms > 0 else 0
+    table.add_row("Events Ingested & Evaluated", f"{event_count:,}", f"{elapsed_ms:.2f} ms ({eps:,.0f} eps)")
     table.add_row("Total Executed Trades", str(metrics["total_trades"]), "Paper EMS executions")
     table.add_row("Win Rate %", f"{metrics['win_rate_pct']:.1f}%", "Profitable closed roundtrips")
     pnl = metrics["total_pnl"]
@@ -3301,11 +3336,136 @@ def cmd_strategy(args):
     table.add_row("Portfolio Return", f"[{pnl_col}]{'+' if pnl >= 0 else ''}{metrics['return_pct']:.2f}%[/{pnl_col}]", "On $100k starting capital")
     table.add_row("Ending Equity", f"${metrics['final_equity']:,.2f}", "Cash + Mark-to-Market")
     table.add_row("Mean Execution Slippage", f"{metrics['avg_slippage_bps']:.2f} bps", "Effective spread capture")
-    pos_qty = metrics["positions"].get(sym, 0.0)
-    table.add_row("Open Net Position", f"{pos_qty:,.0f} shares", "Pre-trade risk limit: 5,000 shs")
+
+    if is_all_market or len(sym_list) > 1:
+        active_pos = {k: v for k, v in metrics["positions"].items() if v != 0}
+        pos_summary = ", ".join(f"{k}:{v:+.0f}" for k, v in sorted(active_pos.items())) if active_pos else "Flat (0 all)"
+        table.add_row("Open Net Positions", pos_summary, f"{len(active_pos)} symbols held")
+    else:
+        pos_qty = metrics["positions"].get(sym, 0.0)
+        table.add_row("Open Net Position", f"{pos_qty:,.0f} shares", "Pre-trade risk limit: 5,000 shs")
 
     console.print(table)
     console.print(f"[bold green]✔ Strategy run completed with zero risk limit breaches.[/bold green]\n")
+
+
+def cmd_itch(args):
+    """NASDAQ TotalView-ITCH 5.0 Binary Feed Parser & Benchmark Engine."""
+    from itch import (
+        ITCHFeedReplayer,
+        ITCHOrderBookTracker,
+        ITCHSyntheticGenerator,
+        run_itch_benchmark,
+        run_itch_file_benchmark,
+    )
+    console = Console()
+
+    action = getattr(args, "action", "bench") or "bench"
+    file_path = getattr(args, "file", None)
+
+    if action == "bench":
+        raw_events = getattr(args, "events", 1_000_000)
+        events_count = 1_000_000 if raw_events is None else raw_events
+        max_msgs = None if events_count == 0 else events_count
+        vol_label = "ALL (Until EOF)" if max_msgs is None else f"{events_count:,} frames"
+
+        if file_path and os.path.exists(file_path):
+            if os.path.isdir(file_path):
+                candidates = [os.path.join(file_path, f) for f in os.listdir(file_path) if not os.path.isdir(os.path.join(file_path, f))]
+                if candidates:
+                    file_path = candidates[0]
+
+            console.print(Panel(
+                f"[bold cyan]NASDAQ TotalView-ITCH 5.0 Real File Benchmark Engine[/bold cyan]\n"
+                f"• Source File: [bold yellow]{os.path.basename(file_path)}[/bold yellow]  |  Target Volume: [white]{vol_label}[/white]\n"
+                f"[dim]Streaming binary file, decoding big-endian structs, and updating L3 order book[/dim]",
+                expand=False,
+            ))
+            console.print(f"Executing ITCH benchmark directly on real exchange file {file_path}...")
+            res = run_itch_file_benchmark(file_path=file_path, max_messages=max_msgs, reconstruct_book=True)
+        else:
+            console.print(Panel(
+                f"[bold cyan]NASDAQ TotalView-ITCH 5.0 Global Benchmark Engine[/bold cyan]\n"
+                f"• Target Volume: [bold yellow]{events_count:,} binary frames[/bold yellow]  |  [dim]MBO Order Book & BBO Reconstruction[/dim]",
+                expand=False,
+            ))
+            console.print(f"Executing ITCH 5.0 benchmark across {events_count:,} binary messages...")
+            res = run_itch_benchmark(num_messages=events_count, seed=42, reconstruct_book=True)
+
+        table = Table(title="NASDAQ TotalView-ITCH 5.0 Performance Scorecard")
+        table.add_column("Benchmark Metric", style="cyan")
+        table.add_column("Measured Value", style="bold green", justify="right")
+        table.add_column("Hardware & Arch Context", style="dim")
+
+        if "file" in res:
+            table.add_row("Source NASDAQ File", str(res["file"]), f"{res.get('file_size_mb', 0):.1f} MB on disk")
+
+        table.add_row("ITCH Binary Messages Processed", f"{res['num_messages']:,}", "Big-endian binary frames")
+        table.add_row("Execution Duration", f"{res['elapsed_seconds']:.3f} s", "CPU user/sys clock")
+        table.add_row("ITCH Parsing & Book Throughput", f"{res['throughput_mps']:,.0f} msgs/sec", "Pure Python struct.Struct")
+        table.add_row("Mean Latency per Message", f"{res['mean_latency_us']:.2f} µs", "Unpack + Depth update")
+        table.add_row("Synthesized Market Trades", f"{res['executed_trades']:,}", "Converted to CanonicalEvent")
+        table.add_row("Active Book Orders Tracked", f"{res['active_orders_in_book']:,}", "In-memory MBO order cache")
+
+        b_stats = res.get("book_stats", {})
+        table.add_row("Order Adds (Msg A/F)", f"{b_stats.get('adds', 0):,}", "Liquidity posted")
+        table.add_row("Order Executions (Msg E/C)", f"{b_stats.get('executes', 0):,}", "Trades crossed")
+        table.add_row("Order Cancels/Deletes (Msg X/D)", f"{b_stats.get('cancels', 0):,}", "Liquidity cancelled")
+        table.add_row("Order Replaces (Msg U)", f"{b_stats.get('replaces', 0):,}", "Pegged order updates")
+
+        console.print(table)
+        console.print(f"[bold green]✔ NASDAQ TotalView-ITCH 5.0 benchmark verified at {res['throughput_mps']:,.0f} msgs/sec.[/bold green]\n")
+
+    elif action == "generate":
+        out_path = getattr(args, "output", "data/sample.itch") or "data/sample.itch"
+        events_count = getattr(args, "events", 100_000) or 100_000
+        os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
+
+        console.print(f"Generating {events_count:,} binary ITCH 5.0 frames to [bold cyan]{out_path}[/bold cyan]...")
+        gen = ITCHSyntheticGenerator(seed=42)
+        t0 = time.perf_counter()
+        bytes_written = 0
+        with open(out_path, "wb") as f:
+            for frame in gen.generate_stream(events_count):
+                f.write(frame)
+                bytes_written += len(frame)
+        elapsed = time.perf_counter() - t0
+        console.print(f"[bold green]✔ Generated {bytes_written / 1024 / 1024:.2f} MB ({events_count:,} frames) in {elapsed:.2f}s.[/bold green]\n")
+
+    elif action == "parse":
+        file_path = getattr(args, "file", None)
+        if not file_path or not os.path.exists(file_path):
+            console.print(f"[bold red]Error: ITCH file '{file_path}' not found.[/bold red]")
+            return
+
+        limit = getattr(args, "limit", 50) or 50
+        console.print(f"Streaming first {limit} messages from [bold cyan]{file_path}[/bold cyan]...")
+        replayer = ITCHFeedReplayer(file_path)
+        book = ITCHOrderBookTracker()
+
+        table = Table(title=f"ITCH 5.0 Stream Preview ({os.path.basename(file_path)})")
+        table.add_column("Type", style="bold magenta")
+        table.add_column("Timestamp (ns)", style="dim")
+        table.add_column("Order Ref", style="cyan")
+        table.add_column("Stock", style="bold yellow")
+        table.add_column("Side", style="green")
+        table.add_column("Shares", justify="right")
+        table.add_column("Price", justify="right", style="bold white")
+
+        for msg in replayer.iterate_messages(limit=limit):
+            book.process_message(msg)
+            px_str = f"${msg.price:.2f}" if msg.price > 0 else "-"
+            table.add_row(
+                msg.msg_type,
+                str(msg.timestamp_ns),
+                str(msg.order_ref) if msg.order_ref else "-",
+                msg.stock or "-",
+                msg.side or "-",
+                f"{msg.shares:,}" if msg.shares else "-",
+                px_str
+            )
+        console.print(table)
+        console.print(f"[dim]Replayer processed {limit} messages from {file_path}.[/dim]\n")
 
 
 def cmd_shard(args):
@@ -3851,6 +4011,15 @@ def build_parser() -> argparse.ArgumentParser:
     p_dash.add_argument("--port", type=int, default=9000, help="TCP Gateway port")
     p_dash.set_defaults(func=cmd_dashboard)
 
+    # NASDAQ TotalView-ITCH 5.0 Binary Feed Engine & Global Benchmark
+    p_itch = sub.add_parser("itch", aliases=["totalview"], help="NASDAQ TotalView-ITCH 5.0 Binary Feed Engine & Global Benchmark")
+    p_itch.add_argument("action", nargs="?", default="bench", choices=["bench", "parse", "generate"], help="Action to perform (default: bench)")
+    p_itch.add_argument("file", nargs="?", default=None, help="Path to .itch or .itch.gz file (for parse)")
+    p_itch.add_argument("-e", "--events", type=int, default=1_000_000, help="Number of messages (for bench/generate, default: 1,000,000)")
+    p_itch.add_argument("-o", "--output", default="data/sample.itch", help="Output file path (for generate)")
+    p_itch.add_argument("-l", "--limit", type=int, default=50, help="Number of records to preview (for parse)")
+    p_itch.set_defaults(func=cmd_itch)
+
     return parser
 
 
@@ -3925,6 +4094,7 @@ MNEMONIC_MAP = {
     "gateway": "gateway", "gw": "gateway", "tcp-gw": "gateway",
     "sdk-demo": "sdk-demo", "sdk": "sdk-demo",
     "dashboard": "dashboard", "dash": "dashboard",
+    "itch": "itch", "totalview": "itch",
     "exit": "exit", "quit": "exit", "q": "exit",
 }
 
@@ -3944,7 +4114,7 @@ ALL_CANONICAL_COMMANDS = [
     "status", "run", "benchmark", "compare", "loadtest", "chaos", "security", "query", "archive", "replay",
     "analytics", "bbo", "depth", "vwap", "export", "live", "chart", "sub", "ohlcv", "spread", "vol", "top", "daemon",
     "watchdog", "stress", "simulate", "test-all", "throughput", "archive", "replay", "latest",
-    "lineage", "quar", "mbo", "arbitrate", "tca", "flow", "bridge", "web", "strategy", "shard", "gateway", "sdk-demo", "dashboard", "version"
+    "lineage", "quar", "mbo", "arbitrate", "tca", "flow", "bridge", "web", "strategy", "shard", "gateway", "sdk-demo", "dashboard", "version", "itch"
 ]
 
 
@@ -4391,6 +4561,8 @@ def main():
             sys.argv = [sys.argv[0], "metrics"] + sys.argv[2:]
         elif raw_cmd in ("simulate", "usersim", "devices", "sim-users", "sim"):
             sys.argv = [sys.argv[0], "simulate"] + sys.argv[2:]
+        elif raw_cmd in ("itch", "totalview"):
+            sys.argv = [sys.argv[0], "itch"] + sys.argv[2:]
         elif arg1.startswith("/"):
             sys.argv[1] = raw_cmd
 

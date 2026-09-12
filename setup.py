@@ -8,7 +8,7 @@ py_modules = list(set(["cli"] + [os.path.basename(f)[:-3] for f in src_files if 
 
 setup(
     name="mdrap",
-    version="1.0.0",
+    version="1.0.2",
     description="Market Data Reliability & Acceleration Platform",
     package_dir={"": "src"},
     packages=find_packages(where="src"),
