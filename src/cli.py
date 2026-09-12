@@ -3737,7 +3737,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_query.add_argument("--quarantine", nargs="?", const=10, type=int, default=None, metavar="N", help="Quarantine sample")
     p_query.set_defaults(func=cmd_query)
 
-    # Phase 8: Archive commands
+    # Historical providers and archive commands
+    from chd_cli import add_historical_parser
+    add_historical_parser(sub)
+
     p_replay = sub.add_parser("replay", aliases=["rep"], help="Replay archived raw events through the pipeline")
     p_replay.add_argument("--base-dir", default="data/raw_archive", help="Archive directory")
     p_replay.add_argument("-d", "--date", default=None, help="Replay only a specific date (YYYY-MM-DD)")
@@ -4080,6 +4083,7 @@ MNEMONIC_MAP = {
     "comp": "compare", "compare": "compare",
     "run": "run", "r": "run",
     "throughput": "throughput", "tp": "throughput", "meps": "throughput", "million": "throughput", "1m": "throughput", "500k": "throughput",
+    "historical": "historical", "history": "historical", "chd": "historical",
     "archive": "archive", "arc": "archive",
     "replay": "replay", "rep": "replay",
     "latest": "latest", "last": "latest",
@@ -4111,7 +4115,7 @@ QUICK_ACTIONS = {
 }
 
 ALL_CANONICAL_COMMANDS = [
-    "status", "run", "benchmark", "compare", "loadtest", "chaos", "security", "query", "archive", "replay",
+    "historical", "status", "run", "benchmark", "compare", "loadtest", "chaos", "security", "query", "archive", "replay",
     "analytics", "bbo", "depth", "vwap", "export", "live", "chart", "sub", "ohlcv", "spread", "vol", "top", "daemon",
     "watchdog", "stress", "simulate", "test-all", "throughput", "archive", "replay", "latest",
     "lineage", "quar", "mbo", "arbitrate", "tca", "flow", "bridge", "web", "strategy", "shard", "gateway", "sdk-demo", "dashboard", "version", "itch"

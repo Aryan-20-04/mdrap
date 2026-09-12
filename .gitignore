@@ -104,3 +104,7 @@ dist/
 src/*.egg-info/
 *.whl
 *.tar.gz
+
+# CHD historical caches and published research runs
+data/chd-cache/
+data/chd-runs/
