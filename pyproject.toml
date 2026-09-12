@@ -86,7 +86,7 @@ py-modules = [
     "protocol", "quality", "reconciliation", "sbe", "sdk_dashboard", "security", 
     "service", "sharded_pipeline", "shm", "simulator", "spsc_ring", "storage", 
     "strategy_sdk", "stresstest", "tca", "term", "terminal_display", "watchdog", 
-    "web_cockpit", "workload_simulator", "ws_feed", "itch"
+    "web_cockpit", "workload_simulator", "ws_feed", "itch", "research"
 ]
 package-dir = {"" = "src"}
 

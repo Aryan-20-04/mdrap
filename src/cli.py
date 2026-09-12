@@ -3468,6 +3468,128 @@ def cmd_itch(args):
         console.print(f"[dim]Replayer processed {limit} messages from {file_path}.[/dim]\n")
 
 
+def cmd_edgar(args):
+    """SEC EDGAR Alternative Data & Corporate Research Engine."""
+    from research import EdgarClient, EdgarError, SecurityError
+    console = Console()
+    action = getattr(args, "action", "events") or "events"
+    ticker = getattr(args, "ticker", "AAPL") or "AAPL"
+    limit = getattr(args, "limit", 15) or 15
+    metric = getattr(args, "metric", "Revenues") or "Revenues"
+    form_type = getattr(args, "form_type", None)
+
+    client = EdgarClient()
+    try:
+        if action == "profile":
+            prof = client.get_profile(ticker)
+            panel = Panel(
+                f"[bold cyan]{prof.name} ({prof.ticker})[/bold cyan]\n\n"
+                f"• [bold white]CIK:[/bold white] {prof.cik}\n"
+                f"• [bold white]Industry (SIC):[/bold white] {prof.sic} - {prof.sic_description}\n"
+                f"• [bold white]State / Jurisdiction:[/bold white] {prof.state}\n"
+                f"• [bold white]Fiscal Year End:[/bold white] {prof.fiscal_year_end}\n"
+                f"• [bold white]Recent Filings Indexed:[/bold white] {prof.total_filings:,}\n"
+                f"• [dim]Source: Official SEC EDGAR REST API (data.sec.gov)[/dim]",
+                title="🏛️ SEC Company Profile",
+                expand=False,
+            )
+            console.print(panel)
+
+        elif action in ("events", "8-k", "8k"):
+            events = client.get_material_events(ticker, limit=limit)
+            table = Table(title=f"🚨 SEC Form 8-K Material Corporate Events · {ticker.upper()}")
+            table.add_column("Filing Date", style="bold cyan")
+            table.add_column("Form", style="bold magenta")
+            table.add_column("Items / Triggers", style="yellow")
+            table.add_column("Description", style="white")
+            table.add_column("Official SEC Document", style="dim blue")
+
+            for e in events:
+                items_str = ", ".join(e.items) if e.items else "-"
+                table.add_row(
+                    e.filing_date,
+                    e.form,
+                    items_str,
+                    e.description or "Material Corporate Event",
+                    e.filing_url or e.accession_number,
+                )
+            console.print(table)
+            console.print(f"[dim]Showing {len(events)} recent material events for {ticker.upper()}.[/dim]\n")
+
+        elif action in ("insiders", "form4", "4"):
+            filings = client.get_insiders(ticker, limit=limit)
+            table = Table(title=f"💼 SEC Form 4 Insider Transactions · {ticker.upper()}")
+            table.add_column("Filing Date", style="bold cyan")
+            table.add_column("Report Date", style="dim")
+            table.add_column("Form", style="bold green")
+            table.add_column("Primary Document", style="white")
+            table.add_column("Filing URL", style="dim blue")
+
+            for f in filings:
+                table.add_row(
+                    f.filing_date,
+                    f.report_date or "-",
+                    f.form,
+                    f.primary_document or "-",
+                    f.filing_url or f.accession_number,
+                )
+            console.print(table)
+            console.print(f"[dim]Showing {len(filings)} recent Form 4 insider reports for {ticker.upper()}.[/dim]\n")
+
+        elif action in ("facts", "financials", "xbrl"):
+            facts = client.get_company_facts(ticker, metric=metric, limit=limit)
+            table = Table(title=f"📊 Audited GAAP Facts · {ticker.upper()} ({metric})")
+            table.add_column("Period End", style="bold cyan")
+            table.add_column("Filed Date", style="dim")
+            table.add_column("Form", style="magenta")
+            table.add_column("Frame", style="dim")
+            table.add_column("Value", justify="right", style="bold green")
+            table.add_column("Unit", style="dim")
+
+            for fact in facts:
+                val = fact["value"]
+                val_str = f"{val:,.2f}" if isinstance(val, (int, float)) else str(val)
+                table.add_row(
+                    fact["end_date"] or "-",
+                    fact["filed_date"] or "-",
+                    fact["form"] or "-",
+                    fact["frame"] or "-",
+                    val_str,
+                    fact["unit"],
+                )
+            console.print(table)
+            console.print(f"[dim]Audited GAAP numbers directly from SEC XBRL database.[/dim]\n")
+
+        elif action in ("filings", "list"):
+            filings = client.get_filings(ticker, form_type=form_type, limit=limit)
+            title_form = f" ({form_type.upper()})" if form_type else ""
+            table = Table(title=f"📄 Official SEC Filings{title_form} · {ticker.upper()}")
+            table.add_column("Filing Date", style="bold cyan")
+            table.add_column("Form", style="bold magenta")
+            table.add_column("Description", style="white")
+            table.add_column("Primary Document", style="dim")
+            table.add_column("SEC Accession Link", style="dim blue")
+
+            for f in filings:
+                table.add_row(
+                    f.filing_date,
+                    f.form,
+                    f.description or "-",
+                    f.primary_document or "-",
+                    f.filing_url or f.accession_number,
+                )
+            console.print(table)
+            console.print(f"[dim]Showing {len(filings)} filings for {ticker.upper()}.[/dim]\n")
+
+        else:
+            console.print(f"[red]Unknown edgar action '{action}'. Choices: profile, events, insiders, filings, facts.[/red]")
+            raise SystemExit(1)
+
+    except (SecurityError, EdgarError) as exc:
+        console.print(f"[bold red]SEC Research Error:[/bold red] {exc}")
+        raise SystemExit(1)
+
+
 def cmd_shard(args):
     """Multi-Process Parallel Ingestion & CPU GIL-Bypass Benchmark (§25 V4)."""
     from sharded_pipeline import run_sharded_benchmark
@@ -4023,6 +4145,15 @@ def build_parser() -> argparse.ArgumentParser:
     p_itch.add_argument("-l", "--limit", type=int, default=50, help="Number of records to preview (for parse)")
     p_itch.set_defaults(func=cmd_itch)
 
+    # Phase 10: SEC EDGAR Alternative Data & Corporate Research Engine
+    p_edgar = sub.add_parser("edgar", aliases=["research", "events", "filings", "company"], help="SEC EDGAR Alternative Data: 8-K material events, Form 4 insiders, GAAP facts")
+    p_edgar.add_argument("action", nargs="?", default="events", choices=["events", "insiders", "profile", "facts", "filings"], help="Action to perform (default: events)")
+    p_edgar.add_argument("ticker", nargs="?", default="AAPL", help="Company ticker symbol (default: AAPL)")
+    p_edgar.add_argument("-t", "--type", dest="form_type", default=None, help="Filter by form type (e.g., 10-K, 10-Q, 8-K, 4)")
+    p_edgar.add_argument("-l", "--limit", type=int, default=15, help="Maximum number of items to display (default: 15)")
+    p_edgar.add_argument("-m", "--metric", default="Revenues", help="GAAP metric name for facts (default: Revenues)")
+    p_edgar.set_defaults(func=cmd_edgar)
+
     return parser
 
 
@@ -4099,6 +4230,7 @@ MNEMONIC_MAP = {
     "sdk-demo": "sdk-demo", "sdk": "sdk-demo",
     "dashboard": "dashboard", "dash": "dashboard",
     "itch": "itch", "totalview": "itch",
+    "edgar": "edgar", "research": "edgar", "events": "edgar", "filings": "edgar", "company": "edgar", "insiders": "edgar",
     "exit": "exit", "quit": "exit", "q": "exit",
 }
 
@@ -4118,7 +4250,7 @@ ALL_CANONICAL_COMMANDS = [
     "historical", "status", "run", "benchmark", "compare", "loadtest", "chaos", "security", "query", "archive", "replay",
     "analytics", "bbo", "depth", "vwap", "export", "live", "chart", "sub", "ohlcv", "spread", "vol", "top", "daemon",
     "watchdog", "stress", "simulate", "test-all", "throughput", "archive", "replay", "latest",
-    "lineage", "quar", "mbo", "arbitrate", "tca", "flow", "bridge", "web", "strategy", "shard", "gateway", "sdk-demo", "dashboard", "version", "itch"
+    "lineage", "quar", "mbo", "arbitrate", "tca", "flow", "bridge", "web", "strategy", "shard", "gateway", "sdk-demo", "dashboard", "version", "itch", "edgar"
 ]
 
 
@@ -4567,6 +4699,13 @@ def main():
             sys.argv = [sys.argv[0], "simulate"] + sys.argv[2:]
         elif raw_cmd in ("itch", "totalview"):
             sys.argv = [sys.argv[0], "itch"] + sys.argv[2:]
+        elif raw_cmd in ("edgar", "research", "events", "filings", "company", "insiders"):
+            if raw_cmd in ("events", "insiders", "filings"):
+                # e.g. 'python -m cli events AAPL' -> 'python -m cli edgar events AAPL'
+                sys.argv = [sys.argv[0], "edgar", raw_cmd] + sys.argv[2:]
+            else:
+                # e.g. 'python -m cli edgar profile AAPL' -> 'python -m cli edgar profile AAPL'
+                sys.argv = [sys.argv[0], "edgar"] + sys.argv[2:]
         elif arg1.startswith("/"):
             sys.argv[1] = raw_cmd
 

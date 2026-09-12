@@ -108,3 +108,6 @@ src/*.egg-info/
 # CHD historical caches and published research runs
 data/chd-cache/
 data/chd-runs/
+
+# SEC EDGAR cache
+data/edgar_cache/
