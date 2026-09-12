@@ -1,6 +1,7 @@
 """CHD trade normalization, snapshot-aware L2 reconstruction and atomic imports."""
 from __future__ import annotations
 
+import datetime
 from decimal import Decimal, InvalidOperation
 import itertools
 import json
@@ -12,6 +13,22 @@ import tempfile
 
 from chd import CHDClient, CHDError, HistoricalRecord, HistoricalRequest, IntegrityError, received_ns, utc_datetime
 from models import RawEvent
+
+
+def _json_safe(val):
+    """Ensure values extracted from PyArrow or native rows are JSON-serializable for RawArchive."""
+    if isinstance(val, dict):
+        return {k: _json_safe(v) for k, v in val.items()}
+    elif isinstance(val, (list, tuple)):
+        return [_json_safe(v) for v in val]
+    elif isinstance(val, (datetime.datetime, datetime.date)):
+        return val.isoformat()
+    elif isinstance(val, Decimal):
+        f = float(val)
+        return f if math.isfinite(f) else str(val)
+    elif isinstance(val, (bytes, bytearray)):
+        return val.hex()
+    return val
 
 
 def timestamp_ns(value, unit='auto') -> int:
@@ -55,7 +72,7 @@ def _raw(record, sequence, event_type, exchange_ns, fields, *, first=None):
                           data_type=p.data_type, key=p.key, file_sha256=record.file_sha256,
                           row_index=record.row_index, exchange_timestamp_ns=exchange_ns,
                           received_timestamp_ns=received_ns(record.values),
-                          sequence_kind='synthetic_replay_ordinal', native=record.values)
+                          sequence_kind='synthetic_replay_ordinal', native=_json_safe(record.values))
     if first is not None:
         payload['chd']['group_first_raw_id'] = first.raw_id
         payload['chd']['group_first_key'] = first.partition.key
@@ -131,7 +148,8 @@ class OrderBook:
             else:
                 book[price] = quantity
             last = record
-        self.last_update_id = final
+        if final is not None:
+            self.last_update_id = final
         if not self.bids or not self.asks:
             return first, last, None
         bid, ask = max(self.bids), min(self.asks)

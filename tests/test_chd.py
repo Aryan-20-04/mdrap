@@ -481,3 +481,79 @@ def test_download_redirects_reject_unsafe_targets(target):
     original = Request('https://api.cryptohftdata.com/v1/download')
     original.chd_download = True
     assert _DownloadRedirects().redirect_request(original, None, 302, '', {}, target) is None
+
+
+def test_metadata_redirects_restrict_to_origin():
+    from chd import _DownloadRedirects
+    from urllib.request import Request
+    handler = _DownloadRedirects()
+    original = Request('https://api.cryptohftdata.com/v1/symbols', headers={'Authorization': 'Bearer secret'})
+    # Cross-origin redirect must be rejected to prevent token leakage
+    assert handler.redirect_request(original, None, 302, '', {}, 'https://malicious.com/api') is None
+    # HTTP redirect must be rejected
+    assert handler.redirect_request(original, None, 302, '', {}, 'http://api.cryptohftdata.com/v1/symbols') is None
+
+
+def test_malformed_content_length_handled(tmp_path):
+    # First response has a malformed Content-Length; second response is valid
+    calls, replies = [], [
+        Response(b'PAR1bad', headers={'Content-Length': 'invalid_string'}),
+        Response(b'PAR1good', headers={'Content-Length': '8'}),
+    ]
+    def open_request(req, timeout):
+        calls.append(req)
+        return replies.pop(0)
+    c = CHDClient(cache_dir=tmp_path, max_retries=2)
+    dest = tmp_path / 'download.tmp'
+    with patch('chd.urlopen', side_effect=open_request):
+        # Should catch invalid Content-Length as IntegrityError, retry, and succeed on second attempt
+        c._request('/download', destination=dest)
+    assert dest.read_bytes() == b'PAR1good'
+    assert len(calls) == 2
+
+
+def test_raw_native_is_json_serializable():
+    from datetime import datetime, timezone
+    from decimal import Decimal
+    from chd_history import _raw
+    import json
+    rec = HistoricalRecord(
+        Partition('binance_spot', 'BTCUSDT', 'trades', datetime(2025, 8, 1, 20, 0, tzinfo=timezone.utc)),
+        0, 'hash123',
+        {'received_time': 1000000000, 'time': datetime(2025, 8, 1, 20, 0), 'dec': Decimal('123.45'), 'raw_bytes': b'abc'}
+    )
+    event = _raw(rec, 1, 'TRADE', 1000000000, {'price': 100.0, 'quantity': 1.0})
+    dumped = json.dumps(event.payload)
+    assert '123.45' in dumped
+    assert '616263' in dumped
+
+
+def test_orderbook_gap_detection_preserves_last_update_id_across_idless_messages():
+    from datetime import datetime, timezone
+    from chd_history import OrderBook
+    book = OrderBook()
+    # 1. Initial snapshot with final_update_id = 10
+    msg1 = [HistoricalRecord(
+        Partition('binance_spot', 'BTCUSDT', 'orderbook', datetime(2025, 8, 1, 20, 0, tzinfo=timezone.utc)),
+        0, 'h', {'received_time': 1, 'event_type': 'snapshot', 'side': 'bid', 'price': '100', 'quantity': '1', 'final_update_id': 10, 'symbol': 'BTCUSDT'}
+    )]
+    book.apply(iter(msg1))
+    assert book.last_update_id == 10
+
+    # 2. Intermediate update without update IDs (e.g. heartbeat or partial)
+    msg2 = [HistoricalRecord(
+        Partition('binance_spot', 'BTCUSDT', 'orderbook', datetime(2025, 8, 1, 20, 0, tzinfo=timezone.utc)),
+        1, 'h', {'received_time': 2, 'event_type': 'update', 'side': 'bid', 'price': '101', 'quantity': '1', 'symbol': 'BTCUSDT'}
+    )]
+    book.apply(iter(msg2))
+    # Crucial fix: last_update_id must NOT be wiped to None!
+    assert book.last_update_id == 10
+
+    # 3. Third message arrives with a gap: first_update_id = 15 (> 10 + 1)
+    msg3 = [HistoricalRecord(
+        Partition('binance_spot', 'BTCUSDT', 'orderbook', datetime(2025, 8, 1, 20, 0, tzinfo=timezone.utc)),
+        2, 'h', {'received_time': 3, 'event_type': 'update', 'side': 'bid', 'price': '102', 'quantity': '1', 'first_update_id': 15, 'final_update_id': 15, 'symbol': 'BTCUSDT'}
+    )]
+    with pytest.raises(IntegrityError, match='sequence gap'):
+        book.apply(iter(msg3))
+

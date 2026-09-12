@@ -10,7 +10,7 @@ from chd import CHDClient, CHDError, DATA_TYPES, EXCHANGES, HistoricalRequest
 
 def add_historical_parser(subparsers):
     parser = subparsers.add_parser('historical', aliases=['history', 'chd'],
-                                  help='CHD historical data: discover, download, ingest and replay')
+                                  help='CHD historical data: discover, download and ingest')
     actions = parser.add_subparsers(dest='historical_action', required=True)
     providers = actions.add_parser('providers', help='List CHD exchanges and datasets (offline)')
     providers.set_defaults(func=cmd_historical)

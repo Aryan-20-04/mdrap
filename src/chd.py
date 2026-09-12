@@ -24,18 +24,28 @@ from urllib.request import Request, HTTPRedirectHandler, build_opener
 
 class _DownloadRedirects(HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
-        # The download API redirects to file storage. Start a fresh HTTPS GET
-        # without forwarding origin credentials, cookies or request bodies.
+        # Strictly reject non-HTTPS targets or embedded user/password credentials
         target = urlsplit(newurl)
-        if (not getattr(req, "chd_download", False) or req.get_method() != "GET"
-                or target.scheme != "https" or not target.hostname
-                or target.username is not None or target.password is not None):
+        if target.scheme != "https" or not target.hostname or target.username is not None or target.password is not None:
             return None
-        redirected = Request(newurl, headers={
-            "User-Agent": "MDRAP-CHD/1", "Accept-Encoding": "identity",
-        }, method="GET")
-        redirected.chd_download = True
-        return redirected
+
+        # Download requests redirect to file storage (S3/Cloudflare); start a fresh HTTPS GET
+        # without forwarding origin credentials, tokens, cookies or request bodies.
+        if getattr(req, "chd_download", False):
+            if req.get_method() != "GET":
+                return None
+            redirected = Request(newurl, headers={
+                "User-Agent": "MDRAP-CHD/1", "Accept-Encoding": "identity",
+            }, method="GET")
+            redirected.chd_download = True
+            return redirected
+
+        # For metadata endpoints, restrict redirects strictly to the API origin to prevent bearer token leakage
+        origin = urlsplit(API_URL)
+        if target.hostname.lower() != origin.hostname.lower():
+            return None
+
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
 def urlopen(request, *, timeout):
@@ -171,9 +181,10 @@ def _parquet():
 def _validate_parquet(path: Path) -> int:
     pq = _parquet()
     try:
-        with pq.ParquetFile(path) as f:
-            return f.metadata.num_rows
-    except (OSError, ValueError) as exc:
+        with path.open('rb') as f_obj:
+            with pq.ParquetFile(f_obj) as f:
+                return f.metadata.num_rows
+    except (OSError, ValueError, Exception) as exc:
         raise IntegrityError('Invalid or truncated CHD Parquet file') from exc
 
 
@@ -253,7 +264,15 @@ class CHDClient:
                             target.write(chunk)
                             count += len(chunk)
                     expected = response.headers.get('Content-Length')
-                    if count == 0 or (expected is not None and count != int(expected)):
+                    expected_bytes = None
+                    if expected is not None:
+                        try:
+                            expected_bytes = int(expected.strip())
+                            if expected_bytes < 0:
+                                raise ValueError
+                        except (ValueError, TypeError):
+                            raise IntegrityError('CHD download returned invalid Content-Length header')
+                    if count == 0 or (expected_bytes is not None and count != expected_bytes):
                         raise IntegrityError('CHD download has an empty or incomplete body')
                     return None
             except HTTPError as exc:
@@ -336,7 +355,7 @@ class CHDClient:
             raise MissingPartition(f'CHD partition is not cached: {partition.key}')
         _parquet()  # Fail before downloading if the optional dependency is absent.
         path.parent.mkdir(parents=True, exist_ok=True)
-        with tempfile.TemporaryDirectory(prefix='.chd-', dir=path.parent) as tmp:
+        with tempfile.TemporaryDirectory(prefix='.chd-', dir=path.parent, ignore_cleanup_errors=True) as tmp:
             wire = Path(tmp) / 'download'
             self._request('/download', {'file': partition.key}, destination=wire)
             wire_hash = _sha256(wire)
