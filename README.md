@@ -104,6 +104,8 @@ flowchart TD
 UTC interval planning, resumable Parquet downloads for six native datasets,
 and atomic trade/order-book imports with replay archives and file provenance.
 Install with `pip install -e '.[chd]'`, then run `mdrap historical providers`.
+For a runnable Python walkthrough with charts, open the
+[CHD historical data notebook](examples/03_chd_historical_data.ipynb).
 
 ```bash
 mdrap historical ingest --exchange binance_spot --symbol BTCUSDT \

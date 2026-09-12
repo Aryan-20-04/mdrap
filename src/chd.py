@@ -19,17 +19,27 @@ import tempfile
 import time
 from typing import Iterator
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 from urllib.request import Request, HTTPRedirectHandler, build_opener
 
-class _NoRedirect(HTTPRedirectHandler):
+class _DownloadRedirects(HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
-        # Never forward API credentials or bearer tokens to a redirect target.
-        return None
+        # The download API redirects to file storage. Start a fresh HTTPS GET
+        # without forwarding origin credentials, cookies or request bodies.
+        target = urlsplit(newurl)
+        if (not getattr(req, "chd_download", False) or req.get_method() != "GET"
+                or target.scheme != "https" or not target.hostname
+                or target.username is not None or target.password is not None):
+            return None
+        redirected = Request(newurl, headers={
+            "User-Agent": "MDRAP-CHD/1", "Accept-Encoding": "identity",
+        }, method="GET")
+        redirected.chd_download = True
+        return redirected
 
 
 def urlopen(request, *, timeout):
-    return build_opener(_NoRedirect()).open(request, timeout=timeout)
+    return build_opener(_DownloadRedirects()).open(request, timeout=timeout)
 
 
 API_URL = 'https://api.cryptohftdata.com/v1'
@@ -227,6 +237,7 @@ class CHDClient:
             if auth and self._token:
                 request_headers['Authorization'] = 'Bearer ' + self._token
             request = Request(url, headers=request_headers, method=method)
+            request.chd_download = endpoint == "/download"
             self._pace()
             retry_after = None
             try:

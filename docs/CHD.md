@@ -5,6 +5,10 @@ MDRAP integrates CHD through its REST API. Use `mdrap historical` (aliases
 and create reproducible historical runs. This provider is separate from live
 feeds and never enters the live supervisor's lossy queue.
 
+Try the [historical data notebook](../examples/03_chd_historical_data.ipynb) for
+an end-to-end walkthrough of downloads, ingestion, quality inspection, source
+lineage, replay verification and price/VWAP charts.
+
 ## Quick start
 
 ```bash
@@ -34,7 +38,8 @@ CHD currently documents anonymous access at 60 requests/minute per IP. MDRAP
 paces anonymous requests and respects rate limiting. Authenticated access
 exchanges the API key for a short-lived JWT, refreshes it on expiry, and sends
 credentials only in headers. Errors and manifests exclude credentials.
-Redirects are refused to avoid forwarding credentials to another destination.
+Download redirects follow HTTPS only and send no origin credentials to file
+storage. Authentication and metadata redirects are refused.
 See [CHD authentication](https://www.cryptohftdata.com/docs/rest-authentication).
 
 ## Datasets and semantics

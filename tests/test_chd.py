@@ -432,10 +432,10 @@ def test_missing_receive_column_and_invalid_received_time(tmp_path, network):
 
 
 def test_http_redirects_never_forward_credentials():
-    from chd import _NoRedirect
+    from chd import _DownloadRedirects
     from urllib.request import Request
     req = Request('https://api.cryptohftdata.com/v1/jwt-token', headers={'X-API-Key': 'secret'})
-    assert _NoRedirect().redirect_request(req, None, 302, '', {}, 'https://another.invalid') is None
+    assert _DownloadRedirects().redirect_request(req, None, 302, '', {}, 'https://another.invalid') is None
 
 
 def test_long_retry_after_stops_without_sleeping(tmp_path, network):
@@ -452,3 +452,32 @@ def test_empty_filtered_interval_never_publishes(tmp_path, network):
     with pytest.raises(CHDError, match='No canonical events'):
         ingest_history(c, r, tmp_path / 'empty')
     assert not (tmp_path / 'empty').exists()
+
+
+def test_download_redirects_follow_https_without_origin_credentials():
+    from chd import _DownloadRedirects
+    from urllib.request import Request
+    original = Request('https://api.cryptohftdata.com/v1/download', headers={
+        'Authorization': 'Bearer secret', 'X-API-Key': 'key', 'Cookie': 'session=secret',
+    })
+    original.chd_download = True
+    handler = _DownloadRedirects()
+    target = 'https://storage.example/file.parquet?signature=opaque'
+    redirected = handler.redirect_request(original, None, 302, '', {}, target)
+    assert redirected.full_url == target
+    assert redirected.get_method() == 'GET'
+    assert redirected.data is None
+    assert redirected.chd_download
+    assert not any(name.lower() in ('authorization', 'x-api-key', 'cookie')
+                   for name, _ in redirected.header_items())
+    assert handler.redirect_request(redirected, None, 302, '', {}, target).chd_download
+
+
+@pytest.mark.parametrize('target', ['http://storage.example/file',
+    'https://user:password@storage.example/file', 'file:///tmp/file', 'https:///file'])
+def test_download_redirects_reject_unsafe_targets(target):
+    from chd import _DownloadRedirects
+    from urllib.request import Request
+    original = Request('https://api.cryptohftdata.com/v1/download')
+    original.chd_download = True
+    assert _DownloadRedirects().redirect_request(original, None, 302, '', {}, target) is None
