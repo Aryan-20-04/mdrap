@@ -785,3 +785,11 @@ This performs a zero-copy vectorized scan (`ATTACH TYPE SQLITE`), synchronizing 
 
 ### Q4: How do I cleanly exit a live streaming session?
 **Answer**: Press `[q]` or `[Esc]`. The non-blocking keyboard poller detects the keystroke in <1µs, restores the ANSI terminal cursor, flushes pending database batches, and cleanly returns to your shell prompt without throwing Python `KeyboardInterrupt` stack traces.
+
+
+## CryptoHFTData historical data
+
+Use `mdrap historical` (aliases `history`, `chd`) for symbol discovery, hourly
+file planning, native Parquet downloads and canonical historical imports. See
+the [CHD guide](CHD.md) for installation, UTC intervals, snapshot warmup,
+authentication, provenance and complete CLI/Python examples.

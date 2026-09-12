@@ -98,6 +98,19 @@ flowchart TD
 - **Databento Binary Encoding (DBN) Ingestion**: Sub-microsecond binary record decoding using `struct.Struct` with C-struct layouts for Databento DBN formats (`MBP-1`, `MBP-10`, `TradeMsg`), nanosecond UTC epoch timestamps, fixed-point price scaling ($10^9$), dynamic symbol resolution, and live TCP / `.dbn` file / synthetic binary packet streaming.
 - **Unified Streaming Feed Supervisor**: Coordinates multiple streaming providers into a bounded, low-contention queue with ring eviction to guarantee real-time latency and zero stale queue backlog. Ingestion telemetry tracks throughput (eps), dropped frames, and provider health.
 
+### CHD Historical Data
+
+[CryptoHFTData historical integration](docs/CHD.md) provides symbol discovery,
+UTC interval planning, resumable Parquet downloads for six native datasets,
+and atomic trade/order-book imports with replay archives and file provenance.
+Install with `pip install -e '.[chd]'`, then run `mdrap historical providers`.
+
+```bash
+mdrap historical ingest --exchange binance_spot --symbol BTCUSDT \
+  --start 2025-08-01T20:00:00Z --end 2025-08-01T20:01:00Z \
+  --output data/chd-runs/btc-minute
+```
+
 ### 4. DuckDB Columnar Time-Series Storage & SIMD Analytics (`src/columnar.py`, Spec §14, §26)
 - **High-Throughput Embedded Columnar Store**: Embedded in-process DuckDB analytical engine with SIMD-vectorized execution for ultra-fast billion-tick historical queries.
 - **Zero-Copy SQLite Sync**: Directly attaches operational SQLite databases via DuckDB's native SQLite scanner (`ATTACH '...' AS sqldb (TYPE SQLITE)`) and bulk copies 300,000+ ticks in ~2.8s into columnar storage.
@@ -329,6 +342,7 @@ mdrap AAPL      # Instant Best Bid & Offer Quote
 | `keys` | — | Manage client API keys and entitlement tiers (`FREE`, `PRO`, `INSTITUTIONAL`) |
 | `audit` | — | View and cryptographically verify tamper-evident Merkle hash audit logs |
 | `query` | `q` | Inspect stored SQLite tables: health, latest ticks, lineage trail, and quarantine |
+| `historical` | `history`, `chd` | Discover, download and ingest CHD history with verified files and replay provenance |
 | `replay` | `rep` | Replay archived raw events deterministically through the pipeline |
 | `archive` | `arc` | Show immutable raw event JSONL archive statistics |
 | `analytics` | `a`, `an` | Query 5s OHLCV candles, bid-ask spreads, and realized volatility |
