@@ -239,6 +239,72 @@ class TestBacktestEngine(unittest.TestCase):
                 os.remove(db_path)
             os.rmdir(temp_dir)
 
+    def test_order_book_depth_during_quote_stream(self):
+        engine = BacktestEngine(initial_capital=100_000.0)
+        events = [
+            CanonicalEvent(
+                event_id=f'evt-q-{i}',
+                instrument_id='AAPL',
+                event_type=EventType.QUOTE,
+                exchange_timestamp=1000.0 + i,
+                receive_timestamp=1000.0 + i,
+                processing_timestamp=1000.0 + i,
+                source='TEST',
+                sequence_number=i,
+                bid_price=150.0 - i * 0.05,
+                bid_size=200.0,
+                ask_price=150.10 + i * 0.05,
+                ask_size=300.0,
+                quality_status=QualityStatus.VALID,
+            )
+            for i in range(5)
+        ]
+        strategy = BuyOnceStrategy()
+        result = engine.run(strategy, events)
+        book = strategy.get_order_book('AAPL')
+        bbo = strategy._current_bbo.get('AAPL')
+        self.assertIsNotNone(bbo)
+        self.assertEqual(bbo['bid'], 150.0 - 4 * 0.05)
+        self.assertEqual(bbo['ask'], 150.10 + 4 * 0.05)
+        self.assertEqual(bbo['bid_size'], 200.0)
+        self.assertEqual(bbo['ask_size'], 300.0)
+
+    def test_annualized_return_on_complete_capital_loss(self):
+        engine = BacktestEngine(initial_capital=100_000.0)
+        # Strategy that buys 1000 shares at 100, and price crashes to 0
+        events = [
+            CanonicalEvent(
+                event_id='evt-1',
+                instrument_id='AAPL',
+                event_type=EventType.TRADE,
+                exchange_timestamp=1000.0,
+                receive_timestamp=1000.0,
+                processing_timestamp=1000.0,
+                source='TEST',
+                sequence_number=1,
+                price=100.0,
+                quantity=1000.0,
+                quality_status=QualityStatus.VALID,
+            ),
+            CanonicalEvent(
+                event_id='evt-2',
+                instrument_id='AAPL',
+                event_type=EventType.TRADE,
+                exchange_timestamp=1000.0 + 86400.0 * 10,  # 10 days later
+                receive_timestamp=1000.0 + 86400.0 * 10,
+                processing_timestamp=1000.0 + 86400.0 * 10,
+                source='TEST',
+                sequence_number=2,
+                price=0.001,  # 99.999% loss
+                quantity=1000.0,
+                quality_status=QualityStatus.VALID,
+            ),
+        ]
+        strategy = BuyOnceStrategy(buy_qty=1000)
+        result = engine.run(strategy, events)
+        self.assertLess(result.total_return_pct, -90.0)
+        self.assertEqual(result.annualized_return_pct, -100.0)
+
 
 if __name__ == '__main__':
     unittest.main()

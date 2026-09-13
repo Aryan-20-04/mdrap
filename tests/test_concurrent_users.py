@@ -20,7 +20,6 @@ from workload_simulator import (
     run_device_worker,
 )
 from service import MarketDataDaemon, StreamClient
-from prometheus import PrometheusMetricsServer
 
 
 def test_device_result_percentiles_calculation():
@@ -57,15 +56,6 @@ def test_concurrent_normal_and_fast_devices():
         )
         daemon.start(blocking=False)
         time.sleep(0.3)
-
-        prom_srv = PrometheusMetricsServer(
-            host="127.0.0.1",
-            port=prom_port,
-            store_path=db_path,
-            duckdb_path=duck_path,
-        )
-        prom_srv.start()
-        time.sleep(0.15)
 
         try:
             # Configure 1 normal user + 1 fast-paced bot
@@ -105,7 +95,6 @@ def test_concurrent_normal_and_fast_devices():
             assert res_fast.p50_ms > 0.0
 
         finally:
-            prom_srv.stop()
             daemon.stop()
 
 

@@ -247,8 +247,8 @@ def test_daemon_vwap_command_and_client_query():
             os.unlink(db_path)
 
 
-def test_daemon_vwap_entitlement_guard():
-    """Verify FREE tier client is rejected with FORBIDDEN when querying institutional VWAP curves."""
+def test_daemon_vwap_auth_guard():
+    """Verify unauthenticated/invalid token is rejected while valid key queries VWAP curves."""
     fd, db_path = tempfile.mkstemp(suffix=".db")
     os.close(fd)
 
@@ -263,14 +263,14 @@ def test_daemon_vwap_entitlement_guard():
     time.sleep(0.3)
 
     try:
-        # 1. FREE tier client should be rejected with PermissionError
-        with MDRAPClient(host="127.0.0.1", port=9989, auth_token="mdrap_demo_free_key", timeout=2.0) as client:
-            with pytest.raises(PermissionError) as excinfo:
+        # 1. Invalid token should be rejected with PermissionError
+        with pytest.raises(PermissionError) as excinfo:
+            with MDRAPClient(host="127.0.0.1", port=9989, auth_token="invalid_bad_token", timeout=2.0) as client:
                 client.get_vwap("BTC/USD")
-            assert "FORBIDDEN" in str(excinfo.value)
+        assert "INVALID_TOKEN" in str(excinfo.value) or "UNAUTHORIZED" in str(excinfo.value)
 
-        # 2. PRO tier client should succeed
-        with MDRAPClient(host="127.0.0.1", port=9989, auth_token="mdrap_demo_pro_key", timeout=2.0) as client:
+        # 2. Authenticated client should succeed without commercial paywall
+        with MDRAPClient(host="127.0.0.1", port=9989, auth_token="mdrap_demo_key", timeout=2.0) as client:
             curve = client.get_vwap("BTC/USD")
             assert curve is None or isinstance(curve, dict)
     finally:

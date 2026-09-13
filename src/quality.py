@@ -182,9 +182,22 @@ class QualityEngine:
         if event.price is not None and not invalid_num:
             stats = self._price_stats.setdefault(key, _RollingStats(cfg.price_window))
             mean, stddev = stats.get_stats(event.price)
-            if stddev > 0 and abs(event.price - mean) > cfg.price_anomaly_stddev * stddev:
-                self._mark(event, QualityStatus.SUSPICIOUS, Reason.PRICE_ANOMALY)
-                self._bump(Reason.PRICE_ANOMALY)
+            is_anomaly = (stddev > 0 and abs(event.price - mean) > cfg.price_anomaly_stddev * stddev) or \
+                         (stddev == 0.0 and mean > 0.0 and stats._n >= 3 and abs(event.price - mean) / mean > 0.10)
+            if is_anomaly:
+                pct_move = abs(event.price - mean) / mean if mean > 0 else 0.0
+                if getattr(event, "venue", "") in ("XNSE", "XBOM") and pct_move >= 0.10:
+                    self._mark(event, QualityStatus.SUSPICIOUS, Reason.CIRCUIT_FILTER_BREACH)
+                    self._bump(Reason.CIRCUIT_FILTER_BREACH)
+                elif getattr(event, "venue", "") in ("XETR", "XEUR") and pct_move >= 0.05:
+                    self._mark(event, QualityStatus.SUSPICIOUS, Reason.VOLATILITY_INTERRUPTION)
+                    self._bump(Reason.VOLATILITY_INTERRUPTION)
+                elif getattr(event, "venue", "") in ("XTKS", "XOSE") and pct_move >= 0.08:
+                    self._mark(event, QualityStatus.SUSPICIOUS, Reason.SPECIAL_QUOTE_INDICATION)
+                    self._bump(Reason.SPECIAL_QUOTE_INDICATION)
+                else:
+                    self._mark(event, QualityStatus.SUSPICIOUS, Reason.PRICE_ANOMALY)
+                    self._bump(Reason.PRICE_ANOMALY)
                 # Outlier is flagged as SUSPICIOUS and clean baseline is preserved
             else:
                 stats.update(event.price)

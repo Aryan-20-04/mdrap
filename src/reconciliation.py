@@ -121,9 +121,15 @@ class Reconciler:
     that instrument across all currently-agreeing/disagreeing sources.
     """
 
-    def __init__(self, reliability: ReliabilityTracker, config: Optional[ReliabilityConfig] = None):
-        self.reliability = reliability
-        self.cfg = config or ReliabilityConfig()
+    def __init__(
+        self,
+        reliability: Optional[ReliabilityTracker] = None,
+        config: Optional[ReliabilityConfig] = None,
+        cfg: Optional[ReliabilityConfig] = None,
+    ):
+        resolved_cfg = cfg or config or ReliabilityConfig()
+        self.cfg = resolved_cfg
+        self.reliability = reliability if reliability is not None else ReliabilityTracker(config=resolved_cfg)
         # instrument -> source -> (event, observed_at_wallclock)
         self._latest: Dict[str, Dict[str, tuple]] = {}
         self._blocked_sources: set[str] = set()
@@ -152,7 +158,7 @@ class Reconciler:
         # excluding any sources blocked by the watchdog.
         recent = {
             src: (ev, ts) for src, (ev, ts) in per_instrument.items()
-            if market_now - ts <= self.cfg.agreement_window_s
+            if abs(market_now - ts) <= self.cfg.agreement_window_s
             and src not in self._blocked_sources
         }
         if len(recent) < 2:
@@ -184,3 +190,6 @@ class Reconciler:
             reason=reason,
             competing_sources=list(recent.keys()),
         )
+
+
+CrossFeedReconciler = Reconciler

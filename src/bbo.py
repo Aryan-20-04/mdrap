@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import json
+import math
 import time
 from typing import Any, Dict, List, Optional
 
@@ -24,24 +25,28 @@ class ConsolidatedBBO:
     best_ask: float
     best_ask_size: float
     best_ask_source: str
-    spread: float
-    mid_price: float
+    spread: Optional[float]
+    mid_price: Optional[float]
     is_crossed: bool
     is_locked: bool
     timestamp: float
     is_stale: bool = False
 
     def to_dict(self) -> dict:
+        spread_val = round(self.spread, 4) if (self.spread is not None and math.isfinite(self.spread)) else None
+        mid_val = round(self.mid_price, 4) if (self.mid_price is not None and math.isfinite(self.mid_price)) else None
+        best_bid_val = self.best_bid if (self.best_bid is not None and self.best_bid >= 0 and math.isfinite(self.best_bid)) else None
+        best_ask_val = self.best_ask if (self.best_ask is not None and math.isfinite(self.best_ask)) else None
         return {
             "instrument_id": self.instrument_id,
-            "best_bid": self.best_bid,
+            "best_bid": best_bid_val,
             "best_bid_size": self.best_bid_size,
             "best_bid_source": self.best_bid_source,
-            "best_ask": self.best_ask,
+            "best_ask": best_ask_val,
             "best_ask_size": self.best_ask_size,
             "best_ask_source": self.best_ask_source,
-            "spread": round(self.spread, 4),
-            "mid_price": round(self.mid_price, 4),
+            "spread": spread_val,
+            "mid_price": mid_val,
             "is_crossed": self.is_crossed,
             "is_locked": self.is_locked,
             "timestamp": self.timestamp,
@@ -88,7 +93,7 @@ class BBOEngine:
         if event.quality_status == QualityStatus.INVALID:
             return None
 
-        if event.bid_price is None or event.ask_price is None:
+        if event.bid_price is None and event.ask_price is None:
             return None
 
         inst = event.instrument_id
@@ -141,10 +146,12 @@ class BBOEngine:
                     best_ask_size = q.ask_size or 0.0
                     best_ask_src = s
 
-        spread = best_ask - best_bid
-        mid_price = (best_bid + best_ask) / 2.0
-        is_crossed = best_bid > best_ask
-        is_locked = (best_bid == best_ask)
+        has_bid = (best_bid >= 0 and math.isfinite(best_bid))
+        has_ask = math.isfinite(best_ask)
+        spread = (best_ask - best_bid) if (has_bid and has_ask) else None
+        mid_price = ((best_bid + best_ask) / 2.0) if (has_bid and has_ask) else (best_bid if has_bid else (best_ask if has_ask else None))
+        is_crossed = (best_bid > best_ask) if (has_bid and has_ask) else False
+        is_locked = (best_bid == best_ask) if (has_bid and has_ask) else False
 
         bbo = ConsolidatedBBO(
             instrument_id=inst,
@@ -169,12 +176,12 @@ class BBOEngine:
             "status": "OK",
             "symbol": inst,
             "bbo": {
-                "bid": bbo.best_bid,
-                "bid_source": bbo.best_bid_source,
-                "ask": bbo.best_ask,
-                "ask_source": bbo.best_ask_source,
-                "spread": bbo.spread,
-                "mid": bbo.mid_price,
+                "bid": bbo.best_bid if (bbo.best_bid >= 0 and math.isfinite(bbo.best_bid)) else None,
+                "bid_source": bbo.best_bid_source if bbo.best_bid_source else None,
+                "ask": bbo.best_ask if math.isfinite(bbo.best_ask) else None,
+                "ask_source": bbo.best_ask_source if bbo.best_ask_source else None,
+                "spread": bbo.spread if (bbo.spread is not None and math.isfinite(bbo.spread)) else None,
+                "mid": bbo.mid_price if (bbo.mid_price is not None and math.isfinite(bbo.mid_price)) else None,
                 "crossed": bbo.is_crossed,
             }
         }
@@ -207,6 +214,8 @@ class BBOEngine:
         if cached:
             return cached
         return (json.dumps({"status": "OK", "symbol": instrument_id, "bbo": None}) + "\n").encode("utf-8")
+
+    get_wire_bbo = get_bbo_wire_bytes
 
     def current_bbo(
         self, instrument_id: str, allow_stale: bool = True, now: Optional[float] = None

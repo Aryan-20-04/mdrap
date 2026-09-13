@@ -237,3 +237,42 @@ def test_pipeline_bbo_end_to_end():
     tickers = {r["instrument_id"] for r in bbos}
     assert "AAPL" in tickers
     store.close()
+
+
+def test_bbo_serialization_with_one_sided_book():
+    """Verify one-sided quotes do not produce IEEE 754 Infinity in JSON serialization."""
+    import json
+    engine = BBOEngine()
+    # Quote with bid only, no ask price (None)
+    q = CanonicalEvent(
+        event_id="q_bid_only",
+        instrument_id="AAPL",
+        event_type=EventType.QUOTE,
+        exchange_timestamp=1000.0,
+        receive_timestamp=1000.001,
+        processing_timestamp=1000.002,
+        source="FEED_BID_ONLY",
+        sequence_number=1,
+        bid_price=150.0,
+        bid_size=100.0,
+        ask_price=None,
+        ask_size=None,
+        quality_status=QualityStatus.VALID,
+    )
+    bbo = engine.observe(q)
+    assert bbo is not None
+    d = bbo.to_dict()
+    assert d["best_bid"] == 150.0
+    assert d["best_ask"] is None
+    assert d["spread"] is None
+
+    # Strict JSON dumps must not contain 'Infinity' or raise
+    serialized = json.dumps(d)
+    assert "Infinity" not in serialized
+    assert "null" in serialized
+
+    # Check cached wire buffer
+    wire_bytes = engine.get_wire_bbo("AAPL")
+    assert wire_bytes is not None
+    assert b"Infinity" not in wire_bytes
+

@@ -28,7 +28,6 @@ from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
 
 from columnar import ColumnarStore
-from prometheus import PrometheusMetricsServer
 from service import MarketDataDaemon, StreamClient
 from term import Console, Panel, Table
 
@@ -130,12 +129,14 @@ def run_device_worker(cfg: DeviceConfig) -> DeviceResult:
         op_lat_map[op_name].append(elapsed_ms)
 
     start_time = time.time()
+    deadline = start_time + cfg.duration_s
 
     # -------------------------------------------------------------------------
     # Archetype 1: NORMAL USER (Human Trader / Risk Analyst)
     # Paced interaction (100ms - 250ms delays), checking quotes, health, charts
     # -------------------------------------------------------------------------
     if cfg.archetype == UserArchetype.NORMAL_USER:
+        deadline = time.time() + cfg.duration_s
         while time.time() < deadline:
             time.sleep(random.uniform(0.08, 0.20))
             dice = random.random()
@@ -179,15 +180,13 @@ def run_device_worker(cfg: DeviceConfig) -> DeviceResult:
                     _record_op("SPREAD_ANALYTICS", (time.perf_counter_ns() - t0) / 1e6)
 
                 else:
-                    # Probe Prometheus Health
+                    # Probe Daemon Health
                     t0 = time.perf_counter_ns()
                     try:
-                        req = urllib.request.Request(f"http://{cfg.host}:{cfg.prom_port}/health")
-                        with urllib.request.urlopen(req, timeout=1.5) as resp:
-                            _ = resp.read()
+                        _ = client.get_health()
                     except Exception:
                         pass
-                    _record_op("PROMETHEUS_HEALTH", (time.perf_counter_ns() - t0) / 1e6)
+                    _record_op("DAEMON_HEALTH", (time.perf_counter_ns() - t0) / 1e6)
 
             except Exception as exc:
                 res.errors.append(f"Normal user op error: {exc}")
@@ -221,6 +220,7 @@ def run_device_worker(cfg: DeviceConfig) -> DeviceResult:
         except Exception:
             stream_sock = None
 
+        deadline = time.time() + cfg.duration_s
         while time.time() < deadline:
             time.sleep(random.uniform(0.001, 0.004))
             dice = random.random()
@@ -282,29 +282,37 @@ def run_device_worker(cfg: DeviceConfig) -> DeviceResult:
 
     # -------------------------------------------------------------------------
     # Archetype 3: DEVOPS / SRE MONITOR
-    # Continuous Prometheus HTTP metric scraping
+    # Continuous Daemon telemetry & status probing
     # -------------------------------------------------------------------------
     elif cfg.archetype == UserArchetype.DEVOPS_MONITOR:
+        mon_client = StreamClient(host=cfg.host, port=cfg.port, timeout=1.5)
+        try:
+            mon_client.connect()
+        except Exception:
+            mon_client = None
+
         while time.time() < deadline:
             time.sleep(random.uniform(0.02, 0.05))
             dice = random.random()
 
             try:
-                if dice < 0.75:
-                    t0 = time.perf_counter_ns()
-                    req = urllib.request.Request(f"http://{cfg.host}:{cfg.prom_port}/metrics")
-                    with urllib.request.urlopen(req, timeout=1.5) as resp:
-                        body = resp.read()
-                    _record_op("PROMETHEUS_SCRAPE", (time.perf_counter_ns() - t0) / 1e6)
-                else:
-                    t0 = time.perf_counter_ns()
-                    req = urllib.request.Request(f"http://{cfg.host}:{cfg.prom_port}/health")
-                    with urllib.request.urlopen(req, timeout=1.5) as resp:
-                        body = resp.read()
-                    _record_op("PROMETHEUS_HEALTH", (time.perf_counter_ns() - t0) / 1e6)
-
+                if mon_client:
+                    if dice < 0.75:
+                        t0 = time.perf_counter_ns()
+                        _ = mon_client.get_status()
+                        _record_op("DAEMON_STATUS", (time.perf_counter_ns() - t0) / 1e6)
+                    else:
+                        t0 = time.perf_counter_ns()
+                        _ = mon_client.get_health()
+                        _record_op("DAEMON_HEALTH", (time.perf_counter_ns() - t0) / 1e6)
             except Exception as exc:
                 res.errors.append(f"Devops monitor op error: {exc}")
+
+        if mon_client:
+            try:
+                mon_client.close()
+            except Exception:
+                pass
 
     # Cleanup resources
     if client:
@@ -355,10 +363,9 @@ class ConcurrentWorkloadSimulator:
         self.sim_speed_eps = sim_speed_eps
         self.console = console or Console()
         self._daemon: Optional[MarketDataDaemon] = None
-        self._prom_server: Optional[PrometheusMetricsServer] = None
 
     def start_services(self) -> None:
-        """Start isolated MarketDataDaemon and PrometheusMetricsServer."""
+        """Start isolated MarketDataDaemon."""
         # 1. Start Daemon
         self._daemon = MarketDataDaemon(
             host="127.0.0.1",
@@ -373,27 +380,8 @@ class ConcurrentWorkloadSimulator:
         self._daemon.start(blocking=False)
         time.sleep(0.35)
 
-        # 2. Start Prometheus Exporter
-        try:
-            self._prom_server = PrometheusMetricsServer(
-                host="127.0.0.1",
-                port=self.prom_port,
-                store_path=self.db_path,
-                duckdb_path=self.duckdb_path,
-            )
-            self._prom_server.start()
-            time.sleep(0.15)
-        except Exception:
-            self._prom_server = None
-
     def stop_services(self) -> None:
-        """Gracefully stop background daemon and Prometheus server."""
-        if self._prom_server:
-            try:
-                self._prom_server.stop()
-            except Exception:
-                pass
-            self._prom_server = None
+        """Gracefully stop background daemon."""
 
         if self._daemon:
             try:

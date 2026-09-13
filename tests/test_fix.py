@@ -62,6 +62,19 @@ def test_fix_session_logon_flow():
     assert session.in_seq == 1
 
 
+def test_logon_rejected_on_unknown_compid():
+    session = FIXSession(sender_comp_id='MDRAP', target_comp_id='BROKER')
+    # Incoming logon with wrong SenderCompID (ROGUE instead of BROKER)
+    rogue_logon_raw = (
+        f"8=FIX.4.2{SOH}9=65{SOH}35=A{SOH}49=ROGUE{SOH}56=MDRAP{SOH}"
+        f"34=1{SOH}52=20260315-12:00:00.000{SOH}108=30{SOH}10=050{SOH}"
+    )
+    incoming = session.process_incoming(rogue_logon_raw)
+    assert incoming.get(FIXTag.MSG_TYPE) == 'A'
+    assert session.is_logged_on is False
+
+
+
 def test_fix_session_order_creation():
     session = FIXSession(sender_comp_id='MDRAP', target_comp_id='BROKER')
     order_msg = session.create_new_order_single(

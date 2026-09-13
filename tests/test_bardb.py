@@ -189,5 +189,26 @@ class TestBarDatabase(unittest.TestCase):
             db.flush()
             self.assertEqual(db.bar_count(), 1)
 
+    def test_bar_upsert_accumulation(self):
+        with BarDatabase(':memory:', intervals=['1m']) as db:
+            # Batch 1: Initial bar for bucket
+            b1 = Bar('AAPL', 60.0, 1000.0, 100.0, 105.0, 98.0, 102.0, 50.0, 5, 101.0)
+            db._write_bars([b1])
+            
+            # Batch 2: Same bucket with new prices and volume
+            b2 = Bar('AAPL', 60.0, 1000.0, 102.0, 110.0, 95.0, 108.0, 50.0, 5, 105.0)
+            db._write_bars([b2])
+            
+            bars = db.query_bars('AAPL', '1m')
+            self.assertEqual(len(bars), 1)
+            bar = bars[0]
+            self.assertEqual(bar.open, 100.0)  # preserved original open
+            self.assertEqual(bar.high, 110.0)  # global high
+            self.assertEqual(bar.low, 95.0)    # global low
+            self.assertEqual(bar.close, 108.0) # latest close
+            self.assertEqual(bar.volume, 100.0) # accumulated 50 + 50
+            self.assertEqual(bar.trade_count, 10) # 5 + 5
+
+
 if __name__ == '__main__':
     unittest.main()

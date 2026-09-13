@@ -26,11 +26,49 @@ LIVE_WINDOW = 5000
 def percentile(sorted_values: List[float], pct: float) -> float:
     if not sorted_values:
         return 0.0
-    k = (len(sorted_values) - 1) * pct
-    f, c = int(k), min(int(k) + 1, len(sorted_values) - 1)
-    if f == c:
-        return sorted_values[f]
-    return sorted_values[f] + (sorted_values[c] - sorted_values[f]) * (k - f)
+    idx = (len(sorted_values) - 1) * pct
+    f, c = int(idx), min(int(idx) + 1, len(sorted_values) - 1)
+    return sorted_values[f] if f == c else sorted_values[f] + (sorted_values[c] - sorted_values[f]) * (idx - f)
+
+
+def get_rss_mb() -> float:
+    """Return process Resident Set Size (RSS) in MB without external dependencies."""
+    if resource:
+        rss_kb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        return rss_kb / 1024.0 if sys.platform == "linux" else rss_kb / (1024.0 * 1024.0)
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            from ctypes import wintypes
+
+            class PROCESS_MEMORY_COUNTERS(ctypes.Structure):
+                _fields_ = [
+                    ('cb', wintypes.DWORD),
+                    ('PageFaultCount', wintypes.DWORD),
+                    ('PeakWorkingSetSize', ctypes.c_size_t),
+                    ('WorkingSetSize', ctypes.c_size_t),
+                    ('QuotaPeakPagedPoolUsage', ctypes.c_size_t),
+                    ('QuotaPagedPoolUsage', ctypes.c_size_t),
+                    ('QuotaPeakNonPagedPoolUsage', ctypes.c_size_t),
+                    ('QuotaNonPagedPoolUsage', ctypes.c_size_t),
+                    ('PagefileUsage', ctypes.c_size_t),
+                    ('PeakPagefileUsage', ctypes.c_size_t),
+                ]
+
+            kernel32 = ctypes.windll.kernel32
+            psapi = ctypes.windll.psapi
+            kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+            psapi.GetProcessMemoryInfo.argtypes = [wintypes.HANDLE, ctypes.POINTER(PROCESS_MEMORY_COUNTERS), wintypes.DWORD]
+            psapi.GetProcessMemoryInfo.restype = wintypes.BOOL
+
+            pmc = PROCESS_MEMORY_COUNTERS()
+            pmc.cb = ctypes.sizeof(PROCESS_MEMORY_COUNTERS)
+            h_process = kernel32.GetCurrentProcess()
+            if psapi.GetProcessMemoryInfo(h_process, ctypes.byref(pmc), pmc.cb):
+                return pmc.WorkingSetSize / (1024.0 * 1024.0)
+        except Exception:
+            pass
+    return 0.0
 
 
 @dataclass
@@ -90,34 +128,7 @@ class RunMetrics:
     def summary(self) -> dict:
         lat = sorted(self._latencies_us)
         proc = sorted(self._proc_latencies_us)
-        rss_mb = None
-        if resource:
-            rss_kb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-            rss_mb = rss_kb / 1024 if sys.platform == "linux" else rss_kb / (1024 * 1024)
-        elif sys.platform == "win32":
-            try:
-                import ctypes
-                from ctypes import wintypes
-                class PROCESS_MEMORY_COUNTERS(ctypes.Structure):
-                    _fields_ = [
-                        ('cb', wintypes.DWORD),
-                        ('PageFaultCount', wintypes.DWORD),
-                        ('PeakWorkingSetSize', ctypes.c_size_t),
-                        ('WorkingSetSize', ctypes.c_size_t),
-                        ('QuotaPeakPagedPoolUsage', ctypes.c_size_t),
-                        ('QuotaPagedPoolUsage', ctypes.c_size_t),
-                        ('QuotaPeakNonPagedPoolUsage', ctypes.c_size_t),
-                        ('QuotaNonPagedPoolUsage', ctypes.c_size_t),
-                        ('PagefileUsage', ctypes.c_size_t),
-                        ('PeakPagefileUsage', ctypes.c_size_t),
-                    ]
-                pmc = PROCESS_MEMORY_COUNTERS()
-                pmc.cb = ctypes.sizeof(PROCESS_MEMORY_COUNTERS)
-                handle = ctypes.windll.kernel32.GetCurrentProcess()
-                if ctypes.windll.psapi.GetProcessMemoryInfo(handle, ctypes.byref(pmc), pmc.cb):
-                    rss_mb = pmc.PeakWorkingSetSize / (1024 * 1024)
-            except Exception:
-                pass
+        rss_mb = get_rss_mb()
 
         result = {
             "processed": self.processed,

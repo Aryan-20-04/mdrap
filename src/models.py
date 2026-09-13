@@ -35,6 +35,10 @@ class Reason(str, Enum):
     CROSSED_QUOTE = "CROSSED_QUOTE"
     CROSS_FEED_DISAGREEMENT = "CROSS_FEED_DISAGREEMENT"
     MALFORMED = "MALFORMED"
+    # Multi-market microstructure reasons
+    CIRCUIT_FILTER_BREACH = "CIRCUIT_FILTER_BREACH"          # NSE / BSE daily price band limit
+    VOLATILITY_INTERRUPTION = "VOLATILITY_INTERRUPTION"      # Deutsche Börse Xetra price corridor halt
+    SPECIAL_QUOTE_INDICATION = "SPECIAL_QUOTE_INDICATION"    # TSE Tokuhai sequential trade quote indication
 
 
 class AssetClass(str, Enum):
@@ -121,6 +125,9 @@ class CanonicalEvent:
     maturity_date: Optional[str] = None
     yield_to_worst: Optional[float] = None
     duration: Optional[float] = None
+    # Global exchange metadata
+    venue: str = "XNAS"
+    currency: str = "USD"
 
     def dedup_key(self) -> tuple:
         if self.sequence_number is not None:

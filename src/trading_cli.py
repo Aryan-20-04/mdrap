@@ -144,7 +144,7 @@ def cmd_risk(args: argparse.Namespace) -> None:
         ["Parametric VaR (95%)", f"${s['parametric_var']:,.2f}"],
         ["Monte Carlo VaR (95%)", f"${s['monte_carlo_var']:,.2f}"],
         ["Expected Shortfall (CVaR)", f"${s['expected_shortfall']:,.2f}"],
-        ["Max Drawdown", f"{s['max_drawdown']*100:.2f}%"],
+        ["Max Drawdown", f"{s['max_drawdown']:.2f}%"],
         ["Current Drawdown", f"{s['current_drawdown']:.2f}%"],
         ["Annualized Sharpe", f"{s['sharpe_ratio']:.2f}"],
         ["Annualized Sortino", f"{s['sortino_ratio']:.2f}"],
@@ -415,16 +415,25 @@ def cmd_watchlist(args: argparse.Namespace) -> None:
 
 def cmd_portfolio(args: argparse.Namespace) -> None:
     from portfolio import PortfolioTracker
+    from venues import format_currency
+    from fx import convert_currency
 
+    target_curr = getattr(args, "currency", "USD") or "USD"
     tracker = PortfolioTracker(initial_cash=getattr(args, "capital", 100_000.0), db_path=getattr(args, "db", "data/portfolio.db"))
     if (getattr(args, "action", "summary") or "summary") == "summary":
         s = tracker.summary()
-        console.print(_t("Portfolio Overview", [("Metric", {"style": "cyan"}), ("Value", {"style": "bold green"})], [
-            ["Total Equity", f"${s['total_equity']:,.2f}"],
-            ["Cash", f"${s['cash']:,.2f}"],
-            ["Market Value", f"${s['market_value']:,.2f}"],
-            ["Realized P&L", f"${s['realized_pnl']:,.2f}"],
-            ["Unrealized P&L", f"${s['unrealized_pnl']:,.2f}"],
+        tot_eq = tracker.total_equity_in(target_curr)
+        c_val = convert_currency(s['cash'], "USD", target_curr)
+        mv_val = convert_currency(s['market_value'], "USD", target_curr)
+        r_pnl = convert_currency(s['realized_pnl'], "USD", target_curr)
+        ur_pnl = convert_currency(s['unrealized_pnl'], "USD", target_curr)
+
+        console.print(_t(f"Portfolio Overview · {target_curr.upper()}", [("Metric", {"style": "cyan"}), ("Value", {"style": "bold green"})], [
+            ["Total Equity", format_currency(tot_eq, target_curr)],
+            ["Cash", format_currency(c_val, target_curr)],
+            ["Market Value", format_currency(mv_val, target_curr)],
+            ["Realized P&L", format_currency(r_pnl, target_curr)],
+            ["Unrealized P&L", format_currency(ur_pnl, target_curr)],
             ["Active Positions", str(s['position_count'])],
         ]))
 
@@ -493,10 +502,61 @@ def cmd_schedule(args: argparse.Namespace) -> None:
 
 
 # ---------------------------------------------------------------------------
+# 11. Global Markets & Venues CLI
+# ---------------------------------------------------------------------------
+def cmd_markets(args: argparse.Namespace) -> None:
+    """Displays real-time multi-market clocks, trading session phases, and FX matrix."""
+    import datetime
+    from venues import GLOBAL_VENUES, get_session_phase
+    from fx import GLOBAL_FX
+
+    table = Table(title="🌐 Global Financial Markets & Exchange Microstructure")
+    table.add_column("Market / Venue", style="bold white")
+    table.add_column("MIC", style="dim", justify="center")
+    table.add_column("Local Time", style="bold cyan", justify="center")
+    table.add_column("Session Status", justify="center")
+    table.add_column("Base Currency", style="bold yellow", justify="center")
+    table.add_column("Benchmark Index", style="bold green")
+    table.add_column("Circuit Band", style="dim", justify="right")
+
+    now_utc = datetime.datetime.now(datetime.timezone.utc)
+
+    for mic, v in GLOBAL_VENUES.items():
+        is_open, phase, desc = get_session_phase(v)
+        offset_hrs = v.utc_offset_hours
+        local_dt = now_utc + datetime.timedelta(hours=offset_hrs)
+        local_time_str = local_dt.strftime("%H:%M %a")
+
+        if is_open:
+            status_str = f"[bold green]● {desc}[/bold green]"
+        elif phase.value == "PRE_OPEN":
+            status_str = f"[bold yellow]◐ {desc}[/bold yellow]"
+        else:
+            status_str = f"[dim red]○ {desc}[/dim red]"
+
+        table.add_row(
+            f"{v.flag} {v.name}",
+            v.mic,
+            local_time_str,
+            status_str,
+            f"{v.currency} ({v.currency_symbol})",
+            f"{v.benchmark_index} ({v.index_name})",
+            f"±{v.circuit_limit_pct:.0f}%",
+        )
+
+    console.print(table)
+    console.print("\n[bold dim]Institutional FX Matrix Snapshot (vs USD):[/bold dim]")
+    fx_summary = GLOBAL_FX.rates_summary()
+    fx_parts = [f"USD/{k}: [bold cyan]{v:,.2f}[/bold cyan]" for k, v in fx_summary.items() if k != "USD"]
+    console.print("  " + "  •  ".join(fx_parts[:6]))
+    console.print()
+
+
+# ---------------------------------------------------------------------------
 # Subparser Registration Helper
 # ---------------------------------------------------------------------------
 def add_trading_parsers(sub) -> None:
-    """Register all 10 trading/research subparsers in argparse."""
+    """Register all trading/research subparsers in argparse."""
 
     # Backtest
     p_bt = sub.add_parser("backtest", aliases=["bt"], help="Historical backtesting engine with point-in-time event replay")
@@ -508,25 +568,26 @@ def add_trading_parsers(sub) -> None:
 
     # Risk
     p_risk = sub.add_parser("risk", aliases=["var", "cvar"], help="Portfolio risk management, VaR, CVaR, and correlation analysis")
-    p_risk.add_argument("-c", "--confidence", type=float, default=0.95)
-    p_risk.add_argument("-k", "--capital", type=float, default=100_000.0)
+    p_risk.add_argument("-c", "--capital", type=float, default=100_000.0)
+    p_risk.add_argument("-w", "--window", type=int, default=252)
+    p_risk.add_argument("-p", "--confidence", type=float, default=0.95)
+    p_risk.add_argument("--db", default="data/mdrap.db")
     p_risk.set_defaults(func=cmd_risk)
 
-    # Bars
-    p_bars = sub.add_parser("bars", aliases=["bardb"], help="Persistent multi-timeframe OHLCV bar database")
-    p_bars.add_argument("action", nargs="?", default="summary", choices=["summary", "query"])
-    p_bars.add_argument("-i", "--symbol", default="AAPL")
-    p_bars.add_argument("-n", "--interval", default="1m")
-    p_bars.add_argument("-l", "--limit", type=int, default=15)
+    # Bar Database
+    p_bars = sub.add_parser("bars", aliases=["bardb", "candles"], help="Multi-timeframe OHLCV bar database and historical lookup")
+    p_bars.add_argument("action", nargs="?", default="summary", choices=["summary", "query", "instruments"])
+    p_bars.add_argument("-i", "-s", "--symbol", default="AAPL")
+    p_bars.add_argument("-t", "--interval", default="1m")
+    p_bars.add_argument("-l", "--limit", type=int, default=10)
     p_bars.add_argument("--db", default="data/bars.db")
     p_bars.set_defaults(func=cmd_bars)
 
     # Options
-    p_opt = sub.add_parser("options", aliases=["opt", "greeks"], help="Options pricing (BSM/Binomial), Greeks, and volatility surface")
-    p_opt.add_argument("action", nargs="?", default="price", choices=["price", "chain"])
-    p_opt.add_argument("-u", "--underlying", default="AAPL", help="Underlying ticker symbol")
-    p_opt.add_argument("-s", "--spot", type=float, default=150.0)
-    p_opt.add_argument("-k", "--strike", type=float, default=150.0)
+    p_opt = sub.add_parser("options", aliases=["opt", "greeks"], help="Options pricing models, Greeks chain, and implied volatility solver")
+    p_opt.add_argument("action", nargs="?", default="price", choices=["price", "chain", "surface"])
+    p_opt.add_argument("-s", "--spot", type=float, default=100.0)
+    p_opt.add_argument("-k", "--strike", type=float, default=100.0)
     p_opt.add_argument("-e", "--expiry", type=float, default=30.0)
     p_opt.add_argument("-v", "--vol", type=float, default=0.25)
     p_opt.add_argument("-r", "--rate", type=float, default=0.05)
@@ -564,6 +625,7 @@ def add_trading_parsers(sub) -> None:
     p_port = sub.add_parser("portfolio", aliases=["port"], help="Portfolio tracker with P&L attribution and benchmark comparison")
     p_port.add_argument("action", nargs="?", default="summary", choices=["summary"])
     p_port.add_argument("-c", "--capital", type=float, default=100_000.0)
+    p_port.add_argument("--currency", default="USD", help="Base reporting currency (e.g. USD, INR, EUR, JPY)")
     p_port.add_argument("--db", default="data/portfolio.db")
     p_port.set_defaults(func=cmd_portfolio)
 
@@ -583,3 +645,7 @@ def add_trading_parsers(sub) -> None:
     p_sched = sub.add_parser("schedule", aliases=["sched", "cron"], help="Scheduled tasks and automated EOD reports")
     p_sched.add_argument("action", nargs="?", default="list", choices=["list", "eod"])
     p_sched.set_defaults(func=cmd_schedule)
+
+    # Markets
+    p_mkts = sub.add_parser("markets", aliases=["venues", "world", "desk"], help="Global financial exchange directory, market clocks, and microstructure")
+    p_mkts.set_defaults(func=cmd_markets)

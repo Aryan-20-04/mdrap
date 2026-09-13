@@ -1,5 +1,52 @@
 # Changelog
 
+## [1.1.0] - 2026-09-14
+**Native C Hot Path Default Enablement, Multi-Market Infrastructure & Maritime Intelligence Restoration**
+
+### Added
+- **Native C Hot Path Enabled by Default (`src/fastpath.py`, `src/pipeline.py`, `src/cli.py`)**:
+  - `Pipeline` defaults to `FastQualityEngine` when compiled C fastpath (`fastpath.dll` / `fastpath.so`) is available.
+  - Added `--no-fastpath` flag to CLI (`mdrap run`, `mdrap benchmark`) for pure-Python execution.
+  - Automatic zero-overhead fallback to pure Python when `MDRAP_DISABLE_FASTPATH=1` is set.
+- **Global Multi-Market Infrastructure (`src/venues.py`, `src/symbology.py`, `src/fx.py`)**:
+  - ISO 10383 venue models for Indian (`XNSE`, `XBOM`), German (`XETR`, `XEUR`), Japanese (`XTKS`, `XOSE`), UK (`XLON`), and US (`XNAS`, `XNYS`) markets.
+  - Global trading desk clock (`mdrap markets` / `mdrap desk`).
+  - Triangular FXMatrix engine for multi-currency portfolio valuation (`mdrap portfolio --currency INR/EUR/JPY/GBP`).
+  - Universal symbology resolver for exchange suffixes, Bloomberg tickers, Reuters RICs, and ISINs.
+  - Venue-aware quality rules: `CIRCUIT_FILTER_BREACH`, `VOLATILITY_INTERRUPTION`, and `SPECIAL_QUOTE_INDICATION`.
+- **Global Maritime Tanker & Cargo Tracking Alternative Data Engine (`src/vessel.py`)**:
+  - Commercial fleet tracking for crude oil tankers (VLCC/ULCC), LNG, dry bulk, and container ships.
+  - Native C vectorized geodesic fastpath bindings (`fastpath_haversine_nm`, `fastpath_batch_fleet_geofence`).
+  - Geopolitical maritime chokepoints monitoring (Hormuz, Malacca, Suez, Bab-el-Mandeb, Panama).
+  - CLI commands: `mdrap vessel list`, `mdrap vessel track`, `mdrap vessel chokepoints`, `mdrap vessel commodities`.
+
+### Removed
+- **Speculative & Redundant Architecture Purge**:
+  - `src/excel_bridge.py`: Deleted HTTP Excel BDP formula server and VBA generator.
+  - `src/pipeline_v2.py`: Deleted decoupled multi-threaded streaming pipeline to maintain pure V1 synchronous baseline.
+  - `src/sharded_pipeline.py`: Deleted multi-process sharded pipeline engine.
+  - `src/async_storage.py`: Deleted background thread async storage sink.
+  - `src/feed_workers.py`: Deleted multi-threaded background feed ingestion workers.
+  - `src/prometheus.py`: Deleted embedded HTTP daemon for Prometheus metrics scraping.
+  - `src/broker.py`: Deleted unused abstract EventBroker interface and Kafka adapter.
+  - `src/spsc_ring.py`: Deleted redundant ring buffer duplicating `src/shm.py`.
+  - `src/chd_cli.py`: Deleted redundant wrapper duplicating `src/chd.py`.
+  - `src/sdk/`: Consolidated SDK directly into `src/client.py` and `src/strategy_sdk.py`.
+- **Artificial Enterprise Paywalls & Trial License Gates**:
+  - Removed commercial tier checks and mock upgrade nag screens in `src/security.py` and `src/service.py`. All institutional capabilities are unrestricted.
+
+### Fixed
+- **Watchlist & Portfolio Ephemeral SQLite Connection Bug (`src/portfolio.py`)**:
+  - Fixed `WatchlistManager` and `PortfolioTracker` opening temporary in-memory connections on every operation (`sqlite3.connect(self.db_path)`), which wiped tables when `:memory:` was passed. Persisted connection `self._conn` across instance lifetime.
+- **CLI Typo Auto-Correct False Positive (`src/cli.py`)**:
+  - Fixed false-positive notice where valid canonical subcommands (`mdrap version`, etc.) triggered redundant auto-correct notices.
+
+### Verified
+- **Test Suite**:
+  - 629 unit, integration, and quantitative tests passing (`python -m pytest tests/ -q` 100% green in ~90s).
+- **Latency & Throughput Verification**:
+  - Multi-market latency benchmark verified (~18,000–22,000 EPS e2e, fastpath C quality kernel 28.0 ns/e).
+
 ## [1.0.6] - 2026-09-13
 **SEC EDGAR Untruncated Link Fix, OSC 8 Terminal Hyperlinks & Browser Launch (`--open`)**
 

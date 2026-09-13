@@ -8,6 +8,7 @@ Newton-Raphson IV solver, volatility surface construction, and options chain ana
 
 import enum
 import math
+import statistics
 from dataclasses import dataclass
 from typing import Optional
 
@@ -56,14 +57,17 @@ class OptionPrice:
     model: str            # 'BSM' or 'BINOMIAL'
 
 
+_STD_NORM = statistics.NormalDist()
+
+
 def _norm_cdf(x: float) -> float:
     """Standard normal cumulative distribution function."""
-    return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
+    return _STD_NORM.cdf(x)
 
 
 def _norm_pdf(x: float) -> float:
     """Standard normal probability density function."""
-    return math.exp(-0.5 * x**2) / math.sqrt(2.0 * math.pi)
+    return _STD_NORM.pdf(x)
 
 
 def _d1(S: float, K: float, T: float, r: float, sigma: float) -> float:

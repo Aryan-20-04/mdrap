@@ -89,7 +89,7 @@ class PortfolioRiskEngine:
             self._hwm = portfolio_value
             self._hwm_timestamp = timestamp
         elif self._hwm > 0:
-            dd = (self._hwm - portfolio_value) / self._hwm
+            dd = (self._hwm - portfolio_value) / self._hwm * 100.0
             if dd > self._max_dd_pct:
                 self._max_dd_pct = dd
                 self._peak_timestamp = self._hwm_timestamp

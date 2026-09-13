@@ -195,13 +195,17 @@ class BarDatabase:
                     open, high, low, close, volume, trade_count, vwap
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(instrument_id, interval_s, bucket_start) DO UPDATE SET
-                    open=excluded.open,
-                    high=excluded.high,
-                    low=excluded.low,
+                    open=bars.open,
+                    high=max(bars.high, excluded.high),
+                    low=min(bars.low, excluded.low),
                     close=excluded.close,
-                    volume=excluded.volume,
-                    trade_count=excluded.trade_count,
-                    vwap=excluded.vwap
+                    volume=bars.volume + excluded.volume,
+                    trade_count=bars.trade_count + excluded.trade_count,
+                    vwap=CASE 
+                        WHEN (bars.volume + excluded.volume) > 0 
+                        THEN ((bars.vwap * bars.volume) + (excluded.vwap * excluded.volume)) / (bars.volume + excluded.volume)
+                        ELSE excluded.vwap 
+                    END
             ''', [
                 (b.instrument_id, b.interval_s, b.bucket_start, b.open, b.high, b.low, b.close, b.volume, b.trade_count, b.vwap)
                 for b in bars

@@ -70,6 +70,20 @@ def test_risk_manager_kill_switch_drawdown():
     assert rm.kill_switch_triggered is True
 
 
+def test_risk_manager_zero_equity_handling():
+    """Verify RiskManager handles non-positive initial capital and negative equity gracefully."""
+    rm = RiskManager(initial_capital=0.0)
+    pos = Position(symbol="AAPL")
+    order = Order(order_id="zero_eq", symbol="AAPL", side=OrderSide.BUY, order_type=OrderType.MARKET, quantity=10.0)
+
+    # Negative equity with 0 peak equity triggers 100% drawdown kill-switch
+    ok, err = rm.validate_order(order, 100.0, pos, -100.0)
+    assert ok is False
+    assert "kill-switch triggered" in err
+    assert rm.kill_switch_triggered is True
+
+
+
 def test_paper_executor_market_order_fill():
     executor = PaperExecutor(initial_cash=50_000.0)
     bbo = {"bid": 150.0, "ask": 150.10, "bid_size": 500.0, "ask_size": 500.0}

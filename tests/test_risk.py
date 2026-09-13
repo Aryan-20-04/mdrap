@@ -81,7 +81,7 @@ def test_max_drawdown_computation():
         engine.observe(datetime(2023, 1, i+1), val)
     
     max_dd, peak_ts, trough_ts = engine.max_drawdown()
-    assert math.isclose(max_dd, 0.2)  # (120 - 96) / 120
+    assert math.isclose(max_dd, 20.0)  # (120 - 96) / 120 * 100.0
     assert peak_ts == datetime(2023, 1, 2)
     assert trough_ts == datetime(2023, 1, 3)
 
@@ -141,3 +141,18 @@ def test_risk_summary():
     
     summary = engine.summary()
     assert isinstance(summary, dict)
+
+
+def test_circuit_breaker_triggers_on_max_drawdown():
+    engine = PortfolioRiskEngine()
+    # 15% drawdown: 100 -> 85
+    engine.observe(datetime(2023, 1, 1), 100.0)
+    engine.observe(datetime(2023, 1, 2), 85.0)
+    max_dd, _, _ = engine.max_drawdown()
+    assert math.isclose(max_dd, 15.0)
+
+    breaker = DrawdownCircuitBreaker(warning_pct=3.0, critical_pct=5.0, kill_pct=10.0)
+    level = breaker.check(max_dd)
+    assert level == "KILL"
+    assert breaker.triggered
+

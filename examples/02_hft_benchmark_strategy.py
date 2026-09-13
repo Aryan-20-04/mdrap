@@ -8,8 +8,7 @@ import asyncio
 import time
 import sys
 
-from sdk.execution import LiveStrategyRunner
-from strategy_sdk import Strategy
+from strategy_sdk import Strategy, LiveStrategyRunner
 from models import CanonicalEvent
 
 class HFTBenchmarkStrategy(Strategy):

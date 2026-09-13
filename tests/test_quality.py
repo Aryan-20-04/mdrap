@@ -93,3 +93,14 @@ def test_schema_violation_routes_through_normalize():
     raw = RawEvent(source="FEEDX", payload={"event_type": "TRADE"})  # missing required fields
     with pytest.raises(SchemaError):
         normalize(raw)
+
+
+def test_anomaly_detection_with_flat_history():
+    """Verify that a zero-variance history (stddev == 0) still detects large price anomalies."""
+    qe = QualityEngine(QualityConfig(price_anomaly_stddev=3.0, price_window=20))
+    for i in range(10):
+        qe.evaluate(make_event(event_id=f"f{i}", sequence_number=i + 1, price=100.0))
+    spike = qe.evaluate(make_event(event_id="spike_flat", sequence_number=11, price=250.0))
+    assert Reason.PRICE_ANOMALY.value in spike.reasons
+    assert spike.quality_status == QualityStatus.SUSPICIOUS
+

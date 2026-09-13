@@ -82,6 +82,15 @@ def normalize(raw: RawEvent) -> CanonicalEvent:
         raw_id=raw.raw_id,
     )
 
+    try:
+        from symbology import resolve_symbol
+        sym_info = resolve_symbol(instrument)
+        event.venue = p.get("venue") or sym_info.venue_mic
+        event.currency = p.get("currency") or sym_info.currency
+    except Exception:
+        event.venue = p.get("venue") or "XNAS"
+        event.currency = p.get("currency") or "USD"
+
     if event_type_raw == "TRADE":
         price, qty = p["price"], p["quantity"]
         if not isinstance(price, (int, float)) or price <= 0:

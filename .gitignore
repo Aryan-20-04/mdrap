@@ -48,12 +48,22 @@ nosetests.xml
 coverage.xml
 *.cover
 .hypothesis/
+.ruff_cache/
+.mypy_cache/
+.pytype/
 
 # Profiling & Diagnostics
 *.prof
 *.pstats
+benchmarks/baseline_*.json
+benchmarks/loadtest_*.json
+benchmarks/profile_latency_*.json
 
 # SQLite Databases & Ephemeral Market Data
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
 data/*.db
 data/*.db-wal
 data/*.db-shm
@@ -82,6 +92,7 @@ data/reports/*
 .Spotlight-V100
 .Trashes
 ehthumbs.db
+ehthumbs_vista.db
 Thumbs.db
 [Dd]esktop.ini
 
@@ -99,9 +110,17 @@ scratch/
 tmp/
 *.tmp
 *.log
+*.bak
 
 # Packaging & Distribution
 dist/
+build/
+bin/
+obj/
+.eggs/
+*.egg
+develop-eggs/
+pip-wheel-metadata/
 *.egg-info/
 src/*.egg-info/
 *.whl

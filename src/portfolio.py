@@ -27,6 +27,8 @@ class PortfolioPosition:
     realized_pnl: float = 0.0
     sector: str = ''
     strategy: str = ''
+    currency: str = 'USD'
+    venue: str = 'XNAS'
 
     @property
     def unrealized_pnl(self) -> float:
@@ -62,13 +64,18 @@ class WatchlistManager:
     def __init__(self, db_path: str | None = None):
         self.db_path = db_path
         self._watchlists: dict[str, Watchlist] = {}
+        self._conn: sqlite3.Connection | None = None
         if self.db_path:
+            if self.db_path != ":memory:":
+                os.makedirs(os.path.dirname(os.path.abspath(self.db_path)), exist_ok=True)
+            self._conn = sqlite3.connect(self.db_path)
             self._init_db()
             self._load_from_db()
 
     def _init_db(self):
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute('''
+        if not self._conn: return
+        with self._conn:
+            self._conn.execute('''
                 CREATE TABLE IF NOT EXISTS watchlists (
                     name TEXT PRIMARY KEY,
                     symbols TEXT,
@@ -78,26 +85,30 @@ class WatchlistManager:
             ''')
 
     def _load_from_db(self):
-        if not self.db_path: return
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.execute("SELECT name, symbols, created_at, description FROM watchlists")
-            for row in cursor:
-                name, symbols_json, created_at, desc = row
-                symbols = json.loads(symbols_json) if symbols_json else []
-                self._watchlists[name] = Watchlist(name=name, symbols=symbols, created_at=created_at, description=desc)
+        if not self._conn: return
+        cursor = self._conn.execute("SELECT name, symbols, created_at, description FROM watchlists")
+        for row in cursor:
+            name, symbols_json, created_at, desc = row
+            symbols = json.loads(symbols_json) if symbols_json else []
+            self._watchlists[name] = Watchlist(name=name, symbols=symbols, created_at=created_at, description=desc)
 
     def _save_to_db(self, wl: Watchlist):
-        if not self.db_path: return
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute('''
+        if not self._conn: return
+        with self._conn:
+            self._conn.execute('''
                 INSERT OR REPLACE INTO watchlists (name, symbols, created_at, description)
                 VALUES (?, ?, ?, ?)
             ''', (wl.name, json.dumps(wl.symbols), wl.created_at, wl.description))
 
     def _delete_from_db(self, name: str):
-        if not self.db_path: return
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute("DELETE FROM watchlists WHERE name = ?", (name,))
+        if not self._conn: return
+        with self._conn:
+            self._conn.execute("DELETE FROM watchlists WHERE name = ?", (name,))
+
+    def close(self):
+        if self._conn:
+            self._conn.close()
+            self._conn = None
 
     def create(self, name: str, symbols: list[str] | None = None, description: str = '') -> Watchlist:
         if name in self._watchlists:
@@ -164,13 +175,18 @@ class PortfolioTracker:
         self._cash = initial_cash
         self._positions: dict[str, PortfolioPosition] = {}
         self._snapshots: list[PerformanceSnapshot] = []
+        self._conn: sqlite3.Connection | None = None
         if self.db_path:
+            if self.db_path != ":memory:":
+                os.makedirs(os.path.dirname(os.path.abspath(self.db_path)), exist_ok=True)
+            self._conn = sqlite3.connect(self.db_path)
             self._init_db()
             self._load_from_db()
 
     def _init_db(self):
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute('''
+        if not self._conn: return
+        with self._conn:
+            self._conn.execute('''
                 CREATE TABLE IF NOT EXISTS positions (
                     symbol TEXT PRIMARY KEY,
                     quantity REAL,
@@ -180,7 +196,7 @@ class PortfolioTracker:
                     strategy TEXT
                 )
             ''')
-            conn.execute('''
+            self._conn.execute('''
                 CREATE TABLE IF NOT EXISTS snapshots (
                     timestamp REAL,
                     total_equity REAL,
@@ -191,62 +207,93 @@ class PortfolioTracker:
                     daily_pnl REAL
                 )
             ''')
-            conn.execute('''
+            self._conn.execute('''
                 CREATE TABLE IF NOT EXISTS config (
                     key TEXT PRIMARY KEY,
                     value REAL
                 )
             ''')
             # Initialize or retrieve cash
-            cursor = conn.execute("SELECT value FROM config WHERE key = 'cash'")
+            cursor = self._conn.execute("SELECT value FROM config WHERE key = 'cash'")
             row = cursor.fetchone()
             if row:
                 self._cash = row[0]
             else:
-                conn.execute("INSERT INTO config (key, value) VALUES ('cash', ?)", (self._initial_cash,))
+                self._conn.execute("INSERT INTO config (key, value) VALUES ('cash', ?)", (self._initial_cash,))
 
     def _load_from_db(self):
-        if not self.db_path: return
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.execute("SELECT symbol, quantity, avg_cost, realized_pnl, sector, strategy FROM positions")
-            for row in cursor:
-                pos = PortfolioPosition(*row)
-                self._positions[pos.symbol] = pos
-            
-            cursor = conn.execute("SELECT timestamp, total_equity, cash, market_value, realized_pnl, unrealized_pnl, daily_pnl FROM snapshots ORDER BY timestamp")
-            for row in cursor:
-                snap = PerformanceSnapshot(*row)
-                self._snapshots.append(snap)
+        if not self._conn: return
+        cursor = self._conn.execute("SELECT symbol, quantity, avg_cost, realized_pnl, sector, strategy FROM positions")
+        for row in cursor:
+            try:
+                from symbology import resolve_symbol
+                sym_info = resolve_symbol(row[0])
+                pos = PortfolioPosition(
+                    symbol=row[0],
+                    quantity=row[1],
+                    avg_cost=row[2],
+                    realized_pnl=row[3],
+                    sector=row[4] or '',
+                    strategy=row[5] or '',
+                    currency=sym_info.currency,
+                    venue=sym_info.venue_mic,
+                )
+            except Exception:
+                pos = PortfolioPosition(symbol=row[0], quantity=row[1], avg_cost=row[2], realized_pnl=row[3], sector=row[4] or '', strategy=row[5] or '')
+            self._positions[pos.symbol] = pos
+        
+        cursor = self._conn.execute("SELECT timestamp, total_equity, cash, market_value, realized_pnl, unrealized_pnl, daily_pnl FROM snapshots ORDER BY timestamp")
+        for row in cursor:
+            snap = PerformanceSnapshot(*row)
+            self._snapshots.append(snap)
 
     def _save_position_to_db(self, pos: PortfolioPosition):
-        if not self.db_path: return
-        with sqlite3.connect(self.db_path) as conn:
+        if not self._conn: return
+        with self._conn:
             if pos.quantity == 0 and pos.realized_pnl == 0:
-                conn.execute("DELETE FROM positions WHERE symbol = ?", (pos.symbol,))
+                self._conn.execute("DELETE FROM positions WHERE symbol = ?", (pos.symbol,))
             else:
-                conn.execute('''
+                self._conn.execute('''
                     INSERT OR REPLACE INTO positions (symbol, quantity, avg_cost, realized_pnl, sector, strategy)
                     VALUES (?, ?, ?, ?, ?, ?)
                 ''', (pos.symbol, pos.quantity, pos.avg_cost, pos.realized_pnl, pos.sector, pos.strategy))
 
     def _save_cash_to_db(self):
-        if not self.db_path: return
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('cash', ?)", (self._cash,))
+        if not self._conn: return
+        with self._conn:
+            self._conn.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('cash', ?)", (self._cash,))
 
     def _save_snapshot_to_db(self, snap: PerformanceSnapshot):
-        if not self.db_path: return
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute('''
+        if not self._conn: return
+        with self._conn:
+            self._conn.execute('''
                 INSERT INTO snapshots (timestamp, total_equity, cash, market_value, realized_pnl, unrealized_pnl, daily_pnl)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
             ''', (snap.timestamp, snap.total_equity, snap.cash, snap.market_value, snap.realized_pnl, snap.unrealized_pnl, snap.daily_pnl))
+
+    def close(self):
+        if self._conn:
+            self._conn.close()
+            self._conn = None
 
     def add_trade(self, symbol: str, quantity: float, price: float, sector: str = '', strategy: str = '') -> PortfolioPosition:
         """Record a trade. Positive qty = buy, negative = sell.
         Updates avg_cost on buys, records realized P&L on sells."""
         if symbol not in self._positions:
-            pos = PortfolioPosition(symbol=symbol, quantity=0, avg_cost=0, sector=sector, strategy=strategy)
+            try:
+                from symbology import resolve_symbol
+                sym_info = resolve_symbol(symbol)
+                pos = PortfolioPosition(
+                    symbol=symbol,
+                    quantity=0,
+                    avg_cost=0,
+                    sector=sector,
+                    strategy=strategy,
+                    currency=sym_info.currency,
+                    venue=sym_info.venue_mic,
+                )
+            except Exception:
+                pos = PortfolioPosition(symbol=symbol, quantity=0, avg_cost=0, sector=sector, strategy=strategy)
             self._positions[symbol] = pos
         else:
             pos = self._positions[symbol]
@@ -307,6 +354,16 @@ class PortfolioTracker:
     @property
     def total_equity(self) -> float:
         return self.cash + self.market_value
+
+    def total_equity_in(self, target_currency: str = "USD") -> float:
+        """Converts cash and all position market values into target currency using live FX matrix."""
+        from fx import convert_currency
+        total = convert_currency(self._cash, "USD", target_currency)
+        for pos in self._positions.values():
+            mv_converted = convert_currency(pos.market_value, pos.currency, target_currency)
+            total += mv_converted
+        return total
+
 
     @property
     def total_realized_pnl(self) -> float:

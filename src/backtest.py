@@ -82,6 +82,7 @@ class BacktestEngine:
         
         real_start_time = time.time()
         latest_prices: dict[str, float] = {}
+        has_quote_feed: set[str] = set()
         
         for event in events:
             if self.benchmark_symbol and event.instrument_id == self.benchmark_symbol:
@@ -93,15 +94,16 @@ class BacktestEngine:
             if event.event_type == EventType.TRADE and event.price is not None:
                 latest_prices[event.instrument_id] = event.price
                 runner.strategy._current_mid[event.instrument_id] = event.price
-                runner.strategy._current_bbo[event.instrument_id] = {
-                    "bid": event.price,
-                    "ask": event.price,
-                    "bid_size": event.quantity or 1000.0,
-                    "ask_size": event.quantity or 1000.0,
-                }
-                runner.strategy.get_order_book(event.instrument_id).update_quote(
-                    event.price, event.price, event.quantity or 1000.0, event.quantity or 1000.0, event.exchange_timestamp
-                )
+                if event.instrument_id not in has_quote_feed:
+                    runner.strategy._current_bbo[event.instrument_id] = {
+                        "bid": event.price,
+                        "ask": event.price,
+                        "bid_size": event.quantity or 1000.0,
+                        "ask_size": event.quantity or 1000.0,
+                    }
+                    runner.strategy.get_order_book(event.instrument_id).update_quote(
+                        event.price, event.price, event.quantity or 1000.0, event.quantity or 1000.0, event.exchange_timestamp
+                    )
                 # Dispatch tick
                 runner.strategy.on_tick(event)
 
@@ -122,7 +124,23 @@ class BacktestEngine:
 
             elif event.event_type == EventType.QUOTE:
                 if event.bid_price is not None and event.ask_price is not None:
-                    latest_prices[event.instrument_id] = (event.bid_price + event.ask_price) / 2.0
+                    has_quote_feed.add(event.instrument_id)
+                    mid = (event.bid_price + event.ask_price) / 2.0
+                    latest_prices[event.instrument_id] = mid
+                    runner.strategy._current_mid[event.instrument_id] = mid
+                    runner.strategy._current_bbo[event.instrument_id] = {
+                        "bid": event.bid_price,
+                        "ask": event.ask_price,
+                        "bid_size": event.bid_size or 1000.0,
+                        "ask_size": event.ask_size or 1000.0,
+                    }
+                    runner.strategy.get_order_book(event.instrument_id).update_quote(
+                        event.bid_price,
+                        event.ask_price,
+                        event.bid_size or 1000.0,
+                        event.ask_size or 1000.0,
+                        event.exchange_timestamp,
+                    )
                 runner.strategy.on_quote(event)
 
             # Sample equity
@@ -146,10 +164,13 @@ class BacktestEngine:
         duration_days = (end_time - start_time) / 86400.0
         
         if duration_days >= 1.0:
-            try:
-                annualized_return = ((1 + total_return) ** (365.25 / duration_days)) - 1
-            except OverflowError:
-                annualized_return = total_return * (365.25 / duration_days)
+            if 1.0 + total_return <= 0.0:
+                annualized_return = -1.0
+            else:
+                try:
+                    annualized_return = ((1.0 + total_return) ** (365.25 / duration_days)) - 1.0
+                except OverflowError:
+                    annualized_return = total_return * (365.25 / duration_days)
         elif duration_days > 0:
             annualized_return = total_return * (365.25 / duration_days)
         else:

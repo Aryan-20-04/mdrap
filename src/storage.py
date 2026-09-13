@@ -595,7 +595,11 @@ class Store:
         for entry_id, ts, actor, role, action, details, prev_h, entry_h in rows:
             if prev_h != expected_prev:
                 return False, f"Broken chain link at entry #{entry_id}: expected prev_hash '{expected_prev[:12]}...', got '{prev_h[:12]}...'", entry_id
-            payload_str = f"{prev_h}|{ts:.6f}|{actor}|{role}|{action}|{details}"
+            esc_actor = str(actor).replace("|", r"\|")
+            esc_role = str(role).replace("|", r"\|")
+            esc_action = str(action).replace("|", r"\|")
+            esc_details = str(details).replace("|", r"\|")
+            payload_str = f"{prev_h}|{ts:.6f}|{esc_actor}|{esc_role}|{esc_action}|{esc_details}"
             recomputed_hash = hashlib.sha256(payload_str.encode("utf-8")).hexdigest()
             if recomputed_hash != entry_h:
                 return False, f"Tampered entry #{entry_id}: hash mismatch (stored '{entry_h[:12]}...', calculated '{recomputed_hash[:12]}...')", entry_id
@@ -652,7 +656,11 @@ class Store:
             if prev_h != expected_prev:
                 return False, f"Broken chain link at entry #{entry_id}: expected prev '{expected_prev[:12]}...', got '{prev_h[:12]}...'", entry_id
 
-            payload_str = f"{prev_h}|{item['timestamp']:.6f}|{item['actor']}|{item['role']}|{item['action']}|{item['details']}"
+            esc_actor = str(item['actor']).replace("|", r"\|")
+            esc_role = str(item['role']).replace("|", r"\|")
+            esc_action = str(item['action']).replace("|", r"\|")
+            esc_details = str(item['details']).replace("|", r"\|")
+            payload_str = f"{prev_h}|{item['timestamp']:.6f}|{esc_actor}|{esc_role}|{esc_action}|{esc_details}"
             calc_hash = hashlib.sha256(payload_str.encode("utf-8")).hexdigest()
             if calc_hash != entry_h:
                 return False, f"Tampered entry #{entry_id}: hash mismatch (stored '{entry_h[:12]}...', calculated '{calc_hash[:12]}...')", entry_id
@@ -664,7 +672,8 @@ class Store:
     @_synchronized
     def save_api_key(self, ent: Any) -> None:
         """Save or update a client API key entitlement."""
-        tier_str = ent.tier.value if hasattr(ent.tier, "value") else str(ent.tier)
+        tier_val = getattr(ent, "tier", "STANDARD")
+        tier_str = tier_val.value if hasattr(tier_val, "value") else str(tier_val)
         self.conn.execute(
             """INSERT OR REPLACE INTO api_keys
                (token, client_id, tier, rate_limit_eps, can_access_l2, can_use_binary, can_use_shm, max_replay_events, is_active, created_at, expires_at)
@@ -674,10 +683,10 @@ class Store:
                 ent.client_id,
                 tier_str,
                 float(ent.rate_limit_eps),
-                1 if ent.can_access_l2 else 0,
-                1 if ent.can_use_binary else 0,
-                1 if ent.can_use_shm else 0,
-                int(ent.max_replay_events),
+                1 if getattr(ent, "can_access_l2", True) else 0,
+                1 if getattr(ent, "can_use_binary", True) else 0,
+                1 if getattr(ent, "can_use_shm", True) else 0,
+                int(getattr(ent, "max_replay_events", 100_000)),
                 1 if ent.is_active else 0,
                 float(ent.created_at),
                 float(ent.expires_at) if ent.expires_at is not None else None,
@@ -699,7 +708,7 @@ class Store:
                 ClientEntitlement(
                     token=row[0],
                     client_id=row[1],
-                    tier=Tier(row[2]) if row[2] in Tier._value2member_map_ else Tier.FREE,
+                    tier=Tier.STANDARD,
                     rate_limit_eps=float(row[3]),
                     can_access_l2=bool(row[4]),
                     can_use_binary=bool(row[5]),

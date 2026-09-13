@@ -86,28 +86,12 @@ class MarketDataDaemon:
         self.watchdog = SourceWatchdog(reliability=self.reliability, silence_threshold_s=3.0)
         self.bbo = BBOEngine(quote_ttl_s=10.0, watchdog=self.watchdog)
         self.depth = ConsolidatedDepthEngine(depth_ttl_s=10.0, watchdog=self.watchdog)
-
-        from async_storage import AsyncStorageWorker
-        from feed_workers import MultiFeedManager
-
-        duck_path = None
-        if self.db_path != ":memory:":
-            duck_path = os.path.join(os.path.dirname(self.db_path) or ".", "mdrap.duckdb")
-
-        self.async_storage = AsyncStorageWorker(
-            store=self.store,
-            batch_size=2000,
-            flush_interval_s=0.25,
-            duck_path=duck_path,
-        )
         self.pipeline = Pipeline(
             store=self.store,
             reliability=self.reliability,
             bbo=self.bbo,
             watchdog=self.watchdog,
-            async_storage=self.async_storage,
         )
-        self.feed_manager = MultiFeedManager()
 
         self.shm_writer = None
         if self.enable_shm:
@@ -148,21 +132,7 @@ class MarketDataDaemon:
         self._server_sock.listen(64)
         self._server_sock.settimeout(0.2)
 
-        # 2. Start decoupled async storage worker
-        self.async_storage.start()
 
-        # 3. Register and start independent feed ingestion workers
-        if self.use_live:
-            from feed_workers import LiveExchangeFeedWorker
-            self.feed_manager.add_worker(LiveExchangeFeedWorker("BINANCE", ["BTC/USD", "ETH/USD", "SOL/USD"], poll_interval_s=0.5))
-            self.feed_manager.add_worker(LiveExchangeFeedWorker("COINBASE", ["BTC/USD", "ETH/USD", "SOL/USD"], poll_interval_s=0.5))
-            self.feed_manager.add_worker(LiveExchangeFeedWorker("EQUITIES", ["AAPL", "MSFT", "NVDA", "SPY"], poll_interval_s=1.0))
-        else:
-            from feed_workers import SimulatorFeedWorker
-            sim_eps = self.sim_speed_eps if self.sim_speed_eps > 0 else 10000.0
-            self.feed_manager.add_worker(SimulatorFeedWorker("SIM", target_eps=sim_eps, total_events=self.sim_events))
-
-        self.feed_manager.start_all()
 
         # 4. Start socket listener thread
         self._server_thread = threading.Thread(target=self._socket_accept_loop, daemon=True, name="mdrap-socket-listener")
@@ -206,12 +176,6 @@ class MarketDataDaemon:
             self._subscribers.clear()
             self._authenticated_clients.clear()
 
-        if self.feed_manager:
-            try:
-                self.feed_manager.stop_all(timeout=1.0)
-            except Exception:
-                pass
-
         if self._ingest_thread and self._ingest_thread.is_alive():
             self._ingest_thread.join(timeout=2.0)
 
@@ -224,12 +188,6 @@ class MarketDataDaemon:
 
         if self.pipeline:
             self.pipeline.finish()
-
-        if self.async_storage:
-            try:
-                self.async_storage.stop(timeout=2.0)
-            except Exception:
-                pass
 
         if self.store:
             self.store.close()
@@ -336,6 +294,22 @@ class MarketDataDaemon:
             raw_dict=msg_dict,
         )
 
+    def _send_client_response(self, client_sock: socket.socket, resp: Any) -> None:
+        """Route outbound client responses through dedicated session writer queue to prevent socket write race conditions."""
+        data = resp.encode("utf-8") if isinstance(resp, str) else resp
+        with self._sub_lock:
+            sess = self._sessions.get(client_sock)
+        if sess and sess.is_alive:
+            try:
+                sess.queue.put(data, timeout=1.0)
+                return
+            except Exception:
+                pass
+        try:
+            client_sock.sendall(data)
+        except Exception:
+            pass
+
     def _handle_client_cmd(self, client_sock: socket.socket, cmd_str: str) -> None:
         """Parse client command protocol."""
         parts = cmd_str.split()
@@ -366,19 +340,19 @@ class MarketDataDaemon:
                     "status": "OK",
                     "action": "AUTH",
                     "client_id": ent.client_id,
-                    "tier": ent.tier.value if hasattr(ent.tier, "value") else str(ent.tier),
+                    "tier": "STANDARD",
                     "rate_limit_eps": ent.rate_limit_eps,
-                    "can_l2": ent.can_access_l2,
-                    "can_binary": ent.can_use_binary,
+                    "can_l2": True,
+                    "can_binary": True,
                 }) + "\n"
-                client_sock.sendall(resp.encode("utf-8"))
+                self._send_client_response(client_sock, resp)
                 return
             elif self.auth_token and token == self.auth_token:
                 # Legacy static token fallback
                 with self._sub_lock:
                     self._authenticated_clients.add(client_sock)
-                resp = json.dumps({"status": "OK", "action": "AUTH", "tier": "INSTITUTIONAL"}) + "\n"
-                client_sock.sendall(resp.encode("utf-8"))
+                resp = json.dumps({"status": "OK", "action": "AUTH", "tier": "STANDARD", "can_l2": True, "can_binary": True}) + "\n"
+                self._send_client_response(client_sock, resp)
                 return
             else:
                 resp = json.dumps({"status": "ERROR", "error": "INVALID_TOKEN"}) + "\n"
@@ -386,76 +360,62 @@ class MarketDataDaemon:
                 client_sock.close()
                 return
 
+        # Allow benign commands before auth
+        if verb in ("PING", "QUIT", "EXIT"):
+            if verb == "PING":
+                self._send_client_response(client_sock, b"PONG\n")
+            else:
+                client_sock.close()
+            return
+
         # Enforce authentication if require_auth or auth_token configured
         if (self.require_auth or self.auth_token) and client_sock not in self._authenticated_clients:
             resp = json.dumps({"status": "ERROR", "error": "UNAUTHORIZED: Authentication token required (use AUTH <token>)"}) + "\n"
-            client_sock.sendall(resp.encode("utf-8"))
+            self._send_client_response(client_sock, resp)
             return
+
+        with self._sub_lock:
+            sess = self._sessions.get(client_sock)
+        ent = sess.entitlement if sess else None
+
+        # Unified access: all clients have full access to L2 depth, binary formats, and replays
+        can_l2 = True
+        can_binary = True
+        max_replay = 100_000
 
         if verb == "FORMAT":
             fmt = parts[1].upper() if len(parts) > 1 else "JSON"
             with self._sub_lock:
                 sess = self._sessions.get(client_sock)
-            if fmt in ("BINARY", "SBE") and sess and sess.entitlement and not sess.entitlement.can_use_binary:
-                resp = json.dumps({
-                    "status": "ERROR",
-                    "action": "FORMAT",
-                    "error": f"FORBIDDEN: {fmt} binary wire protocol requires PRO or INSTITUTIONAL entitlement"
-                }) + "\n"
-                client_sock.sendall(resp.encode("utf-8"))
-                return
-            if sess:
-                sess.is_binary = (fmt == "BINARY")
-                sess.is_sbe = (fmt == "SBE")
+                if sess:
+                    sess.is_binary = (fmt == "BINARY")
+                    sess.is_sbe = (fmt == "SBE")
             resp = json.dumps({"status": "OK", "action": "FORMAT", "format": fmt}) + "\n"
-            client_sock.sendall(resp.encode("utf-8"))
+            self._send_client_response(client_sock, resp)
 
         elif verb in ("SUB", "SUBSCRIBE"):
             sym = parts[1].upper() if len(parts) > 1 else "ALL"
-            with self._sub_lock:
-                sess = self._sessions.get(client_sock)
-
-            # Check L2 and VWAP permission
-            if (sym.startswith("L2:") or sym == "L2" or sym.startswith("VWAP:") or sym == "VWAP") and sess and sess.entitlement and not sess.entitlement.can_access_l2:
-                resp = json.dumps({
-                    "status": "ERROR",
-                    "action": "SUB",
-                    "error": "FORBIDDEN: Consolidated L2 Depth and Real-Time VWAP Curves require PRO or INSTITUTIONAL entitlement"
-                }) + "\n"
-                client_sock.sendall(resp.encode("utf-8"))
-                return
 
             if sym.startswith("BINARY:"):
-                if sess and sess.entitlement and not sess.entitlement.can_use_binary:
-                    resp = json.dumps({
-                        "status": "ERROR",
-                        "action": "SUB",
-                        "error": "FORBIDDEN: MDRAP-BIN binary wire protocol requires PRO or INSTITUTIONAL entitlement"
-                    }) + "\n"
-                    client_sock.sendall(resp.encode("utf-8"))
-                    return
                 sym = sym[7:]
-                if sess:
-                    sess.is_binary = True
+                with self._sub_lock:
+                    sess = self._sessions.get(client_sock)
+                    if sess:
+                        sess.is_binary = True
             elif sym == "BINARY":
-                if sess and sess.entitlement and not sess.entitlement.can_use_binary:
-                    resp = json.dumps({
-                        "status": "ERROR",
-                        "action": "SUB",
-                        "error": "FORBIDDEN: MDRAP-BIN binary wire protocol requires PRO or INSTITUTIONAL entitlement"
-                    }) + "\n"
-                    client_sock.sendall(resp.encode("utf-8"))
-                    return
-                if sess:
-                    sess.is_binary = True
+                with self._sub_lock:
+                    sess = self._sessions.get(client_sock)
+                    if sess:
+                        sess.is_binary = True
                 sym = "ALL"
 
             with self._sub_lock:
+                sess = self._sessions.get(client_sock)
                 if sess:
                     sess.symbols.add(sym)
                     self._subscribers[client_sock] = sess.symbols
             resp = json.dumps({"status": "OK", "action": "SUB", "symbol": sym}) + "\n"
-            client_sock.sendall(resp.encode("utf-8"))
+            self._send_client_response(client_sock, resp)
 
         elif verb in ("UNSUB", "UNSUBSCRIBE"):
             sym = parts[1].upper() if len(parts) > 1 else "ALL"
@@ -465,37 +425,17 @@ class MarketDataDaemon:
                     sess.symbols.discard(sym)
                     self._subscribers[client_sock] = sess.symbols
             resp = json.dumps({"status": "OK", "action": "UNSUB", "symbol": sym}) + "\n"
-            client_sock.sendall(resp.encode("utf-8"))
+            self._send_client_response(client_sock, resp)
 
         elif verb == "BBO":
             sym = parts[1].upper() if len(parts) > 1 else "BTC/USD"
-            client_sock.sendall(self.bbo.get_bbo_wire_bytes(sym))
+            self._send_client_response(client_sock, self.bbo.get_bbo_wire_bytes(sym))
 
         elif verb == "DEPTH":
-            with self._sub_lock:
-                sess = self._sessions.get(client_sock)
-            if sess and sess.entitlement and not sess.entitlement.can_access_l2:
-                resp = json.dumps({
-                    "status": "ERROR",
-                    "action": "DEPTH",
-                    "error": "FORBIDDEN: Consolidated L2 Depth requires PRO or INSTITUTIONAL entitlement"
-                }) + "\n"
-                client_sock.sendall(resp.encode("utf-8"))
-                return
             sym = parts[1].upper() if len(parts) > 1 else "BTC/USD"
-            client_sock.sendall(self.depth.get_ladder_wire_bytes(sym))
+            self._send_client_response(client_sock, self.depth.get_ladder_wire_bytes(sym))
 
         elif verb == "VWAP":
-            with self._sub_lock:
-                sess = self._sessions.get(client_sock)
-            if sess and sess.entitlement and not sess.entitlement.can_access_l2:
-                resp = json.dumps({
-                    "status": "ERROR",
-                    "action": "VWAP",
-                    "error": "FORBIDDEN: Real-Time VWAP Slicing Curves require PRO or INSTITUTIONAL entitlement"
-                }) + "\n"
-                client_sock.sendall(resp.encode("utf-8"))
-                return
             sym = parts[1].upper() if len(parts) > 1 else "BTC/USD"
             sizes = None
             if len(parts) > 2:
@@ -503,7 +443,7 @@ class MarketDataDaemon:
                     sizes = [float(x) for x in parts[2:]]
                 except ValueError:
                     sizes = None
-            client_sock.sendall(self.depth.get_vwap_wire_bytes(sym, sizes=sizes))
+            self._send_client_response(client_sock, self.depth.get_vwap_wire_bytes(sym, sizes=sizes))
 
         elif verb == "REPLAY":
             try:
@@ -511,20 +451,18 @@ class MarketDataDaemon:
                 to_seq = int(parts[2]) if len(parts) > 2 else from_seq
                 sym_filter = parts[3].upper() if len(parts) > 3 else None
                 requested = max(1, to_seq - from_seq + 1)
-                with self._sub_lock:
-                    sess = self._sessions.get(client_sock)
-                if sess and sess.entitlement and requested > sess.entitlement.max_replay_events:
+                if requested > max_replay:
                     resp = json.dumps({
                         "status": "ERROR",
                         "action": "REPLAY",
-                        "error": f"FORBIDDEN: Requested replay range ({requested}) exceeds tier limit of {sess.entitlement.max_replay_events} events"
+                        "error": f"INVALID_RANGE: Requested replay range ({requested}) exceeds maximum safety buffer of {max_replay} events"
                     }) + "\n"
-                    client_sock.sendall(resp.encode("utf-8"))
+                    self._send_client_response(client_sock, resp)
                     return
 
                 if sess and sess.is_binary:
                     bin_data = self._replay_buffer.replay_binary(from_seq, to_seq, sym_filter)
-                    client_sock.sendall(bin_data)
+                    self._send_client_response(client_sock, bin_data)
                     return
 
                 replayed = self._replay_buffer.replay(from_seq, to_seq, sym_filter)
@@ -536,55 +474,48 @@ class MarketDataDaemon:
                     "count": len(replayed),
                     "events": replayed,
                 }) + "\n"
-                client_sock.sendall(resp.encode("utf-8"))
+                self._send_client_response(client_sock, resp)
             except Exception as e:
                 resp = json.dumps({"status": "ERROR", "action": "REPLAY", "error": str(e)}) + "\n"
-                client_sock.sendall(resp.encode("utf-8"))
+                self._send_client_response(client_sock, resp)
 
         elif verb == "HEALTH":
             health = self.watchdog.source_states()
             resp = json.dumps({"status": "OK", "health": health}) + "\n"
-            client_sock.sendall(resp.encode("utf-8"))
+            self._send_client_response(client_sock, resp)
 
         elif verb == "STATUS":
             st = self.stats()
             resp = json.dumps({"status": "OK", "telemetry": st}) + "\n"
-            client_sock.sendall(resp.encode("utf-8"))
+            self._send_client_response(client_sock, resp)
 
         elif verb == "PING":
-            client_sock.sendall(b"PONG\n")
+            self._send_client_response(client_sock, b"PONG\n")
 
         elif verb in ("QUIT", "EXIT"):
             client_sock.close()
 
     def _ingestion_loop(self) -> None:
-        """Main feed ingestion loop: drains decoupled feed workers via SPSC ring buffers."""
-        # Ensure feed workers are initialized if start() was not invoked directly
-        if not self.feed_manager or not self.feed_manager.workers:
-            if self.use_live:
-                from feed_workers import LiveExchangeFeedWorker
-                self.feed_manager.add_worker(LiveExchangeFeedWorker("BINANCE", ["BTC/USD", "ETH/USD", "SOL/USD"], poll_interval_s=0.5))
-                self.feed_manager.add_worker(LiveExchangeFeedWorker("COINBASE", ["BTC/USD", "ETH/USD", "SOL/USD"], poll_interval_s=0.5))
-                self.feed_manager.add_worker(LiveExchangeFeedWorker("EQUITIES", ["AAPL", "MSFT", "NVDA", "SPY"], poll_interval_s=1.0))
-            else:
-                from feed_workers import SimulatorFeedWorker
-                sim_eps = self.sim_speed_eps if self.sim_speed_eps > 0 else 10000.0
-                self.feed_manager.add_worker(SimulatorFeedWorker("SIM", target_eps=sim_eps, total_events=self.sim_events))
-            self.feed_manager.start_all()
-
-        batch: List[RawEvent] = []
-        while self._running:
-            drained = self.feed_manager.drain_batch(batch, max_items=250)
-            if drained > 0:
-                for raw in batch:
-                    if not self._running:
-                        break
-                    self._process_and_broadcast(raw)
-                batch.clear()
-            else:
+        """Main feed ingestion loop: streams ticks into pipeline and broadcasts."""
+        if self.use_live:
+            from live import YahooFinanceFeed
+            feed = YahooFinanceFeed(poll_interval_s=1.0)
+            for raw in feed.poll():
+                if not self._running:
+                    break
+                self._process_and_broadcast(raw)
+        else:
+            num_events = self.sim_events if self.sim_events > 0 else 10_000_000
+            sim = FeedSimulator(SimulatorConfig(seed=42, num_events=num_events))
+            sleep_s = (1.0 / self.sim_speed_eps) if (self.sim_speed_eps > 0 and self.sim_speed_eps < 1000.0) else 0.0
+            for raw, _label in sim.generate():
+                if not self._running:
+                    break
+                self._process_and_broadcast(raw)
+                if sleep_s > 0:
+                    time.sleep(sleep_s)
                 if self.sim_events > 0 and self._total_broadcast >= self.sim_events:
                     break
-                time.sleep(0.0005)
 
     def _process_and_broadcast(self, raw: RawEvent) -> None:
         """Ingest raw event, evaluate quality, update BBO & L2 depth, and broadcast to subscribed sockets via non-blocking queues."""
@@ -862,8 +793,6 @@ class MarketDataDaemon:
             "host": self.host,
             "port": self.port,
             "sources": self.watchdog.source_states(),
-            "async_storage": self.async_storage.stats() if self.async_storage else None,
-            "feeds": self.feed_manager.stats() if self.feed_manager else None,
         }
 
 

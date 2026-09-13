@@ -54,17 +54,19 @@ def _env_info() -> dict:
 
 
 from fastpath import FastQualityEngine
-from pipeline_v2 import StreamingPipeline
 
 
 def run_benchmark(sim_config: SimulatorConfig, db_path: str = ":memory:",
                    warmup_events: int = 0, label: str = "run", version: str = "v1",
-                   fastpath: bool = False) -> dict:
+                   fastpath: bool = True) -> dict:
     sim = FeedSimulator(sim_config)
     store = Store(db_path)
-    is_v2 = (version.lower() == "v2")
-    quality = FastQualityEngine() if fastpath else None
-    pipeline = StreamingPipeline(store, quality=quality) if is_v2 else Pipeline(store, quality=quality)
+    if fastpath:
+        quality = FastQualityEngine()
+    else:
+        from quality import QualityEngine
+        quality = QualityEngine()
+    pipeline = Pipeline(store, quality=quality)
 
 
     ground_truth = {}   # raw_id -> label (for labeled fault types other than "missing")
@@ -87,31 +89,21 @@ def run_benchmark(sim_config: SimulatorConfig, db_path: str = ":memory:",
     if hasattr(pipeline, "reset_ground_truth"):
         pipeline.reset_ground_truth()
 
-    t0 = time.time()
     for raw, label_ in gen:
-        if is_v2:
-            pipeline.process_one(raw, source_label=label_)
+        result = pipeline.process_one(raw)
+        if label_ is not None:
+            injected_seen[label_] += 1
+            expected_status, expected_reason = EXPECTED[label_]
+            if result is not None and result.quality_status == expected_status \
+                    and expected_reason.value in result.reasons:
+                detected[label_] += 1
         else:
-            result = pipeline.process_one(raw)
-            if label_ is not None:
-                injected_seen[label_] += 1
-                expected_status, expected_reason = EXPECTED[label_]
-                if result is not None and result.quality_status == expected_status \
-                        and expected_reason.value in result.reasons:
-                    detected[label_] += 1
-            else:
-                total_valid_no_fault += 1
-                if result is not None and result.quality_status != QualityStatus.VALID:
-                    for r in result.reasons:
-                        false_positive_counts[r] = false_positive_counts.get(r, 0) + 1
+            total_valid_no_fault += 1
+            if result is not None and result.quality_status != QualityStatus.VALID:
+                for r in result.reasons:
+                    false_positive_counts[r] = false_positive_counts.get(r, 0) + 1
     pipeline.finish()
     t1 = time.time()
-
-    if is_v2 and hasattr(pipeline, "ground_truth"):
-        detected = pipeline.ground_truth["detected"]
-        injected_seen = pipeline.ground_truth["injected_seen"]
-        false_positive_counts = pipeline.ground_truth["false_positive_counts"]
-        total_valid_no_fault = pipeline.ground_truth["total_valid_no_fault"]
 
     # "missing" can't be scored per-event (nothing was emitted); use the
     # sequence-gap reason count as an approximate proxy and say so plainly.
@@ -137,7 +129,7 @@ def run_benchmark(sim_config: SimulatorConfig, db_path: str = ":memory:",
 
     result = {
         "label": label,
-        "pipeline_version": "v2" if is_v2 else "v1",
+        "pipeline_version": "v1",
         "accelerator": "native_c" if fastpath else "cpython",
         "timestamp": time.time(),
         "code_version": pipeline.code_version,

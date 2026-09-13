@@ -247,5 +247,15 @@ def test_columnar_micro_benchmark():
             assert res["total_ticks"] == 100
             assert "sqlite" in res
             assert "duckdb" in res
-            assert "speedup" in res
+            assert "speedup" in res and isinstance(res["speedup"], dict)
             assert res["duckdb"]["ohlcv_ms"] >= 0
+
+
+def test_export_parquet_injection_blocked(memory_store):
+    events = [make_trade("t1", "AAPL", 150.0, 100.0, 1000.0)]
+    memory_store.ingest_events(events)
+    with pytest.raises(ValueError):
+        memory_store.export_parquet("test.parquet", symbol="AAPL'; DROP TABLE--")
+    with pytest.raises(ValueError):
+        memory_store.export_parquet("test.parquet", compression="INVALID_CODEC")
+

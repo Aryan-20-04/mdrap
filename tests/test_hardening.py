@@ -348,3 +348,30 @@ def test_bbo_staleness_guard():
     bbo_allowed = engine.current_bbo("AAPL", allow_stale=True, now=1002.0)
     assert bbo_allowed is not None
     assert bbo_allowed.is_stale is True
+
+
+# =========================================================================
+# 9. Cross-Feed Reconciliation Agreement Window Integrity
+# =========================================================================
+def test_out_of_order_event_not_treated_as_concurrent():
+    from reconciliation import CrossFeedReconciler, ReliabilityConfig
+    cfg = ReliabilityConfig(agreement_window_s=0.25)
+    reconciler = CrossFeedReconciler(cfg=cfg)
+
+    # Event 1 from FEEDA at t=100.0
+    ev1 = _make_trade("ev1", "AAPL", 150.0, 100.0, src="FEEDA")
+    dec1 = reconciler.reconcile(ev1)
+    assert dec1 is None
+
+    # Event 2 from FEEDB at t=100.1 (within window 0.25s)
+    ev2 = _make_trade("ev2", "AAPL", 150.1, 100.1, src="FEEDB")
+    dec2 = reconciler.reconcile(ev2)
+    assert dec2 is not None
+    assert "FEEDA" in dec2.competing_sources
+    assert "FEEDB" in dec2.competing_sources
+
+    # Event 3 from FEEDA with far-away timestamp t=105.0
+    ev3 = _make_trade("ev3", "AAPL", 155.0, 105.0, src="FEEDA")
+    dec3 = reconciler.reconcile(ev3)
+    assert dec3 is None
+

@@ -218,3 +218,32 @@ def test_native_replay_buffer_fallback_parity():
     assert payload["sym"] == "ETH-USDT"
     assert payload["price"] == 3500.25
 
+
+def test_multithreaded_fastpath_safety():
+    import threading
+    eng = FastQualityEngine()
+    errors = []
+
+    def worker(worker_id):
+        for i in range(100):
+            ev = _make_event(
+                source=f"FEED_{worker_id}",
+                sequence_number=i + 1,
+                price=100.0 + (i % 10),
+            )
+            try:
+                res = eng.evaluate(ev)
+                if res.quality_status not in (QualityStatus.VALID, QualityStatus.SUSPICIOUS, QualityStatus.INVALID):
+                    errors.append(f"Unexpected status: {res.quality_status}")
+            except Exception as e:
+                errors.append(str(e))
+
+    threads = [threading.Thread(target=worker, args=(w,)) for w in range(4)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert not errors, f"Encountered concurrency errors in FastQualityEngine: {errors}"
+
+

@@ -144,3 +144,38 @@ def test_daemon_token_auth_rejection():
         if os.path.exists(db_path):
             os.remove(db_path)
 
+
+def test_concurrent_cmd_and_tick_streaming(running_daemon):
+    """Verifies that sending command queries while connected handles framed responses cleanly."""
+    client = StreamClient(host="127.0.0.1", port=running_daemon.port)
+    client.connect()
+    for _ in range(5):
+        st = client.get_status()
+        assert isinstance(st, dict)
+        assert "uptime_s" in st
+    client.close()
+
+
+def test_unauthenticated_client_cannot_access_l2():
+    """Verifies that unauthenticated or guest client cannot access L2 order book depth on secured daemon."""
+    fd, db_path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    port = 19889
+    daemon = MarketDataDaemon(
+        host="127.0.0.1", port=port, db_path=db_path,
+        sim_speed_eps=5000.0, require_auth=True
+    )
+    daemon.start(blocking=False)
+    time.sleep(0.3)
+    try:
+        client = StreamClient(host="127.0.0.1", port=port)
+        client.connect()
+        res = client._send_query("DEPTH AAPL")
+        assert res.get("status") == "ERROR" or "error" in res
+        client.close()
+    finally:
+        daemon.stop()
+        if os.path.exists(db_path):
+            os.remove(db_path)
+
+

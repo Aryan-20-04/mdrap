@@ -1,7 +1,7 @@
 # Market Data Reliability & Acceleration Platform (MDRAP)
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue.svg)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-620%2F620%20passing-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-643%2F643%20passing-brightgreen.svg)](tests/)
 [![Hot Path Latency](https://img.shields.io/badge/hot--path-19.4%20ns%20%7C%2051.4M%20eps-orange.svg)](src/fastpath.c)
 [![Architecture](https://img.shields.io/badge/architecture-V1%20%7C%20V2%20%7C%20V3%20%7C%20V4%20C--Fastpath-purple.svg)](docs/architecture.md)
 [![User Guide](https://img.shields.io/badge/manual-Operator%20%26%20User%20Guide-teal.svg)](docs/USER_GUIDE.md)
@@ -173,19 +173,7 @@ mdrap historical ingest --exchange binance_spot --symbol BTCUSDT \
 - **Audited GAAP Facts Database**: Instant retrieval of audited 10-K/10-Q financial metrics (Revenues, Net Income, Operating Margin) directly from SEC XBRL frames.
 - **Enterprise Security & Multi-Tier Caching**: Hardened against SSRF and XXE injection; zero developer path leaks via regex scrubbing; multi-tier caching (in-memory + atomic disk cache with 300s TTL) reducing repeated queries from ~400 ms to **< 1 ms**.
 
-### 14. Global Maritime Tanker & Cargo Tracking Alternative Data Engine (`src/vessel.py`)
-- **Seaborne Supply Chain Exposure**: Real-time tracking of commercial crude oil tankers (VLCC/ULCC), LNG carriers, dry bulkers, and container vessels with cargo volumes and load status (`LADEN` vs `BALLAST`).
-- **Commercial Attribution**: Tags every commercial vessel with its operating fleet owner (Frontline, Euronav, DHT, Maersk, COSCO) and chartering commodity major (Saudi Aramco, Shell, BP, Vitol, Trafigura, Vale).
-- **Geopolitical Chokepoint Geofencing**: Real-time proximity and transit alerts for the 8 primary global maritime chokepoints (Strait of Hormuz, Strait of Malacca, Suez Canal, Bab-el-Mandeb, Panama Canal, Bosphorus, Cape of Good Hope, Dover Strait).
-- **Adversarial Hardening**: Rigorous validation rejecting NaN, Inf, coordinate overflows, negative speeds, and invalid circular headings. $O(1)$ indexed lookup by IMO, MMSI, and Name.
-
-### 15. Tier-2 Native C Vectorized Geodesic & Spatial Fastpath (`src/fastpath.c`, `src/fastpath.dll`, `src/fastpath.py`)
-- **Compiled GCC 14 `-O3` Spatial Hot Path**: Evaluates Great-Circle distances and multi-chokepoint geofencing directly in compiled C.
-- **Axis-Aligned Bounding Box (AABB) Pre-Filter**: Branchless spatial filter rejecting non-proximate chokepoints in ~1 CPU cycle (~0.3 ns).
-- **Vectorized Structure-of-Arrays (SoA) Batch Geofencing**: Evaluates 10,000 vessels across all 8 global maritime chokepoints (80,000 spatial checks) in **23.08 ms (~288 ns per chokepoint check)**.
-- **Zero-Error Fallback Guarantee**: Transparent fallback to pure Python math if the native binary is absent on another environment.
-
-### 16. Institutional Quantitative Research, Trading & Risk Suite (Gaps 1–12)
+### 14. Institutional Quantitative Research, Trading & Risk Suite (Gaps 1–12)
 - **Historical Backtesting Engine (`src/backtest.py`)**: Event-driven backtesting with Sharpe, Sortino, Calmar ratios, high-watermark drawdown curves, win rate, profit factor, and walk-forward out-of-sample optimization (`mdrap backtest`).
 - **Portfolio Risk & Value-at-Risk Engine (`src/risk.py`)**: Historical simulation, Parametric, and Monte Carlo VaR, Expected Shortfall (CVaR), and multi-tier circuit breakers (`mdrap risk`).
 - **Persistent Multi-Timeframe Bar Database (`src/bardb.py`)**: Incremental candle rollups across 7 intervals (`1s` to `1d`) with WAL SQLite storage and temporal as-of queries (`mdrap bars`).
@@ -199,6 +187,20 @@ mdrap historical ingest --exchange binance_spot --symbol BTCUSDT \
 - **FIX Protocol Engine (`src/fix_engine.py`)**: FIX 4.2/4.4 message encoder, decoder, checksum validator, and session heartbeat manager.
 - **Multi-Asset Class Data Model (`src/models.py`)**: First-class support for Equities, Crypto, Futures, Options, Bonds, and FX.
 - See [**Research & Live Trading Guide**](docs/RESEARCH_AND_TRADING.md) for detailed tutorials and architecture.
+
+### 15. Global Multi-Market Infrastructure & International Trading Desk (`src/venues.py`, `src/symbology.py`, `src/fx.py`)
+- **ISO 10383 Venue Registry & Microstructure Engine**: Native support for Indian (`XNSE`, `XBOM`), German (`XETR`, `XEUR`), Japanese (`XTKS`, `XOSE`), UK (`XLON`), Hong Kong (`XHKG`), and US (`XNAS`, `XNYS`) exchanges.
+- **Global Trading Desk Clock (`mdrap markets`)**: Real-time session state machine tracking active phase (`PRE_OPEN`, `CONTINUOUS`, `VOLATILITY_HALT`, `CLOSING_AUCTION`, `CLOSED`), time until next bell, benchmark index, and circuit breaker bands.
+- **Universal Symbology Resolver**: Resolves exchange suffixes (`.NS`, `.BO`, `.DE`, `.T`), Japanese 4-digit codes (`7203`, `6758`), Reuters RICs (`RELI.NS`), Bloomberg tickers (`RELIANCE:IN`), and ISINs.
+- **Institutional FX Matrix Engine & Multi-Currency Accounting**: Real-time triangular cross-currency conversion with localized formatting (Indian Lakh/Crore commas `₹1,25,000.00`, Japanese Yen integers `¥3,500`). Portfolio valuation in any target currency via `mdrap portfolio --currency <CODE>`.
+- **Venue-Aware Anomaly Detection**: Prevents exchange-curbed events from corrupting data streams with microstructure-specific reason codes: `CIRCUIT_FILTER_BREACH` (NSE/BSE), `VOLATILITY_INTERRUPTION` (Xetra/Eurex), and `SPECIAL_QUOTE_INDICATION` (TSE/JPX).
+- **Multi-Market Simulation Profiles**: Seed realistic international market sessions with `mdrap run --market {nse,xetra,tse,global}`.
+
+### 16. Global Maritime Tanker & Cargo Tracking Alternative Data Engine (`src/vessel.py`)
+- **Real-Time AIS Vessel Intelligence**: Tracks commercial crude oil tankers (VLCC/ULCC), LNG carriers, dry bulk carriers, and container ships with vessel payload, deadweight tonnage (DWT), and load status (`LADEN` vs `BALLAST`).
+- **Geopolitical Maritime Chokepoints**: Monitors 8 strategic bottlenecks (Strait of Hormuz, Strait of Malacca, Suez Canal, Bab-el-Mandeb, Panama Canal, Bosphorus, Cape of Good Hope, Dover Strait) with daily flow volumes and proximity surveillance.
+- **Physical-to-Financial Commodity Mapping**: Maps physical cargo flows (Arab Light, Brent Crude, LNG, Iron Ore) and chartering commodity majors (Saudi Aramco, Shell, BP, Vitol, Trafigura, Vale) directly to energy and commodity derivatives.
+- **Native C Vectorized Geodesic Fastpath**: High-performance C geofencing evaluates 10,000 vessels across global chokepoints in **23.08 ms (~288 ns per chokepoint check)** using Axis-Aligned Bounding Box (AABB) spatial pre-filtering (`mdrap vessel`).
 
 ---
 
@@ -351,9 +353,6 @@ mdrap x AAPL    # 5-Tab Excel Export
 mdrap AAPL      # Instant Best Bid & Offer Quote
 mdrap edgar AAPL# SEC 8-K Material Corporate Events & Form 4 Insider Trades
 mdrap company AAPL # SEC Corporate Profile & Audited Financials
-mdrap vessel "FRONT ALTAIR" # Real-Time Tanker Intelligence Dossier & AIS Position
-mdrap tankers   # Global Commercial Crude, LNG, Bulk & Container Fleet
-mdrap vessel chokepoints # Strategic Maritime Chokepoint & Bottleneck Monitor
 ```
 
 ---
@@ -375,7 +374,7 @@ mdrap vessel chokepoints # Strategic Maritime Chokepoint & Bottleneck Monitor
 | `vessel` | `vessels`, `tankers`, `ships`, `ais`, `cargo` | Maritime Tanker & Cargo Tracking: Crude oil, LNG, bulk, container tracking & chokepoints |
 | `run` | `r` | Run the validation pipeline against the simulator (with live HUD) |
 | `benchmark` | `bench`, `b` | Run controlled benchmark and score quality detection against ground truth |
-| `compare` | `comp`, `c` | Run V1, V2, and V4 Native C on identical workloads and print comparative report |
+| `compare` | `comp`, `c` | Run V1 Baseline and Native C Hot Path on identical workloads and print comparative report |
 | `loadtest` | `load`, `l` | Sweep increasing event volumes (10k to 250k) and report performance trend |
 | `stress` | `str` | Run multi-directional stress testing suite and 1M–1B transaction scale analysis |
 | `chaos` | `ch` | Execute automated chaos & resilience drills (source kill, network jitter, storage outage) |
@@ -536,12 +535,12 @@ mdrap> status
 
 ## Verification & Testing
 
-MDRAP includes an institutional test suite of **620 automated unit, integration, quantitative, options, and native C fastpath tests** (100% passing):
+MDRAP includes an institutional test suite of **629 automated unit, integration, quantitative, options, and native C fastpath tests** (100% passing):
 
 ### 1. With FastPath (Default Production Mode)
 ```bash
 python -m pytest tests/ -q
-# Result: 620 passed in ~69s (0 failed, 0 skipped)
+# Result: 629 passed in ~90s (0 failed, 0 skipped)
 ```
 
 ### 2. Without FastPath (Pure Python Fallback Mode)
@@ -618,7 +617,6 @@ mdrap/
 │   ├── news.py          # Financial news feed, headline sentiment & ticker extraction
 │   ├── options.py       # Black-Scholes-Merton European, CRR Binomial American, Greeks & IV
 │   ├── pipeline.py      # V1 synchronous baseline pipeline (ground-truth reference)
-│   ├── pipeline_v2.py   # V2 decoupled streaming pipeline with bounded queue broker
 │   ├── polygon_feed.py  # Polygon.io streaming WebSocket connector (Quotes, Trades, Bars)
 │   ├── portfolio.py     # Multi-asset portfolio manager, positions & lot accounting
 │   ├── protocol.py      # Binary serialization & framing protocol for IPC
@@ -642,37 +640,68 @@ mdrap/
 │   ├── watchdog.py      # Live source watchdog, silence detection & automated failover
 │   └── ws_feed.py       # Async WebSocket live market feed connector
 │
-├── tests/               # 620 Automated Unit & Integration Tests (100% Passing)
+├── tests/               # 629 Automated Unit & Integration Tests (100% Passing)
+│   ├── test_alerts.py
 │   ├── test_analytics.py
 │   ├── test_archive.py
+│   ├── test_audit_hardening.py
+│   ├── test_backtest.py
+│   ├── test_bardb.py
 │   ├── test_bbo.py
 │   ├── test_chaos.py
+│   ├── test_chd.py
 │   ├── test_cli.py
 │   ├── test_client.py
 │   ├── test_columnar.py
+│   ├── test_concurrent_users.py
 │   ├── test_config.py
+│   ├── test_corporate_actions.py
 │   ├── test_databento_feed.py
 │   ├── test_depth.py
 │   ├── test_entitlements.py
 │   ├── test_export.py
 │   ├── test_fastpath.py
+│   ├── test_fastpath_quantitative.py
+│   ├── test_fastpath_throughput.py
+│   ├── test_features.py
 │   ├── test_feed_handler.py
+│   ├── test_fix.py
+│   ├── test_flow_tracker.py
+│   ├── test_fx.py
 │   ├── test_hardening.py
+│   ├── test_itch.py
 │   ├── test_keyboard_shortcuts.py
 │   ├── test_live.py
+│   ├── test_mbo.py
+│   ├── test_multi_asset.py
+│   ├── test_multicast_arbitrator.py
+│   ├── test_multimarket_quality.py
+│   ├── test_news.py
+│   ├── test_options.py
 │   ├── test_pipeline_integration.py
 │   ├── test_polygon_feed.py
+│   ├── test_portfolio.py
 │   ├── test_protocol.py
 │   ├── test_quality.py
 │   ├── test_research.py
 │   ├── test_research_security.py
+│   ├── test_risk.py
+│   ├── test_sbe.py
+│   ├── test_scheduler.py
+│   ├── test_sdk.py
 │   ├── test_security.py
 │   ├── test_service.py
+│   ├── test_service_resilience.py
 │   ├── test_shm.py
+│   ├── test_shm_decoupled.py
+│   ├── test_strategy_sdk.py
 │   ├── test_stresstest.py
+│   ├── test_symbology.py
 │   ├── test_system_limitations.py
+│   ├── test_system_stress_and_adversarial.py
+│   ├── test_tca.py
 │   ├── test_terminal_display.py
-│   ├── test_v2_streaming.py
+│   ├── test_venues.py
 │   ├── test_vessel.py
 │   ├── test_vessel_fastpath.py
 │   ├── test_vessel_stress.py

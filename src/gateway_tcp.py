@@ -63,38 +63,23 @@ class TCPGatewayServer:
         """Broadcast any JSON-serializable dictionary to all connected TCP clients."""
         if not self.clients:
             return
-
-        data = (json.dumps(payload) + "\n").encode('utf-8')
-        
-        disconnected = set()
-        for writer in self.clients:
+        data = (json.dumps(payload) + "\n").encode("utf-8")
+        dead = []
+        for writer in list(self.clients):
             try:
                 writer.write(data)
+                await asyncio.wait_for(writer.drain(), timeout=0.05)
                 self._stats["sent"] += 1
             except Exception:
-                disconnected.add(writer)
+                dead.append(writer)
                 self._stats["dropped"] += 1
-                
-        # Drain buffers to detect backpressure
-        for writer in self.clients - disconnected:
+        for w in dead:
+            self.clients.discard(w)
             try:
-                # Use a small timeout for drain to shed slow consumers
-                await asyncio.wait_for(writer.drain(), timeout=0.05)
-            except asyncio.TimeoutError:
-                # Slow consumer detected, drop them to protect gateway memory
-                disconnected.add(writer)
-                self._stats["dropped"] += 1
-            except Exception:
-                disconnected.add(writer)
-                self._stats["dropped"] += 1
-
-        for writer in disconnected:
-            self.clients.discard(writer)
-            try:
-                writer.close()
+                w.close()
+                await w.wait_closed()
             except Exception:
                 pass
-        
         self._stats["connected"] = len(self.clients)
 
     async def start(self):
@@ -107,7 +92,6 @@ class TCPGatewayServer:
         if self.server:
             self.server.close()
             await self.server.wait_closed()
-        
         for w in list(self.clients):
             try:
                 w.close()

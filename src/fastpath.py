@@ -302,6 +302,7 @@ def _load_native_lib():
                 ]
                 lib.fastpath_sbe_generate_stream.restype = ctypes.c_int32
 
+
             # Phase 12: Geodesic & Spatial Fastpath bindings
             if hasattr(lib, "fastpath_haversine_nm"):
                 lib.fastpath_haversine_nm.argtypes = [
@@ -332,6 +333,7 @@ def _load_native_lib():
                     ctypes.POINTER(ctypes.c_uint8)
                 ]
                 lib.fastpath_batch_fleet_geofence.restype = ctypes.c_int32
+
 
             # Phase 13: Quantitative & Options Accelerators
             if hasattr(lib, "fastpath_bsm_price"):
@@ -451,6 +453,7 @@ class FastQualityEngine:
         self._inst_map = dict(_INSTRUMENT_ID_MAP)
         self._fallback_engine: Optional[QualityEngine] = None
         self.is_native = bool(_NATIVE_LIB is not None)
+        self._eval_lock = threading.Lock()
 
         if _NATIVE_LIB:
             _NATIVE_LIB.fastpath_init(
@@ -509,70 +512,72 @@ class FastQualityEngine:
             self.counts[QualityStatus.INVALID.value] += 1
             return event
 
-        s_id = self._get_source_id(event.source)
-        i_id = self._get_instrument_id(event.instrument_id)
+        with self._eval_lock:
+            s_id = self._get_source_id(event.source)
+            i_id = self._get_instrument_id(event.instrument_id)
 
-        # Graceful fallback: C static tables have MAX_SOURCES=32, MAX_INSTRUMENTS=8192.
-        # If the number of unique sources or instruments exceeds C bounds, evaluate with Python engine.
-        if s_id >= 32 or i_id >= 8192:
-            if not self._fallback_engine:
-                self._fallback_engine = QualityEngine(self.cfg)
-            res = self._fallback_engine.evaluate(event)
-            self.counts[res.quality_status.value] = self.counts.get(res.quality_status.value, 0) + 1
-            for r in res.reasons:
-                self.reason_counts[r] = self.reason_counts.get(r, 0) + 1
-            return res
+            # Graceful fallback: C static tables have MAX_SOURCES=32, MAX_INSTRUMENTS=8192.
+            # If the number of unique sources or instruments exceeds C bounds, evaluate with Python engine.
+            if s_id >= 32 or i_id >= 8192:
+                if not self._fallback_engine:
+                    self._fallback_engine = QualityEngine(self.cfg)
+                res = self._fallback_engine.evaluate(event)
+                self.counts[res.quality_status.value] = self.counts.get(res.quality_status.value, 0) + 1
+                for r in res.reasons:
+                    self.reason_counts[r] = self.reason_counts.get(r, 0) + 1
+                return res
 
-        try:
-            # Direct CPU register call to C hot path (< 100 ns)
-            packed = _FAST_EVAL(
-                s_id,
-                i_id,
-                1 if event.event_type == EventType.QUOTE else 0,
-                event.exchange_timestamp,
-                event.receive_timestamp,
-                event.sequence_number if event.sequence_number is not None else -1,
-                event.price if event.price is not None else _NAN,
-                event.quantity if event.quantity is not None else _NAN,
-                event.bid_price if event.bid_price is not None else _NAN,
-                event.ask_price if event.ask_price is not None else _NAN,
-                event.bid_size if event.bid_size is not None else _NAN,
-                event.ask_size if event.ask_size is not None else _NAN,
-            )
-        except Exception:
-            # Fault-tolerant shield: seamlessly fall back to pure Python if C DLL faults
-            if not self._fallback_engine:
-                self._fallback_engine = QualityEngine(self.cfg)
-            res = self._fallback_engine.evaluate(event)
-            self.counts = self._fallback_engine.counts
-            self.reason_counts = self._fallback_engine.reason_counts
-            return res
+            try:
+                # Direct CPU register call to C hot path (< 100 ns)
+                packed = _FAST_EVAL(
+                    s_id,
+                    i_id,
+                    1 if event.event_type == EventType.QUOTE else 0,
+                    event.exchange_timestamp,
+                    event.receive_timestamp,
+                    event.sequence_number if event.sequence_number is not None else -1,
+                    event.price if event.price is not None else _NAN,
+                    event.quantity if event.quantity is not None else _NAN,
+                    event.bid_price if event.bid_price is not None else _NAN,
+                    event.ask_price if event.ask_price is not None else _NAN,
+                    event.bid_size if event.bid_size is not None else _NAN,
+                    event.ask_size if event.ask_size is not None else _NAN,
+                )
+            except Exception:
+                # Fault-tolerant shield: seamlessly fall back to pure Python if C DLL faults
+                if not self._fallback_engine:
+                    self._fallback_engine = QualityEngine(self.cfg)
+                res = self._fallback_engine.evaluate(event)
+                self.counts = self._fallback_engine.counts
+                self.reason_counts = self._fallback_engine.reason_counts
+                return res
 
-        status_code = packed >> 32
-        mask = packed & 0xFFFFFFFF
-        status = _STATUS_MAP[status_code]
+            status_code = packed >> 32
+            mask = packed & 0xFFFFFFFF
+            status = _STATUS_MAP[status_code]
 
-        # Priority guard: never downgrade if already marked
-        priority = {QualityStatus.VALID: 0, QualityStatus.SUSPICIOUS: 1, QualityStatus.INVALID: 2}
-        if priority[status] > priority.get(event.quality_status, 0):
-            event.quality_status = status
+            # Priority guard: never downgrade if already marked
+            priority = {QualityStatus.VALID: 0, QualityStatus.SUSPICIOUS: 1, QualityStatus.INVALID: 2}
+            if priority[status] > priority.get(event.quality_status, 0):
+                event.quality_status = status
 
-        if mask:
-            for bit, reason_str in _REASON_BITS:
-                if mask & bit:
-                    event.reasons.append(reason_str)
-                    self.reason_counts[reason_str] = self.reason_counts.get(reason_str, 0) + 1
+            if mask:
+                for bit, reason_str in _REASON_BITS:
+                    if mask & bit:
+                        event.reasons.append(reason_str)
+                        self.reason_counts[reason_str] = self.reason_counts.get(reason_str, 0) + 1
 
-        self.counts[event.quality_status.value] += 1
-        return event
+            self.counts[event.quality_status.value] += 1
+            return event
 
     def reset(self):
-        if _NATIVE_LIB:
-            _NATIVE_LIB.fastpath_reset()
-        if self._fallback_engine:
-            self._fallback_engine = QualityEngine(self.cfg)
-        self.counts = {"VALID": 0, "SUSPICIOUS": 0, "INVALID": 0}
-        self.reason_counts.clear()
+        with self._eval_lock:
+            if _NATIVE_LIB:
+                _NATIVE_LIB.fastpath_reset()
+            if self._fallback_engine:
+                self._fallback_engine = QualityEngine(self.cfg)
+            self.counts = {"VALID": 0, "SUSPICIOUS": 0, "INVALID": 0}
+            self.reason_counts.clear()
 
     def process_sbe_stream(
         self,
@@ -966,88 +971,7 @@ def native_shm_read_slot(buf_ptr, slot_count: int, target_seq: int) -> Optional[
         }
 
 
-# ---------------------------------------------------------------------------
-# High-Level Spatial Geodesic & Fleet Geofencing Fastpath
-# ---------------------------------------------------------------------------
 
-def fast_haversine_nm(lat1: float, lon1: float, lat2: float, lon2: float) -> Optional[float]:
-    """Calculates Great-Circle distance in nautical miles using native C hot path."""
-    if _NATIVE_LIB and hasattr(_NATIVE_LIB, "fastpath_haversine_nm"):
-        dist = _NATIVE_LIB.fastpath_haversine_nm(lat1, lon1, lat2, lon2)
-        if dist >= 0.0:
-            return dist
-    return None
-
-
-def make_fast_chokepoints(chokepoints) -> Optional[ctypes.Array]:
-    """Pre-marshals a list or dict of Chokepoint objects into a contiguous C struct array."""
-    if not chokepoints:
-        return None
-    cp_list = list(chokepoints.values()) if isinstance(chokepoints, dict) else list(chokepoints)
-    arr_type = _CFastChokepoint * len(cp_list)
-    arr = arr_type()
-    for i, cp in enumerate(cp_list):
-        lat = float(cp.latitude)
-        lon = float(cp.longitude)
-        rad_nm = float(cp.radius_nm)
-        lat_rad = math.radians(lat)
-        lon_rad = math.radians(lon)
-        cos_lat = math.cos(lat_rad)
-        sin_lat = math.sin(lat_rad)
-        dlat_max = rad_nm / 60.0
-        dlon_max = rad_nm / (60.0 * max(0.01, cos_lat))
-
-        arr[i].lat = lat
-        arr[i].lon = lon
-        arr[i].radius_nm = rad_nm
-        arr[i].dlat_max = dlat_max
-        arr[i].dlon_max = dlon_max
-        arr[i].lat_rad = lat_rad
-        arr[i].lon_rad = lon_rad
-        arr[i].cos_lat = cos_lat
-        arr[i].sin_lat = sin_lat
-    return arr
-
-
-def fast_vessel_chokepoint_eval(
-    v_lat: float, v_lon: float, c_chokepoints: ctypes.Array, cp_count: int
-) -> Optional[Tuple[int, float, bool]]:
-    """Evaluates a single vessel against chokepoints using native C hot path with AABB pre-filtering."""
-    if _NATIVE_LIB and hasattr(_NATIVE_LIB, "fastpath_vessel_chokepoint_eval") and c_chokepoints:
-        nearest_idx = ctypes.c_int32(0)
-        nearest_dist = ctypes.c_double(0.0)
-        in_cp = ctypes.c_uint8(0)
-
-        rc = _NATIVE_LIB.fastpath_vessel_chokepoint_eval(
-            v_lat, v_lon, c_chokepoints, cp_count,
-            ctypes.byref(nearest_idx), ctypes.byref(nearest_dist), ctypes.byref(in_cp)
-        )
-        if rc == 0:
-            return int(nearest_idx.value), float(nearest_dist.value), bool(in_cp.value)
-    return None
-
-
-def fast_batch_fleet_geofence(
-    v_lats: list[float], v_lons: list[float], c_chokepoints: ctypes.Array, cp_count: int
-) -> Optional[list[Tuple[int, float, bool]]]:
-    """Evaluates an entire fleet of vessels in a single vectorized C call."""
-    count = len(v_lats)
-    if count == 0 or count != len(v_lons):
-        return []
-    if _NATIVE_LIB and hasattr(_NATIVE_LIB, "fastpath_batch_fleet_geofence") and c_chokepoints:
-        lats_arr = (ctypes.c_double * count)(*v_lats)
-        lons_arr = (ctypes.c_double * count)(*v_lons)
-        out_idx = (ctypes.c_int32 * count)()
-        out_dist = (ctypes.c_double * count)()
-        out_in = (ctypes.c_uint8 * count)()
-
-        rc = _NATIVE_LIB.fastpath_batch_fleet_geofence(
-            lats_arr, lons_arr, count, c_chokepoints, cp_count,
-            out_idx, out_dist, out_in
-        )
-        if rc == 0:
-            return [(int(out_idx[i]), float(out_dist[i]), bool(out_in[i])) for i in range(count)]
-    return None
 
 
 # ============================================================================
@@ -1177,3 +1101,88 @@ def fast_fix_checksum(data: bytes | str) -> Optional[int]:
         c_buf = (ctypes.c_uint8 * n).from_buffer_copy(buf)
         return int(_NATIVE_LIB.fastpath_fix_checksum(c_buf, n))
     return None
+
+
+# ---------------------------------------------------------------------------
+# High-Level Spatial Geodesic & Fleet Geofencing Fastpath
+# ---------------------------------------------------------------------------
+
+def fast_haversine_nm(lat1: float, lon1: float, lat2: float, lon2: float) -> Optional[float]:
+    """Calculates Great-Circle distance in nautical miles using native C hot path."""
+    if _NATIVE_LIB and hasattr(_NATIVE_LIB, "fastpath_haversine_nm"):
+        dist = _NATIVE_LIB.fastpath_haversine_nm(lat1, lon1, lat2, lon2)
+        if dist >= 0.0:
+            return dist
+    return None
+
+
+def make_fast_chokepoints(chokepoints) -> Optional[ctypes.Array]:
+    """Pre-marshals a list or dict of Chokepoint objects into a contiguous C struct array."""
+    if not chokepoints:
+        return None
+    cp_list = list(chokepoints.values()) if isinstance(chokepoints, dict) else list(chokepoints)
+    arr_type = _CFastChokepoint * len(cp_list)
+    arr = arr_type()
+    for i, cp in enumerate(cp_list):
+        lat = float(cp.latitude)
+        lon = float(cp.longitude)
+        rad_nm = float(cp.radius_nm)
+        lat_rad = math.radians(lat)
+        lon_rad = math.radians(lon)
+        cos_lat = math.cos(lat_rad)
+        sin_lat = math.sin(lat_rad)
+        dlat_max = rad_nm / 60.0
+        dlon_max = rad_nm / (60.0 * max(0.01, cos_lat))
+
+        arr[i].lat = lat
+        arr[i].lon = lon
+        arr[i].radius_nm = rad_nm
+        arr[i].dlat_max = dlat_max
+        arr[i].dlon_max = dlon_max
+        arr[i].lat_rad = lat_rad
+        arr[i].lon_rad = lon_rad
+        arr[i].cos_lat = cos_lat
+        arr[i].sin_lat = sin_lat
+    return arr
+
+
+def fast_vessel_chokepoint_eval(
+    v_lat: float, v_lon: float, c_chokepoints: ctypes.Array, cp_count: int
+) -> Optional[Tuple[int, float, bool]]:
+    """Evaluates a single vessel against chokepoints using native C hot path with AABB pre-filtering."""
+    if _NATIVE_LIB and hasattr(_NATIVE_LIB, "fastpath_vessel_chokepoint_eval") and c_chokepoints:
+        nearest_idx = ctypes.c_int32(0)
+        nearest_dist = ctypes.c_double(0.0)
+        in_cp = ctypes.c_uint8(0)
+
+        rc = _NATIVE_LIB.fastpath_vessel_chokepoint_eval(
+            v_lat, v_lon, c_chokepoints, cp_count,
+            ctypes.byref(nearest_idx), ctypes.byref(nearest_dist), ctypes.byref(in_cp)
+        )
+        if rc == 0:
+            return int(nearest_idx.value), float(nearest_dist.value), bool(in_cp.value)
+    return None
+
+
+def fast_batch_fleet_geofence(
+    v_lats: list[float], v_lons: list[float], c_chokepoints: ctypes.Array, cp_count: int
+) -> Optional[list[Tuple[int, float, bool]]]:
+    """Evaluates an entire fleet of vessels in a single vectorized C call."""
+    count = len(v_lats)
+    if count == 0 or count != len(v_lons):
+        return []
+    if _NATIVE_LIB and hasattr(_NATIVE_LIB, "fastpath_batch_fleet_geofence") and c_chokepoints:
+        lats_arr = (ctypes.c_double * count)(*v_lats)
+        lons_arr = (ctypes.c_double * count)(*v_lons)
+        out_idx = (ctypes.c_int32 * count)()
+        out_dist = (ctypes.c_double * count)()
+        out_in = (ctypes.c_uint8 * count)()
+
+        rc = _NATIVE_LIB.fastpath_batch_fleet_geofence(
+            lats_arr, lons_arr, count, c_chokepoints, cp_count,
+            out_idx, out_dist, out_in
+        )
+        if rc == 0:
+            return [(int(out_idx[i]), float(out_dist[i]), bool(out_in[i])) for i in range(count)]
+    return None
+

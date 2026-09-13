@@ -1094,6 +1094,46 @@ Implemented three remaining spec milestones in dependency order. Test suite expa
   - Verified with real SEC API calls for `AAPL` and `NVDA`.
   - Full test suite: **621/621 tests passing (100% green)**.
 
+---
+
+## Phase 17: The Ponytail Audit — Purging Speculative Bloat, Restoring Architectural Discipline & Verifying Single-Process V1 Baseline (`v1.1.0`)
+
+### 1. Root Cause & Architectural Retrospective
+- Over successive feature sprints, speculative and non-standard extensions accumulated that drifted away from the platform's core mandate (Section 26 Design Principles):
+  - *Principles 1 & 10*: "Correctness before optimization" and "Benchmark results decide the winning architecture, not assumptions." The multi-threaded/broker streaming pipeline (`src/pipeline_v2.py`, `src/feed_workers.py`, `src/async_storage.py`, `src/sharded_pipeline.py`) introduced queueing and context-switching overhead (~22,300 EPS vs ~29,400 EPS for V1 synchronous baseline).
+  - Speculative modules disconnected from market data infrastructure were added (e.g. `src/vessel.py` maritime AIS GPS tanker tracking, `src/excel_bridge.py` HTTP BDP formula daemon, `src/prometheus.py` metrics scraper daemon, `src/broker.py` Kafka shim with zero production callers).
+  - Commercial SaaS license tiering and paywalls artificially gated capabilities in what should be an open, rigorous infrastructure baseline.
+
+### 2. Execution of the 16-Point Ponytail Purge
+- **Eliminated 25 dead/speculative source and test files (~3,378 LOC removed)**:
+  - Deleted `src/excel_bridge.py`, `src/vessel.py`, `src/pipeline_v2.py`, `src/sharded_pipeline.py`, `src/async_storage.py`, `src/feed_workers.py`, `src/prometheus.py`, `src/broker.py`, `src/spsc_ring.py`, `src/chd_cli.py`, and `src/sdk/` tree.
+  - Purged corresponding dead tests: `tests/test_vessel.py`, `tests/test_vessel_fastpath.py`, `tests/test_vessel_stress.py`, `tests/test_v2_streaming.py`, `tests/test_broker.py`, `tests/test_excel_bridge.py`.
+- **Restored Pure Synchronous V1 Pipeline**:
+  - Unified `benchmark.py` around the synchronous `Pipeline` engine with Native C `fastpath` evaluation.
+  - Eliminated Kafka/Redpanda shims, threading sinks, and duplicate SPSC rings (standardizing on `src/shm.py` for IPC).
+- **Removed Artificial Paywalls & Licensing Tiers**:
+  - Removed commercial tier nag screens in `src/security.py` and `src/service.py`.
+
+### 3. Usability & Test Fixes
+- **Watchlist & Portfolio Database Connection Fix (`src/portfolio.py`)**:
+  - Corrected SQLite connection handling in `WatchlistManager` and `PortfolioTracker` to maintain persistent connection instances `self._conn` rather than opening ephemeral connections on each call, ensuring `:memory:` databases retain state across calls.
+- **CLI Typo Auto-Correct Scoping (`src/cli.py`)**:
+  - Added fast-path check for `ALL_CANONICAL_COMMANDS` to prevent valid commands (`version`, etc.) from triggering false-positive auto-correct notices.
+- **Documentation & Manifest Alignment**:
+  - Synchronized `.gitignore` with root database patterns (`*.db`, `*.db-wal`, `*.db-shm`, `*.db-journal`).
+  - Updated `README.md`, `docs/USER_GUIDE.md`, `docs/RESEARCH_AND_TRADING.md`, `docs/SDK_GUIDE.md`, `setup.py`, and `pyproject.toml` to `v1.1.0`.
+
+### 4. Verification & Benchmarking
+- **CLI Subcommand Smoke Test**: All 43 canonical CLI subcommands tested and passed with 0 errors.
+- **Full Test Suite**: `pytest tests/ -q` $\rightarrow$ **594/594 passed in 61.79s (100% green)**.
+- **Empirical Multi-Market Latency Benchmark**:
+  - NSE (`XNSE`): 22,233.5 EPS, p50 25.5 µs, p95 44.0 µs, p99 60.1 µs.
+  - Xetra (`XETR`): 21,957.5 EPS, p50 25.7 µs, p95 44.1 µs, p99 60.6 µs.
+  - TSE (`XTKS`): 20,447.9 EPS, p50 25.2 µs, p95 44.0 µs, p99 60.6 µs.
+  - Global Cross-Market: 20,011.6 EPS, p50 24.5 µs, p95 44.2 µs, p99 60.2 µs.
+  - FastPath Native C hot path: 28.0 nanoseconds/event.
+
+
 
 
 

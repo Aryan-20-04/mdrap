@@ -29,42 +29,7 @@ from simulator import FeedSimulator, SimulatorConfig
 from storage import Store
 
 
-def get_rss_mb() -> float:
-    """Return process Resident Set Size (RSS) in MB without external dependencies."""
-    try:
-        if sys.platform == "win32":
-            from ctypes import wintypes
-
-            class PROCESS_MEMORY_COUNTERS(ctypes.Structure):
-                _fields_ = [
-                    ("cb", wintypes.DWORD),
-                    ("PageFaultCount", wintypes.DWORD),
-                    ("PeakWorkingSetSize", ctypes.c_size_t),
-                    ("WorkingSetSize", ctypes.c_size_t),
-                    ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
-                    ("QuotaPagedPoolUsage", ctypes.c_size_t),
-                    ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
-                    ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
-                    ("PagefileUsage", ctypes.c_size_t),
-                    ("PeakPagefileUsage", ctypes.c_size_t),
-                ]
-
-            kernel32 = ctypes.windll.kernel32
-            psapi = ctypes.windll.psapi
-            kernel32.GetCurrentProcess.restype = wintypes.HANDLE
-            psapi.GetProcessMemoryInfo.argtypes = [wintypes.HANDLE, ctypes.POINTER(PROCESS_MEMORY_COUNTERS), wintypes.DWORD]
-            psapi.GetProcessMemoryInfo.restype = wintypes.BOOL
-
-            pmc = PROCESS_MEMORY_COUNTERS()
-            pmc.cb = ctypes.sizeof(PROCESS_MEMORY_COUNTERS)
-            h_process = kernel32.GetCurrentProcess()
-            if psapi.GetProcessMemoryInfo(h_process, ctypes.byref(pmc), pmc.cb):
-                return pmc.WorkingSetSize / (1024 * 1024)
-        import resource
-
-        return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024.0
-    except Exception:
-        return 0.0
+from metrics import get_rss_mb
 
 
 def compute_latencies_us(durations_ns: list[int]) -> dict:

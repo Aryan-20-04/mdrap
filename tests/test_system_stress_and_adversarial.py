@@ -92,8 +92,6 @@ class TestCommandTimingBenchmark:
             "vol": ["analytics", "vol", "--db", db_path],
             "flow": ["flow", "AAPL", "--count", "50", "--db", db_path],
             "tca": ["tca", "AAPL", "--count", "20", "--demo", "--db", db_path],
-            "bridge": ["bridge", "--port", "18085"],
-            "web": ["web", "--port", "18080", "--no-browser"],
             "export": ["export", "AAPL", "--db", db_path],
             "audit": ["audit", "--db", db_path, "--limit", "5"],
             "security": ["security", "--db", db_path],
@@ -113,8 +111,6 @@ class TestCommandTimingBenchmark:
             "health": ["query", "health", "--db", db_path],
             "watchdog": ["watchdog", "status", "--db", db_path],
             "strategy": ["strategy", "list"],
-            "shard": ["shard", "-w", "2", "-e", "500"],
-            "vessel": ["vessel", "list", "-l", "5"],
             "edgar": ["edgar", "events", "AAPL", "-l", "5"],
         }
 
@@ -125,21 +121,7 @@ class TestCommandTimingBenchmark:
             err_msg = ""
 
             try:
-                # Intercept long-running servers so they run test lifecycle
-                if cmd_name == "bridge":
-                    from excel_bridge import ExcelBridgeServer, generate_bloomberg_replacement_workbook
-                    generate_bloomberg_replacement_workbook("data/reports/test_bridge.xlsx", port=18085)
-                    srv = ExcelBridgeServer(port=18085)
-                    srv.start(daemon=True)
-                    time.sleep(0.05)
-                    srv.stop()
-                elif cmd_name == "web":
-                    from web_cockpit import WebCockpitServer
-                    srv = WebCockpitServer(port=18080)
-                    srv.start(daemon=True)
-                    time.sleep(0.05)
-                    srv.stop()
-                elif hasattr(args, "func") and args.func is not None:
+                if hasattr(args, "func") and args.func is not None:
                     args.func(args)
             except SystemExit as se:
                 if se.code != 0:

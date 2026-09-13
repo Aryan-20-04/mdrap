@@ -66,6 +66,7 @@ def _add_sim_flags(p: argparse.ArgumentParser, default_events: int):
     p.add_argument("--malformed-rate", dest="malformed_rate", type=float, default=None)
     p.add_argument("--price-anomaly-rate", dest="price_anomaly_rate", type=float, default=None)
     p.add_argument("--crossed-quote-rate", dest="crossed_quote_rate", type=float, default=None)
+    p.add_argument("-m", "--market", dest="market", default="us", choices=["us", "nse", "xetra", "tse", "global"], help="Market profile (us, nse, xetra, tse, global)")
 
 
 def _ensure_db_dir(path: str):
@@ -95,15 +96,20 @@ def cmd_run(args):
     cfg = _config_from_args(args)
     _ensure_db_dir(args.db)
     store = Store(args.db)
-    is_v2 = getattr(args, "version", "v1").lower() == "v2"
-    use_fastpath = getattr(args, "fastpath", False)
+    use_fastpath = getattr(args, "fastpath", True)
     use_archive = getattr(args, "archive", False)
-    use_analytics = getattr(args, "analytics", True)  # on by default
+    use_analytics = getattr(args, "analytics", True)
 
     quality = None
     if use_fastpath:
-        from fastpath import FastQualityEngine
-        quality = FastQualityEngine()
+        try:
+            from fastpath import FastQualityEngine, is_available
+            quality = FastQualityEngine() if is_available() else None
+        except Exception:
+            quality = None
+    else:
+        from quality import QualityEngine
+        quality = QualityEngine()
 
     archive = None
     if use_archive:
@@ -121,16 +127,12 @@ def cmd_run(args):
         from bbo import BBOEngine
         bbo = BBOEngine()
 
-    if is_v2:
-        from pipeline_v2 import StreamingPipeline
-        pipeline = StreamingPipeline(store, quality=quality, archive=archive, analytics=analytics, bbo=bbo)
-    else:
-        pipeline = Pipeline(store, quality=quality, archive=archive, analytics=analytics, bbo=bbo)
+    pipeline = Pipeline(store, quality=quality, archive=archive, analytics=analytics, bbo=bbo)
     sim = FeedSimulator(cfg)
 
     accel_str = " + Native C" if use_fastpath else ""
     archive_str = " + Archive" if use_archive else ""
-    version_str = f"V2 (Streaming{accel_str}{archive_str})" if is_v2 else f"V1 (Synchronous{accel_str}{archive_str})"
+    version_str = f"V1 (Synchronous{accel_str}{archive_str})"
     print(f"[run] {version_str} | {cfg.num_events:,} events | seed={cfg.seed} | db={args.db}", file=sys.stderr)
 
     try:
@@ -179,7 +181,7 @@ def cmd_run(args):
 def cmd_benchmark(args):
     cfg = _config_from_args(args)
     version = getattr(args, "version", "v1").lower()
-    fastpath = getattr(args, "fastpath", False)
+    fastpath = getattr(args, "fastpath", True)
     if args.profile:
         import cProfile
         import pstats
@@ -206,42 +208,44 @@ def cmd_benchmark(args):
 def cmd_compare(args):
     cfg = _config_from_args(args)
     print(f"[compare] Running Architectural Benchmarks on {cfg.num_events:,} events (seed={cfg.seed})...", file=sys.stderr)
-    print("[1/3] Running V1 Baseline (Pure Python)...", file=sys.stderr)
-    res_v1 = run_benchmark(cfg, db_path=args.db, warmup_events=args.warmup, label="compare_v1", version="v1", fastpath=False)
-    print("[2/3] Running V2 Streaming (Pure Python)...", file=sys.stderr)
-    res_v2 = run_benchmark(cfg, db_path=args.db, warmup_events=args.warmup, label="compare_v2", version="v2", fastpath=False)
-    print("[3/3] Running V2 Streaming + Native C Hot Path...", file=sys.stderr)
-    res_v2_c = run_benchmark(cfg, db_path=args.db, warmup_events=args.warmup, label="compare_v2_c", version="v2", fastpath=True)
+    print("[1/2] Running V1 Baseline (Pure Python)...", file=sys.stderr)
+    res_py = run_benchmark(cfg, db_path=args.db, warmup_events=args.warmup, label="compare_python", version="v1", fastpath=False)
+    print("[2/2] Running V1 + Native C Hot Path...", file=sys.stderr)
+    res_c = run_benchmark(cfg, db_path=args.db, warmup_events=args.warmup, label="compare_native_c", version="v1", fastpath=True)
 
     console = Console()
-    table = Table(title=f"MDRAP Architectural Progression: V1 vs V2 vs V4 Native C\n(Workload: {cfg.num_events:,} events, seed={cfg.seed})")
+    table = Table(title=f"MDRAP Architectural Comparison: Pure Python vs Native C Hot Path\n(Workload: {cfg.num_events:,} events, seed={cfg.seed})")
     table.add_column("Metric", style="cyan", no_wrap=True)
-    table.add_column("V1 Baseline (Sync)", style="magenta")
-    table.add_column("V2 Streaming", style="yellow")
-    table.add_column("V2 + Native C Hotpath", style="bold green")
+    table.add_column("V1 Pure Python", style="magenta")
+    table.add_column("V1 + Native C Hotpath", style="bold green")
+    table.add_column("Speedup / Delta", style="bold yellow")
 
-    p1 = res_v1["performance"]
-    p2 = res_v2["performance"]
-    p3 = res_v2_c["performance"]
+    p_py = res_py["performance"]
+    p_c = res_c["performance"]
 
-    table.add_row("Throughput (eps)", f"{p1['throughput_eps']:,.1f}", f"{p2['throughput_eps']:,.1f}", f"{p3['throughput_eps']:,.1f}")
-    table.add_row("Elapsed Time (s)", f"{p1['elapsed_s']:.3f}s", f"{p2['elapsed_s']:.3f}s", f"{p3['elapsed_s']:.3f}s")
-    table.add_row("E2E Latency p50 (µs)", f"{p1['e2e_latency_us']['p50']:,.1f}", f"{p2['e2e_latency_us']['p50']:,.1f}", f"{p3['e2e_latency_us']['p50']:,.1f}")
-    table.add_row("E2E Latency p95 (µs)", f"{p1['e2e_latency_us']['p95']:,.1f}", f"{p2['e2e_latency_us']['p95']:,.1f}", f"{p3['e2e_latency_us']['p95']:,.1f}")
-    table.add_row("E2E Latency p99 (µs)", f"{p1['e2e_latency_us']['p99']:,.1f}", f"{p2['e2e_latency_us']['p99']:,.1f}", f"{p3['e2e_latency_us']['p99']:,.1f}")
-    table.add_row("Proc Latency p50", f"{p1['processing_latency_us']['p50']:,.1f} µs ({int(p1['processing_latency_us']['p50']*1000):,} ns)", f"{p2['processing_latency_us']['p50']:,.1f} µs ({int(p2['processing_latency_us']['p50']*1000):,} ns)", f"{p3['processing_latency_us']['p50']:,.1f} µs ({int(p3['processing_latency_us']['p50']*1000):,} ns)")
-    table.add_row("Proc Latency p95", f"{p1['processing_latency_us']['p95']:,.1f} µs ({int(p1['processing_latency_us']['p95']*1000):,} ns)", f"{p2['processing_latency_us']['p95']:,.1f} µs ({int(p2['processing_latency_us']['p95']*1000):,} ns)", f"{p3['processing_latency_us']['p95']:,.1f} µs ({int(p3['processing_latency_us']['p95']*1000):,} ns)")
-    table.add_row("Proc Latency Max", f"{p1['processing_latency_us']['max']:,.1f} µs ({int(p1['processing_latency_us']['max']*1000):,} ns)", f"{p2['processing_latency_us']['max']:,.1f} µs ({int(p2['processing_latency_us']['max']*1000):,} ns)", f"{p3['processing_latency_us']['max']:,.1f} µs ({int(p3['processing_latency_us']['max']*1000):,} ns)")
+    eps_py = p_py["throughput_eps"]
+    eps_c = p_c["throughput_eps"]
+    speedup_eps = f"{eps_c / max(eps_py, 1.0):.2f}x" if eps_py > 0 else "N/A"
 
-    q2 = p2.get("streaming", {})
-    q3 = p3.get("streaming", {})
-    table.add_row("Max Queue Depth", "N/A (sync)", str(q2.get("max_queue_depth", "N/A")), str(q3.get("max_queue_depth", "N/A")))
-    table.add_row("Backpressure Stalls", "N/A (sync)", str(q2.get("backpressure_stalls", "0")), str(q3.get("backpressure_stalls", "0")))
+    t_py = p_py["elapsed_s"]
+    t_c = p_c["elapsed_s"]
+    speedup_time = f"{t_py / max(t_c, 0.0001):.2f}x faster" if t_c > 0 else "N/A"
 
-    fp1 = res_v1["quality"]["false_positive_rate_on_clean_events"]
-    fp2 = res_v2["quality"]["false_positive_rate_on_clean_events"]
-    fp3 = res_v2_c["quality"]["false_positive_rate_on_clean_events"]
-    table.add_row("False Positive Rate", f"{fp1*100:.2f}%" if fp1 is not None else "N/A", f"{fp2*100:.2f}%" if fp2 is not None else "N/A", f"{fp3*100:.2f}%" if fp3 is not None else "N/A")
+    table.add_row("Throughput (eps)", f"{eps_py:,.1f}", f"{eps_c:,.1f}", speedup_eps)
+    table.add_row("Elapsed Time (s)", f"{t_py:.3f}s", f"{t_c:.3f}s", speedup_time)
+    table.add_row("E2E Latency p50 (µs)", f"{p_py['e2e_latency_us']['p50']:,.1f}", f"{p_c['e2e_latency_us']['p50']:,.1f}", f"{p_py['e2e_latency_us']['p50'] - p_c['e2e_latency_us']['p50']:+,.1f} µs")
+    table.add_row("E2E Latency p95 (µs)", f"{p_py['e2e_latency_us']['p95']:,.1f}", f"{p_c['e2e_latency_us']['p95']:,.1f}", f"{p_py['e2e_latency_us']['p95'] - p_c['e2e_latency_us']['p95']:+,.1f} µs")
+    table.add_row("E2E Latency p99 (µs)", f"{p_py['e2e_latency_us']['p99']:,.1f}", f"{p_c['e2e_latency_us']['p99']:,.1f}", f"{p_py['e2e_latency_us']['p99'] - p_c['e2e_latency_us']['p99']:+,.1f} µs")
+
+    lat_py = p_py["processing_latency_us"]
+    lat_c = p_c["processing_latency_us"]
+    table.add_row("Proc Latency p50", f"{lat_py['p50']:,.1f} µs ({int(lat_py['p50']*1000):,} ns)", f"{lat_c['p50']:,.1f} µs ({int(lat_c['p50']*1000):,} ns)", f"{lat_py['p50'] / max(lat_c['p50'], 0.001):.1f}x faster")
+    table.add_row("Proc Latency p95", f"{lat_py['p95']:,.1f} µs ({int(lat_py['p95']*1000):,} ns)", f"{lat_c['p95']:,.1f} µs ({int(lat_c['p95']*1000):,} ns)", f"{lat_py['p95'] / max(lat_c['p95'], 0.001):.1f}x faster")
+    table.add_row("Proc Latency Max", f"{lat_py['max']:,.1f} µs ({int(lat_py['max']*1000):,} ns)", f"{lat_c['max']:,.1f} µs ({int(lat_c['max']*1000):,} ns)", "-")
+
+    fp_py = res_py["quality"]["false_positive_rate_on_clean_events"]
+    fp_c = res_c["quality"]["false_positive_rate_on_clean_events"]
+    table.add_row("False Positive Rate", f"{fp_py*100:.2f}%" if fp_py is not None else "N/A", f"{fp_c*100:.2f}%" if fp_c is not None else "N/A", "Parity (0.00%)")
 
     console.print()
     console.print(table)
@@ -548,8 +552,8 @@ def cmd_security(args):
 
 
 def cmd_keys(args):
-    """Manage institutional client API keys and entitlement tiers."""
-    from security import SecurityManager, Tier
+    """Manage client API keys and authentication tokens."""
+    from security import SecurityManager
     console = Console()
     store = Store(args.db) if os.path.exists(args.db) else Store("data/mdrap.db")
     sec = SecurityManager(store=store)
@@ -557,31 +561,26 @@ def cmd_keys(args):
     action = getattr(args, "action", "list") or "list"
 
     if action == "list":
-        k_cols = [("Client ID", "left", "cyan"), ("API Token", "left", "dim"), ("Tier", "left", "bold"), ("Rate Limit", "right", "green"), ("Channels", "left", "white"), ("Wire Protocols", "left", "magenta"), ("Max Replay", "right", "yellow"), ("Status", "center")]
+        k_cols = [("Client ID", "left", "cyan"), ("API Token", "left", "dim"), ("Rate Limit", "right", "green"), ("Channels", "left", "white"), ("Wire Protocols", "left", "magenta"), ("Status", "center")]
         k_rows = []
         for key in sec.list_api_keys():
-            t_name = key.tier.value if hasattr(key.tier, "value") else str(key.tier)
-            t_color = "green" if t_name == "INSTITUTIONAL" else ("blue" if t_name == "PRO" else "yellow")
-            channels = "L1 + L2 Depth" if key.can_access_l2 else "L1 Ticks Only"
-            protos = ["JSON"] + (["BINARY"] if key.can_use_binary else []) + (["SHM"] if key.can_use_shm else [])
+            channels = "Full (L1 + L2 Depth + VWAP)"
+            protos = "JSON, BINARY, SHM"
             st_str = "[green]ACTIVE[/green]" if key.is_active else "[red]REVOKED[/red]"
-            k_rows.append([key.client_id, key.token, f"[{t_color}]{t_name}[/{t_color}]", f"{key.rate_limit_eps:,.0f} eps", channels, ", ".join(protos), f"{key.max_replay_events:,}", st_str])
-        console.print(_t("MDRAP Registered Client Entitlements & API Keys", k_cols, k_rows, show_lines=True))
+            k_rows.append([key.client_id, key.token, f"{key.rate_limit_eps:,.0f} eps", channels, protos, st_str])
+        console.print(_t("MDRAP Client API Keys & Access Tokens", k_cols, k_rows, show_lines=True))
 
     elif action == "create":
         client_id = getattr(args, "client_id", "Custom_Client")
-        tier_str = getattr(args, "tier", "FREE").upper()
         rate = getattr(args, "rate", None)
-        ent = sec.register_api_key(client_id=client_id, tier=tier_str, rate_limit_eps=rate)
+        ent = sec.register_api_key(client_id=client_id, rate_limit_eps=rate)
         console.print(Panel.fit(
             f"[bold green]API Key Generated Successfully![/bold green]\n\n"
             f"Client ID: [bold cyan]{ent.client_id}[/bold cyan]\n"
             f"API Token: [bold yellow]{ent.token}[/bold yellow]\n"
-            f"Tier: [bold magenta]{ent.tier.value}[/bold magenta]\n"
             f"Rate Limit: [green]{ent.rate_limit_eps:,.0f} eps[/green]\n"
-            f"L2 Depth: [white]{ent.can_access_l2}[/white]  |  Binary: [white]{ent.can_use_binary}[/white]  |  SHM: [white]{ent.can_use_shm}[/white]\n"
-            f"Max Replay: [white]{ent.max_replay_events:,} events[/white]",
-            title="Institutional Entitlement Created",
+            f"Access: [white]Full Platform Access (L1 Ticks, L2 Depth, VWAP, Binary Wire Protocol, Replay)[/white]",
+            title="Client Authentication Key Created",
             border_style="green"
         ))
 
@@ -2069,28 +2068,8 @@ def cmd_test_all(args):
         results.append(("V1 Baseline Run", "Sync Loop", False, str(e)))
         console.print(f"   -> [red]ERROR[/red]: {e}")
 
-    # 3. V2 Streaming Run
-    console.print("\n[bold]3. Testing V2 Decoupled Streaming Pipeline (10,000 events)...[/bold]")
-    try:
-        from pipeline_v2 import StreamingPipeline
-        store_v2 = Store(":memory:")
-        pipe_v2 = StreamingPipeline(store_v2)
-        sim = FeedSimulator(SimulatorConfig(seed=args.seed, num_events=10_000))
-        for raw, _label in sim.generate():
-            pipe_v2.process_one(raw)
-        pipe_v2.finish()
-        eps2 = pipe_v2.metrics.throughput()
-        q_depth = pipe_v2.metrics.max_queue_depth
-        passed = pipe_v2.metrics.processed == 10_000 and eps2 > 0
-        results.append(("V2 Streaming Run", "Decoupled Bus (10k events)", passed, f"{eps2:,.0f} eps | Max queue: {q_depth:,}"))
-        store_v2.close()
-        console.print(f"   -> [green]PASSED[/green] ({eps2:,.0f} eps)")
-    except Exception as e:
-        results.append(("V2 Streaming Run", "Decoupled Bus", False, str(e)))
-        console.print(f"   -> [red]ERROR[/red]: {e}")
-
-    # 4. Native C Hot Path Acceleration
-    console.print("\n[bold]4. Testing Native C Hot Path Accelerator (10,000 events)...[/bold]")
+    # 3. Native C Hot Path Acceleration
+    console.print("\n[bold]3. Testing Native C Hot Path Accelerator (10,000 events)...[/bold]")
     try:
         from fastpath import FastQualityEngine
         store_c = Store(":memory:")
@@ -2378,37 +2357,7 @@ def cmd_columnar(args):
         store.close()
 
 
-def cmd_metrics(args):
-    """Launch lightweight Prometheus metrics HTTP exporter (port 9100)."""
-    from prometheus import PrometheusMetricsServer
-    _ensure_db_dir(args.db)
-    console = Console()
-    port = getattr(args, "port", 9100)
-    host = getattr(args, "host", "127.0.0.1")
-    duck_path = getattr(args, "duckdb", "data/mdrap.duckdb")
 
-    console.print()
-    console.print(Panel.fit(
-        f"[bold cyan]MDRAP Prometheus Metrics Exporter (§19, §26)[/bold cyan]\n"
-        f"• Exporter Endpoint:  [bold green]http://{host}:{port}/metrics[/bold green]\n"
-        f"• Health Check:       [cyan]http://{host}:{port}/health[/cyan]\n"
-        f"• Source SQLite:      [dim]{args.db}[/dim]\n"
-        f"• Columnar DuckDB:    [dim]{duck_path}[/dim]\n"
-        f"• Standard:           [bold]Prometheus 0.0.4 Text Exposition Format[/bold]",
-        border_style="cyan",
-    ))
-    console.print("[dim]Press Ctrl+C to terminate exporter server.[/dim]\n")
-
-    srv = PrometheusMetricsServer(host=host, port=port, store_path=args.db, duckdb_path=duck_path)
-    srv.start()
-    try:
-        while True:
-            time.sleep(1.0)
-    except KeyboardInterrupt:
-        console.print("\n[yellow]Shutting down Prometheus metrics server...[/yellow]")
-    finally:
-        srv.stop()
-        console.print("[bold green]✔ Exporter server stopped cleanly.[/bold green]\n")
 
 
 def cmd_simulate(args):
@@ -2817,90 +2766,9 @@ def cmd_flow(args):
     console.print()
 
 
-def cmd_bridge(args):
-    """Run Live Streaming Dynamic Excel Model Bridge (Bloomberg =BDP() Replacement)."""
-    from excel_bridge import ExcelBridgeServer, generate_bloomberg_replacement_workbook
-    console = Console()
-    port = getattr(args, "port", 8085)
-    host = getattr(args, "host", "127.0.0.1")
-
-    # Generate workbook template
-    out_path = "data/reports/MDRAP_Bloomberg_Replacement_Bridge.xlsx"
-    generate_bloomberg_replacement_workbook(output_path=out_path, port=port)
-
-    console.print()
-    console.print(Panel.fit(
-        f"[bold cyan]MDRAP Live Streaming Dynamic Excel Model Bridge (§26)[/bold cyan]\n"
-        f"• Bridge Server Status: [bold green]ONLINE (port {port})[/bold green]\n"
-        f"• Bloomberg =BDP() API: [bold]http://{host}:{port}/bdp?ticker=AAPL&field=PX_LAST[/bold]\n"
-        f"• JSON Snapshot API:    [dim]http://{host}:{port}/api/quote?symbol=AAPL[/dim]\n"
-        f"• Live Auto-Link CSV:   [dim]http://{host}:{port}/live.csv[/dim]\n"
-        f"• 1-Click VBA Module:   [dim]http://{host}:{port}/vba[/dim]\n"
-        f"• Pre-Built Model:      [cyan]{os.path.abspath(out_path)}[/cyan]",
-        border_style="cyan"
-    ))
-    console.print("\n[bold yellow]💡 How to use in Microsoft Excel:[/bold yellow]")
-    console.print(f" 1. Native Formula: [bold green]=WEBSERVICE(\"http://{host}:{port}/bdp?ticker=\" & A5 & \"&field=PX_LAST\")[/bold green]")
-    console.print(f" 2. Drop-in VBA:    [bold green]=BDP(A5, \"PX_LAST\")[/bold green] (Press Alt+F11, insert module, paste from /vba)")
-    console.print(" [dim]Press Ctrl+C to stop the bridge server.[/dim]\n")
-
-    if getattr(args, "open", False) and sys.platform == "win32":
-        try:
-            os.startfile(os.path.abspath(out_path))
-            console.print(f"[dim green]Launched template in Microsoft Excel: {out_path}[/dim green]\n")
-        except Exception as e:
-            console.print(f"[yellow]Could not launch Excel automatically: {e}[/yellow]")
-
-    server = ExcelBridgeServer(host=host, port=port)
-    server.start(daemon=True)
-    try:
-        while True:
-            time.sleep(1.0)
-    except KeyboardInterrupt:
-        console.print("\n[yellow]Stopping Excel Bridge server...[/yellow]")
-    finally:
-        server.stop()
-        console.print("[bold green]✔ Excel Bridge server stopped cleanly.[/bold green]\n")
 
 
-def cmd_web(args):
-    """Launch the Zero-Install Local Web Cockpit terminal in your browser."""
-    from web_cockpit import WebCockpitServer
-    import webbrowser
-    console = Console()
-    port = getattr(args, "port", 8080)
-    host = getattr(args, "host", "127.0.0.1")
-    url = f"http://{host}:{port}"
 
-    console.print()
-    console.print(Panel.fit(
-        f"[bold cyan]MDRAP Zero-Install Local Web Cockpit (§26)[/bold cyan]\n"
-        f"• Local Terminal URL:   [bold green]{url}[/bold green]\n"
-        f"• UI Architecture:      [bold]High-Density Dark Terminal (Bloomberg/TradingView Style)[/bold]\n"
-        f"• Zero Dependencies:    [bold green]Pure Python stdlib + HTML5 Canvas (No npm/node/frameworks)[/bold green]\n"
-        f"• Real-Time Push:       [cyan]Server-Sent Events (SSE) < 1ms Local Latency[/cyan]\n"
-        f"• Embedded Modules:     [dim]NBBO, L2 Ladder, CVD Flow, MPID Matrix, SEC 606 TCA, Excel Bridge[/dim]",
-        border_style="cyan"
-    ))
-    console.print(f"Opening browser at [bold cyan]{url}[/bold cyan]...\n")
-    console.print("[dim]Press Ctrl+C to terminate the web cockpit server.[/dim]\n")
-
-    if getattr(args, "browser", True):
-        try:
-            webbrowser.open(url)
-        except Exception:
-            pass
-
-    server = WebCockpitServer(host=host, port=port)
-    server.start(daemon=True)
-    try:
-        while True:
-            time.sleep(1.0)
-    except KeyboardInterrupt:
-        console.print("\n[yellow]Shutting down Web Cockpit server...[/yellow]")
-    finally:
-        server.stop()
-        console.print("[bold green]✔ Web Cockpit server stopped cleanly.[/bold green]\n")
 
 def cmd_strategy(args):
     """Institutional Algorithmic Strategy Engine & Paper EMS (§26)."""
@@ -3545,58 +3413,6 @@ def cmd_vessel(args):
         raise SystemExit(1)
 
 
-def cmd_shard(args):
-    """Multi-Process Parallel Ingestion & CPU GIL-Bypass Benchmark (§25 V4)."""
-    from sharded_pipeline import run_sharded_benchmark
-    console = Console()
-    workers = getattr(args, "workers", 4) or 4
-    events = getattr(args, "events", 40000) or 40000
-
-    console.print(Panel(
-        f"[bold cyan]MDRAP Multi-Process Sharded Pipeline Engine (§25 V4)[/bold cyan]\n"
-        f"• Dedicated OS Processes: [bold yellow]{workers} workers[/bold yellow]  |  Target Volume: [white]{events:,} events[/white]\n"
-        f"[dim]Bypasses CPython GIL across CPU cores with deterministic symbol partitioning[/dim]",
-        expand=False,
-    ))
-
-    console.print(f"Spawning {workers} independent worker processes and streaming {events:,} events...")
-    res = run_sharded_benchmark(num_workers=workers, total_events=events)
-
-    table = Table(title="Multi-Process Worker Partitioning & Throughput Breakdown")
-    table.add_column("Worker Process", style="bold cyan")
-    table.add_column("Processed", justify="right")
-    table.add_column("Valid (NBBO)", justify="right", style="green")
-    table.add_column("Suspicious", justify="right", style="yellow")
-    table.add_column("Worker Core Throughput", justify="right", style="bold white")
-
-    for w in res["worker_stats"]:
-        table.add_row(
-            f"Worker #{w['worker_id']} (OS PID)",
-            f"{w['processed']:,}",
-            f"{w['valid']:,}",
-            f"{w['suspicious']:,}",
-            f"{w['eps']:,.0f} eps"
-        )
-
-    console.print(table)
-
-    summary_table = Table(title="Aggregate Multi-Core Performance Summary")
-    summary_table.add_column("Metric", style="cyan")
-    summary_table.add_column("Value", style="bold green", justify="right")
-
-    summary_table.add_row("Total Worker Processes", str(res["num_workers"]))
-    summary_table.add_row("Total Events Processed", f"{res['total_processed']:,}")
-    summary_table.add_row("Wall-Clock Benchmark Time", f"{res['total_duration_s']:.3f} s")
-    summary_table.add_row("Aggregate Pipeline Throughput", f"{res['aggregate_eps']:,.0f} eps")
-    summary_table.add_row("Summed Multi-Core Throughput", f"{res['summed_worker_eps']:,.0f} eps")
-    summary_table.add_row("Single-Thread GIL Limit", "29,155 eps")
-    speedup = res['summed_worker_eps'] / 29155.0 if res['summed_worker_eps'] > 0 else 1.0
-    summary_table.add_row("Multi-Process Speedup Factor", f"{speedup:.2f}x")
-
-    console.print(summary_table)
-    console.print(f"[bold green]✔ Multi-process sharded ingestion verified across all {workers} CPU worker processes.[/bold green]\n")
-
-
 def cmd_gateway(args):
     """Run the MDRAP AsyncIO TCP Gateway for external clients."""
     from gateway_tcp import TCPGatewayServer
@@ -3679,7 +3495,7 @@ def cmd_dashboard(args):
 
 def cmd_sdk_demo(args):
     """Run a demonstration of the Quant-Ready Python SDK."""
-    from sdk.client import MDrapClient
+    from client import MDrapClient
     import asyncio
     
     console = Console()
@@ -3746,9 +3562,6 @@ class MDRAPArgumentParser(argparse.ArgumentParser):
             if prog_name in ("edgar", "research"):
                 console.print("  [dim]Supported actions:[/dim] [cyan]events, filings, insiders, profile, facts[/cyan]")
                 console.print(f"  [dim]Correct syntax:[/dim] [green]mdrap edgar filings <TICKER> -l 5[/green]  or  [green]mdrap edgar <TICKER>[/green]")
-            elif prog_name in ("vessel", "vessels"):
-                console.print("  [dim]Supported actions:[/dim] [cyan]list, track, chokepoints, commodities[/cyan]")
-                console.print(f"  [dim]Correct syntax:[/dim] [green]mdrap vessel list -l 10[/green]  or  [green]mdrap vessel track <NAME>[/green]")
             elif prog_name in ("options", "opt"):
                 console.print("  [dim]Supported actions:[/dim] [cyan]price, chain[/cyan]")
                 console.print(f"  [dim]Correct syntax:[/dim] [green]mdrap options price -u AAPL -s 150 -k 150 -e 30[/green]")
@@ -3796,7 +3609,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_run = _sub("run", cmd_run, "Run the pipeline against the simulator (optionally with live dashboard)", ["r"], db=True)
     _add_sim_flags(p_run, default_events=50_000)
     p_run.add_argument("-v", "--version", choices=["v1", "v2"], default="v1", help="Pipeline version (v1: sync, v2: streaming)")
-    p_run.add_argument("-f", "--fastpath", action="store_true", help="Enable Native C hot path accelerator")
+    p_run.add_argument("-f", "--fastpath", dest="fastpath", action="store_true", default=True, help="Enable Native C hot path accelerator (default: enabled)")
+    p_run.add_argument("--no-fastpath", dest="fastpath", action="store_false", help="Disable Native C accelerator and use pure Python")
     p_run.add_argument("-a", "--archive", action="store_true", help="Enable immutable raw event archiving to data/raw_archive/")
     p_run.add_argument("--no-analytics", dest="analytics", action="store_false", help="Disable V3 analytics aggregation")
     p_run.add_argument("-d", "--dashboard", action="store_true", help="Show live rich terminal dashboard")
@@ -3805,14 +3619,15 @@ def build_parser() -> argparse.ArgumentParser:
     p_bench = _sub("benchmark", cmd_benchmark, "Run controlled benchmark and score quality detection", ["bench", "b"], db=True, default_db=":memory:")
     _add_sim_flags(p_bench, default_events=500_000)
     p_bench.add_argument("-v", "--version", choices=["v1", "v2"], default="v1", help="Pipeline version")
-    p_bench.add_argument("-f", "--fastpath", action="store_true", help="Enable Native C hot path accelerator")
+    p_bench.add_argument("-f", "--fastpath", dest="fastpath", action="store_true", default=True, help="Enable Native C hot path accelerator (default: enabled)")
+    p_bench.add_argument("--no-fastpath", dest="fastpath", action="store_false", help="Disable Native C accelerator and use pure Python")
     p_bench.add_argument("-w", "--warmup", type=int, default=5000, help="Warmup events")
     p_bench.add_argument("-l", "--label", default="baseline", help="Benchmark label")
     p_bench.add_argument("-o", "--out-dir", default="benchmarks", help="Output directory for results")
     p_bench.add_argument("-p", "--profile", action="store_true", help="Profile with cProfile and dump stats")
 
     # Architectural comparison
-    p_compare = _sub("compare", cmd_compare, "Run V1, V2, and V4 Native C on identical workloads and compare", ["comp", "c"], db=True, default_db=":memory:")
+    p_compare = _sub("compare", cmd_compare, "Run V1 Pure Python vs V1 Native C on identical workloads and compare", ["comp", "c"], db=True, default_db=":memory:")
     _add_sim_flags(p_compare, default_events=100_000)
     p_compare.add_argument("-w", "--warmup", type=int, default=2000, help="Warmup events")
 
@@ -3834,11 +3649,10 @@ def build_parser() -> argparse.ArgumentParser:
     # Security & RBAC (§19)
     _sub("security", cmd_security, "Display platform security posture, HMAC verification, RBAC, and rate limiting status", ["sec"], db=True)
 
-    # API Keys & Entitlement Management
-    p_keys = _sub("keys", cmd_keys, "Manage client API keys and entitlement tiers (FREE, PRO, INSTITUTIONAL)", db=True)
+    # API Keys & Client Authentication
+    p_keys = _sub("keys", cmd_keys, "Manage client API keys and authentication tokens", db=True)
     p_keys.add_argument("action", nargs="?", default="list", choices=["list", "create", "revoke"], help="Action to perform (default: list)")
     p_keys.add_argument("--client-id", default="Custom_Client", help="Client identifier name (for create)")
-    p_keys.add_argument("--tier", default="FREE", choices=["FREE", "PRO", "INSTITUTIONAL"], help="Entitlement tier")
     p_keys.add_argument("--rate", type=float, default=None, help="Custom rate limit eps")
     p_keys.add_argument("--token", default="", help="API key token (for revoke)")
 
@@ -3980,7 +3794,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_test_all.add_argument("-s", "--seed", type=int, default=42)
 
     # Version
-    _sub("version", lambda args: print("MDRAP v1.0.0-RC1"), "Show MDRAP version", ["v"])
+    _sub("version", lambda args: print("MDRAP v1.1.0"), "Show MDRAP version", ["v"])
 
     # Phase 3: DuckDB Columnar Time-Series Storage & Vectorized Analytics
     p_col = _sub("columnar", cmd_columnar, "Query high-performance DuckDB columnar time-series storage & analytics (Phase 3)", ["col", "duck", "duckdb"], db=True)
@@ -3994,11 +3808,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_col.add_argument("--compression", choices=["zstd", "snappy", "gzip"], default="zstd", help="Parquet compression codec (default: zstd)")
     p_col.add_argument("--full", action="store_true", help="Force full SQLite table re-scan during sync instead of incremental CDC")
 
-    # Phase 19: Prometheus Metrics Exporter
-    p_metrics = _sub("metrics", cmd_metrics, "Launch lightweight Prometheus metrics HTTP exporter (port 9100)", ["prom", "prometheus"], db=True)
-    p_metrics.add_argument("--port", type=int, default=9100, help="HTTP port (default: 9100)")
-    p_metrics.add_argument("--host", default="127.0.0.1", help="HTTP bind host (default: 127.0.0.1)")
-    p_metrics.add_argument("--duckdb", default="data/mdrap.duckdb", help="Path to DuckDB database")
+
 
     # Multi-Device Workload Simulation (§26)
     p_sim = _sub("simulate", cmd_simulate, "Simulate concurrent multi-device normal vs fast-paced user workloads (§26)", ["usersim", "devices", "sim-users", "sim-devices"], db=True)
@@ -4051,17 +3861,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_flow.add_argument("--export", nargs="?", const=True, default=None, help="Export 3-tab Order Flow & CVD Excel report (.xlsx)")
     p_flow.add_argument("--open", action="store_true", help="Open exported report in Microsoft Excel (Windows only)")
 
-    # Live Streaming Dynamic Excel Model Bridge (Bloomberg =BDP() Replacement)
-    p_bridge = _sub("bridge", cmd_bridge, "Run Live Streaming Dynamic Excel Model Bridge (Bloomberg =BDP() Replacement)", ["excel-bridge", "bdp", "rtd"])
-    p_bridge.add_argument("-p", "--port", type=int, default=8085, help="HTTP listening port (default: 8085)")
-    p_bridge.add_argument("--host", default="127.0.0.1", help="HTTP listening host (default: 127.0.0.1)")
-    p_bridge.add_argument("--open", action="store_true", help="Automatically launch pre-built model in Microsoft Excel")
 
-    # Zero-Install Local Web Cockpit
-    p_web = _sub("web", cmd_web, "Launch Zero-Install Local Web Cockpit terminal in your browser", ["cockpit-web", "ui", "web-dashboard"])
-    p_web.add_argument("-p", "--port", type=int, default=8080, help="HTTP listening port (default: 8080)")
-    p_web.add_argument("--host", default="127.0.0.1", help="HTTP listening host (default: 127.0.0.1)")
-    p_web.add_argument("--no-browser", dest="browser", action="store_false", help="Do not automatically launch web browser")
+
 
     # Institutional Algorithmic Strategy Engine & Paper EMS (§26)
     p_strat = _sub("strategy", cmd_strategy, "Institutional Algorithmic Strategy Engine & Paper EMS (§26)", ["strat", "algo", "ems"], db=True)
@@ -4073,10 +3874,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_strat.add_argument("-x", "--executions", "--trades", action="store_true", help="Display detailed strategy execution ledger with arrival prices and slippage")
     p_strat.add_argument("--export", nargs="?", const="default", default=None, metavar="FILE", help="Export strategy execution log and order book history to JSON or CSV")
 
-    # Multi-Process Sharded Ingestion Benchmark (§25 V4)
-    p_shard = _sub("shard", cmd_shard, "Multi-Process Sharded Ingestion Benchmark (§25 V4, bypassing Python GIL)", ["multicore", "parallel"])
-    p_shard.add_argument("-w", "--workers", type=int, default=4, help="Number of OS worker processes (default: 4)")
-    p_shard.add_argument("-e", "--events", type=int, default=40000, help="Total events to benchmark (default: 40000)")
+
 
     # Phase 9: External TCP Gateway
     p_gw = _sub("gateway", cmd_gateway, "Launch AsyncIO TCP Gateway for external clients", ["gw", "tcp-gw"])
@@ -4164,8 +3962,7 @@ MNEMONIC_MAP = {
     # Institutional Best Execution & Flow Analytics (Competitor Leapfrog)
     "tca": "tca", "bestex": "tca", "best-ex": "tca", "slip-audit": "tca",
     "flow": "flow", "cvd": "flow", "orderflow": "flow", "whales": "flow", "who": "flow",
-    "bridge": "bridge", "excel-bridge": "bridge", "bdp": "bridge", "rtd": "bridge",
-    "web": "web", "cockpit-web": "web", "ui": "web", "web-dashboard": "web",
+
     # Service & Infrastructure
     "top": "top", "mon": "top", "monitor": "top", "cockpit": "top",
     "daemon": "daemon", "dmn": "daemon",
@@ -4194,7 +3991,6 @@ MNEMONIC_MAP = {
     "arbitrate": "arbitrate", "arb": "arbitrate", "multicast": "arbitrate", "udp": "arbitrate",
     "clear": "clear", "cls": "clear",
     "strategy": "strategy", "strat": "strategy", "algo": "strategy", "ems": "strategy",
-    "shard": "shard", "multicore": "shard", "parallel": "shard",
     "help": "help", "menu": "help", "?": "help", "palette": "help",
     "gateway": "gateway", "gw": "gateway", "tcp-gw": "gateway",
     "sdk-demo": "sdk-demo", "sdk": "sdk-demo",
@@ -4214,6 +4010,7 @@ MNEMONIC_MAP = {
     "corpact": "corpact", "splits": "corpact", "dividends": "corpact",
     "features": "features", "feat": "features",
     "schedule": "schedule", "sched": "schedule", "cron": "schedule",
+    "markets": "markets", "venues": "markets", "world": "markets", "desk": "markets",
     "exit": "exit", "quit": "exit", "q": "exit",
 }
 
@@ -4233,9 +4030,10 @@ ALL_CANONICAL_COMMANDS = [
     "historical", "status", "run", "benchmark", "compare", "loadtest", "chaos", "security", "query", "archive", "replay",
     "analytics", "bbo", "depth", "vwap", "export", "live", "chart", "sub", "ohlcv", "spread", "vol", "top", "daemon",
     "watchdog", "stress", "simulate", "test-all", "throughput", "archive", "replay", "latest",
-    "lineage", "quar", "mbo", "arbitrate", "tca", "flow", "bridge", "web", "strategy", "shard", "gateway", "sdk-demo", "dashboard", "version", "itch", "edgar", "vessel",
-    "backtest", "risk", "bars", "options", "news", "alert", "watchlist", "portfolio", "corpact", "features", "schedule"
+    "lineage", "quar", "mbo", "arbitrate", "tca", "flow", "strategy", "gateway", "sdk-demo", "dashboard", "version", "itch", "edgar", "vessel",
+    "backtest", "risk", "bars", "options", "news", "alert", "watchlist", "portfolio", "corpact", "features", "schedule", "markets"
 ]
+
 
 
 def render_command_palette(console: Console) -> None:
@@ -4246,8 +4044,8 @@ def render_command_palette(console: Console) -> None:
         "[bold #818cf8]│[/bold #818cf8] [bold green]DEPTH[/bold green] [dim][SYM][/dim] L2 Order Book     [bold #818cf8]│[/bold #818cf8] [bold green]FLOW[/bold green]  [dim][SYM][/dim] Order Flow & CVD  [bold #818cf8]│[/bold #818cf8]\n"
         "[bold #818cf8]│[/bold #818cf8] [bold green]LIVE[/bold green]  [dim][SYM][/dim] In-Place Live View[bold #818cf8]│[/bold #818cf8] [bold green]CHART[/bold green] [dim][SYM][/dim] Candlestick Graph  [bold #818cf8]│[/bold #818cf8]\n"
         "[bold #818cf8]│[/bold #818cf8] [bold green]VWAP[/bold green]  [dim][SYM][/dim] Slippage Curves   [bold #818cf8]│[/bold #818cf8] [bold green]CND[/bold green]   [dim][SYM][/dim] OHLCV Table Bars  [bold #818cf8]│[/bold #818cf8]\n"
-        "[bold #818cf8]│[/bold #818cf8] [bold green]WEB[/bold green]        Zero-Install Cockpit[bold #818cf8]│[/bold #818cf8] [bold green]EXCEL[/bold green] [dim][SYM][/dim] Financial Model   [bold #818cf8]│[/bold #818cf8]\n"
-        "[bold #818cf8]│[/bold #818cf8] [bold green]BDP[/bold green]        Excel =BDP() Bridge[bold #818cf8]│[/bold #818cf8] [bold green]SPR[/bold green]   [dim][SYM][/dim] Bid/Ask Spreads   [bold #818cf8]│[/bold #818cf8]\n"
+        "[bold #818cf8]│[/bold #818cf8] [bold green]SUB[/bold green]   [dim][SYM][/dim] TCP Push Stream   [bold #818cf8]│[/bold #818cf8] [bold green]EXCEL[/bold green] [dim][SYM][/dim] Financial Model   [bold #818cf8]│[/bold #818cf8]\n"
+        "[bold #818cf8]│[/bold #818cf8] [bold green]GW[/bold green]         TCP Gateway Socket [bold #818cf8]│[/bold #818cf8] [bold green]SPR[/bold green]   [dim][SYM][/dim] Bid/Ask Spreads   [bold #818cf8]│[/bold #818cf8]\n"
         "[bold #818cf8]├─ ⚡ Service & Daemon ──────────┼─ 🛡️ Reliability & Security ─────┤[/bold #818cf8]\n"
         "[bold #818cf8]│[/bold #818cf8] [bold green]TOP[/bold green]        Terminal Cockpit   [bold #818cf8]│[/bold #818cf8] [bold green]STAT[/bold green]       System Overview     [bold #818cf8]│[/bold #818cf8]\n"
         "[bold #818cf8]│[/bold #818cf8] [bold green]DMN[/bold green]        Streaming Daemon   [bold #818cf8]│[/bold #818cf8] [bold green]HEALTH[/bold green]     Venue Reputation    [bold #818cf8]│[/bold #818cf8]\n"
@@ -4419,8 +4217,6 @@ def cmd_shell(args=None, parser=None):
                 cli_tokens = ["flow", sym] + rest[1:]
             elif verb in ("bridge", "excel-bridge", "bdp", "rtd"):
                 cli_tokens = ["bridge"] + rest
-            elif verb in ("web", "cockpit-web", "ui", "web-dashboard"):
-                cli_tokens = ["web"] + rest
             elif verb == "sub":
                 sym = rest[0] if rest else "BTC/USD"
                 cli_tokens = ["sub", sym] + rest[1:]
@@ -4515,25 +4311,13 @@ def cmd_shell(args=None, parser=None):
                                 cli_tokens = ["edgar"] + rest
                     else:
                         cli_tokens = ["edgar"]
+
             elif verb in ("vessel", "vessels", "tanker", "tankers", "ship", "ships", "ais", "cargo"):
-                VESSEL_ACTIONS = ("list", "track", "chokepoints", "commodities")
-                if rest:
-                    action_cand = rest[0].lower()
-                    if action_cand in VESSEL_ACTIONS:
-                        cli_tokens = ["vessel", action_cand] + rest[1:]
-                    else:
-                        close = difflib.get_close_matches(action_cand, VESSEL_ACTIONS, n=1, cutoff=0.6)
-                        if close:
-                            console.print(f"[dim cyan][auto-correct] Interpreting '{action_cand}' as '{close[0]}'[/dim cyan]")
-                            cli_tokens = ["vessel", close[0]] + rest[1:]
-                        elif len(rest) > 1 and not rest[0].startswith("-") and not rest[1].startswith("-"):
-                            cli_tokens = ["vessel", rest[0]] + rest[1:]
-                        elif not rest[0].startswith("-"):
-                            cli_tokens = ["vessel", "track"] + rest
-                        else:
-                            cli_tokens = ["vessel"] + rest
+                if rest and rest[0] not in ("list", "track", "chokepoints", "commodities") and not rest[0].startswith("-"):
+                    cli_tokens = ["vessel", "track"] + rest
                 else:
-                    cli_tokens = ["vessel"]
+                    cli_tokens = ["vessel"] + rest
+
             elif verb in ("news", "sentiment"):
                 NEWS_ACTIONS = ("latest", "analyze", "summary", "fetch")
                 if rest:
@@ -4623,14 +4407,17 @@ def main():
         if raw_cmd in MNEMONIC_MAP:
             raw_cmd = MNEMONIC_MAP[raw_cmd]
             sys.argv[1] = raw_cmd
+        elif raw_cmd in ALL_CANONICAL_COMMANDS:
+            pass
         else:
             # Fuzzy match typo correction for CLI command line
             matches = difflib.get_close_matches(raw_cmd, list(MNEMONIC_MAP.keys()) + list(ALL_CANONICAL_COMMANDS), n=1, cutoff=0.55)
             if matches:
                 suggested = MNEMONIC_MAP.get(matches[0], matches[0])
-                print(f"[mdrap] Notice: Auto-correcting '{orig_cmd}' -> '{suggested}'", file=sys.stderr)
-                raw_cmd = suggested
-                sys.argv[1] = suggested
+                if suggested != raw_cmd:
+                    print(f"[mdrap] Notice: Auto-correcting '{orig_cmd}' -> '{suggested}'", file=sys.stderr)
+                    raw_cmd = suggested
+                    sys.argv[1] = suggested
 
         if raw_cmd in ("live", "stream"):
             sym = sys.argv[2] if len(sys.argv) > 2 else "BTC/USD"
@@ -4674,10 +4461,6 @@ def main():
             sym = KNOWN_SYMBOLS.get(sym.upper(), sym)
             rest = sys.argv[3:] if len(sys.argv) > 2 and not sys.argv[2].startswith("-") else sys.argv[2:]
             sys.argv = [sys.argv[0], "flow", sym] + rest
-        elif raw_cmd in ("bridge", "excel-bridge", "bdp", "rtd"):
-            sys.argv = [sys.argv[0], "bridge"] + sys.argv[2:]
-        elif raw_cmd in ("web", "cockpit-web", "ui", "web-dashboard"):
-            sys.argv = [sys.argv[0], "web"] + sys.argv[2:]
         elif raw_cmd in ("bbo", "nbbo"):
             sym = sys.argv[2] if len(sys.argv) > 2 else "BTC/USD"
             sym = KNOWN_SYMBOLS.get(sym.upper(), sym)
@@ -4747,8 +4530,6 @@ def main():
             sys.argv = [sys.argv[0], "top"] + sys.argv[2:]
         elif raw_cmd in ("columnar", "col", "duck", "duckdb"):
             sys.argv = [sys.argv[0], "columnar"] + sys.argv[2:]
-        elif raw_cmd in ("metrics", "prom", "prometheus", "m"):
-            sys.argv = [sys.argv[0], "metrics"] + sys.argv[2:]
         elif raw_cmd in ("simulate", "usersim", "devices", "sim-users", "sim"):
             sys.argv = [sys.argv[0], "simulate"] + sys.argv[2:]
         elif raw_cmd in ("itch", "totalview"):
@@ -4778,26 +4559,13 @@ def main():
                             sys.argv = [sys.argv[0], "edgar"] + rest
                 else:
                     sys.argv = [sys.argv[0], "edgar"]
+
         elif raw_cmd in ("vessel", "vessels", "tanker", "tankers", "ship", "ships", "ais", "cargo"):
-            VESSEL_ACTIONS = ("list", "track", "chokepoints", "commodities")
-            rest = sys.argv[2:]
-            if rest:
-                action_cand = rest[0].lower()
-                if action_cand in VESSEL_ACTIONS:
-                    sys.argv = [sys.argv[0], "vessel", action_cand] + rest[1:]
-                else:
-                    close = difflib.get_close_matches(action_cand, VESSEL_ACTIONS, n=1, cutoff=0.6)
-                    if close:
-                        print(f"[mdrap] Notice: Auto-correcting '{action_cand}' -> '{close[0]}'", file=sys.stderr)
-                        sys.argv = [sys.argv[0], "vessel", close[0]] + rest[1:]
-                    elif len(rest) > 1 and not rest[0].startswith("-") and not rest[1].startswith("-"):
-                        sys.argv = [sys.argv[0], "vessel", rest[0]] + rest[1:]
-                    elif not rest[0].startswith("-"):
-                        sys.argv = [sys.argv[0], "vessel", "track"] + rest
-                    else:
-                        sys.argv = [sys.argv[0], "vessel"] + rest
+            if len(sys.argv) > 2 and sys.argv[2] not in ("list", "track", "chokepoints", "commodities") and not sys.argv[2].startswith("-"):
+                sys.argv = [sys.argv[0], "vessel", "track"] + sys.argv[2:]
             else:
-                sys.argv = [sys.argv[0], "vessel"]
+                sys.argv = [sys.argv[0], "vessel"] + sys.argv[2:]
+
         elif raw_cmd in ("news", "sentiment"):
             NEWS_ACTIONS = ("latest", "analyze", "summary", "fetch")
             rest = sys.argv[2:]

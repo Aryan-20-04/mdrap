@@ -27,6 +27,27 @@ class SimulatorConfig:
     ])
     sources: List[str] = field(default_factory=lambda: ["FEEDX", "FEEDY", "FEEDZ"])
     start_price: float = 100.0
+    market: str = "us"                 # 'us', 'nse', 'xetra', 'tse', 'global'
+
+    def __post_init__(self):
+        m = (self.market or "us").lower()
+        if m in ("nse", "india", "in"):
+            self.instruments = ["RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", "ICICIBANK.NS", "TATAMOTORS.NS"]
+            if self.start_price == 100.0:
+                self.start_price = 2400.0
+        elif m in ("xetra", "germany", "de", "eurex"):
+            self.instruments = ["SAP.DE", "SIE.DE", "BMW.DE", "VOW3.DE", "ALV.DE", "MBG.DE"]
+            if self.start_price == 100.0:
+                self.start_price = 140.0
+        elif m in ("tse", "japan", "jp", "jpx"):
+            self.instruments = ["7203.T", "6758.T", "9984.T", "8306.T", "6861.T"]
+            if self.start_price == 100.0:
+                self.start_price = 3200.0
+        elif m in ("global", "world", "all"):
+            self.instruments = ["AAPL", "NVDA", "RELIANCE.NS", "TCS.NS", "SAP.DE", "BMW.DE", "7203.T", "6758.T"]
+            if self.start_price == 100.0:
+                self.start_price = 250.0
+
 
     duplicate_rate: float = 0.002
     missing_rate: float = 0.001       # sequence numbers skipped (never emitted)

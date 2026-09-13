@@ -219,3 +219,78 @@ def test_env_var_secret_loading():
     finally:
         os.environ.pop("MDRAP_SECRET_MYFEED", None)
 
+
+def test_sanitizer_rejects_boolean_values():
+    """Verifies that booleans are strictly rejected as numeric field values."""
+    for field_name in ["price", "bid", "ask", "quantity", "sequence"]:
+        valid, err = InputSanitizer.sanitize({field_name: True})
+        assert valid is False, f"Expected {field_name}=True to be rejected"
+        assert err is not None
+
+        valid, err = InputSanitizer.sanitize({field_name: False})
+        assert valid is False, f"Expected {field_name}=False to be rejected"
+        assert err is not None
+
+
+def test_rate_limiter_multithreaded_concurrency():
+    """Verifies thread-safe token bucket consumption under concurrent access."""
+    import threading
+    limiter = TokenBucketRateLimiter(rate=0.0, capacity=100.0)
+    allowed_count = [0]
+    lock = threading.Lock()
+
+    def worker():
+        for _ in range(20):
+            if limiter.allow("MULTI", 1.0):
+                with lock:
+                    allowed_count[0] += 1
+
+    threads = [threading.Thread(target=worker) for _ in range(10)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    # Total attempts = 200, capacity is 100, exactly 100 allowed without refill race
+    assert allowed_count[0] == 100
+
+
+def test_env_secrets_resolution():
+    """Verifies dynamic resolution of API keys and feed secrets from environment."""
+    os.environ["MDRAP_SECRET_BINANCE"] = "custom_binance_secret_xyz"
+    os.environ["MDRAP_API_KEY_PRO"] = "custom_pro_token_abc"
+    try:
+        sec = SecurityManager()
+        assert sec._secrets["BINANCE"] == b"custom_binance_secret_xyz"
+        assert "custom_pro_token_abc" in sec._api_keys
+        assert sec._api_keys["custom_pro_token_abc"].can_access_l2 is True
+    finally:
+        os.environ.pop("MDRAP_SECRET_BINANCE", None)
+        os.environ.pop("MDRAP_API_KEY_PRO", None)
+
+
+def test_audit_hash_delimiter_collision_resistance(store):
+    """Verifies pipe delimiter escaping prevents audit hash collision/injection."""
+    sec = SecurityManager(store=store)
+    sec.log_audit("TEST_DELIM", actor="admin|injected", role=Role.ADMIN, details="field|injected|payload")
+    valid, msg, count = sec.verify_audit_trail()
+    assert valid is True
+    assert count == 1
+
+
+def test_hmac_compact_json_compatibility():
+    """Verifies HMAC signature uses compact JSON separators matching cross-language standards."""
+    import hashlib
+    import hmac
+    sec = SecurityManager()
+    sec.register_feed_secret("TESTFEED", "secret123")
+    payload = {"b": 2, "a": 1}
+    sig = sec.sign_payload("TESTFEED", payload)
+
+    # Standard compact JSON without whitespace
+    raw_json = '{"a":1,"b":2}'.encode("utf-8")
+    expected = hmac.new(b"secret123", raw_json, hashlib.sha256).hexdigest()
+    assert sig == expected
+    assert sec.verify_payload("TESTFEED", payload, expected) is True
+
+

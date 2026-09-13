@@ -331,21 +331,6 @@ def test_cmd_flow_dispatch(capsys):
     assert "Institutional Broker & Market Participant Attribution" in captured.out
 
 
-def test_cmd_bridge_parser():
-    parser = build_parser()
-    args = parser.parse_args(["bridge", "--port", "8089"])
-    assert args.port == 8089
-    assert args.command == "bridge"
-
-
-def test_cmd_web_parser():
-    parser = build_parser()
-    args = parser.parse_args(["web", "--port", "8088", "--no-browser"])
-    assert args.port == 8088
-    assert args.browser is False
-    assert args.command == "web"
-
-
 def test_cmd_strategy_dispatch(capsys):
     parser = build_parser()
     # 1. list
@@ -364,15 +349,7 @@ def test_cmd_strategy_dispatch(capsys):
     assert "Performance Tear-Sheet" in captured.out
 
 
-def test_cmd_shard_parser():
-    parser = build_parser()
-    args = parser.parse_args(["shard", "-w", "2", "-e", "1000"])
-    assert args.workers == 2
-    assert args.events == 1000
-    assert args.command == "shard"
-
-
-def test_edgar_and_vessel_routing(monkeypatch):
+def test_edgar_routing(monkeypatch):
     import sys
     from cli import main, build_parser
 
@@ -381,10 +358,6 @@ def test_edgar_and_vessel_routing(monkeypatch):
     args_edgar = parser.parse_args(["edgar", "events", "AAPL"])
     assert args_edgar.action == "events"
     assert args_edgar.ticker == "AAPL"
-
-    args_vessel = parser.parse_args(["vessel", "track", "FRONT ALTAIR"])
-    assert args_vessel.action == "track"
-    assert args_vessel.identifier == "FRONT ALTAIR"
 
     # 2. Main argv smart rewrite tests: 'company AAPL' -> profile AAPL
     called_args = []
@@ -402,22 +375,6 @@ def test_edgar_and_vessel_routing(monkeypatch):
     assert len(called_args) == 1
     assert called_args[0].action == "events"
     assert called_args[0].ticker == "AAPL"
-
-    # 'vessel "FRONT ALTAIR"' -> track "FRONT ALTAIR"
-    called_vessel_args = []
-    monkeypatch.setattr("cli.cmd_vessel", lambda a: called_vessel_args.append(a))
-    monkeypatch.setattr(sys, "argv", ["cli.py", "vessel", "FRONT ALTAIR"])
-    main()
-    assert len(called_vessel_args) == 1
-    assert called_vessel_args[0].action == "track"
-    assert called_vessel_args[0].identifier == "FRONT ALTAIR"
-
-    # 'tankers' -> list
-    called_vessel_args.clear()
-    monkeypatch.setattr(sys, "argv", ["cli.py", "tankers"])
-    main()
-    assert len(called_vessel_args) == 1
-    assert called_vessel_args[0].action == "list"
 
 
 def test_edgar_open_argument():

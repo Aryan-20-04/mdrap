@@ -202,8 +202,18 @@ class FIXSession:
             self.in_seq = seq_num
             
         msg_type = msg.get(FIXTag.MSG_TYPE)
+        sender = msg.get(FIXTag.SENDER_COMP_ID)
+        target = msg.get(FIXTag.TARGET_COMP_ID)
+
+        # Validate CompID against session parameters
+        comp_id_valid = True
+        if sender and sender != self.target:
+            comp_id_valid = False
+        if target and target != self.sender:
+            comp_id_valid = False
+
         if msg_type == 'A':
-            self.is_logged_on = True
+            self.is_logged_on = comp_id_valid
         elif msg_type == '5': # Logout
             self.is_logged_on = False
             

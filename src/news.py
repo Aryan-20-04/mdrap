@@ -203,8 +203,11 @@ class NewsFeed:
         return item
     
     def parse_rss_xml(self, xml_content: str, source: str = 'RSS') -> list[NewsItem]:
-        """Parse RSS/Atom XML feed and add all items. Uses xml.etree.ElementTree."""
+        """Parse RSS/Atom XML feed and add all items. Protected against entity expansion attacks."""
         new_items = []
+        upper_xml = xml_content.upper()
+        if "<!DOCTYPE" in upper_xml or "<!ENTITY" in upper_xml:
+            raise ValueError("XML entity expansion / DTD processing is forbidden for security")
         try:
             root = ET.fromstring(xml_content)
             # Basic RSS 2.0 parsing

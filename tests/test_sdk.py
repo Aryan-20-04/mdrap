@@ -13,7 +13,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 import pytest
 from models import CanonicalEvent, EventType, QualityStatus
 from gateway_tcp import TCPGatewayServer
-from sdk.client import MDrapClient
+from client import MDrapClient
 
 # Ensure pytest-asyncio handles async tests
 pytestmark = pytest.mark.asyncio

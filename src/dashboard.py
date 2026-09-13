@@ -9,26 +9,10 @@ from __future__ import annotations
 import time
 from typing import Optional
 
-try:
-    from rich.console import Group
-    from rich.live import Live
-    from rich.panel import Panel
-    from rich.table import Table
-except ImportError:
-    from term import Group, Panel, Table
-    class Live:
-        def __init__(self, renderable=None, **kwargs):
-            self.renderable = renderable
-        def __enter__(self):
-            return self
-        def __exit__(self, *args):
-            pass
-        def update(self, renderable, refresh=True):
-            if refresh:
-                print(str(renderable))
-        def refresh(self):
-            if self.renderable:
-                print(str(self.renderable))
+from rich.console import Group
+from rich.live import Live
+from rich.panel import Panel
+from rich.table import Table
 
 from metrics import RunMetrics, LIVE_WINDOW, percentile
 from pipeline import Pipeline

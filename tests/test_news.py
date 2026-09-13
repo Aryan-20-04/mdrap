@@ -98,5 +98,16 @@ class TestNewsPipeline(unittest.TestCase):
         if item is not None:
             self.assertIn(item.urgency, ['HIGH', 'CRITICAL'])
 
+    def test_billion_laughs_xml_rejected(self):
+        xml_bomb = """<?xml version="1.0"?>
+        <!DOCTYPE lolz [
+         <!ENTITY lol "lol">
+         <!ENTITY lol2 "&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;">
+        ]>
+        <rss version="2.0"><channel><title>&lol2;</title></channel></rss>"""
+        with self.assertRaises(ValueError):
+            self.feed.parse_rss_xml(xml_bomb, 'MALICIOUS')
+
+
 if __name__ == '__main__':
     unittest.main()

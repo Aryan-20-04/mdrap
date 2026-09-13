@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import threading
 import time
 from typing import Any, Dict, Iterable, List, Optional, Tuple
@@ -163,10 +164,11 @@ class ColumnarStore:
 
         with self._lock:
             abs_path = os.path.abspath(sqlite_path).replace("\\", "/")
+            escaped_path = abs_path.replace("'", "''")
             max_ts = self.max_timestamp() if incremental else 0.0
 
             # Attach SQLite database
-            self.con.execute(f"ATTACH '{abs_path}' AS sqldb (TYPE SQLITE);")
+            self.con.execute(f"ATTACH '{escaped_path}' AS sqldb (TYPE SQLITE);")
             try:
                 before = self.count()
                 if incremental and max_ts > 0.0:
@@ -509,24 +511,36 @@ class ColumnarStore:
         output_path: str,
         instrument_id: Optional[str] = None,
         compression: str = "zstd",
+        symbol: Optional[str] = None,
     ) -> str:
         """
         Export ticks directly to an Apache Parquet file using columnar compression.
         """
+        instrument_id = instrument_id or symbol
         os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
         abs_out = os.path.abspath(output_path).replace("\\", "/")
+        escaped_out = abs_out.replace("'", "''")
+
+        allowed_compressions = {"zstd", "snappy", "gzip", "none", "uncompressed"}
+        comp = compression.lower()
+        if comp not in allowed_compressions:
+            raise ValueError(f"Unsupported compression algorithm: {compression}")
 
         where_clause = ""
         if instrument_id and instrument_id.upper() not in ("ALL", "*"):
-            sym = instrument_id.upper()
+            sym = instrument_id.upper().strip()
+            if not re.match(r"^[A-Za-z0-9/_\-\.]{1,20}$", sym):
+                raise ValueError(f"Invalid symbol format for export: {instrument_id}")
             sym_clean = sym.replace("-", "/")
-            where_clause = f"WHERE (instrument_id = '{sym}' OR instrument_id = '{sym_clean}')"
+            escaped_sym = sym.replace("'", "''")
+            escaped_clean = sym_clean.replace("'", "''")
+            where_clause = f"WHERE (instrument_id = '{escaped_sym}' OR instrument_id = '{escaped_clean}')"
 
         query = f"""
             COPY (
                 SELECT * FROM canonical_ticks {where_clause}
                 ORDER BY exchange_timestamp
-            ) TO '{abs_out}' (FORMAT PARQUET, COMPRESSION '{compression}');
+            ) TO '{escaped_out}' (FORMAT PARQUET, COMPRESSION '{comp}');
         """
         with self._lock:
             self.con.execute(query)

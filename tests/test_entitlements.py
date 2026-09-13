@@ -42,31 +42,14 @@ def auth_daemon(temp_db):
     daemon.stop()
 
 
-def test_entitlement_tiers_defaults():
+def test_entitlement_key_defaults():
     sec = SecurityManager()
-    free_ent = sec.register_api_key(client_id="Free_User", tier=Tier.FREE)
-    assert free_ent.tier == Tier.FREE
-    assert free_ent.rate_limit_eps == 100.0
-    assert free_ent.can_access_l2 is False
-    assert free_ent.can_use_binary is False
-    assert free_ent.can_use_shm is False
-    assert free_ent.max_replay_events == 50
-
-    pro_ent = sec.register_api_key(client_id="Pro_User", tier=Tier.PRO)
-    assert pro_ent.tier == Tier.PRO
-    assert pro_ent.rate_limit_eps == 5000.0
-    assert pro_ent.can_access_l2 is True
-    assert pro_ent.can_use_binary is True
-    assert pro_ent.can_use_shm is False
-    assert pro_ent.max_replay_events == 5000
-
-    inst_ent = sec.register_api_key(client_id="Inst_User", tier=Tier.INSTITUTIONAL)
-    assert inst_ent.tier == Tier.INSTITUTIONAL
-    assert inst_ent.rate_limit_eps == 50000.0
-    assert inst_ent.can_access_l2 is True
-    assert inst_ent.can_use_binary is True
-    assert inst_ent.can_use_shm is True
-    assert inst_ent.max_replay_events == 50000
+    ent = sec.register_api_key(client_id="Test_User")
+    assert ent.rate_limit_eps == 20000.0
+    assert ent.can_access_l2 is True
+    assert ent.can_use_binary is True
+    assert ent.can_use_shm is True
+    assert ent.max_replay_events == 100_000
 
 
 def test_security_manager_key_lifecycle_and_revocation():
@@ -99,16 +82,14 @@ def test_sqlite_api_key_persistence(temp_db):
 
     assert loaded is not None
     assert loaded.client_id == "Persistent_Client"
-    assert loaded.tier == Tier.PRO
     assert loaded.can_access_l2 is True
     store2.close()
 
 
 def test_daemon_auth_with_valid_and_revoked_keys(auth_daemon):
-    # 1. Connect with valid PRO key
+    # 1. Connect with valid key
     with MDRAPClient(host="127.0.0.1", port=auth_daemon.port, auth_token="mdrap_demo_pro_key") as client:
         assert client.is_connected()
-        assert client.tier == "PRO"
         assert client.client_id == "Demo_Pro_Quant"
 
     # 2. Connect with invalid token
@@ -118,7 +99,7 @@ def test_daemon_auth_with_valid_and_revoked_keys(auth_daemon):
     assert "INVALID_TOKEN" in str(exc_info.value)
 
     # 3. Create and then revoke a key
-    temp_key = auth_daemon.security_manager.register_api_key("Short_Lived", tier=Tier.FREE)
+    temp_key = auth_daemon.security_manager.register_api_key("Short_Lived")
     auth_daemon.security_manager.revoke_api_key(temp_key.token)
 
     with pytest.raises(PermissionError) as exc_info2:
@@ -127,31 +108,28 @@ def test_daemon_auth_with_valid_and_revoked_keys(auth_daemon):
     assert "REVOKED_TOKEN" in str(exc_info2.value)
 
 
-def test_free_tier_enforcement_guards(auth_daemon):
-    """Verify that FREE tier is strictly barred from L2 depth, binary wire format, and oversized replay."""
+def test_authenticated_client_full_access(auth_daemon):
+    """Verify that authenticated clients have full access to L1, L2, Binary wire format, and Replay (no paywalls)."""
     with MDRAPClient(host="127.0.0.1", port=auth_daemon.port, auth_token="mdrap_demo_free_key") as client:
-        # 1. L2 Depth is forbidden
-        res = client._send_query("SUB L2:BTC/USD")
-        assert res.get("status") == "ERROR"
-        assert "FORBIDDEN" in res.get("error", "")
-
-        # 2. Binary wire format is forbidden
-        res_bin = client._send_query("FORMAT BINARY")
-        assert res_bin.get("status") == "ERROR"
-        assert "FORBIDDEN" in res_bin.get("error", "")
-
-        # 3. Oversized replay (>50 events) is forbidden
-        with pytest.raises(PermissionError) as exc_replay:
-            client.request_replay(from_seq=1, to_seq=100)
-        assert "FORBIDDEN" in str(exc_replay.value)
-
-        # 4. Standard L1 subscription is allowed
+        # 1. Standard L1 subscription is allowed
         res_sub = client._send_query("SUB BTC/USD")
         assert res_sub.get("status") == "OK"
 
+        # 2. L2 Depth is allowed for all authenticated clients
+        res_depth = client._send_query("SUB L2:BTC/USD")
+        assert res_depth.get("status") == "OK"
+
+        # 3. Binary wire format is allowed for all authenticated clients
+        res_bin = client._send_query("FORMAT BINARY")
+        assert res_bin.get("status") == "OK"
+
+        # 4. Replay is allowed
+        replayed = client.request_replay(from_seq=1, to_seq=50)
+        assert isinstance(replayed, list)
+
 
 def test_pro_tier_permissions(auth_daemon):
-    """Verify that PRO tier can access L2 depth, binary format, and large replays."""
+    """Verify that clients can access L2 depth, binary format, and replays."""
     with MDRAPClient(host="127.0.0.1", port=auth_daemon.port, auth_token="mdrap_demo_pro_key") as client:
         # L2 Depth allowed
         res_depth = client._send_query("SUB L2:BTC/USD")
@@ -161,17 +139,16 @@ def test_pro_tier_permissions(auth_daemon):
         res_bin = client._send_query("FORMAT BINARY")
         assert res_bin.get("status") == "OK"
 
-        # Up to 5000 replay allowed
+        # Replay allowed
         replayed = client.request_replay(from_seq=1, to_seq=50)
         assert isinstance(replayed, list)
 
 
 def test_rate_limiter_throttles_events(auth_daemon):
-    """Verify that token bucket rate limiter throttles clients exceeding their tier quota."""
+    """Verify that token bucket rate limiter throttles clients exceeding their quota."""
     # Register client with very low rate limit (5 events/sec)
     slow_key = auth_daemon.security_manager.register_api_key(
         client_id="Throttled_Bot",
-        tier=Tier.FREE,
         rate_limit_eps=5.0,
     )
 
@@ -183,11 +160,10 @@ def test_rate_limiter_throttles_events(auth_daemon):
             events.append(ev)
         assert len(events) >= 1
 
-        # Verify daemon telemetry recorded client tier while connected
+        # Verify daemon telemetry recorded client
         st = auth_daemon.stats()
         assert "rate_limited_ticks" in st
-        assert "client_tiers" in st
-        assert st["client_tiers"].get("FREE", 0) >= 1
+        assert "active_clients" in st
 
     # After disconnect, verify rate_limited_ticks remains tracked
     st_post = auth_daemon.stats()

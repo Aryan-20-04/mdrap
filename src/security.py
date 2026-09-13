@@ -14,8 +14,10 @@ import enum
 import hashlib
 import hmac
 import json
+import os
 import re
 import secrets
+import threading
 import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional, Tuple
@@ -35,22 +37,24 @@ _ROLE_HIERARCHY = {
 
 
 class Tier(str, enum.Enum):
-    FREE = "FREE"
-    PRO = "PRO"
-    INSTITUTIONAL = "INSTITUTIONAL"
+    """Client entitlement tier (unified platform capabilities)."""
+    STANDARD = "STANDARD"
+    FREE = "STANDARD"
+    PRO = "STANDARD"
+    INSTITUTIONAL = "STANDARD"
 
 
 @dataclass
 class ClientEntitlement:
-    """Client entitlement, permissions, and rate tier definition."""
+    """Client entitlement, permissions, and rate limit definition."""
     token: str
     client_id: str
-    tier: Tier
-    rate_limit_eps: float
-    can_access_l2: bool
-    can_use_binary: bool
-    can_use_shm: bool
-    max_replay_events: int
+    rate_limit_eps: float = 20_000.0
+    tier: Tier | str = Tier.STANDARD
+    can_access_l2: bool = True
+    can_use_binary: bool = True
+    can_use_shm: bool = True
+    max_replay_events: int = 100_000
     created_at: float = field(default_factory=time.time)
     expires_at: Optional[float] = None
     is_active: bool = True
@@ -59,7 +63,7 @@ class ClientEntitlement:
         return {
             "token": self.token,
             "client_id": self.client_id,
-            "tier": self.tier.value if isinstance(self.tier, Tier) else str(self.tier),
+            "tier": "STANDARD",
             "rate_limit_eps": self.rate_limit_eps,
             "can_access_l2": self.can_access_l2,
             "can_use_binary": self.can_use_binary,
@@ -72,17 +76,15 @@ class ClientEntitlement:
 
     @classmethod
     def from_dict(cls, data: dict) -> ClientEntitlement:
-        tier_val = data.get("tier", "FREE")
-        tier = Tier(tier_val) if tier_val in Tier._value2member_map_ else Tier.FREE
         return cls(
             token=str(data.get("token", "")),
             client_id=str(data.get("client_id", "")),
-            tier=tier,
-            rate_limit_eps=float(data.get("rate_limit_eps", 100.0)),
-            can_access_l2=bool(data.get("can_access_l2", False)),
-            can_use_binary=bool(data.get("can_use_binary", False)),
-            can_use_shm=bool(data.get("can_use_shm", False)),
-            max_replay_events=int(data.get("max_replay_events", 50)),
+            tier=Tier.STANDARD,
+            rate_limit_eps=float(data.get("rate_limit_eps", 20000.0)),
+            can_access_l2=bool(data.get("can_access_l2", True)),
+            can_use_binary=bool(data.get("can_use_binary", True)),
+            can_use_shm=bool(data.get("can_use_shm", True)),
+            max_replay_events=int(data.get("max_replay_events", 100_000)),
             created_at=float(data.get("created_at", time.time())),
             expires_at=float(data["expires_at"]) if data.get("expires_at") is not None else None,
             is_active=bool(data.get("is_active", True)),
@@ -105,27 +107,30 @@ class TokenBucketRateLimiter:
         self.capacity = capacity
         # source -> (tokens, last_update_time)
         self._buckets: Dict[str, Tuple[float, float]] = {}
+        self._lock = threading.Lock()
 
     def allow(self, source: str = "default", tokens: float = 1.0) -> bool:
-        now = time.perf_counter()
-        current_tokens, last_time = self._buckets.get(source, (self.capacity, now))
-        
-        # Refill tokens based on elapsed time
-        elapsed = now - last_time
-        current_tokens = min(self.capacity, current_tokens + elapsed * self.rate)
+        with self._lock:
+            now = time.perf_counter()
+            current_tokens, last_time = self._buckets.get(source, (self.capacity, now))
+            
+            # Refill tokens based on elapsed time
+            elapsed = now - last_time
+            current_tokens = min(self.capacity, current_tokens + elapsed * self.rate)
 
-        if current_tokens >= tokens:
-            self._buckets[source] = (current_tokens - tokens, now)
-            return True
-        else:
-            self._buckets[source] = (current_tokens, now)
-            return False
+            if current_tokens >= tokens:
+                self._buckets[source] = (current_tokens - tokens, now)
+                return True
+            else:
+                self._buckets[source] = (current_tokens, now)
+                return False
 
     def reset(self, source: Optional[str] = None):
-        if source:
-            self._buckets.pop(source, None)
-        else:
-            self._buckets.clear()
+        with self._lock:
+            if source:
+                self._buckets.pop(source, None)
+            else:
+                self._buckets.clear()
 
 
 class InputSanitizer:
@@ -150,29 +155,38 @@ class InputSanitizer:
 
         price = payload.get("price")
         if price is not None:
-            if not isinstance(price, (int, float)) or price < cls.MIN_PRICE or price > cls.MAX_PRICE:
+            if isinstance(price, bool) or not isinstance(price, (int, float)) or price < cls.MIN_PRICE or price > cls.MAX_PRICE:
                 return False, f"Price out of acceptable bounds: {price}"
 
         bid = payload.get("bid")
         if bid is not None:
-            if not isinstance(bid, (int, float)) or bid < 0.0 or bid > cls.MAX_PRICE:
+            if isinstance(bid, bool) or not isinstance(bid, (int, float)) or bid < 0.0 or bid > cls.MAX_PRICE:
                 return False, f"Bid price out of bounds: {bid}"
 
         ask = payload.get("ask")
         if ask is not None:
-            if not isinstance(ask, (int, float)) or ask < 0.0 or ask > cls.MAX_PRICE:
+            if isinstance(ask, bool) or not isinstance(ask, (int, float)) or ask < 0.0 or ask > cls.MAX_PRICE:
                 return False, f"Ask price out of bounds: {ask}"
 
         qty = payload.get("quantity")
         if qty is not None:
-            if not isinstance(qty, (int, float)) or qty < 0.0 or qty > cls.MAX_QUANTITY:
+            if isinstance(qty, bool) or not isinstance(qty, (int, float)) or qty < 0.0 or qty > cls.MAX_QUANTITY:
                 return False, f"Quantity out of bounds: {qty}"
 
         seq = payload.get("sequence")
-        if seq is not None and not isinstance(seq, int):
+        if seq is not None and (isinstance(seq, bool) or not isinstance(seq, int) or seq < 0):
             return False, f"Sequence number must be integer: {seq}"
 
         return True, None
+
+
+def format_audit_payload(prev_hash: str, ts: float, actor: str, role: str, action: str, details: str) -> str:
+    """Format and escape audit entry fields to prevent delimiter collision/injection."""
+    esc_actor = str(actor).replace("|", r"\|")
+    esc_role = str(role).replace("|", r"\|")
+    esc_action = str(action).replace("|", r"\|")
+    esc_details = str(details).replace("|", r"\|")
+    return f"{prev_hash}|{ts:.6f}|{esc_actor}|{esc_role}|{esc_action}|{esc_details}"
 
 
 class SecurityManager:
@@ -190,46 +204,40 @@ class SecurityManager:
     }
 
     DEFAULT_KEYS = {
+        "mdrap_demo_key": {
+            "client_id": "Demo_Client",
+            "rate_limit_eps": 50000.0,
+        },
         "mdrap_demo_free_key": {
-            "client_id": "Demo_Retail_Client",
-            "tier": Tier.FREE,
-            "rate_limit_eps": 100.0,
-            "can_access_l2": False,
-            "can_use_binary": False,
-            "can_use_shm": False,
-            "max_replay_events": 50,
+            "client_id": "Demo_Client",
+            "rate_limit_eps": 50000.0,
         },
         "mdrap_demo_pro_key": {
             "client_id": "Demo_Pro_Quant",
-            "tier": Tier.PRO,
-            "rate_limit_eps": 5000.0,
-            "can_access_l2": True,
-            "can_use_binary": True,
-            "can_use_shm": False,
-            "max_replay_events": 5000,
+            "rate_limit_eps": 50000.0,
         },
         "mdrap_demo_inst_key": {
             "client_id": "Demo_Institutional_HFT",
-            "tier": Tier.INSTITUTIONAL,
             "rate_limit_eps": 50000.0,
-            "can_access_l2": True,
-            "can_use_binary": True,
-            "can_use_shm": True,
-            "max_replay_events": 50000,
         },
     }
 
-    def __init__(self, store: Optional[Any] = None, rate_limit: float = 20_000.0):
+    def __init__(self, store: Optional[Any] = None, rate_limit: float = 20_000.0, require_env_secrets: bool = False):
         self.store = store
-        self._secrets: Dict[str, bytes] = {
-            src: key.encode("utf-8") for src, key in self.DEFAULT_SECRETS.items()
-        }
+        mandate_env = require_env_secrets or (os.environ.get("MDRAP_REQUIRE_ENV_SECRETS", "").lower() in ("1", "true", "yes"))
+        self._secrets: Dict[str, bytes] = {}
+        if not mandate_env:
+            self._secrets = {
+                src: key.encode("utf-8") for src, key in self.DEFAULT_SECRETS.items()
+            }
         # Pluggable secrets: load environment overrides (e.g. MDRAP_SECRET_FEEDX=...)
-        import os
         for k, v in os.environ.items():
             if k.startswith("MDRAP_SECRET_"):
                 source_name = k[len("MDRAP_SECRET_"):].upper()
                 self._secrets[source_name] = v.encode("utf-8")
+
+        if mandate_env and not self._secrets:
+            raise ValueError("MDRAP_REQUIRE_ENV_SECRETS enabled but no MDRAP_SECRET_* variables defined")
 
         self.rate_limiter = TokenBucketRateLimiter(rate=rate_limit)
         self.sanitizer = InputSanitizer()
@@ -242,13 +250,27 @@ class SecurityManager:
             self._api_keys[tok] = ClientEntitlement(
                 token=tok,
                 client_id=cfg["client_id"],
-                tier=cfg["tier"],
+                tier=Tier.STANDARD,
                 rate_limit_eps=cfg["rate_limit_eps"],
-                can_access_l2=cfg["can_access_l2"],
-                can_use_binary=cfg["can_use_binary"],
-                can_use_shm=cfg["can_use_shm"],
-                max_replay_events=cfg["max_replay_events"],
+                can_access_l2=True,
+                can_use_binary=True,
+                can_use_shm=True,
+                max_replay_events=100_000,
             )
+        # Load API key overrides from environment (e.g. MDRAP_API_KEY_PRO=custom_token)
+        for k, v in os.environ.items():
+            if k.startswith("MDRAP_API_KEY_"):
+                suffix = k[len("MDRAP_API_KEY_"):].upper()
+                self._api_keys[v] = ClientEntitlement(
+                    token=v,
+                    client_id=f"Env_Client_{suffix}",
+                    tier=Tier.STANDARD,
+                    rate_limit_eps=50000.0,
+                    can_access_l2=True,
+                    can_use_binary=True,
+                    can_use_shm=True,
+                    max_replay_events=100_000,
+                )
         if self.store and hasattr(self.store, "load_api_keys"):
             try:
                 for ent in self.store.load_api_keys():
@@ -263,7 +285,7 @@ class SecurityManager:
     def sign_payload(self, source: str, payload: dict) -> str:
         """
         Generate HMAC-SHA256 signature for a feed payload.
-        Keys are sorted to guarantee canonical determinism.
+        Keys are sorted to guarantee canonical determinism, with compact separators.
         """
         src = source.upper()
         secret = self._secrets.get(src)
@@ -273,7 +295,7 @@ class SecurityManager:
 
         # Exclude existing signature field if present to avoid recursive self-reference
         filtered = {k: v for k, v in payload.items() if k != "signature"}
-        serialized = json.dumps(filtered, sort_keys=True, default=str).encode("utf-8")
+        serialized = json.dumps(filtered, sort_keys=True, default=str, separators=(',', ':')).encode("utf-8")
         return hmac.new(secret, serialized, hashlib.sha256).hexdigest()
 
     def verify_payload(self, source: str, payload: dict, signature: str) -> bool:
@@ -296,7 +318,7 @@ class SecurityManager:
             return False
 
         filtered = {k: v for k, v in payload.items() if k != "signature"}
-        serialized = json.dumps(filtered, sort_keys=True, default=str).encode("utf-8")
+        serialized = json.dumps(filtered, sort_keys=True, default=str, separators=(',', ':')).encode("utf-8")
         expected_sig = hmac.new(secret, serialized, hashlib.sha256).hexdigest()
 
         is_valid = hmac.compare_digest(expected_sig, signature)
@@ -335,7 +357,7 @@ class SecurityManager:
         if self.store and hasattr(self.store, "get_latest_audit_hash"):
             prev_hash = self.store.get_latest_audit_hash()
 
-        payload_str = f"{prev_hash}|{timestamp:.6f}|{actor}|{role.value}|{action}|{details}"
+        payload_str = format_audit_payload(prev_hash, timestamp, actor, role.value, action, details)
         entry_hash = hashlib.sha256(payload_str.encode("utf-8")).hexdigest()
 
         if self.store and hasattr(self.store, "write_audit_entry"):
@@ -362,7 +384,7 @@ class SecurityManager:
     def register_api_key(
         self,
         client_id: str,
-        tier: Tier | str = Tier.FREE,
+        tier: Any = None,
         token: Optional[str] = None,
         rate_limit_eps: Optional[float] = None,
         can_access_l2: Optional[bool] = None,
@@ -370,44 +392,21 @@ class SecurityManager:
         can_use_shm: Optional[bool] = None,
         max_replay_events: Optional[int] = None,
         expires_at: Optional[float] = None,
+        **kwargs,
     ) -> ClientEntitlement:
-        """Generate and register a new client API key entitlement."""
-        if isinstance(tier, str):
-            tier = Tier(tier.upper()) if tier.upper() in Tier._value2member_map_ else Tier.FREE
-
+        """Generate and register a new client API key entitlement with full platform capability."""
         if not token:
-            tier_name = tier.value.lower()
-            token = f"mdrap_{tier_name}_{secrets.token_hex(12)}"
-
-        # Default permissions according to tier
-        if tier == Tier.FREE:
-            d_rate = 100.0
-            d_l2 = False
-            d_bin = False
-            d_shm = False
-            d_replay = 50
-        elif tier == Tier.PRO:
-            d_rate = 5000.0
-            d_l2 = True
-            d_bin = True
-            d_shm = False
-            d_replay = 5000
-        else:  # INSTITUTIONAL
-            d_rate = 50000.0
-            d_l2 = True
-            d_bin = True
-            d_shm = True
-            d_replay = 50000
+            token = f"mdrap_key_{secrets.token_hex(12)}"
 
         ent = ClientEntitlement(
             token=token,
             client_id=client_id,
-            tier=tier,
-            rate_limit_eps=rate_limit_eps if rate_limit_eps is not None else d_rate,
-            can_access_l2=can_access_l2 if can_access_l2 is not None else d_l2,
-            can_use_binary=can_use_binary if can_use_binary is not None else d_bin,
-            can_use_shm=can_use_shm if can_use_shm is not None else d_shm,
-            max_replay_events=max_replay_events if max_replay_events is not None else d_replay,
+            tier=Tier.STANDARD,
+            rate_limit_eps=rate_limit_eps if rate_limit_eps is not None else 20000.0,
+            can_access_l2=can_access_l2 if can_access_l2 is not None else True,
+            can_use_binary=can_use_binary if can_use_binary is not None else True,
+            can_use_shm=can_use_shm if can_use_shm is not None else True,
+            max_replay_events=max_replay_events if max_replay_events is not None else 100_000,
             expires_at=expires_at,
             is_active=True,
         )

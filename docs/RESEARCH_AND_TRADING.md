@@ -44,7 +44,7 @@ print(df.tail())
 If you want to stream data directly into a custom Python script or ML model:
 ```python
 import asyncio
-from sdk.client import MDrapClient
+from client import MDrapClient
 
 async def listen_to_market():
     client = MDrapClient()
@@ -81,28 +81,7 @@ for f in facts:
     print(f"Period: {f['end_date']} | Frame: {f['frame']} | Revenue: ${f['value']:,.2f}")
 ```
 
-### Option E: Physical Supply Chain & Geopolitical Maritime Tracking
-For commodity and global macro trading strategies, track physical tanker and cargo vessel telemetry, floating storage, and strategic chokepoint congestion:
-```python
-from vessel import VesselTracker
-
-tracker = VesselTracker()
-
-# 1. Query vessels by operating company or charterer
-aramco_vessels = tracker.list_vessels(company="Saudi Aramco")
-for v in aramco_vessels:
-    print(f"{v.name} ({v.commodity}) | Load: {v.laden_status} | Nearest CP: {v.nearest_chokepoint} ({v.distance_to_chokepoint_nm} nm)")
-
-# 2. Vectorized fleet geofencing against 8 global chokepoints
-# Native C hot path evaluates 10,000 vessels in 23 ms
-tracker.update_all_proximities()
-
-# 3. Inspect floating commodity breakdown
-breakdown = tracker.get_commodity_breakdown()
-print(f"Tracked Fleet: {breakdown['summary']['total_vessels']} vessels | Laden: {breakdown['summary']['laden_vessels']}")
-```
-
-### Option F: Level-2 Order Book Microstructure & Execution Quality Analysis
+### Option E: Level-2 Order Book Microstructure & Execution Quality Analysis
 Inspect multi-rung market depth, micro-price, order book imbalance, and export trade execution ledgers with microsecond precision:
 ```python
 from strategy_sdk import Strategy, OrderBook
@@ -142,8 +121,7 @@ The magic of MDRAP's Strategy SDK is that **the algorithm code never changes**. 
 ### Step 1: Simulated (Paper Trading)
 This is what we just tested with the `VWAPSlicer`. The strategy is fed live market data, but the orders are routed to the `PaperExecutor` which mathematically simulates slippage and PnL.
 ```python
-from strategy_sdk import Strategy, PaperExecutor
-from sdk.execution import LiveStrategyRunner
+from strategy_sdk import Strategy, PaperExecutor, LiveStrategyRunner
 
 class MyStrategy(Strategy):
     def __init__(self):
@@ -285,12 +263,12 @@ To maintain institutional execution speeds and minimize cold-start and tick-loop
    - **Vectorized FIX Checksum**: High-throughput unsigned modulo-256 byte accumulation replacing Python loops.
    - **Seamless C/Python Parity**: Automatic `ctypes` bridge with zero-downtime, transparent fallback to pure Python if the dynamic library is absent.
 
-2. **Module-Level Git Query Caching**: Eliminates redundant `git rev-parse` subprocess kernel executions (25–50 ms kernel delay per pipeline creation in `pipeline.py` and `pipeline_v2.py`), yielding instantaneous instantiation across batch runs and test suites.
+2. **Module-Level Git Query Caching**: Eliminates redundant `git rev-parse` subprocess kernel executions (25–50 ms kernel delay per pipeline creation in `pipeline.py`), yielding instantaneous instantiation across batch runs and test suites.
 
 3. **Codebase Consolidation & Leaning**:
    - **Argparse Subparser Factory**: Centralized `_sub()` helper eliminates ~250 lines of duplicate parser boilerplate in `src/cli.py`.
-   - **TUI Dashboard Engine Merge**: Merged `src/sdk_dashboard.py` (184 lines) into `src/terminal_display.py`, replacing the former with a 9-line backward-compatible shim.
-   - **Unified Client Architecture**: Integrated `MDrapClient` (asyncio TCP gateway client) into `src/client.py`, simplifying the client SDK surface while retaining `sdk.client` backward compatibility.
+   - **TUI Dashboard Engine Merge**: Merged `src/sdk_dashboard.py` (184 lines) into `src/terminal_display.py`.
+   - **Unified Client Architecture**: Integrated `MDrapClient` (asyncio TCP gateway client) directly into `src/client.py`, simplifying the client SDK surface.
    - **Deduplicated L2 Depth Reconstruction**: Replaced duplicated SQLite event parsing logic in `cmd_depth` and `cmd_vwap` with `_load_or_fetch_depth_events()`.
    - **Historical Parser Merge**: Merged `src/chd_cli.py` (132 lines) into `src/chd.py`.
 

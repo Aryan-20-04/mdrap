@@ -27,6 +27,7 @@
    - [4.9 Comprehensive Verification Suite](#49-comprehensive-verification-suite)
    - [4.10 SEC EDGAR Alternative Data & Corporate Research Engine](#410-sec-edgar-alternative-data--corporate-research-engine)
    - [4.11 Global Maritime Tanker & Cargo Tracking Engine](#411-global-maritime-tanker--cargo-tracking-engine)
+   - [4.12 Global Multi-Market Infrastructure & International Trading Desk](#412-global-multi-market-infrastructure--international-trading-desk)
 5. [Role-Based Workflows](#5-role-based-workflows)
    - [5.1 Quantitative Researchers & Data Scientists](#51-quantitative-researchers--data-scientists)
    - [5.2 Execution Desks & Market Microstructure Traders](#52-execution-desks--market-microstructure-traders)
@@ -511,7 +512,7 @@ mdrap benchmark --fastpath -e 100000 -s 42
 ---
 
 #### `mdrap compare` (Aliases: `comp`, `c`)
-Runs identical 100,000-event workloads across V1 (Synchronous Baseline), V2 (Streaming Queue Broker), and V4 (Native C Hot Path) and outputs a side-by-side comparison table.
+Runs identical event workloads across V1 Baseline (Pure Python) and Native C Hot Path (`fastpath`) and outputs a side-by-side performance comparison table.
 
 ```bash
 mdrap compare -e 100000 -s 42
@@ -752,6 +753,7 @@ mdrap edgar filings NVDA -l 5 -o
 mdrap edgar profile MSFT -o
 ```
 
+
 ---
 
 ### 4.11 Global Maritime Tanker & Cargo Tracking Engine
@@ -792,6 +794,91 @@ Breaks down seaborne cargo exposures across Crude Oil, Refined Products, LNG, Dr
 ```bash
 mdrap vessel commodities
 ```
+
+---
+
+### 4.12 Global Multi-Market Infrastructure & International Trading Desk
+
+MDRAP provides native first-class support for international market microstructure, ISO 10383 venue identification, multi-currency portfolio accounting, universal symbology resolution, and venue-aware data quality validation across major global financial hubs:
+- 🇮🇳 **India**: National Stock Exchange (`XNSE`) & Bombay Stock Exchange (`XBOM`) — INR (₹), Lakh/Crore grouping, 09:15–15:30 IST session, pre-market call auction, dynamic tick tiers (₹0.01 / ₹0.05), stock/index circuit filters.
+- 🇩🇪 **Germany**: Deutsche Börse Xetra (`XETR`) & Eurex (`XEUR`) — EUR (€), 09:00–17:30 CET continuous trading, MiFID II RTS 28 liquidity tick bands, dynamic and static volatility interruptions.
+- 🇯🇵 **Japan**: Tokyo Stock Exchange (`XTKS` / JPX) & Osaka Exchange (`XOSE`) — JPY (¥, 0 decimals), 4-digit / alphanumeric ticker codes (e.g. `7203`, `6758`), TOPIX100 tiered tick sizes, Tokuhai (Special Quote indication) order matching halts.
+- 🇬🇧 **United Kingdom**: London Stock Exchange (`XLON`) — GBP (£), FTSE 100 benchmark.
+- 🇭🇰 **Hong Kong**: Hong Kong Exchanges and Clearing (`XHKG`) — HKD (HK$), Hang Seng benchmark.
+- 🇺🇸 **United States**: Nasdaq (`XNAS`) & New York Stock Exchange (`XNYS`) — USD ($), Reg NMS continuous trading.
+
+---
+
+#### `mdrap markets` (Aliases: `venues`, `world`, `desk`)
+Displays the unified global trading desk clock, real-time session phase state machine (`PRE_OPEN`, `CONTINUOUS`, `VOLATILITY_HALT`, `CLOSING_AUCTION`, `POST_CLOSE`, `CLOSED`), time remaining to next phase transition, benchmark index performance, tick size models, and circuit breaker tolerances.
+
+```bash
+# Display global exchange trading desk clock and session phases
+mdrap markets
+
+# Aliases
+mdrap venues
+mdrap world
+mdrap desk
+```
+
+---
+
+#### Multi-Currency Portfolio Accounting
+MDRAP's portfolio and paper execution engines support multi-currency positions and cross-currency portfolio valuation via the institutional triangular `FXMatrix` engine (`src/fx.py`).
+
+```bash
+# View portfolio with localized conversion to Indian Rupees (INR Lakh/Crore formatting: ₹1,25,000.00)
+mdrap portfolio --currency INR
+
+# View portfolio in Euros (EUR €)
+mdrap portfolio --currency EUR
+
+# View portfolio in Japanese Yen (JPY ¥ zero-decimal formatting)
+mdrap portfolio --currency JPY
+
+# View portfolio in British Pounds (GBP £)
+mdrap portfolio --currency GBP
+```
+
+---
+
+#### Universal Symbology Resolution
+The universal symbology engine (`src/symbology.py`) resolves disparate ticker formats into canonical instrument identifiers with venue, currency, and asset class mappings:
+- **Exchange Suffixes**: `RELIANCE.NS` → `XNSE` (INR), `TCS.BO` → `XBOM` (INR), `BMW.DE` → `XETR` (EUR), `7203.T` → `XTKS` (JPY).
+- **Japanese 4-Digit Security Codes**: `7203` → Toyota Motor Corp (`XTKS`), `6758` → Sony Group (`XTKS`), `9984` → SoftBank Group (`XTKS`).
+- **Reuters Instrument Codes (RIC)**: `RELI.NS` → `RELIANCE` on `XNSE`, `BMWG.DE` → `BMW` on `XETR`.
+- **Bloomberg Tickers**: `RELIANCE:IN`, `BMW:GR`, `7203:JP`.
+- **ISIN Codes**: `INE002A01018` (Reliance), `DE0005190003` (BMW), `JP3633400001` (Toyota).
+- **Named Corporate Aliases**: `TOYOTA`, `SONY`, `NINTENDO`, `RELIANCE`, `TCS`, `INFOSYS`, `BMW`, `SIEMENS`, `SAP`.
+
+---
+
+#### Multi-Market Simulation Profiles
+Run the validation and reconciliation pipeline seeded with realistic market microstructure profiles:
+
+```bash
+# Simulate Indian equity market (NSE) with INR pricing and 0.05 tick sizes
+mdrap run --market nse -e 50000
+
+# Simulate German equity market (XETR) with EUR pricing and MiFID II tick bands
+mdrap run --market xetra -e 50000
+
+# Simulate Japanese equity market (TSE) with JPY pricing and TOPIX100 tiers
+mdrap run --market tse -e 50000
+
+# Simulate Global cross-market composite (US + India + Germany + Japan)
+mdrap run --market global -e 50000
+```
+
+---
+
+#### Venue-Aware Microstructure Quality Validation
+In international markets, extreme price movements are often regulated by exchange mechanisms rather than representing corrupt feed anomalies:
+- **`CIRCUIT_FILTER_BREACH`**: Triggered when Indian securities or indices on `XNSE`/`XBOM` exceed statutory daily bands (10%, 15%, 20%).
+- **`VOLATILITY_INTERRUPTION`**: Triggered when German securities on `XETR`/`XEUR` exceed dynamic or static corridor limits ($\ge 5\%$), initiating a volatility call auction.
+- **`SPECIAL_QUOTE_INDICATION`**: Triggered when Japanese securities on `XTKS`/`XOSE` enter a Tokuhai order-imbalance condition ($\ge 8\%$), soliciting liquidity before trade execution.
+- **Standard Anomaly Fallback**: Unrecognized or US venue events continue to be tagged as `PRICE_ANOMALY`.
 
 ---
 
@@ -903,9 +990,8 @@ Platform thresholds, anomaly detection windows, and security policies are manage
 # ==============================================================================
 
 pipeline:
-  version: "v1"                    # Default pipeline version ("v1" or "v2")
+  version: "v1"                    # Synchronous baseline pipeline
   batch_size: 1000                 # SQLite batch commit threshold
-  max_queue_size: 50000            # V2 broker queue capacity
 
 quality:
   stale_threshold_seconds: 5.0     # Max event delay before STALE flag

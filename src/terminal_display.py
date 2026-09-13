@@ -887,10 +887,7 @@ def build_dashboard(dashboard_state: DashboardState) -> Layout:
 
 async def run_dashboard(host: str = "127.0.0.1", port: int = 9000):
     """Run real-time external TUI dashboard connected to MDRAP TCP Gateway."""
-    try:
-        from client import MDrapClient
-    except ImportError:
-        from sdk.client import MDrapClient
+    from client import MDrapClient
 
     dash_state = DashboardState()
     client = MDrapClient(host=host, port=port)

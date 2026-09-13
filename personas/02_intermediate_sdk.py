@@ -9,7 +9,7 @@ import time
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
 
-from sdk.client import MDrapClient
+from client import MDrapClient
 
 async def main():
     print("Intermediate Persona: Connecting to MDRAP TCP Gateway...")

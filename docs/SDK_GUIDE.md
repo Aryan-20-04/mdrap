@@ -7,7 +7,7 @@ The `MDrapClient` connects to the gateway via raw TCP sockets, providing microse
 
 ```python
 import asyncio
-from mdrap.sdk.client import MDrapClient
+from client import MDrapClient
 
 async def main():
     client = MDrapClient(host="127.0.0.1", port=9000)
@@ -28,7 +28,7 @@ To prevent disconnects, use an `asyncio.Queue` and `asyncio.to_thread`:
 
 ```python
 import asyncio
-from mdrap.sdk.client import MDrapClient
+from client import MDrapClient
 
 async def main():
     client = MDrapClient()
@@ -49,22 +49,22 @@ async def main():
 MDRAP provides a paper-trading execution engine. Write your logic by inheriting from `Strategy`.
 
 ```python
-from mdrap.sdk.strategy_sdk import Strategy
-from mdrap.sdk.execution import LiveStrategyRunner
+from strategy_sdk import Strategy, LiveStrategyRunner
+from models import CanonicalEvent
 
 class MyAlgo(Strategy):
     def __init__(self):
         super().__init__(name="MyAlgo", symbols=["AAPL"])
 
-    def on_tick(self, event):
-        if event.price < 150.0:
+    def on_tick(self, event: CanonicalEvent):
+        if event.price and event.price < 150.0:
             self.buy("AAPL", 100) # Automatically calculates slippage!
 
 runner = LiveStrategyRunner(MyAlgo(), port=9000)
 asyncio.run(runner.run())
 ```
 
-See `src/sdk/strategy_vwap.py` for a complete reference implementation of a VWAP-slicing algorithm.
+See `src/strategy_sdk.py` for complete reference implementations (e.g., `WhaleMomentumStrategy`, `GridMakerStrategy`).
 
 ## 4. Level-2 Order Book & Execution Ledger
 Every strategy automatically maintains a synthetic or live Level-2 Limit Order Book with multi-tier depth for every subscribed symbol:
