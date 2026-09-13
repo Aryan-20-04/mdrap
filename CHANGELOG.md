@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.0.4] - 2026-09-13
+**CLI Fuzzy Typo Auto-Correction, Scoped Error Reporting & Real-World Command Ergonomics**
+
+### Added
+- **Intelligent Fuzzy Typo Auto-Correction (`src/cli.py`)**:
+  - Subcommand action auto-correction via `difflib.get_close_matches` (e.g. `edgar fillings NVDA` auto-resolves to `filings` with notice).
+  - Primary command auto-correction in both the CLI entry point and interactive quant shell (e.g. `mdrap edgr` $\rightarrow$ `edgar`, `mdrap choas` $\rightarrow$ `chaos`, `mdrap benh` $\rightarrow$ `bench`).
+  - Action validation and suggestion support across SEC EDGAR, Vessel Tracking, and Derivatives options commands.
+- **Scoped CLI Error Reporting (`MDRAPArgumentParser`)**:
+  - Subclassed `argparse.ArgumentParser` to intercept subcommand errors and suppress the 50-line root usage wall.
+  - Generates command-specific syntax guides and "Did you mean?" suggestions on invalid choices.
+  - Automatically isolates subparser execution contexts so errors report the active subcommand rather than the root CLI.
+- **Ticker-First Syntax Disambiguation**:
+  - Enhanced tokenizer logic to prioritize fuzzy command matches over unknown ticker assumptions, preventing misspelled commands from being mistakenly evaluated as stock tickers.
+- **Documentation & User Guide Updates**:
+  - Added dedicated section on CLI error resilience and typo handling in `docs/USER_GUIDE.md`.
+  - Added "Real-World Live Commands Cheat Sheet" in `README.md` covering SEC EDGAR, live L2 depth, options pricing, order flow, chaos drills, and benchmarks.
+
 ## [1.0.3] - 2026-09-13
 **Native C Hot-Path Expansion (Phase 13), Automated Git/Pip Packaging & Codebase Leaning**
 

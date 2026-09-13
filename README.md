@@ -433,6 +433,107 @@ pip install git+https://github.com/aryan-20-04/mdrap.git
 
 ---
 
+## Real-World Live Commands (Interactive Testing)
+
+MDRAP includes **intelligent fuzzy typo auto-correction** (e.g. `edgar fillings NVDA` auto-resolves to `filings`, `mdrap choas` auto-resolves to `chaos`) and scoped error formatting:
+
+### 1. SEC EDGAR Fundamental & Corporate Research
+```bash
+# View last 5 official SEC filings for NVDA (Form 4, 8-K, 10-Q)
+mdrap edgar filings NVDA -l 5
+
+# Inspect insider executive transactions (Form 4 purchases, sales, option awards)
+mdrap edgar insiders NVDA -l 10
+
+# Material 8-K trigger events (earnings announcements, executive changes, M&A)
+mdrap edgar events AAPL
+
+# Audited GAAP financial facts from SEC XBRL frames
+mdrap edgar facts MSFT
+```
+
+### 2. Live Market Microstructure & Order Books
+```bash
+# Consolidated Top-of-Book (NBBO) across 5 global venues
+mdrap bbo BTC/USD
+mdrap bbo AAPL
+
+# Consolidated Level 2 depth ladder
+mdrap depth AAPL
+
+# Institutional VWAP slippage curve & execution impact
+mdrap vwap NVDA
+
+# Live terminal streaming ticker (Ctrl+C to exit)
+mdrap live BTC/USD
+```
+
+### 3. Quantitative Analytics & Technical Charting
+```bash
+# Visual ASCII / Unicode candlestick chart with volume histogram
+mdrap chart AAPL
+
+# Multi-timeframe OHLCV bar rollup
+mdrap ohlcv AAPL -i 1m -l 10
+
+# Cross-exchange spread & divergence analytics
+mdrap spread AAPL
+```
+
+### 4. Whale Order Flow & Institutional TCA
+```bash
+# Real-time order flow, Lee-Ready aggressor classification, and CVD tracker
+mdrap flow NVDA
+
+# Institutional Post-Trade Best Execution & Slippage Audit (SEC 606)
+mdrap tca AAPL
+```
+
+### 5. Quantitative Derivatives & Options Pricing
+```bash
+# European options pricing with full Greeks (Delta through Volga)
+mdrap options price -u NVDA -s 120 -k 120 -e 30
+
+# Full options chain generation with Max Pain strike calculation
+mdrap options chain -u AAPL -s 150
+```
+
+### 6. Chaos Resilience Drills & High-Throughput Benchmarks
+```bash
+# Execute all automated chaos drills (feed kill, jitter, storage failover)
+mdrap chaos all
+
+# Benchmark compiled C fastpath streaming throughput (100,000 events)
+mdrap throughput -e 100000
+
+# Full platform empirical latency benchmark
+mdrap benchmark -e 50000
+```
+
+### 7. Alternative Data: Global Maritime Intelligence
+```bash
+# Live AIS commercial tanker and cargo vessel tracking
+mdrap vessel list -l 10
+
+# Geopolitical maritime chokepoints status (Hormuz, Malacca, Suez, Panama)
+mdrap vessel chokepoints
+```
+
+### 8. Interactive Quant Trading Shell
+Launch the resident in-memory REPL for sub-millisecond execution:
+```bash
+mdrap
+```
+```text
+mdrap> edgar filings NVDA -l 5
+mdrap> chart AAPL
+mdrap> flow NVDA
+mdrap> options price -u NVDA -s 120 -k 120 -e 30
+mdrap> status
+```
+
+---
+
 ## Verification & Testing
 
 MDRAP includes an institutional test suite of **620 automated unit, integration, quantitative, options, and native C fastpath tests** (100% passing):

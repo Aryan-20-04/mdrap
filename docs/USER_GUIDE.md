@@ -14,6 +14,7 @@
    - [3.2 1-Key Quick Launches (Keys 1–9)](#32-1-key-quick-launches-keys-19)
    - [3.3 Single-Letter CLI Shortcuts](#33-single-letter-cli-shortcuts)
    - [3.4 In-Stream Non-Blocking Hotkeys (Live Terminal Controls)](#34-in-stream-non-blocking-hotkeys)
+   - [3.5 Intelligent Fuzzy Typo Auto-Correction & Scoped Error Reporting](#35-intelligent-fuzzy-typo-auto-correction--scoped-error-reporting)
 4. [Master Command Reference](#4-master-command-reference)
    - [4.1 Market Desk & Live Microstructure](#41-market-desk--live-microstructure)
    - [4.2 Columnar Time-Series Storage & Analytics (DuckDB & Parquet)](#42-columnar-time-series-storage--analytics-duckdb--parquet)
@@ -196,6 +197,28 @@ During live streaming sessions (`mdrap live`, `mdrap top`, `mdrap depth`), contr
 - **`[c]`**: **Toggle Candlestick HUD**. Shows or hides the inline technical candle chart.
 - **`[d]`**: **Toggle Level-2 Depth Ladder**. Shows or hides the consolidated depth rungs.
 - **`[Tab]` / `[1-9]`**: **Switch Focus Ticker**. Cycles or jumps between active universe symbols dynamically on the fly.
+
+### 3.5 Intelligent Fuzzy Typo Auto-Correction & Scoped Error Reporting
+To optimize operational speed during live market conditions, MDRAP's CLI parser (`src/cli.py`) incorporates resilient error-handling heuristics:
+
+1. **Subcommand Action Auto-Correction**:
+   - Common typos in actions automatically resolve to the closest valid action with an informative notification:
+     ```bash
+     # User types 'fillings' (double 'l'):
+     mdrap edgar fillings NVDA -l 5
+     # [mdrap] Notice: Auto-correcting 'fillings' -> 'filings'
+     # Executes official SEC filings table for NVDA seamlessly.
+     ```
+2. **Primary Command Auto-Correction**:
+   - Command typos are auto-corrected or suggested:
+     ```bash
+     mdrap choas  -> Auto-corrects to 'chaos' and executes drills.
+     mdrap edgr   -> Auto-corrects to 'edgar'.
+     ```
+3. **Scoped Error Reporting**:
+   - Subcommand argument mistakes print targeted syntax tips and valid choices (e.g. `mdrap edgar filings <TICKER> -l 5`) instead of dumping 50+ lines of generic help text.
+4. **Ticker Disambiguation**:
+   - Unknown words with close command matches are treated as command typos rather than being erroneously assumed to be unlisted stock tickers.
 
 ---
 

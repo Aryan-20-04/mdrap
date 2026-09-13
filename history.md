@@ -1037,6 +1037,31 @@ Implemented three remaining spec milestones in dependency order. Test suite expa
   - `dist/mdrap-1.0.3.tar.gz` (705 KB).
   - Validation: `twine check dist/*` PASSED (100%).
 
+---
+
+## Phase 14: CLI Error Usability, Fuzzy Typo Auto-Correction & Real-World Command Ergonomics (`v1.0.4`)
+
+### 1. Root Cause Analysis & Problem Statement
+- User encountered confusing error `cli.py: error: unrecognized arguments: NVDA` accompanied by a 50-line wall of usage when typing `edgar fillings NVDA -l 5` in the shell (`mdrap>`).
+- Double 'l' in `fillings` prevented recognition as an EDGAR action, causing the pre-processor to assume `fillings` was the ticker and prepend default action `events`. The parser consumed `action="events"` and `ticker="fillings"`, leaving `NVDA` as an unrecognized positional argument.
+- Standard Python `argparse` dumped the root usage text listing all 70 commands upon any subcommand argument error.
+
+### 2. Implementation: Fuzzy Typo Auto-Correction & Scoped Error Formatting
+- **`MDRAPArgumentParser` Subclass (`src/cli.py`)**:
+  - Overrides `error(message)` to cleanly scope error reporting to the active subcommand.
+  - Intercepts `invalid choice: ...` errors and generates fuzzy suggestions via `difflib.get_close_matches`.
+  - Suppresses root parser 50-line usage dumps and prints concise single-line syntax guides.
+- **Fuzzy Auto-Correction in CLI & Shell Dispatch**:
+  - Auto-corrects subcommand actions for EDGAR (`events`, `insiders`, `profile`, `facts`, `filings`) and Vessel tracking (`list`, `track`, `chokepoints`, `commodities`).
+  - Auto-corrects primary command names in both direct CLI and interactive shell (`edgr` $\rightarrow$ `edgar`, `choas` $\rightarrow$ `chaos`, `benh` $\rightarrow$ `bench`).
+  - Disambiguated ticker-first tokenizer to check for command typos before assuming an unknown 1–8 letter word is a stock symbol.
+
+### 3. Verification & Release
+- Automated test suite: `pytest tests/ -q` -> **620/620 passed in 67.28s (100% green)**.
+- Rebuilt distribution packages: `mdrap-1.0.4-py3-none-any.whl` and `mdrap-1.0.4.tar.gz`.
+- Package verification: `twine check dist/*` PASSED.
+
+
 
 
 
