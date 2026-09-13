@@ -73,6 +73,22 @@ def _ensure_db_dir(path: str):
             os.makedirs(d, exist_ok=True)
 
 
+def _t(title: str, cols: list, rows: list, border: str = "cyan", show_lines: bool = False) -> Table:
+    t = Table(title=title, border_style=border, show_lines=show_lines)
+    for col in cols:
+        if isinstance(col, tuple):
+            name = col[0]
+            just = col[1] if len(col) > 1 and col[1] else "left"
+            style = col[2] if len(col) > 2 and col[2] else None
+            nw = col[3] if len(col) > 3 and col[3] else False
+            t.add_column(name, justify=just, style=style, no_wrap=nw)
+        else:
+            t.add_column(str(col))
+    for r in rows:
+        t.add_row(*[str(x) if x is not None else "" for x in r])
+    return t
+
+
 def cmd_run(args):
     cfg = _config_from_args(args)
     _ensure_db_dir(args.db)
@@ -295,78 +311,28 @@ def cmd_stress(args):
 
     # Render Table 1: Module-by-Module Isolation Table
     if mod_results:
-        t1 = Table(title="Direction A: Individual Module Isolation Stress Benchmarks", show_lines=True)
-        t1.add_column("Module Component", style="cyan", no_wrap=True)
-        t1.add_column("Stress Scope", style="white")
-        t1.add_column("Peak Throughput", justify="right", style="bold green")
-        t1.add_column("Latency p50", justify="right", style="yellow")
-        t1.add_column("Latency p99", justify="right", style="magenta")
-        t1.add_column("Saturation Ceiling / Limit", style="dim")
-
+        t1_cols = [("Module Component", "left", "cyan", True), ("Stress Scope", "left", "white"), ("Peak Throughput", "right", "bold green"), ("Latency p50", "right", "yellow"), ("Latency p99", "right", "magenta"), ("Saturation Ceiling / Limit", "left", "dim")]
+        t1_rows = []
         if "gateway" in mod_results:
             gw = mod_results["gateway"]
-            t1.add_row(
-                "Gateway Normalizer",
-                f"{gw['events']:,} raw payloads",
-                f"{gw['throughput_eps']:>10,.0f} eps",
-                f"{gw['latencies_us']['p50']} µs",
-                f"{gw['latencies_us']['p99']} µs",
-                "Max deserialization ceiling: ~300k eps"
-            )
+            t1_rows.append(["Gateway Normalizer", f"{gw['events']:,} raw payloads", f"{gw['throughput_eps']:>10,.0f} eps", f"{gw['latencies_us']['p50']} µs", f"{gw['latencies_us']['p99']} µs", "Max deserialization ceiling: ~300k eps"])
         if "quality" in mod_results:
             qe = mod_results["quality"]
             c_str = f"Native C: {qe['c_fastpath_eps']:,.0f} eps ({qe['c_speedup_x']}x)" if qe['has_c_fastpath'] else "N/A"
-            t1.add_row(
-                "Quality Engine (Python)",
-                f"{qe['events']:,} events (7 rules)",
-                f"{qe['python_eps']:>10,.0f} eps",
-                f"{qe['python_latencies_us']['p50']} µs",
-                f"{qe['python_latencies_us']['p99']} µs",
-                f"CPython single-core cap: ~350k eps\n{c_str}"
-            )
+            t1_rows.append(["Quality Engine (Python)", f"{qe['events']:,} events (7 rules)", f"{qe['python_eps']:>10,.0f} eps", f"{qe['python_latencies_us']['p50']} µs", f"{qe['python_latencies_us']['p99']} µs", f"CPython single-core cap: ~350k eps\n{c_str}"])
         if "bbo" in mod_results:
             bbo = mod_results["bbo"]
-            t1.add_row(
-                "Consolidated BBO Engine",
-                f"{bbo['events']:,} quotes ({bbo['instruments']} syms)",
-                f"{bbo['throughput_eps']:>10,.0f} eps",
-                f"{bbo['latencies_us']['p50']} µs",
-                f"{bbo['latencies_us']['p99']} µs",
-                f"RAM footprint stable (Δ {bbo['rss_delta_mb']} MB)"
-            )
+            t1_rows.append(["Consolidated BBO Engine", f"{bbo['events']:,} quotes ({bbo['instruments']} syms)", f"{bbo['throughput_eps']:>10,.0f} eps", f"{bbo['latencies_us']['p50']} µs", f"{bbo['latencies_us']['p99']} µs", f"RAM footprint stable (Δ {bbo['rss_delta_mb']} MB)"])
         if "storage" in mod_results:
-            st_list = mod_results["storage"]
-            best_st = max(st_list, key=lambda x: x["throughput_eps"])
-            t1.add_row(
-                "SQLite Disk Write (WAL)",
-                f"{best_st['events']:,} writes (batch {best_st['batch_size']})",
-                f"{best_st['throughput_eps']:>10,.0f} eps",
-                "Batch I/O",
-                f"{best_st['disk_io_mb_s']} MB/s",
-                "Single-file write lock ceiling: ~35k-150k eps"
-            )
+            best_st = max(mod_results["storage"], key=lambda x: x["throughput_eps"])
+            t1_rows.append(["SQLite Disk Write (WAL)", f"{best_st['events']:,} writes (batch {best_st['batch_size']})", f"{best_st['throughput_eps']:>10,.0f} eps", "Batch I/O", f"{best_st['disk_io_mb_s']} MB/s", "Single-file write lock ceiling: ~35k-150k eps"])
         if "ipc" in mod_results:
             ipc = mod_results["ipc"]
-            t1.add_row(
-                "IPC Streaming Socket",
-                f"{ipc['ticks_broadcast']:,} ticks x {ipc['subscribers']} clients",
-                f"{ipc['throughput_eps']:>10,.0f} eps",
-                "Non-blocking",
-                f"{ipc['network_mb_s']} MB/s",
-                "TCP buffer non-blocking eviction active"
-            )
+            t1_rows.append(["IPC Streaming Socket", f"{ipc['ticks_broadcast']:,} ticks x {ipc['subscribers']} clients", f"{ipc['throughput_eps']:>10,.0f} eps", "Non-blocking", f"{ipc['network_mb_s']} MB/s", "TCP buffer non-blocking eviction active"])
         if "adversarial" in mod_results:
             adv = mod_results["adversarial"]
-            t1.add_row(
-                "Adversarial Fuzzer (NaN/Inf)",
-                f"{adv['events_injected']:,} corrupt events",
-                f"{adv['throughput_eps']:>10,.0f} eps",
-                f"{adv['latencies_us']['p50']} µs",
-                f"{adv['latencies_us']['p99']} µs",
-                f"Quarantined: {adv['quarantined_count']:,} | 0 crashes (100% resilient)"
-            )
-        console.print(t1)
-
+            t1_rows.append(["Adversarial Fuzzer (NaN/Inf)", f"{adv['events_injected']:,} corrupt events", f"{adv['throughput_eps']:>10,.0f} eps", f"{adv['latencies_us']['p50']} µs", f"{adv['latencies_us']['p99']} µs", f"Quarantined: {adv['quarantined_count']:,} | 0 crashes (100% resilient)"])
+        console.print(_t("Direction A: Individual Module Isolation Stress Benchmarks", t1_cols, t1_rows, show_lines=True))
 
     # 2. End-to-End Progressive Load Sweep
     e2e_results = []
@@ -374,29 +340,9 @@ def cmd_stress(args):
         console.print("\n[dim]Running Direction B: End-to-End Progressive System Ramp & Memory Profiling...[/dim]")
         levels = [10_000, 25_000, 50_000] if n_events <= 50_000 else [10_000, 50_000, 100_000]
         e2e_results = stresstest.stress_end_to_end(levels)
-
-        t2 = Table(title="Direction B: Integrated End-to-End Pipeline & Memory Footprint", show_lines=True)
-        t2.add_column("Burst Level", justify="right", style="cyan")
-        t2.add_column("Throughput", justify="right", style="bold green")
-        t2.add_column("E2E p50", justify="right", style="yellow")
-        t2.add_column("E2E p99", justify="right", style="magenta")
-        t2.add_column("E2E p99.9", justify="right", style="red")
-        t2.add_column("RAM Peak (RSS)", justify="right", style="white")
-        t2.add_column("RAM Delta", justify="right", style="green")
-        t2.add_column("Data Integrity", justify="center", style="bold green")
-
-        for r in e2e_results:
-            t2.add_row(
-                f"{r['level']:,} events",
-                f"{r['throughput_eps']:>10,.0f} eps",
-                f"{r['p50_us']} µs",
-                f"{r['p99_us']} µs",
-                f"{r['p999_us']} µs",
-                f"{r['rss_peak_mb']:.1f} MB",
-                f"{r['rss_delta_mb']:+.1f} MB",
-                "100% Ground-Truth Parity"
-            )
-        console.print(t2)
+        t2_cols = [("Burst Level", "right", "cyan"), ("Throughput", "right", "bold green"), ("E2E p50", "right", "yellow"), ("E2E p99", "right", "magenta"), ("E2E p99.9", "right", "red"), ("RAM Peak (RSS)", "right", "white"), ("RAM Delta", "right", "green"), ("Data Integrity", "center", "bold green")]
+        t2_rows = [[f"{r['level']:,} events", f"{r['throughput_eps']:>10,.0f} eps", f"{r['p50_us']} µs", f"{r['p99_us']} µs", f"{r['p999_us']} µs", f"{r['rss_peak_mb']:.1f} MB", f"{r['rss_delta_mb']:+.1f} MB", "100% Ground-Truth Parity"] for r in e2e_results]
+        console.print(_t("Direction B: Integrated End-to-End Pipeline & Memory Footprint", t2_cols, t2_rows, show_lines=True))
 
     # 3. Scale & Failure Point Analysis (1M vs 1B Transactions/Day)
     analysis = stresstest.analyze_scale_boundaries(mod_results, e2e_results)
@@ -581,29 +527,16 @@ def cmd_security(args):
     console.print()
     console.print(Panel.fit("[bold cyan]MDRAP Platform Security & Cryptographic Posture (§19)[/bold cyan]", border_style="cyan"))
 
-    # Table 1: Cryptographic Feed Integrity & Authentication
-    t1 = Table(title="Cryptographic Feed Authentication (HMAC-SHA256)")
-    t1.add_column("Market Feed", style="cyan")
-    t1.add_column("HMAC Verification", style="green")
-    t1.add_column("Pre-Shared Key Status", style="magenta")
-    t1.add_column("Anti-Spoofing / Replay", style="white")
+    t1_rows = [[src, "Active (Constant-Time)", "Configured & Sealed", "Enforced (Sequence + Ts)"] for src in sec.DEFAULT_SECRETS.keys()]
+    console.print(_t("Cryptographic Feed Authentication (HMAC-SHA256)", [("Market Feed", "left", "cyan"), ("HMAC Verification", "left", "green"), ("Pre-Shared Key Status", "left", "magenta"), ("Anti-Spoofing / Replay", "left", "white")], t1_rows))
 
-    for src in sec.DEFAULT_SECRETS.keys():
-        t1.add_row(src, "Active (Constant-Time)", "Configured & Sealed", "Enforced (Sequence + Ts)")
-    console.print(t1)
-
-    # Table 2: Access Separation & Defenses
-    t2 = Table(title="Access Control & Denial-of-Service Mitigations")
-    t2.add_column("Defense Layer", style="cyan")
-    t2.add_column("Mechanism", style="white")
-    t2.add_column("Enforcement / Threshold", style="yellow")
-    t2.add_column("Status", style="green")
-
-    t2.add_row("Role-Based Access Control", "RBAC (VIEWER / OPERATOR / ADMIN)", "Strict Privilege Checking", "Active")
-    t2.add_row("Denial-of-Service Defense", "Token Bucket Rate Limiter", "20,000 eps / 40,000 capacity", "Active")
-    t2.add_row("Input Sanitization Guard", "Regex + Numerical Bounds Whitelist", "Strict Bounds & Safe SQL", "Active")
-    t2.add_row("Tamper-Evident Audit Chain", "Merkle Hash Chaining (SHA-256)", "Append-Only Genesis Link", "Active")
-    console.print(t2)
+    t2_rows = [
+        ("Role-Based Access Control", "RBAC (VIEWER / OPERATOR / ADMIN)", "Strict Privilege Checking", "Active"),
+        ("Denial-of-Service Defense", "Token Bucket Rate Limiter", "20,000 eps / 40,000 capacity", "Active"),
+        ("Input Sanitization Guard", "Regex + Numerical Bounds Whitelist", "Strict Bounds & Safe SQL", "Active"),
+        ("Tamper-Evident Audit Chain", "Merkle Hash Chaining (SHA-256)", "Append-Only Genesis Link", "Active"),
+    ]
+    console.print(_t("Access Control & Denial-of-Service Mitigations", [("Defense Layer", "left", "cyan"), ("Mechanism", "left", "white"), ("Enforcement / Threshold", "left", "yellow"), ("Status", "left", "green")], t2_rows))
 
     if store:
         valid, msg, count = sec.verify_audit_trail()
@@ -622,38 +555,16 @@ def cmd_keys(args):
     action = getattr(args, "action", "list") or "list"
 
     if action == "list":
-        t = Table(title="MDRAP Registered Client Entitlements & API Keys", show_lines=True)
-        t.add_column("Client ID", style="cyan")
-        t.add_column("API Token", style="dim")
-        t.add_column("Tier", style="bold")
-        t.add_column("Rate Limit", justify="right", style="green")
-        t.add_column("Channels", style="white")
-        t.add_column("Wire Protocols", style="magenta")
-        t.add_column("Max Replay", justify="right", style="yellow")
-        t.add_column("Status", justify="center")
-
+        k_cols = [("Client ID", "left", "cyan"), ("API Token", "left", "dim"), ("Tier", "left", "bold"), ("Rate Limit", "right", "green"), ("Channels", "left", "white"), ("Wire Protocols", "left", "magenta"), ("Max Replay", "right", "yellow"), ("Status", "center")]
+        k_rows = []
         for key in sec.list_api_keys():
             t_name = key.tier.value if hasattr(key.tier, "value") else str(key.tier)
             t_color = "green" if t_name == "INSTITUTIONAL" else ("blue" if t_name == "PRO" else "yellow")
             channels = "L1 + L2 Depth" if key.can_access_l2 else "L1 Ticks Only"
-            protos = ["JSON"]
-            if key.can_use_binary:
-                protos.append("BINARY")
-            if key.can_use_shm:
-                protos.append("SHM")
+            protos = ["JSON"] + (["BINARY"] if key.can_use_binary else []) + (["SHM"] if key.can_use_shm else [])
             st_str = "[green]ACTIVE[/green]" if key.is_active else "[red]REVOKED[/red]"
-
-            t.add_row(
-                key.client_id,
-                key.token,
-                f"[{t_color}]{t_name}[/{t_color}]",
-                f"{key.rate_limit_eps:,.0f} eps",
-                channels,
-                ", ".join(protos),
-                f"{key.max_replay_events:,}",
-                st_str,
-            )
-        console.print(t)
+            k_rows.append([key.client_id, key.token, f"[{t_color}]{t_name}[/{t_color}]", f"{key.rate_limit_eps:,.0f} eps", channels, ", ".join(protos), f"{key.max_replay_events:,}", st_str])
+        console.print(_t("MDRAP Registered Client Entitlements & API Keys", k_cols, k_rows, show_lines=True))
 
     elif action == "create":
         client_id = getattr(args, "client_id", "Custom_Client")
@@ -887,67 +798,42 @@ def cmd_status(args):
         border_style="cyan"
     ))
 
-    # Table 1: Ingestion & Segregation
-    t1 = Table(title="Event Ingestion & Segregation (Spec 6.8, 6.9)")
-    t1.add_column("Category", style="cyan")
-    t1.add_column("Count", justify="right", style="bold")
-    t1.add_column("Status / Share", justify="right")
-    t1.add_row("Canonical Events", f"{tot:,}", "100.0%")
-    t1.add_row("  + VALID", f"{val:,}", f"[green]{val/max(1,tot)*100:.1f}%[/green]")
-    t1.add_row("  + SUSPICIOUS", f"{susp:,}", f"[yellow]{susp/max(1,tot)*100:.1f}%[/yellow]")
-    t1.add_row("  + INVALID (Quarantine)", f"{inv:,}", f"[red]{inv/max(1,tot)*100:.1f}%[/red]")
-    t1.add_row("Quarantine Store", f"{quar_count:,}", "Persisted for audit")
-    t1.add_row("Lineage Traces", f"{lineage_count:,}", "100% decision traceability")
+    t1_rows = [
+        ("Canonical Events", f"{tot:,}", "100.0%"),
+        ("  + VALID", f"{val:,}", f"[green]{val/max(1,tot)*100:.1f}%[/green]"),
+        ("  + SUSPICIOUS", f"{susp:,}", f"[yellow]{susp/max(1,tot)*100:.1f}%[/yellow]"),
+        ("  + INVALID (Quarantine)", f"{inv:,}", f"[red]{inv/max(1,tot)*100:.1f}%[/red]"),
+        ("Quarantine Store", f"{quar_count:,}", "Persisted for audit"),
+        ("Lineage Traces", f"{lineage_count:,}", "100% decision traceability"),
+    ]
+    console.print(_t("Event Ingestion & Segregation (Spec 6.8, 6.9)", [("Category", "left", "cyan"), ("Count", "right", "bold"), ("Status / Share", "right")], t1_rows))
+    console.print()
 
-    # Table 2: Source Reliability & Watchdog
-    t2 = Table(title="Feed Reliability & Watchdog (Spec 6.13)")
-    t2.add_column("Source", style="cyan")
-    t2.add_column("Packets", justify="right")
-    t2.add_column("Score", justify="right", style="bold")
-    t2.add_column("Watchdog State", justify="center")
-    t2.add_column("Routing", style="white")
+    t2_cols = [("Source", "left", "cyan"), ("Packets", "right"), ("Score", "right", "bold"), ("Watchdog State", "center"), ("Routing", "left", "white")]
     if not health:
-        t2.add_row("No feeds", "0", "N/A", "UNKNOWN", "None")
+        t2_rows = [("No feeds", "0", "N/A", "UNKNOWN", "None")]
     else:
+        t2_rows = []
         for h in health:
             score = h.get("score", 0)
             status = "HEALTHY" if score >= 0.90 else "DEGRADED"
             style = "green" if status == "HEALTHY" else "red"
             routing = "Primary" if score >= 0.95 else ("Eligible" if status == "HEALTHY" else "Traffic Diverted")
-            t2.add_row(
-                h["source"],
-                f"{h['total']:,}",
-                f"{score:.4f}",
-                f"[{style} bold]{status}[/{style} bold]",
-                routing
-            )
-
-    console.print(t1)
-    console.print()
-    console.print(t2)
+            t2_rows.append((h["source"], f"{h['total']:,}", f"{score:.4f}", f"[{style} bold]{status}[/{style} bold]", routing))
+    console.print(_t("Feed Reliability & Watchdog (Spec 6.13)", t2_cols, t2_rows))
     console.print()
 
-    # Table 3: Analytics & BBO Summary
-    t3 = Table(title="V3 Analytics & Consolidated BBO (Spec 14)")
-    t3.add_column("Analytical Stream", style="cyan")
-    t3.add_column("Coverage", justify="right", style="bold")
-    t3.add_column("Query Command", style="yellow")
-    t3.add_row("Consolidated BBO", f"{len(bbos):,} instruments", "mdrap bbo all")
-    t3.add_row("OHLCV Candles", f"{len(ohlcv):,} stored", "mdrap a ohlcv AAPL")
-    t3.add_row("Bid-Ask Spread Stats", f"{len(spreads):,} instruments", "mdrap a spread all")
-    t3.add_row("Realized Volatility", f"{len(vol):,} instruments", "mdrap a vol")
-    console.print(t3)
-    
+    t3_rows = [
+        ("Consolidated BBO", f"{len(bbos):,} instruments", "mdrap bbo all"),
+        ("OHLCV Candles", f"{len(ohlcv):,} stored", "mdrap a ohlcv AAPL"),
+        ("Bid-Ask Spread Stats", f"{len(spreads):,} instruments", "mdrap a spread all"),
+        ("Realized Volatility", f"{len(vol):,} instruments", "mdrap a vol"),
+    ]
+    console.print(_t("V3 Analytics & Consolidated BBO (Spec 14)", [("Analytical Stream", "left", "cyan"), ("Coverage", "right", "bold"), ("Query Command", "left", "yellow")], t3_rows))
+
     if alerts:
         console.print()
-        t_alert = Table(title="Recent Watchdog Alerts (Auto-Failover Log)")
-        t_alert.add_column("Source", style="cyan")
-        t_alert.add_column("Alert", style="bold red")
-        t_alert.add_column("Time", style="magenta")
-        t_alert.add_column("Action Taken", style="white")
-        for a in alerts:
-            t_alert.add_row(a["source"], a["alert_type"], f"{a['timestamp']:.2f}", a["action_taken"])
-        console.print(t_alert)
+        console.print(_t("Recent Watchdog Alerts (Auto-Failover Log)", [("Source", "left", "cyan"), ("Alert", "left", "bold red"), ("Time", "left", "magenta"), ("Action Taken", "left", "white")], [(a["source"], a["alert_type"], f"{a['timestamp']:.2f}", a["action_taken"]) for a in alerts]))
 
     console.print("\n[dim]Quick shortcuts: mdrap r (run) | mdrap bbo (bbo) | mdrap a (analytics) | mdrap q (query) | mdrap t (test-all)[/dim]\n")
 
@@ -1041,27 +927,9 @@ def cmd_analytics(args):
         if not rows:
             console.print(f"[yellow]No OHLCV candles found for {instr}. Run the pipeline first.[/yellow]")
         else:
-            table = Table(title=f"OHLCV Candles: {instr} (Interval: {rows[0]['interval_s']}s)")
-            table.add_column("Instrument", style="cyan")
-            table.add_column("Bucket Start", style="magenta")
-            table.add_column("Open", justify="right")
-            table.add_column("High", justify="right", style="green")
-            table.add_column("Low", justify="right", style="red")
-            table.add_column("Close", justify="right")
-            table.add_column("Volume", justify="right")
-            table.add_column("Trades", justify="right")
-            for r in rows:
-                table.add_row(
-                    r["instrument_id"],
-                    f"{r['bucket_start']:.1f}",
-                    f"{r['open']:.2f}",
-                    f"{r['high']:.2f}",
-                    f"{r['low']:.2f}",
-                    f"{r['close']:.2f}",
-                    f"{r['volume']:,.0f}",
-                    str(r["event_count"])
-                )
-            console.print(table)
+            o_cols = [("Instrument", "left", "cyan"), ("Bucket Start", "left", "magenta"), ("Open", "right"), ("High", "right", "green"), ("Low", "right", "red"), ("Close", "right"), ("Volume", "right"), ("Trades", "right")]
+            o_rows = [[r["instrument_id"], f"{r['bucket_start']:.1f}", f"{r['open']:.2f}", f"{r['high']:.2f}", f"{r['low']:.2f}", f"{r['close']:.2f}", f"{r['volume']:,.0f}", str(r["event_count"])] for r in rows]
+            console.print(_t(f"OHLCV Candles: {instr} (Interval: {rows[0]['interval_s']}s)", o_cols, o_rows))
 
     elif action in ("spread", "spreads") or getattr(args, "spread", None):
         query_instr = target or getattr(args, "spread", "all") or "all"
@@ -1069,50 +937,18 @@ def cmd_analytics(args):
         if not rows:
             console.print("[yellow]No spread data found. Run the pipeline first.[/yellow]")
         else:
-            table = Table(title="Bid-Ask Spread Analysis")
-            table.add_column("Instrument", style="cyan")
-            table.add_column("Quotes", justify="right")
-            table.add_column("Mean Spread", justify="right")
-            table.add_column("Min Spread", justify="right")
-            table.add_column("Max Spread", justify="right")
-            table.add_column("Crossed Quotes", justify="right", style="red")
-            table.add_column("Crossed %", justify="right")
-            for r in rows:
-                table.add_row(
-                    r["instrument_id"],
-                    f"{r['quote_count']:,}",
-                    f"${r['mean_spread']:.4f}",
-                    f"${r['min_spread']:.4f}",
-                    f"${r['max_spread']:.4f}",
-                    str(r["crossed_count"]),
-                    f"{r['crossed_pct']:.2f}%"
-                )
-            console.print(table)
+            s_cols = [("Instrument", "left", "cyan"), ("Quotes", "right"), ("Mean Spread", "right"), ("Min Spread", "right"), ("Max Spread", "right"), ("Crossed Quotes", "right", "red"), ("Crossed %", "right")]
+            s_rows = [[r["instrument_id"], f"{r['quote_count']:,}", f"${r['mean_spread']:.4f}", f"${r['min_spread']:.4f}", f"${r['max_spread']:.4f}", str(r["crossed_count"]), f"{r['crossed_pct']:.2f}%"] for r in rows]
+            console.print(_t("Bid-Ask Spread Analysis", s_cols, s_rows))
 
     elif action in ("vol", "volatility", "v") or getattr(args, "volatility", False):
         rows = store.query_volatility()
         if not rows:
             console.print("[yellow]No volatility data found. Run the pipeline first.[/yellow]")
         else:
-            table = Table(title="Realized Volatility by Instrument")
-            table.add_column("Instrument", style="cyan")
-            table.add_column("Trades", justify="right")
-            table.add_column("Mean Price", justify="right")
-            table.add_column("Std Dev (σ)", justify="right", style="yellow")
-            table.add_column("Min Price", justify="right")
-            table.add_column("Max Price", justify="right")
-            table.add_column("Price Range %", justify="right")
-            for r in rows:
-                table.add_row(
-                    r["instrument_id"],
-                    f"{r['trade_count']:,}",
-                    f"${r['mean_price']:.2f}",
-                    f"{r['std_dev']:.4f}",
-                    f"${r['min_price']:.2f}",
-                    f"${r['max_price']:.2f}",
-                    f"{r['price_range_pct']:.2f}%"
-                )
-            console.print(table)
+            v_cols = [("Instrument", "left", "cyan"), ("Trades", "right"), ("Mean Price", "right"), ("Std Dev (σ)", "right", "yellow"), ("Min Price", "right"), ("Max Price", "right"), ("Price Range %", "right")]
+            v_rows = [[r["instrument_id"], f"{r['trade_count']:,}", f"${r['mean_price']:.2f}", f"{r['std_dev']:.4f}", f"${r['min_price']:.2f}", f"${r['max_price']:.2f}", f"{r['price_range_pct']:.2f}%"] for r in rows]
+            console.print(_t("Realized Volatility by Instrument", v_cols, v_rows))
 
     else:
         console.print("\n[bold cyan]Market Analytics Summary (V3 Engine)[/bold cyan]")
@@ -1120,14 +956,12 @@ def cmd_analytics(args):
         spreads = store.query_spread()
         vol = store.query_volatility()
         
-        table = Table(title="Aggregated Analytical Metrics")
-        table.add_column("Analytics Category", style="cyan")
-        table.add_column("Records / Coverage", style="green")
-        table.add_column("Details", style="white")
-        table.add_row("OHLCV Candles", f"{len(ohlcv)} candles", "5s time-bucketed aggregations")
-        table.add_row("Spread Analysis", f"{len(spreads)} instruments", "Mean/min/max bid-ask spreads & crossed-quote frequency")
-        table.add_row("Realized Volatility", f"{len(vol)} instruments", "Welford online running variance & price range %")
-        console.print(table)
+        m_rows = [
+            ("OHLCV Candles", f"{len(ohlcv)} candles", "5s time-bucketed aggregations"),
+            ("Spread Analysis", f"{len(spreads)} instruments", "Mean/min/max bid-ask spreads & crossed-quote frequency"),
+            ("Realized Volatility", f"{len(vol)} instruments", "Welford online running variance & price range %"),
+        ]
+        console.print(_t("Aggregated Analytical Metrics", [("Analytics Category", "left", "cyan"), ("Records / Coverage", "left", "green"), ("Details", "left", "white")], m_rows))
         
         if vol:
             avg_vol = sum(v["std_dev"] for v in vol) / len(vol)
@@ -1170,30 +1004,15 @@ def cmd_watchdog(args):
         if not health:
             console.print("[yellow]No source health data. Run the pipeline first.[/yellow]")
         else:
-            table = Table(title="Source Health & Live Watchdog Status (§6.13)")
-            table.add_column("Source", style="cyan")
-            table.add_column("Total Packets", justify="right")
-            table.add_column("Invalid", justify="right", style="red")
-            table.add_column("Suspicious", justify="right", style="yellow")
-            table.add_column("Reliability Score", justify="right", style="bold")
-            table.add_column("Watchdog State", justify="center")
-            table.add_column("Action / Routing", style="white")
-
+            w_cols = [("Source", "left", "cyan"), ("Total Packets", "right"), ("Invalid", "right", "red"), ("Suspicious", "right", "yellow"), ("Reliability Score", "right", "bold"), ("Watchdog State", "center"), ("Action / Routing", "left", "white")]
+            w_rows = []
             for h in health:
                 score = h.get("score", 0)
                 status = "HEALTHY" if score >= 0.90 else "DEGRADED"
                 style = "green" if status == "HEALTHY" else "red"
                 routing = "Primary Route" if score >= 0.95 else ("Eligible" if status == "HEALTHY" else "Traffic Diverted")
-                table.add_row(
-                    h["source"],
-                    f"{h['total']:,}",
-                    f"{h['invalid']:,}",
-                    f"{h['suspicious']:,}",
-                    f"{score:.4f}",
-                    f"[{style} bold]{status}[/{style} bold]",
-                    routing
-                )
-            console.print(table)
+                w_rows.append([h["source"], f"{h['total']:,}", f"{h['invalid']:,}", f"{h['suspicious']:,}", f"{score:.4f}", f"[{style} bold]{status}[/{style} bold]", routing])
+            console.print(_t("Source Health & Live Watchdog Status (§6.13)", w_cols, w_rows))
     store.close()
 
 
@@ -1232,30 +1051,14 @@ def cmd_bbo(args):
         console.print(f"[yellow]No Consolidated BBO records found {sym_msg}. Run the pipeline first to generate market quotes.[/yellow]")
         return
 
-    table = Table(title="Synthetic Consolidated Best Bid & Offer (NBBO)")
-    table.add_column("Symbol", style="cyan", no_wrap=True)
-    table.add_column("Best Bid", justify="right", style="green")
-    table.add_column("Best Ask", justify="right", style="red")
-    table.add_column("Spread", justify="right", style="bold")
-    table.add_column("Mid Price", justify="right")
-    table.add_column("Market State", justify="center")
-
+    bbo_cols = [("Symbol", "left", "cyan", True), ("Best Bid", "right", "green"), ("Best Ask", "right", "red"), ("Spread", "right", "bold"), ("Mid Price", "right"), ("Market State", "center")]
+    bbo_rows = []
     for r in rows:
         bid_str = f"${r['best_bid']:.2f} ({r['best_bid_size']:,.0f}) @ {r['best_bid_source']}"
         ask_str = f"${r['best_ask']:.2f} ({r['best_ask_size']:,.0f}) @ {r['best_ask_source']}"
-        spread_str = f"${r['spread']:.2f}"
-        mid_str = f"${r['mid_price']:.2f}"
-
-        if r.get("is_crossed"):
-            state = "[bold red]CROSSED[/bold red]"
-        elif r.get("is_locked"):
-            state = "[bold yellow]LOCKED[/bold yellow]"
-        else:
-            state = "[bold green]NORMAL[/bold green]"
-
-        table.add_row(r["instrument_id"], bid_str, ask_str, spread_str, mid_str, state)
-
-    console.print(table)
+        state = "[bold red]CROSSED[/bold red]" if r.get("is_crossed") else ("[bold yellow]LOCKED[/bold yellow]" if r.get("is_locked") else "[bold green]NORMAL[/bold green]")
+        bbo_rows.append([r["instrument_id"], bid_str, ask_str, f"${r['spread']:.2f}", f"${r['mid_price']:.2f}", state])
+    console.print(_t("Synthetic Consolidated Best Bid & Offer (NBBO)", bbo_cols, bbo_rows))
 
 
 def _generate_baseline_candles(symbol: str, count: int = 20, interval_s: float = 5.0) -> list[dict]:
@@ -1718,6 +1521,32 @@ def cmd_chart(args):
     console.print()
 
 
+def _load_or_fetch_depth_events(db_path: str, store, canonical_sym: str, console) -> list:
+    """Load depth events from local store or fetch live snapshot from venues."""
+    events = []
+    if os.path.exists(db_path):
+        stored_rows = store.query_events(instrument_id=canonical_sym, limit=100)
+        from models import CanonicalEvent, EventType, QualityStatus
+        for r in stored_rows:
+            if r.get("bid_price") or r.get("price"):
+                events.append(CanonicalEvent(
+                    event_id=r["event_id"], instrument_id=r["instrument_id"],
+                    event_type=EventType(r["event_type"]), exchange_timestamp=r["exchange_timestamp"],
+                    receive_timestamp=r["receive_timestamp"], processing_timestamp=r["processing_timestamp"],
+                    source=r["source"], sequence_number=r["sequence_number"],
+                    price=r["price"], quantity=r["quantity"],
+                    bid_price=r["bid_price"] or r["price"], bid_size=r["bid_size"] or 100.0,
+                    ask_price=r["ask_price"] or r["price"], ask_size=r["ask_size"] or 100.0,
+                    quality_status=QualityStatus(r["quality_status"])
+                ))
+    if not events:
+        from live import LiveConnector
+        connector = LiveConnector()
+        with console.status("[bold cyan]Aggregating live multi-venue depth snapshots...[/bold cyan]"):
+            events = connector.fetch_snapshot(canonical_sym)
+    return events
+
+
 def cmd_depth(args):
     """Render real-time Consolidated Multi-Venue Level-2 Market Depth Ladder."""
     _ensure_db_dir(args.db)
@@ -1756,11 +1585,9 @@ def cmd_depth(args):
         border_style="cyan"
     ))
 
-    connector = LiveConnector()
-    with console.status("[bold cyan]Aggregating live multi-venue depth snapshots...[/bold cyan]"):
-        events = connector.fetch_snapshot(canonical_sym)
-        for ev in events:
-            depth_engine.observe(ev)
+    events = _load_or_fetch_depth_events(args.db, store, canonical_sym, console)
+    for ev in events:
+        depth_engine.observe(ev)
 
     ladder = depth_engine.current_ladder(canonical_sym)
     if not ladder or not ladder.bids or not ladder.asks:
@@ -1897,11 +1724,9 @@ def cmd_vwap(args):
         border_style="cyan"
     ))
 
-    connector = LiveConnector()
-    with console.status("[bold cyan]Aggregating live multi-venue depth snapshots...[/bold cyan]"):
-        events = connector.fetch_snapshot(canonical_sym)
-        for ev in events:
-            depth_engine.observe(ev)
+    events = _load_or_fetch_depth_events(args.db, store, canonical_sym, console)
+    for ev in events:
+        depth_engine.observe(ev)
 
     ladder = depth_engine.current_ladder(canonical_sym)
     if not ladder or not ladder.bids or not ladder.asks:
@@ -2390,31 +2215,13 @@ def cmd_columnar(args):
             with ColumnarStore(db_path=":memory:") as store:
                 res = store.benchmark_sqlite_vs_duckdb(sqlite_path=sql_path)
 
-        table = Table(title=f"Micro-Benchmark Results ({res['total_ticks']:,} Ticks Scanned)", show_lines=True)
-        table.add_column("Query Workload", style="cyan", no_wrap=True)
-        table.add_column("SQLite (ms)", justify="right", style="yellow")
-        table.add_column("DuckDB Columnar (ms)", justify="right", style="green")
-        table.add_column("Speedup Multiplier", justify="right", style="bold magenta")
-
-        table.add_row(
-            "OHLCV 5s Resampling (SIMD arg_min/arg_max)",
-            f"{res['sqlite']['ohlcv_ms']:.2f} ms",
-            f"{res['duckdb']['ohlcv_ms']:.2f} ms",
-            f"{res['speedup']['ohlcv']:.1f}x faster",
-        )
-        table.add_row(
-            "VWAP Execution Curve (sum(P*Q)/sum(Q))",
-            f"{res['sqlite']['vwap_ms']:.2f} ms",
-            f"{res['duckdb']['vwap_ms']:.2f} ms",
-            f"{res['speedup']['vwap']:.1f}x faster",
-        )
-        table.add_row(
-            "[bold]Combined Workload[/bold]",
-            f"[bold]{res['sqlite']['ohlcv_ms'] + res['sqlite']['vwap_ms']:.2f} ms[/bold]",
-            f"[bold]{res['duckdb']['ohlcv_ms'] + res['duckdb']['vwap_ms']:.2f} ms[/bold]",
-            f"[bold]{res['speedup']['overall']:.1f}x faster[/bold]",
-        )
-        console.print(table)
+        b_cols = [("Query Workload", "left", "cyan", True), ("SQLite (ms)", "right", "yellow"), ("DuckDB Columnar (ms)", "right", "green"), ("Speedup Multiplier", "right", "bold magenta")]
+        b_rows = [
+            ("OHLCV 5s Resampling (SIMD arg_min/arg_max)", f"{res['sqlite']['ohlcv_ms']:.2f} ms", f"{res['duckdb']['ohlcv_ms']:.2f} ms", f"{res['speedup']['ohlcv']:.1f}x faster"),
+            ("VWAP Execution Curve (sum(P*Q)/sum(Q))", f"{res['sqlite']['vwap_ms']:.2f} ms", f"{res['duckdb']['vwap_ms']:.2f} ms", f"{res['speedup']['vwap']:.1f}x faster"),
+            ("[bold]Combined Workload[/bold]", f"[bold]{res['sqlite']['ohlcv_ms'] + res['sqlite']['vwap_ms']:.2f} ms[/bold]", f"[bold]{res['duckdb']['ohlcv_ms'] + res['duckdb']['vwap_ms']:.2f} ms[/bold]", f"[bold]{res['speedup']['overall']:.1f}x faster[/bold]"),
+        ]
+        console.print(_t(f"Micro-Benchmark Results ({res['total_ticks']:,} Ticks Scanned)", b_cols, b_rows, show_lines=True))
         console.print(f"[dim green]Vectorized SIMD processing scanned {res['total_ticks']:,} ticks in {res['duckdb']['ohlcv_ms'] + res['duckdb']['vwap_ms']:.2f} ms total.[/dim green]\n")
         return
 
@@ -2450,26 +2257,9 @@ def cmd_columnar(args):
                 console.print(f"[yellow]No trade candles found for {symbol}. Try syncing ticks first with 'mdrap col sync'.[/yellow]")
                 return
 
-            table = Table(title=f"DuckDB Columnar OHLCV — {symbol.upper()} ({interval}s Candles)", show_lines=True)
-            table.add_column("Bucket Start (s)", style="cyan", no_wrap=True)
-            table.add_column("Open", justify="right", style="white")
-            table.add_column("High", justify="right", style="green")
-            table.add_column("Low", justify="right", style="red")
-            table.add_column("Close", justify="right", style="bold yellow")
-            table.add_column("Volume", justify="right", style="magenta")
-            table.add_column("Trades", justify="right", style="dim")
-
-            for c in candles:
-                table.add_row(
-                    f"{c['bucket_start']:.1f}",
-                    f"${c['open']:.2f}",
-                    f"${c['high']:.2f}",
-                    f"${c['low']:.2f}",
-                    f"${c['close']:.2f}",
-                    f"{c['volume']:,.0f}",
-                    f"{c['event_count']:,}",
-                )
-            console.print(table)
+            o_cols = [("Bucket Start (s)", "left", "cyan", True), ("Open", "right", "white"), ("High", "right", "green"), ("Low", "right", "red"), ("Close", "right", "bold yellow"), ("Volume", "right", "magenta"), ("Trades", "right", "dim")]
+            o_rows = [[f"{c['bucket_start']:.1f}", f"${c['open']:.2f}", f"${c['high']:.2f}", f"${c['low']:.2f}", f"${c['close']:.2f}", f"{c['volume']:,.0f}", f"{c['event_count']:,}"] for c in candles]
+            console.print(_t(f"DuckDB Columnar OHLCV — {symbol.upper()} ({interval}s Candles)", o_cols, o_rows, show_lines=True))
             console.print(f"[dim green]Rendered {len(candles)} resampled candles via DuckDB SIMD aggregation.[/dim green]\n")
 
         elif action == "vwap":
@@ -2479,17 +2269,15 @@ def cmd_columnar(args):
                 store.sync_from_sqlite(sql_path)
                 vw = store.query_vwap(symbol)
 
-            table = Table(title=f"DuckDB Institutional VWAP — {symbol.upper()}", show_lines=True)
-            table.add_column("Metric", style="cyan", no_wrap=True)
-            table.add_column("Value", style="bold green")
-
-            table.add_row("Instrument", vw["instrument_id"])
-            table.add_row("VWAP Price", f"${vw['vwap']:.4f}")
-            table.add_row("Total Executed Volume", f"{vw['total_volume']:,.2f}")
-            table.add_row("Total Notional Value", f"${vw['total_notional']:,.2f}")
-            table.add_row("Trade Count", f"{vw['trade_count']:,}")
-            table.add_row("Price Range (Low - High)", f"${vw['min_price']:.2f} - ${vw['max_price']:.2f}")
-            console.print(table)
+            v_rows = [
+                ("Instrument", vw["instrument_id"]),
+                ("VWAP Price", f"${vw['vwap']:.4f}"),
+                ("Total Executed Volume", f"{vw['total_volume']:,.2f}"),
+                ("Total Notional Value", f"${vw['total_notional']:,.2f}"),
+                ("Trade Count", f"{vw['trade_count']:,}"),
+                ("Price Range (Low - High)", f"${vw['min_price']:.2f} - ${vw['max_price']:.2f}"),
+            ]
+            console.print(_t(f"DuckDB Institutional VWAP — {symbol.upper()}", [("Metric", "left", "cyan", True), ("Value", "left", "bold green")], v_rows, show_lines=True))
             console.print(f"[dim green]Computed VWAP in vectorized SIMD across {vw['trade_count']:,} trades.[/dim green]\n")
 
         elif action == "spread":
@@ -2499,26 +2287,9 @@ def cmd_columnar(args):
                 store.sync_from_sqlite(sql_path)
                 spreads = store.query_spread_analytics(symbol)
 
-            table = Table(title="DuckDB Columnar Bid-Ask Spread Analytics", show_lines=True)
-            table.add_column("Symbol", style="cyan", no_wrap=True)
-            table.add_column("Quotes", justify="right", style="dim")
-            table.add_column("Mean Spread", justify="right", style="green")
-            table.add_column("Min Spread", justify="right", style="white")
-            table.add_column("Max Spread", justify="right", style="yellow")
-            table.add_column("Crossed Quotes", justify="right", style="red")
-            table.add_column("Crossed %", justify="right", style="bold red")
-
-            for s in spreads:
-                table.add_row(
-                    s["instrument_id"],
-                    f"{s['quote_count']:,}",
-                    f"${s['mean_spread']:.4f}",
-                    f"${s['min_spread']:.4f}",
-                    f"${s['max_spread']:.4f}",
-                    f"{s['crossed_count']:,}",
-                    f"{s['crossed_pct']:.2f}%",
-                )
-            console.print(table)
+            s_cols = [("Symbol", "left", "cyan", True), ("Quotes", "right", "dim"), ("Mean Spread", "right", "green"), ("Min Spread", "right", "white"), ("Max Spread", "right", "yellow"), ("Crossed Quotes", "right", "red"), ("Crossed %", "right", "bold red")]
+            s_rows = [[s["instrument_id"], f"{s['quote_count']:,}", f"${s['mean_spread']:.4f}", f"${s['min_spread']:.4f}", f"${s['max_spread']:.4f}", f"{s['crossed_count']:,}", f"{s['crossed_pct']:.2f}%"] for s in spreads]
+            console.print(_t("DuckDB Columnar Bid-Ask Spread Analytics", s_cols, s_rows, show_lines=True))
 
         elif action == "latency":
             lat = store.query_latency_quantiles()
@@ -2526,18 +2297,16 @@ def cmd_columnar(args):
                 store.sync_from_sqlite(sql_path)
                 lat = store.query_latency_quantiles()
 
-            table = Table(title="DuckDB Engine Latency Quantiles (Microseconds)", show_lines=True)
-            table.add_column("Quantile / Metric", style="cyan", no_wrap=True)
-            table.add_column("Latency (µs)", justify="right", style="bold green")
-
-            table.add_row("Total Processed Events", f"{lat['total_events']:,}")
-            table.add_row("Mean Latency", f"{lat['mean_us']:.2f} µs")
-            table.add_row("p50 (Median)", f"{lat['p50_us']:.2f} µs")
-            table.add_row("p90", f"{lat['p90_us']:.2f} µs")
-            table.add_row("p95", f"{lat['p95_us']:.2f} µs")
-            table.add_row("p99", f"{lat['p99_us']:.2f} µs")
-            table.add_row("p99.9", f"{lat['p999_us']:.2f} µs")
-            console.print(table)
+            l_rows = [
+                ("Total Processed Events", f"{lat['total_events']:,}"),
+                ("Mean Latency", f"{lat['mean_us']:.2f} µs"),
+                ("p50 (Median)", f"{lat['p50_us']:.2f} µs"),
+                ("p90", f"{lat['p90_us']:.2f} µs"),
+                ("p95", f"{lat['p95_us']:.2f} µs"),
+                ("p99", f"{lat['p99_us']:.2f} µs"),
+                ("p99.9", f"{lat['p999_us']:.2f} µs"),
+            ]
+            console.print(_t("DuckDB Engine Latency Quantiles (Microseconds)", [("Quantile / Metric", "left", "cyan", True), ("Latency (µs)", "right", "bold green")], l_rows, show_lines=True))
 
         elif action == "profile":
             symbol = target or "AAPL"
@@ -2551,25 +2320,10 @@ def cmd_columnar(args):
                 console.print(f"[yellow]No volume profile data available for {symbol}.[/yellow]")
                 return
 
-            table = Table(title=f"DuckDB Volume Profile — {symbol.upper()} ({bins} Price Rungs)", show_lines=True)
-            table.add_column("Price Range", style="cyan", no_wrap=True)
-            table.add_column("Volume", justify="right", style="magenta")
-            table.add_column("Trades", justify="right", style="dim")
-            table.add_column("Share %", justify="right", style="yellow")
-            table.add_column("Distribution", style="green")
-
+            p_cols = [("Price Range", "left", "cyan", True), ("Volume", "right", "magenta"), ("Trades", "right", "dim"), ("Share %", "right", "yellow"), ("Distribution", "left", "green")]
             max_pct = max(p["pct"] for p in prof) if prof else 1.0
-            for p in prof:
-                bar_len = int((p["pct"] / max(0.1, max_pct)) * 24)
-                bar = "█" * bar_len
-                table.add_row(
-                    f"${p['bin_low']:.2f} - ${p['bin_high']:.2f}",
-                    f"{p['volume']:,.0f}",
-                    f"{p['trades']:,}",
-                    f"{p['pct']:.1f}%",
-                    f"[green]{bar}[/green]",
-                )
-            console.print(table)
+            p_rows = [[f"${p['bin_low']:.2f} - ${p['bin_high']:.2f}", f"{p['volume']:,.0f}", f"{p['trades']:,}", f"{p['pct']:.1f}%", f"[green]{'█' * int((p['pct'] / max(0.1, max_pct)) * 24)}[/green]"] for p in prof]
+            console.print(_t(f"DuckDB Volume Profile — {symbol.upper()} ({bins} Price Rungs)", p_cols, p_rows, show_lines=True))
 
         elif action == "export":
             symbol = target or "ALL"
@@ -2593,35 +2347,29 @@ def cmd_columnar(args):
                 console.print("[dim]Query returned 0 rows.[/dim]")
                 return
             cols = list(rows[0].keys())
-            table = Table(title=f"DuckDB SQL Execution Result ({len(rows)} rows)", show_lines=True)
-            for c in cols:
-                table.add_column(c, style="cyan")
-            for r in rows[: getattr(args, "limit", 20)]:
-                table.add_row(*[str(r[c]) for c in cols])
-            console.print(table)
+            r_rows = [[str(r[c]) for c in cols] for r in rows[: getattr(args, "limit", 20)]]
+            console.print(_t(f"DuckDB SQL Execution Result ({len(rows)} rows)", [(c, "left", "cyan") for c in cols], r_rows, show_lines=True))
 
         else:
             # action == "info" or "count" or unrecognized
             total = store.count()
             symbols = store.symbols()
             fresh = store.freshness(sql_path)
-            console.print()
-            table = Table(title="MDRAP Phase 3: DuckDB Columnar Analytical Engine Status", show_lines=True)
-            table.add_column("Property", style="cyan", no_wrap=True)
-            table.add_column("Value", style="bold green")
-
-            table.add_row("DuckDB Storage File", duck_path)
-            table.add_row("Source SQLite Database", sql_path)
-            table.add_row("Columnar Ticks (DuckDB)", f"{total:,}")
-            table.add_row("SQLite Source Ticks", f"{fresh['sqlite_ticks']:,}")
             lag_ticks = fresh['lag_ticks']
             lag_style = "bold green" if lag_ticks == 0 else "bold yellow"
             lag_str = f"[{lag_style}]0 (IN-SYNC)[/{lag_style}]" if lag_ticks == 0 else f"[{lag_style}]{lag_ticks:,} (PENDING SYNC)[/{lag_style}]"
-            table.add_row("CDC Replication Lag", lag_str)
-            table.add_row("Distinct Instruments", f"{len(symbols)} ({', '.join(symbols[:8])}{'...' if len(symbols)>8 else ''})")
-            table.add_row("Engine Type", "DuckDB In-Process Columnar SIMD Engine")
-            table.add_row("Parquet Export Directory", "data/parquet/")
-            console.print(table)
+            i_rows = [
+                ("DuckDB Storage File", duck_path),
+                ("Source SQLite Database", sql_path),
+                ("Columnar Ticks (DuckDB)", f"{total:,}"),
+                ("SQLite Source Ticks", f"{fresh['sqlite_ticks']:,}"),
+                ("CDC Replication Lag", lag_str),
+                ("Distinct Instruments", f"{len(symbols)} ({', '.join(symbols[:8])}{'...' if len(symbols)>8 else ''})"),
+                ("Engine Type", "DuckDB In-Process Columnar SIMD Engine"),
+                ("Parquet Export Directory", "data/parquet/"),
+            ]
+            console.print()
+            console.print(_t("MDRAP Phase 3: DuckDB Columnar Analytical Engine Status", [("Property", "left", "cyan", True), ("Value", "left", "bold green")], i_rows, show_lines=True))
             console.print("[dim]Tip: Use 'mdrap col sync' to update from SQLite, 'mdrap col bench' to run SIMD micro-benchmarks.[/dim]\n")
 
     finally:
@@ -2903,60 +2651,32 @@ def cmd_tca(args):
         border_style="cyan"
     ))
 
-    # Table 1: Executive Summary & Regulatory Fill Quality
-    t_summary = Table(title="Executive Summary & Aggregate Fill Quality", show_lines=True)
-    t_summary.add_column("Metric", style="cyan")
-    t_summary.add_column("Value", justify="right", style="bold green")
-    t_summary.add_column("Regulatory Interpretation / Standard", style="dim")
-
     slip_val = batch_res["mean_slippage_bps"]
     slip_color = "green" if slip_val <= 0 else "yellow" if slip_val < 1.0 else "red"
-    t_summary.add_row("Mean Slippage vs Arrival", f"[{slip_color}]{slip_val:+.2f} bps[/{slip_color}]", "Basis points slippage from decision to execution")
-    t_summary.add_row("Median Slippage (p50)", f"{batch_res['p50_slippage_bps']:+.2f} bps", "Half of all orders executed within this slippage")
-    t_summary.add_row("Tail Slippage (p95)", f"{batch_res['p95_slippage_bps']:+.2f} bps", "Tail risk outlier threshold for execution quality")
-    t_summary.add_row("Effective / Quoted Spread", f"{batch_res['mean_effective_spread_bps'] / max(0.01, batch_res['mean_quoted_spread_bps']):.2f}x", "< 1.0x indicates superior price improvement inside the NBBO")
-    t_summary.add_row("Price Improved Orders", f"[green]{batch_res['price_improvement_count']:,}[/green] ({batch_res['price_improvement_rate_pct']}%)", "Fills executed strictly inside the quoted spread")
-    t_summary.add_row("Total Dollar Improvement", f"[green]${batch_res['total_price_improvement_usd']:,.2f}[/green]", "Aggregate capital saved for the client portfolio")
-
     overall_score = batch_res["overall_quality_score"]
     score_style = "bold green" if overall_score >= 80 else ("bold yellow" if overall_score >= 60 else "bold red")
-    t_summary.add_row("Overall Execution Quality Score", f"[{score_style}]{overall_score:.1f} / 100[/{score_style}]", "Composite algorithmic rating (spread capture + slippage)")
-    console.print(t_summary)
+    sum_rows = [
+        ("Mean Slippage vs Arrival", f"[{slip_color}]{slip_val:+.2f} bps[/{slip_color}]", "Basis points slippage from decision to execution"),
+        ("Median Slippage (p50)", f"{batch_res['p50_slippage_bps']:+.2f} bps", "Half of all orders executed within this slippage"),
+        ("Tail Slippage (p95)", f"{batch_res['p95_slippage_bps']:+.2f} bps", "Tail risk outlier threshold for execution quality"),
+        ("Effective / Quoted Spread", f"{batch_res['mean_effective_spread_bps'] / max(0.01, batch_res['mean_quoted_spread_bps']):.2f}x", "< 1.0x indicates superior price improvement inside the NBBO"),
+        ("Price Improved Orders", f"[green]{batch_res['price_improvement_count']:,}[/green] ({batch_res['price_improvement_rate_pct']}%)", "Fills executed strictly inside the quoted spread"),
+        ("Total Dollar Improvement", f"[green]${batch_res['total_price_improvement_usd']:,.2f}[/green]", "Aggregate capital saved for the client portfolio"),
+        ("Overall Execution Quality Score", f"[{score_style}]{overall_score:.1f} / 100[/{score_style}]", "Composite algorithmic rating (spread capture + slippage)"),
+    ]
+    console.print(_t("Executive Summary & Aggregate Fill Quality", [("Metric", "left", "cyan"), ("Value", "right", "bold green"), ("Regulatory Interpretation / Standard", "left", "dim")], sum_rows, show_lines=True))
 
-    # Table 2: Broker & Routing Scorecard (SEC Rule 606)
-    t_broker = Table(title="Broker Routing & Best Execution Scorecard (SEC Rule 606)", show_lines=True)
-    t_broker.add_column("Broker / Routing Participant", style="bold cyan")
-    t_broker.add_column("Orders", justify="right")
-    t_broker.add_column("Total Shares", justify="right", style="magenta")
-    t_broker.add_column("Avg Slip (bps)", justify="right")
-    t_broker.add_column("Price Imp ($)", justify="right", style="green")
-    t_broker.add_column("Score", justify="right")
-    t_broker.add_column("SEC 606 Stance", style="bold")
-
+    brk_cols = [("Broker / Routing Participant", "left", "bold cyan"), ("Orders", "right"), ("Total Shares", "right", "magenta"), ("Avg Slip (bps)", "right"), ("Price Imp ($)", "right", "green"), ("Score", "right"), ("SEC 606 Stance", "left", "bold")]
+    brk_rows = []
     for sc in scorecards:
         b_slip = sc["avg_slippage_bps"]
         b_slip_col = "green" if b_slip <= 0 else "yellow" if b_slip < 1.0 else "red"
         b_score = sc["quality_score"]
         b_score_col = "green" if b_score >= 80 else ("yellow" if b_score >= 60 else "red")
-
-        if b_score >= 80:
-            b_stance = "[green]SUPERIOR ROUTING[/green]"
-        elif b_score >= 60:
-            b_stance = "[yellow]ACCEPTABLE[/yellow]"
-        else:
-            b_stance = "[bold red]UNDERPERFORMING (FLAGGED)[/bold red]"
-
-        t_broker.add_row(
-            sc["broker"],
-            f"{sc['order_count']:,}",
-            f"{sc['total_shares']:,.0f}",
-            f"[{b_slip_col}]{b_slip:+.2f}[/{b_slip_col}]",
-            f"[green]${sc['total_price_improvement_usd']:,.2f}[/green]",
-            f"[{b_score_col}]{b_score:.1f}[/{b_score_col}]",
-            b_stance,
-        )
+        b_stance = "[green]SUPERIOR ROUTING[/green]" if b_score >= 80 else ("[yellow]ACCEPTABLE[/yellow]" if b_score >= 60 else "[bold red]UNDERPERFORMING (FLAGGED)[/bold red]")
+        brk_rows.append([sc["broker"], f"{sc['order_count']:,}", f"{sc['total_shares']:,.0f}", f"[{b_slip_col}]{b_slip:+.2f}[/{b_slip_col}]", f"[green]${sc['total_price_improvement_usd']:,.2f}[/green]", f"[{b_score_col}]{b_score:.1f}[/{b_score_col}]", b_stance])
     console.print()
-    console.print(t_broker)
+    console.print(_t("Broker Routing & Best Execution Scorecard (SEC Rule 606)", brk_cols, brk_rows, show_lines=True))
 
     # Panel: Cryptographic Merkle Root Proof
     console.print()
@@ -3046,71 +2766,40 @@ def cmd_flow(args):
         border_style="cyan"
     ))
 
-    # Table 1: Aggression Profile
-    t_summary = Table(title=f"Order Flow Aggression Profile — {sym}", show_lines=True)
-    t_summary.add_column("Flow Metric", style="cyan")
-    t_summary.add_column("Value", justify="right", style="bold green")
-    t_summary.add_column("Market Microstructure Signal", style="dim")
-
     cvd_col = "green" if m.cvd > 0 else "red" if m.cvd < 0 else "yellow"
     buy_col = "green" if m.buy_ratio_pct > 52 else "red" if m.buy_ratio_pct < 48 else "yellow"
-
-    t_summary.add_row("Total Traded Volume", f"{m.total_volume:,.0f} shares", "Aggregated executed volume")
-    t_summary.add_row("Aggressive Buy Volume", f"[green]{m.buy_volume:,.0f}[/green] ({m.buy_ratio_pct:.1f}%)", "Buyer crossed the spread / executed on uptick")
-    t_summary.add_row("Aggressive Sell Volume", f"[red]{m.sell_volume:,.0f}[/red] ({m.sell_ratio_pct:.1f}%)", "Seller crossed the spread / executed on downtick")
-    t_summary.add_row("Cumulative Volume Delta (CVD)", f"[{cvd_col}]{m.cvd:+,.0f} shares[/{cvd_col}]", "Net aggressive buyer volume - seller volume")
-    t_summary.add_row("Cumulative Notional Delta (CND)", f"[{cvd_col}]${m.cnd:+,.2f}[/{cvd_col}]", "Net capital injected by aggressive takers")
-    t_summary.add_row("Institutional Bias Diagnosis", f"[{buy_col}]{m.institutional_stance}[/{buy_col}]", "Taker directionality & institutional accumulation bias")
-    console.print(t_summary)
+    f_rows = [
+        ("Total Traded Volume", f"{m.total_volume:,.0f} shares", "Aggregated executed volume"),
+        ("Aggressive Buy Volume", f"[green]{m.buy_volume:,.0f}[/green] ({m.buy_ratio_pct:.1f}%)", "Buyer crossed the spread / executed on uptick"),
+        ("Aggressive Sell Volume", f"[red]{m.sell_volume:,.0f}[/red] ({m.sell_ratio_pct:.1f}%)", "Seller crossed the spread / executed on downtick"),
+        ("Cumulative Volume Delta (CVD)", f"[{cvd_col}]{m.cvd:+,.0f} shares[/{cvd_col}]", "Net aggressive buyer volume - seller volume"),
+        ("Cumulative Notional Delta (CND)", f"[{cvd_col}]${m.cnd:+,.2f}[/{cvd_col}]", "Net capital injected by aggressive takers"),
+        ("Institutional Bias Diagnosis", f"[{buy_col}]{m.institutional_stance}[/{buy_col}]", "Taker directionality & institutional accumulation bias"),
+    ]
+    console.print(_t(f"Order Flow Aggression Profile — {sym}", [("Flow Metric", "left", "cyan"), ("Value", "right", "bold green"), ("Market Microstructure Signal", "left", "dim")], f_rows, show_lines=True))
 
     # Table 2: Institutional Broker / Participant Attribution (Who is buying / selling)
     top_participants = tracker.get_top_participants(limit=8)
     if top_participants:
-        t_mpid = Table(title="Institutional Broker & Market Participant Attribution (Who is Buying / Selling)", show_lines=True)
-        t_mpid.add_column("Participant MPID", style="bold cyan")
-        t_mpid.add_column("Buy Vol", justify="right", style="green")
-        t_mpid.add_column("Sell Vol", justify="right", style="red")
-        t_mpid.add_column("Net Delta", justify="right")
-        t_mpid.add_column("Buy %", justify="right")
-        t_mpid.add_column("Firm Stance", style="bold")
-
+        mp_cols = [("Participant MPID", "left", "bold cyan"), ("Buy Vol", "right", "green"), ("Sell Vol", "right", "red"), ("Net Delta", "right"), ("Buy %", "right"), ("Firm Stance", "left", "bold")]
+        mp_rows = []
         for p in top_participants:
             d_col = "green" if p["net_delta"] > 0 else "red" if p["net_delta"] < 0 else "yellow"
             st_col = "green" if "ACCUMULAT" in p["stance"] else "red" if "DISTRIBUT" in p["stance"] else "yellow"
-            t_mpid.add_row(
-                p["mpid"],
-                f"{p['buy_volume']:,.0f}",
-                f"{p['sell_volume']:,.0f}",
-                f"[{d_col}]{p['net_delta']:+,.0f}[/{d_col}]",
-                f"{p['buy_pct']:.1f}%",
-                f"[{st_col}]{p['stance']}[/{st_col}]",
-            )
+            mp_rows.append([p["mpid"], f"{p['buy_volume']:,.0f}", f"{p['sell_volume']:,.0f}", f"[{d_col}]{p['net_delta']:+,.0f}[/{d_col}]", f"{p['buy_pct']:.1f}%", f"[{st_col}]{p['stance']}[/{st_col}]"])
         console.print()
-        console.print(t_mpid)
+        console.print(_t("Institutional Broker & Market Participant Attribution (Who is Buying / Selling)", mp_cols, mp_rows, show_lines=True))
 
     # Table 3: Whale Blocks
     whales = tracker.get_whale_blocks(limit=10)
     if whales:
-        t_whale = Table(title=f"Whale Block Trades & Smart Money Prints (Top {len(whales)})", show_lines=True)
-        t_whale.add_column("Side", style="bold")
-        t_whale.add_column("Size", justify="right", style="bold magenta")
-        t_whale.add_column("Price", justify="right", style="white")
-        t_whale.add_column("Notional Value", justify="right", style="bold green")
-        t_whale.add_column("Broker / MPID", style="cyan")
-        t_whale.add_column("Category", style="yellow")
-
+        wh_cols = [("Side", "left", "bold"), ("Size", "right", "bold magenta"), ("Price", "right", "white"), ("Notional Value", "right", "bold green"), ("Broker / MPID", "left", "cyan"), ("Category", "left", "yellow")]
+        wh_rows = []
         for w in whales:
             s_col = "green" if w.aggressor_side == AggressorSide.BUY else "red"
-            t_whale.add_row(
-                f"[{s_col}]{w.aggressor_side.value}[/{s_col}]",
-                f"{w.size:,.0f}",
-                f"${w.price:,.2f}",
-                f"${w.notional:,.2f}",
-                w.broker_mpid or "ANON",
-                w.flow_category.value,
-            )
+            wh_rows.append([f"[{s_col}]{w.aggressor_side.value}[/{s_col}]", f"{w.size:,.0f}", f"${w.price:,.2f}", f"${w.notional:,.2f}", w.broker_mpid or "ANON", w.flow_category.value])
         console.print()
-        console.print(t_whale)
+        console.print(_t(f"Whale Block Trades & Smart Money Prints (Top {len(whales)})", wh_cols, wh_rows, show_lines=True))
 
     # Optional Excel Export
     if getattr(args, "export", None) or getattr(args, "open", False):
@@ -3224,32 +2913,21 @@ def cmd_strategy(args):
     strat_name = getattr(args, "strategy", "whale_momentum") or "whale_momentum"
     sym = getattr(args, "symbol", "AAPL") or "AAPL"
     events_count = getattr(args, "events", 1000) or 1000
+    show_book = getattr(args, "book", False)
+    show_executions = getattr(args, "executions", False)
+    export_arg = getattr(args, "export", None)
 
-    if action == "list":
+    if action == "list" and not (show_book or show_executions or export_arg):
         console.print(Panel(
             "[bold cyan]MDRAP Institutional Algorithmic Strategy Catalog & Paper EMS (§26)[/bold cyan]\n"
             "[dim]Autonomous event-driven execution framework with pre-trade risk gates[/dim]",
             expand=False,
         ))
-        table = Table(title="Available Institutional Trading Strategies")
-        table.add_column("Strategy Name", style="bold cyan")
-        table.add_column("Type", style="magenta")
-        table.add_column("Alpha Rationale / Logic", style="white")
-        table.add_column("Pre-Trade Risk Controls", style="yellow")
-
-        table.add_row(
-            "whale_momentum",
-            "Institutional Flow Momentum",
-            "Detects institutional block prints (>= $100k notional) via Lee-Ready CVD;\nEnters in the direction of smart-money aggression with trailing stop.",
-            "Max Order: 1,000 shs | Max Pos: 5,000 shs\nPrice Collar: 50 bps | Max DD: 5.0%"
-        )
-        table.add_row(
-            "spread_capture",
-            "Passive Liquidity Provision",
-            "Provides two-sided passive liquidity inside wide bid-ask spreads (>= 3 bps);\nQuotes Buy Limit above Bid and Sell Limit below Ask, avoiding adverse selection.",
-            "Max Order: 500 shs | Max Pos: 2,500 shs\nPrice Collar: 30 bps | Max DD: 5.0%"
-        )
-        console.print(table)
+        cat_rows = [
+            ("whale_momentum", "Institutional Flow Momentum", "Detects institutional block prints (>= $100k notional) via Lee-Ready CVD;\nEnters in the direction of smart-money aggression with trailing stop.", "Max Order: 1,000 shs | Max Pos: 5,000 shs\nPrice Collar: 50 bps | Max DD: 5.0%"),
+            ("spread_capture", "Passive Liquidity Provision", "Provides two-sided passive liquidity inside wide bid-ask spreads (>= 3 bps);\nQuotes Buy Limit above Bid and Sell Limit below Ask, avoiding adverse selection.", "Max Order: 500 shs | Max Pos: 2,500 shs\nPrice Collar: 30 bps | Max DD: 5.0%"),
+        ]
+        console.print(_t("Available Institutional Trading Strategies", [("Strategy Name", "left", "bold cyan"), ("Type", "left", "magenta"), ("Alpha Rationale / Logic", "left", "white"), ("Pre-Trade Risk Controls", "left", "yellow")], cat_rows))
         console.print("[dim]Run a strategy: [bold]mdrap strategy run -s whale_momentum -i AAPL -e 2000[/bold][/dim]\n")
         return
 
@@ -3317,36 +2995,92 @@ def cmd_strategy(args):
     metrics = strat.performance_summary()
 
     table_title = f"Performance Tear-Sheet: {strat_name.upper()} on Whole Market Universe" if is_all_market else f"Performance Tear-Sheet: {strat_name.upper()} on {sym}"
-    table = Table(title=table_title)
-    table.add_column("Performance Metric", style="cyan")
-    table.add_column("Result Value", style="bold white", justify="right")
-    table.add_column("Institutional Benchmark", style="dim")
-
+    t_rows = []
     if is_all_market or len(sym_list) > 1:
         sorted_syms = sorted(active_symbols)
-        table.add_row("Simulated Market Universe", f"{len(sorted_syms)} instruments ({', '.join(sorted_syms)})", "Cross-market feed")
+        t_rows.append(("Simulated Market Universe", f"{len(sorted_syms)} instruments ({', '.join(sorted_syms)})", "Cross-market feed"))
 
     eps = event_count / (elapsed_ms / 1000.0) if elapsed_ms > 0 else 0
-    table.add_row("Events Ingested & Evaluated", f"{event_count:,}", f"{elapsed_ms:.2f} ms ({eps:,.0f} eps)")
-    table.add_row("Total Executed Trades", str(metrics["total_trades"]), "Paper EMS executions")
-    table.add_row("Win Rate %", f"{metrics['win_rate_pct']:.1f}%", "Profitable closed roundtrips")
     pnl = metrics["total_pnl"]
     pnl_col = "green" if pnl >= 0 else "red"
-    table.add_row("Realized Net P&L", f"[{pnl_col}]{'+$' if pnl >= 0 else '-$'}{abs(pnl):,.2f}[/{pnl_col}]", "TCA slippage deducted")
-    table.add_row("Portfolio Return", f"[{pnl_col}]{'+' if pnl >= 0 else ''}{metrics['return_pct']:.2f}%[/{pnl_col}]", "On $100k starting capital")
-    table.add_row("Ending Equity", f"${metrics['final_equity']:,.2f}", "Cash + Mark-to-Market")
-    table.add_row("Mean Execution Slippage", f"{metrics['avg_slippage_bps']:.2f} bps", "Effective spread capture")
-
+    t_rows.extend([
+        ("Events Ingested & Evaluated", f"{event_count:,}", f"{elapsed_ms:.2f} ms ({eps:,.0f} eps)"),
+        ("Total Executed Trades", str(metrics["total_trades"]), "Paper EMS executions"),
+        ("Win Rate %", f"{metrics['win_rate_pct']:.1f}%", "Profitable closed roundtrips"),
+        ("Realized Net P&L", f"[{pnl_col}]{'+$' if pnl >= 0 else '-$'}{abs(pnl):,.2f}[/{pnl_col}]", "TCA slippage deducted"),
+        ("Portfolio Return", f"[{pnl_col}]{'+' if pnl >= 0 else ''}{metrics['return_pct']:.2f}%[/{pnl_col}]", "On $100k starting capital"),
+        ("Ending Equity", f"${metrics['final_equity']:,.2f}", "Cash + Mark-to-Market"),
+        ("Mean Execution Slippage", f"{metrics['avg_slippage_bps']:.2f} bps", "Effective spread capture"),
+    ])
     if is_all_market or len(sym_list) > 1:
         active_pos = {k: v for k, v in metrics["positions"].items() if v != 0}
         pos_summary = ", ".join(f"{k}:{v:+.0f}" for k, v in sorted(active_pos.items())) if active_pos else "Flat (0 all)"
-        table.add_row("Open Net Positions", pos_summary, f"{len(active_pos)} symbols held")
+        t_rows.append(("Open Net Positions", pos_summary, f"{len(active_pos)} symbols held"))
     else:
         pos_qty = metrics["positions"].get(sym, 0.0)
-        table.add_row("Open Net Position", f"{pos_qty:,.0f} shares", "Pre-trade risk limit: 5,000 shs")
+        t_rows.append(("Open Net Position", f"{pos_qty:,.0f} shares", "Pre-trade risk limit: 5,000 shs"))
 
-    console.print(table)
+    console.print(_t(table_title, [("Performance Metric", "left", "cyan"), ("Result Value", "right", "bold white"), ("Institutional Benchmark", "left", "dim")], t_rows))
     console.print(f"[bold green]✔ Strategy run completed with zero risk limit breaches.[/bold green]\n")
+
+    # Render Level-2 Limit Order Book Ladder
+    if show_book:
+        symbols_to_render = sorted(active_symbols) if (is_all_market or len(sym_list) > 1) else [sym]
+        for symbol_to_show in symbols_to_render:
+            ob = strat.get_order_book(symbol_to_show)
+            bids, asks = ob.get_ladder(depth=5)
+            if bids or asks:
+                book_table = Table(title=f"📖 Level-2 Limit Order Book · {symbol_to_show.upper()}")
+                book_table.add_column("Bid Qty", justify="right", style="bold green")
+                book_table.add_column("Bid Price", justify="right", style="green")
+                book_table.add_column("Spread", justify="center", style="dim")
+                book_table.add_column("Ask Price", justify="left", style="red")
+                book_table.add_column("Ask Qty", justify="left", style="bold red")
+
+                max_depth = max(len(bids), len(asks))
+                for i in range(max_depth):
+                    b_px, b_sz = bids[i] if i < len(bids) else (None, None)
+                    a_px, a_sz = asks[i] if i < len(asks) else (None, None)
+                    b_px_str = f"${b_px:,.2f}" if b_px else ""
+                    b_sz_str = f"{b_sz:,.0f}" if b_sz else ""
+                    a_px_str = f"${a_px:,.2f}" if a_px else ""
+                    a_sz_str = f"{a_sz:,.0f}" if a_sz else ""
+                    spr_str = f"{ob.spread_bps:.1f} bps" if i == 0 else ""
+                    book_table.add_row(b_sz_str, b_px_str, spr_str, a_px_str, a_sz_str)
+
+                console.print(book_table)
+                console.print(
+                    f"[dim]• Mid: ${ob.mid_price:,.2f}  |  Micro-Price: ${ob.micro_price:,.2f}  |  "
+                    f"Spread: ${ob.spread:.4f} ({ob.spread_bps:.1f} bps)  |  "
+                    f"Imbalance: {ob.imbalance:+.2f}[/dim]\n"
+                )
+
+    # Render Execution Quality & Microstructure Ledger Table
+    ledger = strat.get_execution_ledger()
+    if show_executions:
+        if ledger:
+            exec_cols = [("Trade ID", "left", "bold cyan"), ("Symbol", "left", "white"), ("Side", "center"), ("Qty", "right"), ("Arrival Px", "right", "dim"), ("Fill Px", "right", "bold white"), ("Slippage", "right"), ("Eff Spread", "right", "yellow"), ("Signal / Action Reason", "left", "dim white")]
+            exec_rows = []
+            for item in ledger:
+                side_str = "[bold green]BUY[/bold green]" if item["side"] == "BUY" else "[bold red]SELL[/bold red]"
+                slip_bps = item.get("slippage_bps", 0.0)
+                slip_str = f"{slip_bps:+.1f} bps" if slip_bps != 0 else "0.0 bps"
+                slip_colored = f"[red]{slip_str}[/red]" if slip_bps > 0 else f"[green]{slip_str}[/green]"
+                arr_px = f"${item['arrival_price']:.2f}" if item.get('arrival_price') else "-"
+                fill_px = f"${item['filled_price']:.2f}" if item.get('filled_price') else "-"
+                eff_spr = f"{item.get('effective_spread_bps', 0.0):.1f} bps"
+                exec_rows.append([item["trade_id"], item["symbol"], side_str, f"{item['quantity']:,.0f}", arr_px, fill_px, slip_colored, eff_spr, item.get("signal_reason") or "Market Aggressor"])
+            console.print(_t(f"⚡ Strategy Execution Quality & Microstructure Ledger · {strat_name.upper()}", exec_cols, exec_rows))
+            console.print(f"[dim]Total executions in session: {len(ledger)}[/dim]\n")
+        else:
+            console.print("[dim]No trades executed during this session (market conditions did not trigger entry).[/dim]\n")
+
+    # Export to File (JSON or CSV)
+    if export_arg is not None:
+        target_file = None if export_arg == "default" else export_arg
+        fmt = "csv" if (target_file and target_file.lower().endswith(".csv")) else "json"
+        exported_path = strat.export_executions(filepath=target_file, format=fmt)
+        console.print(f"[bold green]✔ Strategy run and order book executions successfully exported to:[/bold green] [cyan]{exported_path}[/cyan]\n")
 
 
 def cmd_itch(args):
@@ -3477,11 +3211,12 @@ def cmd_edgar(args):
     limit = getattr(args, "limit", 15) or 15
     metric = getattr(args, "metric", "Revenues") or "Revenues"
     form_type = getattr(args, "form_type", None)
+    fresh = getattr(args, "fresh", False)
 
     client = EdgarClient()
     try:
         if action == "profile":
-            prof = client.get_profile(ticker)
+            prof = client.get_profile(ticker, fresh=fresh)
             panel = Panel(
                 f"[bold cyan]{prof.name} ({prof.ticker})[/bold cyan]\n\n"
                 f"• [bold white]CIK:[/bold white] {prof.cik}\n"
@@ -3496,89 +3231,114 @@ def cmd_edgar(args):
             console.print(panel)
 
         elif action in ("events", "8-k", "8k"):
-            events = client.get_material_events(ticker, limit=limit)
+            events = client.get_material_events(ticker, limit=limit, fresh=fresh)
             table = Table(title=f"🚨 SEC Form 8-K Material Corporate Events · {ticker.upper()}")
             table.add_column("Filing Date", style="bold cyan")
-            table.add_column("Form", style="bold magenta")
-            table.add_column("Items / Triggers", style="yellow")
-            table.add_column("Description", style="white")
-            table.add_column("Official SEC Document", style="dim blue")
+            table.add_column("Form", style="magenta")
+            table.add_column("Urgency", justify="center")
+            table.add_column("Category", style="bold yellow")
+            table.add_column("Decoded Event Triggers / Headlines", style="white")
+            table.add_column("SEC Document Link", style="dim blue")
 
             for e in events:
-                items_str = ", ".join(e.items) if e.items else "-"
+                urgency_style = {
+                    "CRITICAL": "[bold red]CRITICAL[/bold red]",
+                    "HIGH": "[bold bright_yellow]HIGH[/bold bright_yellow]",
+                    "MEDIUM": "[cyan]MEDIUM[/cyan]",
+                    "INFORMATIONAL": "[dim]INFO[/dim]",
+                }.get(e.urgency, "[dim]INFO[/dim]")
+
+                headlines_str = "\n".join(e.decoded_items) if e.decoded_items else (", ".join(e.items) if e.items else "General 8-K Event")
                 table.add_row(
                     e.filing_date,
                     e.form,
-                    items_str,
-                    e.description or "Material Corporate Event",
+                    urgency_style,
+                    e.primary_category,
+                    headlines_str,
                     e.filing_url or e.accession_number,
                 )
             console.print(table)
             console.print(f"[dim]Showing {len(events)} recent material events for {ticker.upper()}.[/dim]\n")
 
         elif action in ("insiders", "form4", "4"):
-            filings = client.get_insiders(ticker, limit=limit)
-            table = Table(title=f"💼 SEC Form 4 Insider Transactions · {ticker.upper()}")
-            table.add_column("Filing Date", style="bold cyan")
-            table.add_column("Report Date", style="dim")
-            table.add_column("Form", style="bold green")
-            table.add_column("Primary Document", style="white")
-            table.add_column("Filing URL", style="dim blue")
+            trades = client.get_insider_trades(ticker, limit=limit, fresh=fresh)
+            if not trades:
+                # Fallback to metadata filings list if no XML transactions parsed
+                filings = client.get_insiders(ticker, limit=limit, fresh=fresh)
+                table = Table(title=f"💼 SEC Form 4 Insider Filings · {ticker.upper()}")
+                table.add_column("Filing Date", style="bold cyan")
+                table.add_column("Report Date", style="dim")
+                table.add_column("Form", style="bold green")
+                table.add_column("Primary Document", style="white")
+                table.add_column("Filing URL", style="dim blue")
 
-            for f in filings:
-                table.add_row(
-                    f.filing_date,
-                    f.report_date or "-",
-                    f.form,
-                    f.primary_document or "-",
-                    f.filing_url or f.accession_number,
-                )
-            console.print(table)
-            console.print(f"[dim]Showing {len(filings)} recent Form 4 insider reports for {ticker.upper()}.[/dim]\n")
+                for f in filings:
+                    table.add_row(
+                        f.filing_date,
+                        f.report_date or "-",
+                        f.form,
+                        f.primary_document or "-",
+                        f.filing_url or f.accession_number,
+                    )
+                console.print(table)
+                console.print(f"[dim]Showing {len(filings)} recent Form 4 reports for {ticker.upper()}.[/dim]\n")
+            else:
+                table = Table(title=f"💼 SEC Form 4 Insider Trades · {ticker.upper()}")
+                table.add_column("Trade Date", style="bold cyan")
+                table.add_column("Reporting Insider", style="bold white")
+                table.add_column("Role / Title", style="dim")
+                table.add_column("Action", justify="center")
+                table.add_column("Shares", justify="right", style="bold")
+                table.add_column("Price ($)", justify="right")
+                table.add_column("Total Value ($)", justify="right", style="bold")
+                table.add_column("Owned Post", justify="right", style="dim")
+                table.add_column("Form 4 Link", style="dim blue")
+
+                for t in trades:
+                    if t.action == "BUY":
+                        act_str = "[bold black on bright_green] BUY [/bold black on bright_green]"
+                        val_str = f"[bold green]${t.total_value:,.2f}[/bold green]"
+                    elif t.action == "SELL":
+                        act_str = "[bold white on red] SELL [/bold white on red]"
+                        val_str = f"[bold red]${t.total_value:,.2f}[/bold red]"
+                    elif t.action == "GRANT":
+                        act_str = "[bold cyan]GRANT[/bold cyan]"
+                        val_str = "[dim]$0.00 (Award)[/dim]" if t.total_value == 0 else f"${t.total_value:,.2f}"
+                    elif t.action == "EXERCISE":
+                        act_str = "[bold magenta]EXERCISE[/bold magenta]"
+                        val_str = f"${t.total_value:,.2f}"
+                    else:
+                        act_str = f"[yellow]{t.action}[/yellow]"
+                        val_str = f"${t.total_value:,.2f}" if t.total_value > 0 else "-"
+
+                    price_str = f"${t.price_per_share:,.2f}" if t.price_per_share > 0 else "-"
+                    table.add_row(
+                        t.transaction_date or t.filing_date,
+                        t.owner_name,
+                        t.officer_title or "Insider",
+                        act_str,
+                        f"{t.shares:,.0f}",
+                        price_str,
+                        val_str,
+                        f"{t.shares_owned_after:,.0f}" if t.shares_owned_after > 0 else "-",
+                        t.filing_url or t.accession_number,
+                    )
+                console.print(table)
+                console.print(f"[dim]Parsed directly from official SEC Form 4 XML filings for {ticker.upper()}.[/dim]\n")
 
         elif action in ("facts", "financials", "xbrl"):
-            facts = client.get_company_facts(ticker, metric=metric, limit=limit)
-            table = Table(title=f"📊 Audited GAAP Facts · {ticker.upper()} ({metric})")
-            table.add_column("Period End", style="bold cyan")
-            table.add_column("Filed Date", style="dim")
-            table.add_column("Form", style="magenta")
-            table.add_column("Frame", style="dim")
-            table.add_column("Value", justify="right", style="bold green")
-            table.add_column("Unit", style="dim")
-
-            for fact in facts:
-                val = fact["value"]
-                val_str = f"{val:,.2f}" if isinstance(val, (int, float)) else str(val)
-                table.add_row(
-                    fact["end_date"] or "-",
-                    fact["filed_date"] or "-",
-                    fact["form"] or "-",
-                    fact["frame"] or "-",
-                    val_str,
-                    fact["unit"],
-                )
-            console.print(table)
+            facts = client.get_company_facts(ticker, metric=metric, limit=limit, fresh=fresh)
+            fc_cols = [("Period End", "left", "bold cyan"), ("Filed Date", "left", "dim"), ("Form", "left", "magenta"), ("Frame", "left", "dim"), ("Value", "right", "bold green"), ("Unit", "left", "dim")]
+            fc_rows = [[fact["end_date"] or "-", fact["filed_date"] or "-", fact["form"] or "-", fact["frame"] or "-", f"{fact['value']:,.2f}" if isinstance(fact["value"], (int, float)) else str(fact["value"]), fact["unit"]] for fact in facts]
+            console.print(_t(f"📊 Audited GAAP Facts · {ticker.upper()} ({metric})", fc_cols, fc_rows))
             console.print(f"[dim]Audited GAAP numbers directly from SEC XBRL database.[/dim]\n")
 
         elif action in ("filings", "list"):
-            filings = client.get_filings(ticker, form_type=form_type, limit=limit)
+            filings = client.get_filings(ticker, form_type=form_type, limit=limit, fresh=fresh)
             title_form = f" ({form_type.upper()})" if form_type else ""
-            table = Table(title=f"📄 Official SEC Filings{title_form} · {ticker.upper()}")
-            table.add_column("Filing Date", style="bold cyan")
-            table.add_column("Form", style="bold magenta")
-            table.add_column("Description", style="white")
-            table.add_column("Primary Document", style="dim")
-            table.add_column("SEC Accession Link", style="dim blue")
-
-            for f in filings:
-                table.add_row(
-                    f.filing_date,
-                    f.form,
-                    f.description or "-",
-                    f.primary_document or "-",
-                    f.filing_url or f.accession_number,
-                )
-            console.print(table)
+            fl_cols = [("Filing Date", "left", "bold cyan"), ("Form", "left", "bold magenta"), ("Description", "left", "white"), ("Primary Document", "left", "dim"), ("SEC Accession Link", "left", "dim blue")]
+            fl_rows = [[f.filing_date, f.form, f.description or "-", f.primary_document or "-", f.filing_url or f.accession_number] for f in filings]
+            console.print(_t(f"📄 Official SEC Filings{title_form} · {ticker.upper()}", fl_cols, fl_rows))
             console.print(f"[dim]Showing {len(filings)} filings for {ticker.upper()}.[/dim]\n")
 
         else:
@@ -3586,7 +3346,124 @@ def cmd_edgar(args):
             raise SystemExit(1)
 
     except (SecurityError, EdgarError) as exc:
-        console.print(f"[bold red]SEC Research Error:[/bold red] {exc}")
+        from research import sanitize_output_text
+        console.print(f"[bold red]SEC Research Error:[/bold red] {sanitize_output_text(str(exc))}")
+        raise SystemExit(1)
+
+
+def cmd_vessel(args):
+    """Global Maritime Tanker & Cargo Tracking Alternative Data Engine."""
+    from vessel import VesselTracker, GLOBAL_CHOKEPOINTS
+    console = Console()
+
+    action = getattr(args, "action", "list") or "list"
+    identifier = getattr(args, "identifier", None)
+    vessel_type = getattr(args, "vessel_type", None)
+    company = getattr(args, "company", None)
+    chokepoint = getattr(args, "chokepoint", None)
+    status = getattr(args, "status", None)
+    limit = getattr(args, "limit", 25) or 25
+
+    tracker = VesselTracker()
+    try:
+        if action in ("list", "all", "ls"):
+            vessels = tracker.list_vessels(
+                vessel_type=vessel_type,
+                company=company,
+                chokepoint=chokepoint,
+                laden_status=status,
+                limit=limit,
+            )
+            filter_parts = []
+            if vessel_type:
+                filter_parts.append(f"Type={vessel_type}")
+            if company:
+                filter_parts.append(f"Company={company}")
+            if chokepoint:
+                filter_parts.append(f"Chokepoint={chokepoint}")
+            if status:
+                filter_parts.append(f"Status={status}")
+            filter_str = f" ({', '.join(filter_parts)})" if filter_parts else ""
+
+            v_cols = [("Vessel Name", "left", "bold cyan"), ("IMO / Flag", "left", "dim"), ("Type", "left", "magenta"), ("Operator (Owner)", "left", "white"), ("Charterer / Major", "left", "bold yellow"), ("Commodity Payload", "left", "bold green"), ("Load", "center"), ("Voyage (From → To)", "left", "white"), ("Nearest Chokepoint", "left", "bright_cyan"), ("Speed", "right")]
+            v_rows = []
+            for v in vessels:
+                load_style = "[bold green]LADEN[/bold green]" if v.laden_status == "LADEN" else "[dim]BALLAST[/dim]"
+                cp_style = f"[bold red]⚠️ {v.nearest_chokepoint} ({v.distance_to_chokepoint_nm} nm)[/bold red]" if v.in_chokepoint else f"{v.nearest_chokepoint} ({v.distance_to_chokepoint_nm} nm)"
+                route_str = f"{v.origin_port.split(',')[0]} → {v.destination_port.split(',')[0]}"
+                v_rows.append([v.name, f"{v.imo}\n{v.flag}", v.vessel_type, v.operator, v.charterer, f"{v.commodity}\n[dim]{v.cargo_volume}[/dim]", load_style, f"{route_str}\n[dim]ETA: {v.eta.split(' ')[0]}[/dim]", cp_style, f"{v.speed_knots} kts"])
+            console.print(_t(f"🚢 Global Commercial Tanker & Cargo Fleet{filter_str}", v_cols, v_rows))
+            console.print(f"[dim]Tracking {len(vessels)} commercial vessels. Use 'python -m cli vessel track <NAME>' for full voyage dossier.[/dim]\n")
+
+        elif action in ("track", "inspect", "show"):
+            if not identifier:
+                console.print("[red]Please specify a vessel IMO number, MMSI, or Name to track. e.g. python -m cli vessel track 'FRONT ALTAIR'[/red]")
+                raise SystemExit(1)
+            v = tracker.get_vessel(identifier)
+            if not v:
+                console.print(f"[bold red]Vessel not found matching identifier '{identifier}'.[/bold red]")
+                raise SystemExit(1)
+
+            in_cp_msg = f"[bold red]⚠️ CURRENTLY IN CHOKEPOINT PASSAGE ({v.distance_to_chokepoint_nm} nm)[/bold red]" if v.in_chokepoint else f"[green]{v.distance_to_chokepoint_nm} nm away[/green]"
+            load_msg = "[bold green]LADEN (Full Cargo Onboard)[/bold green]" if v.laden_status == "LADEN" else "[dim]BALLAST (Empty / Repositioning)[/dim]"
+
+            panel_content = (
+                f"[bold cyan]{v.name}[/bold cyan] · [dim]IMO: {v.imo} | MMSI: {v.mmsi} | Flag: {v.flag}[/dim]\n"
+                f"[bold magenta]Vessel Type:[/bold magenta] {v.vessel_type} | [bold white]DWT Capacity:[/bold white] {v.dwt:,} MT\n\n"
+                f"🏢 [bold white]Commercial Ownership & Charter:[/bold white]\n"
+                f"  • [bold]Commercial Operator / Owner:[/bold] [yellow]{v.operator}[/yellow]\n"
+                f"  • [bold]Charterer / Commodity Major:[/bold] [bold bright_yellow]{v.charterer}[/bold bright_yellow]\n\n"
+                f"📦 [bold white]Cargo Intelligence:[/bold white]\n"
+                f"  • [bold]Commodity Category:[/bold] {v.cargo_category}\n"
+                f"  • [bold]Specific Cargo Tag:[/bold] [bold green]{v.commodity}[/bold green]\n"
+                f"  • [bold]Estimated Payload:[/bold] {v.cargo_volume}\n"
+                f"  • [bold]Laden Status:[/bold] {load_msg}\n\n"
+                f"🗺️ [bold white]Voyage & Geofencing Status:[/bold white]\n"
+                f"  • [bold]Departure Port:[/bold] {v.origin_port}\n"
+                f"  • [bold]Destination Port:[/bold] {v.destination_port}\n"
+                f"  • [bold]Estimated Arrival (ETA):[/bold] {v.eta}\n"
+                f"  • [bold]GPS Telemetry:[/bold] Lat {v.latitude:.4f}°, Lon {v.longitude:.4f}° | Speed: {v.speed_knots} kts | Heading: {v.heading}°\n"
+                f"  • [bold]Navigation Status:[/bold] {v.nav_status}\n"
+                f"  • [bold]Nearest Strategic Chokepoint:[/bold] [bold yellow]{v.nearest_chokepoint}[/bold yellow] ({in_cp_msg})\n"
+                f"  • [dim]Last Position Telemetry Received: {v.last_update}[/dim]"
+            )
+            console.print(Panel(panel_content, title=f"⚓ Vessel Intelligence Dossier · {v.name}", expand=False))
+
+        elif action in ("chokepoints", "bottlenecks", "cp"):
+            traffic = tracker.get_chokepoint_traffic(max_distance_nm=150.0)
+            cp_cols = [("Chokepoint", "left", "bold yellow"), ("Strategic Importance & Global Trade Role", "left", "white"), ("Daily Global Flow", "left", "bold cyan"), ("Nearby Tracked Vessels", "center", "bold"), ("Active Ships within 150 nm", "left", "dim")]
+            cp_rows = []
+            for key, cp in GLOBAL_CHOKEPOINTS.items():
+                nearby = traffic.get(cp.name, [])
+                count_str = f"[bold red]{len(nearby)}[/bold red]" if nearby else "[dim]0[/dim]"
+                vessel_list_str = ", ".join(f"{v.name} ({v.distance_to_chokepoint_nm} nm)" for v in nearby) if nearby else "No active vessels within 150 nm"
+                cp_rows.append([cp.name, cp.significance, cp.daily_flow, count_str, vessel_list_str])
+            console.print(_t("🌐 Global Maritime Chokepoints & Strategic Bottleneck Monitor", cp_cols, cp_rows))
+            console.print("[dim]Monitoring primary global energy and container choke points for geopolitical and congestion risks.[/dim]\n")
+
+        elif action in ("commodities", "cargo", "breakdown"):
+            breakdown = tracker.get_commodity_breakdown()
+            cm_cols = [("Commodity Category", "left", "bold cyan"), ("Active Vessels", "center", "bold"), ("Total DWT", "right", "magenta"), ("Specific Commodities Carried", "left", "green"), ("Chartering Majors & Traders", "left", "yellow")]
+            cm_rows = [[cat_name, str(info["vessel_count"]), f"{info['total_dwt']:,} MT", ", ".join(info["commodities"]), ", ".join(info["charterers"])] for cat_name, info in breakdown["categories"].items()]
+            console.print(_t("🛢️ Floating Commodities & Seaborne Supply Chain Exposure", cm_cols, cm_rows))
+
+            summary_panel = (
+                f"• [bold white]Total Commercial Fleet Tracked:[/bold white] {breakdown['total_vessels_tracked']}\n"
+                f"• [bold white]Laden with Cargo:[/bold white] [bold green]{breakdown['laden_vessels']}[/bold green] | "
+                f"[bold white]Ballast / Repositioning:[/bold white] [dim]{breakdown['ballast_vessels']}[/dim]\n"
+                f"• [bold white]Top Chartering Entities:[/bold white] {', '.join(f'{k} ({v})' for k, v in breakdown['top_charterers'][:6])}\n"
+                f"• [bold white]Top Fleet Operators:[/bold white] {', '.join(f'{k} ({v})' for k, v in breakdown['top_operators'][:6])}"
+            )
+            console.print(Panel(summary_panel, title="📊 Seaborne Supply Chain Summary", expand=False))
+
+        else:
+            console.print(f"[red]Unknown vessel action '{action}'. Choices: list, track, chokepoints, commodities.[/red]")
+            raise SystemExit(1)
+    except Exception as exc:
+        if isinstance(exc, SystemExit):
+            raise
+        from research import sanitize_output_text
+        console.print(f"[bold red]Maritime Tracking Error:[/bold red] {sanitize_output_text(str(exc))}")
         raise SystemExit(1)
 
 
@@ -3712,7 +3589,7 @@ def cmd_dashboard(args):
     """Launch real-time terminal visualizer dashboard."""
     import asyncio
     try:
-        from sdk_dashboard import run_dashboard
+        from terminal_display import run_dashboard
     except ImportError:
         print("Error: Could not import dashboard. Make sure rich is installed.")
         return
@@ -3766,134 +3643,117 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command", required=False)
 
+    def _sub(name: str, func, help_text: str, aliases: list[str] | None = None, db: bool = False, default_db: str = "data/mdrap.db"):
+        kw = {"help": help_text}
+        if aliases:
+            kw["aliases"] = aliases
+        p = sub.add_parser(name, **kw)
+        if db:
+            p.add_argument("--db", default=default_db, help="Database path" if default_db != ":memory:" else None)
+        p.set_defaults(func=func)
+        return p
+
     # Status dashboard (quick overview)
-    p_status = sub.add_parser("status", aliases=["s", "stat"], help="Show comprehensive platform status overview")
-    p_status.add_argument("--db", default="data/mdrap.db", help="Database path")
-    p_status.set_defaults(func=cmd_status)
+    _sub("status", cmd_status, "Show comprehensive platform status overview", ["s", "stat"], db=True)
 
     # Interactive Shell (warm process with slash commands)
-    p_shell = sub.add_parser("shell", aliases=["sh"], help="Launch low-latency interactive slash-command shell")
-    p_shell.add_argument("--db", default="data/mdrap.db", help="Database path")
-    p_shell.set_defaults(func=lambda args: cmd_shell(args, parser))
+    _sub("shell", lambda args: cmd_shell(args, parser), "Launch low-latency interactive slash-command shell", ["sh"], db=True)
 
     # Run pipeline
-    p_run = sub.add_parser("run", aliases=["r"], help="Run the pipeline against the simulator (optionally with live dashboard)")
+    p_run = _sub("run", cmd_run, "Run the pipeline against the simulator (optionally with live dashboard)", ["r"], db=True)
     _add_sim_flags(p_run, default_events=50_000)
     p_run.add_argument("-v", "--version", choices=["v1", "v2"], default="v1", help="Pipeline version (v1: sync, v2: streaming)")
     p_run.add_argument("-f", "--fastpath", action="store_true", help="Enable Native C hot path accelerator")
     p_run.add_argument("-a", "--archive", action="store_true", help="Enable immutable raw event archiving to data/raw_archive/")
     p_run.add_argument("--no-analytics", dest="analytics", action="store_false", help="Disable V3 analytics aggregation")
-    p_run.add_argument("--db", default="data/mdrap.db", help="Database path")
     p_run.add_argument("-d", "--dashboard", action="store_true", help="Show live rich terminal dashboard")
-    p_run.set_defaults(func=cmd_run)
 
     # Benchmark
-    p_bench = sub.add_parser("benchmark", aliases=["bench", "b"], help="Run controlled benchmark and score quality detection")
+    p_bench = _sub("benchmark", cmd_benchmark, "Run controlled benchmark and score quality detection", ["bench", "b"], db=True, default_db=":memory:")
     _add_sim_flags(p_bench, default_events=500_000)
     p_bench.add_argument("-v", "--version", choices=["v1", "v2"], default="v1", help="Pipeline version")
     p_bench.add_argument("-f", "--fastpath", action="store_true", help="Enable Native C hot path accelerator")
-    p_bench.add_argument("--db", default=":memory:")
     p_bench.add_argument("-w", "--warmup", type=int, default=5000, help="Warmup events")
     p_bench.add_argument("-l", "--label", default="baseline", help="Benchmark label")
     p_bench.add_argument("-o", "--out-dir", default="benchmarks", help="Output directory for results")
     p_bench.add_argument("-p", "--profile", action="store_true", help="Profile with cProfile and dump stats")
-    p_bench.set_defaults(func=cmd_benchmark)
 
     # Architectural comparison
-    p_compare = sub.add_parser("compare", aliases=["comp", "c"], help="Run V1, V2, and V4 Native C on identical workloads and compare")
+    p_compare = _sub("compare", cmd_compare, "Run V1, V2, and V4 Native C on identical workloads and compare", ["comp", "c"], db=True, default_db=":memory:")
     _add_sim_flags(p_compare, default_events=100_000)
-    p_compare.add_argument("--db", default=":memory:")
     p_compare.add_argument("-w", "--warmup", type=int, default=2000, help="Warmup events")
-    p_compare.set_defaults(func=cmd_compare)
 
     # Load test
-    p_load = sub.add_parser("loadtest", aliases=["load", "l"], help="Sweep increasing event volumes and report trend")
+    p_load = _sub("loadtest", cmd_loadtest, "Sweep increasing event volumes and report trend", ["load", "l"])
     p_load.add_argument("--levels", default="10000,50000,100000,250000,500000", help="Comma-separated event counts")
     p_load.add_argument("-s", "--seed", type=int, default=42)
     p_load.add_argument("-o", "--out-dir", default="benchmarks")
-    p_load.set_defaults(func=cmd_loadtest)
 
     # Chaos drill (§15)
-    p_chaos = sub.add_parser("chaos", aliases=["ch"], help="Execute automated chaos & resilience drills (§15)")
+    p_chaos = _sub("chaos", cmd_chaos, "Execute automated chaos & resilience drills (§15)", ["ch"])
     p_chaos.add_argument("drill", nargs="?", default="all", choices=["feed", "jitter", "burst", "storage", "all", "kill"], help="Chaos drill type")
     p_chaos.add_argument("-e", "--events", type=int, default=50_000)
     p_chaos.add_argument("-s", "--seed", type=int, default=42)
     p_chaos.add_argument("--kill-source", default="FEEDX", help="Source to drop")
     p_chaos.add_argument("--kill-start", type=int, default=0, help="Drop begins after this many events")
     p_chaos.add_argument("--kill-duration", type=int, default=500, help="Number of events to drop")
-    p_chaos.set_defaults(func=cmd_chaos)
 
     # Security & RBAC (§19)
-    p_sec = sub.add_parser("security", aliases=["sec"], help="Display platform security posture, HMAC verification, RBAC, and rate limiting status")
-    p_sec.add_argument("--db", default="data/mdrap.db")
-    p_sec.set_defaults(func=cmd_security)
+    _sub("security", cmd_security, "Display platform security posture, HMAC verification, RBAC, and rate limiting status", ["sec"], db=True)
 
     # API Keys & Entitlement Management
-    p_keys = sub.add_parser("keys", help="Manage client API keys and entitlement tiers (FREE, PRO, INSTITUTIONAL)")
+    p_keys = _sub("keys", cmd_keys, "Manage client API keys and entitlement tiers (FREE, PRO, INSTITUTIONAL)", db=True)
     p_keys.add_argument("action", nargs="?", default="list", choices=["list", "create", "revoke"], help="Action to perform (default: list)")
     p_keys.add_argument("--client-id", default="Custom_Client", help="Client identifier name (for create)")
     p_keys.add_argument("--tier", default="FREE", choices=["FREE", "PRO", "INSTITUTIONAL"], help="Entitlement tier")
     p_keys.add_argument("--rate", type=float, default=None, help="Custom rate limit eps")
     p_keys.add_argument("--token", default="", help="API key token (for revoke)")
-    p_keys.add_argument("--db", default="data/mdrap.db", help="Database file path")
-    p_keys.set_defaults(func=cmd_keys)
 
     # Tamper-Evident Audit Trail (§19)
-    p_audit = sub.add_parser("audit", help="View and cryptographically verify tamper-evident audit logs")
+    p_audit = _sub("audit", cmd_audit, "View and cryptographically verify tamper-evident audit logs", db=True)
     p_audit.add_argument("--verify", action="store_true", help="Cryptographically verify SHA-256 Merkle chain integrity")
     p_audit.add_argument("--export-proof", metavar="FILE", help="Export cryptographic audit trail as an independently verifiable JSON proof")
     p_audit.add_argument("--verify-proof", metavar="FILE", help="Independently verify a standalone JSON audit proof without database access")
     p_audit.add_argument("-l", "--limit", type=int, default=20, help="Number of audit records to show")
-    p_audit.add_argument("--db", default="data/mdrap.db")
-    p_audit.set_defaults(func=cmd_audit)
 
     # Query
-    p_query = sub.add_parser("query", aliases=["q"], help="Inspect stored data: health, latest, lineage, quarantine")
+    p_query = _sub("query", cmd_query, "Inspect stored data: health, latest, lineage, quarantine", ["q"], db=True)
     p_query.add_argument("action", nargs="?", default=None, help="Action: health, latest, lineage, quarantine, counts")
     p_query.add_argument("target", nargs="?", default=None, help="Target symbol, event ID, or sample count")
-    p_query.add_argument("--db", default="data/mdrap.db")
     p_query.add_argument("--latest", metavar="INSTRUMENT", help="Latest event for instrument")
     p_query.add_argument("-l", "--limit", type=int, default=1, help="Row limit")
     p_query.add_argument("--lineage", metavar="EVENT_ID", help="Lineage for event ID")
     p_query.add_argument("--health", action="store_true", help="Feed health summary")
     p_query.add_argument("--quarantine", nargs="?", const=10, type=int, default=None, metavar="N", help="Quarantine sample")
-    p_query.set_defaults(func=cmd_query)
 
     # Historical providers and archive commands
-    from chd_cli import add_historical_parser
+    from chd import add_historical_parser
     add_historical_parser(sub)
 
-    p_replay = sub.add_parser("replay", aliases=["rep"], help="Replay archived raw events through the pipeline")
+    p_replay = _sub("replay", cmd_replay, "Replay archived raw events through the pipeline", ["rep"], db=True, default_db="data/mdrap_replay.db")
     p_replay.add_argument("--base-dir", default="data/raw_archive", help="Archive directory")
     p_replay.add_argument("-d", "--date", default=None, help="Replay only a specific date (YYYY-MM-DD)")
     p_replay.add_argument("-s", "--source", default=None, help="Replay only a specific source")
-    p_replay.add_argument("--db", default="data/mdrap_replay.db")
-    p_replay.set_defaults(func=cmd_replay)
 
-    p_archive = sub.add_parser("archive", aliases=["arc"], help="Show raw event archive statistics")
+    p_archive = _sub("archive", cmd_archive, "Show raw event archive statistics", ["arc"])
     p_archive.add_argument("--base-dir", default="data/raw_archive", help="Archive directory")
-    p_archive.set_defaults(func=cmd_archive)
 
     # V3: Analytics commands
-    p_analytics = sub.add_parser("analytics", aliases=["a", "an"], help="Query OHLCV candles, bid-ask spreads, and realized volatility")
+    p_analytics = _sub("analytics", cmd_analytics, "Query OHLCV candles, bid-ask spreads, and realized volatility", ["a", "an"], db=True)
     p_analytics.add_argument("action", nargs="?", default=None, help="Action: ohlcv, spread, vol, summary")
     p_analytics.add_argument("target", nargs="?", default=None, help="Instrument symbol (e.g. AAPL, MSFT, all)")
-    p_analytics.add_argument("--db", default="data/mdrap.db")
     p_analytics.add_argument("--ohlcv", metavar="INSTRUMENT", help="Show OHLCV candles for an instrument")
     p_analytics.add_argument("--spread", metavar="INSTRUMENT", help="Show bid-ask spread analysis (use 'all' for all instruments)")
     p_analytics.add_argument("--volatility", action="store_true", help="Show realized volatility by instrument")
     p_analytics.add_argument("--summary", action="store_true", help="Show market analytics summary")
     p_analytics.add_argument("-l", "--limit", type=int, default=20, help="Row limit")
-    p_analytics.set_defaults(func=cmd_analytics)
 
     # Synthetic Consolidated BBO
-    p_bbo = sub.add_parser("bbo", aliases=["nbbo"], help="Query Synthetic Consolidated Best Bid & Offer (NBBO)")
+    p_bbo = _sub("bbo", cmd_bbo, "Query Synthetic Consolidated Best Bid & Offer (NBBO)", ["nbbo"], db=True)
     p_bbo.add_argument("symbol", nargs="?", default=None, help="Instrument symbol (e.g. AAPL or 'all')")
-    p_bbo.add_argument("--db", default="data/mdrap.db")
-    p_bbo.set_defaults(func=cmd_bbo)
 
     # Live market streaming & in-place ticker dashboard
-    p_live = sub.add_parser("live", aliases=["stream", "watch", "ticker", "tick"], help="Stream live market ticks with in-place updating table & candlestick chart")
+    p_live = _sub("live", cmd_live, "Stream live market ticks with in-place updating table & candlestick chart", ["stream", "watch", "ticker", "tick"], db=True)
     p_live.add_argument("symbol", nargs="?", default="BTC/USD", help="Symbol to stream (e.g. BTC/USD, AAPL, or 'all')")
     p_live.add_argument("-l", "--limit", type=int, default=20, help="Number of ticks to stream (default 20, 0 for continuous)")
     p_live.add_argument("--ws", action="store_true", help="Stream using true real-time WebSockets (<1ms push) instead of HTTP polling")
@@ -3903,65 +3763,52 @@ def build_parser() -> argparse.ArgumentParser:
     p_live.add_argument("--polygon-key", default=None, help="Polygon.io API key (or set POLYGON_API_KEY env var)")
     p_live.add_argument("--databento-key", default=None, help="Databento API key (or set DATABENTO_API_KEY env var)")
     p_live.add_argument("--dbn-file", default=None, help="Path to historical .dbn binary file to stream")
-    p_live.add_argument("--db", default="data/mdrap.db")
-    p_live.set_defaults(func=cmd_live)
 
     # Phase 2: Direct High-Throughput Streaming Feed Inspector
-    p_feed = sub.add_parser("feed", aliases=["stream-feed", "feeds"], help="Inspect, benchmark, and test streaming feeds (Polygon, Databento, Crypto WS)")
+    p_feed = _sub("feed", cmd_feed, "Inspect, benchmark, and test streaming feeds (Polygon, Databento, Crypto WS)", ["stream-feed", "feeds"])
     p_feed.add_argument("--source", choices=["polygon", "databento", "crypto", "all"], default="databento", help="Streaming feed source")
     p_feed.add_argument("--symbols", default="AAPL,MSFT,NVDA", help="Comma-separated symbols to stream")
     p_feed.add_argument("-c", "--count", type=int, default=50, help="Number of packets to ingest")
     p_feed.add_argument("--mock", action="store_true", default=True, help="Use high-fidelity wire-format mock stream")
     p_feed.add_argument("--key", default=None, help="API key for feed provider")
-    p_feed.set_defaults(func=cmd_feed)
 
     # In-Terminal Candlestick Chart & Volume Graph
-    p_chart = sub.add_parser("chart", aliases=["candle", "candlestick", "graph"], help="Display visual in-terminal ASCII/Unicode candlestick chart")
+    p_chart = _sub("chart", cmd_chart, "Display visual in-terminal ASCII/Unicode candlestick chart", ["candle", "candlestick", "graph"], db=True)
     p_chart.add_argument("symbol", nargs="?", default="AAPL", help="Symbol to chart (e.g. AAPL, BTC/USD)")
     p_chart.add_argument("-i", "--interval", default="5s", help="Candlestick timeframe interval (e.g. 1s, 5s, 1m, 15m, 1h, default 5s)")
     p_chart.add_argument("-w", "--width", type=int, default=56, help="Chart width in characters (default 56)")
     p_chart.add_argument("-H", "--height", type=int, default=10, help="Chart height in lines (default 10)")
-    p_chart.add_argument("--db", default="data/mdrap.db", help="Path to SQLite database")
     p_chart.add_argument("--duckdb", default="data/mdrap.duckdb", help="Path to DuckDB database")
     p_chart.add_argument("--sim", action="store_true", help="Simulate trade stream if no stored candles found")
-    p_chart.set_defaults(func=cmd_chart)
 
     # Consolidated Level-2 Market Depth
-    p_depth = sub.add_parser("depth", aliases=["l2", "book", "ladder"], help="Show Consolidated Level-2 Multi-Venue Market Depth Ladder")
+    p_depth = _sub("depth", cmd_depth, "Show Consolidated Level-2 Multi-Venue Market Depth Ladder", ["l2", "book", "ladder"], db=True)
     p_depth.add_argument("symbol", nargs="?", default="BTC/USD", help="Symbol to inspect (e.g. BTC/USD)")
     p_depth.add_argument("-l", "--limit", type=int, default=10, help="Number of depth levels per side (default 10)")
-    p_depth.add_argument("--db", default="data/mdrap.db")
-    p_depth.set_defaults(func=cmd_depth)
 
     # Phase E: Multi-Venue VWAP Execution & Slippage Curves
-    p_vwap = sub.add_parser("vwap", aliases=["curve", "slip", "slippage"], help="Compute multi-venue real-time VWAP execution & slippage curves")
+    p_vwap = _sub("vwap", cmd_vwap, "Compute multi-venue real-time VWAP execution & slippage curves", ["curve", "slip", "slippage"], db=True)
     p_vwap.add_argument("symbol", nargs="?", default="BTC/USD", help="Symbol to inspect (e.g. BTC/USD)")
     p_vwap.add_argument("--sizes", nargs="+", type=float, default=[1.0, 5.0, 10.0, 25.0, 50.0], help="Order sizing tranches (default: 1 5 10 25 50)")
-    p_vwap.add_argument("--db", default="data/mdrap.db")
-    p_vwap.set_defaults(func=cmd_vwap)
 
     # Phase G: Institutional Financial Report & Model Exporter (Excel / CSV)
-    p_export = sub.add_parser("export", aliases=["exp", "excel", "xlsx"], help="Export market microstructure data to Excel (.xlsx) or CSV")
+    p_export = _sub("export", cmd_export, "Export market microstructure data to Excel (.xlsx) or CSV", ["exp", "excel", "xlsx"], db=True)
     p_export.add_argument("symbol", nargs="?", default="AAPL", help="Symbol to export (default: AAPL)")
-    p_export.add_argument("--db", default="data/mdrap.db", help="Path to SQLite database (default: data/mdrap.db)")
     p_export.add_argument("-o", "--output", default=None, help="Custom output file or directory path")
     p_export.add_argument("--outdir", default="data/reports", help="Directory for exported reports (default: data/reports)")
     p_export.add_argument("--csv", action="store_true", help="Export as structured CSV package instead of Excel (.xlsx)")
     p_export.add_argument("--open", action="store_true", help="Automatically launch generated workbook in Excel (Windows only)")
-    p_export.set_defaults(func=cmd_export)
 
     # Phase 7: Watchdog commands
-    p_watchdog = sub.add_parser("watchdog", aliases=["w", "wd"], help="Show source health status and watchdog alerts")
+    p_watchdog = _sub("watchdog", cmd_watchdog, "Show source health status and watchdog alerts", ["w", "wd"], db=True)
     p_watchdog.add_argument("action", nargs="?", default=None, help="Action: status or alerts")
     p_watchdog.add_argument("target", nargs="?", default=None, help="Alert limit count")
-    p_watchdog.add_argument("--db", default="data/mdrap.db")
     p_watchdog.add_argument("--status", action="store_true", help="Show current source health status")
     p_watchdog.add_argument("-a", "--alerts", nargs="?", const=10, type=int, default=None, metavar="N", help="Show recent watchdog alerts")
     p_watchdog.add_argument("-l", "--limit", type=int, default=10, help="Alert count limit")
-    p_watchdog.set_defaults(func=cmd_watchdog)
 
     # Phase 10 / Market Service: Headless Streaming Daemon & Subscriber Client (§18)
-    p_daemon = sub.add_parser("daemon", aliases=["d"], help="Run headless streaming socket daemon service (§18)")
+    p_daemon = _sub("daemon", cmd_daemon, "Run headless streaming socket daemon service (§18)", ["d"], db=True)
     p_daemon.add_argument("--host", default="127.0.0.1", help="Listening IP host")
     p_daemon.add_argument("-p", "--port", type=int, default=9876, help="Listening TCP port")
     p_daemon.add_argument("--live", action="store_true", help="Ingest real-time Binance & Coinbase market feeds")
@@ -3970,10 +3817,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_daemon.add_argument("--token", default="", help="Pre-shared bearer authentication token for multi-user security")
     p_daemon.add_argument("--no-shm", action="store_true", help="Disable zero-copy shared memory publisher")
     p_daemon.add_argument("--shm-name", default="mdrap_feed", help="Shared memory segment name (default mdrap_feed)")
-    p_daemon.add_argument("--db", default="data/mdrap.db")
-    p_daemon.set_defaults(func=cmd_daemon)
 
-    p_sub = sub.add_parser("sub", aliases=["subscribe", "client", "listen"], help="Subscribe to daemon stream and output ticks or depth to stdout")
+    p_sub = _sub("sub", cmd_sub, "Subscribe to daemon stream and output ticks or depth to stdout", ["subscribe", "client", "listen"])
     p_sub.add_argument("symbol", nargs="?", default="ALL", help="Symbol to stream (e.g. BTC/USD, AAPL, or ALL)")
     p_sub.add_argument("--host", default="127.0.0.1")
     p_sub.add_argument("-p", "--port", type=int, default=9876)
@@ -3985,37 +3830,29 @@ def build_parser() -> argparse.ArgumentParser:
     p_sub.add_argument("--binary", action="store_true", help="Stream using fixed-width binary protocol (MDRAP-BIN V1, ~75% smaller, <2µs)")
     p_sub.add_argument("-j", "--json", action="store_true", help="Output raw JSON for piping into jq or trading bots")
     p_sub.add_argument("--token", default="", help="Pre-shared bearer authentication token")
-    p_sub.set_defaults(func=cmd_sub)
 
-    p_top = sub.add_parser("top", aliases=["mon", "monitor"], help="Launch dynamic full-screen terminal service cockpit")
+    p_top = _sub("top", cmd_top, "Launch dynamic full-screen terminal service cockpit", ["mon", "monitor"])
     p_top.add_argument("--host", default="127.0.0.1")
     p_top.add_argument("-p", "--port", type=int, default=9876)
     p_top.add_argument("--token", default="", help="Pre-shared bearer authentication token")
-    p_top.set_defaults(func=cmd_top)
 
     # Multi-directional stress testing & scale analyzer
-    p_stress = sub.add_parser("stress", aliases=["str"], help="Run multi-directional stress tests and 1M to 1B scale analysis")
+    p_stress = _sub("stress", cmd_stress, "Run multi-directional stress tests and 1M to 1B scale analysis", ["str"])
     p_stress.add_argument("--module", choices=["all", "gateway", "quality", "bbo", "storage", "ipc", "e2e", "adversarial"], default="all", help="Target module to stress")
     p_stress.add_argument("-e", "--events", type=int, default=25000, help="Number of stress events (default 25,000)")
-    p_stress.set_defaults(func=cmd_stress)
 
-
-    # Comprehensive test runner    # 11. Run test suite
-    p_test_all = sub.add_parser("test-all", aliases=["test", "t"], help="Run all CLI tests, benchmarks, queries, and validations in one place")
-    p_test_all.add_argument("--db", default="data/mdrap_test.db", help="Path to SQLite database")
+    # Comprehensive test runner
+    p_test_all = _sub("test-all", cmd_test_all, "Run all CLI tests, benchmarks, queries, and validations in one place", ["test", "t"], db=True, default_db="data/mdrap_test.db")
     p_test_all.add_argument("--duckdb", default="data/mdrap_test.duckdb", help="Path to DuckDB database")
     p_test_all.add_argument("-s", "--seed", type=int, default=42)
-    p_test_all.set_defaults(func=cmd_test_all)
 
-    # 12. Version
-    p_ver = sub.add_parser("version", aliases=["v"], help="Show MDRAP version")
-    p_ver.set_defaults(func=lambda args: print("MDRAP v1.0.0-RC1"))
+    # Version
+    _sub("version", lambda args: print("MDRAP v1.0.0-RC1"), "Show MDRAP version", ["v"])
 
     # Phase 3: DuckDB Columnar Time-Series Storage & Vectorized Analytics
-    p_col = sub.add_parser("columnar", aliases=["col", "duck", "duckdb"], help="Query high-performance DuckDB columnar time-series storage & analytics (Phase 3)")
+    p_col = _sub("columnar", cmd_columnar, "Query high-performance DuckDB columnar time-series storage & analytics (Phase 3)", ["col", "duck", "duckdb"], db=True)
     p_col.add_argument("action", nargs="?", default="info", help="Columnar operation (sync, ohlcv, vwap, spread, latency, profile, export, bench, sql, info)")
     p_col.add_argument("target", nargs="?", default=None, help="Target symbol, SQL query, or export output path")
-    p_col.add_argument("--db", default="data/mdrap.db", help="Path to source SQLite database (default: data/mdrap.db)")
     p_col.add_argument("--duckdb", default="data/mdrap.duckdb", help="Path to DuckDB database file (default: data/mdrap.duckdb)")
     p_col.add_argument("-i", "--interval", type=float, default=5.0, help="Resampling interval in seconds for OHLCV (default: 5.0)")
     p_col.add_argument("-l", "--limit", type=int, default=20, help="Max rows to return (default: 20)")
@@ -4023,18 +3860,15 @@ def build_parser() -> argparse.ArgumentParser:
     p_col.add_argument("-o", "--output", default=None, help="Parquet export output path")
     p_col.add_argument("--compression", choices=["zstd", "snappy", "gzip"], default="zstd", help="Parquet compression codec (default: zstd)")
     p_col.add_argument("--full", action="store_true", help="Force full SQLite table re-scan during sync instead of incremental CDC")
-    p_col.set_defaults(func=cmd_columnar)
 
     # Phase 19: Prometheus Metrics Exporter
-    p_metrics = sub.add_parser("metrics", aliases=["prom", "prometheus"], help="Launch lightweight Prometheus metrics HTTP exporter (port 9100)")
+    p_metrics = _sub("metrics", cmd_metrics, "Launch lightweight Prometheus metrics HTTP exporter (port 9100)", ["prom", "prometheus"], db=True)
     p_metrics.add_argument("--port", type=int, default=9100, help="HTTP port (default: 9100)")
     p_metrics.add_argument("--host", default="127.0.0.1", help="HTTP bind host (default: 127.0.0.1)")
-    p_metrics.add_argument("--db", default="data/mdrap.db", help="Path to SQLite database")
     p_metrics.add_argument("--duckdb", default="data/mdrap.duckdb", help="Path to DuckDB database")
-    p_metrics.set_defaults(func=cmd_metrics)
 
     # Multi-Device Workload Simulation (§26)
-    p_sim = sub.add_parser("simulate", aliases=["usersim", "devices", "sim-users", "sim-devices"], help="Simulate concurrent multi-device normal vs fast-paced user workloads (§26)")
+    p_sim = _sub("simulate", cmd_simulate, "Simulate concurrent multi-device normal vs fast-paced user workloads (§26)", ["usersim", "devices", "sim-users", "sim-devices"], db=True)
     p_sim.add_argument("--scale", choices=["pilot", "desk", "floor", "surge", "sweep", "custom"], default="desk", help="Simulation scale tier (default: desk)")
     p_sim.add_argument("-t", "--duration", type=float, default=5.0, help="Simulation duration in seconds (default: 5.0)")
     p_sim.add_argument("--normal", type=int, default=3, help="Number of normal user devices (for custom scale)")
@@ -4044,33 +3878,28 @@ def build_parser() -> argparse.ArgumentParser:
     p_sim.add_argument("--port", type=int, default=19880, help="Streaming daemon TCP port (default: 19880)")
     p_sim.add_argument("--prom-port", type=int, default=19110, help="Prometheus HTTP port (default: 19110)")
     p_sim.add_argument("--eps", type=float, default=3000.0, help="Simulated feed tick generation rate (default: 3000.0)")
-    p_sim.add_argument("--db", default="data/mdrap.db", help="Path to SQLite database")
     p_sim.add_argument("--duckdb", default="data/mdrap.duckdb", help="Path to DuckDB database")
     p_sim.add_argument("-o", "--report", default=None, help="Save JSON performance report to file")
-    p_sim.set_defaults(func=cmd_simulate)
 
     # Phase 5: Market-By-Order (L3 MBO) Engine
-    p_mbo = sub.add_parser("mbo", aliases=["l3", "queue"], help="Inspect Level-3 Market-By-Order (MBO) FIFO queue ranks and L2 book projection (§18, §26)")
+    p_mbo = _sub("mbo", cmd_mbo, "Inspect Level-3 Market-By-Order (MBO) FIFO queue ranks and L2 book projection (§18, §26)", ["l3", "queue"])
     p_mbo.add_argument("symbol", nargs="?", default="AAPL", help="Symbol to inspect (default: AAPL)")
     p_mbo.add_argument("-l", "--limit", type=int, default=5, help="Depth levels to display (default: 5)")
-    p_mbo.set_defaults(func=cmd_mbo)
 
     # Phase 6: Multicast UDP A/B Arbitrator & Gap Recovery
-    p_arb = sub.add_parser("arbitrate", aliases=["arb", "multicast", "udp"], help="Run dual-path Multicast UDP A/B feed arbitration and TCP replay test (§18, §26)")
+    p_arb = _sub("arbitrate", cmd_arbitrate, "Run dual-path Multicast UDP A/B feed arbitration and TCP replay test (§18, §26)", ["arb", "multicast", "udp"])
     p_arb.add_argument("-e", "--events", type=int, default=500, help="Number of dual-line events to simulate (default: 500)")
     p_arb.add_argument("--drop-a", type=float, default=0.05, help="Packet drop rate on Feed A (default: 0.05)")
     p_arb.add_argument("--drop-b", type=float, default=0.05, help="Packet drop rate on Feed B (default: 0.05)")
-    p_arb.set_defaults(func=cmd_arbitrate)
 
     # Phase 26: High-Throughput Native C SBE Validation Engine (§26)
-    p_tp = sub.add_parser("throughput", aliases=["tp", "meps", "million"], help="Benchmark 500,000 to 1,000,000+ events/sec on vectorized Native C SBE stream (§26)")
+    p_tp = _sub("throughput", cmd_throughput, "Benchmark 500,000 to 1,000,000+ events/sec on vectorized Native C SBE stream (§26)", ["tp", "meps", "million"])
     p_tp.add_argument("-e", "--events", type=int, default=1_000_000, help="Number of events to benchmark (e.g. 500000 or 1000000, default: 1,000,000)")
     p_tp.add_argument("--anomalies", type=float, default=0.01, help="Anomaly injection rate (default: 0.01 = 1%%)")
     p_tp.add_argument("--compare", action="store_true", help="Display architectural progression comparison table")
-    p_tp.set_defaults(func=cmd_throughput)
 
     # Institutional Best Execution & TCA Slippage Engine (§26, SEC 605/606)
-    p_tca = sub.add_parser("tca", aliases=["bestex", "slip-audit"], help="Run Institutional Best Execution & TCA Slippage Engine with Merkle Proofs")
+    p_tca = _sub("tca", cmd_tca, "Run Institutional Best Execution & TCA Slippage Engine with Merkle Proofs", ["bestex", "slip-audit"], db=True)
     p_tca.add_argument("symbol", nargs="?", default="AAPL", help="Instrument symbol (default: AAPL)")
     p_tca.add_argument("-c", "--count", type=int, default=50, help="Number of demo execution records to generate (default: 50)")
     p_tca.add_argument("-f", "--file", default=None, help="Path to execution records CSV file")
@@ -4079,80 +3908,87 @@ def build_parser() -> argparse.ArgumentParser:
     p_tca.add_argument("--benchmark", choices=["ARRIVAL_PRICE", "MIDPOINT", "VWAP"], default="ARRIVAL_PRICE", help="Benchmark price for slippage calculation")
     p_tca.add_argument("--export", nargs="?", const=True, default=None, help="Export 3-tab audit-grade Excel TCA report (.xlsx)")
     p_tca.add_argument("--open", action="store_true", help="Open exported report in Microsoft Excel (Windows only)")
-    p_tca.add_argument("--db", default="data/mdrap.db")
-    p_tca.set_defaults(func=cmd_tca)
 
     # Institutional Order Flow & Cumulative Volume Delta (CVD) Tracker (§26)
-    p_flow = sub.add_parser("flow", aliases=["cvd", "orderflow", "whales"], help="Track Institutional Order Flow, Lee-Ready Aggressor Side, CVD & MPID Net Deltas")
+    p_flow = _sub("flow", cmd_flow, "Track Institutional Order Flow, Lee-Ready Aggressor Side, CVD & MPID Net Deltas", ["cvd", "orderflow", "whales"], db=True)
     p_flow.add_argument("symbol", nargs="?", default="AAPL", help="Instrument symbol (default: AAPL)")
     p_flow.add_argument("-c", "--count", type=int, default=500, help="Number of trades to analyze (default: 500)")
     p_flow.add_argument("-s", "--seed", type=int, default=42, help="Deterministic random seed")
     p_flow.add_argument("--whales", action="store_true", help="Display only whale blocks and institutional prints")
     p_flow.add_argument("--export", nargs="?", const=True, default=None, help="Export 3-tab Order Flow & CVD Excel report (.xlsx)")
     p_flow.add_argument("--open", action="store_true", help="Open exported report in Microsoft Excel (Windows only)")
-    p_flow.add_argument("--db", default="data/mdrap.db")
-    p_flow.set_defaults(func=cmd_flow)
 
     # Live Streaming Dynamic Excel Model Bridge (Bloomberg =BDP() Replacement)
-    p_bridge = sub.add_parser("bridge", aliases=["excel-bridge", "bdp", "rtd"], help="Run Live Streaming Dynamic Excel Model Bridge (Bloomberg =BDP() Replacement)")
+    p_bridge = _sub("bridge", cmd_bridge, "Run Live Streaming Dynamic Excel Model Bridge (Bloomberg =BDP() Replacement)", ["excel-bridge", "bdp", "rtd"])
     p_bridge.add_argument("-p", "--port", type=int, default=8085, help="HTTP listening port (default: 8085)")
     p_bridge.add_argument("--host", default="127.0.0.1", help="HTTP listening host (default: 127.0.0.1)")
     p_bridge.add_argument("--open", action="store_true", help="Automatically launch pre-built model in Microsoft Excel")
-    p_bridge.set_defaults(func=cmd_bridge)
 
     # Zero-Install Local Web Cockpit
-    p_web = sub.add_parser("web", aliases=["cockpit-web", "ui", "web-dashboard"], help="Launch Zero-Install Local Web Cockpit terminal in your browser")
+    p_web = _sub("web", cmd_web, "Launch Zero-Install Local Web Cockpit terminal in your browser", ["cockpit-web", "ui", "web-dashboard"])
     p_web.add_argument("-p", "--port", type=int, default=8080, help="HTTP listening port (default: 8080)")
     p_web.add_argument("--host", default="127.0.0.1", help="HTTP listening host (default: 127.0.0.1)")
     p_web.add_argument("--no-browser", dest="browser", action="store_false", help="Do not automatically launch web browser")
-    p_web.set_defaults(func=cmd_web)
 
     # Institutional Algorithmic Strategy Engine & Paper EMS (§26)
-    p_strat = sub.add_parser("strategy", aliases=["strat", "algo", "ems"], help="Institutional Algorithmic Strategy Engine & Paper EMS (§26)")
+    p_strat = _sub("strategy", cmd_strategy, "Institutional Algorithmic Strategy Engine & Paper EMS (§26)", ["strat", "algo", "ems"], db=True)
     p_strat.add_argument("action", nargs="?", default="list", choices=["list", "run"], help="Action to perform (default: list)")
     p_strat.add_argument("-s", "--strategy", default="whale_momentum", choices=["whale_momentum", "spread_capture"], help="Strategy name")
     p_strat.add_argument("-i", "--symbol", default="AAPL", help="Instrument symbol (default: AAPL)")
     p_strat.add_argument("-e", "--events", type=int, default=1000, help="Event count for paper simulation (default: 1000)")
-    p_strat.add_argument("--db", default="data/mdrap.db", help="Database path")
-    p_strat.set_defaults(func=cmd_strategy)
+    p_strat.add_argument("-b", "--book", "--show-book", action="store_true", help="Display Level-2 Order Book depth ladder at run completion")
+    p_strat.add_argument("-x", "--executions", "--trades", action="store_true", help="Display detailed strategy execution ledger with arrival prices and slippage")
+    p_strat.add_argument("--export", nargs="?", const="default", default=None, metavar="FILE", help="Export strategy execution log and order book history to JSON or CSV")
 
     # Multi-Process Sharded Ingestion Benchmark (§25 V4)
-    p_shard = sub.add_parser("shard", aliases=["multicore", "parallel"], help="Multi-Process Sharded Ingestion Benchmark (§25 V4, bypassing Python GIL)")
+    p_shard = _sub("shard", cmd_shard, "Multi-Process Sharded Ingestion Benchmark (§25 V4, bypassing Python GIL)", ["multicore", "parallel"])
     p_shard.add_argument("-w", "--workers", type=int, default=4, help="Number of OS worker processes (default: 4)")
     p_shard.add_argument("-e", "--events", type=int, default=40000, help="Total events to benchmark (default: 40000)")
-    p_shard.set_defaults(func=cmd_shard)
 
     # Phase 9: External TCP Gateway
-    p_gw = sub.add_parser("gateway", aliases=["gw", "tcp-gw"], help="Launch AsyncIO TCP Gateway for external clients")
+    p_gw = _sub("gateway", cmd_gateway, "Launch AsyncIO TCP Gateway for external clients", ["gw", "tcp-gw"])
     p_gw.add_argument("--host", default="127.0.0.1", help="TCP bind host (default: 127.0.0.1)")
     p_gw.add_argument("-p", "--port", type=int, default=9000, help="TCP listen port (default: 9000)")
-    p_gw.set_defaults(func=cmd_gateway)
 
     # Phase 9: Python SDK Demo
-    p_sdk = sub.add_parser("sdk-demo", aliases=["sdk"], help="Run Quant-Ready Python SDK Client Demo")
-    p_sdk.set_defaults(func=cmd_sdk_demo)
+    _sub("sdk-demo", cmd_sdk_demo, "Run Quant-Ready Python SDK Client Demo", ["sdk"])
 
-    p_dash = sub.add_parser("dashboard", aliases=["dash"], help="Launch real-time terminal visualizer dashboard")
+    p_dash = _sub("dashboard", cmd_dashboard, "Launch real-time terminal visualizer dashboard", ["dash"])
     p_dash.add_argument("--port", type=int, default=9000, help="TCP Gateway port")
-    p_dash.set_defaults(func=cmd_dashboard)
 
     # NASDAQ TotalView-ITCH 5.0 Binary Feed Engine & Global Benchmark
-    p_itch = sub.add_parser("itch", aliases=["totalview"], help="NASDAQ TotalView-ITCH 5.0 Binary Feed Engine & Global Benchmark")
+    p_itch = _sub("itch", cmd_itch, "NASDAQ TotalView-ITCH 5.0 Binary Feed Engine & Global Benchmark", ["totalview"])
     p_itch.add_argument("action", nargs="?", default="bench", choices=["bench", "parse", "generate"], help="Action to perform (default: bench)")
     p_itch.add_argument("file", nargs="?", default=None, help="Path to .itch or .itch.gz file (for parse)")
     p_itch.add_argument("-e", "--events", type=int, default=1_000_000, help="Number of messages (for bench/generate, default: 1,000,000)")
     p_itch.add_argument("-o", "--output", default="data/sample.itch", help="Output file path (for generate)")
     p_itch.add_argument("-l", "--limit", type=int, default=50, help="Number of records to preview (for parse)")
-    p_itch.set_defaults(func=cmd_itch)
 
     # Phase 10: SEC EDGAR Alternative Data & Corporate Research Engine
-    p_edgar = sub.add_parser("edgar", aliases=["research", "events", "filings", "company"], help="SEC EDGAR Alternative Data: 8-K material events, Form 4 insiders, GAAP facts")
+    p_edgar = _sub("edgar", cmd_edgar, "SEC EDGAR Alternative Data: 8-K material events, Form 4 insiders, GAAP facts", ["research", "events", "filings", "company"])
     p_edgar.add_argument("action", nargs="?", default="events", choices=["events", "insiders", "profile", "facts", "filings"], help="Action to perform (default: events)")
     p_edgar.add_argument("ticker", nargs="?", default="AAPL", help="Company ticker symbol (default: AAPL)")
     p_edgar.add_argument("-t", "--type", dest="form_type", default=None, help="Filter by form type (e.g., 10-K, 10-Q, 8-K, 4)")
     p_edgar.add_argument("-l", "--limit", type=int, default=15, help="Maximum number of items to display (default: 15)")
     p_edgar.add_argument("-m", "--metric", default="Revenues", help="GAAP metric name for facts (default: Revenues)")
-    p_edgar.set_defaults(func=cmd_edgar)
+    p_edgar.add_argument("-f", "--fresh", action="store_true", help="Bypass local cache and force fresh SEC pull")
+
+    # Phase 11: Maritime Tanker & Cargo Alternative Data Engine
+    p_vessel = _sub("vessel", cmd_vessel, "Maritime Tanker & Cargo Tracking: Crude oil, LNG, bulk, and container tracking", ["vessels", "tankers", "ships", "ais"])
+    p_vessel.add_argument("action", nargs="?", default="list", choices=["list", "track", "chokepoints", "commodities"], help="Action to perform (default: list)")
+    p_vessel.add_argument("identifier", nargs="?", default=None, help="Vessel IMO, MMSI, or Name to track")
+    p_vessel.add_argument("-t", "--type", dest="vessel_type", default=None, help="Filter by vessel type (e.g. tanker, lng, bulk, container)")
+    p_vessel.add_argument("-c", "--company", default=None, help="Filter by operating or chartering company (e.g. Frontline, Shell, Aramco, Maersk)")
+    p_vessel.add_argument("-k", "--chokepoint", default=None, help="Filter by nearest chokepoint (e.g. hormuz, suez, malacca)")
+    p_vessel.add_argument("-s", "--status", default=None, choices=["laden", "ballast", "LADEN", "BALLAST"], help="Filter by cargo load status (laden, ballast)")
+    p_vessel.add_argument("-l", "--limit", type=int, default=25, help="Maximum number of vessels to display (default: 25)")
+
+    # Quantitative Research, Trading & Risk Subparsers (Gaps 1-12)
+    try:
+        from trading_cli import add_trading_parsers
+        add_trading_parsers(sub)
+    except Exception:
+        pass
 
     return parser
 
@@ -4231,6 +4067,19 @@ MNEMONIC_MAP = {
     "dashboard": "dashboard", "dash": "dashboard",
     "itch": "itch", "totalview": "itch",
     "edgar": "edgar", "research": "edgar", "events": "edgar", "filings": "edgar", "company": "edgar", "insiders": "edgar",
+    "vessel": "vessel", "vessels": "vessel", "tanker": "vessel", "tankers": "vessel", "ship": "vessel", "ships": "vessel", "ais": "vessel", "cargo": "vessel",
+    # Quantitative Research & Trading Additions (Gaps 1-12)
+    "backtest": "backtest", "bt": "backtest",
+    "risk": "risk", "var": "risk", "cvar": "risk",
+    "bars": "bars", "bardb": "bars",
+    "options": "options", "opt": "options", "greeks": "options",
+    "news": "news", "sentiment": "news",
+    "alert": "alert", "alerts": "alert",
+    "watchlist": "watchlist", "wl": "watchlist",
+    "portfolio": "portfolio", "port": "portfolio", "pnl": "portfolio",
+    "corpact": "corpact", "splits": "corpact", "dividends": "corpact",
+    "features": "features", "feat": "features",
+    "schedule": "schedule", "sched": "schedule", "cron": "schedule",
     "exit": "exit", "quit": "exit", "q": "exit",
 }
 
@@ -4250,7 +4099,8 @@ ALL_CANONICAL_COMMANDS = [
     "historical", "status", "run", "benchmark", "compare", "loadtest", "chaos", "security", "query", "archive", "replay",
     "analytics", "bbo", "depth", "vwap", "export", "live", "chart", "sub", "ohlcv", "spread", "vol", "top", "daemon",
     "watchdog", "stress", "simulate", "test-all", "throughput", "archive", "replay", "latest",
-    "lineage", "quar", "mbo", "arbitrate", "tca", "flow", "bridge", "web", "strategy", "shard", "gateway", "sdk-demo", "dashboard", "version", "itch", "edgar"
+    "lineage", "quar", "mbo", "arbitrate", "tca", "flow", "bridge", "web", "strategy", "shard", "gateway", "sdk-demo", "dashboard", "version", "itch", "edgar", "vessel",
+    "backtest", "risk", "bars", "options", "news", "alert", "watchlist", "portfolio", "corpact", "features", "schedule"
 ]
 
 
@@ -4506,6 +4356,21 @@ def cmd_shell(args=None, parser=None):
                 cli_tokens = ["query", "lineage"] + rest
             elif verb == "quar":
                 cli_tokens = ["query", "quarantine"] + rest
+            elif verb in ("edgar", "research", "events", "filings", "company", "insiders", "facts", "profile"):
+                if verb in ("events", "insiders", "filings", "facts"):
+                    cli_tokens = ["edgar", verb] + rest
+                elif verb in ("company", "profile"):
+                    cli_tokens = ["edgar", "profile"] + rest
+                else:
+                    if rest and rest[0] not in ("events", "insiders", "profile", "facts", "filings") and not rest[0].startswith("-"):
+                        cli_tokens = ["edgar", "events"] + rest
+                    else:
+                        cli_tokens = ["edgar"] + rest
+            elif verb in ("vessel", "vessels", "tanker", "tankers", "ship", "ships", "ais", "cargo"):
+                if rest and rest[0] not in ("list", "track", "chokepoints", "commodities") and not rest[0].startswith("-"):
+                    cli_tokens = ["vessel", "track"] + rest
+                else:
+                    cli_tokens = ["vessel"] + rest
             else:
                 cli_tokens = [verb] + rest
 
@@ -4699,13 +4564,21 @@ def main():
             sys.argv = [sys.argv[0], "simulate"] + sys.argv[2:]
         elif raw_cmd in ("itch", "totalview"):
             sys.argv = [sys.argv[0], "itch"] + sys.argv[2:]
-        elif raw_cmd in ("edgar", "research", "events", "filings", "company", "insiders"):
-            if raw_cmd in ("events", "insiders", "filings"):
-                # e.g. 'python -m cli events AAPL' -> 'python -m cli edgar events AAPL'
-                sys.argv = [sys.argv[0], "edgar", raw_cmd] + sys.argv[2:]
+        elif raw_cmd in ("edgar", "research", "events", "filings", "company", "insiders", "facts", "profile"):
+            if orig_cmd in ("events", "insiders", "filings", "facts"):
+                sys.argv = [sys.argv[0], "edgar", orig_cmd] + sys.argv[2:]
+            elif orig_cmd in ("company", "profile"):
+                sys.argv = [sys.argv[0], "edgar", "profile"] + sys.argv[2:]
             else:
-                # e.g. 'python -m cli edgar profile AAPL' -> 'python -m cli edgar profile AAPL'
-                sys.argv = [sys.argv[0], "edgar"] + sys.argv[2:]
+                if len(sys.argv) > 2 and sys.argv[2] not in ("events", "insiders", "profile", "facts", "filings") and not sys.argv[2].startswith("-"):
+                    sys.argv = [sys.argv[0], "edgar", "events"] + sys.argv[2:]
+                else:
+                    sys.argv = [sys.argv[0], "edgar"] + sys.argv[2:]
+        elif raw_cmd in ("vessel", "vessels", "tanker", "tankers", "ship", "ships", "ais", "cargo"):
+            if len(sys.argv) > 2 and sys.argv[2] not in ("list", "track", "chokepoints", "commodities") and not sys.argv[2].startswith("-"):
+                sys.argv = [sys.argv[0], "vessel", "track"] + sys.argv[2:]
+            else:
+                sys.argv = [sys.argv[0], "vessel"] + sys.argv[2:]
         elif arg1.startswith("/"):
             sys.argv[1] = raw_cmd
 

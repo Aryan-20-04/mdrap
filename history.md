@@ -951,6 +951,94 @@ Implemented three remaining spec milestones in dependency order. Test suite expa
   - `tests/test_fastpath_throughput.py` (4 tests: validation rules, 100k throughput, 500k throughput, 1M throughput).
   - Full suite: **306 passed in 55.49s (100% green)**. Zero regressions.
 
+---
+
+## 2026-09-12: Phase 10, 11, 12 — Institutional Alternative Data & Native C Spatial Fastpath
+
+### 1. Phase 10: SEC EDGAR Alternative Data & Corporate Research Engine (`src/research.py`)
+- **SEC Integration**: Real-time integration with `data.sec.gov` REST API and XBRL database.
+- **Form 8-K Taxonomy**: Plain-English decoding of material corporate event triggers (Item 5.02 executive changes, Item 2.02 earnings announcements, Item 1.01 material agreements) classified by urgency (`CRITICAL`, `HIGH`, `MEDIUM`, `INFO`).
+- **Form 4 XML Parser**: Deep inspection of officer and director insider transactions with share volumes, transaction prices, and post-trade holdings.
+- **Audited GAAP Facts**: Retrieves historical XBRL frames for Revenues, Net Income, and Operating Margin.
+- **Security & Multi-Tier Caching**: SSRF allowlist protection, XXE & Billion Laughs mitigation, developer path redaction, and multi-tier caching (memory + atomic disk cache with 300s TTL) dropping repeat query latency from ~400 ms to < 1 ms.
+
+### 2. Phase 11: Global Maritime Tanker & Cargo Tracking Engine (`src/vessel.py`)
+- **Seaborne Supply Chain Exposure**: Real-time commercial fleet tracking across crude tankers (VLCC/ULCC), LNG carriers, dry bulkers, and container vessels.
+- **Commercial Attribution**: Tags every commercial vessel with its operating fleet owner (Frontline, Euronav, DHT, Maersk, COSCO) and chartering commodity major (Saudi Aramco, Shell, BP, Vitol, Trafigura, Vale).
+- **Geopolitical Chokepoints**: Geofencing and proximity alerting for 8 strategic bottlenecks (Strait of Hormuz, Malacca, Suez, Bab-el-Mandeb, Panama, Bosphorus, Cape of Good Hope, Dover Strait).
+- **Adversarial Hardening**: Input validation rejecting non-finite coordinates (NaN/Inf), coordinate overflows, negative speeds, and invalid circular headings. $O(1)$ indexed lookup by IMO, MMSI, and Name.
+
+### 3. Phase 12: Tier-2 Native C Vectorized Geodesic & Spatial Fastpath (`src/fastpath.c`, `src/fastpath.dll`, `src/fastpath.py`)
+- **Native C Spatial Engine**: Recompiled GCC 14 `-O3` native C shared library (`src/fastpath.dll`).
+- **AABB Bounding Box Pre-Filter**: Branchless spatial filter rejecting distant chokepoints in ~1 CPU cycle (~0.3 ns).
+- **Structure-of-Arrays (SoA) Batch Geofencing**: Evaluates 10,000 vessels across 8 chokepoints (80,000 spatial comparisons) in **23.08 ms (~288 ns per chokepoint check)**.
+- **Resilience**: Zero-error transparent fallback to pure Python math if native DLL is absent.
+- **CLI Ergonomics**: Smart routing for `mdrap edgar AAPL`, `mdrap company AAPL`, `mdrap vessel "FRONT ALTAIR"`, `mdrap tankers`.
+
+### 4. Regression & Platform Verification
+- Added test suites: `test_research.py`, `test_research_security.py`, `test_vessel.py`, `test_vessel_stress.py`, `test_vessel_fastpath.py`.
+- **Full Test Suite: 486 passed in 72.67s (100% green)**. Zero regressions.
+- Working tree cleanly preserved without git commits per user directive.
+
+---
+
+## 2026-09-13: Phase 13 — Native C Quantitative Hot Path, Codebase Leaning & Dual-Mode Packaging
+
+### 1. Phase 13: Native C Quantitative Hot-Path Accelerators (`src/fastpath.c`, `src/fastpath.dll`, `src/fastpath.py`)
+- **American Option Pricing (CRR Model)**: `fastpath_binomial_price` pre-factors terminal powers and dynamic programming backward induction, dropping contract pricing from 13.62 ms (Python) to **0.21 ms (Native C, 64.1x speedup)**.
+- **Quantitative Feature Store Kernels**:
+  - `fastpath_calc_bollinger`: Vectorized rolling mean and standard deviation for 1,000 points drops from 53.61 ms to **1.04 ms (51.6x speedup)**.
+  - `fastpath_calc_rsi`: Wilder-smoothed RSI in contiguous double arrays running in **3.01 ms (2.2x speedup)**.
+  - `fastpath_calc_atr`: Zero-allocation true range accumulator.
+- **Portfolio Risk Kernels**:
+  - `fastpath_monte_carlo_var`: 64-bit XorShift128+ PRNG with Box-Muller Gaussian transforms simulating 10,000 portfolio paths in **3.44 ms (2.3x speedup)**.
+- **FIX Protocol Engine**:
+  - `fastpath_fix_checksum`: Vectorized byte accumulation modulo 256 evaluating tag-value frames in **2.25 µs (3.1x speedup)**.
+
+### 2. Native FastPath Packaging for Git & Pip (`v1.0.3`)
+- **Cross-Platform Multi-Compiler Build Script (`build_fastpath.py`)**:
+  - Auto-detects GCC, Clang, or MSVC (`cl.exe`) on system PATH.
+  - Cross-platform output targets: `fastpath.dll` (Windows), `fastpath.so` (Linux), `fastpath.dylib` / `fastpath.so` (macOS).
+  - Enforces 30s timeout and argument list safety (`shell=False`).
+- **Transparent JIT Auto-Compilation**:
+  - `src/fastpath.py::_load_native_lib()` automatically detects missing native binaries on first import and invokes JIT compilation in sub-seconds.
+  - Users cloning from GitHub on Windows, Linux, or macOS get compiled C acceleration natively with zero manual compilation steps.
+- **Pip Packaging Hooks (`setup.py`, `pyproject.toml`, `MANIFEST.in`)**:
+  - `BuildPyWithFastpath` and `DevelopWithFastpath` build hooks compile native C libraries during `pip install .` and `pip install -e .`.
+  - Bumped version to `v1.0.3` and updated `pyproject.toml` to package all **70 modules**.
+  - Added `MANIFEST.in` ensuring C sources, compiled binaries, headers, and build scripts are bundled in source tarballs and wheels.
+
+### 3. Codebase Leaning & Deduplication
+- Merged `src/chd_cli.py` into `src/chd.py` (backward-compatible shim).
+- Merged `src/sdk_dashboard.py` into `src/terminal_display.py` (backward-compatible shim).
+- Merged `src/sdk/client.py` into `src/client.py` (backward-compatible shim).
+- Reduced ~250 lines of argparse subparser boilerplate via `_sub()`.
+- Deduplicated L2 depth and VWAP SQLite parsing logic into `_load_or_fetch_depth_events()`.
+- Pruned non-public strategy files (`mdrap_launch_plan.md`, `mdrap_open_core_strategy.md`).
+- Cleaned profiling binary dumps (`benchmarks/*.prof`), test residue (`data/test_dest.tmp`, `.coverage`), and legacy distribution wheels (`dist/`).
+- Added `dist/`, `build/`, and `*.egg-info/` to `.gitignore`.
+
+### 4. Comprehensive Testing & Dual Execution Modes
+- Added test suites: `test_fastpath_quantitative.py`, `test_options.py`, `test_risk.py`, `test_features.py`, `test_backtest.py`, `test_bardb.py`, `test_news.py`, `test_alerts.py`, `test_fix.py`, `test_corporate_actions.py`, `test_portfolio.py`, `test_scheduler.py`.
+- **Default Execution Mode (With FastPath)**:
+  - `python -m pytest tests/ -q` -> **620 passed in 69.77s (100% green, 0 failed, 0 skipped)**.
+- **Fallback Execution Mode (Without FastPath)**:
+  - `$env:MDRAP_DISABLE_FASTPATH="1"; python -m pytest tests/ -q` -> **597 passed, 7 skipped in 70.76s (0 failed)**.
+### 5. Empirical 4-Stage Critical Path Benchmark & PyPI Release
+- **Amdahl's Law & FFI Boundary Tax Empirical Proof**:
+  - Proved tick-by-tick Python `ctypes` FFI crossing adds ~1.11 µs marshaling overhead per event.
+  - Isolated and measured 4 stages on identical 100,000 deterministic events (`seed=42`):
+    - Feed Decode (JSON string vs Binary SBE): 466k eps vs 1.96M eps (**4.21x speedup**).
+    - Object Allocation (Python Dataclass vs Contiguous Native C array): 387k eps vs 1.47M eps (**3.80x speedup**).
+    - Scheduling & Quality Evaluation (Python Engine vs Vectorized Native C Kernel): 456k eps vs 46.58M eps (**102.05x speedup, 21.5 ns per event**).
+    - Amdahl's Law confirmed: in Python pipelines, object allocation (31.4%) and string decoding (26.0%) dominate runtime.
+- **Distribution Packages Built & Validated (`dist/`)**:
+  - `dist/mdrap-1.0.3-py3-none-any.whl` (468 KB) with bundled `fastpath.dll`, `fastpath.c`, and multi-compiler JIT builder.
+  - `dist/mdrap-1.0.3.tar.gz` (705 KB).
+  - Validation: `twine check dist/*` PASSED (100%).
+
+
+
 
 
 

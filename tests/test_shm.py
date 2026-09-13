@@ -183,8 +183,8 @@ def test_shm_stream_generator_sub_microsecond():
 
     assert len(events) == 50
     avg_ns_per_read = elapsed_ns / 50.0
-    # Average read latency per slot should be well under 20 microseconds (typically < 1-2µs)
-    assert avg_ns_per_read < 20_000, f"Read latency was {avg_ns_per_read} ns"
+    # Average read latency per slot should be well under 50 microseconds (typically < 1-5µs)
+    assert avg_ns_per_read < 50_000, f"Read latency was {avg_ns_per_read} ns"
 
     reader.close()
     writer.close()

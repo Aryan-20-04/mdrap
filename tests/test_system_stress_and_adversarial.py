@@ -114,6 +114,8 @@ class TestCommandTimingBenchmark:
             "watchdog": ["watchdog", "status", "--db", db_path],
             "strategy": ["strategy", "list"],
             "shard": ["shard", "-w", "2", "-e", "500"],
+            "vessel": ["vessel", "list", "-l", "5"],
+            "edgar": ["edgar", "events", "AAPL", "-l", "5"],
         }
 
         for cmd_name, argv in cmd_args_map.items():

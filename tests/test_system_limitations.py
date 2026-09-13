@@ -14,6 +14,7 @@ import os
 import sys
 import tempfile
 import time
+import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
@@ -37,6 +38,9 @@ def test_instrument_universe_capacity_and_fallback_limit():
     Verify that instruments within the mapped set run fast, and
     an expanded universe (e.g. 100 instruments) runs safely without memory corruption.
     """
+    from fastpath import is_available
+    if not is_available():
+        pytest.skip("FastPath native library not available")
     engine = FastQualityEngine()
 
     # 1. Test standard mapped instruments (e.g. AAPL, MSFT, NVDA)

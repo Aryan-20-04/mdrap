@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mdrap"
-version = "1.0.2"
+version = "1.0.3"
 description = "Market Data Reliability & Acceleration Platform - Financial market infrastructure for converting noisy market feeds into validated canonical streams"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -78,17 +78,20 @@ mdrap = "cli:main"
 
 [tool.setuptools]
 py-modules = [
-    "cli", "analytics", "archive", "async_storage", "bbo", "benchmark", "broker", 
-    "chaos", "chd", "chd_cli", "chd_history", "client", "columnar", "config", "dashboard", "databento_feed", "depth",
-    "excel_bridge", "exporter", "fastpath", "feed_handler", "feed_workers", 
-    "flow_tracker", "gateway", "gateway_tcp", "live", "mbo", "metrics", "models", 
-    "multicast_arbitrator", "pipeline", "pipeline_v2", "polygon_feed", "prometheus", 
-    "protocol", "quality", "reconciliation", "sbe", "sdk_dashboard", "security", 
-    "service", "sharded_pipeline", "shm", "simulator", "spsc_ring", "storage", 
-    "strategy_sdk", "stresstest", "tca", "term", "terminal_display", "watchdog", 
-    "web_cockpit", "workload_simulator", "ws_feed", "itch", "research"
+    "alerts", "analytics", "archive", "async_storage", "backtest", "bardb", "bbo", "benchmark", "broker", 
+    "chaos", "chd", "chd_cli", "chd_history", "cli", "client", "columnar", "config", "corporate_actions", 
+    "dashboard", "databento_feed", "depth", "excel_bridge", "exporter", "fastpath", "features", 
+    "feed_handler", "feed_workers", "fix_engine", "flow_tracker", "gateway", "gateway_tcp", "itch", 
+    "live", "mbo", "metrics", "models", "multicast_arbitrator", "news", "options", "pipeline", 
+    "pipeline_v2", "polygon_feed", "portfolio", "prometheus", "protocol", "quality", "reconciliation", 
+    "research", "risk", "sbe", "scheduler", "sdk_dashboard", "security", "service", "sharded_pipeline", 
+    "shm", "simulator", "spsc_ring", "storage", "strategy_sdk", "stresstest", "tca", "term", 
+    "terminal_display", "trading_cli", "vessel", "watchdog", "web_cockpit", "workload_simulator", "ws_feed"
 ]
 package-dir = {"" = "src"}
+
+[tool.setuptools.package-data]
+"*" = ["fastpath.c", "fastpath.dll", "fastpath.so", "fastpath.dylib"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

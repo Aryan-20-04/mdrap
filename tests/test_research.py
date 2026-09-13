@@ -142,3 +142,145 @@ def test_insiders_and_facts_parsing(tmp_path):
         facts = client.get_company_facts('AAPL', metric='Revenues')
         assert len(facts) == 1
         assert facts[0]['value'] == 383285000000
+
+
+def test_decode_8k_items():
+    from research import decode_8k_items
+
+    # Critical bankruptcy
+    decoded, cat, urgency = decode_8k_items(['1.03'])
+    assert urgency == 'CRITICAL'
+    assert cat == 'Solvency Risk'
+    assert 'Bankruptcy' in decoded[0]
+
+    # High executive change
+    decoded, cat, urgency = decode_8k_items(['5.02', '9.01'])
+    assert urgency == 'HIGH'
+    assert cat == 'Executive Leadership'
+    assert any('5.02' in d for d in decoded)
+    assert any('9.01' in d for d in decoded)
+
+    # Earnings
+    decoded, cat, urgency = decode_8k_items(['2.02'])
+    assert urgency == 'HIGH'
+    assert cat == 'Financials'
+
+
+def test_parse_form4_xml():
+    from research import parse_form4_xml
+
+    sample_xml = """<?xml version="1.0"?>
+    <ownershipDocument>
+        <periodOfReport>2026-09-08</periodOfReport>
+        <reportingOwner>
+            <reportingOwnerId>
+                <rptOwnerName>Cook Timothy D</rptOwnerName>
+            </reportingOwnerId>
+            <reportingOwnerRelationship>
+                <isDirector>true</isDirector>
+                <isOfficer>true</isOfficer>
+                <officerTitle>Chief Executive Officer</officerTitle>
+            </reportingOwnerRelationship>
+        </reportingOwner>
+        <nonDerivativeTable>
+            <nonDerivativeTransaction>
+                <securityTitle><value>Common Stock</value></securityTitle>
+                <transactionDate><value>2026-09-08</value></transactionDate>
+                <transactionCoding><transactionCode>S</transactionCode></transactionCoding>
+                <transactionAmounts>
+                    <transactionShares><value>50000</value></transactionShares>
+                    <transactionPricePerShare><value>230.50</value></transactionPricePerShare>
+                    <transactionAcquiredDisposedCode><value>D</value></transactionAcquiredDisposedCode>
+                </transactionAmounts>
+                <postTransactionAmounts>
+                    <sharesOwnedFollowingTransaction><value>3280000</value></sharesOwnedFollowingTransaction>
+                </postTransactionAmounts>
+                <ownershipNature>
+                    <directOrIndirectOwnership><value>D</value></directOrIndirectOwnership>
+                </ownershipNature>
+            </nonDerivativeTransaction>
+        </nonDerivativeTable>
+    </ownershipDocument>
+    """
+
+    trades = parse_form4_xml(
+        sample_xml,
+        ticker='AAPL',
+        accession_number='0000320193-26-000999',
+        filing_date='2026-09-09',
+        filing_url='https://sec.gov/test',
+    )
+
+    assert len(trades) == 1
+    t = trades[0]
+    assert t.ticker == 'AAPL'
+    assert t.owner_name == 'Cook Timothy D'
+    assert t.officer_title == 'Chief Executive Officer'
+    assert t.is_director is True
+    assert t.is_officer is True
+    assert t.action == 'SELL'
+    assert t.shares == 50000.0
+    assert t.price_per_share == 230.50
+    assert t.total_value == 50000.0 * 230.50
+    assert t.shares_owned_after == 3280000.0
+    assert t.direct_or_indirect == 'D'
+
+
+def test_get_insider_trades_cached(tmp_path):
+    from research import EdgarClient
+
+    mock_submissions = {
+        'filings': {
+            'recent': {
+                'accessionNumber': ['0000320193-26-000888'],
+                'form': ['4'],
+                'filingDate': ['2026-09-05'],
+                'primaryDocument': ['xslF345X06/form4.xml'],
+            }
+        }
+    }
+
+    sample_xml = b"""<?xml version="1.0"?>
+    <ownershipDocument>
+        <reportingOwner>
+            <reportingOwnerId><rptOwnerName>Maestri Luca</rptOwnerName></reportingOwnerId>
+            <reportingOwnerRelationship>
+                <isOfficer>true</isOfficer>
+                <officerTitle>CFO</officerTitle>
+            </reportingOwnerRelationship>
+        </reportingOwner>
+        <nonDerivativeTable>
+            <nonDerivativeTransaction>
+                <securityTitle><value>Common Stock</value></securityTitle>
+                <transactionDate><value>2026-09-04</value></transactionDate>
+                <transactionCoding><transactionCode>P</transactionCode></transactionCoding>
+                <transactionAmounts>
+                    <transactionShares><value>10000</value></transactionShares>
+                    <transactionPricePerShare><value>225.00</value></transactionPricePerShare>
+                    <transactionAcquiredDisposedCode><value>A</value></transactionAcquiredDisposedCode>
+                </transactionAmounts>
+                <postTransactionAmounts>
+                    <sharesOwnedFollowingTransaction><value>150000</value></sharesOwnedFollowingTransaction>
+                </postTransactionAmounts>
+            </nonDerivativeTransaction>
+        </nonDerivativeTable>
+    </ownershipDocument>
+    """
+
+    client = EdgarClient(cache_dir=tmp_path)
+    client._ticker_map = {'AAPL': {'cik_str': 320193, 'ticker': 'AAPL', 'title': 'Apple Inc.'}}
+
+    # Pre-populate XML disk cache to test offline cache reading
+    xml_cache = tmp_path / 'xml'
+    xml_cache.mkdir(parents=True, exist_ok=True)
+    (xml_cache / '000032019326000888.xml').write_bytes(sample_xml)
+
+    with patch.object(client, '_request', return_value=mock_submissions):
+        trades = client.get_insider_trades('AAPL', limit=5)
+        assert len(trades) == 1
+        assert trades[0].owner_name == 'Maestri Luca'
+        assert trades[0].officer_title == 'CFO'
+        assert trades[0].action == 'BUY'
+        assert trades[0].shares == 10000.0
+        assert trades[0].total_value == 2250000.0
+

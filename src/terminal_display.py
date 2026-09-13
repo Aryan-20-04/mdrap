@@ -20,7 +20,11 @@ if sys.platform == "win32":
     except Exception:
         pass
 
+import asyncio
+
+from rich.align import Align
 from rich.console import Console, RenderableType
+from rich.layout import Layout
 from rich.live import Live
 from rich.panel import Panel
 from rich.table import Table
@@ -777,3 +781,171 @@ class LiveTickerDashboard:
 
 # Convenience alias
 TerminalDisplay = LiveTickerDashboard
+
+
+# ---------------------------------------------------------------------------
+# External Gateway TUI Dashboard
+# ---------------------------------------------------------------------------
+
+class DashboardState:
+    def __init__(self):
+        self.bbo: Dict[str, Dict[str, float]] = {}
+        self.vwap: Dict[str, Dict[str, float]] = {}  # symbol -> {vol, vol_price}
+        self.events_received = 0
+        self.last_events = 0
+        self.throughput_history: List[int] = [0] * 40
+        self.start_time = time.time()
+        self.status = "DISCONNECTED"
+
+
+def create_layout() -> Layout:
+    layout = Layout()
+    layout.split_column(
+        Layout(name="header", size=3),
+        Layout(name="main"),
+        Layout(name="footer", size=3)
+    )
+    layout["main"].split_row(
+        Layout(name="bbo", ratio=1),
+        Layout(name="vwap", ratio=1)
+    )
+    return layout
+
+
+def _generate_ascii_sparkline(data: List[int]) -> str:
+    """Generates an ASCII sparkline from a list of ints."""
+    if not data:
+        return ""
+    ticks = [' ', ' ', '▂', '▃', '▄', '▅', '▆', '▇', '█']
+    min_val = min(data)
+    max_val = max(data)
+    if max_val == min_val:
+        return " " * len(data)
+    range_val = max_val - min_val
+    return "".join(ticks[int(((v - min_val) / range_val) * (len(ticks) - 1))] for v in data)
+
+
+def render_dashboard_bbo_table(dashboard_state: DashboardState) -> Panel:
+    table = Table(box=None, expand=True)
+    table.add_column("Symbol", style="cyan", justify="left")
+    table.add_column("Bid", style="green", justify="right")
+    table.add_column("Spread", style="white", justify="right")
+    table.add_column("Ask", style="red", justify="right")
+
+    for sym, data in sorted(dashboard_state.bbo.items())[:15]:
+        bid = data.get("bid", 0.0)
+        ask = data.get("ask", 0.0)
+        spread = ask - bid if ask and bid else 0.0
+        table.add_row(
+            sym,
+            f"{bid:.2f}" if bid else "-",
+            f"{spread:.3f}" if spread else "-",
+            f"{ask:.2f}" if ask else "-"
+        )
+    return Panel(table, title="[bold green]Live Top of Book (BBO)[/bold green]", border_style="green")
+
+
+def render_dashboard_vwap_table(dashboard_state: DashboardState) -> Panel:
+    table = Table(box=None, expand=True)
+    table.add_column("Symbol", style="cyan", justify="left")
+    table.add_column("VWAP", style="yellow", justify="right")
+    table.add_column("Volume", style="magenta", justify="right")
+
+    for sym, data in sorted(dashboard_state.vwap.items())[:15]:
+        vol = data.get("vol", 0.0)
+        vol_price = data.get("vol_price", 0.0)
+        v = (vol_price / vol) if vol > 0 else 0.0
+        table.add_row(sym, f"${v:.3f}", f"{int(vol):,}")
+
+    return Panel(table, title="[bold yellow]Execution VWAP Tracking[/bold yellow]", border_style="yellow")
+
+
+def render_dashboard_header(dashboard_state: DashboardState) -> Panel:
+    status_color = "green" if dashboard_state.status == "CONNECTED" else "red"
+    header_text = Text()
+    header_text.append("MDRAP QUANTITATIVE DASHBOARD", style="bold white")
+    header_text.append(" | Gateway Status: ")
+    header_text.append(f"{dashboard_state.status}", style=f"bold {status_color}")
+    header_text.append(f" | Events Processed: {dashboard_state.events_received:,}", style="cyan")
+    return Panel(Align.center(header_text), style="bold blue")
+
+
+def render_dashboard_footer(dashboard_state: DashboardState) -> Panel:
+    spark = _generate_ascii_sparkline(dashboard_state.throughput_history)
+    eps = dashboard_state.throughput_history[-1] if dashboard_state.throughput_history else 0
+    return Panel(f"Throughput: {eps:,} eps | [cyan]{spark}[/cyan]", title="Network Telemetry", border_style="blue")
+
+
+def build_dashboard(dashboard_state: DashboardState) -> Layout:
+    layout = create_layout()
+    layout["header"].update(render_dashboard_header(dashboard_state))
+    layout["bbo"].update(render_dashboard_bbo_table(dashboard_state))
+    layout["vwap"].update(render_dashboard_vwap_table(dashboard_state))
+    layout["footer"].update(render_dashboard_footer(dashboard_state))
+    return layout
+
+
+async def run_dashboard(host: str = "127.0.0.1", port: int = 9000):
+    """Run real-time external TUI dashboard connected to MDRAP TCP Gateway."""
+    try:
+        from client import MDrapClient
+    except ImportError:
+        from sdk.client import MDrapClient
+
+    dash_state = DashboardState()
+    client = MDrapClient(host=host, port=port)
+
+    def on_event(msg: Dict[str, Any]):
+        dash_state.events_received += 1
+        sym = msg.get("instrument")
+        evt_type = msg.get("event_type")
+        price = msg.get("price")
+        size = msg.get("size")
+
+        if not sym or price is None:
+            return
+
+        if evt_type == "QUOTE":
+            if sym not in dash_state.bbo:
+                dash_state.bbo[sym] = {"bid": 0.0, "ask": 0.0}
+            if size and size > 0:
+                dash_state.bbo[sym]["bid"] = price
+                dash_state.bbo[sym]["ask"] = price + 0.02
+        elif evt_type == "TRADE":
+            if sym not in dash_state.vwap:
+                dash_state.vwap[sym] = {"vol": 0.0, "vol_price": 0.0}
+            dash_state.vwap[sym]["vol"] += (size or 0.0)
+            dash_state.vwap[sym]["vol_price"] += (price * (size or 0.0))
+
+    def on_system(msg: Dict[str, Any]):
+        dash_state.status = "CONNECTED"
+
+    client.on("event", on_event)
+    client.on("system", on_system)
+
+    network_task = asyncio.create_task(client.subscribe())
+    console = Console()
+
+    with Live(build_dashboard(dash_state), console=console, refresh_per_second=10, screen=True) as live:
+        try:
+            while not network_task.done():
+                current = dash_state.events_received
+                diff = current - dash_state.last_events
+                dash_state.last_events = current
+                dash_state.throughput_history.append(diff * 10)
+                if len(dash_state.throughput_history) > 40:
+                    dash_state.throughput_history.pop(0)
+
+                live.update(build_dashboard(dash_state))
+                await asyncio.sleep(0.1)
+
+            if network_task.done() and network_task.exception():
+                dash_state.status = f"ERROR: {network_task.exception()}"
+                live.update(build_dashboard(dash_state))
+                await asyncio.sleep(3.0)
+
+        except asyncio.CancelledError:
+            pass
+        finally:
+            await client.close()
+

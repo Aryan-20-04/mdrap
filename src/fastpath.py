@@ -72,6 +72,21 @@ class _CFastResult(ctypes.Structure):
     ]
 
 
+class _CFastChokepoint(ctypes.Structure):
+    _pack_ = 8
+    _fields_ = [
+        ("lat", ctypes.c_double),
+        ("lon", ctypes.c_double),
+        ("radius_nm", ctypes.c_double),
+        ("dlat_max", ctypes.c_double),
+        ("dlon_max", ctypes.c_double),
+        ("lat_rad", ctypes.c_double),
+        ("lon_rad", ctypes.c_double),
+        ("cos_lat", ctypes.c_double),
+        ("sin_lat", ctypes.c_double),
+    ]
+
+
 class _CFastReplayRecord(ctypes.Structure):
     _pack_ = 1
     _fields_ = [
@@ -133,10 +148,46 @@ class _CFastReplayRecord(ctypes.Structure):
 
 
 def _load_native_lib():
-    src_dir = os.path.dirname(__file__)
-    dll_name = "fastpath.dll" if sys.platform == "win32" else "fastpath.so"
-    dll_path = os.path.join(src_dir, dll_name)
-    if os.path.exists(dll_path):
+    if os.environ.get("MDRAP_DISABLE_FASTPATH", "").lower() in ("1", "true", "yes", "on"):
+        return None
+    src_dir = os.path.dirname(os.path.abspath(__file__))
+    candidates = []
+    if sys.platform == "win32":
+        candidates = ["fastpath.dll", "fastpath.pyd"]
+    elif sys.platform == "darwin":
+        candidates = ["fastpath.dylib", "fastpath.so"]
+    else:
+        candidates = ["fastpath.so"]
+
+    dll_path = None
+    for name in candidates:
+        p = os.path.join(src_dir, name)
+        if os.path.isfile(p):
+            dll_path = p
+            break
+
+    # If missing, attempt JIT compilation on first run (git clone or pip install without prebuilt binary)
+    if dll_path is None:
+        c_source = os.path.join(src_dir, "fastpath.c")
+        if os.path.isfile(c_source):
+            try:
+                try:
+                    import build_fastpath
+                except ImportError:
+                    root_dir = os.path.dirname(src_dir)
+                    if root_dir not in sys.path:
+                        sys.path.insert(0, root_dir)
+                    import build_fastpath
+                if build_fastpath.build(target_dir=src_dir, quiet=True):
+                    for name in candidates:
+                        p = os.path.join(src_dir, name)
+                        if os.path.isfile(p):
+                            dll_path = p
+                            break
+            except Exception:
+                pass
+
+    if dll_path and os.path.exists(dll_path):
         try:
             lib = ctypes.CDLL(dll_path)
             lib.fastpath_init.argtypes = [ctypes.c_double, ctypes.c_double, ctypes.c_int32]
@@ -251,6 +302,117 @@ def _load_native_lib():
                 ]
                 lib.fastpath_sbe_generate_stream.restype = ctypes.c_int32
 
+            # Phase 12: Geodesic & Spatial Fastpath bindings
+            if hasattr(lib, "fastpath_haversine_nm"):
+                lib.fastpath_haversine_nm.argtypes = [
+                    ctypes.c_double, ctypes.c_double, ctypes.c_double, ctypes.c_double
+                ]
+                lib.fastpath_haversine_nm.restype = ctypes.c_double
+
+            if hasattr(lib, "fastpath_equirectangular_nm"):
+                lib.fastpath_equirectangular_nm.argtypes = [
+                    ctypes.c_double, ctypes.c_double, ctypes.c_double, ctypes.c_double
+                ]
+                lib.fastpath_equirectangular_nm.restype = ctypes.c_double
+
+            if hasattr(lib, "fastpath_vessel_chokepoint_eval"):
+                lib.fastpath_vessel_chokepoint_eval.argtypes = [
+                    ctypes.c_double, ctypes.c_double,
+                    ctypes.POINTER(_CFastChokepoint), ctypes.c_int32,
+                    ctypes.POINTER(ctypes.c_int32), ctypes.POINTER(ctypes.c_double),
+                    ctypes.POINTER(ctypes.c_uint8)
+                ]
+                lib.fastpath_vessel_chokepoint_eval.restype = ctypes.c_int32
+
+            if hasattr(lib, "fastpath_batch_fleet_geofence"):
+                lib.fastpath_batch_fleet_geofence.argtypes = [
+                    ctypes.POINTER(ctypes.c_double), ctypes.POINTER(ctypes.c_double), ctypes.c_int32,
+                    ctypes.POINTER(_CFastChokepoint), ctypes.c_int32,
+                    ctypes.POINTER(ctypes.c_int32), ctypes.POINTER(ctypes.c_double),
+                    ctypes.POINTER(ctypes.c_uint8)
+                ]
+                lib.fastpath_batch_fleet_geofence.restype = ctypes.c_int32
+
+            # Phase 13: Quantitative & Options Accelerators
+            if hasattr(lib, "fastpath_bsm_price"):
+                lib.fastpath_bsm_price.argtypes = [
+                    ctypes.c_double, ctypes.c_double, ctypes.c_double,
+                    ctypes.c_double, ctypes.c_double, ctypes.c_int32
+                ]
+                lib.fastpath_bsm_price.restype = ctypes.c_double
+
+            if hasattr(lib, "fastpath_bsm_greeks"):
+                lib.fastpath_bsm_greeks.argtypes = [
+                    ctypes.c_double, ctypes.c_double, ctypes.c_double,
+                    ctypes.c_double, ctypes.c_double, ctypes.c_int32,
+                    ctypes.POINTER(ctypes.c_double)
+                ]
+                lib.fastpath_bsm_greeks.restype = None
+
+            if hasattr(lib, "fastpath_binomial_price"):
+                lib.fastpath_binomial_price.argtypes = [
+                    ctypes.c_double, ctypes.c_double, ctypes.c_double,
+                    ctypes.c_double, ctypes.c_double, ctypes.c_int32,
+                    ctypes.c_int32
+                ]
+                lib.fastpath_binomial_price.restype = ctypes.c_double
+
+            if hasattr(lib, "fastpath_implied_volatility"):
+                lib.fastpath_implied_volatility.argtypes = [
+                    ctypes.c_double, ctypes.c_double, ctypes.c_double,
+                    ctypes.c_double, ctypes.c_double, ctypes.c_int32,
+                    ctypes.c_double, ctypes.c_int32
+                ]
+                lib.fastpath_implied_volatility.restype = ctypes.c_double
+
+            if hasattr(lib, "fastpath_calc_rsi"):
+                lib.fastpath_calc_rsi.argtypes = [
+                    ctypes.POINTER(ctypes.c_double), ctypes.c_int32,
+                    ctypes.c_int32, ctypes.POINTER(ctypes.c_double)
+                ]
+                lib.fastpath_calc_rsi.restype = None
+
+            if hasattr(lib, "fastpath_calc_ema"):
+                lib.fastpath_calc_ema.argtypes = [
+                    ctypes.POINTER(ctypes.c_double), ctypes.c_int32,
+                    ctypes.c_int32, ctypes.POINTER(ctypes.c_double)
+                ]
+                lib.fastpath_calc_ema.restype = None
+
+            if hasattr(lib, "fastpath_calc_bollinger"):
+                lib.fastpath_calc_bollinger.argtypes = [
+                    ctypes.POINTER(ctypes.c_double), ctypes.c_int32,
+                    ctypes.c_int32, ctypes.c_double,
+                    ctypes.POINTER(ctypes.c_double),
+                    ctypes.POINTER(ctypes.c_double),
+                    ctypes.POINTER(ctypes.c_double)
+                ]
+                lib.fastpath_calc_bollinger.restype = None
+
+            if hasattr(lib, "fastpath_calc_atr"):
+                lib.fastpath_calc_atr.argtypes = [
+                    ctypes.POINTER(ctypes.c_double),
+                    ctypes.POINTER(ctypes.c_double),
+                    ctypes.POINTER(ctypes.c_double),
+                    ctypes.c_int32, ctypes.c_int32,
+                    ctypes.POINTER(ctypes.c_double)
+                ]
+                lib.fastpath_calc_atr.restype = None
+
+            if hasattr(lib, "fastpath_monte_carlo_var"):
+                lib.fastpath_monte_carlo_var.argtypes = [
+                    ctypes.c_double, ctypes.c_double, ctypes.c_int32,
+                    ctypes.c_int32, ctypes.c_double, ctypes.c_double,
+                    ctypes.c_uint64
+                ]
+                lib.fastpath_monte_carlo_var.restype = ctypes.c_double
+
+            if hasattr(lib, "fastpath_fix_checksum"):
+                lib.fastpath_fix_checksum.argtypes = [
+                    ctypes.POINTER(ctypes.c_uint8), ctypes.c_int32
+                ]
+                lib.fastpath_fix_checksum.restype = ctypes.c_uint32
+
             return lib
         except Exception as e:
             print(f"[fastpath] Warning: Failed to load {dll_path}: {e}", file=sys.stderr)
@@ -259,8 +421,14 @@ def _load_native_lib():
 
 
 _NATIVE_LIB = _load_native_lib()
+HAS_FASTPATH: bool = bool(_NATIVE_LIB is not None)
 _FAST_EVAL = _NATIVE_LIB.fastpath_eval_fast if _NATIVE_LIB else None
 _NAN = math.nan
+
+
+def is_available() -> bool:
+    """Return True if the native C accelerator library is loaded and operational."""
+    return _NATIVE_LIB is not None
 
 
 class FastQualityEngine:
@@ -466,6 +634,7 @@ class NativeReplayBuffer:
         self._lock = threading.RLock()
         self.is_native = bool(_NATIVE_LIB and hasattr(_NATIVE_LIB, "fastpath_replay_record"))
         self._fallback_deque: Optional[collections.deque] = None
+        self._fallback_total = 0
 
         if self.is_native:
             _NATIVE_LIB.fastpath_replay_clear()
@@ -535,6 +704,7 @@ class NativeReplayBuffer:
                     "engine_us": round(engine_us, 1),
                 }
                 self._fallback_deque.append(entry)
+                self._fallback_total = getattr(self, "_fallback_total", 0) + 1
 
     def replay(
         self,
@@ -649,7 +819,7 @@ class NativeReplayBuffer:
                     "capacity": self.capacity,
                     "min_seq": min_s,
                     "max_seq": max_s,
-                    "total_recorded": count,
+                    "total_recorded": getattr(self, "_fallback_total", count),
                 }
 
     def clear(self) -> None:
@@ -659,6 +829,7 @@ class NativeReplayBuffer:
                 _NATIVE_LIB.fastpath_replay_clear()
             else:
                 self._fallback_deque.clear()
+                self._fallback_total = 0
 
     def __len__(self) -> int:
         """Return number of active records stored in the replay buffer."""
@@ -795,3 +966,214 @@ def native_shm_read_slot(buf_ptr, slot_count: int, target_seq: int) -> Optional[
         }
 
 
+# ---------------------------------------------------------------------------
+# High-Level Spatial Geodesic & Fleet Geofencing Fastpath
+# ---------------------------------------------------------------------------
+
+def fast_haversine_nm(lat1: float, lon1: float, lat2: float, lon2: float) -> Optional[float]:
+    """Calculates Great-Circle distance in nautical miles using native C hot path."""
+    if _NATIVE_LIB and hasattr(_NATIVE_LIB, "fastpath_haversine_nm"):
+        dist = _NATIVE_LIB.fastpath_haversine_nm(lat1, lon1, lat2, lon2)
+        if dist >= 0.0:
+            return dist
+    return None
+
+
+def make_fast_chokepoints(chokepoints) -> Optional[ctypes.Array]:
+    """Pre-marshals a list or dict of Chokepoint objects into a contiguous C struct array."""
+    if not chokepoints:
+        return None
+    cp_list = list(chokepoints.values()) if isinstance(chokepoints, dict) else list(chokepoints)
+    arr_type = _CFastChokepoint * len(cp_list)
+    arr = arr_type()
+    for i, cp in enumerate(cp_list):
+        lat = float(cp.latitude)
+        lon = float(cp.longitude)
+        rad_nm = float(cp.radius_nm)
+        lat_rad = math.radians(lat)
+        lon_rad = math.radians(lon)
+        cos_lat = math.cos(lat_rad)
+        sin_lat = math.sin(lat_rad)
+        dlat_max = rad_nm / 60.0
+        dlon_max = rad_nm / (60.0 * max(0.01, cos_lat))
+
+        arr[i].lat = lat
+        arr[i].lon = lon
+        arr[i].radius_nm = rad_nm
+        arr[i].dlat_max = dlat_max
+        arr[i].dlon_max = dlon_max
+        arr[i].lat_rad = lat_rad
+        arr[i].lon_rad = lon_rad
+        arr[i].cos_lat = cos_lat
+        arr[i].sin_lat = sin_lat
+    return arr
+
+
+def fast_vessel_chokepoint_eval(
+    v_lat: float, v_lon: float, c_chokepoints: ctypes.Array, cp_count: int
+) -> Optional[Tuple[int, float, bool]]:
+    """Evaluates a single vessel against chokepoints using native C hot path with AABB pre-filtering."""
+    if _NATIVE_LIB and hasattr(_NATIVE_LIB, "fastpath_vessel_chokepoint_eval") and c_chokepoints:
+        nearest_idx = ctypes.c_int32(0)
+        nearest_dist = ctypes.c_double(0.0)
+        in_cp = ctypes.c_uint8(0)
+
+        rc = _NATIVE_LIB.fastpath_vessel_chokepoint_eval(
+            v_lat, v_lon, c_chokepoints, cp_count,
+            ctypes.byref(nearest_idx), ctypes.byref(nearest_dist), ctypes.byref(in_cp)
+        )
+        if rc == 0:
+            return int(nearest_idx.value), float(nearest_dist.value), bool(in_cp.value)
+    return None
+
+
+def fast_batch_fleet_geofence(
+    v_lats: list[float], v_lons: list[float], c_chokepoints: ctypes.Array, cp_count: int
+) -> Optional[list[Tuple[int, float, bool]]]:
+    """Evaluates an entire fleet of vessels in a single vectorized C call."""
+    count = len(v_lats)
+    if count == 0 or count != len(v_lons):
+        return []
+    if _NATIVE_LIB and hasattr(_NATIVE_LIB, "fastpath_batch_fleet_geofence") and c_chokepoints:
+        lats_arr = (ctypes.c_double * count)(*v_lats)
+        lons_arr = (ctypes.c_double * count)(*v_lons)
+        out_idx = (ctypes.c_int32 * count)()
+        out_dist = (ctypes.c_double * count)()
+        out_in = (ctypes.c_uint8 * count)()
+
+        rc = _NATIVE_LIB.fastpath_batch_fleet_geofence(
+            lats_arr, lons_arr, count, c_chokepoints, cp_count,
+            out_idx, out_dist, out_in
+        )
+        if rc == 0:
+            return [(int(out_idx[i]), float(out_dist[i]), bool(out_in[i])) for i in range(count)]
+    return None
+
+
+# ============================================================================
+# Phase 13: High-Performance Quantitative & Options Python Wrappers
+# ============================================================================
+
+def fast_bsm_price(
+    S: float, K: float, T: float, r: float, sigma: float, is_call: bool
+) -> Optional[float]:
+    """Calculate European option price using native C BSM implementation."""
+    if _NATIVE_LIB and hasattr(_NATIVE_LIB, "fastpath_bsm_price"):
+        return float(_NATIVE_LIB.fastpath_bsm_price(S, K, T, r, sigma, 1 if is_call else 0))
+    return None
+
+
+def fast_bsm_greeks(
+    S: float, K: float, T: float, r: float, sigma: float, is_call: bool
+) -> Optional[tuple[float, float, float, float, float, float, float]]:
+    """Compute Delta, Gamma, Theta, Vega, Rho, Vanna, Volga in native C."""
+    if _NATIVE_LIB and hasattr(_NATIVE_LIB, "fastpath_bsm_greeks"):
+        out = (ctypes.c_double * 7)()
+        _NATIVE_LIB.fastpath_bsm_greeks(S, K, T, r, sigma, 1 if is_call else 0, out)
+        return (out[0], out[1], out[2], out[3], out[4], out[5], out[6])
+    return None
+
+
+def fast_binomial_price(
+    S: float, K: float, T: float, r: float, sigma: float, is_call: bool, steps: int = 200
+) -> Optional[float]:
+    """Calculate American option price using native C CRR binomial tree."""
+    if _NATIVE_LIB and hasattr(_NATIVE_LIB, "fastpath_binomial_price"):
+        return float(_NATIVE_LIB.fastpath_binomial_price(S, K, T, r, sigma, 1 if is_call else 0, steps))
+    return None
+
+
+def fast_implied_volatility(
+    market_price: float, S: float, K: float, T: float, r: float, is_call: bool,
+    tol: float = 1e-6, max_iter: int = 100
+) -> Optional[float]:
+    """Solve for implied volatility using native C Newton-Raphson solver."""
+    if _NATIVE_LIB and hasattr(_NATIVE_LIB, "fastpath_implied_volatility"):
+        return float(_NATIVE_LIB.fastpath_implied_volatility(
+            market_price, S, K, T, r, 1 if is_call else 0, tol, max_iter
+        ))
+    return None
+
+
+def fast_calc_rsi(prices: list[float], period: int = 14) -> Optional[list[float]]:
+    """Compute Wilder-smoothed RSI using native C kernel."""
+    n = len(prices)
+    if n == 0 or period <= 0:
+        return []
+    if _NATIVE_LIB and hasattr(_NATIVE_LIB, "fastpath_calc_rsi"):
+        in_arr = (ctypes.c_double * n)(*prices)
+        out_arr = (ctypes.c_double * n)()
+        _NATIVE_LIB.fastpath_calc_rsi(in_arr, n, period, out_arr)
+        return [float(x) for x in out_arr]
+    return None
+
+
+def fast_calc_ema(prices: list[float], period: int = 20) -> Optional[list[float]]:
+    """Compute exponential moving average using native C kernel."""
+    n = len(prices)
+    if n == 0 or period <= 0:
+        return []
+    if _NATIVE_LIB and hasattr(_NATIVE_LIB, "fastpath_calc_ema"):
+        in_arr = (ctypes.c_double * n)(*prices)
+        out_arr = (ctypes.c_double * n)()
+        _NATIVE_LIB.fastpath_calc_ema(in_arr, n, period, out_arr)
+        return [float(x) for x in out_arr]
+    return None
+
+
+def fast_calc_bollinger(
+    prices: list[float], period: int = 20, num_std: float = 2.0
+) -> Optional[tuple[list[float], list[float], list[float]]]:
+    """Compute Bollinger Bands (Upper, Middle, Lower) using native C kernel."""
+    n = len(prices)
+    if n == 0 or period <= 0:
+        return ([], [], [])
+    if _NATIVE_LIB and hasattr(_NATIVE_LIB, "fastpath_calc_bollinger"):
+        in_arr = (ctypes.c_double * n)(*prices)
+        upper = (ctypes.c_double * n)()
+        mid = (ctypes.c_double * n)()
+        lower = (ctypes.c_double * n)()
+        _NATIVE_LIB.fastpath_calc_bollinger(in_arr, n, period, num_std, upper, mid, lower)
+        return ([float(x) for x in upper], [float(x) for x in mid], [float(x) for x in lower])
+    return None
+
+
+def fast_calc_atr(
+    highs: list[float], lows: list[float], closes: list[float], period: int = 14
+) -> Optional[list[float]]:
+    """Compute Average True Range using native C kernel."""
+    n = len(highs)
+    if n == 0 or len(lows) != n or len(closes) != n or period <= 0:
+        return []
+    if _NATIVE_LIB and hasattr(_NATIVE_LIB, "fastpath_calc_atr"):
+        h_arr = (ctypes.c_double * n)(*highs)
+        l_arr = (ctypes.c_double * n)(*lows)
+        c_arr = (ctypes.c_double * n)(*closes)
+        out_arr = (ctypes.c_double * n)()
+        _NATIVE_LIB.fastpath_calc_atr(h_arr, l_arr, c_arr, n, period, out_arr)
+        return [float(x) for x in out_arr]
+    return None
+
+
+def fast_monte_carlo_var(
+    mean: float, std_dev: float, n_simulations: int = 10000, horizon_days: int = 1,
+    initial_val: float = 100000.0, confidence: float = 0.95, seed: int = 42
+) -> Optional[float]:
+    """Execute high-speed Monte Carlo VaR simulation in native C."""
+    if _NATIVE_LIB and hasattr(_NATIVE_LIB, "fastpath_monte_carlo_var"):
+        return float(_NATIVE_LIB.fastpath_monte_carlo_var(
+            mean, std_dev, n_simulations, horizon_days, initial_val, confidence, seed
+        ))
+    return None
+
+
+def fast_fix_checksum(data: bytes | str) -> Optional[int]:
+    """Compute 8-bit FIX protocol checksum in native C."""
+    if _NATIVE_LIB and hasattr(_NATIVE_LIB, "fastpath_fix_checksum"):
+        buf = data.encode('ascii') if isinstance(data, str) else data
+        n = len(buf)
+        if n == 0:
+            return 0
+        c_buf = (ctypes.c_uint8 * n).from_buffer_copy(buf)
+        return int(_NATIVE_LIB.fastpath_fix_checksum(c_buf, n))
+    return None

@@ -8,11 +8,13 @@ and transparent in-memory gap recovery.
 """
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, field
 import json
+import logging
 import socket
 import time
-from typing import Any, Dict, Generator, Iterator, List, Optional, Set, Tuple
+from typing import Any, Callable, Dict, Generator, Iterator, List, Optional, Set, Tuple
 
 
 @dataclass
@@ -680,3 +682,124 @@ class MDRAPClient:
             "engine_latency_p50_us": p(eng_sorted, 0.50),
             "engine_latency_p99_us": p(eng_sorted, 0.99),
         }
+
+
+# ---------------------------------------------------------------------------
+# Asyncio TCP Gateway Client (MDRAP Python Client SDK)
+# ---------------------------------------------------------------------------
+
+_sdk_logger = logging.getLogger("mdrap.sdk")
+
+
+class MDrapClient:
+    """Provides an asynchronous Python interface to the MDRAP TCP Gateway."""
+
+    def __init__(self, host: str = "127.0.0.1", port: int = 9000):
+        self.host = host
+        self.port = port
+        self.reader: Optional[asyncio.StreamReader] = None
+        self.writer: Optional[asyncio.StreamWriter] = None
+        self.running = False
+        self._handlers: Dict[str, List[Callable[[Dict[str, Any]], None]]] = {}
+
+    def on(self, msg_type: str, handler: Callable[[Dict[str, Any]], None]):
+        """Register an event handler for a specific message type."""
+        if msg_type not in self._handlers:
+            self._handlers[msg_type] = []
+        self._handlers[msg_type].append(handler)
+
+    def _dispatch(self, msg: Dict[str, Any]):
+        """Dispatch message to registered handlers."""
+        msg_type = msg.get("type")
+        if not msg_type:
+            return
+        for handler in self._handlers.get(msg_type, []):
+            try:
+                handler(msg)
+            except Exception as e:
+                _sdk_logger.error(f"Error in handler for {msg_type}: {e}")
+
+    async def connect(self) -> bool:
+        """Establish connection to the MDRAP TCP Gateway."""
+        try:
+            self.reader, self.writer = await asyncio.open_connection(self.host, self.port)
+            line = await self.reader.readline()
+            welcome = json.loads(line.decode("utf-8").strip())
+            if welcome.get("type") == "system" and welcome.get("status") == "connected":
+                _sdk_logger.info(f"Connected to MDRAP Gateway at {self.host}:{self.port}")
+                self.running = True
+                self._dispatch(welcome)
+                return True
+            return False
+        except Exception as e:
+            _sdk_logger.error(f"Failed to connect: {e}")
+            return False
+
+    async def _heartbeat_loop(self):
+        """Send periodic pings to keep the connection alive."""
+        while self.running and self.writer:
+            try:
+                ping_msg = json.dumps({"action": "ping"}) + "\n"
+                self.writer.write(ping_msg.encode("utf-8"))
+                await self.writer.drain()
+                await asyncio.sleep(10.0)
+            except Exception:
+                self.running = False
+                break
+
+    async def _read_loop(self):
+        """Read incoming events and dispatch them."""
+        while self.running and self.reader:
+            try:
+                line = await self.reader.readline()
+                if not line:
+                    self.running = False
+                    break
+                msg = json.loads(line.decode("utf-8").strip())
+                self._dispatch(msg)
+            except Exception as e:
+                _sdk_logger.error(f"Read error: {e}")
+                self.running = False
+                break
+
+    async def subscribe(self, on_event: Optional[Callable[[Dict[str, Any]], None]] = None):
+        """Subscribe to live events and block while listening."""
+        if on_event:
+            self.on("event", on_event)
+
+        if not self.reader or not self.writer:
+            connected = await self.connect()
+            if not connected:
+                raise ConnectionError("Could not connect to MDRAP Gateway")
+
+        try:
+            await asyncio.gather(self._heartbeat_loop(), self._read_loop())
+        finally:
+            await self.close()
+
+    async def close(self):
+        """Close the connection to the Gateway."""
+        self.running = False
+        if self.writer:
+            try:
+                self.writer.close()
+                await self.writer.wait_closed()
+            except Exception:
+                pass
+            self.writer = None
+            self.reader = None
+
+    def to_dataframe(self, events: List[Dict[str, Any]]) -> Any:
+        """Convert a list of raw event dictionaries to a Pandas DataFrame."""
+        try:
+            import pandas as pd
+        except ImportError:
+            raise ImportError("pandas is not installed. Run `pip install pandas` to use this feature.")
+
+        df = pd.DataFrame(events)
+        if not df.empty and "ts" in df.columns:
+            df["ts"] = pd.to_datetime(df["ts"], unit="s")
+            df.set_index("ts", inplace=True)
+            df.sort_index(inplace=True)
+        return df
+

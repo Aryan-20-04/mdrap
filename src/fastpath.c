@@ -906,7 +906,521 @@ EXPORT int32_t fastpath_sbe_generate_stream(
 }
 
 
+// ===========================================================================
+// Phase 12: High-Performance Vectorized Geodesic & Spatial Geofencing Engine
+// ===========================================================================
+
+#define FASTPATH_DEG2RAD (3.14159265358979323846 / 180.0)
+#define FASTPATH_R_NM 3440.065
+
+#pragma pack(push, 8)
+typedef struct {
+    double lat;
+    double lon;
+    double radius_nm;
+    double dlat_max;       // radius_nm / 60.0
+    double dlon_max;       // radius_nm / (60.0 * cos(lat_rad))
+    double lat_rad;
+    double lon_rad;
+    double cos_lat;
+    double sin_lat;
+} FastChokepoint;
+#pragma pack(pop)
+
+EXPORT double fastpath_haversine_nm(double lat1, double lon1, double lat2, double lon2) {
+    if (isnan(lat1) || isnan(lon1) || isnan(lat2) || isnan(lon2)) return -1.0;
+    if (isinf(lat1) || isinf(lon1) || isinf(lat2) || isinf(lon2)) return -1.0;
+    if (lat1 < -90.0 || lat1 > 90.0 || lat2 < -90.0 || lat2 > 90.0) return -1.0;
+    if (lon1 < -180.0 || lon1 > 180.0 || lon2 < -180.0 || lon2 > 180.0) return -1.0;
+
+    double phi1 = lat1 * FASTPATH_DEG2RAD;
+    double phi2 = lat2 * FASTPATH_DEG2RAD;
+    double dphi = (lat2 - lat1) * FASTPATH_DEG2RAD;
+    double dlam = (lon2 - lon1) * FASTPATH_DEG2RAD;
+
+    double s_dphi = sin(dphi * 0.5);
+    double s_dlam = sin(dlam * 0.5);
+    double a = s_dphi * s_dphi + cos(phi1) * cos(phi2) * s_dlam * s_dlam;
+    if (a < 0.0) a = 0.0;
+    if (a > 1.0) a = 1.0;
+    double c = 2.0 * atan2(sqrt(a), sqrt(1.0 - a));
+    return round(FASTPATH_R_NM * c * 10.0) / 10.0;
+}
+
+EXPORT double fastpath_equirectangular_nm(double lat1, double lon1, double lat2, double lon2) {
+    if (isnan(lat1) || isnan(lon1) || isnan(lat2) || isnan(lon2)) return -1.0;
+    if (isinf(lat1) || isinf(lon1) || isinf(lat2) || isinf(lon2)) return -1.0;
+    if (lat1 < -90.0 || lat1 > 90.0 || lat2 < -90.0 || lat2 > 90.0) return -1.0;
+    if (lon1 < -180.0 || lon1 > 180.0 || lon2 < -180.0 || lon2 > 180.0) return -1.0;
+
+    double phi_m = ((lat1 + lat2) * 0.5) * FASTPATH_DEG2RAD;
+    double dphi = (lat2 - lat1) * FASTPATH_DEG2RAD;
+    double dlam = (lon2 - lon1) * FASTPATH_DEG2RAD;
+    double x = dlam * cos(phi_m);
+    double y = dphi;
+    return round(FASTPATH_R_NM * sqrt(x * x + y * y) * 10.0) / 10.0;
+}
+
+EXPORT int32_t fastpath_vessel_chokepoint_eval(
+    double v_lat, double v_lon,
+    const FastChokepoint *chokepoints, int32_t cp_count,
+    int32_t *out_nearest_idx, double *out_nearest_dist, uint8_t *out_in_chokepoint
+) {
+    if (cp_count <= 0 || !chokepoints) return -1;
+    if (isnan(v_lat) || isnan(v_lon) || isinf(v_lat) || isinf(v_lon)) return -1;
+    if (v_lat < -90.0 || v_lat > 90.0 || v_lon < -180.0 || v_lon > 180.0) return -1;
+
+    double min_dist = 1e9;
+    int32_t nearest = 0;
+    uint8_t in_chokepoint = 0;
+
+    double v_phi = v_lat * FASTPATH_DEG2RAD;
+    double cos_phi = cos(v_phi);
+
+    for (int32_t i = 0; i < cp_count; ++i) {
+        const FastChokepoint *cp = &chokepoints[i];
+
+        double dlam = (v_lon - cp->lon) * FASTPATH_DEG2RAD;
+        double s_dphi = sin((cp->lat - v_lat) * FASTPATH_DEG2RAD * 0.5);
+        double s_dlam = sin(dlam * 0.5);
+        double a = s_dphi * s_dphi + cos_phi * cp->cos_lat * s_dlam * s_dlam;
+        if (a < 0.0) a = 0.0;
+        if (a > 1.0) a = 1.0;
+        double dist = FASTPATH_R_NM * 2.0 * atan2(sqrt(a), sqrt(1.0 - a));
+
+        if (dist < min_dist) {
+            min_dist = dist;
+            nearest = i;
+        }
+        if (dist <= cp->radius_nm) {
+            in_chokepoint = 1;
+        }
+    }
+
+    if (out_nearest_idx) *out_nearest_idx = nearest;
+    if (out_nearest_dist) *out_nearest_dist = round(min_dist * 10.0) / 10.0;
+    if (out_in_chokepoint) *out_in_chokepoint = in_chokepoint;
+    return 0;
+}
+
+EXPORT int32_t fastpath_batch_fleet_geofence(
+    const double *v_lats, const double *v_lons, int32_t v_count,
+    const FastChokepoint *chokepoints, int32_t cp_count,
+    int32_t *out_nearest_indices, double *out_nearest_distances, uint8_t *out_in_chokepoints
+) {
+    if (!v_lats || !v_lons || v_count <= 0 || !chokepoints || cp_count <= 0) return -1;
+
+    for (int32_t v = 0; v < v_count; ++v) {
+        int32_t n_idx = 0;
+        double n_dist = 0.0;
+        uint8_t in_cp = 0;
+
+        int32_t rc = fastpath_vessel_chokepoint_eval(
+            v_lats[v], v_lons[v], chokepoints, cp_count,
+            &n_idx, &n_dist, &in_cp
+        );
+        if (rc != 0) return rc;
+
+        if (out_nearest_indices) out_nearest_indices[v] = n_idx;
+        if (out_nearest_distances) out_nearest_distances[v] = n_dist;
+        if (out_in_chokepoints) out_in_chokepoints[v] = in_cp;
+    }
+    return 0;
+}
 
 
+// ===========================================================================
+// Phase 13: Native C Hot-Path Accelerators for Quantitative Analytics & Risk
+// ===========================================================================
 
+#define C_PI 3.14159265358979323846
+#define C_SQRT2 1.41421356237309504880
+#define C_INV_SQRT_2PI 0.39894228040143267794
 
+static inline double _c_norm_cdf(double x) {
+    return 0.5 * (1.0 + erf(x / C_SQRT2));
+}
+
+static inline double _c_norm_pdf(double x) {
+    return exp(-0.5 * x * x) * C_INV_SQRT_2PI;
+}
+
+static inline double _c_d1(double S, double K, double T, double r, double sigma) {
+    if (T <= 0.0 || sigma <= 0.0) return 0.0;
+    return (log(S / K) + (r + 0.5 * sigma * sigma) * T) / (sigma * sqrt(T));
+}
+
+static inline double _c_d2(double S, double K, double T, double r, double sigma) {
+    if (T <= 0.0 || sigma <= 0.0) return 0.0;
+    return _c_d1(S, K, T, r, sigma) - sigma * sqrt(T);
+}
+
+EXPORT double fastpath_bsm_price(double S, double K, double T, double r, double sigma, int32_t is_call) {
+    if (T <= 0.0) {
+        return is_call ? (S > K ? S - K : 0.0) : (K > S ? K - S : 0.0);
+    }
+    if (sigma <= 0.0) {
+        double disc_k = K * exp(-r * T);
+        return is_call ? (S > disc_k ? S - disc_k : 0.0) : (disc_k > S ? disc_k - S : 0.0);
+    }
+
+    double d1 = _c_d1(S, K, T, r, sigma);
+    double d2 = _c_d2(S, K, T, r, sigma);
+
+    if (is_call) {
+        return S * _c_norm_cdf(d1) - K * exp(-r * T) * _c_norm_cdf(d2);
+    } else {
+        return K * exp(-r * T) * _c_norm_cdf(-d2) - S * _c_norm_cdf(-d1);
+    }
+}
+
+EXPORT void fastpath_bsm_greeks(
+    double S, double K, double T, double r, double sigma, int32_t is_call,
+    double *out_greeks
+) {
+    if (!out_greeks) return;
+
+    if (T <= 0.0 || sigma <= 0.0) {
+        double delta = 0.0;
+        if (is_call && S > K) delta = 1.0;
+        else if (!is_call && S < K) delta = -1.0;
+        out_greeks[0] = delta; // delta
+        out_greeks[1] = 0.0;   // gamma
+        out_greeks[2] = 0.0;   // theta
+        out_greeks[3] = 0.0;   // vega
+        out_greeks[4] = 0.0;   // rho
+        out_greeks[5] = 0.0;   // vanna
+        out_greeks[6] = 0.0;   // volga
+        return;
+    }
+
+    double d1 = _c_d1(S, K, T, r, sigma);
+    double d2 = _c_d2(S, K, T, r, sigma);
+
+    double nd1 = _c_norm_cdf(d1);
+    double nd2 = _c_norm_cdf(d2);
+    double n_d1 = _c_norm_pdf(d1);
+    double sqrt_t = sqrt(T);
+    double exp_rt = exp(-r * T);
+
+    double delta, theta_base, rho;
+    if (is_call) {
+        delta = nd1;
+        theta_base = (-S * n_d1 * sigma) / (2.0 * sqrt_t) - r * K * exp_rt * nd2;
+        rho = K * T * exp_rt * nd2 / 100.0;
+    } else {
+        delta = nd1 - 1.0;
+        theta_base = (-S * n_d1 * sigma) / (2.0 * sqrt_t) + r * K * exp_rt * _c_norm_cdf(-d2);
+        rho = -K * T * exp_rt * _c_norm_cdf(-d2) / 100.0;
+    }
+
+    double gamma = n_d1 / (S * sigma * sqrt_t);
+    double theta = theta_base / 365.0;
+    double vega = S * n_d1 * sqrt_t / 100.0;
+    double vanna = -n_d1 * d2 / sigma;
+    double volga = vega * 100.0 * d1 * d2 / sigma;
+
+    out_greeks[0] = delta;
+    out_greeks[1] = gamma;
+    out_greeks[2] = theta;
+    out_greeks[3] = vega;
+    out_greeks[4] = rho;
+    out_greeks[5] = vanna;
+    out_greeks[6] = volga;
+}
+
+EXPORT double fastpath_binomial_price(
+    double S, double K, double T, double r, double sigma, int32_t is_call, int32_t steps
+) {
+    if (T <= 0.0) {
+        return is_call ? (S > K ? S - K : 0.0) : (K > S ? K - S : 0.0);
+    }
+    if (sigma <= 0.0) {
+        return fastpath_bsm_price(S, K, T, r, sigma, is_call);
+    }
+    if (steps <= 0) steps = 200;
+    if (steps > 512) steps = 512;
+
+    double dt = T / (double)steps;
+    double sqrt_dt = sqrt(dt);
+    double u = exp(sigma * sqrt_dt);
+    double d = 1.0 / u;
+    double d2 = d * d;
+    double a = exp(r * dt);
+    double p = (a - d) / (u - d);
+    double one_minus_p = 1.0 - p;
+    double disc = exp(-r * dt);
+
+    double prices[513];
+    double spot_t = S * pow(u, steps);
+    for (int i = 0; i <= steps; ++i) {
+        prices[i] = is_call ? (spot_t > K ? spot_t - K : 0.0) : (K > spot_t ? K - spot_t : 0.0);
+        spot_t *= d2;
+    }
+
+    for (int j = steps - 1; j >= 0; --j) {
+        spot_t = S * pow(u, j);
+        for (int i = 0; i <= j; ++i) {
+            double continuation = disc * (p * prices[i] + one_minus_p * prices[i + 1]);
+            double exercise = is_call ? (spot_t > K ? spot_t - K : 0.0) : (K > spot_t ? K - spot_t : 0.0);
+            prices[i] = continuation > exercise ? continuation : exercise;
+            spot_t *= d2;
+        }
+    }
+
+    return prices[0];
+}
+
+EXPORT double fastpath_implied_volatility(
+    double market_price, double S, double K, double T, double r, int32_t is_call,
+    double tol, int32_t max_iter
+) {
+    if (tol <= 0.0) tol = 1e-6;
+    if (max_iter <= 0) max_iter = 100;
+
+    double sigma = 0.3;
+    for (int iter = 0; iter < max_iter; ++iter) {
+        double price = fastpath_bsm_price(S, K, T, r, sigma, is_call);
+        double diff = price - market_price;
+        if (fabs(diff) < tol) {
+            return sigma;
+        }
+
+        double greeks[7];
+        fastpath_bsm_greeks(S, K, T, r, sigma, is_call, greeks);
+        double vega_raw = greeks[3] * 100.0;
+        if (vega_raw < 1e-12) {
+            break;
+        }
+
+        sigma -= diff / vega_raw;
+        if (sigma < 0.001) sigma = 0.001;
+        if (sigma > 5.0) sigma = 5.0;
+    }
+    return sigma;
+}
+
+// ---------------------------------------------------------------------------
+// Technical Features: RSI, EMA, Bollinger Bands, ATR
+// ---------------------------------------------------------------------------
+
+EXPORT void fastpath_calc_rsi(const double *prices, int32_t n, int32_t period, double *out_rsi) {
+    if (!prices || !out_rsi || n <= 0 || period <= 0) return;
+
+    for (int32_t i = 0; i < n && i < period; ++i) {
+        out_rsi[i] = NAN;
+    }
+    if (n <= period) return;
+
+    double sum_gain = 0.0;
+    double sum_loss = 0.0;
+    for (int32_t i = 1; i <= period; ++i) {
+        double change = prices[i] - prices[i - 1];
+        if (change > 0.0) sum_gain += change;
+        else sum_loss += fabs(change);
+    }
+
+    double avg_gain = sum_gain / (double)period;
+    double avg_loss = sum_loss / (double)period;
+
+    if (avg_loss == 0.0) {
+        out_rsi[period] = 100.0;
+    } else {
+        double rs = avg_gain / avg_loss;
+        out_rsi[period] = 100.0 - (100.0 / (1.0 + rs));
+    }
+
+    for (int32_t i = period + 1; i < n; ++i) {
+        double change = prices[i] - prices[i - 1];
+        double gain = change > 0.0 ? change : 0.0;
+        double loss = change < 0.0 ? fabs(change) : 0.0;
+
+        avg_gain = (avg_gain * (period - 1) + gain) / (double)period;
+        avg_loss = (avg_loss * (period - 1) + loss) / (double)period;
+
+        if (avg_loss == 0.0) {
+            out_rsi[i] = 100.0;
+        } else {
+            double rs = avg_gain / avg_loss;
+            out_rsi[i] = 100.0 - (100.0 / (1.0 + rs));
+        }
+    }
+}
+
+EXPORT void fastpath_calc_ema(const double *prices, int32_t n, int32_t period, double *out_ema) {
+    if (!prices || !out_ema || n <= 0 || period <= 0) return;
+
+    for (int32_t i = 0; i < n && i < period - 1; ++i) {
+        out_ema[i] = NAN;
+    }
+    if (n < period) return;
+
+    double sum = 0.0;
+    for (int32_t i = 0; i < period; ++i) {
+        sum += prices[i];
+    }
+    out_ema[period - 1] = sum / (double)period;
+
+    double multiplier = 2.0 / (double)(period + 1);
+    for (int32_t i = period; i < n; ++i) {
+        out_ema[i] = (prices[i] - out_ema[i - 1]) * multiplier + out_ema[i - 1];
+    }
+}
+
+EXPORT void fastpath_calc_bollinger(
+    const double *prices, int32_t n, int32_t period, double num_std,
+    double *out_upper, double *out_mid, double *out_lower
+) {
+    if (!prices || !out_upper || !out_mid || !out_lower || n <= 0 || period <= 0) return;
+
+    for (int32_t i = 0; i < n; ++i) {
+        if (i < period - 1) {
+            out_upper[i] = NAN;
+            out_mid[i] = NAN;
+            out_lower[i] = NAN;
+        } else {
+            double sum = 0.0;
+            for (int32_t k = i - period + 1; k <= i; ++k) {
+                sum += prices[k];
+            }
+            double mean = sum / (double)period;
+            out_mid[i] = mean;
+
+            double sum_sq = 0.0;
+            for (int32_t k = i - period + 1; k <= i; ++k) {
+                double diff = prices[k] - mean;
+                sum_sq += diff * diff;
+            }
+            double stdev = period > 1 ? sqrt(sum_sq / (double)(period - 1)) : 0.0;
+            out_upper[i] = mean + num_std * stdev;
+            out_lower[i] = mean - num_std * stdev;
+        }
+    }
+}
+
+EXPORT void fastpath_calc_atr(
+    const double *highs, const double *lows, const double *closes,
+    int32_t n, int32_t period, double *out_atr
+) {
+    if (!highs || !lows || !closes || !out_atr || n <= 0 || period <= 0) return;
+
+    double *tr = (double *)malloc(n * sizeof(double));
+    if (!tr) return;
+
+    for (int32_t i = 0; i < n; ++i) {
+        if (i == 0) {
+            tr[i] = highs[i] - lows[i];
+        } else {
+            double hl = highs[i] - lows[i];
+            double hc = fabs(highs[i] - closes[i - 1]);
+            double lc = fabs(lows[i] - closes[i - 1]);
+            double max_val = hl > hc ? hl : hc;
+            tr[i] = max_val > lc ? max_val : lc;
+        }
+    }
+
+    for (int32_t i = 0; i < n && i < period - 1; ++i) {
+        out_atr[i] = NAN;
+    }
+
+    if (n >= period) {
+        double tr_sum = 0.0;
+        for (int32_t i = 0; i < period; ++i) {
+            tr_sum += tr[i];
+        }
+        out_atr[period - 1] = tr_sum / (double)period;
+
+        for (int32_t i = period; i < n; ++i) {
+            out_atr[i] = (out_atr[i - 1] * (period - 1) + tr[i]) / (double)period;
+        }
+    }
+
+    free(tr);
+}
+
+// ---------------------------------------------------------------------------
+// High-Speed Portfolio Risk Engine: Monte Carlo Simulation
+// ---------------------------------------------------------------------------
+
+// 64-bit XorShift128+ PRNG state
+typedef struct {
+    uint64_t s[2];
+} FastRngState;
+
+static inline uint64_t _xorshift128plus(FastRngState *rng) {
+    uint64_t s1 = rng->s[0];
+    const uint64_t s0 = rng->s[1];
+    rng->s[0] = s0;
+    s1 ^= s1 << 23;
+    rng->s[1] = s1 ^ s0 ^ (s1 >> 18) ^ (s0 >> 5);
+    return rng->s[1] + s0;
+}
+
+static inline double _rng_uniform(FastRngState *rng) {
+    return (_xorshift128plus(rng) >> 11) * (1.0 / 9007199254740992.0);
+}
+
+// Box-Muller Gaussian sample
+static inline double _rng_gauss(FastRngState *rng, double mean, double stddev) {
+    double u1 = _rng_uniform(rng);
+    double u2 = _rng_uniform(rng);
+    while (u1 <= 1e-15) u1 = _rng_uniform(rng);
+    double z = sqrt(-2.0 * log(u1)) * cos(2.0 * C_PI * u2);
+    return mean + z * stddev;
+}
+
+static int _cmp_doubles(const void *a, const void *b) {
+    double da = *(const double *)a;
+    double db = *(const double *)b;
+    if (da < db) return -1;
+    if (da > db) return 1;
+    return 0;
+}
+
+EXPORT double fastpath_monte_carlo_var(
+    double mean, double std_dev, int32_t n_simulations, int32_t horizon_days,
+    double initial_val, double confidence, uint64_t seed
+) {
+    if (n_simulations <= 0 || horizon_days <= 0) return 0.0;
+
+    double *sims = (double *)malloc(n_simulations * sizeof(double));
+    if (!sims) return 0.0;
+
+    FastRngState rng;
+    rng.s[0] = seed ? seed : 42ULL;
+    rng.s[1] = (seed ? seed : 42ULL) ^ 0x6a09e667f3bcc908ULL;
+    if (rng.s[0] == 0 && rng.s[1] == 0) rng.s[0] = 1ULL;
+
+    for (int32_t i = 0; i < n_simulations; ++i) {
+        double sim_ret = 0.0;
+        for (int32_t d = 0; d < horizon_days; ++d) {
+            sim_ret += _rng_gauss(&rng, mean, std_dev);
+        }
+        sims[i] = sim_ret;
+    }
+
+    qsort(sims, n_simulations, sizeof(double), _cmp_doubles);
+
+    int32_t idx = (int32_t)((1.0 - confidence) * (double)n_simulations);
+    if (idx < 0) idx = 0;
+    if (idx >= n_simulations) idx = n_simulations - 1;
+
+    double var_pct = -sims[idx];
+    free(sims);
+
+    double res = var_pct * initial_val;
+    return res > 0.0 ? res : 0.0;
+}
+
+// ---------------------------------------------------------------------------
+// High-Speed FIX Protocol Checksum Calculation
+// ---------------------------------------------------------------------------
+
+EXPORT uint32_t fastpath_fix_checksum(const uint8_t *buf, int32_t len) {
+    if (!buf || len <= 0) return 0;
+    uint32_t sum = 0;
+    for (int32_t i = 0; i < len; ++i) {
+        sum += (uint32_t)buf[i];
+    }
+    return sum % 256;
+}

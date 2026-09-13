@@ -38,3 +38,31 @@ python cli.py benchmark --events 100000 --seed 42 --profile --label profile_v1
 python cli.py loadtest --levels 10000,50000,100000,250000,500000
 ```
 Measures throughput scaling and latency degradation curves across increasing event counts. Identifies SQLite batch saturation limits and queue growth boundaries.
+
+---
+
+## 4. Architectural Comparison Protocol (`cli.py compare`)
+
+```bash
+python cli.py compare --events 100000 --seed 42
+```
+Runs identical event workloads through three architectural tiers sequentially:
+1. **V1 Baseline**: Synchronous pure Python pipeline with SQLite WAL batched persistence.
+2. **V2 Streaming**: Decoupled async queue broker with high-watermark backpressure.
+3. **V4 Native C**: FastPath compiled C hot path evaluation (`fastpath.dll`).
+
+Outputs comparative side-by-side metrics: throughput (eps), elapsed time, p50/p95/p99 E2E latency, and false positive rates.
+
+---
+
+## 5. Vectorized SBE Throughput Benchmark (`cli.py throughput`)
+
+```bash
+# Benchmark 1,000,000 contiguous 128-byte SBE frames
+python cli.py throughput -e 1000000 --compare
+```
+Measures pure hardware bus saturation and SIMD execution speed on contiguous SBE binary streams:
+- **Throughput (MEPS)**: Peak sustained million events per second (exceeds 50M+ eps).
+- **Sub-Microsecond Latency**: Nanoseconds per event (< 20 ns).
+- **Memory Bandwidth**: Processing throughput in GB/sec across contiguous C memory buffers.
+- **Ground-Truth Scored Accuracy**: Exact classification verification of crossed quotes, negative prices, and duplicate sequence numbers.

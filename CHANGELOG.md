@@ -1,5 +1,82 @@
 # Changelog
 
+## [1.0.3] - 2026-09-13
+**Native C Hot-Path Expansion (Phase 13), Automated Git/Pip Packaging & Codebase Leaning**
+
+### Added
+- **Phase 13 Native C Hot-Path Accelerator Expansion (`src/fastpath.c`, `src/fastpath.dll`)**:
+  - **American Options Pricing**: Cox-Ross-Rubinstein binomial tree in native C (`fastpath_binomial_price` achieving **0.21 ms vs 13.62 ms in pure Python, 64.1x faster**).
+  - **Quantitative Feature Store Kernels**:
+    - Bollinger Bands (`fastpath_calc_bollinger` achieving **1.04 ms vs 53.61 ms, 51.6x faster**).
+    - Wilder-smoothed RSI (`fastpath_calc_rsi` achieving **3.01 ms vs 6.62 ms, 2.2x faster**).
+    - Average True Range (`fastpath_calc_atr`).
+  - **Portfolio Risk Kernels**:
+    - High-throughput Monte Carlo VaR with 64-bit XorShift128+ PRNG and Box-Muller Gaussian transforms (**3.44 ms vs 8.07 ms, 2.3x faster**).
+  - **FIX Protocol Checksum**: Vectorized byte sum modulo 256 (**2.25 µs vs 6.92 µs, 3.1x faster**).
+- **Automated Git & Pip Native C Enablement (`v1.0.3`)**:
+  - **Multi-Compiler Build Engine (`build_fastpath.py`)**: Cross-platform support for GCC, Clang, and MSVC (`cl.exe`) across Windows (`.dll`), Linux (`.so`), and macOS (`.dylib` / `.so`) with 30s timeout guards.
+  - **Transparent JIT Compilation**: `src/fastpath.py` automatically detects and compiles `fastpath.c` on first import when cloning from Git without a prebuilt library.
+  - **Pip Packaging Hooks**: `setup.py` custom `BuildPyWithFastpath` and `DevelopWithFastpath` commands compile native C hot paths during `pip install .` and `pip install -e .`.
+  - **Distribution Manifest**: Added `MANIFEST.in` and updated `pyproject.toml` to package all 70 modules and native binary artifacts.
+- **Dual Execution Mode Testing**:
+  - Full automated suite runs in default mode (With FastPath: 620/620 passed in ~69s).
+  - Full automated suite runs in fallback mode via `MDRAP_DISABLE_FASTPATH=1` (Without FastPath: 597 passed, 7 skipped in ~70s).
+- **Expanded Quantitative Ecosystem (70 Modules)**:
+  - Options pricing engine (`src/options.py`), portfolio risk manager (`src/risk.py`), feature store (`src/features.py`), backtesting engine (`src/backtest.py`), persistent bar database (`src/bardb.py`), news & sentiment pipeline (`src/news.py`), alerting engine (`src/alerts.py`), corporate actions (`src/corporate_actions.py`), FIX engine (`src/fix_engine.py`), and quantitative trading CLI (`src/trading_cli.py`).
+
+### Optimized & Leaned
+- **Codebase Consolidation**:
+  - Merged `src/chd_cli.py` (132 lines) into `src/chd.py` with backward-compatible shim.
+  - Merged `src/sdk_dashboard.py` (184 lines) into `src/terminal_display.py` with backward-compatible shim.
+  - Merged `src/sdk/client.py` (142 lines) into `src/client.py` with backward-compatible shim.
+  - Reduced ~250 lines of argparse subparser boilerplate in `src/cli.py` via `_sub()`.
+  - Cached `git rev-parse` lookups in `pipeline.py` and `pipeline_v2.py`, eliminating 25-50 ms kernel delay per pipeline instance.
+  - Deduplicated L2 depth and VWAP event parsing via `_load_or_fetch_depth_events()`.
+- **Removed Non-Public Files**:
+  - Pruned internal strategy docs (`mdrap_launch_plan.md`, `mdrap_open_core_strategy.md`).
+  - Cleaned binary profiling dumps (`benchmarks/*.prof`), test residue (`.coverage`, `test_dest.tmp`), and outdated distribution builds (`dist/`).
+  - Added `dist/`, `build/`, and `*.egg-info/` to `.gitignore`.
+
+### Security & Hardening
+- Subprocess safety: all compiler and git invocations use argument vectors, `shell=False`, and strict timeout limits.
+- Memory and buffer bounds enforcement across 8,192 symbols and 32 sources in `fastpath.c`.
+- Verified mitigation of XXE, Billion Laughs, SSRF, and timing side-channel attacks across 18 automated security tests.
+- 620 automated tests passing with zero regressions.
+
+---
+
+## [1.2.0] - 2026-09-12
+**Institutional Alternative Data & Native C Spatial Fastpath**
+
+Expanded MDRAP from high-frequency tick market data into institutional corporate intelligence, maritime geopolitical tracking, and sub-microsecond compiled spatial algorithms.
+
+### Added
+- **SEC EDGAR Alternative Data Engine (`src.research`)**:
+  - Real-time Form 8-K material corporate event taxonomy (Item 5.02 executive moves, Item 2.02 earnings, Item 1.01 contracts) classified by urgency.
+  - Official Form 4 XML insider transaction parser tracking officer and director purchases, sales, prices, and post-trade share holdings.
+  - Audited GAAP facts integration pulling XBRL balance sheet and income metrics directly from SEC servers.
+  - Multi-tier in-memory and atomic disk caching (`data/edgar_cache/`) with 300s TTL.
+- **Global Maritime Tanker & Cargo Tracking Engine (`src.vessel`)**:
+  - Real-time global tracking of commercial crude oil tankers (VLCC/ULCC), LNG carriers, dry bulkers, and container vessels.
+  - Commercial fleet owner (Frontline, Euronav, DHT, Maersk, COSCO) and chartering commodity major tagging (Saudi Aramco, Shell, BP, Vitol, Trafigura, Vale).
+  - Geopolitical geofencing for 8 primary maritime chokepoints (Strait of Hormuz, Malacca, Suez, Bab-el-Mandeb, Panama, Bosphorus, Cape of Good Hope, Dover Strait).
+  - Floating commodity breakdown and seaborne cargo volume attribution.
+- **Tier-2 Native C Vectorized Geodesic & Spatial Fastpath (`src.fastpath`)**:
+  - Recompiled GCC 14 `-O3` native C shared library (`src/fastpath.dll`).
+  - Axis-Aligned Bounding Box (AABB) branchless spatial pre-filter rejecting distant points in ~1 CPU cycle (~0.3 ns).
+  - Vectorized Structure-of-Arrays (SoA) batch geofencing evaluating 10,000 vessels across 8 chokepoints (80,000 checks) in **23.08 ms (~288 ns per chokepoint check)**.
+  - Zero-error transparent fallback to pure Python if native library is absent.
+- **Shorthand CLI Mnemonic Routing**: Smart argument rewriting for `mdrap edgar AAPL`, `mdrap company AAPL`, `mdrap vessel "FRONT ALTAIR"`, `mdrap tankers`.
+
+### Security & Hardening
+- **SSRF Guard**: Strict allowlist enforcing HTTPS to `data.sec.gov` and `www.sec.gov` on port 443 with traversal and cloud metadata blocking.
+- **XXE & Billion Laughs Mitigation**: 2 MB ceiling and recursive 25-level XML depth limitation.
+- **Path Disclosure Redaction**: Regex sanitizer scrubbing Windows and POSIX developer directories from CLI output.
+- **Adversarial Coordinates Fuzzing**: Safe handling of NaN, Inf, coordinate overflows, negative speeds, and invalid circular headings.
+- **486 Automated Tests**: Test suite expanded from 238 to 486 automated unit, stress, adversarial, and fastpath tests (100% passing).
+
+---
+
 ## [1.0.0] - 2026-09-08
 **The Initial Stable Release**
 

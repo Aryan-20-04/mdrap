@@ -14,7 +14,7 @@ crossed quotes -- are INVALID.
 from __future__ import annotations
 
 import math
-from collections import deque
+from collections import deque, OrderedDict
 from dataclasses import dataclass, field
 from typing import Dict, Optional, Tuple
 
@@ -93,7 +93,7 @@ class QualityEngine:
         self._last_seq: Dict[Tuple[str, str], int] = {}
         self._last_ts: Dict[Tuple[str, str], float] = {}
         self._price_stats: Dict[Tuple[str, str], _RollingStats] = {}
-        self._seen_keys: dict = {}  # insertion-ordered dict acts as LRU
+        self._seen_keys: OrderedDict = OrderedDict()  # O(1) LRU
         # per-run counters for observability / benchmark scoring
         self.counts = {"VALID": 0, "SUSPICIOUS": 0, "INVALID": 0}
         self.reason_counts: Dict[str, int] = {}
@@ -120,9 +120,7 @@ class QualityEngine:
         else:
             self._seen_keys[dedup_key] = None
             if len(self._seen_keys) > self.cfg.dedup_cache_size:
-                # Evict oldest entry (first inserted key)
-                oldest = next(iter(self._seen_keys))
-                del self._seen_keys[oldest]
+                self._seen_keys.popitem(last=False)
 
         # -- Sequence-gap detection.
         last_seq = self._last_seq.get(key)

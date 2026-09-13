@@ -42,15 +42,23 @@ _TRANSFORMATIONS_JSON = {
 }
 
 
+_CACHED_CODE_VERSION: str | None = None
+
+
 def _code_version() -> str:
+    global _CACHED_CODE_VERSION
+    if _CACHED_CODE_VERSION is not None:
+        return _CACHED_CODE_VERSION
     try:
         out = subprocess.run(["git", "rev-parse", "--short", "HEAD"],
                              capture_output=True, text=True, cwd=None, timeout=2)
         if out.returncode == 0:
-            return out.stdout.strip()
+            _CACHED_CODE_VERSION = out.stdout.strip()
+            return _CACHED_CODE_VERSION
     except Exception:
         pass
-    return "unversioned"
+    _CACHED_CODE_VERSION = "unversioned"
+    return _CACHED_CODE_VERSION
 
 
 _EXPECTED_QUALITY = {

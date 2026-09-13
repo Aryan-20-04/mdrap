@@ -225,6 +225,9 @@ class Store:
             except sqlite3.OperationalError:
                 pass  # in-memory or read-only filesystems do not support WAL
             self.conn.execute("PRAGMA synchronous=NORMAL;")
+            self.conn.execute("PRAGMA mmap_size=268435456;")      # 256MB memory mapped I/O
+            self.conn.execute("PRAGMA cache_size=-64000;")         # 64MB page cache
+            self.conn.execute("PRAGMA temp_store=MEMORY;")         # in-memory temp tables
             self.conn.executescript(SCHEMA)
             self.conn.commit()
 
@@ -285,6 +288,21 @@ class Store:
                ORDER BY exchange_timestamp DESC LIMIT ?""",
             (instrument_id, limit),
         )
+        cols = [d[0] for d in cur.description]
+        return [dict(zip(cols, row)) for row in cur.fetchall()]
+
+    @_synchronized
+    def query_events(self, instrument_id: Optional[str] = None, limit: int = 1000) -> list[dict]:
+        if instrument_id:
+            cur = self.conn.execute(
+                "SELECT * FROM canonical_events WHERE instrument_id=? ORDER BY exchange_timestamp DESC LIMIT ?",
+                (instrument_id, limit),
+            )
+        else:
+            cur = self.conn.execute(
+                "SELECT * FROM canonical_events ORDER BY exchange_timestamp DESC LIMIT ?",
+                (limit,),
+            )
         cols = [d[0] for d in cur.description]
         return [dict(zip(cols, row)) for row in cur.fetchall()]
 

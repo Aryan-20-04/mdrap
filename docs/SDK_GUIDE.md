@@ -65,3 +65,25 @@ asyncio.run(runner.run())
 ```
 
 See `src/sdk/strategy_vwap.py` for a complete reference implementation of a VWAP-slicing algorithm.
+
+## 4. Level-2 Order Book & Execution Ledger
+Every strategy automatically maintains a synthetic or live Level-2 Limit Order Book with multi-tier depth for every subscribed symbol:
+
+```python
+# Query order book depth and microstructure
+book = algo.get_order_book("AAPL")
+ladder = book.get_ladder(depth=5)
+print(f"Spread: {book.spread_bps:.2f} bps | MicroPrice: ${book.micro_price:.2f} | Imbalance: {book.imbalance:+.2%}")
+
+# Access detailed execution ledger with arrival price and slippage
+ledger = algo.get_execution_ledger()
+for fill in ledger:
+    print(f"{fill['side']} {fill['quantity']} @ ${fill['fill_price']} "
+          f"(Arrival: ${fill['arrival_price']}, Slippage: ${fill['slippage_usd']:.2f}, "
+          f"Spread: {fill['effective_spread_bps']:.1f} bps, Reason: {fill['signal_reason']})")
+
+# Export executions with point-in-time order book snapshots
+algo.export_executions("executions.json", format="json")
+algo.export_executions("executions.csv", format="csv")
+```
+

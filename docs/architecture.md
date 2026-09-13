@@ -128,4 +128,8 @@ The platform converts noisy, delayed, duplicated, and inconsistent market data f
 - **V1 (Synchronous Baseline):** Single-process, synchronous Python pipeline. SQLite storage with batched writes. Establishes the ground-truth benchmark and profiling baseline (~29,400 eps).
 - **V2 (Decoupled Streaming Architecture):** Decoupled ingestion, stream processing, and storage sink workers via bounded in-memory queue broker with high-watermark backpressure signaling (~22,300 eps).
 - **V3 (Analytical Storage & Aggregation Engine):** 5-second OHLCV candlestick aggregation, spread distribution tracking, realized volatility calculation, and immutable raw JSONL write-ahead archive.
-- **V4 (Native C Hot-Path Acceleration):** Pure C quality evaluation engine compiled with GCC `-O3` (`fastpath.c`). Expanded to 8,192 symbols ($2^{13}$), operating at **18.66 million events/second (50.0 nanoseconds/event)** with seamless pure-Python boundary fallback.
+- **V4 (Native C Hot-Path & Quantitative Acceleration):** Compiled native C kernel (`fastpath.c`) with zero-configuration Git and Pip automated packaging:
+  - **Vectorized SBE Engine**: Hardware-saturating contiguous binary frame validation achieving **51.42 million events/second (19.4 nanoseconds/event)**.
+  - **Single-Event Hot Path**: Expanded 8,192 symbols ($2^{13}$) and 32 sources with FNV-1a dedup and Welford variance at **18.66 million events/second (50.0 nanoseconds/event)**.
+  - **Quantitative & Options Kernels**: Binomial American options pricing (**64.1x faster**), Bollinger Bands rolling window (**51.6x faster**), Monte Carlo VaR simulation (**2.3x faster**), Wilder-smoothed RSI (**2.2x faster**), and FIX checksums (**3.1x faster**).
+  - **Seamless Boundary Fallback**: Transparent pure-Python fallback ensuring 100% numerical parity and zero drops if C dynamic libraries are disabled (`MDRAP_DISABLE_FASTPATH=1`).

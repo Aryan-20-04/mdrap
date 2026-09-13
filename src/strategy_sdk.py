@@ -11,10 +11,14 @@ execution management system (EMS):
 """
 from __future__ import annotations
 
+import csv
 import enum
+import json
 import math
+import os
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from models import CanonicalEvent, EventType, QualityStatus
@@ -37,6 +41,251 @@ class OrderStatus(str, enum.Enum):
     CANCELLED = "CANCELLED"
 
 
+@dataclass(slots=True)
+class OrderBookLevel:
+    price: float
+    size: float
+    order_count: int = 1
+
+    def to_dict(self) -> dict:
+        return {"price": self.price, "size": round(self.size, 4), "order_count": self.order_count}
+
+
+@dataclass
+class OrderBookSnapshot:
+    symbol: str
+    timestamp: float
+    best_bid: float
+    best_ask: float
+    mid: float
+    spread: float
+    spread_bps: float
+    micro_price: float
+    imbalance: float
+    bids: List[Dict[str, float]] = field(default_factory=list)
+    asks: List[Dict[str, float]] = field(default_factory=list)
+    total_bid_depth: float = 0.0
+    total_ask_depth: float = 0.0
+
+    def to_dict(self) -> dict:
+        return {
+            "symbol": self.symbol,
+            "timestamp": self.timestamp,
+            "best_bid": round(self.best_bid, 4),
+            "best_ask": round(self.best_ask, 4),
+            "mid": round(self.mid, 4),
+            "spread": round(self.spread, 4),
+            "spread_bps": round(self.spread_bps, 2),
+            "micro_price": round(self.micro_price, 4),
+            "imbalance": round(self.imbalance, 4),
+            "bids": self.bids,
+            "asks": self.asks,
+            "total_bid_depth": round(self.total_bid_depth, 2),
+            "total_ask_depth": round(self.total_ask_depth, 2),
+        }
+
+
+class OrderBook:
+    """
+    Live Level-2 Limit Order Book with realistic multi-tier depth simulation,
+    volume-weighted micro-price calculation, order flow imbalance, and book walking execution.
+    """
+
+    def __init__(self, symbol: str):
+        self.symbol = symbol
+        self._bids: Dict[float, float] = {}  # price -> size
+        self._asks: Dict[float, float] = {}  # price -> size
+        self.last_update: float = 0.0
+
+    def update_quote(
+        self,
+        bid_price: float,
+        ask_price: float,
+        bid_size: float = 100.0,
+        ask_size: float = 100.0,
+        timestamp: float = 0.0,
+        depth_levels: int = 5,
+    ) -> None:
+        """Update top-of-book and synthesize realistic multi-tier depth levels."""
+        self.last_update = timestamp or time.time()
+        self._bids.clear()
+        self._asks.clear()
+
+        if bid_price and bid_price > 0:
+            self._bids[round(bid_price, 4)] = max(0.1, float(bid_size))
+        if ask_price and ask_price > 0:
+            self._asks[round(ask_price, 4)] = max(0.1, float(ask_size))
+
+        # Reconstruct realistic depth rungs stepping away from NBBO
+        if bid_price and bid_price > 0:
+            step = max(0.01, round(bid_price * 0.0005, 2))  # ~5 bps per rung
+            for lvl in range(1, depth_levels):
+                px = round(bid_price - (lvl * step), 2)
+                if px > 0:
+                    sz = round(bid_size * (1.0 + 0.35 * lvl), 1)
+                    self._bids[px] = sz
+
+        if ask_price and ask_price > 0:
+            step = max(0.01, round(ask_price * 0.0005, 2))
+            for lvl in range(1, depth_levels):
+                px = round(ask_price + (lvl * step), 2)
+                sz = round(ask_size * (1.0 + 0.35 * lvl), 1)
+                self._asks[px] = sz
+
+    def update_level(self, side: OrderSide | str, price: float, size: float) -> None:
+        """Update or delete a specific price level."""
+        side_upper = side.value if isinstance(side, OrderSide) else str(side).upper()
+        book = self._bids if side_upper == "BUY" else self._asks
+        px = round(price, 4)
+        if size <= 0:
+            book.pop(px, None)
+        else:
+            book[px] = float(size)
+        self.last_update = time.time()
+
+    @property
+    def best_bid(self) -> Tuple[float, float]:
+        """Returns (price, size) of highest bid."""
+        if not self._bids:
+            return 0.0, 0.0
+        top_px = max(self._bids.keys())
+        return top_px, self._bids[top_px]
+
+    @property
+    def best_ask(self) -> Tuple[float, float]:
+        """Returns (price, size) of lowest ask."""
+        if not self._asks:
+            return 0.0, 0.0
+        top_px = min(self._asks.keys())
+        return top_px, self._asks[top_px]
+
+    @property
+    def mid_price(self) -> float:
+        bid, _ = self.best_bid
+        ask, _ = self.best_ask
+        if bid > 0 and ask > 0:
+            return (bid + ask) / 2.0
+        return bid or ask or 0.0
+
+    @property
+    def spread(self) -> float:
+        bid, _ = self.best_bid
+        ask, _ = self.best_ask
+        if bid > 0 and ask > 0:
+            return max(0.0, ask - bid)
+        return 0.0
+
+    @property
+    def spread_bps(self) -> float:
+        mid = self.mid_price
+        if mid > 0:
+            return (self.spread / mid) * 10_000.0
+        return 0.0
+
+    @property
+    def micro_price(self) -> float:
+        """Volume-weighted mid-price: (bid_px * ask_sz + ask_px * bid_sz) / (bid_sz + ask_sz)."""
+        bid_px, bid_sz = self.best_bid
+        ask_px, ask_sz = self.best_ask
+        if bid_px > 0 and ask_px > 0 and (bid_sz + ask_sz) > 0:
+            return (bid_px * ask_sz + ask_px * bid_sz) / (bid_sz + ask_sz)
+        return self.mid_price
+
+    @property
+    def imbalance(self) -> float:
+        """Order book imbalance [-1.0, 1.0]: (bid_sz - ask_sz) / (bid_sz + ask_sz)."""
+        _, bid_sz = self.best_bid
+        _, ask_sz = self.best_ask
+        total_sz = bid_sz + ask_sz
+        if total_sz > 0:
+            return (bid_sz - ask_sz) / total_sz
+        return 0.0
+
+    def get_ladder(self, depth: int = 5) -> Tuple[List[Tuple[float, float]], List[Tuple[float, float]]]:
+        """Returns top N bids (descending) and asks (ascending) as [(price, size), ...]."""
+        sorted_bids = sorted(self._bids.items(), key=lambda x: x[0], reverse=True)[:depth]
+        sorted_asks = sorted(self._asks.items(), key=lambda x: x[0])[:depth]
+        return sorted_bids, sorted_asks
+
+    def walk_book(
+        self,
+        side: OrderSide,
+        quantity: float,
+    ) -> Tuple[float, float, float, float, List[Dict[str, float]]]:
+        """
+        Simulates walking the consolidated order book ladder to fill quantity.
+        Returns: (vwap_price, slippage_bps, slippage_usd, effective_spread_bps, rungs_consumed)
+        """
+        if quantity <= 0:
+            return self.mid_price, 0.0, 0.0, 0.0, []
+
+        is_buy = side == OrderSide.BUY
+        levels = sorted(self._asks.items(), key=lambda x: x[0]) if is_buy else sorted(self._bids.items(), key=lambda x: x[0], reverse=True)
+
+        if not levels:
+            top_px = self.mid_price or 100.0
+            return top_px, 0.0, 0.0, 0.0, []
+
+        best_px = levels[0][0]
+        arrival_px = best_px
+        mid = self.mid_price or best_px
+
+        remaining = quantity
+        total_notional = 0.0
+        rungs_consumed = []
+
+        for px, sz in levels:
+            if remaining <= 0:
+                break
+            fill_sz = min(remaining, sz)
+            total_notional += fill_sz * px
+            remaining -= fill_sz
+            rungs_consumed.append({"price": px, "size": fill_sz, "available": sz})
+
+        if remaining > 0:
+            penalty_step = max(0.01, best_px * 0.0005)
+            deep_px = (levels[-1][0] + penalty_step) if is_buy else max(0.01, levels[-1][0] - penalty_step)
+            total_notional += remaining * deep_px
+            rungs_consumed.append({"price": round(deep_px, 4), "size": remaining, "available": 0.0})
+
+        vwap_px = total_notional / quantity
+
+        if is_buy:
+            slippage_usd = max(0.0, (vwap_px - arrival_px) * quantity)
+            slippage_bps = ((vwap_px - arrival_px) / arrival_px * 10_000.0) if arrival_px > 0 else 0.0
+            eff_spread_bps = ((vwap_px - mid) / mid * 10_000.0) if mid > 0 else 0.0
+        else:
+            slippage_usd = max(0.0, (arrival_px - vwap_px) * quantity)
+            slippage_bps = ((arrival_px - vwap_px) / arrival_px * 10_000.0) if arrival_px > 0 else 0.0
+            eff_spread_bps = ((mid - vwap_px) / mid * 10_000.0) if mid > 0 else 0.0
+
+        return round(vwap_px, 4), round(slippage_bps, 2), round(slippage_usd, 2), round(eff_spread_bps, 2), rungs_consumed
+
+    def snapshot(self, depth: int = 5) -> OrderBookSnapshot:
+        """Captures a serializable snapshot of the order book state."""
+        bids, asks = self.get_ladder(depth)
+        best_bid_px, _ = self.best_bid
+        best_ask_px, _ = self.best_ask
+        return OrderBookSnapshot(
+            symbol=self.symbol,
+            timestamp=self.last_update or time.time(),
+            best_bid=best_bid_px,
+            best_ask=best_ask_px,
+            mid=self.mid_price,
+            spread=self.spread,
+            spread_bps=self.spread_bps,
+            micro_price=self.micro_price,
+            imbalance=self.imbalance,
+            bids=[{"price": p, "size": s} for p, s in bids],
+            asks=[{"price": p, "size": s} for p, s in asks],
+            total_bid_depth=sum(s for _, s in bids),
+            total_ask_depth=sum(s for _, s in asks),
+        )
+
+    def to_dict(self) -> dict:
+        return self.snapshot().to_dict()
+
+
 @dataclass
 class Order:
     order_id: str
@@ -49,8 +298,38 @@ class Order:
     status: OrderStatus = OrderStatus.PENDING
     filled_price: Optional[float] = None
     filled_timestamp: Optional[float] = None
+    arrival_price: Optional[float] = None
     slippage_bps: float = 0.0
+    slippage_usd: float = 0.0
+    effective_spread_bps: float = 0.0
+    market_impact_bps: float = 0.0
     reject_reason: Optional[str] = None
+    signal_reason: str = ""
+    order_book_snapshot: Optional[OrderBookSnapshot] = None
+    rungs_consumed: List[Dict[str, float]] = field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        return {
+            "order_id": self.order_id,
+            "symbol": self.symbol,
+            "side": self.side.value if hasattr(self.side, "value") else str(self.side),
+            "order_type": self.order_type.value if hasattr(self.order_type, "value") else str(self.order_type),
+            "quantity": self.quantity,
+            "limit_price": self.price,
+            "status": self.status.value if hasattr(self.status, "value") else str(self.status),
+            "arrival_price": self.arrival_price,
+            "filled_price": self.filled_price,
+            "timestamp": self.timestamp,
+            "filled_timestamp": self.filled_timestamp,
+            "slippage_bps": self.slippage_bps,
+            "slippage_usd": self.slippage_usd,
+            "effective_spread_bps": self.effective_spread_bps,
+            "market_impact_bps": self.market_impact_bps,
+            "signal_reason": self.signal_reason,
+            "reject_reason": self.reject_reason,
+            "order_book_snapshot": self.order_book_snapshot.to_dict() if self.order_book_snapshot else None,
+            "rungs_consumed": self.rungs_consumed,
+        }
 
 
 @dataclass
@@ -176,8 +455,10 @@ class PaperExecutor:
         quantity: float,
         price: Optional[float] = None,
         bbo: Optional[Dict[str, float]] = None,
+        order_book: Optional[OrderBook] = None,
+        signal_reason: str = "",
     ) -> Order:
-        """Submit, risk-check, and simulate execution of an order."""
+        """Submit, risk-check, and simulate execution of an order with order book microstructure."""
         self._order_counter += 1
         order = Order(
             order_id=f"ord-{self._order_counter}",
@@ -187,11 +468,33 @@ class PaperExecutor:
             quantity=quantity,
             price=price,
             timestamp=time.time(),
+            signal_reason=signal_reason,
         )
 
         pos = self.get_position(symbol)
-        mid = (bbo["bid"] + bbo["ask"]) / 2.0 if bbo and "bid" in bbo and "ask" in bbo else None
-        current_px = mid or (bbo["bid"] if bbo and "bid" in bbo else pos.avg_cost or 100.0)
+
+        # Derive prevailing market reference price & arrival price
+        if order_book is not None and (order_book.best_bid[0] > 0 or order_book.best_ask[0] > 0):
+            mid = order_book.mid_price
+            best_bid_px, _ = order_book.best_bid
+            best_ask_px, _ = order_book.best_ask
+            arrival_px = best_ask_px if side == OrderSide.BUY else best_bid_px
+            if arrival_px <= 0:
+                arrival_px = mid
+            current_px = mid
+            order.arrival_price = arrival_px
+            order.order_book_snapshot = order_book.snapshot(depth=5)
+        elif bbo is not None and "bid" in bbo and "ask" in bbo:
+            mid = (bbo["bid"] + bbo["ask"]) / 2.0
+            arrival_px = bbo["ask"] if side == OrderSide.BUY else bbo["bid"]
+            current_px = mid
+            order.arrival_price = arrival_px
+        else:
+            mid = pos.avg_cost or 100.0
+            arrival_px = mid
+            current_px = mid
+            order.arrival_price = arrival_px
+
         current_eq = self.total_equity({symbol: current_px})
 
         # Pre-trade risk evaluation
@@ -202,21 +505,38 @@ class PaperExecutor:
             self.orders.append(order)
             return order
 
-        # Simulated execution against book
+        # Simulated execution against book or top-of-book
         fill_price = None
         slippage_bps = 0.0
+        slippage_usd = 0.0
+        eff_spread_bps = 0.0
+        rungs = []
 
-        if bbo is not None:
+        if order_book is not None and (order_book.best_bid[0] > 0 or order_book.best_ask[0] > 0):
+            best_bid_px, _ = order_book.best_bid
+            best_ask_px, _ = order_book.best_ask
+
+            if order_type == OrderType.MARKET:
+                fill_price, slippage_bps, slippage_usd, eff_spread_bps, rungs = order_book.walk_book(side, quantity)
+            elif order_type == OrderType.LIMIT:
+                if price is not None:
+                    if side == OrderSide.BUY and price >= best_ask_px:
+                        fill_price, slippage_bps, slippage_usd, eff_spread_bps, rungs = order_book.walk_book(side, quantity)
+                    elif side == OrderSide.SELL and price <= best_bid_px:
+                        fill_price, slippage_bps, slippage_usd, eff_spread_bps, rungs = order_book.walk_book(side, quantity)
+                    else:
+                        order.status = OrderStatus.PENDING
+                        self.orders.append(order)
+                        return order
+        elif bbo is not None:
             bid = bbo.get("bid", 0.0)
             ask = bbo.get("ask", 0.0)
             bid_sz = bbo.get("bid_size", 1000.0)
             ask_sz = bbo.get("ask_size", 1000.0)
 
             if order_type == OrderType.MARKET:
-                # Market order: crosses the spread
                 if side == OrderSide.BUY:
                     arrival_px = ask
-                    # Simulated market impact slippage if order exceeds top-of-book size
                     impact = max(0.0, (quantity - ask_sz) / 10_000.0) * 0.01 if quantity > ask_sz else 0.0
                     fill_price = ask + impact
                     slippage_bps = ((fill_price - arrival_px) / arrival_px) * 10_000.0 if arrival_px > 0 else 0.0
@@ -225,24 +545,25 @@ class PaperExecutor:
                     impact = max(0.0, (quantity - bid_sz) / 10_000.0) * 0.01 if quantity > bid_sz else 0.0
                     fill_price = bid - impact
                     slippage_bps = ((arrival_px - fill_price) / arrival_px) * 10_000.0 if arrival_px > 0 else 0.0
-
+                slippage_usd = abs(fill_price - arrival_px) * quantity
+                eff_spread_bps = (abs(fill_price - mid) / mid * 10_000.0) if mid > 0 else 0.0
             elif order_type == OrderType.LIMIT:
-                # Limit order: check if marketable or resting
                 if price is not None:
                     if side == OrderSide.BUY and price >= ask:
                         fill_price = ask
                     elif side == OrderSide.SELL and price <= bid:
                         fill_price = bid
                     else:
-                        # Resting limit order (not filled immediately)
                         order.status = OrderStatus.PENDING
                         self.orders.append(order)
                         return order
         else:
-            # Fallback if no BBO provided: fill at limit price or default
             fill_price = price if price is not None else 100.0
 
         if fill_price is not None:
+            order.effective_spread_bps = eff_spread_bps
+            order.slippage_usd = slippage_usd
+            order.rungs_consumed = rungs
             self._fill_order(order, fill_price, slippage_bps)
 
         self.orders.append(order)
@@ -294,16 +615,23 @@ class PaperExecutor:
             "side": order.side.value,
             "qty": order.quantity,
             "price": fill_price,
+            "arrival_price": order.arrival_price,
             "slippage_bps": slippage_bps,
+            "slippage_usd": order.slippage_usd,
+            "effective_spread_bps": order.effective_spread_bps,
+            "signal_reason": order.signal_reason,
             "cash_after": self.cash,
             "realized_pnl": pos.realized_pnl,
             "timestamp": order.filled_timestamp,
+            "order_book_snapshot": order.order_book_snapshot.to_dict() if order.order_book_snapshot else None,
+            "rungs_consumed": order.rungs_consumed,
         })
 
 
 class Strategy:
     """
     Abstract Base Class for Event-Driven Algorithmic Strategies.
+    Tracks live Level-2 Order Books, records execution microstructure, and exports audit trails.
     """
 
     def __init__(self, name: str, symbols: Optional[List[str]] = None, risk_limits: Optional[RiskLimits] = None):
@@ -311,9 +639,17 @@ class Strategy:
         self.symbols = symbols or ["AAPL"]
         self.risk_manager = RiskManager(limits=risk_limits)
         self.executor = PaperExecutor(risk_manager=self.risk_manager)
+        self.order_books: Dict[str, OrderBook] = {}
         self._current_bbo: Dict[str, Dict[str, float]] = {}
         self._current_mid: Dict[str, float] = {}
         self.is_running = False
+
+    def get_order_book(self, symbol: str) -> OrderBook:
+        """Retrieves or creates the live Level-2 Limit Order Book for symbol."""
+        sym_clean = symbol.upper().strip()
+        if sym_clean not in self.order_books:
+            self.order_books[sym_clean] = OrderBook(symbol=sym_clean)
+        return self.order_books[sym_clean]
 
     def on_start(self) -> None:
         """Called when strategy starts execution."""
@@ -333,6 +669,14 @@ class Strategy:
                 "ask_size": event.ask_size or 100.0,
             }
             self._current_mid[event.instrument_id] = (event.bid_price + event.ask_price) / 2.0
+            book = self.get_order_book(event.instrument_id)
+            book.update_quote(
+                event.bid_price,
+                event.ask_price,
+                event.bid_size or 100.0,
+                event.ask_size or 100.0,
+                timestamp=event.exchange_timestamp or event.receive_timestamp or time.time(),
+            )
 
     def on_flow(self, flow_metrics: Dict[str, Any]) -> None:
         """Called when order flow / CVD metrics update."""
@@ -350,24 +694,134 @@ class Strategy:
         """Called when strategy stops execution."""
         self.is_running = False
 
-    def buy(self, symbol: str, quantity: float, price: Optional[float] = None) -> Order:
+    def buy(
+        self,
+        symbol: str,
+        quantity: float,
+        price: Optional[float] = None,
+        reason: str = "",
+    ) -> Order:
         order_type = OrderType.MARKET if price is None else OrderType.LIMIT
         bbo = self._current_bbo.get(symbol)
-        order = self.executor.submit_order(symbol, OrderSide.BUY, order_type, quantity, price, bbo)
+        book = self.get_order_book(symbol)
+        order = self.executor.submit_order(
+            symbol,
+            OrderSide.BUY,
+            order_type,
+            quantity,
+            price,
+            bbo=bbo,
+            order_book=book,
+            signal_reason=reason,
+        )
         if order.status == OrderStatus.FILLED:
             self.on_fill(order)
         return order
 
-    def sell(self, symbol: str, quantity: float, price: Optional[float] = None) -> Order:
+    def sell(
+        self,
+        symbol: str,
+        quantity: float,
+        price: Optional[float] = None,
+        reason: str = "",
+    ) -> Order:
         order_type = OrderType.MARKET if price is None else OrderType.LIMIT
         bbo = self._current_bbo.get(symbol)
-        order = self.executor.submit_order(symbol, OrderSide.SELL, order_type, quantity, price, bbo)
+        book = self.get_order_book(symbol)
+        order = self.executor.submit_order(
+            symbol,
+            OrderSide.SELL,
+            order_type,
+            quantity,
+            price,
+            bbo=bbo,
+            order_book=book,
+            signal_reason=reason,
+        )
         if order.status == OrderStatus.FILLED:
             self.on_fill(order)
         return order
 
     def get_equity(self) -> float:
         return self.executor.total_equity(self._current_mid)
+
+    def get_execution_ledger(self) -> List[Dict[str, Any]]:
+        """
+        Returns chronological trade ledger detailing what the strategy did,
+        execution prices, order book microstructure at fill, and risk outcomes.
+        """
+        ledger = []
+        for idx, f in enumerate(self.executor.fills, start=1):
+            ord_id = f.get("order_id")
+            matched_order = next((o for o in self.executor.orders if o.order_id == ord_id), None)
+            item = {
+                "trade_id": f"trd-{idx:04d}",
+                "order_id": ord_id,
+                "timestamp": f.get("timestamp"),
+                "symbol": f.get("symbol"),
+                "side": f.get("side"),
+                "order_type": matched_order.order_type.value if matched_order else "MARKET",
+                "quantity": f.get("qty"),
+                "arrival_price": matched_order.arrival_price if matched_order else None,
+                "filled_price": f.get("price"),
+                "status": "FILLED",
+                "slippage_bps": f.get("slippage_bps", 0.0),
+                "slippage_usd": matched_order.slippage_usd if matched_order else 0.0,
+                "effective_spread_bps": matched_order.effective_spread_bps if matched_order else 0.0,
+                "signal_reason": matched_order.signal_reason if matched_order else "",
+                "cash_after": f.get("cash_after"),
+                "realized_pnl": f.get("realized_pnl"),
+                "order_book_snapshot": matched_order.order_book_snapshot.to_dict() if (matched_order and matched_order.order_book_snapshot) else None,
+                "rungs_consumed": matched_order.rungs_consumed if matched_order else [],
+            }
+            ledger.append(item)
+        return ledger
+
+    def export_executions(self, filepath: Optional[str] = None, format: str = "json") -> str:
+        """
+        Exports strategy executions, order book history, and performance tear-sheet
+        to a structured JSON or CSV file.
+        """
+        fmt = format.lower().strip()
+        if not filepath:
+            os.makedirs("data/reports", exist_ok=True)
+            ts = int(time.time())
+            sym_clean = self.symbols[0] if self.symbols else "PORTFOLIO"
+            filepath = f"data/reports/strategy_{self.name}_{sym_clean}_{ts}.{fmt}"
+        else:
+            os.makedirs(os.path.dirname(os.path.abspath(filepath)), exist_ok=True)
+
+        ledger = self.get_execution_ledger()
+        summary = self.performance_summary()
+
+        if fmt == "csv":
+            headers = [
+                "trade_id", "order_id", "timestamp", "symbol", "side", "order_type",
+                "quantity", "arrival_price", "filled_price", "status", "slippage_bps",
+                "slippage_usd", "effective_spread_bps", "best_bid", "best_ask",
+                "spread_bps", "micro_price", "signal_reason", "cash_after", "realized_pnl"
+            ]
+            with open(filepath, "w", newline="", encoding="utf-8") as f:
+                writer = csv.DictWriter(f, fieldnames=headers, extrasaction="ignore")
+                writer.writeheader()
+                for item in ledger:
+                    row = {k: item.get(k, "") for k in headers}
+                    if item.get("order_book_snapshot"):
+                        row.update({k: item["order_book_snapshot"].get(k, "") for k in ("best_bid", "best_ask", "spread_bps", "micro_price")})
+                    writer.writerow(row)
+        else:
+            export_payload = {
+                "strategy": self.name,
+                "exported_at": time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime()),
+                "performance_summary": summary,
+                "current_order_books": {sym: ob.to_dict() for sym, ob in self.order_books.items()},
+                "executions_count": len(ledger),
+                "executions": ledger,
+            }
+            with open(filepath, "w", encoding="utf-8") as f:
+                json.dump(export_payload, f, indent=2)
+
+        return os.path.abspath(filepath)
 
     def performance_summary(self) -> Dict[str, Any]:
         """Compute institutional performance metrics."""
@@ -442,14 +896,14 @@ class WhaleMomentumStrategy(Strategy):
         if side == "BUY" and pos.quantity <= 0:
             # Institutional accumulation detected: enter Long
             if pos.quantity < 0:
-                self.buy(inst, abs(pos.quantity))  # Close short
-            order = self.buy(inst, self.trade_size)
+                self.buy(inst, abs(pos.quantity), reason="Whale Accumulation: Cover Short")
+            order = self.buy(inst, self.trade_size, reason="Whale Accumulation: Enter Long")
             if order.status == OrderStatus.FILLED:
                 self.entry_prices[inst] = order.filled_price
         elif side == "SELL" and pos.quantity >= 0:
             # Institutional distribution detected: exit Long or enter Short
             if pos.quantity > 0:
-                self.sell(inst, pos.quantity)
+                self.sell(inst, pos.quantity, reason="Whale Distribution: Close Long")
             self.entry_prices.pop(inst, None)
 
     def on_tick(self, event: CanonicalEvent) -> None:
@@ -465,7 +919,7 @@ class WhaleMomentumStrategy(Strategy):
             # Stop-loss check
             drop_pct = (entry_price - event.price) / entry_price * 100.0
             if drop_pct >= self.stop_loss_pct:
-                self.sell(inst, pos.quantity)
+                self.sell(inst, pos.quantity, reason=f"Risk Guard: Stop-Loss (-{drop_pct:.2f}%)")
                 self.entry_prices.pop(inst, None)
 
 
@@ -503,11 +957,11 @@ class SpreadCaptureMarketMaker(Strategy):
             if pos.quantity <= 0:
                 # Quote buy limit just above bid
                 buy_px = round(event.bid_price + 0.01, 2)
-                self.buy(inst, self.quote_size, price=buy_px)
+                self.buy(inst, self.quote_size, price=buy_px, reason=f"Market Making: Passive Bid ({spread_bps:.1f} bps)")
             if pos.quantity >= 0:
                 # Quote sell limit just below ask
                 sell_px = round(event.ask_price - 0.01, 2)
-                self.sell(inst, self.quote_size, price=sell_px)
+                self.sell(inst, self.quote_size, price=sell_px, reason=f"Market Making: Passive Ask ({spread_bps:.1f} bps)")
 
 
 class StrategyRunner:

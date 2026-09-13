@@ -37,6 +37,45 @@ class Reason(str, Enum):
     MALFORMED = "MALFORMED"
 
 
+class AssetClass(str, Enum):
+    EQUITY = "EQUITY"
+    CRYPTO = "CRYPTO"
+    FUTURES = "FUTURES"
+    OPTIONS = "OPTIONS"
+    BOND = "BOND"
+    FX = "FX"
+
+
+@dataclass(slots=True)
+class FuturesContract:
+    symbol: str
+    underlying: str
+    expiry_date: str
+    contract_size: float = 1.0
+    tick_size: float = 0.01
+    settlement_type: str = "PHYSICAL"
+
+
+@dataclass(slots=True)
+class OptionDerivative:
+    symbol: str
+    underlying: str
+    strike: float
+    expiry_date: str
+    option_type: str = "CALL"
+    contract_multiplier: float = 100.0
+
+
+@dataclass(slots=True)
+class BondSecurity:
+    cusip: str
+    issuer: str
+    coupon_rate: float
+    maturity_date: str
+    face_value: float = 1000.0
+    payment_frequency: int = 2
+
+
 @dataclass(slots=True)
 class RawEvent:
     """What the feed simulator / gateway hands to the pipeline before
@@ -67,6 +106,21 @@ class CanonicalEvent:
     quality_status: QualityStatus = QualityStatus.VALID
     reasons: list[str] = field(default_factory=list)
     raw_id: str = ""
+    # Multi-asset class extensions
+    asset_class: AssetClass = AssetClass.EQUITY
+    expiry_date: Optional[str] = None
+    contract_size: Optional[float] = None
+    underlying_id: Optional[str] = None
+    open_interest: Optional[float] = None
+    strike: Optional[float] = None
+    put_call: Optional[str] = None
+    implied_vol: Optional[float] = None
+    delta: Optional[float] = None
+    gamma: Optional[float] = None
+    coupon: Optional[float] = None
+    maturity_date: Optional[str] = None
+    yield_to_worst: Optional[float] = None
+    duration: Optional[float] = None
 
     def dedup_key(self) -> tuple:
         if self.sequence_number is not None:
