@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.0.6] - 2026-09-13
+**SEC EDGAR Untruncated Link Fix, OSC 8 Terminal Hyperlinks & Browser Launch (`--open`)**
+
+### Fixed
+- **SEC EDGAR URL Truncation 404 Resolution (`src/cli.py`)**:
+  - Fixed terminal table cell width truncation where long SEC EDGAR URLs (e.g. `https://www.sec.gov/Archives/edgar/data/320193/...`) were truncated by Rich with an ellipsis character (`.../data/3201…`), causing terminal click handlers and copy-paste to navigate to non-existent truncated endpoints (`.../data/3201`) resulting in SEC HTTP 404 errors.
+  - Replaced plain text URLs in table cells with Rich OSC 8 terminal hyperlinks: `[link=URL]Open Document[/link]`. In modern terminal emulators (Windows Terminal, VS Code, iTerm2), clicking "Open Document" opens the full, untruncated SEC filing URL directly in the browser.
+  - Added dedicated, untruncated **Direct SEC Document Links** footer printed below the table, ensuring that even legacy terminals without OSC 8 support can copy and click clean, un-split URLs.
+
+### Added
+- **Direct Browser Launch (`--open` / `-o`)**:
+  - Added `-o` / `--open` flag to `mdrap edgar` (`p_edgar.add_argument("-o", "--open")`). Users can now launch the top filing, Form 4 insider report, or 8-K event directly in their default web browser with `mdrap edgar filings NVDA -o` or `mdrap edgar profile AAPL -o`.
+- **Test Coverage**:
+  - Added `test_edgar_open_argument` in `tests/test_cli.py` to ensure `--open` flag parsing and defaults are rigorously validated.
+
 ## [1.0.5] - 2026-09-13
 **Financial News & Sentiment Pipeline Expansion (`news latest -s <TICKER>`) & Ticker Extraction**
 

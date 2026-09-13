@@ -746,6 +746,10 @@ Lists recent official filings with direct HTTPS links to official SEC accession 
 ```bash
 mdrap edgar filings AAPL -t 10-K
 mdrap edgar filings NVDA -t 8-K --limit 20
+
+# Open the top filing directly in default web browser (-o / --open)
+mdrap edgar filings NVDA -l 5 -o
+mdrap edgar profile MSFT -o
 ```
 
 ---

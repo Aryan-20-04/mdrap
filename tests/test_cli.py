@@ -420,3 +420,16 @@ def test_edgar_and_vessel_routing(monkeypatch):
     assert called_vessel_args[0].action == "list"
 
 
+def test_edgar_open_argument():
+    from cli import build_parser
+    parser = build_parser()
+    args = parser.parse_args(["edgar", "filings", "NVDA", "-o"])
+    assert args.open_browser is True
+    assert args.action == "filings"
+    assert args.ticker == "NVDA"
+
+    args_no_open = parser.parse_args(["edgar", "filings", "NVDA"])
+    assert args_no_open.open_browser is False
+
+
+

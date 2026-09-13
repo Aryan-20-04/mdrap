@@ -3214,6 +3214,7 @@ def cmd_edgar(args):
     metric = getattr(args, "metric", "Revenues") or "Revenues"
     form_type = getattr(args, "form_type", None)
     fresh = getattr(args, "fresh", False)
+    open_browser = getattr(args, "open_browser", False) or getattr(args, "open", False)
 
     client = EdgarClient()
     try:
@@ -3231,16 +3232,23 @@ def cmd_edgar(args):
                 expand=False,
             )
             console.print(panel)
+            cik_int = int(prof.cik) if str(prof.cik).isdigit() else prof.cik
+            edgar_url = f"https://www.sec.gov/edgar/browse/?CIK={cik_int}"
+            console.print(f"[dim]Company SEC Search:[/dim] [link={edgar_url}]{edgar_url}[/link]\n")
+            if open_browser:
+                import webbrowser
+                console.print(f"[green]Opening SEC EDGAR profile in browser:[/green] {edgar_url}")
+                webbrowser.open(edgar_url)
 
         elif action in ("events", "8-k", "8k"):
             events = client.get_material_events(ticker, limit=limit, fresh=fresh)
             table = Table(title=f"🚨 SEC Form 8-K Material Corporate Events · {ticker.upper()}")
-            table.add_column("Filing Date", style="bold cyan")
-            table.add_column("Form", style="magenta")
-            table.add_column("Urgency", justify="center")
+            table.add_column("Filing Date", style="bold cyan", no_wrap=True)
+            table.add_column("Form", style="magenta", no_wrap=True)
+            table.add_column("Urgency", justify="center", no_wrap=True)
             table.add_column("Category", style="bold yellow")
             table.add_column("Decoded Event Triggers / Headlines", style="white")
-            table.add_column("SEC Document Link", style="dim blue")
+            table.add_column("SEC Link", style="bold cyan", no_wrap=True)
 
             for e in events:
                 urgency_style = {
@@ -3251,16 +3259,31 @@ def cmd_edgar(args):
                 }.get(e.urgency, "[dim]INFO[/dim]")
 
                 headlines_str = "\n".join(e.decoded_items) if e.decoded_items else (", ".join(e.items) if e.items else "General 8-K Event")
+                link_cell = (
+                    f"[link={e.filing_url}][bold underline cyan]Open Document[/bold underline cyan][/link]"
+                    if e.filing_url
+                    else (e.accession_number or "-")
+                )
                 table.add_row(
                     e.filing_date,
                     e.form,
                     urgency_style,
                     e.primary_category,
                     headlines_str,
-                    e.filing_url or e.accession_number,
+                    link_cell,
                 )
             console.print(table)
-            console.print(f"[dim]Showing {len(events)} recent material events for {ticker.upper()}.[/dim]\n")
+            console.print(f"[dim]Showing {len(events)} recent material events for {ticker.upper()}.[/dim]")
+            if events:
+                console.print("[dim]Direct SEC Document Links (Click or Copy):[/dim]")
+                for idx, e in enumerate(events[:5], start=1):
+                    if e.filing_url:
+                        console.print(f"  [{idx}] {e.form} ({e.filing_date}): [link={e.filing_url}]{e.filing_url}[/link]")
+                console.print()
+            if open_browser and events and events[0].filing_url:
+                import webbrowser
+                console.print(f"[green]Opening latest 8-K in browser:[/green] {events[0].filing_url}")
+                webbrowser.open(events[0].filing_url)
 
         elif action in ("insiders", "form4", "4"):
             trades = client.get_insider_trades(ticker, limit=limit, fresh=fresh)
@@ -3268,33 +3291,48 @@ def cmd_edgar(args):
                 # Fallback to metadata filings list if no XML transactions parsed
                 filings = client.get_insiders(ticker, limit=limit, fresh=fresh)
                 table = Table(title=f"💼 SEC Form 4 Insider Filings · {ticker.upper()}")
-                table.add_column("Filing Date", style="bold cyan")
-                table.add_column("Report Date", style="dim")
-                table.add_column("Form", style="bold green")
+                table.add_column("Filing Date", style="bold cyan", no_wrap=True)
+                table.add_column("Report Date", style="dim", no_wrap=True)
+                table.add_column("Form", style="bold green", no_wrap=True)
                 table.add_column("Primary Document", style="white")
-                table.add_column("Filing URL", style="dim blue")
+                table.add_column("Filing Link", style="bold cyan", no_wrap=True)
 
                 for f in filings:
+                    link_cell = (
+                        f"[link={f.filing_url}][bold underline cyan]Open Document[/bold underline cyan][/link]"
+                        if f.filing_url
+                        else (f.accession_number or "-")
+                    )
                     table.add_row(
                         f.filing_date,
                         f.report_date or "-",
                         f.form,
                         f.primary_document or "-",
-                        f.filing_url or f.accession_number,
+                        link_cell,
                     )
                 console.print(table)
-                console.print(f"[dim]Showing {len(filings)} recent Form 4 reports for {ticker.upper()}.[/dim]\n")
+                console.print(f"[dim]Showing {len(filings)} recent Form 4 reports for {ticker.upper()}.[/dim]")
+                if filings:
+                    console.print("[dim]Direct SEC Document Links (Click or Copy):[/dim]")
+                    for idx, f in enumerate(filings[:5], start=1):
+                        if f.filing_url:
+                            console.print(f"  [{idx}] {f.form} ({f.filing_date}): [link={f.filing_url}]{f.filing_url}[/link]")
+                    console.print()
+                if open_browser and filings and filings[0].filing_url:
+                    import webbrowser
+                    console.print(f"[green]Opening latest Form 4 in browser:[/green] {filings[0].filing_url}")
+                    webbrowser.open(filings[0].filing_url)
             else:
                 table = Table(title=f"💼 SEC Form 4 Insider Trades · {ticker.upper()}")
-                table.add_column("Trade Date", style="bold cyan")
+                table.add_column("Trade Date", style="bold cyan", no_wrap=True)
                 table.add_column("Reporting Insider", style="bold white")
                 table.add_column("Role / Title", style="dim")
-                table.add_column("Action", justify="center")
-                table.add_column("Shares", justify="right", style="bold")
-                table.add_column("Price ($)", justify="right")
-                table.add_column("Total Value ($)", justify="right", style="bold")
-                table.add_column("Owned Post", justify="right", style="dim")
-                table.add_column("Form 4 Link", style="dim blue")
+                table.add_column("Action", justify="center", no_wrap=True)
+                table.add_column("Shares", justify="right", style="bold", no_wrap=True)
+                table.add_column("Price ($)", justify="right", no_wrap=True)
+                table.add_column("Total Value ($)", justify="right", style="bold", no_wrap=True)
+                table.add_column("Owned Post", justify="right", style="dim", no_wrap=True)
+                table.add_column("Form 4 Link", style="bold cyan", no_wrap=True)
 
                 for t in trades:
                     if t.action == "BUY":
@@ -3314,6 +3352,11 @@ def cmd_edgar(args):
                         val_str = f"${t.total_value:,.2f}" if t.total_value > 0 else "-"
 
                     price_str = f"${t.price_per_share:,.2f}" if t.price_per_share > 0 else "-"
+                    link_cell = (
+                        f"[link={t.filing_url}][bold underline cyan]Open Document[/bold underline cyan][/link]"
+                        if t.filing_url
+                        else (t.accession_number or "-")
+                    )
                     table.add_row(
                         t.transaction_date or t.filing_date,
                         t.owner_name,
@@ -3323,10 +3366,26 @@ def cmd_edgar(args):
                         price_str,
                         val_str,
                         f"{t.shares_owned_after:,.0f}" if t.shares_owned_after > 0 else "-",
-                        t.filing_url or t.accession_number,
+                        link_cell,
                     )
                 console.print(table)
-                console.print(f"[dim]Parsed directly from official SEC Form 4 XML filings for {ticker.upper()}.[/dim]\n")
+                console.print(f"[dim]Parsed directly from official SEC Form 4 XML filings for {ticker.upper()}.[/dim]")
+                if trades:
+                    console.print("[dim]Direct SEC Document Links (Click or Copy):[/dim]")
+                    seen_urls = set()
+                    shown = 0
+                    for t in trades:
+                        if t.filing_url and t.filing_url not in seen_urls:
+                            seen_urls.add(t.filing_url)
+                            shown += 1
+                            console.print(f"  [{shown}] {t.owner_name} ({t.action}): [link={t.filing_url}]{t.filing_url}[/link]")
+                            if shown >= 5:
+                                break
+                    console.print()
+                if open_browser and trades and trades[0].filing_url:
+                    import webbrowser
+                    console.print(f"[green]Opening latest Form 4 in browser:[/green] {trades[0].filing_url}")
+                    webbrowser.open(trades[0].filing_url)
 
         elif action in ("facts", "financials", "xbrl"):
             facts = client.get_company_facts(ticker, metric=metric, limit=limit, fresh=fresh)
@@ -3338,10 +3397,27 @@ def cmd_edgar(args):
         elif action in ("filings", "list"):
             filings = client.get_filings(ticker, form_type=form_type, limit=limit, fresh=fresh)
             title_form = f" ({form_type.upper()})" if form_type else ""
-            fl_cols = [("Filing Date", "left", "bold cyan"), ("Form", "left", "bold magenta"), ("Description", "left", "white"), ("Primary Document", "left", "dim"), ("SEC Accession Link", "left", "dim blue")]
-            fl_rows = [[f.filing_date, f.form, f.description or "-", f.primary_document or "-", f.filing_url or f.accession_number] for f in filings]
+            fl_cols = [("Filing Date", "left", "bold cyan", True), ("Form", "left", "bold magenta", True), ("Description", "left", "white", False), ("Primary Document", "left", "dim", False), ("SEC Link", "left", "bold cyan", True)]
+            fl_rows = []
+            for f in filings:
+                link_cell = (
+                    f"[link={f.filing_url}][bold underline cyan]Open Document[/bold underline cyan][/link]"
+                    if f.filing_url
+                    else (f.accession_number or "-")
+                )
+                fl_rows.append([f.filing_date, f.form, f.description or "-", f.primary_document or "-", link_cell])
             console.print(_t(f"📄 Official SEC Filings{title_form} · {ticker.upper()}", fl_cols, fl_rows))
-            console.print(f"[dim]Showing {len(filings)} filings for {ticker.upper()}.[/dim]\n")
+            console.print(f"[dim]Showing {len(filings)} filings for {ticker.upper()}.[/dim]")
+            if filings:
+                console.print("[dim]Direct SEC Document Links (Click or Copy):[/dim]")
+                for idx, f in enumerate(filings[:5], start=1):
+                    if f.filing_url:
+                        console.print(f"  [{idx}] {f.form} ({f.filing_date}): [link={f.filing_url}]{f.filing_url}[/link]")
+                console.print()
+            if open_browser and filings and filings[0].filing_url:
+                import webbrowser
+                console.print(f"[green]Opening latest filing in browser:[/green] {filings[0].filing_url}")
+                webbrowser.open(filings[0].filing_url)
 
         else:
             console.print(f"[red]Unknown edgar action '{action}'. Choices: profile, events, insiders, filings, facts.[/red]")
@@ -4029,6 +4105,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_edgar.add_argument("-l", "--limit", type=int, default=15, help="Maximum number of items to display (default: 15)")
     p_edgar.add_argument("-m", "--metric", default="Revenues", help="GAAP metric name for facts (default: Revenues)")
     p_edgar.add_argument("-f", "--fresh", action="store_true", help="Bypass local cache and force fresh SEC pull")
+    p_edgar.add_argument("-o", "--open", dest="open_browser", action="store_true", help="Open the latest filing or document directly in default web browser")
 
     # Phase 11: Maritime Tanker & Cargo Alternative Data Engine
     p_vessel = _sub("vessel", cmd_vessel, "Maritime Tanker & Cargo Tracking: Crude oil, LNG, bulk, and container tracking", ["vessels", "tankers", "ships", "ais"])

@@ -1061,6 +1061,39 @@ Implemented three remaining spec milestones in dependency order. Test suite expa
 - Rebuilt distribution packages: `mdrap-1.0.4-py3-none-any.whl` and `mdrap-1.0.4.tar.gz`.
 - Package verification: `twine check dist/*` PASSED.
 
+---
+
+## Phase 15: News & Sentiment Pipeline Shorthand & Company Name Entity Extraction (`v1.0.5`)
+- Added `news latest -s <TICKER>`, `news summary -s <TICKER>`, and direct ticker shorthand `news <TICKER>`.
+- Enhanced `TickerExtractor` with `COMPANY_NAME_MAP` for canonical ticker resolution.
+- Updated shell auto-correction and argument mapping.
+- All 620 tests passed. Released as `v1.0.5`.
+
+---
+
+## Phase 16: SEC EDGAR Untruncated Link Fix, OSC 8 Hyperlinks & Browser Launch (`v1.0.6`)
+
+### 1. Problem Statement & Root Cause
+- When running `mdrap edgar filings AAPL` or `mdrap edgar events NVDA`, terminal column widths truncated long SEC URLs with an ellipsis character: `https://www.sec.gov/Archives/edgar/data/3201…`.
+- Terminal click handlers truncated the URL at the non-ASCII ellipsis `…`, attempting to open `https://www.sec.gov/Archives/edgar/data/3201`.
+- SEC EDGAR returned an HTTP 404 error because CIK `3201` is invalid (Apple's CIK is `0000320193`).
+
+### 2. Implementation
+- **OSC 8 Terminal Hyperlinks (`src/cli.py`)**:
+  - Replaced raw URL strings inside Rich table cells with `[link=URL][bold underline cyan]Open Document[/bold underline cyan][/link]`.
+  - The cell text is now concise (13 characters) and never truncates regardless of terminal window width.
+  - Clicking "Open Document" in terminal emulators supporting OSC 8 (Windows Terminal, VS Code, iTerm) passes the full URL to the default browser.
+- **Untruncated Direct Links Footer (`src/cli.py`)**:
+  - Added a dedicated section below the table that prints the full, un-split URLs:
+    `[idx] Form (Date): URL`.
+  - Guarantees seamless copy-paste compatibility for legacy terminals.
+- **Browser Launch Flag (`-o` / `--open`)**:
+  - Added `-o` / `--open` to `mdrap edgar` to directly launch the latest filing in the default web browser via `webbrowser.open(url)`.
+- **Automated Verification**:
+  - Added `test_edgar_open_argument` in `tests/test_cli.py`.
+  - Verified with real SEC API calls for `AAPL` and `NVDA`.
+  - Full test suite: **621/621 tests passing (100% green)**.
+
 
 
 
