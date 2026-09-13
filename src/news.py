@@ -118,9 +118,27 @@ class FinancialSentimentAnalyzer:
 
 class TickerExtractor:
     KNOWN_TICKERS = {'AAPL', 'MSFT', 'GOOGL', 'GOOG', 'AMZN', 'META', 'TSLA', 'NVDA', 'JPM', 'BAC', 'GS', 'WFC', 'XOM', 'CVX', 'PFE', 'JNJ', 'UNH', 'V', 'MA', 'DIS', 'NFLX', 'AMD', 'INTC', 'CRM', 'ORCL', 'AVGO', 'COST', 'WMT', 'HD', 'MCD', 'BA', 'CAT', 'GE', 'MMM', 'SPY', 'QQQ', 'IWM', 'BTC', 'ETH', 'SOL'}
+    COMPANY_NAME_MAP = {
+        'apple': 'AAPL',
+        'microsoft': 'MSFT',
+        'nvidia': 'NVDA',
+        'tesla': 'TSLA',
+        'google': 'GOOGL',
+        'alphabet': 'GOOGL',
+        'amazon': 'AMZN',
+        'meta': 'META',
+        'facebook': 'META',
+        'netflix': 'NFLX',
+        'jpmorgan': 'JPM',
+        'intel': 'INTC',
+        'broadcom': 'AVGO',
+        'bitcoin': 'BTC',
+        'ethereum': 'ETH',
+        'solana': 'SOL',
+    }
     
     def extract(self, text: str) -> list[str]:
-        """Extract ticker symbols from text. Looks for $TICKER, (TICKER:), and known standalone tickers."""
+        """Extract ticker symbols from text. Looks for $TICKER, (TICKER:), known standalone tickers, and company names."""
         tickers = set()
         
         # Look for $TICKER
@@ -136,6 +154,12 @@ class TickerExtractor:
         for w in words:
             if w in self.KNOWN_TICKERS:
                 tickers.add(w)
+
+        # Look for common company names
+        text_lower = text.lower()
+        for comp, sym in self.COMPANY_NAME_MAP.items():
+            if re.search(r'\b' + comp + r'\b', text_lower):
+                tickers.add(sym)
                 
         return list(tickers)
 

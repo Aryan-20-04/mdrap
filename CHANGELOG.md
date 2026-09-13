@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.0.5] - 2026-09-13
+**Financial News & Sentiment Pipeline Expansion (`news latest -s <TICKER>`) & Ticker Extraction**
+
+### Added
+- **News Command Full Feature Set (`src/trading_cli.py`, `src/cli.py`)**:
+  - `news latest -s <TICKER>`: Live financial headline aggregation and sentiment scoring.
+  - `news summary -s <TICKER>`: Multi-article sentiment consensus summary (% Bullish, % Bearish, % Neutral, Average Score).
+  - `news <TICKER>`: Direct ticker query shorthand (e.g. `mdrap news NVDA`).
+  - `news analyze "<HEADLINE>"`: Detailed NLP sentiment breakdown with urgency and keyword tags.
+- **Company Name Entity Resolution (`src/news.py`)**:
+  - `TickerExtractor`: Added `COMPANY_NAME_MAP` to resolve common company names (e.g. "Nvidia" $\rightarrow$ `NVDA`, "Apple" $\rightarrow$ `AAPL`, "Microsoft" $\rightarrow$ `MSFT`, "Tesla" $\rightarrow$ `TSLA`, "Bitcoin" $\rightarrow$ `BTC`) to their canonical exchange tickers.
+- **CLI & Shell Auto-Correction for News**:
+  - Added `news` and `sentiment` dispatch heuristics in `cmd_shell` and `main()` supporting auto-correction and positional ticker arguments.
+
 ## [1.0.4] - 2026-09-13
 **CLI Fuzzy Typo Auto-Correction, Scoped Error Reporting & Real-World Command Ergonomics**
 

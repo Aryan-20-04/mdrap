@@ -3682,6 +3682,9 @@ class MDRAPArgumentParser(argparse.ArgumentParser):
                 console.print(f"  [dim]Correct syntax:[/dim] [green]mdrap depth <SYMBOL>[/green]  (e.g. mdrap depth AAPL)")
             elif prog_name in ("flow", "cvd"):
                 console.print(f"  [dim]Correct syntax:[/dim] [green]mdrap flow <SYMBOL>[/green]  (e.g. mdrap flow AAPL)")
+            elif prog_name in ("news", "sentiment"):
+                console.print("  [dim]Supported actions:[/dim] [cyan]latest, analyze, summary, fetch[/cyan]")
+                console.print(f"  [dim]Correct syntax:[/dim] [green]mdrap news latest -s <TICKER>[/green]  or  [green]mdrap news <TICKER>[/green]  or  [green]mdrap news analyze \"<TEXT>\"[/green]")
 
         # 3. Print concise usage, suppressing the giant multi-command wall
         usage_str = self.format_usage().strip()
@@ -4454,6 +4457,23 @@ def cmd_shell(args=None, parser=None):
                             cli_tokens = ["vessel"] + rest
                 else:
                     cli_tokens = ["vessel"]
+            elif verb in ("news", "sentiment"):
+                NEWS_ACTIONS = ("latest", "analyze", "summary", "fetch")
+                if rest:
+                    action_cand = rest[0].lower()
+                    if action_cand in NEWS_ACTIONS:
+                        cli_tokens = ["news", action_cand] + rest[1:]
+                    else:
+                        close = difflib.get_close_matches(action_cand, NEWS_ACTIONS, n=1, cutoff=0.6)
+                        if close:
+                            console.print(f"[dim cyan][auto-correct] Interpreting '{action_cand}' as '{close[0]}'[/dim cyan]")
+                            cli_tokens = ["news", close[0]] + rest[1:]
+                        elif not rest[0].startswith("-"):
+                            cli_tokens = ["news", "latest", "-s", rest[0]] + rest[1:]
+                        else:
+                            cli_tokens = ["news", "latest"] + rest
+                else:
+                    cli_tokens = ["news", "latest"]
             else:
                 if verb not in MNEMONIC_MAP and verb not in ALL_CANONICAL_COMMANDS:
                     close = difflib.get_close_matches(verb, list(MNEMONIC_MAP.keys()), n=1, cutoff=0.55)
@@ -4701,6 +4721,24 @@ def main():
                         sys.argv = [sys.argv[0], "vessel"] + rest
             else:
                 sys.argv = [sys.argv[0], "vessel"]
+        elif raw_cmd in ("news", "sentiment"):
+            NEWS_ACTIONS = ("latest", "analyze", "summary", "fetch")
+            rest = sys.argv[2:]
+            if rest:
+                action_cand = rest[0].lower()
+                if action_cand in NEWS_ACTIONS:
+                    sys.argv = [sys.argv[0], "news", action_cand] + rest[1:]
+                else:
+                    close = difflib.get_close_matches(action_cand, NEWS_ACTIONS, n=1, cutoff=0.6)
+                    if close:
+                        print(f"[mdrap] Notice: Auto-correcting '{action_cand}' -> '{close[0]}'", file=sys.stderr)
+                        sys.argv = [sys.argv[0], "news", close[0]] + rest[1:]
+                    elif not rest[0].startswith("-"):
+                        sys.argv = [sys.argv[0], "news", "latest", "-s", rest[0]] + rest[1:]
+                    else:
+                        sys.argv = [sys.argv[0], "news", "latest"] + rest
+            else:
+                sys.argv = [sys.argv[0], "news", "latest"]
         elif arg1.startswith("/"):
             sys.argv[1] = raw_cmd
 
