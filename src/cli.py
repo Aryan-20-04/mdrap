@@ -20,8 +20,10 @@ Run `mdrap <command> -h` for the full flag list.
 from __future__ import annotations
 
 import argparse
+import difflib
 import json
 import os
+import re
 import shlex
 import sys
 import time
@@ -3639,9 +3641,61 @@ def cmd_sdk_demo(args):
 
 
 
+class MDRAPArgumentParser(argparse.ArgumentParser):
+    """
+    Enhanced ArgumentParser with concise, targeted error reporting,
+    fuzzy typo suggestions, and suppressed multi-page usage dumps.
+    """
+
+    def error(self, message: str):
+        console = Console(stderr=True)
+        prog_name = self.prog.split()[-1] if self.prog else "mdrap"
+
+        console.print(f"\n[bold red]Error in '{prog_name}':[/bold red] {message}")
+
+        # 1. Fuzzy match on invalid choices
+        m_choice = re.search(r"invalid choice:\s*'([^']+)'\s*\(choose from\s*([^)]+)\)", message)
+        if m_choice:
+            bad_val = m_choice.group(1)
+            valid_choices = [c.strip().strip("'\"") for c in m_choice.group(2).split(",")]
+            matches = difflib.get_close_matches(bad_val, valid_choices, n=2, cutoff=0.5)
+            if matches:
+                console.print(f"  [bold green]Did you mean:[/bold green] [bold cyan]{matches[0]}[/bold cyan]?")
+            console.print(f"  [dim]Available choices:[/dim] {', '.join(valid_choices)}")
+
+        # 2. Unrecognized arguments
+        elif "unrecognized arguments:" in message:
+            unrec = message.split("unrecognized arguments:", 1)[1].strip()
+            console.print(f"  [yellow]Unexpected argument(s):[/yellow] [bold red]{unrec}[/bold red]")
+            if prog_name in ("edgar", "research"):
+                console.print("  [dim]Supported actions:[/dim] [cyan]events, filings, insiders, profile, facts[/cyan]")
+                console.print(f"  [dim]Correct syntax:[/dim] [green]mdrap edgar filings <TICKER> -l 5[/green]  or  [green]mdrap edgar <TICKER>[/green]")
+            elif prog_name in ("vessel", "vessels"):
+                console.print("  [dim]Supported actions:[/dim] [cyan]list, track, chokepoints, commodities[/cyan]")
+                console.print(f"  [dim]Correct syntax:[/dim] [green]mdrap vessel list -l 10[/green]  or  [green]mdrap vessel track <NAME>[/green]")
+            elif prog_name in ("options", "opt"):
+                console.print("  [dim]Supported actions:[/dim] [cyan]price, chain[/cyan]")
+                console.print(f"  [dim]Correct syntax:[/dim] [green]mdrap options price -u AAPL -s 150 -k 150 -e 30[/green]")
+            elif prog_name in ("backtest", "bt"):
+                console.print(f"  [dim]Correct syntax:[/dim] [green]mdrap backtest -s whale_momentum -i AAPL[/green]")
+            elif prog_name in ("depth", "l2", "book"):
+                console.print(f"  [dim]Correct syntax:[/dim] [green]mdrap depth <SYMBOL>[/green]  (e.g. mdrap depth AAPL)")
+            elif prog_name in ("flow", "cvd"):
+                console.print(f"  [dim]Correct syntax:[/dim] [green]mdrap flow <SYMBOL>[/green]  (e.g. mdrap flow AAPL)")
+
+        # 3. Print concise usage, suppressing the giant multi-command wall
+        usage_str = self.format_usage().strip()
+        if len(usage_str) > 120 and "{" in usage_str:
+            console.print(f"  [dim]Run [cyan]mdrap --help[/cyan] or [cyan]mdrap status[/cyan] to view available commands.[/dim]\n")
+        else:
+            console.print(f"  [dim]{usage_str}[/dim]\n")
+
+        sys.exit(2)
+
+
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    sub = parser.add_subparsers(dest="command", required=False)
+    parser = MDRAPArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = parser.add_subparsers(dest="command", required=False, parser_class=MDRAPArgumentParser)
 
     def _sub(name: str, func, help_text: str, aliases: list[str] | None = None, db: bool = False, default_db: str = "data/mdrap.db"):
         kw = {"help": help_text}
@@ -4132,8 +4186,6 @@ def cmd_shell(args=None, parser=None):
     MDRAP Low-Latency Interactive Shell with Gemini/Claude-style Slash Commands & Wall Street Mnemonics.
     Pre-warms storage, C accelerator, and memory so commands execute in sub-milliseconds.
     """
-    import difflib
-
     console = Console()
     if parser is None:
         parser = build_parser()
@@ -4194,9 +4246,12 @@ def cmd_shell(args=None, parser=None):
             # 2. Ticker-First Check (e.g. "BTC BBO", "AAPL CND", "BTC", "NNOX CHART")
             first_upper = tokens[0].upper()
             first_clean = first_upper.replace(".", "").replace("-", "")
+            raw_token0 = tokens[0].lower()
+            has_cmd_typo = bool(difflib.get_close_matches(raw_token0, list(MNEMONIC_MAP.keys()) + list(ALL_CANONICAL_COMMANDS), n=1, cutoff=0.6))
             is_ticker = (first_upper in KNOWN_SYMBOLS) or (
-                tokens[0].lower() not in MNEMONIC_MAP
-                and tokens[0].lower() not in ALL_CANONICAL_COMMANDS
+                not has_cmd_typo
+                and raw_token0 not in MNEMONIC_MAP
+                and raw_token0 not in ALL_CANONICAL_COMMANDS
                 and first_clean.isalpha()
                 and 1 <= len(first_clean) <= 8
             )
@@ -4357,21 +4412,56 @@ def cmd_shell(args=None, parser=None):
             elif verb == "quar":
                 cli_tokens = ["query", "quarantine"] + rest
             elif verb in ("edgar", "research", "events", "filings", "company", "insiders", "facts", "profile"):
+                EDGAR_ACTIONS = ("events", "insiders", "profile", "facts", "filings")
                 if verb in ("events", "insiders", "filings", "facts"):
                     cli_tokens = ["edgar", verb] + rest
                 elif verb in ("company", "profile"):
                     cli_tokens = ["edgar", "profile"] + rest
                 else:
-                    if rest and rest[0] not in ("events", "insiders", "profile", "facts", "filings") and not rest[0].startswith("-"):
-                        cli_tokens = ["edgar", "events"] + rest
+                    if rest:
+                        action_cand = rest[0].lower()
+                        if action_cand in EDGAR_ACTIONS:
+                            cli_tokens = ["edgar", action_cand] + rest[1:]
+                        else:
+                            close = difflib.get_close_matches(action_cand, EDGAR_ACTIONS, n=1, cutoff=0.6)
+                            if close:
+                                console.print(f"[dim cyan][auto-correct] Interpreting '{action_cand}' as '{close[0]}'[/dim cyan]")
+                                cli_tokens = ["edgar", close[0]] + rest[1:]
+                            elif len(rest) > 1 and not rest[0].startswith("-") and not rest[1].startswith("-"):
+                                cli_tokens = ["edgar", rest[0]] + rest[1:]
+                            elif not rest[0].startswith("-"):
+                                cli_tokens = ["edgar", "events"] + rest
+                            else:
+                                cli_tokens = ["edgar"] + rest
                     else:
-                        cli_tokens = ["edgar"] + rest
+                        cli_tokens = ["edgar"]
             elif verb in ("vessel", "vessels", "tanker", "tankers", "ship", "ships", "ais", "cargo"):
-                if rest and rest[0] not in ("list", "track", "chokepoints", "commodities") and not rest[0].startswith("-"):
-                    cli_tokens = ["vessel", "track"] + rest
+                VESSEL_ACTIONS = ("list", "track", "chokepoints", "commodities")
+                if rest:
+                    action_cand = rest[0].lower()
+                    if action_cand in VESSEL_ACTIONS:
+                        cli_tokens = ["vessel", action_cand] + rest[1:]
+                    else:
+                        close = difflib.get_close_matches(action_cand, VESSEL_ACTIONS, n=1, cutoff=0.6)
+                        if close:
+                            console.print(f"[dim cyan][auto-correct] Interpreting '{action_cand}' as '{close[0]}'[/dim cyan]")
+                            cli_tokens = ["vessel", close[0]] + rest[1:]
+                        elif len(rest) > 1 and not rest[0].startswith("-") and not rest[1].startswith("-"):
+                            cli_tokens = ["vessel", rest[0]] + rest[1:]
+                        elif not rest[0].startswith("-"):
+                            cli_tokens = ["vessel", "track"] + rest
+                        else:
+                            cli_tokens = ["vessel"] + rest
                 else:
-                    cli_tokens = ["vessel"] + rest
+                    cli_tokens = ["vessel"]
             else:
+                if verb not in MNEMONIC_MAP and verb not in ALL_CANONICAL_COMMANDS:
+                    close = difflib.get_close_matches(verb, list(MNEMONIC_MAP.keys()), n=1, cutoff=0.55)
+                    if close:
+                        console.print(f"[bold red]Unknown command:[/bold red] '{verb}'. Did you mean [bold green]{close[0]}[/bold green]?\n")
+                    else:
+                        console.print(f"[bold red]Unknown command:[/bold red] '{verb}'. Type [green]help[/green] or [green]status[/green] for available commands.\n")
+                    continue
                 cli_tokens = [verb] + rest
 
         # Execute with sub-millisecond timer
@@ -4413,8 +4503,10 @@ def main():
         # Check for Ticker-First syntax (e.g. `mdrap btc bbo`, `mdrap aapl cnd`, `mdrap btc`)
         first_upper = raw_cmd.upper()
         first_clean = first_upper.replace(".", "").replace("-", "")
+        has_cmd_typo = bool(difflib.get_close_matches(raw_cmd, list(MNEMONIC_MAP.keys()) + list(ALL_CANONICAL_COMMANDS), n=1, cutoff=0.6))
         is_ticker_first = (first_upper in KNOWN_SYMBOLS) or (
-            raw_cmd not in MNEMONIC_MAP
+            not has_cmd_typo
+            and raw_cmd not in MNEMONIC_MAP
             and raw_cmd not in ALL_CANONICAL_COMMANDS
             and first_clean.isalpha()
             and 1 <= len(first_clean) <= 8
@@ -4436,10 +4528,10 @@ def main():
             sys.argv[1] = raw_cmd
         else:
             # Fuzzy match typo correction for CLI command line
-            import difflib
-            matches = difflib.get_close_matches(raw_cmd, list(MNEMONIC_MAP.keys()), n=1, cutoff=0.55)
+            matches = difflib.get_close_matches(raw_cmd, list(MNEMONIC_MAP.keys()) + list(ALL_CANONICAL_COMMANDS), n=1, cutoff=0.55)
             if matches:
                 suggested = MNEMONIC_MAP.get(matches[0], matches[0])
+                print(f"[mdrap] Notice: Auto-correcting '{orig_cmd}' -> '{suggested}'", file=sys.stderr)
                 raw_cmd = suggested
                 sys.argv[1] = suggested
 
@@ -4565,20 +4657,50 @@ def main():
         elif raw_cmd in ("itch", "totalview"):
             sys.argv = [sys.argv[0], "itch"] + sys.argv[2:]
         elif raw_cmd in ("edgar", "research", "events", "filings", "company", "insiders", "facts", "profile"):
+            EDGAR_ACTIONS = ("events", "insiders", "profile", "facts", "filings")
             if orig_cmd in ("events", "insiders", "filings", "facts"):
                 sys.argv = [sys.argv[0], "edgar", orig_cmd] + sys.argv[2:]
             elif orig_cmd in ("company", "profile"):
                 sys.argv = [sys.argv[0], "edgar", "profile"] + sys.argv[2:]
             else:
-                if len(sys.argv) > 2 and sys.argv[2] not in ("events", "insiders", "profile", "facts", "filings") and not sys.argv[2].startswith("-"):
-                    sys.argv = [sys.argv[0], "edgar", "events"] + sys.argv[2:]
+                rest = sys.argv[2:]
+                if rest:
+                    action_cand = rest[0].lower()
+                    if action_cand in EDGAR_ACTIONS:
+                        sys.argv = [sys.argv[0], "edgar", action_cand] + rest[1:]
+                    else:
+                        close = difflib.get_close_matches(action_cand, EDGAR_ACTIONS, n=1, cutoff=0.6)
+                        if close:
+                            print(f"[mdrap] Notice: Auto-correcting '{action_cand}' -> '{close[0]}'", file=sys.stderr)
+                            sys.argv = [sys.argv[0], "edgar", close[0]] + rest[1:]
+                        elif len(rest) > 1 and not rest[0].startswith("-") and not rest[1].startswith("-"):
+                            sys.argv = [sys.argv[0], "edgar", rest[0]] + rest[1:]
+                        elif not rest[0].startswith("-"):
+                            sys.argv = [sys.argv[0], "edgar", "events"] + rest
+                        else:
+                            sys.argv = [sys.argv[0], "edgar"] + rest
                 else:
-                    sys.argv = [sys.argv[0], "edgar"] + sys.argv[2:]
+                    sys.argv = [sys.argv[0], "edgar"]
         elif raw_cmd in ("vessel", "vessels", "tanker", "tankers", "ship", "ships", "ais", "cargo"):
-            if len(sys.argv) > 2 and sys.argv[2] not in ("list", "track", "chokepoints", "commodities") and not sys.argv[2].startswith("-"):
-                sys.argv = [sys.argv[0], "vessel", "track"] + sys.argv[2:]
+            VESSEL_ACTIONS = ("list", "track", "chokepoints", "commodities")
+            rest = sys.argv[2:]
+            if rest:
+                action_cand = rest[0].lower()
+                if action_cand in VESSEL_ACTIONS:
+                    sys.argv = [sys.argv[0], "vessel", action_cand] + rest[1:]
+                else:
+                    close = difflib.get_close_matches(action_cand, VESSEL_ACTIONS, n=1, cutoff=0.6)
+                    if close:
+                        print(f"[mdrap] Notice: Auto-correcting '{action_cand}' -> '{close[0]}'", file=sys.stderr)
+                        sys.argv = [sys.argv[0], "vessel", close[0]] + rest[1:]
+                    elif len(rest) > 1 and not rest[0].startswith("-") and not rest[1].startswith("-"):
+                        sys.argv = [sys.argv[0], "vessel", rest[0]] + rest[1:]
+                    elif not rest[0].startswith("-"):
+                        sys.argv = [sys.argv[0], "vessel", "track"] + rest
+                    else:
+                        sys.argv = [sys.argv[0], "vessel"] + rest
             else:
-                sys.argv = [sys.argv[0], "vessel"] + sys.argv[2:]
+                sys.argv = [sys.argv[0], "vessel"]
         elif arg1.startswith("/"):
             sys.argv[1] = raw_cmd
 
