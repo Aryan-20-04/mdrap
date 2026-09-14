@@ -37,10 +37,6 @@ class SourceStats:
     ewma_dup_rate: float = 0.0
 
     @property
-    def cumulative_error_rate(self) -> float:
-        return 0.0 if self.total == 0 else (self.invalid + self.suspicious) / self.total
-
-    @property
     def error_rate(self) -> float:
         return self.ewma_error_rate if self.total > 0 else 0.0
 

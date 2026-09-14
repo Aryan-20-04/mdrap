@@ -610,9 +610,6 @@ class ConsolidatedDepthEngine:
         curve = self.current_vwap_curve(instrument_id, sizes=sizes)
         return (json.dumps({"status": "OK", "symbol": instrument_id, "vwap_curve": curve.to_dict() if curve else None}) + "\n").encode("utf-8")
 
-    def all_ladders(self) -> Dict[str, ConsolidatedLadder]:
-        return dict(self._current_ladders)
-
     def stats(self) -> dict:
         return {
             "total_updates": self._total_updates,

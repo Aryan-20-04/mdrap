@@ -41,16 +41,6 @@ class OrderStatus(str, enum.Enum):
     CANCELLED = "CANCELLED"
 
 
-@dataclass(slots=True)
-class OrderBookLevel:
-    price: float
-    size: float
-    order_count: int = 1
-
-    def to_dict(self) -> dict:
-        return {"price": self.price, "size": round(self.size, 4), "order_count": self.order_count}
-
-
 @dataclass
 class OrderBookSnapshot:
     symbol: str
@@ -1007,44 +997,4 @@ class StrategyRunner:
 
         self.strategy.on_stop()
         return self.strategy.performance_summary()
-
-
-class LiveStrategyRunner:
-    """
-    Connects to the MDRAP TCP Gateway and streams live events into a Strategy.
-    """
-
-    def __init__(self, strategy: Strategy, host: str = "127.0.0.1", port: int = 9000):
-        self.strategy = strategy
-        self.host = host
-        self.port = port
-
-    async def run(self) -> None:
-        from client import MDrapClient
-
-        client = MDrapClient(host=self.host, port=self.port)
-        self.strategy.on_start()
-
-        def _on_event(msg: Dict[str, Any]) -> None:
-            if msg.get("type") == "event":
-                price = msg.get("price")
-                evt = CanonicalEvent(
-                    event_id=str(msg.get("event_id", "")),
-                    instrument_id=msg.get("instrument", "UNKNOWN"),
-                    event_type=EventType.TRADE if price is not None else EventType.QUOTE,
-                    exchange_timestamp=msg.get("ts", time.time()),
-                    receive_timestamp=time.time(),
-                    processing_timestamp=time.time(),
-                    source="GATEWAY",
-                    sequence_number=msg.get("seq", 0),
-                    price=price,
-                    quantity=msg.get("qty", 100.0),
-                )
-                self.strategy.on_tick(evt)
-
-        client.on("event", _on_event)
-        try:
-            await client.subscribe()
-        finally:
-            self.strategy.on_stop()
 

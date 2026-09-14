@@ -227,6 +227,64 @@ To optimize operational speed during live market conditions, MDRAP's CLI parser 
 
 ### 4.1 Market Desk & Live Microstructure
 
+#### `mdrap desk` (Aliases: `terminal`, `nav`)
+Launch the high-velocity, keyboard-first modal market navigator desk. Inspired by Vim modal controls, Excel grid filtering, and Bloomberg mnemonic velocity, the Navigator Desk lets operators traverse active watchlists, order books, SEC filings, and maritime intelligence with zero mouse latency and built-in two-stage execution safety.
+
+```bash
+# Launch the modal keyboard desk
+mdrap desk
+
+# Launch directly via alias
+mdrap nav
+```
+
+**Modal State Machine**:
+
+| Mode | Trigger | Visual Cue | Behavior & Hotkeys |
+|---|---|---|---|
+| **`NORMAL`** | Default / `Esc` | Bold Green `NORMAL` in header | Home-row directional navigation, tab switching, and one-key analytical inspection. |
+| **`FILTER`** | `/` | Bold Yellow `FILTER ('query')` | Live debounce search across current grid rows. Matches symbols, names, or metrics. |
+| **`MODAL`** | `b` (Buy) or `s` (Sell) | Blinking Red `CONFIRMATION REQUIRED` | Armed execution ticket. Blocks background mutations until explicitly approved or cancelled. |
+
+**Key Controls Reference**:
+
+- **Grid & Viewport Navigation (`NORMAL` Mode)**:
+  - `j` / `[Down]`: Move row selection down.
+  - `k` / `[Up]`: Move row selection up.
+  - `[Ctrl+D]` / `[PageDown]`: Scroll viewport down one full page.
+  - `[Ctrl+U]` / `[PageUp]`: Scroll viewport up one full page.
+  - `g` / `[Home]`: Jump directly to the top row.
+  - `G` / `[End]`: Jump directly to the bottom row.
+
+- **Workspace Tab Switching**:
+  - `l` / `[Right]` / `[Tab]`: Cycle forward to the next workspace tab.
+  - `h` / `[Left]`: Cycle backward to the previous workspace tab.
+  - `1` – `5`: Direct jump to Tab 1 (Equities/Watchlist), Tab 2 (Crypto/BBO), Tab 3 (L2 Depth), Tab 4 (Filings/Research), Tab 5 (Vessels/Fleet).
+
+- **Analytical Inspection & External Actions**:
+  - `[Enter]`: Drilldown on the selected row (opens detailed symbol view or filing context).
+  - `c`: Display in-terminal Unicode candlestick chart for the selected symbol.
+  - `d`: Display Consolidated Level-2 Market Depth ladder.
+  - `v`: Compute real-time VWAP slippage schedule.
+  - `x`: Export active grid data to styled Excel (`.xlsx`) workbook.
+  - `o`: Open SEC filing or external link directly in the default web browser (OSC 8).
+  - `?`: Show modal quick-reference cheatsheet overlay.
+  - `q` / `[Esc]`: Cleanly exit the navigator and restore terminal screen buffer.
+
+- **Incremental Search (`FILTER` Mode)**:
+  - `/`: Activate search prompt.
+  - Any printable character: Appends to filter query and live-prunes the active table.
+  - `[Backspace]`: Delete character from search query.
+  - `[Enter]`: Lock current filter and return to `NORMAL` mode.
+  - `[Esc]`: Discard filter and return to unfiltered view.
+
+- **Two-Stage Armed Execution Safeguard (`MODAL` Mode)**:
+  - Pressing `b` (Buy) or `s` (Sell) arms an execution ticket with high-contrast warning banner displaying Symbol, Side, Size, and Order Price.
+  - `[Enter]` or `y` / `Y`: Confirm execution and submit order callback.
+  - `[Esc]` or `n` / `N` or `q`: Safely abort and disarm ticket without executing.
+
+---
+
 #### `mdrap live [symbol]` (Aliases: `stream`, `watch`, `ticker`, `tick`)
 Stream live market events in an in-place updating terminal dashboard with ANSI cursor repositioning and optional technical chart.
 
@@ -492,9 +550,21 @@ mdrap run -e 50000
 # Run with custom anomaly fault rates
 mdrap run -e 25000 --duplicate-rate 0.02 --price-anomaly-rate 0.01
 
-# Run with V2 decoupled streaming pipeline and Native C accelerator
-mdrap run -v v2 --fastpath -e 50000
+# Strict DuckDB synchronization (fails with exit code 1 if SQLite and DuckDB diverge)
+mdrap run -e 50000 --strict-sync
+
+# Bypass automatic DuckDB synchronization (SQLite-only workflow)
+mdrap run -e 50000 --no-sync
 ```
+
+**Options**:
+- `-e, --events <N>`: Total simulated events to generate (default: 10,000).
+- `-s, --seed <INT>`: PRNG seed for deterministic reproducible fault injection (default: 42).
+- `--strict-sync`: Exit with status code 1 if automatic DuckDB synchronization fails or diverges from SQLite store. Recommended for CI/CD pipelines, cron jobs, and production automation.
+- `--no-sync`: Disable automatic post-run DuckDB sync for environments where DuckDB is not needed or locked by another process.
+- `--duplicate-rate <FLOAT>`: Fraction of events injected as duplicate bursts.
+- `--price-anomaly-rate <FLOAT>`: Fraction of events injected with $>3\sigma$ price jumps.
+- `--fastpath`: Enable compiled Native C hot-path accelerator (50.0 ns / 18.6M eps).
 
 ---
 

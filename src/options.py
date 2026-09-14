@@ -58,16 +58,8 @@ class OptionPrice:
 
 
 _STD_NORM = statistics.NormalDist()
-
-
-def _norm_cdf(x: float) -> float:
-    """Standard normal cumulative distribution function."""
-    return _STD_NORM.cdf(x)
-
-
-def _norm_pdf(x: float) -> float:
-    """Standard normal probability density function."""
-    return _STD_NORM.pdf(x)
+_norm_cdf = _STD_NORM.cdf
+_norm_pdf = _STD_NORM.pdf
 
 
 def _d1(S: float, K: float, T: float, r: float, sigma: float) -> float:

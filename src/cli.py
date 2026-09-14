@@ -166,15 +166,25 @@ def cmd_run(args):
             archive.close()
         # Auto-sync into DuckDB columnar store if present (CDC auto-sync hook)
         duck_path = getattr(args, "duckdb", "data/mdrap.duckdb")
-        if os.path.exists(duck_path) and os.path.exists(args.db) and args.db != ":memory:":
+        strict_sync = getattr(args, "strict_sync", False)
+        no_sync = getattr(args, "no_sync", False)
+        sync_meta = None
+        if not no_sync and os.path.exists(duck_path) and os.path.exists(args.db) and args.db != ":memory:":
             try:
                 from columnar import ColumnarStore
                 with ColumnarStore(db_path=duck_path, read_only=False) as col:
-                    col.sync_from_sqlite(args.db, incremental=True)
-            except Exception:
-                pass
+                    synced = col.sync_from_sqlite(args.db, incremental=True)
+                    sync_meta = {"status": "OK", "synced": synced, "path": duck_path}
+            except Exception as exc:
+                sync_meta = {"status": "FAILED", "error": str(exc), "path": duck_path, "diverged": True}
+                print(f"[mdrap ERROR] DuckDB sync failed ('{duck_path}'): {exc}. Stores diverged!", file=sys.stderr)
+                if strict_sync:
+                    raise SystemExit(1) from exc
         if not args.dashboard:
-            print(json.dumps(pipeline.metrics.summary(), indent=2))
+            summary = pipeline.metrics.summary()
+            if sync_meta:
+                summary["storage_sync"] = sync_meta
+            print(json.dumps(summary, indent=2))
         store.close()
 
 
@@ -3585,6 +3595,12 @@ class MDRAPArgumentParser(argparse.ArgumentParser):
         sys.exit(2)
 
 
+def cmd_desk(args):
+    from navigator import MDRAPNavigator
+    nav = MDRAPNavigator()
+    nav.run()
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = MDRAPArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command", required=False, parser_class=MDRAPArgumentParser)
@@ -3598,6 +3614,9 @@ def build_parser() -> argparse.ArgumentParser:
             p.add_argument("--db", default=default_db, help="Database path" if default_db != ":memory:" else None)
         p.set_defaults(func=func)
         return p
+
+    # Keyboard-First Modal Desk Navigator (Vim/Excel ergonomics)
+    _sub("desk", cmd_desk, "Launch interactive keyboard-first modal desk navigator (Vim/Excel ergonomics)", ["navigator", "nav", "tui"])
 
     # Status dashboard (quick overview)
     _sub("status", cmd_status, "Show comprehensive platform status overview", ["s", "stat"], db=True)
@@ -3614,6 +3633,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_run.add_argument("-a", "--archive", action="store_true", help="Enable immutable raw event archiving to data/raw_archive/")
     p_run.add_argument("--no-analytics", dest="analytics", action="store_false", help="Disable V3 analytics aggregation")
     p_run.add_argument("-d", "--dashboard", action="store_true", help="Show live rich terminal dashboard")
+    p_run.add_argument("--strict-sync", action="store_true", default=False, help="Exit 1 if secondary DuckDB sync fails (prevents silent store divergence in automation)")
+    p_run.add_argument("--no-sync", action="store_true", default=False, help="Skip automatic DuckDB columnar store sync at run completion")
 
     # Benchmark
     p_bench = _sub("benchmark", cmd_benchmark, "Run controlled benchmark and score quality detection", ["bench", "b"], db=True, default_db=":memory:")
@@ -3794,7 +3815,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_test_all.add_argument("-s", "--seed", type=int, default=42)
 
     # Version
-    _sub("version", lambda args: print("MDRAP v1.1.0"), "Show MDRAP version", ["v"])
+    _sub("version", lambda args: print("MDRAP v1.2.0"), "Show MDRAP version", ["v"])
 
     # Phase 3: DuckDB Columnar Time-Series Storage & Vectorized Analytics
     p_col = _sub("columnar", cmd_columnar, "Query high-performance DuckDB columnar time-series storage & analytics (Phase 3)", ["col", "duck", "duckdb"], db=True)
@@ -4010,11 +4031,13 @@ MNEMONIC_MAP = {
     "corpact": "corpact", "splits": "corpact", "dividends": "corpact",
     "features": "features", "feat": "features",
     "schedule": "schedule", "sched": "schedule", "cron": "schedule",
-    "markets": "markets", "venues": "markets", "world": "markets", "desk": "markets",
+    "markets": "markets", "venues": "markets", "world": "markets",
+    "desk": "desk", "navigator": "desk", "nav": "desk", "tui": "desk",
     "exit": "exit", "quit": "exit", "q": "exit",
 }
 
 QUICK_ACTIONS = {
+    "0": ["desk"],
     "1": ["live", "BTC/USD"],
     "2": ["bbo", "BTC/USD"],
     "3": ["top"],
@@ -4031,7 +4054,7 @@ ALL_CANONICAL_COMMANDS = [
     "analytics", "bbo", "depth", "vwap", "export", "live", "chart", "sub", "ohlcv", "spread", "vol", "top", "daemon",
     "watchdog", "stress", "simulate", "test-all", "throughput", "archive", "replay", "latest",
     "lineage", "quar", "mbo", "arbitrate", "tca", "flow", "strategy", "gateway", "sdk-demo", "dashboard", "version", "itch", "edgar", "vessel",
-    "backtest", "risk", "bars", "options", "news", "alert", "watchlist", "portfolio", "corpact", "features", "schedule", "markets"
+    "backtest", "risk", "bars", "options", "news", "alert", "watchlist", "portfolio", "corpact", "features", "schedule", "markets", "desk"
 ]
 
 
@@ -4052,7 +4075,7 @@ def render_command_palette(console: Console) -> None:
         "[bold #818cf8]│[/bold #818cf8] [bold green]STR[/bold green]        Stress & 1B Scale  [bold #818cf8]│[/bold #818cf8] [bold green]SEC[/bold green]        HMAC & RBAC Status  [bold #818cf8]│[/bold #818cf8]\n"
         "[bold #818cf8]│[/bold #818cf8] [bold green]CHAOS[/bold green]      Failure Drills     [bold #818cf8]│[/bold #818cf8] [bold green]AUD[/bold green]        Merkle Audit Log    [bold #818cf8]│[/bold #818cf8]\n"
         "[bold #818cf8]└───────────────────────────────┴─────────────────────────────────┘[/bold #818cf8]\n"
-        "[dim]⚡ 1-Key Launches: [1] Live BTC  [2] BBO Quote  [3] Top Cockpit  [4] Chart  [5] Depth  [6] VWAP  [7] Polygon  [8] Databento  [9] Status[/dim]\n"
+        "[dim]⚡ 1-Key Launches: [0] Desk Navigator  [1] Live BTC  [2] BBO Quote  [3] Top Cockpit  [4] Chart  [5] Depth  [6] VWAP  [7] Polygon  [8] Databento  [9] Status[/dim]\n"
         "[dim]💡 Traders: Type '<TICKER> <CMD>' (e.g. AAPL TCA, AAPL FLOW, BTC BBO, AAPL CHART) or just ticker (e.g. AAPL)[/dim]\n"
         "[dim]⌨️ Live Hotkeys: [q] Quit  [Space] Freeze/Resume  [c] Chart Toggle  [d] Depth Toggle  [Tab] Switch Symbol[/dim]\n"
     )
@@ -4232,6 +4255,8 @@ def cmd_shell(args=None, parser=None):
                 cli_tokens = ["top"] + rest
             elif verb in ("columnar", "col", "duck", "duckdb"):
                 cli_tokens = ["columnar"] + rest
+            elif verb in ("desk", "navigator", "nav", "tui"):
+                cli_tokens = ["desk"] + rest
             elif verb == "daemon":
                 if not rest:
                     cli_tokens = ["daemon", "--speed", "2000"]
@@ -4419,7 +4444,9 @@ def main():
                     raw_cmd = suggested
                     sys.argv[1] = suggested
 
-        if raw_cmd in ("live", "stream"):
+        if raw_cmd in ("desk", "navigator", "nav", "tui"):
+            sys.argv = [sys.argv[0], "desk"] + sys.argv[2:]
+        elif raw_cmd in ("live", "stream"):
             sym = sys.argv[2] if len(sys.argv) > 2 else "BTC/USD"
             sym = KNOWN_SYMBOLS.get(sym.upper(), sym)
             sys.argv = [sys.argv[0], "live", sym] + sys.argv[3:]

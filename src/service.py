@@ -94,12 +94,14 @@ class MarketDataDaemon:
         )
 
         self.shm_writer = None
+        self._shm_errors = 0
         if self.enable_shm:
             try:
                 from shm import SHMWriter
                 self.shm_writer = SHMWriter(name=self.shm_name)
-            except Exception:
+            except Exception as exc:
                 self.shm_writer = None
+                print(f"[mdrap SERVICE WARNING] Shared memory publisher unavailable ({self.shm_name}): {exc}", file=sys.stderr)
 
         self._running = False
         self._server_sock: Optional[socket.socket] = None
@@ -580,8 +582,10 @@ class MarketDataDaemon:
                     broadcast_ts=t_broadcast,
                     engine_us=lat_us,
                 )
-            except Exception:
-                pass
+            except Exception as exc:
+                self._shm_errors += 1
+                if self._shm_errors <= 3 or self._shm_errors % 1000 == 0:
+                    print(f"[mdrap SERVICE WARNING] SHM tick write failed: {exc} (total errors={self._shm_errors})", file=sys.stderr)
 
         if self.shm_writer and ladder:
             try:
@@ -600,8 +604,10 @@ class MarketDataDaemon:
                     broadcast_ts=t_broadcast,
                     engine_us=lat_us,
                 )
-            except Exception:
-                pass
+            except Exception as exc:
+                self._shm_errors += 1
+                if self._shm_errors <= 3 or self._shm_errors % 1000 == 0:
+                    print(f"[mdrap SERVICE WARNING] SHM depth write failed: {exc} (total errors={self._shm_errors})", file=sys.stderr)
 
         msg = (json.dumps(payload) + "\n").encode("utf-8")
 
@@ -792,6 +798,8 @@ class MarketDataDaemon:
             "client_tiers": tier_breakdown,
             "host": self.host,
             "port": self.port,
+            "shm_enabled": bool(self.shm_writer),
+            "shm_errors": self._shm_errors,
             "sources": self.watchdog.source_states(),
         }
 

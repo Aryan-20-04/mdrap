@@ -63,10 +63,6 @@ class MarketEvent:
         return self.event_type == "TICK"
 
     @property
-    def is_vwap(self) -> bool:
-        return self.event_type == "VWAP"
-
-    @property
     def spread(self) -> Optional[float]:
         if self.bid_price is not None and self.ask_price is not None:
             return round(self.ask_price - self.bid_price, 4)

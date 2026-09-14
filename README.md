@@ -1,7 +1,7 @@
 # Market Data Reliability & Acceleration Platform (MDRAP)
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue.svg)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-643%2F643%20passing-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-650%2F650%20passing-brightgreen.svg)](tests/)
 [![Hot Path Latency](https://img.shields.io/badge/hot--path-19.4%20ns%20%7C%2051.4M%20eps-orange.svg)](src/fastpath.c)
 [![Architecture](https://img.shields.io/badge/architecture-V1%20%7C%20V2%20%7C%20V3%20%7C%20V4%20C--Fastpath-purple.svg)](docs/architecture.md)
 [![User Guide](https://img.shields.io/badge/manual-Operator%20%26%20User%20Guide-teal.svg)](docs/USER_GUIDE.md)
@@ -202,6 +202,12 @@ mdrap historical ingest --exchange binance_spot --symbol BTCUSDT \
 - **Physical-to-Financial Commodity Mapping**: Maps physical cargo flows (Arab Light, Brent Crude, LNG, Iron Ore) and chartering commodity majors (Saudi Aramco, Shell, BP, Vitol, Trafigura, Vale) directly to energy and commodity derivatives.
 - **Native C Vectorized Geodesic Fastpath**: High-performance C geofencing evaluates 10,000 vessels across global chokepoints in **23.08 ms (~288 ns per chokepoint check)** using Axis-Aligned Bounding Box (AABB) spatial pre-filtering (`mdrap vessel`).
 
+### 17. Modal Keyboard Navigator Desk (`src/navigator.py`, `mdrap desk`)
+- **Vim-Inspired Modal Navigation**: High-velocity order desk with strict state machine separation between `NAVIGATING`, `FILTERING`, and `ORDER_ARMED` execution modes.
+- **Directional Grid Traversal**: Vim keys (`h`/`j`/`k`/`l` or arrow keys) navigate active symbol watchlists, market stats, and Level-2 order books.
+- **Quick Metric Sorting & Filtering**: One-key sorting (`s`) by Volume, Spread, Change %, or Symbol, and live incremental filtering (`/`) with instant debounce.
+- **Two-Stage Armed Execution Safeguard**: Pressing `b` (Buy) or `S` (Sell) arms a dedicated order ticket with clear color warning; requires explicit confirmation (`Enter` or `y`) to execute or `Esc`/`n` to safely cancel, completely preventing stray key accidental order submissions.
+
 ---
 
 ## Architectural Progression & Benchmarks
@@ -266,6 +272,7 @@ Run `mdrap` (or `.\mdrap.bat`) with zero arguments to enter the pre-warmed shell
 ```
 ```text
 mdrap> LIVE AAPL         # Live market stream with in-place updating table & candlestick chart
+mdrap> DESK              # Launch modal keyboard navigator desk with Vim controls & armed tickets
 mdrap> CHART BTC/USD     # Standalone visual candlestick chart with volume histogram
 mdrap> DEPTH AAPL        # Consolidated Level-2 market depth ladder
 mdrap> VWAP AAPL 1000    # Calculate VWAP slippage curve for 1,000 shares
@@ -279,6 +286,7 @@ mdrap> ?                 # Open clean 4-quadrant command palette
 
 You can also run all commands directly from PowerShell / CMD / Bash:
 ```bash
+.\mdrap.bat desk                      # Launch high-velocity modal keyboard trading desk
 .\mdrap.bat live AAPL                 # In-place terminal ticker & candlestick chart
 .\mdrap.bat live AAPL --ticker-only  # Clean single-table ticker view
 .\mdrap.bat chart AAPL                # Unicode candlestick chart
@@ -355,6 +363,14 @@ mdrap edgar AAPL# SEC 8-K Material Corporate Events & Form 4 Insider Trades
 mdrap company AAPL # SEC Corporate Profile & Audited Financials
 ```
 
+### 4. Modal Trading Navigator Desk (`mdrap desk`)
+For rapid trading desk operations with zero mouse latency and full keyboard control:
+- `[h]` / `[j]` / `[k]` / `[l]` -> Vim-style directional navigation across symbols and depth books.
+- `[/]` -> Instant incremental symbol search and filtering with live debounce.
+- `[s]` -> Cycle sort metrics (Volume, Spread, Change %, Symbol).
+- `[1-5]` -> Instant watchlist switching (US Tech, Crypto, Futures, FX, All).
+- `[b]` / `[S]` -> Two-stage armed execution tickets (Buy / Sell) with confirmation protection (`[Enter]`/`[y]` to submit, `[Esc]`/`[n]` to abort).
+
 ---
 
 ## CLI Command Reference
@@ -362,6 +378,7 @@ mdrap company AAPL # SEC Corporate Profile & Audited Financials
 | Command | Aliases | Description |
 |---|---|---|
 | `status` | `s`, `stat` | Show comprehensive platform status overview, database statistics, and engine readiness |
+| `desk` | `terminal`, `nav` | Launch high-velocity modal keyboard navigator desk with Vim controls and armed order tickets |
 | `shell` | `sh` | Launch low-latency interactive slash-command terminal shell |
 | `live` | `stream`, `watch`, `ticker` | Stream live market ticks with in-place updating table & candlestick chart (`--feed polygon/databento`) |
 | `feed` | `stream-feed`, `feeds` | Inspect, benchmark, and test direct streaming feeds (Polygon, Databento, Crypto WS) |
@@ -372,7 +389,7 @@ mdrap company AAPL # SEC Corporate Profile & Audited Financials
 | `bbo` | `nbbo` | Query Synthetic Consolidated Best Bid & Offer (NBBO) across 5 exchanges |
 | `edgar` | `research`, `events`, `filings`, `company`, `insiders` | SEC EDGAR Alternative Data: 8-K material events, Form 4 insider trades, XBRL GAAP facts |
 | `vessel` | `vessels`, `tankers`, `ships`, `ais`, `cargo` | Maritime Tanker & Cargo Tracking: Crude oil, LNG, bulk, container tracking & chokepoints |
-| `run` | `r` | Run the validation pipeline against the simulator (with live HUD) |
+| `run` | `r` | Run the validation pipeline against the simulator (with live HUD, `--strict-sync`, `--no-sync`) |
 | `benchmark` | `bench`, `b` | Run controlled benchmark and score quality detection against ground truth |
 | `compare` | `comp`, `c` | Run V1 Baseline and Native C Hot Path on identical workloads and print comparative report |
 | `loadtest` | `load`, `l` | Sweep increasing event volumes (10k to 250k) and report performance trend |
@@ -535,12 +552,12 @@ mdrap> status
 
 ## Verification & Testing
 
-MDRAP includes an institutional test suite of **629 automated unit, integration, quantitative, options, and native C fastpath tests** (100% passing):
+MDRAP includes an institutional test suite of **650 automated unit, integration, quantitative, options, native C fastpath, and resilience tests** (100% passing):
 
 ### 1. With FastPath (Default Production Mode)
 ```bash
 python -m pytest tests/ -q
-# Result: 629 passed in ~90s (0 failed, 0 skipped)
+# Result: 650 passed in ~85s (0 failed, 0 skipped)
 ```
 
 ### 2. Without FastPath (Pure Python Fallback Mode)
@@ -614,6 +631,7 @@ mdrap/
 │   ├── live.py          # Multi-exchange connectors (Binance, Coinbase, Kraken, OKX, Bybit, Equities)
 │   ├── metrics.py       # High-resolution hardware nanosecond latency & percentile telemetry
 │   ├── models.py        # Multi-asset canonical event model (Equities, Crypto, Futures, Options)
+│   ├── navigator.py     # High-velocity modal keyboard trading desk & armed order tickets
 │   ├── news.py          # Financial news feed, headline sentiment & ticker extraction
 │   ├── options.py       # Black-Scholes-Merton European, CRR Binomial American, Greeks & IV
 │   ├── pipeline.py      # V1 synchronous baseline pipeline (ground-truth reference)
@@ -640,7 +658,7 @@ mdrap/
 │   ├── watchdog.py      # Live source watchdog, silence detection & automated failover
 │   └── ws_feed.py       # Async WebSocket live market feed connector
 │
-├── tests/               # 629 Automated Unit & Integration Tests (100% Passing)
+├── tests/               # 650 Automated Unit & Integration Tests (100% Passing)
 │   ├── test_alerts.py
 │   ├── test_analytics.py
 │   ├── test_archive.py
@@ -659,6 +677,7 @@ mdrap/
 │   ├── test_databento_feed.py
 │   ├── test_depth.py
 │   ├── test_entitlements.py
+│   ├── test_error_surfacing.py
 │   ├── test_export.py
 │   ├── test_fastpath.py
 │   ├── test_fastpath_quantitative.py
@@ -676,6 +695,7 @@ mdrap/
 │   ├── test_multi_asset.py
 │   ├── test_multicast_arbitrator.py
 │   ├── test_multimarket_quality.py
+│   ├── test_navigator.py
 │   ├── test_news.py
 │   ├── test_options.py
 │   ├── test_pipeline_integration.py

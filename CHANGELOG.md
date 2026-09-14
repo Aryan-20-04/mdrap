@@ -1,5 +1,55 @@
 # Changelog
 
+## [1.2.0] - 2026-09-14
+**Modal Keyboard Navigator Desk, Platform-Wide Silent Error Elimination & Over-Engineering Cleanup**
+
+### Added
+- **Keyboard-First Modal Navigator Desk (`mdrap desk`, `src/navigator.py`)**:
+  - Full-screen interactive terminal workspace inspired by Bloomberg Terminal and Vim.
+  - 5 integrated multi-domain views: Markets (`1`), Fleet (`2`), Depth (`3`), EDGAR (`4`), and Portfolio (`5`).
+  - Virtual data grid with viewport scrolling, persistent row selection, and dynamic column sorting (`s`).
+  - Dedicated instant filter mode (`/`) with live multi-column matching and `[Esc]` cancellation.
+  - Strict modal safety boundary: 95% single-keystroke pure reads vs. 5% armed mutating tickets (`b` BUY, `S` SELL) gated by an explicit confirmation ticket requiring `[Enter]` or `[Esc]`.
+- **DuckDB Divergence Transparency & Strict Sync Mode (`src/cli.py`)**:
+  - `mdrap run` now explicitly detects and surfaces automatic DuckDB synchronization errors to `sys.stderr` instead of silently swallowing failures.
+  - Structured run metrics output now includes `"diverged": true` when SQLite is updated but DuckDB fails to sync.
+  - Added `--strict-sync` flag which immediately exits with code 1 upon sync failure for CI/CD and automation reliability.
+  - Added `--no-sync` flag to completely bypass DuckDB synchronization when operating strictly on SQLite.
+- **Feed Error Quarantine Pipeline (`src/ws_feed.py`, `src/polygon_feed.py`)**:
+  - Malformed or corrupt wire frames now return a `RawEvent` marked with `is_malformed=True` instead of returning `None`.
+  - Events are routed to `normalize()`, triggering `SchemaError` and direct ingestion into the quarantine database with reason `SCHEMA_VIOLATION` and full lineage per Principle 3 ("Never silently discard bad data").
+
+### Fixed
+- **API Key Persistence Desynchronization (`src/security.py`)**:
+  - `load_api_keys()` logs warnings to `sys.stderr` on database read failure.
+  - `register_api_key()` evicts the generated token from in-memory cache and raises `RuntimeError` if SQLite persistence fails.
+  - `revoke_api_key()` raises `RuntimeError` on database write failure, preventing revoked keys from reviving after daemon restart.
+- **Daemon Shared Memory (SHM) Telemetry & Error Tracking (`src/service.py`)**:
+  - SHM initialization failure surfaces an operator warning to `sys.stderr`.
+  - Real-time `write_tick` and `write_depth` exception handlers now count failures (`_shm_errors`) and log diagnostic warnings.
+  - Daemon telemetry `stats()` now includes `"shm_enabled"` and `"shm_errors"`.
+- **Central Configuration Parse Failure Warnings (`src/config.py`, `src/quality.py`)**:
+  - `load_config()` prints warnings to `sys.stderr` when a candidate configuration file exists but fails parsing, rather than silently ignoring syntax errors.
+  - `QualityEngine.__init__` surfaces configuration loading errors.
+- **News Feed Fallback Transparency (`src/trading_cli.py`)**:
+  - `cmd_news` captures network failures and displays a clear notice when falling back to the curated baseline headlines.
+
+### Removed
+- **Ponytail Over-Engineering Cleanup**:
+  - `src/strategy_sdk.py`: Deleted dead speculative async `LiveStrategyRunner` (-39 lines) and unused `OrderBookLevel` (-9 lines).
+  - `src/shm.py`: Deleted in-module `benchmark_shm_latency` microbenchmark (-54 lines).
+  - `src/terminal_display.py`: Deleted redundant `run_watchlist_stream` pass-through method (-19 lines).
+  - `src/bbo.py`: Deleted uncalled `prune_stale` cache eviction method (-16 lines).
+  - `src/storage.py`: Deleted uncalled `write_alert_batch` method (-9 lines).
+  - `src/depth.py`: Deleted uncalled `all_ladders` method (-3 lines).
+  - `src/reconciliation.py`: Deleted dead `cumulative_error_rate` property (-4 lines).
+  - `src/client.py`: Deleted dead `is_vwap` property (-4 lines).
+  - `src/options.py`: Replaced hand-rolled `_norm_cdf` and `_norm_pdf` wrappers with direct stdlib aliases `_STD_NORM.cdf` and `_STD_NORM.pdf` (-8 lines).
+
+### Verified
+- **Test Suite**: 650 unit, integration, and quantitative tests passing (`pytest tests/ -q` 100% green in 84.35s).
+- Added [`tests/test_error_surfacing.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/tests/test_error_surfacing.py) and [`tests/test_navigator.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/tests/test_navigator.py).
+
 ## [1.1.0] - 2026-09-14
 **Native C Hot Path Default Enablement, Multi-Market Infrastructure & Maritime Intelligence Restoration**
 

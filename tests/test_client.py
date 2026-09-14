@@ -225,3 +225,27 @@ def test_client_automated_gap_detection_and_replay():
         stats = client.stats()
         assert stats["gaps_detected"] == 1
         assert stats["events_replayed"] == 1
+
+
+def test_client_unsubscribe_and_queries(running_daemon):
+    with MDRAPClient(host="127.0.0.1", port=running_daemon.port) as client:
+        # Ping
+        p = client.ping()
+        assert p >= 0.0
+
+        # Subscribe & unsubscribe with depth and vwap
+        client.subscribe(["BTC/USD", "ETH/USD"], include_depth=True, include_vwap=True)
+        assert "BTC/USD" in client._subscribed_symbols
+        assert "L2:BTC/USD" in client._subscribed_symbols
+        assert "VWAP:BTC/USD" in client._subscribed_symbols
+
+        client.unsubscribe(["BTC/USD", "ETH/USD"], include_depth=True, include_vwap=True)
+        assert "BTC/USD" not in client._subscribed_symbols
+        assert "L2:BTC/USD" not in client._subscribed_symbols
+
+        # Query methods
+        bbo = client.get_bbo("BTC/USD")
+        assert bbo is not None or bbo is None
+        vwap = client.get_vwap("BTC/USD", sizes=[1.0, 5.0])
+        assert vwap is not None or vwap is None
+

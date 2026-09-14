@@ -389,4 +389,44 @@ def test_edgar_open_argument():
     assert args_no_open.open_browser is False
 
 
+def test_cmd_run_duckdb_sync_error_handling(tmp_path, capsys, monkeypatch):
+    from cli import build_parser, cmd_run
+    parser = build_parser()
+    db_file = str(tmp_path / "test.db")
+    duck_file = str(tmp_path / "test.duckdb")
+
+    with open(duck_file, "w") as f:
+        f.write("dummy")
+
+    mock_store_cls = mock.MagicMock()
+    mock_store_inst = mock.MagicMock()
+    mock_store_inst.sync_from_sqlite.side_effect = RuntimeError("Disk I/O lock error")
+    mock_store_cls.return_value.__enter__.return_value = mock_store_inst
+    monkeypatch.setattr("columnar.ColumnarStore", mock_store_cls)
+
+    # 1. Non-strict (default): warns to stderr, records divergence in JSON, exits 0
+    args_default = parser.parse_args(["run", "-e", "10", "--db", db_file])
+    setattr(args_default, "duckdb", duck_file)
+    cmd_run(args_default)
+    captured = capsys.readouterr()
+    assert "DuckDB sync failed" in captured.err
+    assert "Stores diverged" in captured.err
+    assert '"diverged": true' in captured.out
+
+    # 2. Strict sync: exits 1
+    args_strict = parser.parse_args(["run", "-e", "10", "--db", db_file, "--strict-sync"])
+    setattr(args_strict, "duckdb", duck_file)
+    with pytest.raises(SystemExit) as exc_info:
+        cmd_run(args_strict)
+    assert exc_info.value.code == 1
+
+    # 3. No sync: skips sync
+    mock_store_cls.reset_mock()
+    args_no_sync = parser.parse_args(["run", "-e", "10", "--db", db_file, "--no-sync"])
+    setattr(args_no_sync, "duckdb", duck_file)
+    cmd_run(args_no_sync)
+    mock_store_cls.assert_not_called()
+
+
+
 

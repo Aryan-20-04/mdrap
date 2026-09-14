@@ -105,8 +105,13 @@ def parse_binance_frame(data: dict, canonical_sym: str) -> Optional[RawEvent]:
                 receive_timestamp=t_recv,
                 raw_id=f"ws-binance-{next(_raw_counter)}",
             )
-    except Exception:
-        pass
+    except Exception as exc:
+        return RawEvent(
+            source="BINANCE",
+            payload={"instrument": canonical_sym, "is_malformed": True, "error": str(exc)},
+            receive_timestamp=t_recv,
+            raw_id=f"ws-binance-err-{next(_raw_counter)}",
+        )
     return None
 
 
@@ -158,8 +163,13 @@ def parse_coinbase_frame(data: dict, canonical_sym: str) -> Optional[RawEvent]:
                     receive_timestamp=t_recv,
                     raw_id=f"ws-coinbase-{next(_raw_counter)}",
                 )
-    except Exception:
-        pass
+    except Exception as exc:
+        return RawEvent(
+            source="COINBASE",
+            payload={"instrument": canonical_sym, "is_malformed": True, "error": str(exc)},
+            receive_timestamp=t_recv,
+            raw_id=f"ws-coinbase-err-{next(_raw_counter)}",
+        )
     return None
 
 
@@ -214,8 +224,13 @@ def parse_kraken_frame(data: Any, canonical_sym: str) -> Optional[RawEvent]:
                         receive_timestamp=t_recv,
                         raw_id=f"ws-kraken-{next(_raw_counter)}",
                     )
-    except Exception:
-        pass
+    except Exception as exc:
+        return RawEvent(
+            source="KRAKEN",
+            payload={"instrument": canonical_sym, "is_malformed": True, "error": str(exc)},
+            receive_timestamp=t_recv,
+            raw_id=f"ws-kraken-err-{next(_raw_counter)}",
+        )
     return None
 
 
@@ -268,8 +283,13 @@ def parse_okx_frame(data: dict, canonical_sym: str) -> Optional[RawEvent]:
                     receive_timestamp=t_recv,
                     raw_id=f"ws-okx-{next(_raw_counter)}",
                 )
-    except Exception:
-        pass
+    except Exception as exc:
+        return RawEvent(
+            source="OKX",
+            payload={"instrument": canonical_sym, "is_malformed": True, "error": str(exc)},
+            receive_timestamp=t_recv,
+            raw_id=f"ws-okx-err-{next(_raw_counter)}",
+        )
     return None
 
 
@@ -320,8 +340,13 @@ def parse_bybit_frame(data: dict, canonical_sym: str) -> Optional[RawEvent]:
                 receive_timestamp=t_recv,
                 raw_id=f"ws-bybit-{next(_raw_counter)}",
             )
-    except Exception:
-        pass
+    except Exception as exc:
+        return RawEvent(
+            source="BYBIT",
+            payload={"instrument": canonical_sym, "is_malformed": True, "error": str(exc)},
+            receive_timestamp=t_recv,
+            raw_id=f"ws-bybit-err-{next(_raw_counter)}",
+        )
     return None
 
 
@@ -331,8 +356,13 @@ def parse_venue_frame(venue: str, raw_msg: str | dict, canonical_sym: str) -> Op
     if isinstance(raw_msg, str):
         try:
             raw_msg = json.loads(raw_msg)
-        except Exception:
-            return None
+        except Exception as exc:
+            return RawEvent(
+                source=v,
+                payload={"instrument": canonical_sym, "is_malformed": True, "error": f"JSON parse error: {exc}"},
+                receive_timestamp=time.time(),
+                raw_id=f"ws-{v.lower()}-err-{next(_raw_counter)}",
+            )
 
     if v == "BINANCE":
         return parse_binance_frame(raw_msg, canonical_sym)

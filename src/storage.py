@@ -413,15 +413,6 @@ class Store:
     # -- Phase 7 Watchdog alert methods --
 
     @_synchronized
-    def write_alert_batch(self, alerts) -> None:
-        if not alerts:
-            return
-        self.conn.executemany(
-            "INSERT INTO watchdog_alerts (source, alert_type, timestamp, details, action_taken) VALUES (?,?,?,?,?)",
-            [(a.source, a.alert_type, a.timestamp, a.details, a.action_taken) for a in alerts],
-        )
-
-    @_synchronized
     def query_alerts(self, limit: int = 20) -> list[dict]:
         cur = self.conn.execute(
             "SELECT source, alert_type, timestamp, details, action_taken FROM watchdog_alerts ORDER BY rowid DESC LIMIT ?",

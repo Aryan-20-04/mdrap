@@ -1133,6 +1133,44 @@ Implemented three remaining spec milestones in dependency order. Test suite expa
   - Global Cross-Market: 20,011.6 EPS, p50 24.5 µs, p95 44.2 µs, p99 60.2 µs.
   - FastPath Native C hot path: 28.0 nanoseconds/event.
 
+---
+
+## Phase 18: Silent Error Elimination, DuckDB Strict Synchronization, Modal Navigator Desk & Ponytail Over-Engineering Elimination (`v1.2.0`)
+
+### 1. Platform-Wide Silent Error Elimination & Quarantine Routing
+- **DuckDB Sync Transparency & Strict Mode**:
+  - Replaced silent `try / except: pass` in automatic DuckDB synchronization (`src/cli.py`) with explicit `sys.stderr` error notifications and `"diverged": True` in metrics output.
+  - Added `--strict-sync` flag to enforce process exit code `1` when stores fail to synchronize, securing automated CI/CD and cron jobs against silent divergence.
+  - Added `--no-sync` flag to cleanly bypass DuckDB synchronization when not required.
+- **Corrupt Wire-Frame Quarantine Ingestion**:
+  - In `src/ws_feed.py` and `src/polygon_feed.py`, corrupt, truncated, or unparseable frames return `RawEvent(is_malformed=True)` and route through `normalize()` to be quarantined as `INVALID` with `SCHEMA_VIOLATION` (strictly adhering to Design Principle #3: "Never silently discard bad data").
+- **Platform-Wide Exception Surfacing**:
+  - In `src/security.py`, key file loading errors print to stderr; `register_api_key` and `revoke_api_key` raise `RuntimeError` on disk persistence failure instead of desynchronizing RAM and SQLite.
+  - In `src/service.py`, SHM initialization failures log to stderr; IPC writes record `shm_errors` in internal telemetry exposed via `stats()`.
+  - In `src/config.py` and `src/quality.py`, configuration parse failures emit clear stderr warnings.
+  - In `src/trading_cli.py`, news fetching displays a visible notice when falling back to offline curated headlines.
+
+### 2. Modal Keyboard Navigator Desk (`src/navigator.py`, `mdrap desk`)
+- **Zero-Latency Keyboard Trading Operations**:
+  - Implemented 3-mode state machine (`NORMAL`, `FILTER`, `MODAL`) with Vim home-row navigation (`j`/`k`, `h`/`l`, `g`/`G`, `Ctrl-D`/`Ctrl-U`), tab traversal (`1`-`5`), and dynamic viewport scrolling.
+  - Live debounce incremental filter (`/`) prunes active rows across symbols, names, and metrics.
+  - One-key analytical inspections: `[Enter]` drilldown, `[c]` candlestick chart, `[d]` L2 depth ladder, `[v]` VWAP curve, `[x]` Excel export, `[o]` browser launch.
+- **Two-Stage Armed Execution Safeguards**:
+  - Pressing `b` (Buy) or `s` (Sell) arms an explicit `ConfirmationTicket` rendering a high-contrast confirmation banner.
+  - Requires explicit `Enter` or `y`/`Y` to execute or `Esc`/`n`/`N` to cancel, completely eliminating accidental fat-finger order submissions.
+
+### 3. Whole-Repo Ponytail Over-Engineering Cleanup
+- **Purged Dead Classes & Unreferenced Stubs (-152 lines)**:
+  - Deleted unused `LiveStrategyRunner` (39 lines) and `OrderBookLevel` (9 lines) from `src/strategy_sdk.py`.
+  - Removed uncalled helper stubs: `benchmark_shm_latency` (`shm.py`), `run_watchlist_stream` (`terminal_display.py`), `write_alert_batch` (`storage.py`), `prune_stale` (`bbo.py`), `all_ladders` (`depth.py`), `cumulative_error_rate` (`reconciliation.py`), and `is_vwap` (`client.py`).
+- **Standard Library Math Delegation**:
+  - Replaced hand-rolled polynomial normal CDF/PDF in `src/options.py` with direct delegation to `statistics.NormalDist()`.
+
+### 4. Verification & Testing
+- Added `tests/test_error_surfacing.py` (6 new test cases) and `tests/test_navigator.py` (15 test cases).
+- Automated test suite: `pytest tests/ -q` -> **650/650 passed in ~85s (100% green)**.
+
+
 
 
 

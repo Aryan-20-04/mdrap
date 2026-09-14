@@ -10,6 +10,7 @@ and zero mandatory runtime dependencies (graceful fallback if PyYAML absent).
 from __future__ import annotations
 
 import os
+import sys
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
 
@@ -189,7 +190,8 @@ def load_config(config_path: Optional[str] = None) -> PlatformConfig:
                 else:
                     raw_dict = _simple_yaml_parse(content)
                 break
-            except Exception:
+            except Exception as exc:
+                print(f"[mdrap WARNING] Failed to parse config file '{p}': {exc}. Using defaults.", file=sys.stderr)
                 continue
 
     # 1. Quality

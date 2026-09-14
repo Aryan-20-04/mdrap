@@ -3,6 +3,7 @@ MDRAP Portfolio and Watchlist Tracker
 Implements persistent watchlist manager and portfolio position/P&L tracker
 with multi-dimensional performance attribution.
 """
+import os
 import sqlite3
 import time
 import json

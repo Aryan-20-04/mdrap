@@ -126,3 +126,65 @@ def test_feature_store_integration():
     assert 'close' in records[-1]
     assert 'rsi_14' in records[-1]
     assert not math.isnan(records[-1]['rsi_14'])
+
+
+def test_python_fallbacks_without_fastpath(monkeypatch):
+    import features
+    monkeypatch.setattr(features, "fastpath", None)
+
+    prices = [100.0 + (i * 0.5) for i in range(35)]
+    # EMA fallback
+    res_ema = features.ema(prices, 5)
+    assert len(res_ema) == len(prices)
+    assert not math.isnan(res_ema[4])
+
+    # RSI fallback
+    res_rsi = features.rsi(prices, 14)
+    assert len(res_rsi) == len(prices)
+    assert not math.isnan(res_rsi[14])
+
+    # Bollinger fallback
+    upper, mid, lower = features.bollinger_bands(prices, period=10, num_std=2.0)
+    assert len(upper) == len(prices)
+    assert upper[-1] >= mid[-1] >= lower[-1]
+
+    # ATR fallback
+    highs = [p + 2.0 for p in prices]
+    lows = [p - 2.0 for p in prices]
+    closes = prices
+    res_atr = features.atr(highs, lows, closes, period=14)
+    assert len(res_atr) == len(prices)
+    assert not math.isnan(res_atr[14])
+
+
+def test_features_empty_and_edge_cases():
+    import features
+    # Empty inputs
+    assert features.rsi([]) == []
+    assert features.obv([], []) == []
+    assert math.isnan(features.vpin([]))
+    assert features.order_book_imbalance([], []) == 0.0
+    assert math.isnan(features.realized_volatility([]))
+    assert math.isnan(features.realized_volatility([100.0]))
+    assert features.realized_volatility([100.0, 100.0]) == 0.0
+
+    # Constant price (zero loss / zero gain in RSI)
+    flat_prices = [100.0] * 20
+    flat_rsi = features.rsi(flat_prices, 10)
+    assert flat_rsi[-1] == 100.0
+
+    # FeatureStore with empty bars
+    fs = features.FeatureStore()
+    assert fs.to_records([]) == []
+
+
+def test_feature_registry_custom():
+    import features
+    reg = features.FeatureRegistry()
+    reg.register("custom_feat", lambda b: [1.0] * len(b), description="Constant feature")
+    assert reg.get("custom_feat") is not None
+    assert reg.get("non_existent") is None
+    all_f = reg.list_all()
+    assert len(all_f) == 1
+    assert all_f[0]["name"] == "custom_feat"
+

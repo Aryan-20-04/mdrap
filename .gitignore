@@ -46,6 +46,7 @@ venv.bak/
 htmlcov/
 nosetests.xml
 coverage.xml
+coverage.json
 *.cover
 .hypothesis/
 .ruff_cache/

@@ -17,6 +17,7 @@ import json
 import os
 import re
 import secrets
+import sys
 import threading
 import time
 from dataclasses import dataclass, field
@@ -275,8 +276,8 @@ class SecurityManager:
             try:
                 for ent in self.store.load_api_keys():
                     self._api_keys[ent.token] = ent
-            except Exception:
-                pass
+            except Exception as exc:
+                print(f"[mdrap SECURITY WARNING] Failed to load API keys from store: {exc}", file=sys.stderr)
 
     def register_feed_secret(self, source: str, secret_key: str) -> None:
         """Register or rotate a pre-shared cryptographic key for a market data feed."""
@@ -415,20 +416,21 @@ class SecurityManager:
         if self.store and hasattr(self.store, "save_api_key"):
             try:
                 self.store.save_api_key(ent)
-            except Exception:
-                pass
+            except Exception as exc:
+                self._api_keys.pop(token, None)
+                raise RuntimeError(f"Failed to persist API key to storage: {exc}") from exc
         return ent
 
     def revoke_api_key(self, token: str) -> bool:
         """Revoke an active API key immediately."""
         ent = self._api_keys.get(token)
         if ent:
-            ent.is_active = False
             if self.store and hasattr(self.store, "revoke_api_key"):
                 try:
                     self.store.revoke_api_key(token)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    raise RuntimeError(f"Failed to persist API key revocation to storage: {exc}") from exc
+            ent.is_active = False
             return True
         return False
 

@@ -231,22 +231,6 @@ class BBOEngine:
 
     get_bbo = current_bbo
 
-    def prune_stale(self, now: Optional[float] = None) -> int:
-        """Evict expired quotes and mark depleted BBOs as stale."""
-        t = now if now is not None else time.time()
-        pruned = 0
-        for inst, book in list(self._books.items()):
-            dead = [
-                s for s, q in book.items()
-                if (t - q.exchange_timestamp) > self.quote_ttl_s or not self._is_source_eligible(s)
-            ]
-            for s in dead:
-                del book[s]
-                pruned += 1
-            if not book and inst in self._current_bbos:
-                self._current_bbos[inst].is_stale = True
-        return pruned
-
     def all_bbos(self) -> Dict[str, ConsolidatedBBO]:
         return dict(self._current_bbos)
 

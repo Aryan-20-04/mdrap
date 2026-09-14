@@ -69,6 +69,7 @@ The platform converts noisy, delayed, duplicated, and inconsistent market data f
 - **HMAC Authentication & RBAC**: Constant-time HMAC-SHA256 signature verification protects against feed spoofing. Role-Based Access Control enforces entitlements (`VIEWER`, `OPERATOR`, `ADMIN`).
 - **`ingest()`**: Records high-resolution `receive_timestamp` immediately upon arrival and assigns a monotonic `raw_id`.
 - **`normalize()`**: Maps vendor-specific schemas to the uniform `CanonicalEvent`. Catches schema violations and routes them as `INVALID` events to quarantine.
+- **Corrupt-Frame Quarantine Path**: Ingest feeds (`src/ws_feed.py`, `src/polygon_feed.py`) never silently drop malformed, truncated, or unparseable wire frames. Corrupt payloads are wrapped into `RawEvent(is_malformed=True)` and dispatched through `normalize()`, generating an `INVALID` event quarantined under `SCHEMA_VIOLATION` (Principle #3).
 - **Write-Ahead Raw Archive (`src/archive.py`)**: Date- and source-partitioned JSONL logging preserves raw payloads before ingestion.
 
 ### 2.2 Quality Engine & Native C Fastpath (`src/quality.py`, `src/fastpath.c`, `src/fastpath.py`)
@@ -112,8 +113,9 @@ The platform converts noisy, delayed, duplicated, and inconsistent market data f
 - Tracks rolling bid/ask spread distributions and crossed-quote occurrences.
 - Computes realized price volatility and price range percentages using Welford's online variance algorithm.
 
-### 2.7 In-Place Terminal Visualization & Institutional Exporter (`src/terminal_display.py`, `src/exporter.py`)
+### 2.7 In-Place Terminal Visualization, Modal Navigator & Institutional Exporter (`src/terminal_display.py`, `src/navigator.py`, `src/exporter.py`)
 - **In-Place Terminal HUD**: ANSI cursor repositioning renders live ticker tables and candlestick charts without vertical scrolling or terminal flicker.
+- **Modal Keyboard Navigator Desk (`src/navigator.py`)**: High-velocity terminal desk with a 3-mode state machine (`NORMAL`, `FILTER`, `MODAL`), Vim home-row motions, live incremental search debounce, and two-stage armed execution tickets preventing stray key accidental order submissions.
 - **Visual Candlestick Charts**: 3-character columns (` █ `, ` │ `, ` ┼ `) with outlier-resilient 10th–90th percentile scaling and synchronized volume histograms.
 - **5-Tab Financial Model Exporter**: Translates market microstructure data into styled Microsoft Excel workbooks (`.xlsx`) or automated CSV report packages.
 

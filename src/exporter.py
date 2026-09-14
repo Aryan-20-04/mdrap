@@ -61,83 +61,86 @@ class MarketDataExporter:
         Gather all analytical data points for the requested symbol.
         """
         store = self._ensure_populated_data(symbol)
-        sym_clean = symbol.upper().replace("-", "/")
+        try:
+            sym_clean = symbol.upper().replace("-", "/")
 
-        # 1. Gather depth engine state & VWAP curves
-        depth_eng = ConsolidatedDepthEngine()
-        bbo_eng = BBOEngine()
-        analytics_eng = MarketAnalytics(ohlcv_interval_s=5.0)
+            # 1. Gather depth engine state & VWAP curves
+            depth_eng = ConsolidatedDepthEngine()
+            bbo_eng = BBOEngine()
+            analytics_eng = MarketAnalytics(ohlcv_interval_s=5.0)
 
-        # Replay canonical events for symbol from store
-        raw_rows = store.latest(symbol, limit=2000)
-        if not raw_rows and "/" in symbol:
-            raw_rows = store.latest(symbol.replace("/", "-"), limit=2000)
-        if not raw_rows:
-            # Query latest events for AAPL by default
-            raw_rows = store.latest("AAPL", limit=1000)
+            # Replay canonical events for symbol from store
+            raw_rows = store.latest(symbol, limit=2000)
+            if not raw_rows and "/" in symbol:
+                raw_rows = store.latest(symbol.replace("/", "-"), limit=2000)
+            if not raw_rows:
+                # Query latest events for AAPL by default
+                raw_rows = store.latest("AAPL", limit=1000)
 
-        for d in raw_rows:
-            try:
-                ev_type_str = d.get("event_type", "TRADE")
-                ev_type = EventType.QUOTE if ev_type_str == "QUOTE" else EventType.TRADE
-                st_str = d.get("quality_status", "VALID")
-                st = QualityStatus.INVALID if st_str == "INVALID" else (QualityStatus.SUSPICIOUS if st_str == "SUSPICIOUS" else QualityStatus.VALID)
-                ev = CanonicalEvent(
-                    event_id=d.get("event_id", ""),
-                    instrument_id=d.get("instrument_id", symbol),
-                    event_type=ev_type,
-                    exchange_timestamp=float(d.get("exchange_timestamp", 0.0)),
-                    receive_timestamp=float(d.get("receive_timestamp", 0.0)),
-                    processing_timestamp=float(d.get("processing_timestamp", 0.0)),
-                    source=str(d.get("source", "")),
-                    sequence_number=int(d.get("sequence_number", 0)),
-                    price=d.get("price"),
-                    quantity=d.get("quantity"),
-                    bid_price=d.get("bid_price"),
-                    bid_size=d.get("bid_size"),
-                    ask_price=d.get("ask_price"),
-                    ask_size=d.get("ask_size"),
-                    quality_status=st,
-                )
-                depth_eng.observe(ev)
-                bbo_eng.observe(ev)
-                analytics_eng.observe(ev)
-            except Exception:
-                pass
+            for d in raw_rows:
+                try:
+                    ev_type_str = d.get("event_type", "TRADE")
+                    ev_type = EventType.QUOTE if ev_type_str == "QUOTE" else EventType.TRADE
+                    st_str = d.get("quality_status", "VALID")
+                    st = QualityStatus.INVALID if st_str == "INVALID" else (QualityStatus.SUSPICIOUS if st_str == "SUSPICIOUS" else QualityStatus.VALID)
+                    ev = CanonicalEvent(
+                        event_id=d.get("event_id", ""),
+                        instrument_id=d.get("instrument_id", symbol),
+                        event_type=ev_type,
+                        exchange_timestamp=float(d.get("exchange_timestamp", 0.0)),
+                        receive_timestamp=float(d.get("receive_timestamp", 0.0)),
+                        processing_timestamp=float(d.get("processing_timestamp", 0.0)),
+                        source=str(d.get("source", "")),
+                        sequence_number=int(d.get("sequence_number", 0)),
+                        price=d.get("price"),
+                        quantity=d.get("quantity"),
+                        bid_price=d.get("bid_price"),
+                        bid_size=d.get("bid_size"),
+                        ask_price=d.get("ask_price"),
+                        ask_size=d.get("ask_size"),
+                        quality_status=st,
+                    )
+                    depth_eng.observe(ev)
+                    bbo_eng.observe(ev)
+                    analytics_eng.observe(ev)
+                except Exception:
+                    pass
 
-        ladder = depth_eng.current_ladder(symbol) or depth_eng.current_ladder(sym_clean)
-        bbo_obj = bbo_eng.current_bbo(symbol) or bbo_eng.current_bbo(sym_clean)
-        sizes = [1.0, 5.0, 10.0, 25.0, 50.0]
-        curve = depth_eng.current_vwap_curve(symbol, sizes) or (ladder.compute_vwap_curve(sizes) if ladder else None)
+            ladder = depth_eng.current_ladder(symbol) or depth_eng.current_ladder(sym_clean)
+            bbo_obj = bbo_eng.current_bbo(symbol) or bbo_eng.current_bbo(sym_clean)
+            sizes = [1.0, 5.0, 10.0, 25.0, 50.0]
+            curve = depth_eng.current_vwap_curve(symbol, sizes) or (ladder.compute_vwap_curve(sizes) if ladder else None)
 
-        # Analytics
-        analytics_summary = analytics_eng.full_summary()
-        candles = [c for c in analytics_summary.get("ohlcv", []) if c.get("instrument_id") in (symbol, sym_clean)]
-        spreads = [s for s in analytics_summary.get("spreads", []) if s.get("instrument_id") in (symbol, sym_clean)]
-        volatility = [v for v in analytics_summary.get("volatility", []) if v.get("instrument_id") in (symbol, sym_clean)]
+            # Analytics
+            analytics_summary = analytics_eng.full_summary()
+            candles = [c for c in analytics_summary.get("ohlcv", []) if c.get("instrument_id") in (symbol, sym_clean)]
+            spreads = [s for s in analytics_summary.get("spreads", []) if s.get("instrument_id") in (symbol, sym_clean)]
+            volatility = [v for v in analytics_summary.get("volatility", []) if v.get("instrument_id") in (symbol, sym_clean)]
 
-        # Feed health & quality statistics
-        health = store.feed_health()
-        quarantine = store.quarantine_sample(limit=50)
-        cnts = store.counts()
-        total_canonical = sum(cnts.values())
-        cur = store.conn.execute("SELECT COUNT(*) FROM quarantine")
-        total_quarantine = cur.fetchone()[0] if cur else 0
+            # Feed health & quality statistics
+            health = store.feed_health()
+            quarantine = store.quarantine_sample(limit=50)
+            cnts = store.counts()
+            total_canonical = sum(cnts.values())
+            cur = store.conn.execute("SELECT COUNT(*) FROM quarantine")
+            total_quarantine = cur.fetchone()[0] if cur else 0
 
-        return {
-            "symbol": symbol,
-            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "bbo": bbo_obj,
-            "ladder": ladder,
-            "vwap_curve": curve,
-            "candles": candles,
-            "spreads": spreads[0] if spreads else {},
-            "volatility": volatility[0] if volatility else {},
-            "health": health,
-            "quarantine": quarantine,
-            "total_canonical": total_canonical,
-            "total_quarantine": total_quarantine,
-        }
+            return {
+                "symbol": symbol,
+                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "bbo": bbo_obj,
+                "ladder": ladder,
+                "vwap_curve": curve,
+                "candles": candles,
+                "spreads": spreads[0] if spreads else {},
+                "volatility": volatility[0] if volatility else {},
+                "health": health,
+                "quarantine": quarantine,
+                "total_canonical": total_canonical,
+                "total_quarantine": total_quarantine,
+            }
+        finally:
+            store.close()
 
     def export_excel(
         self,

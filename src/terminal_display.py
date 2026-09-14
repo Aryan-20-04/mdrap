@@ -668,25 +668,6 @@ class LiveTickerDashboard:
     # Stream Runner Loop
     # -----------------------------------------------------------------------
 
-    def run_watchlist_stream(
-        self,
-        event_stream: Generator[RawEvent, None, None],
-        pipeline: Any,
-        symbols: List[str],
-        limit: Optional[int] = None,
-    ) -> None:
-        """
-        Execute live multi-ticker portfolio watchlist stream.
-        Renders an in-place updating matrix of all tracked symbols with OFI, CVD, and venue health.
-        """
-        return self.run_live_stream(
-            event_stream=event_stream,
-            pipeline=pipeline,
-            symbols=symbols,
-            single_ticker=None,
-            limit=limit,
-        )
-
     def run_live_stream(
         self,
         event_stream: Generator[RawEvent, None, None],

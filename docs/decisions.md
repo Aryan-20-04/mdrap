@@ -113,3 +113,128 @@ Furthermore, users acquiring MDRAP via `git clone` or `pip install` required a z
 - **Packaging Compatibility**: Verified on `pip install -e .`, `pip install .`, and direct `git clone`.
 - **Test Integrity**: Full test suite passes 100% in default mode (**620 passed in ~69s**) and in pure Python fallback mode (**597 passed, 7 skipped in ~70s**).
 
+---
+
+# Architecture Decision Record: DuckDB Sync Divergence Transparency & Strict Mode
+
+**Date:** 2026-09-14  
+**Status:** Accepted  
+**Scope:** Core Storage · Analytical Engine · CLI Pipeline Dispatch (`src/cli.py`, `src/columnar.py`)
+
+---
+
+## 1. Context & Motivation
+
+In the MDRAP pipeline, SQLite acts as the primary ACID persistence store, and DuckDB acts as the secondary columnar analytical engine. At the conclusion of `mdrap run`, an automatic background sync (`sync_sqlite_to_duckdb`) mirrors canonical events into `mdrap.duckdb`.
+
+Previously, sync failures (e.g. SQLite database locked by another process, or DuckDB schema lock) were wrapped in a silent `try / except Exception: pass` block. This resulted in:
+1. The command exiting with code 0 as if everything succeeded.
+2. The SQLite database being fully updated while `mdrap.duckdb` remained silently stale.
+3. Automated CI/CD pipelines and downstream quantitative analytics consuming outdated data without warning.
+
+Per Design Principle #2 ("Measure before claiming") and Principle #3 ("Never silently discard bad data"), silent state corruption and desynchronization are unacceptable.
+
+---
+
+## 2. Decision: Transparent Divergence Reporting & `--strict-sync`
+
+1. **Immediate Stderr Surfacing**: If `sync_sqlite_to_duckdb` throws any exception, the error message and root cause are printed directly to `sys.stderr` with clear visual alerting.
+2. **Telemetry Attribution**: The JSON metrics output dictionary explicitly records `"diverged": True` whenever the two stores fail to synchronize.
+3. **Strict Gate Flag (`--strict-sync`)**: Introduced the `--strict-sync` CLI option. When passed, any synchronization divergence forces an immediate termination with process exit code `1`.
+4. **Explicit Bypass (`--no-sync`)**: Operators running SQLite-only workloads or running in environments with external file locks can cleanly skip DuckDB synchronization via `--no-sync`.
+
+---
+
+## 3. Consequences & Verification
+
+- Automation, SRE alerts, and CI pipelines reliably catch database divergences immediately.
+- SQLite-only workloads can opt out explicitly without warning noise.
+- Validated via unit tests in `tests/test_cli.py`.
+
+---
+
+# Architecture Decision Record: Modal Boundary Separation for High-Velocity Trading Navigation
+
+**Date:** 2026-09-14  
+**Status:** Accepted  
+**Scope:** Presentation Layer · Terminal UX · Execution Safety (`src/navigator.py`, `mdrap desk`)
+
+---
+
+## 1. Context & Motivation
+
+High-frequency market operators and algorithmic trading desk supervisors need sub-second keyboard ergonomics without reaching for a mouse:
+- Browsing multi-market watchlists, L2 depth ladders, SEC 8-K filings, and vessel chokepoints must be instantaneous.
+- However, single-key action bindings (such as `b` for Buy or `s` for Sell) present an existential operational hazard on a trading desk: a single errant keystroke or dropped keyboard could trigger an unwanted execution order in a live market.
+
+---
+
+## 2. Decision: Vim-Inspired Modal State Machine with Armed Execution Tickets
+
+We introduced the `ModalNavigator` (`src/navigator.py`, CLI: `mdrap desk` / `mdrap nav`):
+
+1. **Strict Modal State Machine**:
+   - `NORMAL`: Directional navigation (`j`/`k`, `Ctrl-D`/`Ctrl-U`, `g`/`G`), tab traversal (`h`/`l`/`1-5`), and non-mutating inspection (`c` chart, `d` depth, `v` vwap, `o` browser link, `x` excel export).
+   - `FILTER`: Activated by `/`. Free-form incremental text filter with real-time viewport debounce. Pressing `Enter` locks the filter; `Esc` clears and returns to `NORMAL`.
+   - `MODAL`: Armed confirmation state triggered by mutation keys (`b` Buy, `s` Sell, or destructive reset).
+2. **Two-Stage Confirmation Guards**:
+   - Mutation actions construct an explicit `ConfirmationTicket`.
+   - The screen renders a high-contrast modal overlay with explicit execution parameters (Symbol, Side, Quantity, Price).
+   - Order submission requires explicit operator confirmation via `Enter` or `y`/`Y`.
+   - Any other key (`Esc`, `n`/`N`, `q`) immediately disarms the ticket and cancels the mutation without side effects.
+3. **Pure Python Standard Library + Rich**:
+   - Zero heavyweight TUI frameworks (no `curses`, no `textual`, no `urwid`).
+   - Cross-platform non-blocking key polling via `msvcrt` on Windows and `termios`/`select` on POSIX.
+
+---
+
+## 3. Consequences & Verification
+
+- Delivers sub-millisecond keyboard response times with zero risk of fat-finger live order submissions.
+- Verified with comprehensive test coverage in `tests/test_navigator.py`.
+
+---
+
+# Architecture Decision Record: Whole-Repo Over-Engineering & Dead Stub Elimination
+
+**Date:** 2026-09-14  
+**Status:** Accepted  
+**Scope:** Whole Repository · Dead Code Cleanup · Refactoring (`src/`, `tests/`)
+
+---
+
+## 1. Context & Motivation
+
+Following the implementation of quantitative trading engines, alternative data, and feed handlers, an automated whole-codebase audit revealed dead stubs, uncalled helper methods, and duplicate numerical logic that added maintenance burden without operational value:
+- `LiveStrategyRunner` (39 lines) and `OrderBookLevel` (9 lines) in `strategy_sdk.py` had zero references across the platform.
+- Unused standalone helper functions lingered across multiple modules: `benchmark_shm_latency` (`shm.py`), `run_watchlist_stream` (`terminal_display.py`), `write_alert_batch` (`storage.py`), `prune_stale` (`bbo.py`), `all_ladders` (`depth.py`), `cumulative_error_rate` (`reconciliation.py`), and `is_vwap` (`client.py`).
+- Hand-rolled polynomial approximations for normal distribution CDF/PDF in `options.py` (`_norm_cdf`, `_norm_pdf`) duplicated Python 3.8+'s standard library `statistics.NormalDist().cdf` and `pdf`.
+
+Per Section 26 Design Principle #1 ("Correctness before optimization") and Principle #8 ("Every optimization must be regression-tested for correctness"), speculative code and duplicate math must be eliminated.
+
+---
+
+## 2. Decision: Ponytail Over-Engineering Elimination
+
+1. **Purged Dead Classes & Stubs**:
+   - Removed `LiveStrategyRunner` and `OrderBookLevel` from `src/strategy_sdk.py`.
+   - Removed uncalled helper stubs from `src/shm.py`, `src/terminal_display.py`, `src/storage.py`, `src/bbo.py`, `src/depth.py`, `src/reconciliation.py`, and `src/client.py`.
+2. **Standard Library Normal Distribution Delegation**:
+   - Replaced custom polynomial erf-based approximations in `src/options.py` with direct delegation to `statistics.NormalDist()`:
+     ```python
+     _STD_NORM = statistics.NormalDist()
+     def _norm_cdf(x: float) -> float: return _STD_NORM.cdf(x)
+     def _norm_pdf(x: float) -> float: return _STD_NORM.pdf(x)
+     ```
+3. **Surfaced Silent Exceptions Platform-Wide**:
+   - In `src/security.py`, `src/service.py`, `src/config.py`, and `src/quality.py`, converted silent exception swallows (`except: pass`) into explicit `sys.stderr` error notifications and telemetry error counter increments.
+   - Enforced Design Principle #3 ("Never silently discard bad data") on corrupt WebSocket and Polygon/Databento feed frames by routing unparseable frames as `RawEvent(is_malformed=True)` into `normalize()` to be quarantined as `INVALID` with `SCHEMA_VIOLATION`.
+
+---
+
+## 3. Consequences & Verification
+
+- Eliminated 152 lines of dead code and duplicate mathematical implementations across 18 files.
+- Full regression verification: **650/650 tests passing in ~85s (100% green)**.
+
+

@@ -259,6 +259,7 @@ def cmd_news(args: argparse.Namespace) -> None:
 
     def _populate_feed(target_sym: str | None = None) -> None:
         fetched = False
+        fetch_err = None
         sym_query = target_sym if target_sym else "AAPL,MSFT,NVDA,TSLA"
         try:
             url = f"https://feeds.finance.yahoo.com/rss/2.0/headline?s={sym_query}"
@@ -271,8 +272,8 @@ def cmd_news(args: argparse.Namespace) -> None:
                 items = feed.parse_rss_xml(xml_data, source="YahooFinance")
                 if items:
                     fetched = True
-        except Exception:
-            pass
+        except Exception as exc:
+            fetch_err = str(exc)
 
         if not fetched and target_sym:
             try:
@@ -284,10 +285,13 @@ def cmd_news(args: argparse.Namespace) -> None:
                     feed.add_headline(f"{target_sym}: {desc}", source="SEC_8K", url=getattr(ev, "filing_url", ""))
                 if sec_events:
                     fetched = True
-            except Exception:
-                pass
+            except Exception as exc:
+                if not fetch_err:
+                    fetch_err = str(exc)
 
         if not feed._items:
+            if fetch_err:
+                console.print(f"[dim yellow][Notice] Live news retrieval unavailable ({fetch_err}). Showing offline baseline feed.[/dim yellow]")
             now = time.time()
             seed_headlines = [
                 ("NVIDIA announces next-generation Blackwell Ultra architecture with record energy efficiency", "Reuters", now - 300, ["NVDA"]),
@@ -647,5 +651,5 @@ def add_trading_parsers(sub) -> None:
     p_sched.set_defaults(func=cmd_schedule)
 
     # Markets
-    p_mkts = sub.add_parser("markets", aliases=["venues", "world", "desk"], help="Global financial exchange directory, market clocks, and microstructure")
+    p_mkts = sub.add_parser("markets", aliases=["venues", "world"], help="Global financial exchange directory, market clocks, and microstructure")
     p_mkts.set_defaults(func=cmd_markets)

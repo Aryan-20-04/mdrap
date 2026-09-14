@@ -86,7 +86,9 @@ class QualityEngine:
             try:
                 from config import load_config
                 self.cfg = load_config().quality
-            except Exception:
+            except Exception as exc:
+                import sys
+                print(f"[mdrap WARNING] Failed to load quality config: {exc}. Using defaults.", file=sys.stderr)
                 self.cfg = QualityConfig()
         else:
             self.cfg = config

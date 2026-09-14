@@ -131,8 +131,13 @@ def parse_polygon_quote(item: dict) -> Optional[RawEvent]:
             receive_timestamp=t_recv,
             raw_id=f"poly-q-{next(_raw_counter)}",
         )
-    except Exception:
-        return None
+    except Exception as exc:
+        return RawEvent(
+            source="POLYGON",
+            payload={"instrument": item.get("sym", "UNKNOWN") if isinstance(item, dict) else "UNKNOWN", "is_malformed": True, "error": str(exc)},
+            receive_timestamp=t_recv,
+            raw_id=f"poly-q-err-{next(_raw_counter)}",
+        )
 
 
 def parse_polygon_trade(item: dict) -> Optional[RawEvent]:
@@ -161,7 +166,12 @@ def parse_polygon_trade(item: dict) -> Optional[RawEvent]:
         p = float(item.get("p", 0.0))
         s = float(item.get("s", 0.0))
         if p <= 0 or s <= 0:
-            return None
+            return RawEvent(
+                source="POLYGON",
+                payload={"instrument": sym, "is_malformed": True, "error": f"non-positive price/size (p={p}, s={s})"},
+                receive_timestamp=t_recv,
+                raw_id=f"poly-t-err-{next(_raw_counter)}",
+            )
 
         x_code = item.get("x", "")
         venue = POLYGON_EXCHANGE_MAP.get(x_code, str(x_code) if x_code else "SIP")
@@ -183,8 +193,13 @@ def parse_polygon_trade(item: dict) -> Optional[RawEvent]:
             receive_timestamp=t_recv,
             raw_id=f"poly-t-{next(_raw_counter)}",
         )
-    except Exception:
-        return None
+    except Exception as exc:
+        return RawEvent(
+            source="POLYGON",
+            payload={"instrument": item.get("sym", "UNKNOWN") if isinstance(item, dict) else "UNKNOWN", "is_malformed": True, "error": str(exc)},
+            receive_timestamp=t_recv,
+            raw_id=f"poly-t-err-{next(_raw_counter)}",
+        )
 
 
 def parse_polygon_aggregate(item: dict) -> Optional[RawEvent]:
@@ -206,7 +221,12 @@ def parse_polygon_aggregate(item: dict) -> Optional[RawEvent]:
         c = float(item.get("c", 0.0))
         v = float(item.get("v", 1.0))
         if c <= 0:
-            return None
+            return RawEvent(
+                source="POLYGON-AGG",
+                payload={"instrument": sym, "is_malformed": True, "error": f"non-positive close price (c={c})"},
+                receive_timestamp=t_recv,
+                raw_id=f"poly-a-err-{next(_raw_counter)}",
+            )
 
         return RawEvent(
             source="POLYGON-AGG",
@@ -226,8 +246,13 @@ def parse_polygon_aggregate(item: dict) -> Optional[RawEvent]:
             receive_timestamp=t_recv,
             raw_id=f"poly-a-{next(_raw_counter)}",
         )
-    except Exception:
-        return None
+    except Exception as exc:
+        return RawEvent(
+            source="POLYGON-AGG",
+            payload={"instrument": item.get("sym", "UNKNOWN") if isinstance(item, dict) else "UNKNOWN", "is_malformed": True, "error": str(exc)},
+            receive_timestamp=t_recv,
+            raw_id=f"poly-a-err-{next(_raw_counter)}",
+        )
 
 
 def parse_polygon_frame(raw_msg: str | dict | list) -> List[RawEvent]:
@@ -238,8 +263,13 @@ def parse_polygon_frame(raw_msg: str | dict | list) -> List[RawEvent]:
     if isinstance(raw_msg, str):
         try:
             data = json.loads(raw_msg)
-        except Exception:
-            return []
+        except Exception as exc:
+            return [RawEvent(
+                source="POLYGON",
+                payload={"instrument": "UNKNOWN", "is_malformed": True, "error": f"JSON parse error: {exc}"},
+                receive_timestamp=time.time(),
+                raw_id=f"poly-err-{next(_raw_counter)}",
+            )]
     else:
         data = raw_msg
 
