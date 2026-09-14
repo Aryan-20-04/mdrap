@@ -25,9 +25,13 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-# Cross-platform terminal raw input support
+# Cross-platform terminal raw input and UTF-8 console output support
 if sys.platform == "win32":
     import msvcrt
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 else:
     import select
     import termios
@@ -332,12 +336,12 @@ class MDRAPNavigator:
         # 1. Markets
         markets_cols = [
             GridColumn("MIC", "mic", style="bold cyan", width=8),
-            GridColumn("Venue Name", "name", width=22),
-            GridColumn("Flag", "flag", width=6),
-            GridColumn("Currency", "currency", justify="center", width=10),
-            GridColumn("Session Phase", "phase", style="bold green", width=18),
-            GridColumn("Benchmark", "benchmark", width=16),
-            GridColumn("Circuit Band", "circuit", justify="right", width=14),
+            GridColumn("Venue Name", "name", width=20),
+            GridColumn("Flag", "flag", width=4),
+            GridColumn("Currency", "currency", justify="center", width=8),
+            GridColumn("Session Phase", "phase", style="bold green", width=14),
+            GridColumn("Benchmark", "benchmark", width=14),
+            GridColumn("Circuit Band", "circuit", justify="right", width=12),
         ]
         markets_rows = self._load_markets_data()
         grid_markets = DataGrid("Global Trading Desks & Venues (ISO 10383)", markets_cols, markets_rows, row_id_key="mic")
@@ -345,14 +349,14 @@ class MDRAPNavigator:
 
         # 2. Maritime Fleet
         fleet_cols = [
-            GridColumn("Vessel Name", "name", style="bold yellow", width=20),
-            GridColumn("Type", "type", width=14),
-            GridColumn("Flag", "flag", width=6),
-            GridColumn("Owner / Operator", "owner", width=18),
-            GridColumn("Commodity Payload", "payload", width=20),
-            GridColumn("Status", "load_status", style="bold", width=10),
-            GridColumn("Nearest Chokepoint", "chokepoint", style="cyan", width=20),
-            GridColumn("Speed", "speed", justify="right", width=10),
+            GridColumn("Vessel Name", "name", style="bold yellow", width=16),
+            GridColumn("Type", "type", width=12),
+            GridColumn("Flag", "flag", width=4),
+            GridColumn("Owner / Operator", "owner", width=15),
+            GridColumn("Commodity Payload", "payload", width=18),
+            GridColumn("Status", "load_status", style="bold", width=8),
+            GridColumn("Nearest Chokepoint", "chokepoint", style="cyan", width=18),
+            GridColumn("Speed", "speed", justify="right", width=8),
         ]
         fleet_rows = self._load_fleet_data()
         grid_fleet = DataGrid("Global Commercial Tanker & Cargo Fleet", fleet_cols, fleet_rows, row_id_key="name")
@@ -360,14 +364,14 @@ class MDRAPNavigator:
 
         # 3. Market Depth & BBO
         depth_cols = [
-            GridColumn("Symbol", "symbol", style="bold cyan", width=12),
-            GridColumn("Asset Class", "asset", width=14),
-            GridColumn("Best Bid", "bid", justify="right", style="green", width=12),
-            GridColumn("Best Ask", "ask", justify="right", style="red", width=12),
-            GridColumn("Spread (bps)", "spread_bps", justify="right", width=14),
-            GridColumn("Imbalance", "imbalance", justify="center", width=14),
-            GridColumn("Last Price", "last", justify="right", style="bold", width=14),
-            GridColumn("24h Trend", "trend", justify="center", width=16),
+            GridColumn("Symbol", "symbol", style="bold cyan", width=10),
+            GridColumn("Asset Class", "asset", width=10),
+            GridColumn("Best Bid", "bid", justify="right", style="green", width=11),
+            GridColumn("Best Ask", "ask", justify="right", style="red", width=11),
+            GridColumn("Spread (bps)", "spread_bps", justify="right", width=10),
+            GridColumn("Imbalance", "imbalance", justify="center", width=13),
+            GridColumn("Last Price", "last", justify="right", style="bold", width=11),
+            GridColumn("24h Trend", "trend", justify="center", width=12),
         ]
         depth_rows = self._load_depth_data()
         grid_depth = DataGrid("Consolidated Level-2 Depth & Best Bid/Offer", depth_cols, depth_rows, row_id_key="symbol")
@@ -375,12 +379,12 @@ class MDRAPNavigator:
 
         # 4. SEC EDGAR Alternative Data
         edgar_cols = [
-            GridColumn("Date/Time", "time", style="dim", width=18),
-            GridColumn("Ticker", "ticker", style="bold cyan", width=10),
-            GridColumn("Form", "form", style="bold yellow", width=10),
-            GridColumn("Material Event / Filing Description", "description", width=42),
-            GridColumn("Urgency", "urgency", justify="center", style="bold", width=12),
-            GridColumn("Action", "action", style="blue underline", width=16),
+            GridColumn("Date/Time", "time", style="dim", width=14),
+            GridColumn("Ticker", "ticker", style="bold cyan", width=8),
+            GridColumn("Form", "form", style="bold yellow", width=8),
+            GridColumn("Material Event / Filing Description", "description", width=34),
+            GridColumn("Urgency", "urgency", justify="center", style="bold", width=10),
+            GridColumn("Action", "action", style="blue underline", width=14),
         ]
         edgar_rows = self._load_edgar_data()
         grid_edgar = DataGrid("SEC EDGAR Real-Time Corporate Filings & Material Events", edgar_cols, edgar_rows, row_id_key="ticker")
@@ -388,13 +392,13 @@ class MDRAPNavigator:
 
         # 5. Portfolio Accounting
         port_cols = [
-            GridColumn("Symbol", "symbol", style="bold cyan", width=12),
-            GridColumn("Currency", "currency", width=10),
-            GridColumn("Position", "qty", justify="right", width=12),
-            GridColumn("Avg Cost", "avg_cost", justify="right", width=14),
-            GridColumn("Market Price", "price", justify="right", width=14),
-            GridColumn("Unrealized P&L", "pnl", justify="right", style="bold", width=18),
-            GridColumn("Notional Value", "value", justify="right", width=18),
+            GridColumn("Symbol", "symbol", style="bold cyan", width=10),
+            GridColumn("Currency", "currency", width=8),
+            GridColumn("Position", "qty", justify="right", width=10),
+            GridColumn("Avg Cost", "avg_cost", justify="right", width=11),
+            GridColumn("Market Price", "price", justify="right", width=11),
+            GridColumn("Unrealized P&L", "pnl", justify="right", style="bold", width=16),
+            GridColumn("Notional Value", "value", justify="right", width=14),
         ]
         port_rows = self._load_portfolio_data()
         grid_port = DataGrid("Multi-Currency Institutional Portfolio Tracker", port_cols, port_rows, row_id_key="symbol")
@@ -467,11 +471,11 @@ class MDRAPNavigator:
 
     def _load_edgar_data(self) -> List[Dict[str, Any]]:
         return [
-            {"time": "Today 10:45", "ticker": "NVDA", "form": "8-K", "description": "Item 5.02: Election of Director & Board Committee Changes", "urgency": "[bold red]CRITICAL[/bold red]", "action": "[Open in Browser]", "url": "https://www.sec.gov/edgar/browse/?CIK=0001045810"},
-            {"time": "Today 09:30", "ticker": "AAPL", "form": "Form 4", "description": "Insider Trade: Tim Cook disposed 50,000 shares ($9.2M)", "urgency": "[bold yellow]HIGH[/bold yellow]", "action": "[Open in Browser]", "url": "https://www.sec.gov/edgar/browse/?CIK=0000320193"},
-            {"time": "Yesterday", "ticker": "MSFT", "form": "8-K", "description": "Item 2.02: Results of Operations & Financial Statements", "urgency": "[bold yellow]HIGH[/bold yellow]", "action": "[Open in Browser]", "url": "https://www.sec.gov/edgar/browse/?CIK=0000789019"},
-            {"time": "Sep 12", "ticker": "TSLA", "form": "10-Q", "description": "Quarterly Report pursuant to Section 13 or 15(d)", "urgency": "[dim]INFO[/dim]", "action": "[Open in Browser]", "url": "https://www.sec.gov/edgar/browse/?CIK=0001318605"},
-            {"time": "Sep 10", "ticker": "GOOGL", "form": "Form 4", "description": "Director Grant: 12,500 Class C Restricted Stock Units", "urgency": "[dim]INFO[/dim]", "action": "[Open in Browser]", "url": "https://www.sec.gov/edgar/browse/?CIK=0001652044"},
+            {"time": "Today 10:45", "ticker": "NVDA", "form": "8-K", "description": "Item 5.02: Election of Director & Board Changes", "urgency": "[bold red]CRITICAL[/bold red]", "action": "[Open in Browser]", "url": "https://www.sec.gov/edgar/browse/?CIK=0001045810"},
+            {"time": "Today 09:30", "ticker": "AAPL", "form": "Form 4", "description": "Insider: Tim Cook disposed 50,000 shares ($9.2M)", "urgency": "[bold yellow]HIGH[/bold yellow]", "action": "[Open in Browser]", "url": "https://www.sec.gov/edgar/browse/?CIK=0000320193"},
+            {"time": "Yesterday", "ticker": "MSFT", "form": "8-K", "description": "Item 2.02: Results of Operations & Financials", "urgency": "[bold yellow]HIGH[/bold yellow]", "action": "[Open in Browser]", "url": "https://www.sec.gov/edgar/browse/?CIK=0000789019"},
+            {"time": "Sep 12", "ticker": "TSLA", "form": "10-Q", "description": "Quarterly Report pursuant to Section 13/15(d)", "urgency": "[dim]INFO[/dim]", "action": "[Open in Browser]", "url": "https://www.sec.gov/edgar/browse/?CIK=0001318605"},
+            {"time": "Sep 10", "ticker": "GOOGL", "form": "Form 4", "description": "Director Grant: 12,500 Class C Restricted Units", "urgency": "[dim]INFO[/dim]", "action": "[Open in Browser]", "url": "https://www.sec.gov/edgar/browse/?CIK=0001652044"},
         ]
 
     def _load_portfolio_data(self) -> List[Dict[str, Any]]:
@@ -496,13 +500,13 @@ class MDRAPNavigator:
     # -----------------------------------------------------------------------
 
     def render(self):
-        """Render the complete modal screen."""
+        """Render the complete modal screen with strict height budgeting and zero vertical scroll."""
         try:
             term_height = os.get_terminal_size().lines
         except Exception:
             term_height = 24
-        # Dynamic page size: leave 9 lines for banner, tabs, filter, and hotkey ribbon
-        self.active_grid.page_size = max(5, term_height - 10)
+        # Dynamic page size: header(3) + tabs(1) + table header/title(4) + footer(3) = 11 lines
+        self.active_grid.page_size = max(3, term_height - 11)
 
         layout = Layout()
         layout.split_column(
@@ -540,10 +544,24 @@ class MDRAPNavigator:
 
         # Body Table
         grid = self.active_grid
-        table = Table(title=grid.title, title_style="bold #38bdf8", border_style="#4b5563", show_lines=False, expand=True)
-        table.add_column(" ", width=3, justify="center")
+        table = Table(
+            title=grid.title,
+            title_style="bold #38bdf8",
+            border_style="#4b5563",
+            show_lines=False,
+            expand=True,
+            pad_edge=False,
+        )
+        table.add_column(" ", width=2, justify="center", no_wrap=True)
         for col in grid.columns:
-            table.add_column(col.name, justify=col.justify, style=col.style, width=col.width)
+            table.add_column(
+                col.name,
+                justify=col.justify,
+                style=col.style,
+                width=col.width,
+                no_wrap=True,
+                overflow="ellipsis",
+            )
 
         visible_rows = grid.filtered_rows[grid.scroll_offset : grid.scroll_offset + grid.page_size]
         for row_idx, r in enumerate(visible_rows):
@@ -589,30 +607,53 @@ class MDRAPNavigator:
 
         layout["footer"].update(Panel(footer_text, style="dim", padding=(0, 1)))
 
-        # Clear screen and reposition cursor to top-left
-        sys.stdout.write("\x1b[H")
-        self.console.print(layout)
+        # Atomic double-buffered screen render: capture layout without trailing newline
+        # and flush to stdout in a single write call with cursor reset to (1, 1).
+        with self.console.capture() as capture:
+            self.console.print(layout, end="")
+        rendered = capture.get()
+        sys.stdout.write("\x1b[H" + rendered + "\x1b[J")
+        sys.stdout.flush()
 
     # -----------------------------------------------------------------------
     # Interactive Event Loop
     # -----------------------------------------------------------------------
 
     def run(self):
-        """Run the interactive keyboard event loop."""
+        """Run the interactive keyboard event loop with event-driven zero-jitter updates."""
         self._running = True
         self.reader.enter_raw_mode()
 
-        # Switch to alternate screen buffer and hide cursor
-        sys.stdout.write("\x1b[?1049h\x1b[?25l\x1b[H")
+        # Switch to alternate screen buffer, hide cursor, and clear screen once
+        sys.stdout.write("\x1b[?1049h\x1b[?25l\x1b[2J\x1b[H")
         sys.stdout.flush()
 
+        needs_render = True
+        last_term_size = None
         try:
             while self._running:
-                self.render()
-                key = self.reader.read_key(timeout_s=0.04)
-                if not key:
-                    continue
-                self.handle_key(key)
+                # Check for terminal resize
+                try:
+                    cur_size = os.get_terminal_size()
+                    if cur_size != last_term_size:
+                        needs_render = True
+                        last_term_size = cur_size
+                except Exception:
+                    pass
+
+                # Check for status message expiration
+                if not needs_render and self.status_expiry > 0 and time.perf_counter() >= self.status_expiry:
+                    needs_render = True
+                    self.status_expiry = 0.0
+
+                if needs_render:
+                    self.render()
+                    needs_render = False
+
+                key = self.reader.read_key(timeout_s=0.05)
+                if key:
+                    self.handle_key(key)
+                    needs_render = True
         finally:
             self.reader.exit_raw_mode()
             # Restore main screen buffer and unhide cursor

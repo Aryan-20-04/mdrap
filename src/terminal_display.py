@@ -254,6 +254,8 @@ class LiveTickerDashboard:
         "OKX": "cyan",
         "BYBIT": "bright_yellow",
         "EQUITIES": "green",
+        "EQUITIES (SIM)": "bright_cyan",
+        "CRYPTO (SIM)": "bright_cyan",
     }
 
     def __init__(

@@ -166,6 +166,7 @@ class LiveConnector:
         self._headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
         }
+        self._synthetic_state: Dict[str, Dict[str, Any]] = {}
 
     def _get_json(self, url: str) -> Optional[dict]:
         """Fetch and decode JSON from public HTTP endpoint with timeout & error shielding."""
@@ -363,11 +364,132 @@ class LiveConnector:
         except Exception:
             return None
 
+    def _generate_synthetic_equity_events(self, symbol: str, canonical_sym: str, t_recv: float) -> List[RawEvent]:
+        """
+        Synthesize realistic equity ticks when public market data is unavailable
+        (e.g. unlisted/OTC ticker like TMPV, 404, network rate limits, or closed sessions).
+        Prevents event loop starvation and UI freeze while maintaining valid microstructure.
+        """
+        import random
+        state = self._synthetic_state.get(canonical_sym)
+        if not state:
+            seed_val = sum(ord(c) for c in canonical_sym)
+            base_px = 100.0 + (seed_val % 50)
+            state = {
+                "price": float(base_px),
+                "high": float(base_px),
+                "low": float(base_px),
+                "vol": 0.0,
+                "rng": random.Random(seed_val),
+            }
+            self._synthetic_state[canonical_sym] = state
+
+        rng: random.Random = state["rng"]
+        pct_change = rng.uniform(-0.0015, 0.0015)
+        new_px = round(max(1.0, state["price"] * (1.0 + pct_change)), 2)
+        state["price"] = new_px
+        state["high"] = max(state["high"], new_px)
+        state["low"] = min(state["low"], new_px)
+        state["vol"] += 100.0
+
+        spread_offset = max(0.01, round(new_px * 0.0005, 2))
+        bid_p = round(new_px - spread_offset, 2)
+        ask_p = round(new_px + spread_offset, 2)
+
+        bids_l2 = [[round(bid_p - i * spread_offset, 2), float(100 * (i + 1))] for i in range(5) if round(bid_p - i * spread_offset, 2) > 0]
+        asks_l2 = [[round(ask_p + i * spread_offset, 2), float(100 * (i + 1))] for i in range(5)]
+
+        q_payload = {
+            "instrument": canonical_sym,
+            "event_type": "QUOTE",
+            "exchange_ts": t_recv - 0.015,
+            "sequence": next(_seq_counter),
+            "bid": bid_p,
+            "ask": ask_p,
+            "bid_size": 100.0,
+            "ask_size": 100.0,
+            "price": new_px,
+            "bids": bids_l2,
+            "asks": asks_l2,
+            "is_simulated": True,
+        }
+        t_payload = {
+            "instrument": canonical_sym,
+            "event_type": "TRADE",
+            "exchange_ts": t_recv - 0.010,
+            "sequence": next(_seq_counter),
+            "price": new_px,
+            "quantity": 100.0,
+            "is_simulated": True,
+        }
+        return [
+            RawEvent(
+                source="EQUITIES (SIM)",
+                payload=q_payload,
+                receive_timestamp=t_recv,
+                raw_id=f"live-equities-quote-{next(_raw_counter)}",
+            ),
+            RawEvent(
+                source="EQUITIES (SIM)",
+                payload=t_payload,
+                receive_timestamp=t_recv,
+                raw_id=f"live-equities-trade-{next(_raw_counter)}",
+            ),
+        ]
+
+    def _generate_synthetic_crypto_events(self, symbol: str, t_recv: float) -> List[RawEvent]:
+        """Synthesize crypto ticks when symbol is not traded on connected crypto exchanges."""
+        import random
+        state = self._synthetic_state.get(symbol)
+        if not state:
+            seed_val = sum(ord(c) for c in symbol)
+            base_px = 10.0 + (seed_val % 500)
+            state = {
+                "price": float(base_px),
+                "high": float(base_px),
+                "low": float(base_px),
+                "vol": 0.0,
+                "rng": random.Random(seed_val),
+            }
+            self._synthetic_state[symbol] = state
+
+        rng: random.Random = state["rng"]
+        pct_change = rng.uniform(-0.002, 0.002)
+        new_px = round(max(0.01, state["price"] * (1.0 + pct_change)), 4)
+        state["price"] = new_px
+        state["vol"] += 1.0
+
+        spread_offset = max(0.01, round(new_px * 0.0008, 4))
+        bid_p = round(new_px - spread_offset, 4)
+        ask_p = round(new_px + spread_offset, 4)
+
+        payload = {
+            "instrument": symbol,
+            "event_type": "QUOTE",
+            "exchange_ts": t_recv - 0.015,
+            "sequence": next(_seq_counter),
+            "bid": bid_p,
+            "ask": ask_p,
+            "bid_size": 1.5,
+            "ask_size": 1.5,
+            "price": new_px,
+            "is_simulated": True,
+        }
+        return [
+            RawEvent(
+                source="CRYPTO (SIM)",
+                payload=payload,
+                receive_timestamp=t_recv,
+                raw_id=f"live-crypto-quote-{next(_raw_counter)}",
+            )
+        ]
+
     # 6. Global Equities (Yahoo Finance)
-    def fetch_equity_events(self, symbol: str) -> List[RawEvent]:
+    def fetch_equity_events(self, symbol: str, fallback_sim: bool = False) -> List[RawEvent]:
         """
         Fetch real-time equity/commodity market events (top-of-book quote and latest trade)
         for any global stock ticker (e.g. NNOX, AAPL, PLTR, AMD, TSLA, SPY, GOLD).
+        If fallback_sim is True, generates synthetic ticks on 404/network error to prevent stream hang.
         """
         mapping = resolve_venue_symbols(symbol)
         ticker = mapping["yahoo"] or mapping["canonical"]
@@ -375,7 +497,7 @@ class LiveConnector:
         t_recv = time.time()
         data = self._get_json(url)
         if not data or not data.get("chart", {}).get("result"):
-            return []
+            return self._generate_synthetic_equity_events(symbol, mapping["canonical"], t_recv) if fallback_sim else []
 
         events: List[RawEvent] = []
         try:
@@ -429,11 +551,11 @@ class LiveConnector:
             ))
             return events
         except Exception:
-            return []
+            return self._generate_synthetic_equity_events(symbol, mapping["canonical"], t_recv) if fallback_sim else []
 
     def fetch_equity_quote(self, symbol: str) -> Optional[RawEvent]:
         """Fetch real-time top-of-book equity or commodity quote."""
-        evs = self.fetch_equity_events(symbol)
+        evs = self.fetch_equity_events(symbol, fallback_sim=False)
         return evs[0] if evs else None
 
     def fetch_equity_candles(self, symbol: str, limit: int = 25) -> List[dict]:
@@ -543,7 +665,7 @@ class LiveConnector:
             for sym in symbols:
                 sym_info = resolve_venue_symbols(sym)
                 if sym_info["type"] == "EQUITY":
-                    for raw in self.fetch_equity_events(sym):
+                    for raw in self.fetch_equity_events(sym, fallback_sim=True):
                         yield raw
                         count += 1
                         if limit and count >= limit:
@@ -553,9 +675,18 @@ class LiveConnector:
                         "BINANCE", "COINBASE", "KRAKEN", "OKX", "BYBIT"
                     ]
 
+                    venue_found = 0
                     for v in venue_list:
                         raw = self.fetch_quote(sym, v)
                         if raw:
+                            yield raw
+                            count += 1
+                            venue_found += 1
+                            if limit and count >= limit:
+                                return
+
+                    if venue_found == 0:
+                        for raw in self._generate_synthetic_crypto_events(sym, time.time()):
                             yield raw
                             count += 1
                             if limit and count >= limit:
