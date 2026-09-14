@@ -1181,7 +1181,29 @@ def cmd_live(args):
     limit = getattr(args, "limit", None)
     use_ws = getattr(args, "ws", False)
     use_sim = getattr(args, "sim", False)
+    feed_type = getattr(args, "feed", None)
+    if feed_type:
+        feed_type = feed_type.lower()
+    mock_feed = getattr(args, "mock_feed", False) or use_sim
     connector = LiveConnector()
+
+    # Pre-validation & auto-resolution for real live equity streams (strict data integrity)
+    if not mock_feed and not use_sim and feed_type not in ("sim", "polygon", "databento", "poly", "dbn"):
+        for s in symbols:
+            s_meta = resolve_venue_symbols(s)
+            if s_meta["type"] == "EQUITY":
+                resolved_venues = connector.resolve_equity_venues(s)
+                if resolved_venues:
+                    v_descs = [f"{vname} ({vtick})" for vtick, vname, _ in resolved_venues]
+                    venue_summary = ", ".join(v_descs)
+                    curr_name = resolved_venues[0][2].get("currency", "USD")
+                    console.print(f"[bold cyan]ℹ Auto-resolved '{s}' → {venue_summary} (Currency: {curr_name})[/bold cyan]")
+                else:
+                    console.print(f"\n[bold red]Error: Symbol '{s}' was not found on live market feeds (HTTP 404).[/bold red]")
+                    console.print(f"[yellow]MDRAP operates on real-time market feeds and does not generate artificial data in live mode to preserve data correctness and lineage.[/yellow]")
+                    console.print(f"[dim]To stream simulated market events for this symbol, use:[/dim]")
+                    console.print(f"  [cyan]mdrap live {s} --sim[/cyan]   or   [cyan]mdrap live {s} --mock-feed[/cyan]\n")
+                    sys.exit(1)
 
     dashboard = LiveTickerDashboard(bbo_engine=bbo, depth_engine=depth_eng, candle_interval_s=5.0)
 
@@ -1209,19 +1231,23 @@ def cmd_live(args):
             if fetched_candles and len(fetched_candles) >= 4:
                 for c in fetched_candles:
                     dashboard.analytics._buckets[(sym_query, c["bucket_start"])] = c
-            else:
-                # Prime realistic baseline candles so chart is full and informative from first frame
+            elif mock_feed or use_sim:
+                # Prime realistic baseline candles only when simulation/mock mode is active
                 for c in _generate_baseline_candles(sym_query, count=20, interval_s=5.0):
                     dashboard.analytics._buckets[(sym_query, c["bucket_start"])] = c
     except Exception:
         pass
 
-    # Setup stream source
+    # Setup stream source & latency interval
     active_feed_manager = None
-    feed_type = getattr(args, "feed", None)
-    if feed_type:
-        feed_type = feed_type.lower()
-    mock_feed = getattr(args, "mock_feed", False) or use_sim
+    fast_mode = getattr(args, "fast", False)
+    poll_ms_arg = getattr(args, "poll_ms", None)
+    if poll_ms_arg is not None:
+        poll_interval_s = max(0.001, poll_ms_arg / 1000.0)
+    elif fast_mode:
+        poll_interval_s = 0.01  # 10ms for ultra high-frequency
+    else:
+        poll_interval_s = 0.05  # 50ms default (sub-second fast streaming)
 
     if feed_type in ("polygon", "poly"):
         from polygon_feed import PolygonFeedManager
@@ -1268,7 +1294,7 @@ def cmd_live(args):
                         try:
                             s_meta = resolve_venue_symbols(cur_sym)
                             if s_meta["type"] == "EQUITY":
-                                eq_evs = connector.fetch_equity_events(cur_sym)
+                                eq_evs = connector.fetch_equity_events(cur_sym, fallback_sim=True)
                                 if eq_evs and eq_evs[0].payload.get("price"):
                                     ref_px = float(eq_evs[0].payload["price"])
                         except Exception:
@@ -1282,7 +1308,7 @@ def cmd_live(args):
                     if "ask" in raw.payload and raw.payload["ask"] is not None:
                         raw.payload["ask"] = round(raw.payload["ask"] * (ref_px / 100.0), 2)
                 yield raw
-                time.sleep(0.10)
+                time.sleep(poll_interval_s)
         stream_iter = _sim_gen()
     elif use_ws or feed_type in ("crypto", "ws"):
         from ws_feed import WebSocketFeedManager, HAS_WEBSOCKETS
@@ -1292,9 +1318,9 @@ def cmd_live(args):
             stream_iter = active_feed_manager.stream_events(limit=limit if limit and limit > 0 else None)
         else:
             console.print("[yellow]Notice: 'websockets' package unavailable. Using Parallel HTTP polling engine.[/yellow]")
-            stream_iter = connector.stream_ticks(symbols=symbols, limit=limit if limit and limit > 0 else None, poll_interval_s=0.25)
+            stream_iter = connector.stream_ticks(symbols=symbols, limit=limit if limit and limit > 0 else None, poll_interval_s=poll_interval_s, fallback_sim=mock_feed)
     else:
-        stream_iter = connector.stream_ticks(symbols=symbols, limit=limit if limit and limit > 0 else None, poll_interval_s=0.25)
+        stream_iter = connector.stream_ticks(symbols=symbols, limit=limit if limit and limit > 0 else None, poll_interval_s=poll_interval_s, fallback_sim=mock_feed)
 
     try:
         dashboard.run_live_stream(
@@ -1303,6 +1329,7 @@ def cmd_live(args):
             symbols=symbols,
             single_ticker=target_symbol if is_single else None,
             limit=limit if limit and limit > 0 else None,
+            refresh_hz=25 if fast_mode else 15,
         )
     except KeyboardInterrupt:
         pass
@@ -3724,6 +3751,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_live = _sub("live", cmd_live, "Stream live market ticks with in-place updating table & candlestick chart", ["stream", "watch", "ticker", "tick"], db=True)
     p_live.add_argument("symbol", nargs="?", default="BTC/USD", help="Symbol to stream (e.g. BTC/USD, AAPL, or 'all')")
     p_live.add_argument("-l", "--limit", type=int, default=20, help="Number of ticks to stream (default 20, 0 for continuous)")
+    p_live.add_argument("--fast", action="store_true", help="High-speed streaming mode (10ms poll interval, high-frequency terminal updates)")
+    p_live.add_argument("--poll-ms", type=float, default=None, help="Polling interval in milliseconds (e.g. --poll-ms 10 for 10ms)")
     p_live.add_argument("--ws", action="store_true", help="Stream using true real-time WebSockets (<1ms push) instead of HTTP polling")
     p_live.add_argument("--sim", action="store_true", help="Use realistic multi-venue simulator stream instead of public internet API")
     p_live.add_argument("--feed", choices=["crypto", "polygon", "poly", "databento", "dbn", "sim"], default=None, help="Streaming feed source provider")
@@ -4378,7 +4407,13 @@ def cmd_shell(args=None, parser=None):
             t1 = time.perf_counter()
             elapsed_ms = (t1 - t0) * 1000.0
             if verb in ("live", "stream"):
-                console.print(f"[dim green]Live stream completed in {elapsed_ms/1000.0:.2f}s (public internet HTTP retrieval)[/dim green]\n")
+                events_n = getattr(parsed_args, "limit", 20) or 20
+                per_tick_ms = elapsed_ms / max(events_n, 1)
+                eps = (events_n / (elapsed_ms / 1000.0)) if elapsed_ms > 0 else 0.0
+                if elapsed_ms < 1000.0:
+                    console.print(f"[dim green]Live stream completed in {elapsed_ms:.1f} ms ({per_tick_ms:.1f} ms/tick, {eps:.1f} eps)[/dim green]\n")
+                else:
+                    console.print(f"[dim green]Live stream completed in {elapsed_ms/1000.0:.2f}s ({per_tick_ms:.1f} ms/tick, {eps:.1f} eps)[/dim green]\n")
             elif verb in ("compare", "comp", "bench", "benchmark", "run", "r", "test", "test-all", "t", "chaos", "ch"):
                 console.print(f"[dim green]Batch command finished in {elapsed_ms/1000.0:.2f}s (total multi-run elapsed time)[/dim green]\n")
             else:

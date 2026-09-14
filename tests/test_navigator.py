@@ -267,19 +267,27 @@ class TestLiveResilience(unittest.TestCase):
             self.assertGreater(events[0].payload.get("price", 0), 0)
 
     def test_stream_ticks_completes_with_unlisted_symbol(self):
-        # Stream 4 ticks of TMPV without blocking or hanging
+        # Stream 4 ticks of TMPV without blocking or hanging when fallback_sim=True
         with patch.object(self.conn, "_get_json", return_value=None):
-            ticks = list(self.conn.stream_ticks(["TMPV"], limit=4, poll_interval_s=0.01))
+            ticks = list(self.conn.stream_ticks(["TMPV"], limit=4, poll_interval_s=0.01, fallback_sim=True))
             self.assertEqual(len(ticks), 4)
             for t in ticks:
                 self.assertIn("SIM", t.source)
 
+            # Enforces strict zero fake data policy when fallback_sim=False
+            strict_ticks = list(self.conn.stream_ticks(["TMPV"], limit=4, poll_interval_s=0.01, fallback_sim=False, max_empty_polls=2))
+            self.assertEqual(len(strict_ticks), 0)
+
     def test_stream_ticks_crypto_fallback_on_unknown_pair(self):
-        # When all crypto venues return None, synthesize ticks
+        # When all crypto venues return None, synthesize ticks when fallback_sim=True
         with patch.object(self.conn, "fetch_quote", return_value=None):
-            ticks = list(self.conn.stream_ticks(["UNKNOWN/USD"], limit=2, poll_interval_s=0.01))
+            ticks = list(self.conn.stream_ticks(["UNKNOWN/USD"], limit=2, poll_interval_s=0.01, fallback_sim=True))
             self.assertEqual(len(ticks), 2)
             self.assertIn("SIM", ticks[0].source)
+
+            # Strict policy: no fake data if fallback_sim=False
+            strict_ticks = list(self.conn.stream_ticks(["UNKNOWN/USD"], limit=2, poll_interval_s=0.01, fallback_sim=False, max_empty_polls=2))
+            self.assertEqual(len(strict_ticks), 0)
 
 
 if __name__ == "__main__":

@@ -69,6 +69,49 @@ def poll_keypress() -> Optional[str]:
 
 
 # ---------------------------------------------------------------------------
+# Multi-Currency Lookup & Formatting
+# ---------------------------------------------------------------------------
+
+CURRENCY_SYMBOLS: Dict[str, str] = {
+    "USD": "$",
+    "INR": "₹",
+    "EUR": "€",
+    "GBP": "£",
+    "GBp": "p",
+    "CAD": "C$",
+    "AUD": "A$",
+    "JPY": "¥",
+    "CNY": "¥",
+    "KRW": "₩",
+    "BRL": "R$",
+    "CHF": "CHF ",
+    "HKD": "HK$",
+}
+
+
+def get_currency_symbol(currency_code: Optional[str] = None, instrument: str = "") -> str:
+    """Resolve active fiat/asset currency symbol for terminal tables and charts."""
+    if currency_code and currency_code.upper() in CURRENCY_SYMBOLS:
+        return CURRENCY_SYMBOLS[currency_code.upper()]
+    inst = (instrument or "").upper()
+    if inst.endswith(".NS") or inst.endswith(".BO") or inst in ("TMPV", "TATAMOTORS", "RELIANCE", "TCS", "INFY", "HDFCBANK", "SBIN", "ITC"):
+        return "₹"
+    if any(inst.endswith(sfx) for sfx in (".DE", ".PA", ".AS", ".MI", ".MC", ".BR")):
+        return "€"
+    if inst.endswith(".L"):
+        return "£"
+    if inst.endswith(".TO") or inst.endswith(".V"):
+        return "C$"
+    if inst.endswith(".AX"):
+        return "A$"
+    if inst.endswith(".HK"):
+        return "HK$"
+    if inst.endswith(".T"):
+        return "¥"
+    return "$"
+
+
+# ---------------------------------------------------------------------------
 # ASCII / Unicode Candlestick & Sparkline Engine
 # ---------------------------------------------------------------------------
 
@@ -105,6 +148,7 @@ def render_candlestick_chart(
     height: int = 10,
     show_volume: bool = True,
     title: Optional[str] = None,
+    currency_symbol: str = "$",
 ) -> str:
     """
     Render an institutional-grade visual ASCII/Unicode candlestick chart
@@ -158,11 +202,11 @@ def render_candlestick_chart(
     chg_sign = "+" if chg_usd >= 0 else ""
 
     summary = (
-        f"[bold white]O:[/bold white] ${last_c.get('open', 0.0):,.2f}  "
-        f"[bold white]H:[/bold white] ${last_c.get('high', 0.0):,.2f}  "
-        f"[bold white]L:[/bold white] ${last_c.get('low', 0.0):,.2f}  "
-        f"[bold white]C:[/bold white] ${last_c.get('close', 0.0):,.2f}  "
-        f"[{chg_style}]{chg_sign}${chg_usd:,.2f} ({chg_sign}{chg_pct:.2f}%)[/{chg_style}]"
+        f"[bold white]O:[/bold white] {currency_symbol}{last_c.get('open', 0.0):,.2f}  "
+        f"[bold white]H:[/bold white] {currency_symbol}{last_c.get('high', 0.0):,.2f}  "
+        f"[bold white]L:[/bold white] {currency_symbol}{last_c.get('low', 0.0):,.2f}  "
+        f"[bold white]C:[/bold white] {currency_symbol}{last_c.get('close', 0.0):,.2f}  "
+        f"[{chg_style}]{chg_sign}{currency_symbol}{abs(chg_usd):,.2f} ({chg_sign}{chg_pct:.2f}%)[/{chg_style}]"
     )
     if title:
         lines.append(f"[bold cyan]{title}[/bold cyan]  [dim]({len(vis)} candles)[/dim]")
@@ -204,7 +248,7 @@ def render_candlestick_chart(
             else:
                 row_chars.append("[dim] · [/dim]" if r % 2 == 0 else "   ")
 
-        price_label = f"${row_mid:>9,.2f}"
+        price_label = f"{currency_symbol}{row_mid:>9,.2f}"
         lines.append("".join(row_chars) + f" [dim]┤[/dim] [white]{price_label}[/white]")
 
     # Volume histogram
@@ -256,6 +300,12 @@ class LiveTickerDashboard:
         "EQUITIES": "green",
         "EQUITIES (SIM)": "bright_cyan",
         "CRYPTO (SIM)": "bright_cyan",
+        "NSE": "green",
+        "BSE": "cyan",
+        "NASDAQ": "green",
+        "NYSE": "blue",
+        "ARCA": "magenta",
+        "BATS": "bright_yellow",
     }
 
     def __init__(
@@ -274,6 +324,7 @@ class LiveTickerDashboard:
         self.price_histories: Dict[str, List[float]] = {}# symbol -> [prices...]
         self.venue_quotes: Dict[str, Dict[str, dict]] = {}# symbol -> {venue: quote_data}
         self.session_stats: Dict[str, dict] = {}        # symbol -> {high, low, open, vol, count}
+        self.instrument_currencies: Dict[str, str] = {} # symbol -> currency symbol ($, ₹, €, £, etc.)
         self.event_count = 0
         self.start_time = time.time()
 
@@ -282,6 +333,11 @@ class LiveTickerDashboard:
         self.event_count += 1
         sym = (ev.instrument_id if ev else raw.payload.get("instrument", "UNKNOWN")).upper()
         p = raw.payload
+
+        if p.get("currency"):
+            self.instrument_currencies[sym] = get_currency_symbol(p.get("currency"), sym)
+        elif sym not in self.instrument_currencies:
+            self.instrument_currencies[sym] = get_currency_symbol(None, sym)
 
         # Update OHLCV & depth
         if ev:
@@ -341,16 +397,38 @@ class LiveTickerDashboard:
         # Track venue-specific quote
         if sym not in self.venue_quotes:
             self.venue_quotes[sym] = {}
-        src = raw.source.upper()
+        
+        # Determine venue name (prefer exchange from payload if available, else raw.source)
+        src_raw = (p.get("exchange") or raw.source or "EQUITIES").upper()
+        if src_raw in ("NSI", "NSE"):
+            src = "NSE"
+        elif src_raw in ("BSE", "BO"):
+            src = "BSE"
+        elif src_raw in ("NYQ", "NYSE"):
+            src = "NYSE"
+        elif src_raw in ("NMS", "NGM", "NCM", "NASDAQ"):
+            src = "NASDAQ"
+        elif src_raw in ("PCX", "ARCA"):
+            src = "ARCA"
+        elif src_raw in ("BATS", "BAT"):
+            src = "BATS"
+        else:
+            src = src_raw
+
+        existing_vq = self.venue_quotes[sym].get(src, {})
+        new_bid = bid if bid > 0 else existing_vq.get("bid", 0.0)
+        new_ask = ask if ask > 0 else existing_vq.get("ask", 0.0)
+        new_spread = (new_ask - new_bid) if (new_ask > 0 and new_bid > 0) else existing_vq.get("spread", 0.0)
+
         self.venue_quotes[sym][src] = {
-            "bid": bid,
-            "ask": ask,
-            "spread": (ask - bid) if (ask > 0 and bid > 0) else 0.0,
-            "bid_size": float(p.get("bid_size") or p.get("bidQty") or 1.0),
-            "ask_size": float(p.get("ask_size") or p.get("askQty") or 1.0),
+            "bid": new_bid,
+            "ask": new_ask,
+            "spread": new_spread,
+            "bid_size": float(p.get("bid_size") or p.get("bidQty") or existing_vq.get("bid_size", 100.0)),
+            "ask_size": float(p.get("ask_size") or p.get("askQty") or existing_vq.get("ask_size", 100.0)),
             "timestamp": raw.receive_timestamp,
-            "engine_us": engine_ns / 1000.0,
-            "quality": ev.quality_status.value if ev else "VALID",
+            "engine_us": (engine_ns / 1000.0) if engine_ns > 0 else existing_vq.get("engine_us", 0.0),
+            "quality": ev.quality_status.value if ev else existing_vq.get("quality", "VALID"),
         }
 
     # -----------------------------------------------------------------------
@@ -387,6 +465,7 @@ class LiveTickerDashboard:
         open_px = stat["open"] or last_px
         chg_usd = last_px - open_px if open_px else 0.0
         chg_pct = (chg_usd / open_px * 100.0) if open_px else 0.0
+        curr = self.instrument_currencies.get(sym, self.instrument_currencies.get(sym_clean, get_currency_symbol(None, sym)))
 
         # Arrow and styling
         if direction == "UP":
@@ -410,10 +489,10 @@ class LiveTickerDashboard:
         header_text = (
             f" [bold white on blue] MDRAP Live Market Connector [/bold white on blue]  "
             f"[bold yellow]{sym}[/bold yellow] [bold cyan](FOCUS)[/bold cyan]  "
-            f"[{px_style}]{arr} ${last_px:>11,.2f}[/{px_style}]  "
-            f"[{chg_style}]{chg_sign}${chg_usd:,.2f} ({chg_sign}{chg_pct:.2f}%)[/{chg_style}]  "
-            f"│  [dim]High:[/dim] [white]${stat['high']:,.2f}[/white]  "
-            f"[dim]Low:[/dim] [white]${stat['low']:,.2f}[/white]  "
+            f"[{px_style}]{arr} {curr}{last_px:>11,.2f}[/{px_style}]  "
+            f"[{chg_style}]{chg_sign}{curr}{abs(chg_usd):,.2f} ({chg_sign}{chg_pct:.2f}%)[/{chg_style}]  "
+            f"│  [dim]High:[/dim] [white]{curr}{stat['high']:,.2f}[/white]  "
+            f"[dim]Low:[/dim] [white]{curr}{stat['low']:,.2f}[/white]  "
             f"[dim]Vol:[/dim] [cyan]{stat['volume']:,.1f}[/cyan]  "
             f"[dim]Events:[/dim] [bold white]{self.event_count:,}[/bold white] [dim]({eps:.1f} eps)[/dim]"
         )
@@ -424,7 +503,7 @@ class LiveTickerDashboard:
             bid_v_col = self.VENUE_COLORS.get(bbo.best_bid_source, "white")
             ask_v_col = self.VENUE_COLORS.get(bbo.best_ask_source, "white")
             arb_state = "[bold red]CROSSED (ARBITRAGE)[/bold red]" if bbo.is_crossed else "[bold green]NORMAL[/bold green]"
-            micro_str = f"${ladder.micro_price:,.2f}" if ladder else f"${bbo.mid_price:,.2f}"
+            micro_str = f"{curr}{ladder.micro_price:,.2f}" if ladder else f"{curr}{bbo.mid_price:,.2f}"
             ofi_val = ladder.imbalance_ratio if ladder else 0.0
             ofi_style = "green" if ofi_val > 0.1 else ("red" if ofi_val < -0.1 else "white")
 
@@ -435,9 +514,9 @@ class LiveTickerDashboard:
             nbbo_table.add_column("Cross-Venue Arb", justify="right")
 
             nbbo_table.add_row(
-                f"[bold green]${bbo.best_bid:,.2f}[/bold green] @ [{bid_v_col}]{bbo.best_bid_source}[/]  "
-                f"|  [bold red]${bbo.best_ask:,.2f}[/bold red] @ [{ask_v_col}]{bbo.best_ask_source}[/]",
-                f"[bold white]${bbo.spread:,.2f}[/bold white] [dim]({spread_bps:.2f} bps)[/dim]",
+                f"[bold green]{curr}{bbo.best_bid:,.2f}[/bold green] @ [{bid_v_col}]{bbo.best_bid_source}[/]  "
+                f"|  [bold red]{curr}{bbo.best_ask:,.2f}[/bold red] @ [{ask_v_col}]{bbo.best_ask_source}[/]",
+                f"[bold white]{curr}{bbo.spread:,.2f}[/bold white] [dim]({spread_bps:.2f} bps)[/dim]",
                 f"[bold cyan]{micro_str}[/bold cyan] [dim](OFI: [/dim][{ofi_style}]{ofi_val:+.2f}[/{ofi_style}][dim])[/dim]",
                 arb_state,
             )
@@ -453,6 +532,7 @@ class LiveTickerDashboard:
             height=8,
             show_volume=True,
             title=f"{sym} 5-Second Interval Candlestick Chart",
+            currency_symbol=curr,
         )
 
         # 4. Multi-Venue Depth / Quote Breakdown
@@ -494,9 +574,9 @@ class LiveTickerDashboard:
 
                 venue_table.add_row(
                     f"[{v_col}]{vname:<10}[/{v_col}]",
-                    f"${b_p:,.2f}" if b_p > 0 else "-",
-                    f"${a_p:,.2f}" if a_p > 0 else "-",
-                    f"${spr:,.2f}" if spr > 0 else "-",
+                    f"{curr}{b_p:,.2f}" if b_p > 0 else "-",
+                    f"{curr}{a_p:,.2f}" if a_p > 0 else "-",
+                    f"{curr}{spr:,.2f}" if spr > 0 else "-",
                     f"[{q_col}]{qual}[/{q_col}]",
                     f"{lat:.1f}µs",
                     best_tag,
@@ -526,8 +606,8 @@ class LiveTickerDashboard:
                     b = bids[i] if i < len(bids) else None
                     a = asks[i] if i < len(asks) else None
                     b_sz = f"{b.total_size:,.2f}" if b else "-"
-                    b_px = f"${b.price:,.2f}" if b else "-"
-                    a_px = f"${a.price:,.2f}" if a else "-"
+                    b_px = f"{curr}{b.price:,.2f}" if b else "-"
+                    a_px = f"{curr}{a.price:,.2f}" if a else "-"
                     a_sz = f"{a.total_size:,.2f}" if a else "-"
                     depth_table.add_row(b_sz, b_px, f"L{i+1}", a_px, a_sz)
             else:
@@ -604,11 +684,13 @@ class LiveTickerDashboard:
             chg_sign = "+" if chg_usd >= 0 else ""
             chg_style = "green" if chg_usd >= 0 else "red"
 
+            row_curr = self.instrument_currencies.get(sym, self.instrument_currencies.get(s_clean, get_currency_symbol(None, sym)))
+
             # BBO metrics
             if bbo and bbo.best_bid and bbo.best_ask:
-                bid_str = f"${bbo.best_bid:,.2f}"
-                ask_str = f"${bbo.best_ask:,.2f}"
-                spr_str = f"${bbo.spread:,.2f}"
+                bid_str = f"{row_curr}{bbo.best_bid:,.2f}"
+                ask_str = f"{row_curr}{bbo.best_ask:,.2f}"
+                spr_str = f"{row_curr}{bbo.spread:,.2f}"
                 arb_str = "[bold red]CROSS[/bold red]" if bbo.is_crossed else "[green]VALID[/green]"
             else:
                 bid_str = "-"
@@ -616,8 +698,8 @@ class LiveTickerDashboard:
                 spr_str = "-"
                 arb_str = "[dim]PENDING[/dim]"
 
-            micro_str = f"${ladder.micro_price:,.2f}" if ladder else (
-                f"${bbo.mid_price:,.2f}" if (bbo and bbo.mid_price) else "-"
+            micro_str = f"{row_curr}{ladder.micro_price:,.2f}" if ladder else (
+                f"{row_curr}{bbo.mid_price:,.2f}" if (bbo and bbo.mid_price) else "-"
             )
 
             ofi_val = ladder.ofi if (ladder and ladder.ofi != 0.0) else (ladder.imbalance_ratio if ladder else 0.0)
@@ -640,7 +722,7 @@ class LiveTickerDashboard:
 
             table.add_row(
                 sym,
-                f"[{px_style}]{arr} ${last_px:,.2f}[/{px_style}]" if last_px > 0 else "[dim]Waiting[/dim]",
+                f"[{px_style}]{arr} {row_curr}{last_px:,.2f}[/{px_style}]" if last_px > 0 else "[dim]Waiting[/dim]",
                 f"[{chg_style}]{chg_sign}{chg_pct:.1f}%[/{chg_style}]",
                 bid_str,
                 ask_str,
@@ -677,6 +759,7 @@ class LiveTickerDashboard:
         symbols: List[str],
         single_ticker: Optional[str] = None,
         limit: Optional[int] = None,
+        refresh_hz: int = 15,
     ) -> None:
         """
         Execute the live ingestion stream with persistent, in-place terminal updates.
@@ -695,7 +778,7 @@ class LiveTickerDashboard:
             else self.render_multi_ticker_table(symbols, paused=paused)
         )
 
-        with Live(initial_render, console=console, refresh_per_second=8, transient=False) as live:
+        with Live(initial_render, console=console, refresh_per_second=refresh_hz, transient=False) as live:
             count = 0
             stream_iter = iter(event_stream)
             while True:

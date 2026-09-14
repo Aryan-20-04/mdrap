@@ -462,6 +462,7 @@ class MDRAPNavigator:
     def _load_depth_data(self) -> List[Dict[str, Any]]:
         return [
             {"symbol": "BTC/USD", "asset": "Crypto", "bid": "$68,420.50", "ask": "$68,421.00", "spread_bps": "0.07 bps", "imbalance": "+14.2% [BUY]", "last": "$68,420.80", "trend": " ▄▆█▇▆▅▆▇█", "url": "BTC"},
+            {"symbol": "TMPV.NS", "asset": "Tata Motors", "bid": "₹301.05", "ask": "₹301.15", "spread_bps": "0.33 bps", "imbalance": "+12.1% [BUY]", "last": "₹301.10", "trend": " ▂▃▄▅▆▇███", "url": "TMPV"},
             {"symbol": "AAPL", "asset": "Equity", "bid": "$185.15", "ask": "$185.17", "spread_bps": "0.11 bps", "imbalance": "-4.8% [SELL]", "last": "$185.16", "trend": "▆▅▄▃▂  ▂▃▄", "url": "AAPL"},
             {"symbol": "NVDA", "asset": "Equity", "bid": "$118.40", "ask": "$118.42", "spread_bps": "0.17 bps", "imbalance": "+22.6% [BUY]", "last": "$118.41", "trend": " ▂▃▅▆▇███▇", "url": "NVDA"},
             {"symbol": "ETH/USD", "asset": "Crypto", "bid": "$3,520.10", "ask": "$3,520.40", "spread_bps": "0.09 bps", "imbalance": "+2.1% [BAL]", "last": "$3,520.25", "trend": "▄▄▅▅▆▆▆▇▇█", "url": "ETH"},
@@ -480,6 +481,7 @@ class MDRAPNavigator:
 
     def _load_portfolio_data(self) -> List[Dict[str, Any]]:
         return [
+            {"symbol": "TMPV.NS", "currency": "INR", "qty": "1,000", "avg_cost": "₹295.00", "price": "₹301.10", "pnl": "+₹6,100.00 (+2.1%)", "value": "₹301,100.00"},
             {"symbol": "NVDA", "currency": "USD", "qty": "500", "avg_cost": "$110.20", "price": "$118.41", "pnl": "+$4,105.00 (+7.4%)", "value": "$59,205.00"},
             {"symbol": "AAPL", "currency": "USD", "qty": "300", "avg_cost": "$180.00", "price": "$185.16", "pnl": "+$1,548.00 (+2.9%)", "value": "$55,548.00"},
             {"symbol": "BTC/USD", "currency": "USD", "qty": "1.50", "avg_cost": "$64,200.00", "price": "$68,420.80", "pnl": "+$6,331.20 (+6.6%)", "value": "$102,631.20"},
