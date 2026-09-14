@@ -1,5 +1,31 @@
 # Changelog
 
+## [1.2.1] - 2026-09-14
+**Millisecond Live Streaming, Dual-Venue Global NBBO, Top-of-Book Quote Preservation & Zero Synthetic Data Policy**
+
+### Added
+- **Multi-Venue Dual-Listing Resolution (`src/live.py`)**:
+  - Automatically maps and federates dual-listed domestic and global equities (e.g., `TMPV` dynamically resolved to NSE `TMPV.NS` and BSE `TMPV.BO`).
+  - Added exchange color-coding and identification badges (`NSE`, `BSE`, `NASDAQ`, `NYSE`, `ARCA`, `BATS`).
+- **High-Frequency & Millisecond Live Streaming (`src/live.py`, `src/cli.py`, `src/terminal_display.py`)**:
+  - Implemented persistent HTTPS connection pooling (`http.client.HTTPSConnection` with socket keep-alive), dropping round-trip network latencies from hundreds of milliseconds to sub-100ms.
+  - Zero-latency in-memory ticker and negative validation caching (`_equity_venues_cache`, `_online_symbol_cache`).
+  - Default live polling rate reduced from 250ms to 50ms, with new `--fast` (10ms polling) and `--poll-ms <N>` CLI flags.
+  - Live terminal rendering loop dynamically throttles up to 25 FPS in fast mode with millisecond timing diagnostics.
+- **Multi-Currency Display (`src/terminal_display.py`, `src/navigator.py`)**:
+  - Native display formatting for global currencies ($, ₹, £, €, ¥, ₿, etc.) based on ticker origin and dual-listing venue.
+
+### Fixed
+- **Top-of-Book Quote Clobbering Bug (`src/terminal_display.py`)**:
+  - Ingested trade events missing quote fields no longer overwrite active best bid/ask prices with placeholder dashes. Active quotes persist until superseded by fresh order book updates.
+- **TUI Desk Jitter & Hang Prevention (`src/navigator.py`, `src/live.py`)**:
+  - Eliminated visual jitter and flicker across maritime tanker intelligence, consolidated Level-2 depth, and SEC EDGAR tabs.
+  - Prevented live streaming hangs when navigating to unlisted or delisted ticker symbols.
+
+### Changed
+- **Zero Synthetic Data Policy Enforced**:
+  - Strictly prevents generation or hallucination of fake trades for unlisted tickers when operating in live market modes; explicit fallback warnings are surfaced per Principle 1 & Principle 3.
+
 ## [1.2.0] - 2026-09-14
 **Modal Keyboard Navigator Desk, Platform-Wide Silent Error Elimination & Over-Engineering Cleanup**
 

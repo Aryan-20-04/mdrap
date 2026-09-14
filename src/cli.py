@@ -3844,7 +3844,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_test_all.add_argument("-s", "--seed", type=int, default=42)
 
     # Version
-    _sub("version", lambda args: print("MDRAP v1.2.0"), "Show MDRAP version", ["v"])
+    _sub("version", lambda args: print("MDRAP v1.2.1"), "Show MDRAP version", ["v"])
 
     # Phase 3: DuckDB Columnar Time-Series Storage & Vectorized Analytics
     p_col = _sub("columnar", cmd_columnar, "Query high-performance DuckDB columnar time-series storage & analytics (Phase 3)", ["col", "duck", "duckdb"], db=True)
