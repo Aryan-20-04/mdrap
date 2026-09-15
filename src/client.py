@@ -6,6 +6,7 @@ normalized market data streams (Consolidated L1 NBBO and Consolidated L2 Depth L
 with automated monotonic sequence validation, wire-to-wire latency tracking,
 and transparent in-memory gap recovery.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -14,7 +15,7 @@ import json
 import logging
 import socket
 import time
-from typing import Any, Callable, Dict, Generator, Iterator, List, Optional, Set, Tuple
+from typing import Any, Callable, Dict, Generator, List, Optional, Set
 
 
 @dataclass
@@ -23,8 +24,9 @@ class MarketEvent:
     Normalized market event received from MDRAP streaming distribution.
     Represents either a Consolidated L1 Tick or a Consolidated L2 Depth snapshot.
     """
+
     seq: int
-    event_type: str                   # 'TICK' or 'DEPTH'
+    event_type: str  # 'TICK' or 'DEPTH'
     symbol: str
     price: Optional[float] = None
     size: Optional[float] = None
@@ -152,7 +154,9 @@ class MarketEvent:
                 source=str(data.get("source", "")),
                 status=str(data.get("status", "VALID")),
                 bbo=data.get("bbo"),
-                is_crossed=bool(data.get("bbo", {}).get("crossed", False)) if data.get("bbo") else False,
+                is_crossed=bool(data.get("bbo", {}).get("crossed", False))
+                if data.get("bbo")
+                else False,
                 exchange_ts=float(data.get("exchange_ts", 0.0)),
                 ingest_ts=float(data.get("ingest_ts", 0.0)),
                 broadcast_ts=float(data.get("broadcast_ts", 0.0)),
@@ -183,12 +187,19 @@ class MDRAPClient:
         self.host = host
         self.port = port
         import os
-        self.auth_token = auth_token if auth_token is not None else os.environ.get("MDRAP_DAEMON_TOKEN", "")
+
+        self.auth_token = (
+            auth_token
+            if auth_token is not None
+            else os.environ.get("MDRAP_DAEMON_TOKEN", "")
+        )
         self.auto_replay = auto_replay
         self.max_replay_gap = max_replay_gap
         self.timeout = timeout
         self.transport = transport
-        self.use_shm = use_shm or (transport == "shm") or (transport == "auto" and port == 9876)
+        self.use_shm = (
+            use_shm or (transport == "shm") or (transport == "auto" and port == 9876)
+        )
         self.shm_name = shm_name
         self.use_binary = use_binary or (transport == "binary")
         self.transport_type: str = "DISCONNECTED"
@@ -227,6 +238,7 @@ class MDRAPClient:
             if self.use_shm or self.transport == "shm":
                 try:
                     from shm import SHMReader
+
                     reader = SHMReader(name=self.shm_name)
                     # Verify writer is active
                     if reader.is_writer_alive():
@@ -239,7 +251,9 @@ class MDRAPClient:
                     self.shm_reader = None
 
         if self.transport == "shm":
-            raise ConnectionError(f"Shared memory '{self.shm_name}' unavailable or publisher not running.")
+            raise ConnectionError(
+                f"Shared memory '{self.shm_name}' unavailable or publisher not running."
+            )
 
         # 2. Tier 2 / 3: Fallback to TCP Socket
         if self.sock is not None:
@@ -261,7 +275,9 @@ class MDRAPClient:
             ack = json.loads(buf.strip().split("\n")[0])
             if ack.get("status") != "OK":
                 sock.close()
-                raise PermissionError(f"MDRAP authentication failed: {ack.get('error')}")
+                raise PermissionError(
+                    f"MDRAP authentication failed: {ack.get('error')}"
+                )
             self.tier = ack.get("tier")
             self.client_id = ack.get("client_id")
 
@@ -347,7 +363,9 @@ class MDRAPClient:
         """Fetch current Consolidated L2 Depth ladder for an instrument."""
         return self._send_query(f"DEPTH {symbol}").get("depth")
 
-    def get_vwap(self, symbol: str = "BTC/USD", sizes: Optional[List[float]] = None) -> Optional[dict]:
+    def get_vwap(
+        self, symbol: str = "BTC/USD", sizes: Optional[List[float]] = None
+    ) -> Optional[dict]:
         """
         Fetch real-time VWAP slicing curve and liquidity depth for an instrument.
         """
@@ -365,11 +383,16 @@ class MDRAPClient:
     def ping(self) -> float:
         """Measure round-trip ping latency to daemon in milliseconds."""
         t0 = time.perf_counter()
-        resp = self._send_query("STATUS")
+        _resp = self._send_query("STATUS")
         dt_ms = (time.perf_counter() - t0) * 1000.0
         return round(dt_ms, 2)
 
-    def subscribe(self, symbols: list[str] | str, include_depth: bool = False, include_vwap: bool = False) -> None:
+    def subscribe(
+        self,
+        symbols: list[str] | str,
+        include_depth: bool = False,
+        include_vwap: bool = False,
+    ) -> None:
         """
         Subscribe to market data for specified symbols.
         Set include_depth=True to receive Consolidated L2 Depth ladders.
@@ -396,7 +419,12 @@ class MDRAPClient:
                 if include_vwap:
                     self.sock.sendall(f"SUB VWAP:{s_clean}\n".encode("utf-8"))
 
-    def unsubscribe(self, symbols: list[str] | str, include_depth: bool = False, include_vwap: bool = False) -> None:
+    def unsubscribe(
+        self,
+        symbols: list[str] | str,
+        include_depth: bool = False,
+        include_vwap: bool = False,
+    ) -> None:
         """Unsubscribe from specified symbols."""
         if not self.is_connected():
             return
@@ -458,6 +486,7 @@ class MDRAPClient:
                 try:
                     self.shm_reader.close()
                     from shm import SHMReader
+
                     self.shm_reader = SHMReader(name=self.shm_name)
                 except Exception:
                     pass
@@ -465,18 +494,25 @@ class MDRAPClient:
             count = 0
             t_start = time.time()
             while True:
-                rem_timeout = max(0.001, timeout - (time.time() - t_start)) if timeout is not None else None
+                rem_timeout = (
+                    max(0.001, timeout - (time.time() - t_start))
+                    if timeout is not None
+                    else None
+                )
                 rem_events = (max_events - count) if max_events is not None else None
                 epoch_reset = False
 
                 try:
-                    for item in self.shm_reader.stream(timeout=rem_timeout, max_events=rem_events):
+                    for item in self.shm_reader.stream(
+                        timeout=rem_timeout, max_events=rem_events
+                    ):
                         # Detect publisher restart via epoch generation check
                         if not self.shm_reader.check_epoch_valid():
                             # Publisher restarted! Re-attach cleanly without crashing
                             try:
                                 self.shm_reader.close()
                                 from shm import SHMReader
+
                                 self.shm_reader = SHMReader(name=self.shm_name)
                                 epoch_reset = True
                                 break  # Break to outer while loop to resume with new reader
@@ -484,7 +520,11 @@ class MDRAPClient:
                                 break
 
                         sym = item.get("sym")
-                        if "ALL" in self._subscribed_symbols or not self._subscribed_symbols or sym in self._subscribed_symbols:
+                        if (
+                            "ALL" in self._subscribed_symbols
+                            or not self._subscribed_symbols
+                            or sym in self._subscribed_symbols
+                        ):
                             t_recv = item.get("recv_ts", time.time())
                             ev = MarketEvent.from_dict(item, recv_ts=t_recv)
                             self._events_received += 1
@@ -523,6 +563,7 @@ class MDRAPClient:
             if not self._subscribed_symbols:
                 self.subscribe("ALL")
             from protocol import BinaryStreamParser
+
             parser = BinaryStreamParser()
             self.sock.settimeout(timeout if timeout is not None else self.timeout)
             count = 0
@@ -542,7 +583,9 @@ class MDRAPClient:
                             gap_size = ev.seq - (self._last_seq + 1)
                             self._gaps_detected += 1
                             if self.auto_replay and gap_size <= self.max_replay_gap:
-                                missing = self.request_replay(self._last_seq + 1, ev.seq - 1)
+                                missing = self.request_replay(
+                                    self._last_seq + 1, ev.seq - 1
+                                )
                                 for m in missing:
                                     self._events_replayed += 1
                                     self._events_received += 1
@@ -597,7 +640,9 @@ class MDRAPClient:
                     except json.JSONDecodeError:
                         continue
 
-                    if data.get("status") == "ERROR" and "FORBIDDEN" in str(data.get("error", "")):
+                    if data.get("status") == "ERROR" and "FORBIDDEN" in str(
+                        data.get("error", "")
+                    ):
                         raise PermissionError(data.get("error"))
 
                     # Skip non-market control frames (e.g. SUB ack)
@@ -613,7 +658,9 @@ class MDRAPClient:
                         gap_size = ev.seq - (self._last_seq + 1)
                         self._gaps_detected += 1
                         if self.auto_replay and gap_size <= self.max_replay_gap:
-                            missing = self.request_replay(self._last_seq + 1, ev.seq - 1)
+                            missing = self.request_replay(
+                                self._last_seq + 1, ev.seq - 1
+                            )
                             for m in missing:
                                 self._events_replayed += 1
                                 self._events_received += 1
@@ -654,7 +701,9 @@ class MDRAPClient:
     def stats(self) -> Dict[str, Any]:
         """Return comprehensive client telemetry and latency percentiles."""
         wire_sorted = sorted(self._wire_latencies_us) if self._wire_latencies_us else []
-        eng_sorted = sorted(self._engine_latencies_us) if self._engine_latencies_us else []
+        eng_sorted = (
+            sorted(self._engine_latencies_us) if self._engine_latencies_us else []
+        )
 
         def p(arr: list[float], pct: float) -> float:
             if not arr:
@@ -718,11 +767,15 @@ class MDrapClient:
     async def connect(self) -> bool:
         """Establish connection to the MDRAP TCP Gateway."""
         try:
-            self.reader, self.writer = await asyncio.open_connection(self.host, self.port)
+            self.reader, self.writer = await asyncio.open_connection(
+                self.host, self.port
+            )
             line = await self.reader.readline()
             welcome = json.loads(line.decode("utf-8").strip())
             if welcome.get("type") == "system" and welcome.get("status") == "connected":
-                _sdk_logger.info(f"Connected to MDRAP Gateway at {self.host}:{self.port}")
+                _sdk_logger.info(
+                    f"Connected to MDRAP Gateway at {self.host}:{self.port}"
+                )
                 self.running = True
                 self._dispatch(welcome)
                 return True
@@ -758,7 +811,9 @@ class MDrapClient:
                 self.running = False
                 break
 
-    async def subscribe(self, on_event: Optional[Callable[[Dict[str, Any]], None]] = None):
+    async def subscribe(
+        self, on_event: Optional[Callable[[Dict[str, Any]], None]] = None
+    ):
         """Subscribe to live events and block while listening."""
         if on_event:
             self.on("event", on_event)
@@ -790,7 +845,9 @@ class MDrapClient:
         try:
             import pandas as pd
         except ImportError:
-            raise ImportError("pandas is not installed. Run `pip install pandas` to use this feature.")
+            raise ImportError(
+                "pandas is not installed. Run `pip install pandas` to use this feature."
+            )
 
         df = pd.DataFrame(events)
         if not df.empty and "ts" in df.columns:
@@ -798,4 +855,3 @@ class MDrapClient:
             df.set_index("ts", inplace=True)
             df.sort_index(inplace=True)
         return df
-

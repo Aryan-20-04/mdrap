@@ -12,17 +12,18 @@ Key Architectural Guarantees:
 5. Overrun & Lap Detection: slow readers safely skip forward with telemetry.
 6. Decoupled Fault Isolation: reader crashes cannot block or poison the writer.
 """
+
 from __future__ import annotations
 
-import os
+from collections.abc import Generator
 import random
 import struct
 import time
-from dataclasses import dataclass, field
-from typing import Any, Dict, Generator, List, Optional, Tuple
+from dataclasses import dataclass
 
 try:
     from multiprocessing.shared_memory import SharedMemory
+
     HAS_SHM = True
 except ImportError:
     HAS_SHM = False
@@ -32,9 +33,9 @@ except ImportError:
 # ---------------------------------------------------------------------------
 MAGIC = b"MDRP"
 VERSION = 2
-DEFAULT_SLOT_COUNT = 16384   # Must be power of 2 for fast bitwise masking
-SLOT_SIZE = 128              # Cache-line aligned (2 x 64 bytes)
-HEADER_SIZE = 128            # Cache-line aligned (2 x 64 bytes)
+DEFAULT_SLOT_COUNT = 16384  # Must be power of 2 for fast bitwise masking
+SLOT_SIZE = 128  # Cache-line aligned (2 x 64 bytes)
+HEADER_SIZE = 128  # Cache-line aligned (2 x 64 bytes)
 TOTAL_SHM_SIZE = HEADER_SIZE + (DEFAULT_SLOT_COUNT * SLOT_SIZE)
 
 # Cache Line 1 (64 bytes) - Writer Hot Line:
@@ -65,6 +66,7 @@ STATUS_MAP_FWD = {1: "VALID", 2: "SUSPICIOUS", 3: "INVALID"}
 @dataclass
 class SHMOverrunStats:
     """Telemetry tracking slow reader buffer overruns and laps."""
+
     total_laps: int = 0
     skipped_ticks: int = 0
     last_lap_seq: int = 0
@@ -80,24 +82,18 @@ class SHMWriter:
 
     def __init__(self, name: str = "mdrap_feed", slot_count: int = DEFAULT_SLOT_COUNT):
         if not HAS_SHM:
-            raise RuntimeError("multiprocessing.shared_memory is not supported in this Python environment.")
+            raise RuntimeError(
+                "multiprocessing.shared_memory is not supported in this Python environment."
+            )
 
         self.name = name
         self.slot_count = slot_count
         self.mask = slot_count - 1
         self.total_size = HEADER_SIZE + (slot_count * SLOT_SIZE)
-        self.shm: Optional[SharedMemory] = None
+        self.shm: SharedMemory | None = None
         self.epoch_id = random.getrandbits(64)
         self._write_seq = 0
         self._last_heartbeat = 0.0
-
-        # Clean up any stale segment with same name
-        try:
-            stale = SharedMemory(name=self.name, create=False)
-            stale.close()
-            stale.unlink()
-        except Exception:
-            pass
 
         try:
             self.shm = SharedMemory(name=self.name, create=True, size=self.total_size)
@@ -109,7 +105,15 @@ class SHMWriter:
         # Initialize Cache Line 1 (Writer Hot Line)
         pad36 = b"\x00" * 36
         HEADER_LINE1_STRUCT.pack_into(
-            self.shm.buf, 0, MAGIC, VERSION, SLOT_SIZE, self.slot_count, self.epoch_id, 0, pad36
+            self.shm.buf,
+            0,
+            MAGIC,
+            VERSION,
+            SLOT_SIZE,
+            self.slot_count,
+            self.epoch_id,
+            0,
+            pad36,
         )
 
         # Initialize Cache Line 2 (Heartbeat Line)
@@ -123,7 +127,6 @@ class SHMWriter:
         if not self.shm:
             return
         now = time.time()
-        # Offset 64 in buffer
         struct.pack_into("<dQ", self.shm.buf, 64, now, dropped_ticks)
         self._last_heartbeat = now
 
@@ -132,12 +135,12 @@ class SHMWriter:
         seq: int,
         symbol: str,
         source: str,
-        price: Optional[float],
-        size: Optional[float],
-        bid: Optional[float],
-        ask: Optional[float],
-        bid_size: Optional[float],
-        ask_size: Optional[float],
+        price: float | None,
+        size: float | None,
+        bid: float | None,
+        ask: float | None,
+        bid_size: float | None,
+        ask_size: float | None,
         status: str,
         is_crossed: bool,
         exchange_ts: float,
@@ -195,12 +198,12 @@ class SHMWriter:
         self,
         seq: int,
         symbol: str,
-        best_bid: Optional[float],
-        best_ask: Optional[float],
-        bid_size: Optional[float],
-        ask_size: Optional[float],
-        micro_price: Optional[float],
-        ofi: Optional[float],
+        best_bid: float | None,
+        best_ask: float | None,
+        bid_size: float | None,
+        ask_size: float | None,
+        micro_price: float | None,
+        ofi: float | None,
         is_crossed: bool,
         exchange_ts: float,
         ingest_ts: float,
@@ -224,7 +227,7 @@ class SHMWriter:
             offset,
             seq,  # commit_seq at offset 0
             EVENT_TYPE_DEPTH,
-            1,    # VALID
+            1,  # VALID
             1 if is_crossed else 0,
             b"\x00" * 5,
             float(exchange_ts or 0.0),
@@ -233,7 +236,7 @@ class SHMWriter:
             float(engine_us or 0.0),
             b"\x00" * 4,
             float(micro_price or 0.0),  # price slot holds micro_price
-            float(ofi or 0.0),          # size slot holds ofi
+            float(ofi or 0.0),  # size slot holds ofi
             float(best_bid or 0.0),
             float(best_ask or 0.0),
             float(bid_size or 0.0),
@@ -269,13 +272,17 @@ class SHMReader:
 
     def __init__(self, name: str = "mdrap_feed"):
         if not HAS_SHM:
-            raise RuntimeError("multiprocessing.shared_memory is not supported in this Python environment.")
+            raise RuntimeError(
+                "multiprocessing.shared_memory is not supported in this Python environment."
+            )
 
         self.name = name
-        self.shm: Optional[SharedMemory] = SharedMemory(name=self.name, create=False)
+        self.shm: SharedMemory | None = SharedMemory(name=self.name, create=False)
 
         # Validate Line 1 Header
-        magic, ver, slot_sz, slot_cnt, epoch_id, write_seq, _ = HEADER_LINE1_STRUCT.unpack_from(self.shm.buf, 0)
+        magic, ver, slot_sz, slot_cnt, epoch_id, write_seq, _ = (
+            HEADER_LINE1_STRUCT.unpack_from(self.shm.buf, 0)
+        )
         if magic != MAGIC:
             self.close()
             raise ValueError(f"Invalid SHM magic: {magic} (expected {MAGIC})")
@@ -304,7 +311,9 @@ class SHMReader:
         if not self.shm:
             return False
         try:
-            current_epoch = struct.unpack_from("<Q", self.shm.buf, 12)[0]  # offset 12: 4+2+2+4 = 12
+            current_epoch = struct.unpack_from("<Q", self.shm.buf, 12)[
+                0
+            ]  # offset 12: 4+2+2+4 = 12
             return current_epoch == self.epoch_id
         except Exception:
             return False
@@ -315,7 +324,7 @@ class SHMReader:
             return 0
         return struct.unpack_from("<Q", self.shm.buf, 20)[0]
 
-    def read_slot(self, seq: int) -> Optional[dict]:
+    def read_slot(self, seq: int) -> dict | None:
         """
         Read and unpack a specific sequence slot with two-phase commit verification.
         Returns None if slot write is in progress, overwritten, or not yet committed.
@@ -407,9 +416,9 @@ class SHMReader:
 
     def stream(
         self,
-        start_seq: Optional[int] = None,
-        timeout: Optional[float] = None,
-        max_events: Optional[int] = None,
+        start_seq: int | None = None,
+        timeout: float | None = None,
+        max_events: int | None = None,
     ) -> Generator[dict, None, None]:
         """
         Stream market data frames directly from shared memory with sub-microsecond polling.
@@ -454,4 +463,3 @@ class SHMReader:
             except Exception:
                 pass
             self.shm = None
-

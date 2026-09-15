@@ -1,35 +1,50 @@
-"""
-Feed Gateway (ingestion) + Normalization Engine.
+"""Feed Gateway (Ingestion) and Normalization Engine.
 
-Combined into one module for the MVP: the gateway assigns an internal
-id and stamps timestamps, then normalizer.py maps the raw vendor
-payload onto the canonical event model. A production build would split
-these across separate services connected by the streaming bus; here
-they run as plain function calls so the baseline pipeline has no
-network/broker overhead to benchmark against.
+This module forms the front-line ingress interface for MDRAP. It accepts heterogeneous
+vendor payloads (represented as RawEvent), stamps gateway wall-clock receipt timestamps,
+generates monotonic identifiers, and maps the payload into a strictly-typed CanonicalEvent.
+
+Architectural Context (MDRAP Spec §11 & §26):
+  1. Zero-Allocation Fast Identification:
+     Event and raw IDs use `itertools.count(1)` rather than `uuid.uuid4()`. Python's
+     UUID generation incurs operating system entropy syscalls and string parsing, which
+     creates significant CPU jitter on multi-million tick-per-second workloads. Monotonic
+     integer IDs formatted as `evt-N` provide lock-free, zero-jitter generation.
+  2. Structural Schema Enforcement:
+     If a payload lacks mandatory fields or contains invalid numeric types, `SchemaError`
+     is raised. The orchestrator catches this error and generates an `INVALID` event tagged
+     with `Reason.SCHEMA_VIOLATION`, ensuring that malformed payloads are preserved in
+     quarantine for forensic auditing rather than crashing the pipeline or being silently lost.
+  3. Global Symbology & Venue Tagging:
+     Resolves instrument tickers to ISO 10383 Market Identifier Codes (MIC) and ISO 4217
+     currency codes via the symbology directory.
 """
+
 from __future__ import annotations
 
 import itertools
 import time
-from typing import Optional
 
-from models import CanonicalEvent, EventType, RawEvent, Reason
+from models import CanonicalEvent, EventType, RawEvent
 
+# Fast lock-free monotonic counter for hot-path ID generation
 _gateway_id_counter = itertools.count(1)
 
 
 class SchemaError(Exception):
-    """Raised when a raw payload cannot be normalized at all."""
+    """Raised when an incoming raw vendor payload violates structural schema constraints."""
+
     def __init__(self, reason: str):
         super().__init__(reason)
         self.reason = reason
 
 
 def ingest(raw: RawEvent) -> RawEvent:
-    """Gateway step: stamp receive time if not already set, assign a
-    raw_id if missing. Kept trivial on purpose -- structural validation
-    happens in normalize(), classification happens in the quality engine."""
+    """Gateway ingress step: assign unique raw ID and ingress timestamp if absent.
+
+    Structural validation is deliberately deferred to `normalize()` so that raw
+    payloads can be written ahead to the archive storage in their exact received state.
+    """
     if not raw.raw_id:
         raw.raw_id = f"raw-{next(_gateway_id_counter)}"
     if not raw.receive_timestamp:
@@ -37,23 +52,42 @@ def ingest(raw: RawEvent) -> RawEvent:
     return raw
 
 
-REQUIRED_TRADE_FIELDS = ("instrument", "event_type", "exchange_ts", "sequence", "price", "quantity")
-REQUIRED_QUOTE_FIELDS = ("instrument", "event_type", "exchange_ts", "sequence", "bid", "ask")
+# Required fields for TRADE events: pricing, volume, exchange clock, and sequence ID
+REQUIRED_TRADE_FIELDS = (
+    "instrument",
+    "event_type",
+    "exchange_ts",
+    "sequence",
+    "price",
+    "quantity",
+)
+
+# Required fields for QUOTE events: top-of-book bid/ask prices, exchange clock, and sequence ID
+REQUIRED_QUOTE_FIELDS = (
+    "instrument",
+    "event_type",
+    "exchange_ts",
+    "sequence",
+    "bid",
+    "ask",
+)
 
 
 def normalize(raw: RawEvent) -> CanonicalEvent:
-    """Map a vendor payload to the canonical event model.
+    """Map and parse a vendor RawEvent payload into a standardized CanonicalEvent.
 
-    Raises SchemaError for payloads that are missing required fields or
-    have the wrong type -- the quality engine turns that into an
-    INVALID/SCHEMA_VIOLATION event rather than crashing the pipeline.
+    Raises:
+        SchemaError: If required fields are missing, event_type is unrecognized,
+                     or numeric fields cannot be cast to floating point numbers.
     """
     p = raw.payload
     event_type_raw = p.get("event_type")
     if event_type_raw not in ("TRADE", "QUOTE"):
         raise SchemaError(f"unknown or missing event_type: {event_type_raw!r}")
 
-    required = REQUIRED_TRADE_FIELDS if event_type_raw == "TRADE" else REQUIRED_QUOTE_FIELDS
+    required = (
+        REQUIRED_TRADE_FIELDS if event_type_raw == "TRADE" else REQUIRED_QUOTE_FIELDS
+    )
     missing = [f for f in required if f not in p]
     if missing:
         raise SchemaError(f"missing fields: {missing}")
@@ -76,7 +110,7 @@ def normalize(raw: RawEvent) -> CanonicalEvent:
         event_type=EventType(event_type_raw),
         exchange_timestamp=float(exchange_ts),
         receive_timestamp=raw.receive_timestamp,
-        processing_timestamp=0.0,  # filled in after quality checks
+        processing_timestamp=0.0,  # Populated after quality evaluation
         source=raw.source,
         sequence_number=sequence,
         raw_id=raw.raw_id,
@@ -84,6 +118,7 @@ def normalize(raw: RawEvent) -> CanonicalEvent:
 
     try:
         from symbology import resolve_symbol
+
         sym_info = resolve_symbol(instrument)
         event.venue = p.get("venue") or sym_info.venue_mic
         event.currency = p.get("currency") or sym_info.currency

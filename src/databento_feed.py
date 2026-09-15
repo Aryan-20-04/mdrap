@@ -11,6 +11,7 @@ Implements the official Databento Binary Encoding (DBN) specification:
     2. High-speed .dbn binary file reader / historical replayer (>1,000,000 eps)
     3. Synthetic DBN Binary Packet Generator for offline micro-benchmarks and CI/CD tests.
 """
+
 from __future__ import annotations
 
 import io
@@ -21,11 +22,9 @@ import queue
 import random
 import socket
 import struct
-import sys
 import threading
 import time
-from dataclasses import dataclass, field
-from typing import Any, Dict, Generator, List, Optional, Set, Tuple
+from typing import Dict, Generator, List, Optional, Tuple
 
 from models import RawEvent
 
@@ -64,22 +63,22 @@ STRUCT_MBP1_BODY = struct.Struct("<qIccBBQiiqqIIII")
 
 # Known Publisher IDs to Venue Names
 PUBLISHER_MAP = {
-    1: "GLBX",    # CME Globex
-    2: "XNAS",    # Nasdaq
-    3: "XBOS",    # Nasdaq Boston
-    4: "XPSX",    # Nasdaq PSX
-    5: "BATS",    # Cboe BZX
-    6: "BATY",    # Cboe BYX
-    7: "EDGA",    # Cboe EDGA
-    8: "EDGX",    # Cboe EDGX
-    9: "XNYS",    # NYSE
-    10: "XCIS",   # NYSE National
-    11: "XASE",   # NYSE American
-    12: "ARCX",   # NYSE Arca
-    13: "XCHI",   # NYSE Chicago
-    14: "IEXG",   # Investors Exchange (IEX)
-    20: "ERIS",   # Eris Exchange
-    30: "DBEN",   # Databento Consolidated
+    1: "GLBX",  # CME Globex
+    2: "XNAS",  # Nasdaq
+    3: "XBOS",  # Nasdaq Boston
+    4: "XPSX",  # Nasdaq PSX
+    5: "BATS",  # Cboe BZX
+    6: "BATY",  # Cboe BYX
+    7: "EDGA",  # Cboe EDGA
+    8: "EDGX",  # Cboe EDGX
+    9: "XNYS",  # NYSE
+    10: "XCIS",  # NYSE National
+    11: "XASE",  # NYSE American
+    12: "ARCX",  # NYSE Arca
+    13: "XCHI",  # NYSE Chicago
+    14: "IEXG",  # Investors Exchange (IEX)
+    20: "ERIS",  # Eris Exchange
+    30: "DBEN",  # Databento Consolidated
 }
 
 
@@ -113,10 +112,10 @@ DEFAULT_SYMBOL_MAP = {
     1004: "TSLA",
     1005: "SPY",
     1006: "QQQ",
-    2001: "ES.c.0",    # E-mini S&P 500
-    2002: "NQ.c.0",    # E-mini Nasdaq 100
-    2003: "CL.c.0",    # Crude Oil
-    2004: "GC.c.0",    # Gold Futures
+    2001: "ES.c.0",  # E-mini S&P 500
+    2002: "NQ.c.0",  # E-mini Nasdaq 100
+    2003: "CL.c.0",  # Crude Oil
+    2004: "GC.c.0",  # Gold Futures
     3001: "BTC-USD",
     3002: "ETH-USD",
 }
@@ -137,7 +136,9 @@ def decode_dbn_record(
         return None, 0
 
     t_recv = time.time()
-    length_words, rtype, pub_id, inst_id, ts_event_ns = STRUCT_HEADER.unpack_from(buffer, offset)
+    length_words, rtype, pub_id, inst_id, ts_event_ns = STRUCT_HEADER.unpack_from(
+        buffer, offset
+    )
     record_len = length_words * 4
     if len(buffer) - offset < record_len:
         return None, 0
@@ -153,9 +154,21 @@ def decode_dbn_record(
         if record_len < 80:
             return None, record_len
         (
-            tr_px, tr_sz, action_b, side_b, flags, depth,
-            ts_recv_ns, ts_delta, seq,
-            bid_px_raw, ask_px_raw, bid_sz, ask_sz, bid_ct, ask_ct
+            tr_px,
+            tr_sz,
+            action_b,
+            side_b,
+            flags,
+            depth,
+            ts_recv_ns,
+            ts_delta,
+            seq,
+            bid_px_raw,
+            ask_px_raw,
+            bid_sz,
+            ask_sz,
+            bid_ct,
+            ask_ct,
         ) = STRUCT_MBP1_BODY.unpack_from(buffer, body_offset)
 
         bid_px = (bid_px_raw / FIXED_PX_FACTOR) if bid_px_raw != UNDEF_PRICE else 0.0
@@ -186,10 +199,9 @@ def decode_dbn_record(
     elif rtype == RTYPE_TRADE:
         if record_len < 48:
             return None, record_len
-        (
-            tr_px, tr_sz, action_b, side_b, flags, depth,
-            ts_recv_ns, ts_delta, seq
-        ) = STRUCT_TRADE_BODY.unpack_from(buffer, body_offset)
+        (tr_px, tr_sz, action_b, side_b, flags, depth, ts_recv_ns, ts_delta, seq) = (
+            STRUCT_TRADE_BODY.unpack_from(buffer, body_offset)
+        )
 
         px = (tr_px / FIXED_PX_FACTOR) if tr_px != UNDEF_PRICE else 0.0
         ev = RawEvent(
@@ -214,10 +226,9 @@ def decode_dbn_record(
     elif rtype == RTYPE_MBP_10:
         if record_len < 368:
             return None, record_len
-        (
-            tr_px, tr_sz, action_b, side_b, flags, depth,
-            ts_recv_ns, ts_delta, seq
-        ) = STRUCT_TRADE_BODY.unpack_from(buffer, body_offset)
+        (tr_px, tr_sz, action_b, side_b, flags, depth, ts_recv_ns, ts_delta, seq) = (
+            STRUCT_TRADE_BODY.unpack_from(buffer, body_offset)
+        )
 
         levels_offset = body_offset + 32
         bids = []
@@ -229,7 +240,9 @@ def decode_dbn_record(
 
         for i in range(10):
             lvl_off = levels_offset + (i * 32)
-            bid_px_raw, ask_px_raw, b_sz, a_sz, b_ct, a_ct = STRUCT_BID_ASK_PAIR.unpack_from(buffer, lvl_off)
+            bid_px_raw, ask_px_raw, b_sz, a_sz, b_ct, a_ct = (
+                STRUCT_BID_ASK_PAIR.unpack_from(buffer, lvl_off)
+            )
             if bid_px_raw != UNDEF_PRICE and bid_px_raw > 0:
                 b_px = bid_px_raw / FIXED_PX_FACTOR
                 bids.append([b_px, float(b_sz)])
@@ -292,7 +305,9 @@ class SyntheticDBNGenerator:
         }
         self.seq = 1
 
-    def encode_mbp1_record(self, inst_id: int, bid_px: float, ask_px: float, bid_sz: int, ask_sz: int) -> bytes:
+    def encode_mbp1_record(
+        self, inst_id: int, bid_px: float, ask_px: float, bid_sz: int, ask_sz: int
+    ) -> bytes:
         """Encode a valid 80-byte MBP-1 DBN record in binary format."""
         length_words = 20  # 80 bytes
         rtype = RTYPE_MBP_1
@@ -301,14 +316,28 @@ class SyntheticDBNGenerator:
 
         hdr = STRUCT_HEADER.pack(length_words, rtype, pub_id, inst_id, ts_ns)
         body = STRUCT_MBP1_BODY.pack(
-            UNDEF_PRICE, 0, b'A', b'B', 0, 0, ts_ns, 0, self.seq,
-            int(bid_px * FIXED_PX_FACTOR), int(ask_px * FIXED_PX_FACTOR),
-            bid_sz, ask_sz, 1, 1
+            UNDEF_PRICE,
+            0,
+            b"A",
+            b"B",
+            0,
+            0,
+            ts_ns,
+            0,
+            self.seq,
+            int(bid_px * FIXED_PX_FACTOR),
+            int(ask_px * FIXED_PX_FACTOR),
+            bid_sz,
+            ask_sz,
+            1,
+            1,
         )
         self.seq += 1
         return hdr + body
 
-    def encode_trade_record(self, inst_id: int, price: float, size: int, side: bytes = b'B') -> bytes:
+    def encode_trade_record(
+        self, inst_id: int, price: float, size: int, side: bytes = b"B"
+    ) -> bytes:
         """Encode a valid 48-byte TradeMsg DBN record in binary format."""
         length_words = 12  # 48 bytes
         rtype = RTYPE_TRADE
@@ -317,7 +346,7 @@ class SyntheticDBNGenerator:
 
         hdr = STRUCT_HEADER.pack(length_words, rtype, pub_id, inst_id, ts_ns)
         body = STRUCT_TRADE_BODY.pack(
-            int(price * FIXED_PX_FACTOR), size, b'T', side, 0, 0, ts_ns, 0, self.seq
+            int(price * FIXED_PX_FACTOR), size, b"T", side, 0, 0, ts_ns, 0, self.seq
         )
         self.seq += 1
         return hdr + body
@@ -331,7 +360,7 @@ class SyntheticDBNGenerator:
 
         hdr = STRUCT_HEADER.pack(length_words, rtype, pub_id, inst_id, ts_ns)
         prefix = STRUCT_TRADE_BODY.pack(
-            UNDEF_PRICE, 0, b'M', b'N', 0, 0, ts_ns, 0, self.seq
+            UNDEF_PRICE, 0, b"M", b"N", 0, 0, ts_ns, 0, self.seq
         )
         levels = []
         tick_size = 0.25 if inst_id in (2001, 2002) else 0.01
@@ -340,10 +369,16 @@ class SyntheticDBNGenerator:
             a_px = mid_px + (i + 1) * tick_size
             b_sz = self.rng.randint(5, 50)
             a_sz = self.rng.randint(5, 50)
-            levels.append(STRUCT_BID_ASK_PAIR.pack(
-                int(b_px * FIXED_PX_FACTOR), int(a_px * FIXED_PX_FACTOR),
-                b_sz, a_sz, 1, 1
-            ))
+            levels.append(
+                STRUCT_BID_ASK_PAIR.pack(
+                    int(b_px * FIXED_PX_FACTOR),
+                    int(a_px * FIXED_PX_FACTOR),
+                    b_sz,
+                    a_sz,
+                    1,
+                    1,
+                )
+            )
         self.seq += 1
         return hdr + prefix + b"".join(levels)
 
@@ -363,10 +398,22 @@ class SyntheticDBNGenerator:
                 spread = 0.02 if curr < 200 else 0.25
                 bp = curr - spread / 2.0
                 ap = curr + spread / 2.0
-                buf.write(self.encode_mbp1_record(inst, bp, ap, self.rng.randint(10, 100), self.rng.randint(10, 100)))
+                buf.write(
+                    self.encode_mbp1_record(
+                        inst,
+                        bp,
+                        ap,
+                        self.rng.randint(10, 100),
+                        self.rng.randint(10, 100),
+                    )
+                )
             elif coin < 0.85:
                 # Trade
-                buf.write(self.encode_trade_record(inst, curr, self.rng.choice([1, 5, 10, 25, 100])))
+                buf.write(
+                    self.encode_trade_record(
+                        inst, curr, self.rng.choice([1, 5, 10, 25, 100])
+                    )
+                )
             else:
                 # MBP-10 Depth
                 buf.write(self.encode_mbp10_record(inst, curr))
@@ -429,7 +476,9 @@ class DatabentoFeedManager:
         else:
             target = self._run_tcp_loop
 
-        self._thread = threading.Thread(target=target, daemon=True, name="mdrap-dbn-feed")
+        self._thread = threading.Thread(
+            target=target, daemon=True, name="mdrap-dbn-feed"
+        )
         self._thread.start()
 
     def stop(self) -> None:
@@ -439,7 +488,11 @@ class DatabentoFeedManager:
             self._thread.join(timeout=2.0)
 
     def is_running(self) -> bool:
-        return self._thread is not None and self._thread.is_alive() and not self._stop_event.is_set()
+        return (
+            self._thread is not None
+            and self._thread.is_alive()
+            and not self._stop_event.is_set()
+        )
 
     def stats(self) -> dict:
         return dict(self._stats)
@@ -513,10 +566,12 @@ class DatabentoFeedManager:
 
                 # Databento Live Handshake
                 # 1. Read greeting / challenge
-                greeting = s.recv(1024).decode("utf-8", errors="replace")
+                _greeting = s.recv(1024).decode("utf-8", errors="replace")
 
                 # 2. Send auth & subscription request
-                auth_payload = f"auth={self.api_key}|dataset={self.dataset}|schema={self.schema}\n"
+                auth_payload = (
+                    f"auth={self.api_key}|dataset={self.dataset}|schema={self.schema}\n"
+                )
                 s.sendall(auth_payload.encode("utf-8"))
 
                 # 3. Stream binary records
@@ -526,7 +581,7 @@ class DatabentoFeedManager:
                     if not data:
                         break
                     self._decode_stream_bytes(data)
-            except Exception as e:
+            except Exception:
                 self._stats["connected"] = False
                 if self._stop_event.is_set():
                     break

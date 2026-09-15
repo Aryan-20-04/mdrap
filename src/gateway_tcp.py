@@ -1,37 +1,47 @@
-"""
-MDRAP AsyncIO Raw TCP Gateway (§27).
+"""MDRAP AsyncIO Raw TCP Gateway (§27).
 
 Provides high-throughput, low-latency push streaming to external quant clients.
-Uses raw TCP sockets instead of WebSockets/HTTP to strictly comply with 
-project rules ("CLI-only MVP, no HTTP/REST/WebSocket") while delivering 
-institutional-grade, zero-overhead connectivity (similar to ITCH/OUCH).
+Uses raw TCP sockets with newline-delimited framing instead of WebSockets/HTTP,
+delivering institutional-grade, zero-overhead connectivity (similar to ITCH/OUCH).
+
+Features:
+  - Bounded write buffering with backpressure timeout (`asyncio.wait_for(drain, 0.05)`).
+  - Dead client eviction on network drops or slow consumers.
+  - Heartbeat ping/pong frame negotiation.
 """
+
+from __future__ import annotations
+
 import asyncio
 import json
 import logging
-from typing import Dict, Set
-
-from models import CanonicalEvent
 
 logger = logging.getLogger("mdrap.gateway")
+
 
 class TCPGatewayServer:
     def __init__(self, host: str = "127.0.0.1", port: int = 9000):
         self.host = host
         self.port = port
-        self.clients: Set[asyncio.StreamWriter] = set()
+        self.clients: set[asyncio.StreamWriter] = set()
         self.server: asyncio.AbstractServer | None = None
         self._stats = {"sent": 0, "dropped": 0, "connected": 0}
         self.running = False
 
-    async def handle_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
+    async def handle_client(
+        self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
+    ):
         self.clients.add(writer)
         self._stats["connected"] = len(self.clients)
-        
+
         try:
             # Send welcome protocol message
-            welcome = {"type": "system", "message": "MDRAP TCP Gateway v1.0", "status": "connected"}
-            writer.write((json.dumps(welcome) + "\n").encode('utf-8'))
+            welcome = {
+                "type": "system",
+                "message": "MDRAP TCP Gateway v1.0",
+                "status": "connected",
+            }
+            writer.write((json.dumps(welcome) + "\n").encode("utf-8"))
             await writer.drain()
 
             while self.running:
@@ -39,11 +49,13 @@ class TCPGatewayServer:
                 line = await reader.readline()
                 if not line:
                     break
-                
+
                 try:
-                    msg = json.loads(line.decode('utf-8').strip())
+                    msg = json.loads(line.decode("utf-8").strip())
                     if msg.get("action") == "ping":
-                        writer.write((json.dumps({"type": "pong"}) + "\n").encode('utf-8'))
+                        writer.write(
+                            (json.dumps({"type": "pong"}) + "\n").encode("utf-8")
+                        )
                         await writer.drain()
                 except json.JSONDecodeError:
                     pass
@@ -84,7 +96,9 @@ class TCPGatewayServer:
 
     async def start(self):
         self.running = True
-        self.server = await asyncio.start_server(self.handle_client, self.host, self.port)
+        self.server = await asyncio.start_server(
+            self.handle_client, self.host, self.port
+        )
         logger.info(f"TCP Gateway listening on {self.host}:{self.port}")
 
     async def stop(self):

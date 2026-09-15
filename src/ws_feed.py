@@ -1,31 +1,31 @@
-"""
-Multi-Venue Persistent WebSocket Feed Engine for MDRAP.
+"""Multi-Venue Persistent WebSocket Feed Engine for MDRAP.
 
 Streams high-frequency, sub-millisecond market data directly over persistent
 full-duplex WebSockets from global cryptocurrency venues:
-- Binance: wss://stream.binance.com:9443/ws/
-- Coinbase: wss://ws-feed.exchange.coinbase.com
-- Kraken: wss://ws.kraken.com
-- OKX: wss://ws.okx.com:8443/ws/v5/public
-- Bybit: wss://stream.bybit.com/v5/public/spot
+  - Binance: wss://stream.binance.com:9443/ws/
+  - Coinbase: wss://ws-feed.exchange.coinbase.com
+  - Kraken: wss://ws.kraken.com
+  - OKX: wss://ws.okx.com:8443/ws/v5/public
+  - Bybit: wss://stream.bybit.com/v5/public/spot
 
 Converts incoming frames into normalized RawEvent objects and enqueues them
 into a thread-safe buffer for the synchronous pipeline and depth engines.
 Features automatic exponential backoff reconnection, keepalive pings,
 and graceful fallback if websocket libraries are unavailable.
 """
+
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Generator
 import itertools
 import json
 import logging
 import queue
 import ssl
-import sys
 import threading
 import time
-from typing import Any, Dict, Generator, List, Optional, Set, Tuple
+from typing import Any
 
 from live import resolve_venue_symbols
 from models import RawEvent
@@ -38,6 +38,7 @@ _raw_counter = itertools.count(1)
 # Check optional websockets dependency
 try:
     import websockets
+
     HAS_WEBSOCKETS = True
 except ImportError:
     HAS_WEBSOCKETS = False
@@ -54,7 +55,7 @@ WS_ENDPOINTS = {
 }
 
 
-def parse_binance_frame(data: dict, canonical_sym: str) -> Optional[RawEvent]:
+def parse_binance_frame(data: dict, canonical_sym: str) -> RawEvent | None:
     """Parse Binance @depth5 or @bookTicker WebSocket JSON frame."""
     t_recv = time.time()
     try:
@@ -108,14 +109,18 @@ def parse_binance_frame(data: dict, canonical_sym: str) -> Optional[RawEvent]:
     except Exception as exc:
         return RawEvent(
             source="BINANCE",
-            payload={"instrument": canonical_sym, "is_malformed": True, "error": str(exc)},
+            payload={
+                "instrument": canonical_sym,
+                "is_malformed": True,
+                "error": str(exc),
+            },
             receive_timestamp=t_recv,
             raw_id=f"ws-binance-err-{next(_raw_counter)}",
         )
     return None
 
 
-def parse_coinbase_frame(data: dict, canonical_sym: str) -> Optional[RawEvent]:
+def parse_coinbase_frame(data: dict, canonical_sym: str) -> RawEvent | None:
     """Parse Coinbase ticker or snapshot/l2update WebSocket frame."""
     t_recv = time.time()
     try:
@@ -166,14 +171,18 @@ def parse_coinbase_frame(data: dict, canonical_sym: str) -> Optional[RawEvent]:
     except Exception as exc:
         return RawEvent(
             source="COINBASE",
-            payload={"instrument": canonical_sym, "is_malformed": True, "error": str(exc)},
+            payload={
+                "instrument": canonical_sym,
+                "is_malformed": True,
+                "error": str(exc),
+            },
             receive_timestamp=t_recv,
             raw_id=f"ws-coinbase-err-{next(_raw_counter)}",
         )
     return None
 
 
-def parse_kraken_frame(data: Any, canonical_sym: str) -> Optional[RawEvent]:
+def parse_kraken_frame(data: Any, canonical_sym: str) -> RawEvent | None:
     """Parse Kraken book or ticker WebSocket list-based frame."""
     t_recv = time.time()
     try:
@@ -227,14 +236,18 @@ def parse_kraken_frame(data: Any, canonical_sym: str) -> Optional[RawEvent]:
     except Exception as exc:
         return RawEvent(
             source="KRAKEN",
-            payload={"instrument": canonical_sym, "is_malformed": True, "error": str(exc)},
+            payload={
+                "instrument": canonical_sym,
+                "is_malformed": True,
+                "error": str(exc),
+            },
             receive_timestamp=t_recv,
             raw_id=f"ws-kraken-err-{next(_raw_counter)}",
         )
     return None
 
 
-def parse_okx_frame(data: dict, canonical_sym: str) -> Optional[RawEvent]:
+def parse_okx_frame(data: dict, canonical_sym: str) -> RawEvent | None:
     """Parse OKX books5 or tickers WebSocket frame."""
     t_recv = time.time()
     try:
@@ -286,14 +299,18 @@ def parse_okx_frame(data: dict, canonical_sym: str) -> Optional[RawEvent]:
     except Exception as exc:
         return RawEvent(
             source="OKX",
-            payload={"instrument": canonical_sym, "is_malformed": True, "error": str(exc)},
+            payload={
+                "instrument": canonical_sym,
+                "is_malformed": True,
+                "error": str(exc),
+            },
             receive_timestamp=t_recv,
             raw_id=f"ws-okx-err-{next(_raw_counter)}",
         )
     return None
 
 
-def parse_bybit_frame(data: dict, canonical_sym: str) -> Optional[RawEvent]:
+def parse_bybit_frame(data: dict, canonical_sym: str) -> RawEvent | None:
     """Parse Bybit orderbook.5 or tickers WebSocket frame."""
     t_recv = time.time()
     try:
@@ -343,14 +360,20 @@ def parse_bybit_frame(data: dict, canonical_sym: str) -> Optional[RawEvent]:
     except Exception as exc:
         return RawEvent(
             source="BYBIT",
-            payload={"instrument": canonical_sym, "is_malformed": True, "error": str(exc)},
+            payload={
+                "instrument": canonical_sym,
+                "is_malformed": True,
+                "error": str(exc),
+            },
             receive_timestamp=t_recv,
             raw_id=f"ws-bybit-err-{next(_raw_counter)}",
         )
     return None
 
 
-def parse_venue_frame(venue: str, raw_msg: str | dict, canonical_sym: str) -> Optional[RawEvent]:
+def parse_venue_frame(
+    venue: str, raw_msg: str | dict, canonical_sym: str
+) -> RawEvent | None:
     """Universal frame parser dispatching to venue-specific unmarshaler."""
     v = venue.upper()
     if isinstance(raw_msg, str):
@@ -359,7 +382,11 @@ def parse_venue_frame(venue: str, raw_msg: str | dict, canonical_sym: str) -> Op
         except Exception as exc:
             return RawEvent(
                 source=v,
-                payload={"instrument": canonical_sym, "is_malformed": True, "error": f"JSON parse error: {exc}"},
+                payload={
+                    "instrument": canonical_sym,
+                    "is_malformed": True,
+                    "error": f"JSON parse error: {exc}",
+                },
                 receive_timestamp=time.time(),
                 raw_id=f"ws-{v.lower()}-err-{next(_raw_counter)}",
             )
@@ -378,25 +405,30 @@ def parse_venue_frame(venue: str, raw_msg: str | dict, canonical_sym: str) -> Op
 
 
 class WebSocketFeedManager:
-    """
-    Multi-Connection WebSocket Feed Manager.
-    Maintains persistent connections to crypto exchanges concurrently.
+    """Multi-Connection WebSocket Feed Manager.
+
+    Maintains persistent full-duplex connections to crypto exchange endpoints concurrently,
+    bridging events across threads into a bounded thread-safe queue.
     """
 
     def __init__(
         self,
-        symbols: List[str],
-        venues: Optional[List[str]] = None,
+        symbols: list[str],
+        venues: list[str] | None = None,
         max_queue_size: int = 10000,
     ):
         self.symbols = symbols
-        self.venues = [v.upper() for v in venues] if venues else ["BINANCE", "COINBASE", "KRAKEN", "OKX", "BYBIT"]
+        self.venues = (
+            [v.upper() for v in venues]
+            if venues
+            else ["BINANCE", "COINBASE", "KRAKEN", "OKX", "BYBIT"]
+        )
         self.max_queue_size = max_queue_size
         self._queue: queue.Queue[RawEvent] = queue.Queue(maxsize=max_queue_size)
         self._stop_event = threading.Event()
-        self._thread: Optional[threading.Thread] = None
-        self._loop: Optional[asyncio.AbstractEventLoop] = None
-        self._stats: Dict[str, dict] = {
+        self._thread: threading.Thread | None = None
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._stats: dict[str, dict] = {
             v: {"connected": False, "frames": 0, "reconnects": 0, "errors": 0}
             for v in self.venues
         }
@@ -405,14 +437,18 @@ class WebSocketFeedManager:
     def start(self) -> None:
         """Start the background asynchronous WebSocket workers."""
         if not HAS_WEBSOCKETS:
-            logger.warning("[ws_feed] 'websockets' library not installed. WebSocket streaming disabled.")
+            logger.warning(
+                "[ws_feed] 'websockets' library not installed. WebSocket streaming disabled."
+            )
             return
 
         if self._thread is not None and self._thread.is_alive():
             return
 
         self._stop_event.clear()
-        self._thread = threading.Thread(target=self._run_async_loop, daemon=True, name="mdrap-ws-manager")
+        self._thread = threading.Thread(
+            target=self._run_async_loop, daemon=True, name="mdrap-ws-manager"
+        )
         self._thread.start()
 
     def stop(self) -> None:
@@ -424,9 +460,13 @@ class WebSocketFeedManager:
             self._thread.join(timeout=2.0)
 
     def is_running(self) -> bool:
-        return self._thread is not None and self._thread.is_alive() and not self._stop_event.is_set()
+        return (
+            self._thread is not None
+            and self._thread.is_alive()
+            and not self._stop_event.is_set()
+        )
 
-    def stats(self) -> Dict[str, dict]:
+    def stats(self) -> dict[str, dict]:
         return dict(self._stats)
 
     def _run_async_loop(self) -> None:
@@ -438,7 +478,9 @@ class WebSocketFeedManager:
                 tasks.append(self._venue_worker(v, s))
 
         try:
-            self._loop.run_until_complete(asyncio.gather(*tasks, return_exceptions=True))
+            self._loop.run_until_complete(
+                asyncio.gather(*tasks, return_exceptions=True)
+            )
         except Exception:
             pass
         finally:
@@ -447,7 +489,9 @@ class WebSocketFeedManager:
                 for t in pending:
                     t.cancel()
                 if pending:
-                    self._loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+                    self._loop.run_until_complete(
+                        asyncio.gather(*pending, return_exceptions=True)
+                    )
             except Exception:
                 pass
             try:
@@ -506,7 +550,7 @@ class WebSocketFeedManager:
                         except asyncio.TimeoutError:
                             # Send ping keepalive
                             await ws.ping()
-            except Exception as e:
+            except Exception:
                 self._stats[venue]["errors"] += 1
                 self._stats[venue]["connected"] = False
                 if self._stop_event.is_set():
@@ -520,20 +564,31 @@ class WebSocketFeedManager:
             return WS_ENDPOINTS["BINANCE"].format(stream=stream)
         return WS_ENDPOINTS.get(venue, "")
 
-    def _get_subscribe_msg(self, venue: str, venue_sym: str) -> Optional[dict]:
+    def _get_subscribe_msg(self, venue: str, venue_sym: str) -> dict | None:
         if venue == "COINBASE":
-            return {"type": "subscribe", "product_ids": [venue_sym], "channels": ["ticker", "level2_batch"]}
+            return {
+                "type": "subscribe",
+                "product_ids": [venue_sym],
+                "channels": ["ticker", "level2_batch"],
+            }
         elif venue == "KRAKEN":
-            return {"event": "subscribe", "pair": [venue_sym], "subscription": {"name": "book", "depth": 10}}
+            return {
+                "event": "subscribe",
+                "pair": [venue_sym],
+                "subscription": {"name": "book", "depth": 10},
+            }
         elif venue == "OKX":
-            return {"op": "subscribe", "args": [{"channel": "books5", "instId": venue_sym}]}
+            return {
+                "op": "subscribe",
+                "args": [{"channel": "books5", "instId": venue_sym}],
+            }
         elif venue == "BYBIT":
             return {"op": "subscribe", "args": [f"orderbook.5.{venue_sym}"]}
         return None
 
     def stream_events(
         self,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         timeout_s: float = 2.0,
     ) -> Generator[RawEvent, None, None]:
         """

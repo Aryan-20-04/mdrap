@@ -5,24 +5,25 @@ Maps local, regional, and vendor ticker symbologies (Bloomberg tickers,
 Reuters Instrument Codes - RICs, ISINs, Yahoo Finance suffixes) into
 canonical MDRAP instrument IDs with exchange MIC and currency resolution.
 """
+
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Dict, Optional, Tuple
+from typing import Dict
 
 
 @dataclass(slots=True, frozen=True)
 class SymbolInfo:
-    canonical_id: str                  # e.g. 'RELIANCE.NS', 'SAP.DE', '7203.T', 'AAPL'
-    ticker: str                        # Base ticker e.g. 'RELIANCE', 'SAP', '7203', 'AAPL'
-    venue_mic: str                     # ISO MIC e.g. 'XNSE', 'XETR', 'XTKS', 'XNAS'
-    currency: str                      # ISO 4217 currency e.g. 'INR', 'EUR', 'JPY', 'USD'
-    country: str                       # 'IN', 'DE', 'JP', 'US', 'GB'
-    name: str                          # Full company / asset name
-    ric: str                           # Reuters Instrument Code
-    bloomberg: str                     # Bloomberg ticker
-    isin: str                          # International Securities Identification Number
+    canonical_id: str  # e.g. 'RELIANCE.NS', 'SAP.DE', '7203.T', 'AAPL'
+    ticker: str  # Base ticker e.g. 'RELIANCE', 'SAP', '7203', 'AAPL'
+    venue_mic: str  # ISO MIC e.g. 'XNSE', 'XETR', 'XTKS', 'XNAS'
+    currency: str  # ISO 4217 currency e.g. 'INR', 'EUR', 'JPY', 'USD'
+    country: str  # 'IN', 'DE', 'JP', 'US', 'GB'
+    name: str  # Full company / asset name
+    ric: str  # Reuters Instrument Code
+    bloomberg: str  # Bloomberg ticker
+    isin: str  # International Securities Identification Number
 
 
 # Reference directory of high-liquidity global benchmark constituents
@@ -118,7 +119,6 @@ GLOBAL_SECURITY_DIRECTORY: Dict[str, SymbolInfo] = {
         bloomberg="NSEBANK:IND",
         isin="INX000000002",
     ),
-
     # -----------------------------------------------------------------------
     # 2. Germany (Deutsche Börse Xetra DAX 40 constituents)
     # -----------------------------------------------------------------------
@@ -199,7 +199,6 @@ GLOBAL_SECURITY_DIRECTORY: Dict[str, SymbolInfo] = {
         bloomberg="DAX:IND",
         isin="DE0008469008",
     ),
-
     # -----------------------------------------------------------------------
     # 3. Japan (Tokyo Stock Exchange Nikkei 225 constituents)
     # -----------------------------------------------------------------------
@@ -269,7 +268,6 @@ GLOBAL_SECURITY_DIRECTORY: Dict[str, SymbolInfo] = {
         bloomberg="NKY:IND",
         isin="XC0009692440",
     ),
-
     # -----------------------------------------------------------------------
     # 4. United States (Nasdaq / NYSE)
     # -----------------------------------------------------------------------
@@ -317,7 +315,28 @@ GLOBAL_SECURITY_DIRECTORY: Dict[str, SymbolInfo] = {
         bloomberg="SPY:US",
         isin="US78462F1030",
     ),
-
+    "META": SymbolInfo(
+        canonical_id="META",
+        ticker="META",
+        venue_mic="XNAS",
+        currency="USD",
+        country="US",
+        name="Meta Platforms Inc",
+        ric="META.O",
+        bloomberg="META:US",
+        isin="US30303M1027",
+    ),
+    "FB": SymbolInfo(
+        canonical_id="FB",
+        ticker="FB",
+        venue_mic="XNAS",
+        currency="USD",
+        country="US",
+        name="Meta Platforms Inc (fka Facebook)",
+        ric="FB.O",
+        bloomberg="FB:US",
+        isin="US30303M1027",
+    ),
     # -----------------------------------------------------------------------
     # 5. United Kingdom (London Stock Exchange)
     # -----------------------------------------------------------------------
@@ -348,26 +367,55 @@ GLOBAL_SECURITY_DIRECTORY: Dict[str, SymbolInfo] = {
 # Add alias mappings for common names and variations
 ALIASES_TO_TICKER: Dict[str, str] = {
     # Japan names to 4-digit code
-    "TOYOTA": "7203", "SONY": "6758", "SOFTBANK": "9984", "MUFG": "8306", "KEYENCE": "6861",
+    "TOYOTA": "7203",
+    "SONY": "6758",
+    "SOFTBANK": "9984",
+    "MUFG": "8306",
+    "KEYENCE": "6861",
     "NIKKEI": "N225",
     # German names
-    "VOLKSWAGEN": "VOW3", "ALLIANZ": "ALV", "SIEMENS": "SIE", "MERCEDES": "MBG",
+    "VOLKSWAGEN": "VOW3",
+    "ALLIANZ": "ALV",
+    "SIEMENS": "SIE",
+    "MERCEDES": "MBG",
     # India names
-    "RELIANCEIND": "RELIANCE", "TATA": "TATAMOTORS", "HDFC": "HDFCBANK", "INFOSYS": "INFY", "ICICI": "ICICIBANK",
+    "RELIANCEIND": "RELIANCE",
+    "TATA": "TATAMOTORS",
+    "HDFC": "HDFCBANK",
+    "INFOSYS": "INFY",
+    "ICICI": "ICICIBANK",
 }
 
+# Historical corporate actions ticker changes: (old_symbol, new_symbol, change_date)
+HISTORICAL_TICKER_CHANGES: list[tuple[str, str, str]] = [
+    ("FB", "META", "2022-06-09"),
+    ("TWTR", "X", "2023-07-23"),
+    ("ANTM", "ELV", "2022-06-28"),
+    ("SQ", "BLOCK", "2021-12-01"),
+]
 
-def resolve_symbol(symbol: str, default_venue: str = "XNAS") -> SymbolInfo:
+
+def resolve_symbol(
+    symbol: str,
+    default_venue: str = "XNAS",
+    as_of_date: str | None = None,
+) -> SymbolInfo:
     """
     Resolves any user-supplied ticker, ISIN, RIC, or Yahoo ticker into canonical SymbolInfo.
-    Examples:
-      - 'RELIANCE' or 'RELIANCE.NS' -> XNSE, INR
-      - 'SAP' or 'SAP.DE' -> XETR, EUR
-      - '7203' or 'TOYOTA' or '7203.T' -> XTKS, JPY
-      - 'AAPL' -> XNAS, USD
-      - 'SHEL' or 'SHEL.L' -> XLON, GBP
+    If as_of_date is provided (YYYY-MM-DD), maps historical corporate actions / ticker renames
+    to eliminate lookahead bias (Invariant Q5).
     """
     raw = str(symbol).strip().upper()
+
+    if as_of_date:
+        date_str = str(as_of_date).strip()[:10]
+        for old_sym, new_sym, change_date in HISTORICAL_TICKER_CHANGES:
+            if raw == new_sym and date_str < change_date:
+                raw = old_sym
+                break
+            elif raw == old_sym and date_str >= change_date:
+                raw = new_sym
+                break
 
     # Direct directory match
     if raw in GLOBAL_SECURITY_DIRECTORY:

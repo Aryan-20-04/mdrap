@@ -8,13 +8,13 @@ Implements comprehensive failure and resilience drills:
 4. Storage Outage & Recovery: temporary database lock / write failure resilience with zero data loss.
 5. Continuity & Reconciliation: verifying post-recovery consistency and lineage preservation.
 """
+
 from __future__ import annotations
 
-import time
 from dataclasses import dataclass
-from typing import Any, Dict, Iterator, List, Optional
+from typing import Iterator, List
 
-from models import CanonicalEvent, EventType, QualityStatus, RawEvent, Reason
+from models import RawEvent, Reason
 from pipeline import Pipeline
 from reconciliation import ReliabilityTracker
 from simulator import FeedSimulator, SimulatorConfig
@@ -34,8 +34,9 @@ class ChaosDrillResult:
     details: str
 
 
-def drop_source_window(events: Iterator[tuple], source: str, start_count: int,
-                       duration_count: int) -> Iterator[tuple]:
+def drop_source_window(
+    events: Iterator[tuple], source: str, start_count: int, duration_count: int
+) -> Iterator[tuple]:
     """
     Backwards-compatible replay-time fault injector:
     Silently withholds events from `source` for `duration_count` events.
@@ -59,7 +60,9 @@ class ChaosEngine:
     def __init__(self, db_path: str = ":memory:"):
         self.db_path = db_path
 
-    def run_feed_kill_drill(self, target_source: str = "FEEDX", total_events: int = 4000) -> ChaosDrillResult:
+    def run_feed_kill_drill(
+        self, target_source: str = "FEEDX", total_events: int = 4000
+    ) -> ChaosDrillResult:
         """
         Drill 1: Feed Termination & Automated Failover.
         Terminates target_source mid-stream, checks watchdog silence detection,
@@ -69,7 +72,9 @@ class ChaosEngine:
         rel = ReliabilityTracker()
         watchdog = SourceWatchdog(reliability=rel, silence_threshold_s=1.0)
         pipeline = Pipeline(store=store, reliability=rel, watchdog=watchdog)
-        sim = FeedSimulator(SimulatorConfig(seed=42, num_events=total_events, missing_rate=0.0))
+        sim = FeedSimulator(
+            SimulatorConfig(seed=42, num_events=total_events, missing_rate=0.0)
+        )
 
         kill_start_ts = None
         kill_detected_ts = None
@@ -83,22 +88,33 @@ class ChaosEngine:
                 if raw.source == target_source:
                     if not killed:
                         killed = True
-                        kill_start_ts = raw.payload.get("exchange_ts", raw.receive_timestamp)
+                        kill_start_ts = raw.payload.get(
+                            "exchange_ts", raw.receive_timestamp
+                        )
                     continue  # Drop event from target source
             elif events_processed >= 2500 and killed:
                 # Source recovers
                 pass
 
-            ev = pipeline.process_one(raw)
-            if killed and kill_detected_ts is None and watchdog.source_states().get(target_source) == SourceState.SILENT.value:
+            _ev = pipeline.process_one(raw)
+            if (
+                killed
+                and kill_detected_ts is None
+                and watchdog.source_states().get(target_source)
+                == SourceState.SILENT.value
+            ):
                 kill_detected_ts = raw.payload.get("exchange_ts", raw.receive_timestamp)
 
         pipeline.finish()
         store.close()
 
         # Score results
-        final_state = watchdog.source_states().get(target_source)
-        detection_ms = ((kill_detected_ts - kill_start_ts) * 1000.0) if (kill_detected_ts and kill_start_ts) else 1000.0
+        _final_state = watchdog.source_states().get(target_source)
+        detection_ms = (
+            ((kill_detected_ts - kill_start_ts) * 1000.0)
+            if (kill_detected_ts and kill_start_ts)
+            else 1000.0
+        )
         failover_ms = detection_ms  # Watchdog failover triggers synchronously on silence detection
         passed = (kill_detected_ts is not None) and (pipeline.metrics.dropped == 0)
 
@@ -119,7 +135,9 @@ class ChaosEngine:
             details=details,
         )
 
-    def run_network_jitter_drill(self, target_source: str = "FEEDY", total_events: int = 3000) -> ChaosDrillResult:
+    def run_network_jitter_drill(
+        self, target_source: str = "FEEDY", total_events: int = 3000
+    ) -> ChaosDrillResult:
         """
         Drill 2: Network Delay & Staleness Degradation.
         Injects sudden 5.0s timestamp latency into target_source, verifying staleness detection.
@@ -135,7 +153,9 @@ class ChaosEngine:
             events_processed += 1
             if raw.source == target_source and 1000 < events_processed < 1500:
                 # Artificial flight delay
-                raw.receive_timestamp = raw.payload.get("exchange_ts", raw.receive_timestamp) + 5.0
+                raw.receive_timestamp = (
+                    raw.payload.get("exchange_ts", raw.receive_timestamp) + 5.0
+                )
                 injected_stale += 1
 
             pipeline.process_one(raw)
@@ -143,7 +163,9 @@ class ChaosEngine:
         pipeline.finish()
         store.close()
         stale_caught = pipeline.quality.reason_counts.get(Reason.STALE.value, 0)
-        passed = (stale_caught >= injected_stale * 0.9) and (pipeline.metrics.dropped == 0)
+        passed = (stale_caught >= injected_stale * 0.9) and (
+            pipeline.metrics.dropped == 0
+        )
 
         return ChaosDrillResult(
             drill_name="Network Jitter & Staleness",
@@ -156,7 +178,9 @@ class ChaosEngine:
             details=f"Injected {injected_stale} delayed events on {target_source}; Caught {stale_caught} STALE violations",
         )
 
-    def run_burst_drill(self, target_source: str = "FEEDZ", total_events: int = 3000) -> ChaosDrillResult:
+    def run_burst_drill(
+        self, target_source: str = "FEEDZ", total_events: int = 3000
+    ) -> ChaosDrillResult:
         """
         Drill 3: Duplicate & Out-of-Order Packet Bursts.
         Spams 300 duplicate quotes and out-of-order packets; verifies 100% quarantine without poisoning canonical book.
@@ -236,7 +260,7 @@ class ChaosEngine:
         # Finish and flush all pending buffers
         pipeline.finish()
         store.close()
-        recovered = (pipeline.metrics.processed >= total_events)
+        recovered = pipeline.metrics.processed >= total_events
 
         return ChaosDrillResult(
             drill_name="Storage Outage & Memory Recovery",

@@ -4,9 +4,10 @@ MDRAP Foreign Exchange (FX) Matrix and Multi-Currency Valuation Engine.
 Provides real-time cross-currency conversion, triangular arbitrage resolution,
 and portfolio valuation normalization across INR, EUR, JPY, GBP, and USD.
 """
+
 from __future__ import annotations
 
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional
 
 
 class FXMatrix:
@@ -18,14 +19,14 @@ class FXMatrix:
         # Base rates against USD (amount of quote currency per 1 USD)
         self._usd_rates: Dict[str, float] = {
             "USD": 1.0,
-            "INR": 88.50,     # Indian Rupee
-            "EUR": 0.9215,    # Euro (1 EUR = ~1.085 USD)
-            "JPY": 152.20,    # Japanese Yen
-            "GBP": 0.7722,    # British Pound (1 GBP = ~1.295 USD)
-            "HKD": 7.82,      # Hong Kong Dollar
-            "CHF": 0.8850,    # Swiss Franc
-            "CAD": 1.3850,    # Canadian Dollar
-            "AUD": 1.5400,    # Australian Dollar
+            "INR": 88.50,  # Indian Rupee
+            "EUR": 0.9215,  # Euro (1 EUR = ~1.085 USD)
+            "JPY": 152.20,  # Japanese Yen
+            "GBP": 0.7722,  # British Pound (1 GBP = ~1.295 USD)
+            "HKD": 7.82,  # Hong Kong Dollar
+            "CHF": 0.8850,  # Swiss Franc
+            "CAD": 1.3850,  # Canadian Dollar
+            "AUD": 1.5400,  # Australian Dollar
         }
         if initial_rates:
             for pair, rate in initial_rates.items():

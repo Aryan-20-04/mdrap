@@ -13,21 +13,21 @@ Features:
 - High-watermark ring eviction to guarantee fresh, non-stale market feeds.
 - Aggregated real-time ingestion telemetry (total events, eps, dropped packets, uptime).
 """
+
 from __future__ import annotations
 
 import enum
-import itertools
 import logging
 import queue
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import Any, Dict, Generator, List, Optional, Set, Tuple
+from typing import Any, Generator, List, Optional
 
 from databento_feed import DatabentoFeedManager
 from models import RawEvent
 from polygon_feed import PolygonFeedManager
-from ws_feed import WebSocketFeedManager, HAS_WEBSOCKETS
+from ws_feed import WebSocketFeedManager
 
 logger = logging.getLogger("mdrap.feed_handler")
 
@@ -43,7 +43,9 @@ class FeedProvider(str, enum.Enum):
 @dataclass
 class FeedSupervisorConfig:
     provider: FeedProvider = FeedProvider.CRYPTO
-    symbols: List[str] = field(default_factory=lambda: ["BTC/USD", "ETH/USD", "AAPL", "NVDA"])
+    symbols: List[str] = field(
+        default_factory=lambda: ["BTC/USD", "ETH/USD", "AAPL", "NVDA"]
+    )
     max_queue_size: int = 50000
     mock_mode: bool = False
     polygon_key: Optional[str] = None
@@ -62,7 +64,9 @@ class StreamingFeedSupervisor:
 
     def __init__(self, config: Optional[FeedSupervisorConfig] = None):
         self.config = config or FeedSupervisorConfig()
-        self._queue: queue.Queue[RawEvent] = queue.Queue(maxsize=self.config.max_queue_size)
+        self._queue: queue.Queue[RawEvent] = queue.Queue(
+            maxsize=self.config.max_queue_size
+        )
         self._stop_event = threading.Event()
         self._workers: List[Any] = []
         self._bridge_threads: List[threading.Thread] = []
@@ -79,7 +83,14 @@ class StreamingFeedSupervisor:
 
         # 1. Crypto WebSocket Manager
         if p in (FeedProvider.CRYPTO, FeedProvider.ALL):
-            crypto_syms = [s for s in syms if any(c in s.upper() for c in ("BTC", "ETH", "SOL", "DOGE", "XRP", "ADA", "USD"))]
+            crypto_syms = [
+                s
+                for s in syms
+                if any(
+                    c in s.upper()
+                    for c in ("BTC", "ETH", "SOL", "DOGE", "XRP", "ADA", "USD")
+                )
+            ]
             if not crypto_syms:
                 crypto_syms = ["BTC/USD", "ETH/USD"]
             ws_mgr = WebSocketFeedManager(
@@ -151,7 +162,10 @@ class StreamingFeedSupervisor:
         self._bridge_threads.clear()
 
     def is_running(self) -> bool:
-        return any(w.is_running() for _, w in self._workers) and not self._stop_event.is_set()
+        return (
+            any(w.is_running() for _, w in self._workers)
+            and not self._stop_event.is_set()
+        )
 
     def _enqueue(self, ev: RawEvent) -> None:
         try:

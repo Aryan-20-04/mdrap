@@ -1,21 +1,34 @@
-"""
-Multicast UDP A/B Feed Arbitrator & Gap Recovery Engine (Spec §18, §26).
+"""Multicast UDP A/B Feed Arbitrator & Gap Recovery Engine (Spec §18, §26).
 
-Implements institutional market data network feed arbitration (CME MDP 3.0 / NASDAQ ITCH):
-- Dual physical feed listeners (Feed A & Feed B) running concurrently over UDP multicast.
-- Ultra-low latency O(1) sequence watermark deduplication.
-- Gap detection on missing sequence numbers.
-- Automatic TCP Historical Replay backfill requests for sequence healing.
-- Re-sequencing gap buffer with strictly monotonic in-order dispatch downstream.
+Implements institutional market data network feed arbitration (CME MDP 3.0 / NASDAQ MoldUDP64):
+  - Dual physical feed listeners (Feed A & Feed B) running concurrently over UDP multicast.
+  - Ultra-low latency O(1) sequence watermark deduplication.
+  - Gap detection on missing packet sequence numbers.
+  - Automatic TCP Historical Replay backfill requests for seamless sequence healing.
+  - Re-sequencing gap buffer with strictly monotonic in-order dispatch downstream.
+
+Network Transport Architecture:
+  1. A/B Redundancy:
+     Financial exchanges broadcast market events across two geometrically and physically
+     disjoint networks ("Line A" and "Line B"). The arbitrator consumes packets from both lines,
+     immediately processing whichever packet arrives first and discarding the secondary copy.
+  2. Sequence Watermark Invariant:
+     Each channel maintains `expected_seq`. If an arriving packet has `seq < expected`, it is
+     a duplicate and dropped in O(1) time. If `seq == expected`, it is dispatched immediately.
+  3. Gap Resolution:
+     If `seq > expected`, packet loss has occurred on both lines. The packet is buffered in
+     the out-of-order gap queue, and a TCP replay request is triggered for the range
+     `[expected, seq - 1]`. Contiguous packets are drained and dispatched in strictly monotonic order.
 """
+
 from __future__ import annotations
 
 import collections
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 import logging
 import random
 import time
-from typing import Callable, Dict, List, Optional, Set, Tuple
+from typing import Callable
 
 logger = logging.getLogger(__name__)
 
@@ -23,10 +36,11 @@ logger = logging.getLogger(__name__)
 @dataclass(slots=True)
 class UDPPacket:
     """A market data packet received from UDP Multicast Feed A, Feed B, or TCP Replay."""
+
     channel_id: str
     sequence_num: int
-    feed_id: str                  # 'A', 'B', or 'TCP_REPLAY'
-    payload: bytes                # Raw wire bytes (SBE or JSON)
+    feed_id: str  # 'A', 'B', or 'TCP_REPLAY'
+    payload: bytes  # Raw wire bytes (SBE or JSON)
     send_timestamp: float = 0.0
     receive_timestamp: float = 0.0
 
@@ -44,6 +58,7 @@ class UDPPacket:
 @dataclass
 class ArbitratorMetrics:
     """Real-time observability metrics for feed arbitration health."""
+
     feed_a_packets: int = 0
     feed_b_packets: int = 0
     tcp_packets: int = 0
@@ -73,9 +88,8 @@ class ArbitratorMetrics:
 
 
 class ABFeedArbitrator:
-    """
-    High-Performance A/B Feed Arbitrator with Monotonic In-Order Dispatch.
-    
+    """High-Performance A/B Feed Arbitrator with Monotonic In-Order Dispatch.
+
     Channels: Arbitrates multiple instrument channels independently.
     Deduplication: Fast O(1) comparison against expected sequence watermark.
     Gap Recovery: Queries TCP Replay client whenever sequence jump exceeds expected.
@@ -83,7 +97,7 @@ class ABFeedArbitrator:
 
     def __init__(
         self,
-        tcp_replay_client: Optional[Callable[[str, int, int], List[UDPPacket]]] = None,
+        tcp_replay_client: Callable[[str, int, int], list[UDPPacket]] | None = None,
         max_gap_buffer_size: int = 10000,
         initial_seq: int = 1,
     ):
@@ -92,10 +106,12 @@ class ABFeedArbitrator:
         self.initial_seq = initial_seq
 
         # Channel State: channel_id -> expected monotonic sequence number
-        self._expected_seq: Dict[str, int] = {}
+        self._expected_seq: dict[str, int] = {}
 
         # Out-of-order gap buffers: channel_id -> {sequence_num: UDPPacket}
-        self._gap_buffers: Dict[str, Dict[int, UDPPacket]] = collections.defaultdict(dict)
+        self._gap_buffers: dict[str, dict[int, UDPPacket]] = collections.defaultdict(
+            dict
+        )
 
         self.metrics = ArbitratorMetrics()
 
@@ -105,10 +121,10 @@ class ABFeedArbitrator:
     def set_expected_seq(self, channel_id: str, seq: int) -> None:
         self._expected_seq[channel_id] = seq
 
-    def on_packet(self, packet: UDPPacket) -> List[UDPPacket]:
+    def on_packet(self, packet: UDPPacket) -> list[UDPPacket]:
         """
         Process an incoming packet from Feed A, Feed B, or TCP Replay.
-        
+
         Returns a list of deduplicated packets in strictly monotonic sequence order
         ready for downstream processing. Returns empty list if packet was duplicate
         or buffered pending gap resolution.
@@ -149,7 +165,9 @@ class ABFeedArbitrator:
                     self.metrics.gap_buffer_overflows += 1
                     logger.warning(
                         "Gap buffer overflow on channel %s (%d packets). Dropping seq %d",
-                        ch, len(gap_buf), seq
+                        ch,
+                        len(gap_buf),
+                        seq,
                     )
                     return []
                 gap_buf[seq] = packet
@@ -166,11 +184,20 @@ class ABFeedArbitrator:
                 try:
                     replayed = self.tcp_replay_client(ch, missing_start, missing_end)
                     for r_pkt in replayed:
-                        if r_pkt.sequence_num not in gap_buf and r_pkt.sequence_num >= expected:
+                        if (
+                            r_pkt.sequence_num not in gap_buf
+                            and r_pkt.sequence_num >= expected
+                        ):
                             gap_buf[r_pkt.sequence_num] = r_pkt
                             self.metrics.tcp_packets_recovered += 1
                 except Exception as ex:
-                    logger.error("TCP replay failed for %s [%d-%d]: %s", ch, missing_start, missing_end, ex)
+                    logger.error(
+                        "TCP replay failed for %s [%d-%d]: %s",
+                        ch,
+                        missing_start,
+                        missing_end,
+                        ex,
+                    )
 
             # Check if gap was resolved by TCP replay
             if expected in gap_buf:
@@ -194,10 +221,10 @@ class ABFeedArbitrator:
         self.metrics.in_order_dispatched += len(dispatched)
         return dispatched
 
-    def _drain_gap_buffer(self, channel_id: str) -> List[UDPPacket]:
+    def _drain_gap_buffer(self, channel_id: str) -> list[UDPPacket]:
         """Drain contiguous packets from the gap buffer starting at expected_seq."""
         gap_buf = self._gap_buffers[channel_id]
-        dispatched: List[UDPPacket] = []
+        dispatched: list[UDPPacket] = []
 
         curr = self._expected_seq[channel_id]
         while curr in gap_buf:
@@ -228,8 +255,8 @@ class ABFeedArbitrator:
 
 
 class MulticastFeedSimulator:
-    """
-    Simulates dual-path multicast network transport with configurable loss and jitter.
+    """Simulates dual-path multicast network transport with configurable loss and jitter.
+
     Maintains a TCP Historical Replay archive for gap recovery testing.
     """
 
@@ -238,7 +265,7 @@ class MulticastFeedSimulator:
         channel_id: str = "CH1",
         drop_rate_a: float = 0.05,
         drop_rate_b: float = 0.05,
-        seed: Optional[int] = 42,
+        seed: int | None = 42,
     ):
         self.channel_id = channel_id
         self.drop_rate_a = drop_rate_a
@@ -246,12 +273,15 @@ class MulticastFeedSimulator:
         self.rng = random.Random(seed)
 
         self._seq = 0
-        self._history: Dict[int, UDPPacket] = {}
+        self._history: dict[int, UDPPacket] = {}
 
-    def publish_event(self, payload: bytes) -> Tuple[Optional[UDPPacket], Optional[UDPPacket]]:
-        """
-        Simulate transmitting an event over both Feed A and Feed B multicast paths.
-        Returns (packet_a, packet_b). Either packet may be None if dropped on that line.
+    def publish_event(
+        self, payload: bytes
+    ) -> tuple[UDPPacket | None, UDPPacket | None]:
+        """Simulate transmitting an event over both Feed A and Feed B multicast paths.
+
+        Returns:
+            (packet_a, packet_b): Either packet may be None if dropped on that physical line.
         """
         self._seq += 1
         seq = self._seq
@@ -267,7 +297,7 @@ class MulticastFeedSimulator:
         )
         self._history[seq] = pkt_canonical
 
-        pkt_a: Optional[UDPPacket] = None
+        pkt_a: UDPPacket | None = None
         if self.rng.random() >= self.drop_rate_a:
             pkt_a = UDPPacket(
                 channel_id=self.channel_id,
@@ -278,7 +308,7 @@ class MulticastFeedSimulator:
                 receive_timestamp=now,
             )
 
-        pkt_b: Optional[UDPPacket] = None
+        pkt_b: UDPPacket | None = None
         if self.rng.random() >= self.drop_rate_b:
             pkt_b = UDPPacket(
                 channel_id=self.channel_id,
@@ -291,12 +321,14 @@ class MulticastFeedSimulator:
 
         return pkt_a, pkt_b
 
-    def tcp_replay_request(self, channel_id: str, start_seq: int, end_seq: int) -> List[UDPPacket]:
+    def tcp_replay_request(
+        self, channel_id: str, start_seq: int, end_seq: int
+    ) -> list[UDPPacket]:
         """Simulate TCP Replay server responding with missing range."""
         if channel_id != self.channel_id:
             return []
 
-        replayed: List[UDPPacket] = []
+        replayed: list[UDPPacket] = []
         for s in range(start_seq, end_seq + 1):
             if s in self._history:
                 orig = self._history[s]

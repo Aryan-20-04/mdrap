@@ -5,49 +5,51 @@ Defines exchange metadata, trading session schedules, currency conventions,
 and microstructure parameters for Indian (NSE/BSE), German (Deutsche Börse/Xetra/Eurex),
 Japanese (TSE/JPX), US (Nasdaq/NYSE), and other global financial venues.
 """
+
 from __future__ import annotations
 
 import datetime
-import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 
 class MarketPhase(str, Enum):
-    PRE_OPEN = "PRE_OPEN"              # Call auction / order collection
-    CONTINUOUS = "CONTINUOUS"          # Continuous double auction (Zaraba)
-    VOLATILITY_HALT = "VOLATILITY_HALT"# Volatility interruption / circuit halt
-    CLOSING_AUCTION = "CLOSING_AUCTION"# Closing cross / Itayose
-    POST_CLOSE = "POST_CLOSE"          # Reporting / settlement
-    CLOSED = "CLOSED"                  # Market closed
+    PRE_OPEN = "PRE_OPEN"  # Call auction / order collection
+    CONTINUOUS = "CONTINUOUS"  # Continuous double auction (Zaraba)
+    VOLATILITY_HALT = "VOLATILITY_HALT"  # Volatility interruption / circuit halt
+    CLOSING_AUCTION = "CLOSING_AUCTION"  # Closing cross / Itayose
+    POST_CLOSE = "POST_CLOSE"  # Reporting / settlement
+    CLOSED = "CLOSED"  # Market closed
 
 
 class TickSizeModel(str, Enum):
-    FIXED_0_01 = "FIXED_0_01"          # Standard US penny tick ($0.01)
-    NSE_DYNAMIC = "NSE_DYNAMIC"        # Indian NSE dynamic tick (0.05 INR, 0.01 INR for sub-250)
-    MIFID2_RTS28 = "MIFID2_RTS28"      # European MiFID II liquidity band tiers
-    TSE_TIERED = "TSE_TIERED"          # Japanese TSE TOPIX100 fractional & standard yen tiers
+    FIXED_0_01 = "FIXED_0_01"  # Standard US penny tick ($0.01)
+    NSE_DYNAMIC = (
+        "NSE_DYNAMIC"  # Indian NSE dynamic tick (0.05 INR, 0.01 INR for sub-250)
+    )
+    MIFID2_RTS28 = "MIFID2_RTS28"  # European MiFID II liquidity band tiers
+    TSE_TIERED = "TSE_TIERED"  # Japanese TSE TOPIX100 fractional & standard yen tiers
 
 
 @dataclass(slots=True, frozen=True)
 class MarketVenue:
-    mic: str                           # ISO 10383 Market Identifier Code
+    mic: str  # ISO 10383 Market Identifier Code
     name: str
-    country: str                       # ISO 3166-1 alpha-2
-    flag: str                          # Unicode emoji flag
-    currency: str                      # ISO 4217 currency code
-    currency_symbol: str               # Localized currency glyph
+    country: str  # ISO 3166-1 alpha-2
+    flag: str  # Unicode emoji flag
+    currency: str  # ISO 4217 currency code
+    currency_symbol: str  # Localized currency glyph
     timezone_name: str
-    utc_offset_hours: float            # Standard offset in hours
-    open_time_utc_hour: float          # Market continuous open (UTC fractional hours)
-    close_time_utc_hour: float         # Market continuous close (UTC fractional hours)
-    benchmark_index: str               # Ticker of primary index
-    index_name: str                    # Human-readable index name
+    utc_offset_hours: float  # Standard offset in hours
+    open_time_utc_hour: float  # Market continuous open (UTC fractional hours)
+    close_time_utc_hour: float  # Market continuous close (UTC fractional hours)
+    benchmark_index: str  # Ticker of primary index
+    index_name: str  # Human-readable index name
     tick_size_model: TickSizeModel = TickSizeModel.FIXED_0_01
     pre_open_utc_hour: Optional[float] = None
     closing_auction_utc_hour: Optional[float] = None
-    circuit_limit_pct: float = 10.0    # Stock / index standard circuit band
+    circuit_limit_pct: float = 10.0  # Stock / index standard circuit band
 
 
 # ---------------------------------------------------------------------------
@@ -67,10 +69,10 @@ GLOBAL_VENUES: Dict[str, MarketVenue] = {
         currency_symbol="₹",
         timezone_name="Asia/Kolkata",
         utc_offset_hours=5.5,
-        open_time_utc_hour=3.75,            # 03:45 UTC = 09:15 IST
-        close_time_utc_hour=10.0,           # 10:00 UTC = 15:30 IST
-        pre_open_utc_hour=3.5,              # 03:30 UTC = 09:00 IST
-        closing_auction_utc_hour=9.833,     # 09:50 UTC = 15:20 IST
+        open_time_utc_hour=3.75,  # 03:45 UTC = 09:15 IST
+        close_time_utc_hour=10.0,  # 10:00 UTC = 15:30 IST
+        pre_open_utc_hour=3.5,  # 03:30 UTC = 09:00 IST
+        closing_auction_utc_hour=9.833,  # 09:50 UTC = 15:20 IST
         benchmark_index="NIFTY",
         index_name="Nifty 50",
         tick_size_model=TickSizeModel.NSE_DYNAMIC,
@@ -94,7 +96,6 @@ GLOBAL_VENUES: Dict[str, MarketVenue] = {
         tick_size_model=TickSizeModel.NSE_DYNAMIC,
         circuit_limit_pct=10.0,
     ),
-
     # 2. German Markets (Deutsche Börse / Xetra / Eurex)
     # Continuous: 09:00-17:30 CET (UTC+1) -> 08:00 to 16:30 UTC
     "XETR": MarketVenue(
@@ -106,14 +107,14 @@ GLOBAL_VENUES: Dict[str, MarketVenue] = {
         currency_symbol="€",
         timezone_name="Europe/Berlin",
         utc_offset_hours=1.0,
-        open_time_utc_hour=8.0,             # 08:00 UTC = 09:00 CET
-        close_time_utc_hour=16.5,           # 16:30 UTC = 17:30 CET
-        pre_open_utc_hour=7.5,              # 07:30 UTC = 08:30 CET
-        closing_auction_utc_hour=16.417,    # 16:25 UTC = 17:25 CET
+        open_time_utc_hour=8.0,  # 08:00 UTC = 09:00 CET
+        close_time_utc_hour=16.5,  # 16:30 UTC = 17:30 CET
+        pre_open_utc_hour=7.5,  # 07:30 UTC = 08:30 CET
+        closing_auction_utc_hour=16.417,  # 16:25 UTC = 17:25 CET
         benchmark_index="DAX",
         index_name="DAX 40",
         tick_size_model=TickSizeModel.MIFID2_RTS28,
-        circuit_limit_pct=5.0,              # Volatility corridor
+        circuit_limit_pct=5.0,  # Volatility corridor
     ),
     "XEUR": MarketVenue(
         mic="XEUR",
@@ -124,14 +125,13 @@ GLOBAL_VENUES: Dict[str, MarketVenue] = {
         currency_symbol="€",
         timezone_name="Europe/Berlin",
         utc_offset_hours=1.0,
-        open_time_utc_hour=7.0,             # 07:00 UTC = 08:00 CET
-        close_time_utc_hour=21.0,           # 21:00 UTC = 22:00 CET
+        open_time_utc_hour=7.0,  # 07:00 UTC = 08:00 CET
+        close_time_utc_hour=21.0,  # 21:00 UTC = 22:00 CET
         benchmark_index="SX5E",
         index_name="EURO STOXX 50",
         tick_size_model=TickSizeModel.MIFID2_RTS28,
         circuit_limit_pct=5.0,
     ),
-
     # 3. Japanese Markets (Tokyo Stock Exchange / JPX)
     # Open: 09:00-15:30 JST (UTC+9) -> 00:00 to 06:30 UTC
     "XTKS": MarketVenue(
@@ -143,10 +143,10 @@ GLOBAL_VENUES: Dict[str, MarketVenue] = {
         currency_symbol="¥",
         timezone_name="Asia/Tokyo",
         utc_offset_hours=9.0,
-        open_time_utc_hour=0.0,             # 00:00 UTC = 09:00 JST
-        close_time_utc_hour=6.5,            # 06:30 UTC = 15:30 JST
-        pre_open_utc_hour=23.0,             # 23:00 UTC (-1 day) = 08:00 JST
-        closing_auction_utc_hour=6.417,     # 06:25 UTC = 15:25 JST (Itayose)
+        open_time_utc_hour=0.0,  # 00:00 UTC = 09:00 JST
+        close_time_utc_hour=6.5,  # 06:30 UTC = 15:30 JST
+        pre_open_utc_hour=23.0,  # 23:00 UTC (-1 day) = 08:00 JST
+        closing_auction_utc_hour=6.417,  # 06:25 UTC = 15:25 JST (Itayose)
         benchmark_index="N225",
         index_name="Nikkei 225",
         tick_size_model=TickSizeModel.TSE_TIERED,
@@ -161,14 +161,13 @@ GLOBAL_VENUES: Dict[str, MarketVenue] = {
         currency_symbol="¥",
         timezone_name="Asia/Tokyo",
         utc_offset_hours=9.0,
-        open_time_utc_hour=23.75,           # 08:45 JST
+        open_time_utc_hour=23.75,  # 08:45 JST
         close_time_utc_hour=6.5,
         benchmark_index="NK225F",
         index_name="Nikkei 225 Futures",
         tick_size_model=TickSizeModel.TSE_TIERED,
         circuit_limit_pct=8.0,
     ),
-
     # 4. United States (Nasdaq / NYSE)
     # Open: 09:30-16:00 EST (UTC-5) -> 14:30 to 21:00 UTC
     "XNAS": MarketVenue(
@@ -180,14 +179,14 @@ GLOBAL_VENUES: Dict[str, MarketVenue] = {
         currency_symbol="$",
         timezone_name="America/New_York",
         utc_offset_hours=-5.0,
-        open_time_utc_hour=14.5,            # 14:30 UTC = 09:30 EST
-        close_time_utc_hour=21.0,           # 21:00 UTC = 16:00 EST
-        pre_open_utc_hour=9.0,              # 09:00 UTC = 04:00 EST (Pre-market)
-        closing_auction_utc_hour=20.917,    # Closing cross
+        open_time_utc_hour=14.5,  # 14:30 UTC = 09:30 EST
+        close_time_utc_hour=21.0,  # 21:00 UTC = 16:00 EST
+        pre_open_utc_hour=9.0,  # 09:00 UTC = 04:00 EST (Pre-market)
+        closing_auction_utc_hour=20.917,  # Closing cross
         benchmark_index="NDX",
         index_name="NASDAQ 100",
         tick_size_model=TickSizeModel.FIXED_0_01,
-        circuit_limit_pct=7.0,              # LULD / Reg NMS
+        circuit_limit_pct=7.0,  # LULD / Reg NMS
     ),
     "XNYS": MarketVenue(
         mic="XNYS",
@@ -207,7 +206,6 @@ GLOBAL_VENUES: Dict[str, MarketVenue] = {
         tick_size_model=TickSizeModel.FIXED_0_01,
         circuit_limit_pct=7.0,
     ),
-
     # 5. United Kingdom (London Stock Exchange)
     "XLON": MarketVenue(
         mic="XLON",
@@ -218,16 +216,15 @@ GLOBAL_VENUES: Dict[str, MarketVenue] = {
         currency_symbol="£",
         timezone_name="Europe/London",
         utc_offset_hours=0.0,
-        open_time_utc_hour=8.0,             # 08:00 UTC = 08:00 GMT
-        close_time_utc_hour=16.5,           # 16:30 UTC = 16:30 GMT
-        pre_open_utc_hour=7.833,            # 07:50 UTC
+        open_time_utc_hour=8.0,  # 08:00 UTC = 08:00 GMT
+        close_time_utc_hour=16.5,  # 16:30 UTC = 16:30 GMT
+        pre_open_utc_hour=7.833,  # 07:50 UTC
         closing_auction_utc_hour=16.417,
         benchmark_index="UKX",
         index_name="FTSE 100",
         tick_size_model=TickSizeModel.MIFID2_RTS28,
         circuit_limit_pct=8.0,
     ),
-
     # 6. Hong Kong (HKEX)
     "XHKG": MarketVenue(
         mic="XHKG",
@@ -238,9 +235,9 @@ GLOBAL_VENUES: Dict[str, MarketVenue] = {
         currency_symbol="HK$",
         timezone_name="Asia/Hong_Kong",
         utc_offset_hours=8.0,
-        open_time_utc_hour=1.5,             # 01:30 UTC = 09:30 HKT
-        close_time_utc_hour=8.0,            # 08:00 UTC = 16:00 HKT
-        pre_open_utc_hour=1.0,              # 09:00 HKT
+        open_time_utc_hour=1.5,  # 01:30 UTC = 09:30 HKT
+        close_time_utc_hour=8.0,  # 08:00 UTC = 16:00 HKT
+        pre_open_utc_hour=1.0,  # 09:00 HKT
         closing_auction_utc_hour=7.833,
         benchmark_index="HSI",
         index_name="Hang Seng Index",
@@ -252,21 +249,46 @@ GLOBAL_VENUES: Dict[str, MarketVenue] = {
 # Aliases mapping informal tags and country codes to canonical MICs
 VENUE_ALIASES: Dict[str, str] = {
     # India
-    "nse": "XNSE", "nifty": "XNSE", "india": "XNSE", "in": "XNSE",
-    "bse": "XBOM", "sensex": "XBOM", "bombay": "XBOM",
+    "nse": "XNSE",
+    "nifty": "XNSE",
+    "india": "XNSE",
+    "in": "XNSE",
+    "bse": "XBOM",
+    "sensex": "XBOM",
+    "bombay": "XBOM",
     # Germany / Europe
-    "xetra": "XETR", "xetr": "XETR", "frankfurt": "XETR", "dax": "XETR", "germany": "XETR", "de": "XETR",
-    "eurex": "XEUR", "xeur": "XEUR",
+    "xetra": "XETR",
+    "xetr": "XETR",
+    "frankfurt": "XETR",
+    "dax": "XETR",
+    "germany": "XETR",
+    "de": "XETR",
+    "eurex": "XEUR",
+    "xeur": "XEUR",
     # Japan
-    "tse": "XTKS", "tokyo": "XTKS", "japan": "XTKS", "jp": "XTKS", "jpx": "XTKS", "nikkei": "XTKS",
-    "ose": "XOSE", "osaka": "XOSE",
+    "tse": "XTKS",
+    "tokyo": "XTKS",
+    "japan": "XTKS",
+    "jp": "XTKS",
+    "jpx": "XTKS",
+    "nikkei": "XTKS",
+    "ose": "XOSE",
+    "osaka": "XOSE",
     # US
-    "nasdaq": "XNAS", "nas": "XNAS", "us": "XNAS", "usa": "XNAS",
+    "nasdaq": "XNAS",
+    "nas": "XNAS",
+    "us": "XNAS",
+    "usa": "XNAS",
     "nyse": "XNYS",
     # UK
-    "lse": "XLON", "london": "XLON", "uk": "XLON", "ftse": "XLON",
+    "lse": "XLON",
+    "london": "XLON",
+    "uk": "XLON",
+    "ftse": "XLON",
     # Hong Kong
-    "hkex": "XHKG", "hongkong": "XHKG", "hk": "XHKG",
+    "hkex": "XHKG",
+    "hongkong": "XHKG",
+    "hk": "XHKG",
 }
 
 
@@ -331,7 +353,9 @@ def get_session_phase(
         return False, MarketPhase.CLOSED, "Closed"
 
 
-def get_tick_size(price: float, model: TickSizeModel = TickSizeModel.FIXED_0_01) -> float:
+def get_tick_size(
+    price: float, model: TickSizeModel = TickSizeModel.FIXED_0_01
+) -> float:
     """Computes minimum price movement (tick size) per venue microstructure model."""
     if price <= 0:
         return 0.01

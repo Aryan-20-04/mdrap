@@ -8,6 +8,7 @@ delivery, malformed records, latency -- are injected under a fixed
 random seed so any run can be replayed exactly and the injected error
 set is known ground truth for quality-engine scoring.
 """
+
 from __future__ import annotations
 
 import itertools
@@ -15,28 +16,51 @@ import random
 from dataclasses import dataclass, field
 from typing import Iterator, List, Optional
 
-from models import EventType, RawEvent
+from models import RawEvent
 
 
 @dataclass
 class SimulatorConfig:
     seed: int = 42
     num_events: int = 100_000
-    instruments: List[str] = field(default_factory=lambda: [
-        "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "TSLA", "META", "JPM",
-    ])
+    instruments: List[str] = field(
+        default_factory=lambda: [
+            "AAPL",
+            "MSFT",
+            "GOOGL",
+            "AMZN",
+            "NVDA",
+            "TSLA",
+            "META",
+            "JPM",
+        ]
+    )
     sources: List[str] = field(default_factory=lambda: ["FEEDX", "FEEDY", "FEEDZ"])
     start_price: float = 100.0
-    market: str = "us"                 # 'us', 'nse', 'xetra', 'tse', 'global'
+    market: str = "us"  # 'us', 'nse', 'xetra', 'tse', 'global'
 
     def __post_init__(self):
         m = (self.market or "us").lower()
         if m in ("nse", "india", "in"):
-            self.instruments = ["RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", "ICICIBANK.NS", "TATAMOTORS.NS"]
+            self.instruments = [
+                "RELIANCE.NS",
+                "TCS.NS",
+                "HDFCBANK.NS",
+                "INFY.NS",
+                "ICICIBANK.NS",
+                "TATAMOTORS.NS",
+            ]
             if self.start_price == 100.0:
                 self.start_price = 2400.0
         elif m in ("xetra", "germany", "de", "eurex"):
-            self.instruments = ["SAP.DE", "SIE.DE", "BMW.DE", "VOW3.DE", "ALV.DE", "MBG.DE"]
+            self.instruments = [
+                "SAP.DE",
+                "SIE.DE",
+                "BMW.DE",
+                "VOW3.DE",
+                "ALV.DE",
+                "MBG.DE",
+            ]
             if self.start_price == 100.0:
                 self.start_price = 140.0
         elif m in ("tse", "japan", "jp", "jpx"):
@@ -44,20 +68,30 @@ class SimulatorConfig:
             if self.start_price == 100.0:
                 self.start_price = 3200.0
         elif m in ("global", "world", "all"):
-            self.instruments = ["AAPL", "NVDA", "RELIANCE.NS", "TCS.NS", "SAP.DE", "BMW.DE", "7203.T", "6758.T"]
+            self.instruments = [
+                "AAPL",
+                "NVDA",
+                "RELIANCE.NS",
+                "TCS.NS",
+                "SAP.DE",
+                "BMW.DE",
+                "7203.T",
+                "6758.T",
+            ]
             if self.start_price == 100.0:
                 self.start_price = 250.0
 
-
     duplicate_rate: float = 0.002
-    missing_rate: float = 0.001       # sequence numbers skipped (never emitted)
-    out_of_order_rate: float = 0.0005  # events emitted with a timestamp behind the last one
-    malformed_rate: float = 0.0005     # payload missing/garbage fields
+    missing_rate: float = 0.001  # sequence numbers skipped (never emitted)
+    out_of_order_rate: float = (
+        0.0005  # events emitted with a timestamp behind the last one
+    )
+    malformed_rate: float = 0.0005  # payload missing/garbage fields
     price_anomaly_rate: float = 0.0005  # deliberate extreme price spike
     crossed_quote_rate: float = 0.0003  # bid > ask
 
     quote_ratio: float = 0.5  # fraction of events that are QUOTE vs TRADE
-    mean_latency_s: float = 0.0008     # simulated network delay, exchange->receive
+    mean_latency_s: float = 0.0008  # simulated network delay, exchange->receive
     latency_jitter_s: float = 0.0006
 
     # Ground-truth counters get attached to the config instance after a run
@@ -89,15 +123,21 @@ class FeedSimulator:
     def __init__(self, config: SimulatorConfig):
         self.config = config
         self.injected = {
-            "duplicate": 0, "missing": 0, "out_of_order": 0,
-            "malformed": 0, "price_anomaly": 0, "crossed_quote": 0,
+            "duplicate": 0,
+            "missing": 0,
+            "out_of_order": 0,
+            "malformed": 0,
+            "price_anomaly": 0,
+            "crossed_quote": 0,
         }
 
     def generate(self) -> Iterator[tuple]:
         cfg = self.config
         rng = random.Random(cfg.seed)
-        state = {s: {i: _InstrumentState(cfg.start_price) for i in cfg.instruments}
-                  for s in cfg.sources}
+        state = {
+            s: {i: _InstrumentState(cfg.start_price) for i in cfg.instruments}
+            for s in cfg.sources
+        }
         t = 1_700_000_000.0  # arbitrary fixed epoch start -> fully deterministic
         pending_duplicate: Optional[tuple] = None
         _id_counter = itertools.count(1)
@@ -152,7 +192,10 @@ class FeedSimulator:
                 payload["bid_size"] = rng.randint(1, 500) * 100
                 payload["ask_size"] = rng.randint(1, 500) * 100
                 if rng.random() < cfg.crossed_quote_rate:
-                    payload["bid"], payload["ask"] = payload["ask"] + 0.05, payload["bid"]
+                    payload["bid"], payload["ask"] = (
+                        payload["ask"] + 0.05,
+                        payload["bid"],
+                    )
                     label = "crossed_quote"
                     self.injected["crossed_quote"] += 1
             else:
@@ -160,7 +203,9 @@ class FeedSimulator:
                 payload["quantity"] = rng.randint(1, 100) * 10
                 if rng.random() < cfg.price_anomaly_rate:
                     direction = rng.choice([-1, 1])
-                    payload["price"] = round(price * (1 + direction * rng.uniform(0.15, 0.4)), 2)
+                    payload["price"] = round(
+                        price * (1 + direction * rng.uniform(0.15, 0.4)), 2
+                    )
                     label = "price_anomaly"
                     self.injected["price_anomaly"] += 1
 
@@ -178,15 +223,22 @@ class FeedSimulator:
 
             latency = max(0.0, rng.gauss(cfg.mean_latency_s, cfg.latency_jitter_s))
             receive_ts = exchange_ts + latency
-            raw = RawEvent(source=source, payload=payload,
-                            receive_timestamp=receive_ts, raw_id=f"sim-{next(_id_counter)}")
+            raw = RawEvent(
+                source=source,
+                payload=payload,
+                receive_timestamp=receive_ts,
+                raw_id=f"sim-{next(_id_counter)}",
+            )
             yield raw, label
             emitted += 1
 
             # -- Duplicate: queue an exact repeat to be emitted next.
             if rng.random() < cfg.duplicate_rate:
-                dup_raw = RawEvent(source=source, payload=dict(payload),
-                                     receive_timestamp=receive_ts + 0.0001,
-                                     raw_id=f"sim-{next(_id_counter)}")
+                dup_raw = RawEvent(
+                    source=source,
+                    payload=dict(payload),
+                    receive_timestamp=receive_ts + 0.0001,
+                    raw_id=f"sim-{next(_id_counter)}",
+                )
                 pending_duplicate = (dup_raw, "duplicate")
                 self.injected["duplicate"] += 1

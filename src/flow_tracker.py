@@ -8,27 +8,28 @@ Implements real-time market microstructure analytics:
 - Institutional Whale / Large Block Trade Classification
 - Broker & Market Participant (MPID) Accumulation vs. Distribution Profiling
 """
+
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 import math
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 
 class AggressorSide(str, Enum):
-    BUY = "BUY"          # Buyer initiated (lifted ask / traded above mid)
-    SELL = "SELL"        # Seller initiated (hit bid / traded below mid)
-    MID = "MID"          # Traded exactly at midpoint (tick rule unresolved)
+    BUY = "BUY"  # Buyer initiated (lifted ask / traded above mid)
+    SELL = "SELL"  # Seller initiated (hit bid / traded below mid)
+    MID = "MID"  # Traded exactly at midpoint (tick rule unresolved)
     UNKNOWN = "UNKNOWN"
 
 
 class FlowCategory(str, Enum):
-    RETAIL = "RETAIL"                      # < 100 shares (< $15,000 notional)
-    MEDIUM = "MEDIUM"                      # 100 - 999 shares
-    INSTITUTIONAL_BLOCK = "INST_BLOCK"     # 1,000 - 9,999 shares
-    WHALE = "WHALE"                        # >= 10,000 shares or >= $500,000 notional
+    RETAIL = "RETAIL"  # < 100 shares (< $15,000 notional)
+    MEDIUM = "MEDIUM"  # 100 - 999 shares
+    INSTITUTIONAL_BLOCK = "INST_BLOCK"  # 1,000 - 9,999 shares
+    WHALE = "WHALE"  # >= 10,000 shares or >= $500,000 notional
 
 
 @dataclass(slots=True)
@@ -43,9 +44,9 @@ class TradeFlowEvent:
     notional: float
     broker_mpid: str = ""
     venue: str = ""
-    bid_at_trade: Optional[float] = None
-    ask_at_trade: Optional[float] = None
-    midpoint_at_trade: Optional[float] = None
+    bid_at_trade: float | None = None
+    ask_at_trade: float | None = None
+    midpoint_at_trade: float | None = None
     effective_spread_cents: float = 0.0
     effective_spread_bps: float = 0.0
 
@@ -144,20 +145,25 @@ class LeeReadyClassifier:
     """
 
     def __init__(self):
-        self._prev_price: Optional[float] = None
+        self._prev_price: float | None = None
         self._prev_sign: AggressorSide = AggressorSide.UNKNOWN
 
     def classify(
         self,
         trade_price: float,
-        bid_price: Optional[float] = None,
-        ask_price: Optional[float] = None,
+        bid_price: float | None = None,
+        ask_price: float | None = None,
     ) -> AggressorSide:
         """
         Classifies trade as BUY or SELL using Quote Rule, falling back to Tick Rule.
         """
         # 1. Quote Rule: Compare trade price to prevailing NBBO midpoint
-        if bid_price is not None and ask_price is not None and bid_price > 0 and ask_price >= bid_price:
+        if (
+            bid_price is not None
+            and ask_price is not None
+            and bid_price > 0
+            and ask_price >= bid_price
+        ):
             midpoint = (bid_price + ask_price) / 2.0
             spread = ask_price - bid_price
             epsilon = max(1e-5, spread * 0.005)
@@ -180,7 +186,11 @@ class LeeReadyClassifier:
             elif trade_price < self._prev_price:
                 side = AggressorSide.SELL
             else:
-                side = self._prev_sign if self._prev_sign != AggressorSide.UNKNOWN else AggressorSide.BUY
+                side = (
+                    self._prev_sign
+                    if self._prev_sign != AggressorSide.UNKNOWN
+                    else AggressorSide.BUY
+                )
         else:
             side = AggressorSide.BUY
 
@@ -194,7 +204,7 @@ class OrderFlowTracker:
     Real-time Institutional Order Flow & Cumulative Volume Delta Tracker per symbol.
     """
 
-    def __init__(self, symbol: str = "AAPL", instrument_id: Optional[str] = None):
+    def __init__(self, symbol: str = "AAPL", instrument_id: str | None = None):
         target = instrument_id or symbol
         self.symbol = target.upper()
         self.classifier = LeeReadyClassifier()
@@ -214,9 +224,9 @@ class OrderFlowTracker:
         self.whale_trades: int = 0
 
         # High-water / history
-        self.recent_flows: List[TradeFlowEvent] = []
-        self.block_events: List[TradeFlowEvent] = []
-        self.participants: Dict[str, ParticipantStats] = {}
+        self.recent_flows: list[TradeFlowEvent] = []
+        self.block_events: list[TradeFlowEvent] = []
+        self.participants: dict[str, ParticipantStats] = {}
 
     @property
     def cumulative_volume_delta(self) -> float:
@@ -250,15 +260,15 @@ class OrderFlowTracker:
         size: float = 0.0,
         timestamp: float = 0.0,
         trade_id: str = "",
-        bid: Optional[float] = None,
-        ask: Optional[float] = None,
+        bid: float | None = None,
+        ask: float | None = None,
         broker: str = "",
         venue: str = "",
         participant_id: str = "",
-        trade_price: Optional[float] = None,
-        trade_size: Optional[float] = None,
-        bid_price: Optional[float] = None,
-        ask_price: Optional[float] = None,
+        trade_price: float | None = None,
+        trade_size: float | None = None,
+        bid_price: float | None = None,
+        ask_price: float | None = None,
     ) -> TradeFlowEvent:
         """Convenience alias for observe_trade supporting alternative keyword argument names."""
         p = trade_price if trade_price is not None else price
@@ -267,7 +277,16 @@ class OrderFlowTracker:
         a = ask_price if ask_price is not None else ask
         brk = participant_id or broker
         ts = timestamp or time.time()
-        return self.observe_trade(price=p, size=s, timestamp=ts, trade_id=trade_id, bid=b, ask=a, broker=brk, venue=venue)
+        return self.observe_trade(
+            price=p,
+            size=s,
+            timestamp=ts,
+            trade_id=trade_id,
+            bid=b,
+            ask=a,
+            broker=brk,
+            venue=venue,
+        )
 
     def observe_trade(
         self,
@@ -275,8 +294,8 @@ class OrderFlowTracker:
         size: float,
         timestamp: float,
         trade_id: str = "",
-        bid: Optional[float] = None,
-        ask: Optional[float] = None,
+        bid: float | None = None,
+        ask: float | None = None,
         broker: str = "",
         venue: str = "",
     ) -> TradeFlowEvent:
@@ -284,7 +303,12 @@ class OrderFlowTracker:
         Ingest a trade, determine aggressor direction, update CVD and participant attribution.
         """
         # Defensive check: safely handle NaN, Inf, negative, zero to prevent state corruption
-        if not math.isfinite(price) or price <= 0 or not math.isfinite(size) or size <= 0:
+        if (
+            not math.isfinite(price)
+            or price <= 0
+            or not math.isfinite(size)
+            or size <= 0
+        ):
             return TradeFlowEvent(
                 trade_id=trade_id or f"TRD-INVALID-{self.total_trades + 1}",
                 symbol=self.symbol,
@@ -332,7 +356,9 @@ class OrderFlowTracker:
         mpid_clean = broker.upper().strip() if broker else "UNKNOWN"
         if not mpid_clean or mpid_clean == "UNKNOWN":
             mpid_keys = list(KNOWN_MPIDS.keys())
-            mpid_clean = mpid_keys[(self.total_trades + int(price * 10)) % len(mpid_keys)]
+            mpid_clean = mpid_keys[
+                (self.total_trades + int(price * 10)) % len(mpid_keys)
+            ]
 
         if mpid_clean not in self.participants:
             name = KNOWN_MPIDS.get(mpid_clean, f"Broker {mpid_clean}")
@@ -435,8 +461,10 @@ class OrderFlowTracker:
             whale_trades=self.whale_trades,
         )
 
-    def get_top_participants(self, limit: int = 10) -> List[Dict[str, Any]]:
-        sorted_p = sorted(self.participants.values(), key=lambda p: abs(p.net_notional), reverse=True)
+    def get_top_participants(self, limit: int = 10) -> list[dict[str, Any]]:
+        sorted_p = sorted(
+            self.participants.values(), key=lambda p: abs(p.net_notional), reverse=True
+        )
         return [
             {
                 "mpid": p.mpid,
@@ -451,7 +479,7 @@ class OrderFlowTracker:
             for p in sorted_p[:limit]
         ]
 
-    def get_whale_blocks(self, limit: int = 10) -> List[TradeFlowEvent]:
+    def get_whale_blocks(self, limit: int = 10) -> list[TradeFlowEvent]:
         return list(reversed(self.block_events[-limit:]))
 
 

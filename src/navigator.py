@@ -8,18 +8,20 @@ with armed confirmation guards).
 
 Pure Python standard library + Rich rendering. Zero heavy frameworks.
 """
+
 from __future__ import annotations
 
 import os
 import sys
 import time
 import webbrowser
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any
 
 from rich.align import Align
-from rich.console import Console, RenderableType
+from rich.console import Console
 from rich.layout import Layout
 from rich.panel import Panel
 from rich.table import Table
@@ -28,6 +30,7 @@ from rich.text import Text
 # Cross-platform terminal raw input and UTF-8 console output support
 if sys.platform == "win32":
     import msvcrt
+
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     except Exception:
@@ -41,6 +44,7 @@ else:
 # ---------------------------------------------------------------------------
 # Key Constants & Non-Blocking Key Reader
 # ---------------------------------------------------------------------------
+
 
 class Key:
     UP = "UP"
@@ -76,12 +80,14 @@ class KeyReader:
     def exit_raw_mode(self):
         if not self._is_windows and self._old_termios is not None:
             try:
-                termios.tcsetattr(sys.stdin.fileno(), termios.TCSADRAIN, self._old_termios)
+                termios.tcsetattr(
+                    sys.stdin.fileno(), termios.TCSADRAIN, self._old_termios
+                )
             except Exception:
                 pass
             self._old_termios = None
 
-    def read_key(self, timeout_s: float = 0.05) -> Optional[str]:
+    def read_key(self, timeout_s: float = 0.05) -> str | None:
         """Poll and return key string if pressed within timeout, else None."""
         if self._is_windows:
             t0 = time.perf_counter()
@@ -91,15 +97,24 @@ class KeyReader:
                     if ch in (b"\x00", b"\xe0"):  # Extended scan code prefix
                         if msvcrt.kbhit():
                             code = msvcrt.getch()
-                            if code == b"H": return Key.UP
-                            if code == b"P": return Key.DOWN
-                            if code == b"K": return Key.LEFT
-                            if code == b"M": return Key.RIGHT
-                            if code == b"I": return Key.PAGE_UP
-                            if code == b"Q": return Key.PAGE_DOWN
-                            if code == b"G": return Key.HOME
-                            if code == b"O": return Key.END
-                            if code == b"S": return Key.DELETE
+                            if code == b"H":
+                                return Key.UP
+                            if code == b"P":
+                                return Key.DOWN
+                            if code == b"K":
+                                return Key.LEFT
+                            if code == b"M":
+                                return Key.RIGHT
+                            if code == b"I":
+                                return Key.PAGE_UP
+                            if code == b"Q":
+                                return Key.PAGE_DOWN
+                            if code == b"G":
+                                return Key.HOME
+                            if code == b"O":
+                                return Key.END
+                            if code == b"S":
+                                return Key.DELETE
                         return None
                     if ch in (b"\r", b"\n"):
                         return Key.ENTER
@@ -127,12 +142,18 @@ class KeyReader:
                     r2, _, _ = select.select([sys.stdin], [], [], 0.01)
                     if r2:
                         seq = sys.stdin.read(2)
-                        if seq == "[A": return Key.UP
-                        if seq == "[B": return Key.DOWN
-                        if seq == "[C": return Key.RIGHT
-                        if seq == "[D": return Key.LEFT
-                        if seq == "[H": return Key.HOME
-                        if seq == "[F": return Key.END
+                        if seq == "[A":
+                            return Key.UP
+                        if seq == "[B":
+                            return Key.DOWN
+                        if seq == "[C":
+                            return Key.RIGHT
+                        if seq == "[D":
+                            return Key.LEFT
+                        if seq == "[H":
+                            return Key.HOME
+                        if seq == "[F":
+                            return Key.END
                         if seq == "[5":
                             sys.stdin.read(1)  # trailing ~
                             return Key.PAGE_UP
@@ -158,40 +179,49 @@ class KeyReader:
 # Modal States & Confirmation Ticket
 # ---------------------------------------------------------------------------
 
+
 class NavigatorMode(str, Enum):
-    NORMAL = "NORMAL"      # Home-row 1-key navigation & commands
-    FILTER = "FILTER"      # Live in-place search (/ query)
-    MODAL = "MODAL"        # Armed two-step confirmation ticket
-    COMMAND = "COMMAND"    # CLI command input (: prefix)
+    NORMAL = "NORMAL"  # Home-row 1-key navigation & commands
+    FILTER = "FILTER"  # Live in-place search (/ query)
+    MODAL = "MODAL"  # Armed two-step confirmation ticket
+    COMMAND = "COMMAND"  # CLI command input (: prefix)
 
 
 @dataclass
 class ConfirmationTicket:
     """Armed execution ticket requiring explicit operator confirmation."""
+
     title: str
     message: str
-    details: Dict[str, str] = field(default_factory=dict)
+    details: dict[str, str] = field(default_factory=dict)
     action_type: str = "MUTATION"  # 'TRADE', 'KILL', 'RESET'
-    callback: Optional[Callable[[], None]] = None
+    callback: Callable[[], None] | None = None
 
 
 # ---------------------------------------------------------------------------
 # Interactive Data Grid Model
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class GridColumn:
     name: str
     key: str
     justify: str = "left"
-    style: Optional[str] = None
-    width: Optional[int] = None
+    style: str | None = None
+    width: int | None = None
 
 
 class DataGrid:
     """Interactive table model supporting row selection, viewport scrolling, live filtering, and sorting."""
 
-    def __init__(self, title: str, columns: List[GridColumn], rows: List[Dict[str, Any]], row_id_key: str = "id"):
+    def __init__(
+        self,
+        title: str,
+        columns: list[GridColumn],
+        rows: list[dict[str, Any]],
+        row_id_key: str = "id",
+    ):
         self.title = title
         self.columns = columns
         self.all_rows = rows
@@ -203,10 +233,10 @@ class DataGrid:
         self.page_size: int = 15
 
         self.filter_query: str = ""
-        self.sort_col: Optional[str] = None
+        self.sort_col: str | None = None
         self.sort_desc: bool = False
 
-    def update_rows(self, rows: List[Dict[str, Any]]):
+    def update_rows(self, rows: list[dict[str, Any]]):
         """Update data rows while preserving selection & filtering."""
         curr_id = self.get_selected_id()
         self.all_rows = rows
@@ -261,12 +291,12 @@ class DataGrid:
             self.sort_desc = False
         self._reapply_filter_and_sort()
 
-    def get_selected_row(self) -> Optional[Dict[str, Any]]:
+    def get_selected_row(self) -> dict[str, Any] | None:
         if 0 <= self.selected_idx < len(self.filtered_rows):
             return self.filtered_rows[self.selected_idx]
         return None
 
-    def get_selected_id(self) -> Optional[str]:
+    def get_selected_id(self) -> str | None:
         row = self.get_selected_row()
         return str(row.get(self.row_id_key, "")) if row else None
 
@@ -286,18 +316,20 @@ class DataGrid:
                     rows.append(r)
 
         if self.sort_col:
+
             def _sort_key(item):
                 val = item.get(self.sort_col, "")
                 if isinstance(val, (int, float)):
                     return (0, val)
                 return (1, str(val).lower())
+
             rows.sort(key=_sort_key, reverse=self.sort_desc)
 
         self.filtered_rows = rows
         if self.selected_idx >= len(self.filtered_rows):
             self.selected_idx = max(0, len(self.filtered_rows) - 1)
 
-    def _restore_selection(self, prev_id: Optional[str]):
+    def _restore_selection(self, prev_id: str | None):
         if not prev_id:
             return
         for i, r in enumerate(self.filtered_rows):
@@ -310,17 +342,18 @@ class DataGrid:
 # Navigator Desk Engine
 # ---------------------------------------------------------------------------
 
+
 class MDRAPNavigator:
     """Full-screen interactive keyboard desk managing tabs, grids, and safe execution."""
 
-    def __init__(self, console: Optional[Console] = None):
+    def __init__(self, console: Console | None = None):
         self.console = console or Console()
         self.reader = KeyReader()
         self.mode = NavigatorMode.NORMAL
 
-        self.tabs: List[Tuple[str, str, DataGrid]] = []
+        self.tabs: list[tuple[str, str, DataGrid]] = []
         self.active_tab_idx: int = 0
-        self.active_modal: Optional[ConfirmationTicket] = None
+        self.active_modal: ConfirmationTicket | None = None
 
         self.status_message: str = "Ready. Press [?] for cheat-sheet."
         self.status_style: str = "dim green"
@@ -344,7 +377,12 @@ class MDRAPNavigator:
             GridColumn("Circuit Band", "circuit", justify="right", width=12),
         ]
         markets_rows = self._load_markets_data()
-        grid_markets = DataGrid("Global Trading Desks & Venues (ISO 10383)", markets_cols, markets_rows, row_id_key="mic")
+        grid_markets = DataGrid(
+            "Global Trading Desks & Venues (ISO 10383)",
+            markets_cols,
+            markets_rows,
+            row_id_key="mic",
+        )
         self.tabs.append(("1", "Markets", grid_markets))
 
         # 2. Maritime Fleet
@@ -359,7 +397,12 @@ class MDRAPNavigator:
             GridColumn("Speed", "speed", justify="right", width=8),
         ]
         fleet_rows = self._load_fleet_data()
-        grid_fleet = DataGrid("Global Commercial Tanker & Cargo Fleet", fleet_cols, fleet_rows, row_id_key="name")
+        grid_fleet = DataGrid(
+            "Global Commercial Tanker & Cargo Fleet",
+            fleet_cols,
+            fleet_rows,
+            row_id_key="name",
+        )
         self.tabs.append(("2", "Fleet", grid_fleet))
 
         # 3. Market Depth & BBO
@@ -374,7 +417,12 @@ class MDRAPNavigator:
             GridColumn("24h Trend", "trend", justify="center", width=12),
         ]
         depth_rows = self._load_depth_data()
-        grid_depth = DataGrid("Consolidated Level-2 Depth & Best Bid/Offer", depth_cols, depth_rows, row_id_key="symbol")
+        grid_depth = DataGrid(
+            "Consolidated Level-2 Depth & Best Bid/Offer",
+            depth_cols,
+            depth_rows,
+            row_id_key="symbol",
+        )
         self.tabs.append(("3", "Depth", grid_depth))
 
         # 4. SEC EDGAR Alternative Data
@@ -387,7 +435,12 @@ class MDRAPNavigator:
             GridColumn("Action", "action", style="blue underline", width=14),
         ]
         edgar_rows = self._load_edgar_data()
-        grid_edgar = DataGrid("SEC EDGAR Real-Time Corporate Filings & Material Events", edgar_cols, edgar_rows, row_id_key="ticker")
+        grid_edgar = DataGrid(
+            "SEC EDGAR Real-Time Corporate Filings & Material Events",
+            edgar_cols,
+            edgar_rows,
+            row_id_key="ticker",
+        )
         self.tabs.append(("4", "EDGAR", grid_edgar))
 
         # 5. Portfolio Accounting
@@ -397,16 +450,24 @@ class MDRAPNavigator:
             GridColumn("Position", "qty", justify="right", width=10),
             GridColumn("Avg Cost", "avg_cost", justify="right", width=11),
             GridColumn("Market Price", "price", justify="right", width=11),
-            GridColumn("Unrealized P&L", "pnl", justify="right", style="bold", width=16),
+            GridColumn(
+                "Unrealized P&L", "pnl", justify="right", style="bold", width=16
+            ),
             GridColumn("Notional Value", "value", justify="right", width=14),
         ]
         port_rows = self._load_portfolio_data()
-        grid_port = DataGrid("Multi-Currency Institutional Portfolio Tracker", port_cols, port_rows, row_id_key="symbol")
+        grid_port = DataGrid(
+            "Multi-Currency Institutional Portfolio Tracker",
+            port_cols,
+            port_rows,
+            row_id_key="symbol",
+        )
         self.tabs.append(("5", "Portfolio", grid_port))
 
-    def _load_markets_data(self) -> List[Dict[str, Any]]:
+    def _load_markets_data(self) -> list[dict[str, Any]]:
         try:
             from venues import list_all_venues
+
             venues = list_all_venues()
             return [
                 {
@@ -416,76 +477,327 @@ class MDRAPNavigator:
                     "currency": v.currency,
                     "phase": v.current_session_phase.value,
                     "benchmark": v.benchmark_index,
-                    "circuit": f"±{v.price_collar_bps/100:.1f}%",
+                    "circuit": f"±{v.price_collar_bps / 100:.1f}%",
                 }
                 for v in venues
             ]
         except Exception:
             return [
-                {"mic": "XNYS", "name": "New York Stock Exchange", "flag": "🇺🇸", "currency": "USD", "phase": "CONTINUOUS", "benchmark": "S&P 500", "circuit": "±7.0%"},
-                {"mic": "XNAS", "name": "Nasdaq Stock Market", "flag": "🇺🇸", "currency": "USD", "phase": "CONTINUOUS", "benchmark": "Nasdaq 100", "circuit": "±7.0%"},
-                {"mic": "XNSE", "name": "National Stock Exchange", "flag": "🇮🇳", "currency": "INR", "phase": "CONTINUOUS", "benchmark": "NIFTY 50", "circuit": "±10.0%"},
-                {"mic": "XETR", "name": "Deutsche Börse Xetra", "flag": "🇩🇪", "currency": "EUR", "phase": "CONTINUOUS", "benchmark": "DAX 40", "circuit": "±5.0%"},
-                {"mic": "XTKS", "name": "Tokyo Stock Exchange", "flag": "🇯🇵", "currency": "JPY", "phase": "CONTINUOUS", "benchmark": "Nikkei 225", "circuit": "±8.0%"},
-                {"mic": "XLON", "name": "London Stock Exchange", "flag": "🇬🇧", "currency": "GBP", "phase": "CONTINUOUS", "benchmark": "FTSE 100", "circuit": "±5.0%"},
+                {
+                    "mic": "XNYS",
+                    "name": "New York Stock Exchange",
+                    "flag": "🇺🇸",
+                    "currency": "USD",
+                    "phase": "CONTINUOUS",
+                    "benchmark": "S&P 500",
+                    "circuit": "±7.0%",
+                },
+                {
+                    "mic": "XNAS",
+                    "name": "Nasdaq Stock Market",
+                    "flag": "🇺🇸",
+                    "currency": "USD",
+                    "phase": "CONTINUOUS",
+                    "benchmark": "Nasdaq 100",
+                    "circuit": "±7.0%",
+                },
+                {
+                    "mic": "XNSE",
+                    "name": "National Stock Exchange",
+                    "flag": "🇮🇳",
+                    "currency": "INR",
+                    "phase": "CONTINUOUS",
+                    "benchmark": "NIFTY 50",
+                    "circuit": "±10.0%",
+                },
+                {
+                    "mic": "XETR",
+                    "name": "Deutsche Börse Xetra",
+                    "flag": "🇩🇪",
+                    "currency": "EUR",
+                    "phase": "CONTINUOUS",
+                    "benchmark": "DAX 40",
+                    "circuit": "±5.0%",
+                },
+                {
+                    "mic": "XTKS",
+                    "name": "Tokyo Stock Exchange",
+                    "flag": "🇯🇵",
+                    "currency": "JPY",
+                    "phase": "CONTINUOUS",
+                    "benchmark": "Nikkei 225",
+                    "circuit": "±8.0%",
+                },
+                {
+                    "mic": "XLON",
+                    "name": "London Stock Exchange",
+                    "flag": "🇬🇧",
+                    "currency": "GBP",
+                    "phase": "CONTINUOUS",
+                    "benchmark": "FTSE 100",
+                    "circuit": "±5.0%",
+                },
             ]
 
-    def _load_fleet_data(self) -> List[Dict[str, Any]]:
+    def _load_fleet_data(self) -> list[dict[str, Any]]:
         try:
             from vessel import VesselTracker
+
             tracker = VesselTracker()
             vessels = tracker.list_vessels()
             out = []
             for v in vessels:
                 nearest, dist = tracker.nearest_chokepoint(v)
-                out.append({
-                    "name": v.name,
-                    "type": v.vessel_type.value,
-                    "flag": v.flag_country,
-                    "owner": v.fleet_operator,
-                    "payload": f"{v.commodity_type.value} ({v.commodity_quantity:,.0f})",
-                    "load_status": v.load_status.value,
-                    "chokepoint": f"{nearest.name} ({dist:.1f} nm)",
-                    "speed": f"{v.speed_knots:.1f} kts",
-                    "imo": v.imo_number,
-                })
+                out.append(
+                    {
+                        "name": v.name,
+                        "type": v.vessel_type.value,
+                        "flag": v.flag_country,
+                        "owner": v.fleet_operator,
+                        "payload": f"{v.commodity_type.value} ({v.commodity_quantity:,.0f})",
+                        "load_status": v.load_status.value,
+                        "chokepoint": f"{nearest.name} ({dist:.1f} nm)",
+                        "speed": f"{v.speed_knots:.1f} kts",
+                        "imo": v.imo_number,
+                    }
+                )
             return out
         except Exception:
             return [
-                {"name": "FRONT ALTAIR", "type": "CRUDE_OIL", "flag": "🇲🇭", "owner": "Frontline Ltd", "payload": "Arab Light (2.0M bbl)", "load_status": "LADEN", "chokepoint": "Strait of Hormuz (14 nm)", "speed": "13.8 kts", "imo": "9745123"},
-                {"name": "TI EUROPE", "type": "ULCC_TANKER", "flag": "🇧🇪", "owner": "Euronav NV", "payload": "Basrah Heavy (3.1M bbl)", "load_status": "LADEN", "chokepoint": "Strait of Malacca (12 nm)", "speed": "12.5 kts", "imo": "9235268"},
-                {"name": "DHT JAGUAR", "type": "CRUDE_OIL", "flag": "🇭🇰", "owner": "DHT Holdings", "payload": "Brent Blend (2.0M bbl)", "load_status": "LADEN", "chokepoint": "Dover Strait (9 nm)", "speed": "11.2 kts", "imo": "9722345"},
-                {"name": "Q-MAX AL DAFNA", "type": "LNG_CARRIER", "flag": "🇶🇦", "owner": "Nakilat", "payload": "Qatar LNG (266k cbm)", "load_status": "LADEN", "chokepoint": "Bab-el-Mandeb (18 nm)", "speed": "17.4 kts", "imo": "9443683"},
-                {"name": "EVER GIVEN", "type": "CONTAINER", "flag": "🇵🇦", "owner": "Shoei Kisen", "payload": "20,124 TEU General", "load_status": "LADEN", "chokepoint": "Suez Canal (5 nm)", "speed": "9.8 kts", "imo": "9811000"},
+                {
+                    "name": "FRONT ALTAIR",
+                    "type": "CRUDE_OIL",
+                    "flag": "🇲🇭",
+                    "owner": "Frontline Ltd",
+                    "payload": "Arab Light (2.0M bbl)",
+                    "load_status": "LADEN",
+                    "chokepoint": "Strait of Hormuz (14 nm)",
+                    "speed": "13.8 kts",
+                    "imo": "9745123",
+                },
+                {
+                    "name": "TI EUROPE",
+                    "type": "ULCC_TANKER",
+                    "flag": "🇧🇪",
+                    "owner": "Euronav NV",
+                    "payload": "Basrah Heavy (3.1M bbl)",
+                    "load_status": "LADEN",
+                    "chokepoint": "Strait of Malacca (12 nm)",
+                    "speed": "12.5 kts",
+                    "imo": "9235268",
+                },
+                {
+                    "name": "DHT JAGUAR",
+                    "type": "CRUDE_OIL",
+                    "flag": "🇭🇰",
+                    "owner": "DHT Holdings",
+                    "payload": "Brent Blend (2.0M bbl)",
+                    "load_status": "LADEN",
+                    "chokepoint": "Dover Strait (9 nm)",
+                    "speed": "11.2 kts",
+                    "imo": "9722345",
+                },
+                {
+                    "name": "Q-MAX AL DAFNA",
+                    "type": "LNG_CARRIER",
+                    "flag": "🇶🇦",
+                    "owner": "Nakilat",
+                    "payload": "Qatar LNG (266k cbm)",
+                    "load_status": "LADEN",
+                    "chokepoint": "Bab-el-Mandeb (18 nm)",
+                    "speed": "17.4 kts",
+                    "imo": "9443683",
+                },
+                {
+                    "name": "EVER GIVEN",
+                    "type": "CONTAINER",
+                    "flag": "🇵🇦",
+                    "owner": "Shoei Kisen",
+                    "payload": "20,124 TEU General",
+                    "load_status": "LADEN",
+                    "chokepoint": "Suez Canal (5 nm)",
+                    "speed": "9.8 kts",
+                    "imo": "9811000",
+                },
             ]
 
-    def _load_depth_data(self) -> List[Dict[str, Any]]:
+    def _load_depth_data(self) -> list[dict[str, Any]]:
         return [
-            {"symbol": "BTC/USD", "asset": "Crypto", "bid": "$68,420.50", "ask": "$68,421.00", "spread_bps": "0.07 bps", "imbalance": "+14.2% [BUY]", "last": "$68,420.80", "trend": " ▄▆█▇▆▅▆▇█", "url": "BTC"},
-            {"symbol": "TMPV.NS", "asset": "Tata Motors", "bid": "₹301.05", "ask": "₹301.15", "spread_bps": "0.33 bps", "imbalance": "+12.1% [BUY]", "last": "₹301.10", "trend": " ▂▃▄▅▆▇███", "url": "TMPV"},
-            {"symbol": "AAPL", "asset": "Equity", "bid": "$185.15", "ask": "$185.17", "spread_bps": "0.11 bps", "imbalance": "-4.8% [SELL]", "last": "$185.16", "trend": "▆▅▄▃▂  ▂▃▄", "url": "AAPL"},
-            {"symbol": "NVDA", "asset": "Equity", "bid": "$118.40", "ask": "$118.42", "spread_bps": "0.17 bps", "imbalance": "+22.6% [BUY]", "last": "$118.41", "trend": " ▂▃▅▆▇███▇", "url": "NVDA"},
-            {"symbol": "ETH/USD", "asset": "Crypto", "bid": "$3,520.10", "ask": "$3,520.40", "spread_bps": "0.09 bps", "imbalance": "+2.1% [BAL]", "last": "$3,520.25", "trend": "▄▄▅▅▆▆▆▇▇█", "url": "ETH"},
-            {"symbol": "MSFT", "asset": "Equity", "bid": "$442.20", "ask": "$442.25", "spread_bps": "0.11 bps", "imbalance": "-1.5% [BAL]", "last": "$442.22", "trend": "▆▆▅▅▄▄▅▅▆▆", "url": "MSFT"},
-            {"symbol": "RELIANCE.NS", "asset": "India (NSE)", "bid": "₹2,940.00", "ask": "₹2,940.50", "spread_bps": "0.17 bps", "imbalance": "+8.4% [BUY]", "last": "₹2,940.25", "trend": " ▂▃▄▅▆▇███", "url": "RELIANCE"},
+            {
+                "symbol": "BTC/USD",
+                "asset": "Crypto",
+                "bid": "$68,420.50",
+                "ask": "$68,421.00",
+                "spread_bps": "0.07 bps",
+                "imbalance": "+14.2% [BUY]",
+                "last": "$68,420.80",
+                "trend": " ▄▆█▇▆▅▆▇█",
+                "url": "BTC",
+            },
+            {
+                "symbol": "TMPV.NS",
+                "asset": "Tata Motors",
+                "bid": "₹301.05",
+                "ask": "₹301.15",
+                "spread_bps": "0.33 bps",
+                "imbalance": "+12.1% [BUY]",
+                "last": "₹301.10",
+                "trend": " ▂▃▄▅▆▇███",
+                "url": "TMPV",
+            },
+            {
+                "symbol": "AAPL",
+                "asset": "Equity",
+                "bid": "$185.15",
+                "ask": "$185.17",
+                "spread_bps": "0.11 bps",
+                "imbalance": "-4.8% [SELL]",
+                "last": "$185.16",
+                "trend": "▆▅▄▃▂  ▂▃▄",
+                "url": "AAPL",
+            },
+            {
+                "symbol": "NVDA",
+                "asset": "Equity",
+                "bid": "$118.40",
+                "ask": "$118.42",
+                "spread_bps": "0.17 bps",
+                "imbalance": "+22.6% [BUY]",
+                "last": "$118.41",
+                "trend": " ▂▃▅▆▇███▇",
+                "url": "NVDA",
+            },
+            {
+                "symbol": "ETH/USD",
+                "asset": "Crypto",
+                "bid": "$3,520.10",
+                "ask": "$3,520.40",
+                "spread_bps": "0.09 bps",
+                "imbalance": "+2.1% [BAL]",
+                "last": "$3,520.25",
+                "trend": "▄▄▅▅▆▆▆▇▇█",
+                "url": "ETH",
+            },
+            {
+                "symbol": "MSFT",
+                "asset": "Equity",
+                "bid": "$442.20",
+                "ask": "$442.25",
+                "spread_bps": "0.11 bps",
+                "imbalance": "-1.5% [BAL]",
+                "last": "$442.22",
+                "trend": "▆▆▅▅▄▄▅▅▆▆",
+                "url": "MSFT",
+            },
+            {
+                "symbol": "RELIANCE.NS",
+                "asset": "India (NSE)",
+                "bid": "₹2,940.00",
+                "ask": "₹2,940.50",
+                "spread_bps": "0.17 bps",
+                "imbalance": "+8.4% [BUY]",
+                "last": "₹2,940.25",
+                "trend": " ▂▃▄▅▆▇███",
+                "url": "RELIANCE",
+            },
         ]
 
-    def _load_edgar_data(self) -> List[Dict[str, Any]]:
+    def _load_edgar_data(self) -> list[dict[str, Any]]:
         return [
-            {"time": "Today 10:45", "ticker": "NVDA", "form": "8-K", "description": "Item 5.02: Election of Director & Board Changes", "urgency": "[bold red]CRITICAL[/bold red]", "action": "[Open in Browser]", "url": "https://www.sec.gov/edgar/browse/?CIK=0001045810"},
-            {"time": "Today 09:30", "ticker": "AAPL", "form": "Form 4", "description": "Insider: Tim Cook disposed 50,000 shares ($9.2M)", "urgency": "[bold yellow]HIGH[/bold yellow]", "action": "[Open in Browser]", "url": "https://www.sec.gov/edgar/browse/?CIK=0000320193"},
-            {"time": "Yesterday", "ticker": "MSFT", "form": "8-K", "description": "Item 2.02: Results of Operations & Financials", "urgency": "[bold yellow]HIGH[/bold yellow]", "action": "[Open in Browser]", "url": "https://www.sec.gov/edgar/browse/?CIK=0000789019"},
-            {"time": "Sep 12", "ticker": "TSLA", "form": "10-Q", "description": "Quarterly Report pursuant to Section 13/15(d)", "urgency": "[dim]INFO[/dim]", "action": "[Open in Browser]", "url": "https://www.sec.gov/edgar/browse/?CIK=0001318605"},
-            {"time": "Sep 10", "ticker": "GOOGL", "form": "Form 4", "description": "Director Grant: 12,500 Class C Restricted Units", "urgency": "[dim]INFO[/dim]", "action": "[Open in Browser]", "url": "https://www.sec.gov/edgar/browse/?CIK=0001652044"},
+            {
+                "time": "Today 10:45",
+                "ticker": "NVDA",
+                "form": "8-K",
+                "description": "Item 5.02: Election of Director & Board Changes",
+                "urgency": "[bold red]CRITICAL[/bold red]",
+                "action": "[Open in Browser]",
+                "url": "https://www.sec.gov/edgar/browse/?CIK=0001045810",
+            },
+            {
+                "time": "Today 09:30",
+                "ticker": "AAPL",
+                "form": "Form 4",
+                "description": "Insider: Tim Cook disposed 50,000 shares ($9.2M)",
+                "urgency": "[bold yellow]HIGH[/bold yellow]",
+                "action": "[Open in Browser]",
+                "url": "https://www.sec.gov/edgar/browse/?CIK=0000320193",
+            },
+            {
+                "time": "Yesterday",
+                "ticker": "MSFT",
+                "form": "8-K",
+                "description": "Item 2.02: Results of Operations & Financials",
+                "urgency": "[bold yellow]HIGH[/bold yellow]",
+                "action": "[Open in Browser]",
+                "url": "https://www.sec.gov/edgar/browse/?CIK=0000789019",
+            },
+            {
+                "time": "Sep 12",
+                "ticker": "TSLA",
+                "form": "10-Q",
+                "description": "Quarterly Report pursuant to Section 13/15(d)",
+                "urgency": "[dim]INFO[/dim]",
+                "action": "[Open in Browser]",
+                "url": "https://www.sec.gov/edgar/browse/?CIK=0001318605",
+            },
+            {
+                "time": "Sep 10",
+                "ticker": "GOOGL",
+                "form": "Form 4",
+                "description": "Director Grant: 12,500 Class C Restricted Units",
+                "urgency": "[dim]INFO[/dim]",
+                "action": "[Open in Browser]",
+                "url": "https://www.sec.gov/edgar/browse/?CIK=0001652044",
+            },
         ]
 
-    def _load_portfolio_data(self) -> List[Dict[str, Any]]:
+    def _load_portfolio_data(self) -> list[dict[str, Any]]:
         return [
-            {"symbol": "TMPV.NS", "currency": "INR", "qty": "1,000", "avg_cost": "₹295.00", "price": "₹301.10", "pnl": "+₹6,100.00 (+2.1%)", "value": "₹301,100.00"},
-            {"symbol": "NVDA", "currency": "USD", "qty": "500", "avg_cost": "$110.20", "price": "$118.41", "pnl": "+$4,105.00 (+7.4%)", "value": "$59,205.00"},
-            {"symbol": "AAPL", "currency": "USD", "qty": "300", "avg_cost": "$180.00", "price": "$185.16", "pnl": "+$1,548.00 (+2.9%)", "value": "$55,548.00"},
-            {"symbol": "BTC/USD", "currency": "USD", "qty": "1.50", "avg_cost": "$64,200.00", "price": "$68,420.80", "pnl": "+$6,331.20 (+6.6%)", "value": "$102,631.20"},
-            {"symbol": "MSFT", "currency": "USD", "qty": "100", "avg_cost": "$445.00", "price": "$442.22", "pnl": "-$278.00 (-0.6%)", "value": "$44,222.00"},
+            {
+                "symbol": "TMPV.NS",
+                "currency": "INR",
+                "qty": "1,000",
+                "avg_cost": "₹295.00",
+                "price": "₹301.10",
+                "pnl": "+₹6,100.00 (+2.1%)",
+                "value": "₹301,100.00",
+            },
+            {
+                "symbol": "NVDA",
+                "currency": "USD",
+                "qty": "500",
+                "avg_cost": "$110.20",
+                "price": "$118.41",
+                "pnl": "+$4,105.00 (+7.4%)",
+                "value": "$59,205.00",
+            },
+            {
+                "symbol": "AAPL",
+                "currency": "USD",
+                "qty": "300",
+                "avg_cost": "$180.00",
+                "price": "$185.16",
+                "pnl": "+$1,548.00 (+2.9%)",
+                "value": "$55,548.00",
+            },
+            {
+                "symbol": "BTC/USD",
+                "currency": "USD",
+                "qty": "1.50",
+                "avg_cost": "$64,200.00",
+                "price": "$68,420.80",
+                "pnl": "+$6,331.20 (+6.6%)",
+                "value": "$102,631.20",
+            },
+            {
+                "symbol": "MSFT",
+                "currency": "USD",
+                "qty": "100",
+                "avg_cost": "$445.00",
+                "price": "$442.22",
+                "pnl": "-$278.00 (-0.6%)",
+                "value": "$44,222.00",
+            },
         ]
 
     def set_status(self, msg: str, style: str = "dim green", duration_s: float = 3.0):
@@ -526,12 +838,16 @@ class MDRAPNavigator:
         if self.mode == NavigatorMode.NORMAL:
             header_text.append("NORMAL", style="bold green")
         elif self.mode == NavigatorMode.FILTER:
-            header_text.append(f"FILTER ('{self.active_grid.filter_query}')", style="bold yellow")
+            header_text.append(
+                f"FILTER ('{self.active_grid.filter_query}')", style="bold yellow"
+            )
         elif self.mode == NavigatorMode.MODAL:
             header_text.append("CONFIRMATION REQUIRED", style="bold red blink")
         else:
             header_text.append("COMMAND", style="bold cyan")
-        layout["header"].update(Panel(Align.center(header_text), style="bold #818cf8", padding=(0, 1)))
+        layout["header"].update(
+            Panel(Align.center(header_text), style="bold #818cf8", padding=(0, 1))
+        )
 
         # Tabs
         tab_text = Text()
@@ -565,7 +881,9 @@ class MDRAPNavigator:
                 overflow="ellipsis",
             )
 
-        visible_rows = grid.filtered_rows[grid.scroll_offset : grid.scroll_offset + grid.page_size]
+        visible_rows = grid.filtered_rows[
+            grid.scroll_offset : grid.scroll_offset + grid.page_size
+        ]
         for row_idx, r in enumerate(visible_rows):
             actual_idx = grid.scroll_offset + row_idx
             is_selected = actual_idx == grid.selected_idx
@@ -579,33 +897,62 @@ class MDRAPNavigator:
             table.add_row(*row_cells, style=row_style)
 
         if not visible_rows:
-            table.add_row(" ", *["[dim italic]No matching records found[/dim italic]" for _ in grid.columns])
+            table.add_row(
+                " ",
+                *[
+                    "[dim italic]No matching records found[/dim italic]"
+                    for _ in grid.columns
+                ],
+            )
 
         # Overlay confirmation modal if armed
         if self.mode == NavigatorMode.MODAL and self.active_modal:
             modal_content = Text()
-            modal_content.append(f"\n⚠️  {self.active_modal.message}\n\n", style="bold yellow")
+            modal_content.append(
+                f"\n⚠️  {self.active_modal.message}\n\n", style="bold yellow"
+            )
             for k, v in self.active_modal.details.items():
                 modal_content.append(f"  {k}: ", style="bold cyan")
                 modal_content.append(f"{v}\n", style="white")
-            modal_content.append("\n  [Enter] Confirm & Execute   │   [Esc] Cancel\n", style="bold green on black")
-            modal_panel = Panel(Align.center(modal_content), title=f"[bold red] {self.active_modal.title} [/bold red]", border_style="bold red", padding=(1, 2))
+            modal_content.append(
+                "\n  [Enter] Confirm & Execute   │   [Esc] Cancel\n",
+                style="bold green on black",
+            )
+            modal_panel = Panel(
+                Align.center(modal_content),
+                title=f"[bold red] {self.active_modal.title} [/bold red]",
+                border_style="bold red",
+                padding=(1, 2),
+            )
             layout["body"].update(modal_panel)
         else:
             layout["body"].update(table)
 
         # Footer & Status
         now = time.perf_counter()
-        status_disp = self.status_message if now < self.status_expiry else "Normal Mode. Press [?] for cheat-sheet."
+        status_disp = (
+            self.status_message
+            if now < self.status_expiry
+            else "Normal Mode. Press [?] for cheat-sheet."
+        )
         footer_text = Text()
         footer_text.append(f"{status_disp}\n", style=self.status_style)
 
         if self.mode == NavigatorMode.NORMAL:
-            footer_text.append("[j/k] Row  [h/l/1-5] Tabs  [Enter] Drilldown  [c] Chart  [d] Depth  [o] URL  [/] Filter  [x] Export  [q] Quit", style="dim")
+            footer_text.append(
+                "[j/k] Row  [h/l/1-5] Tabs  [Enter] Drilldown  [c] Chart  [d] Depth  [o] URL  [/] Filter  [x] Export  [q] Quit",
+                style="dim",
+            )
         elif self.mode == NavigatorMode.FILTER:
-            footer_text.append(f"SEARCH: {self.input_buffer}█  (Press [Enter] to lock, [Esc] to clear)", style="bold yellow")
+            footer_text.append(
+                f"SEARCH: {self.input_buffer}█  (Press [Enter] to lock, [Esc] to clear)",
+                style="bold yellow",
+            )
         elif self.mode == NavigatorMode.MODAL:
-            footer_text.append("ARMED MODAL TICKET ACTIVE: PRESS [ENTER] TO EXECUTE OR [ESC] TO DISARM", style="bold red")
+            footer_text.append(
+                "ARMED MODAL TICKET ACTIVE: PRESS [ENTER] TO EXECUTE OR [ESC] TO DISARM",
+                style="bold red",
+            )
 
         layout["footer"].update(Panel(footer_text, style="dim", padding=(0, 1)))
 
@@ -644,7 +991,11 @@ class MDRAPNavigator:
                     pass
 
                 # Check for status message expiration
-                if not needs_render and self.status_expiry > 0 and time.perf_counter() >= self.status_expiry:
+                if (
+                    not needs_render
+                    and self.status_expiry > 0
+                    and time.perf_counter() >= self.status_expiry
+                ):
                     needs_render = True
                     self.status_expiry = 0.0
 
@@ -679,7 +1030,7 @@ class MDRAPNavigator:
             self.active_grid.move_selection(-1)
         elif key in (Key.PAGE_DOWN, "\x04"):  # Ctrl-D
             self.active_grid.page_down()
-        elif key in (Key.PAGE_UP, "\x15"):    # Ctrl-U
+        elif key in (Key.PAGE_UP, "\x15"):  # Ctrl-U
             self.active_grid.page_up()
         elif key in ("g", Key.HOME):
             self.active_grid.jump_top()
@@ -700,7 +1051,9 @@ class MDRAPNavigator:
         elif key == "/":
             self.mode = NavigatorMode.FILTER
             self.input_buffer = self.active_grid.filter_query
-            self.set_status("Filter mode active. Type query, press [Enter] to lock.", "bold yellow")
+            self.set_status(
+                "Filter mode active. Type query, press [Enter] to lock.", "bold yellow"
+            )
 
         # 4. Actions on selected row
         elif key == Key.ENTER:
@@ -725,7 +1078,10 @@ class MDRAPNavigator:
     def _handle_filter_key(self, key: str):
         if key == Key.ENTER:
             self.mode = NavigatorMode.NORMAL
-            self.set_status(f"Filter locked: '{self.active_grid.filter_query}' ({len(self.active_grid.filtered_rows)} records)", "bold green")
+            self.set_status(
+                f"Filter locked: '{self.active_grid.filter_query}' ({len(self.active_grid.filtered_rows)} records)",
+                "bold green",
+            )
         elif key == Key.ESC:
             self.active_grid.clear_filter()
             self.mode = NavigatorMode.NORMAL
@@ -746,11 +1102,15 @@ class MDRAPNavigator:
                     self.active_modal.callback()
                 except Exception as exc:
                     self.set_status(f"Action error: {exc}", "bold red", duration_s=4.0)
-            self.set_status("Action executed successfully.", "bold green", duration_s=3.0)
+            self.set_status(
+                "Action executed successfully.", "bold green", duration_s=3.0
+            )
             self.mode = NavigatorMode.NORMAL
             self.active_modal = None
         elif key in (Key.ESC, "n", "N", "q"):
-            self.set_status("Action cancelled by operator.", "dim yellow", duration_s=2.5)
+            self.set_status(
+                "Action cancelled by operator.", "dim yellow", duration_s=2.5
+            )
             self.mode = NavigatorMode.NORMAL
             self.active_modal = None
 
@@ -809,13 +1169,18 @@ class MDRAPNavigator:
 
     def _execute_export(self):
         tab_name = self.tabs[self.active_tab_idx][1]
-        self.set_status(f"Exporting active '{tab_name}' grid to Excel / CSV package...", "bold green")
+        self.set_status(
+            f"Exporting active '{tab_name}' grid to Excel / CSV package...",
+            "bold green",
+        )
 
     def _prompt_order_ticket(self, side: str = "BUY"):
         """Armed confirmation ticket preventing accidental trade execution."""
         row = self.active_grid.get_selected_row()
         sym = (row.get("symbol") if row else None) or "AAPL"
-        price_str = (row.get("price") or row.get("last") or "$185.00") if row else "$185.00"
+        price_str = (
+            (row.get("price") or row.get("last") or "$185.00") if row else "$185.00"
+        )
 
         def _do_submit():
             # Actual trade execution callback
@@ -838,12 +1203,17 @@ class MDRAPNavigator:
         self.mode = NavigatorMode.MODAL
 
     def _show_cheatsheet(self):
-        self.set_status("Vim motions: j/k (row), h/l (tabs), / (filter), Enter (drill), b/s (ticket), q (quit)", "bold white", duration_s=5.0)
+        self.set_status(
+            "Vim motions: j/k (row), h/l (tabs), / (filter), Enter (drill), b/s (ticket), q (quit)",
+            "bold white",
+            duration_s=5.0,
+        )
 
 
 # ---------------------------------------------------------------------------
 # CLI Entry Point Helper
 # ---------------------------------------------------------------------------
+
 
 def launch_navigator():
     """Entry point to launch the MDRAP interactive navigator."""

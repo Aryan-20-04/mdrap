@@ -5,11 +5,11 @@ Provides pre-compiled struct framing for high-throughput, low-latency market dat
 streaming over network TCP sockets. Reduces wire footprint by ~75% and eliminates
 JSON float and string parsing overhead.
 """
+
 from __future__ import annotations
 
 import struct
-import time
-from typing import Any, Dict, Generator, Iterator, List, Optional, Tuple
+from typing import List, Optional
 
 MAGIC = b"MD"
 VERSION = 1
@@ -245,7 +245,7 @@ class BinaryStreamParser:
                 # Wait for more bytes
                 break
 
-            payload_bytes = bytes(self._buf[HEADER_STRUCT.size:total_frame_len])
+            payload_bytes = bytes(self._buf[HEADER_STRUCT.size : total_frame_len])
             del self._buf[:total_frame_len]
 
             if msg_type == MSG_TYPE_TICK:

@@ -7,6 +7,7 @@ watchdog timers, storage parameters, and security policies from config.yaml.
 Adheres to Design Principle 1 & 8: Correctness, explicit tunability,
 and zero mandatory runtime dependencies (graceful fallback if PyYAML absent).
 """
+
 from __future__ import annotations
 
 import os
@@ -16,6 +17,7 @@ from typing import Any, Dict, Optional
 
 try:
     import yaml
+
     _HAS_YAML = True
 except ImportError:
     _HAS_YAML = False
@@ -35,7 +37,20 @@ class QualityConfig:
         # Detect asset class
         if any(c in inst for c in ("BTC", "ETH", "SOL", "DOGE", "XRP", "ADA", "USDT")):
             asset_type = "crypto"
-        elif any(c in inst for c in ("AAPL", "MSFT", "NVDA", "TSLA", "AMZN", "GOOGL", "META", "SPY", "QQQ")):
+        elif any(
+            c in inst
+            for c in (
+                "AAPL",
+                "MSFT",
+                "NVDA",
+                "TSLA",
+                "AMZN",
+                "GOOGL",
+                "META",
+                "SPY",
+                "QQQ",
+            )
+        ):
             asset_type = "equities"
         else:
             asset_type = "default"
@@ -45,10 +60,16 @@ class QualityConfig:
             return self
 
         return QualityConfig(
-            staleness_threshold_s=overrides.get("staleness_threshold_s", self.staleness_threshold_s),
-            price_anomaly_stddev=overrides.get("price_anomaly_stddev", self.price_anomaly_stddev),
+            staleness_threshold_s=overrides.get(
+                "staleness_threshold_s", self.staleness_threshold_s
+            ),
+            price_anomaly_stddev=overrides.get(
+                "price_anomaly_stddev", self.price_anomaly_stddev
+            ),
             price_window=int(overrides.get("price_window", self.price_window)),
-            dedup_cache_size=int(overrides.get("dedup_cache_size", self.dedup_cache_size)),
+            dedup_cache_size=int(
+                overrides.get("dedup_cache_size", self.dedup_cache_size)
+            ),
             asset_classes=self.asset_classes,
         )
 
@@ -174,10 +195,12 @@ def load_config(config_path: Optional[str] = None) -> PlatformConfig:
     candidates = []
     if config_path:
         candidates.append(config_path)
-    candidates.extend([
-        "config.yaml",
-        os.path.join(os.path.dirname(__file__), "..", "config.yaml"),
-    ])
+    candidates.extend(
+        [
+            "config.yaml",
+            os.path.join(os.path.dirname(__file__), "..", "config.yaml"),
+        ]
+    )
 
     raw_dict: dict = {}
     for p in candidates:
@@ -191,7 +214,10 @@ def load_config(config_path: Optional[str] = None) -> PlatformConfig:
                     raw_dict = _simple_yaml_parse(content)
                 break
             except Exception as exc:
-                print(f"[mdrap WARNING] Failed to parse config file '{p}': {exc}. Using defaults.", file=sys.stderr)
+                print(
+                    f"[mdrap WARNING] Failed to parse config file '{p}': {exc}. Using defaults.",
+                    file=sys.stderr,
+                )
                 continue
 
     # 1. Quality

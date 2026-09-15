@@ -1,31 +1,36 @@
 # terminal rendering abstraction with stdlib fallback
 import re
-import sys
-from typing import Any, List, Optional
+from typing import Any, Optional
 
-from rich.console import Console, Group
+from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
 from io import StringIO
 
-_TAG_RE = re.compile(r'\[/?[a-zA-Z0-9_# =,-]+\]')
+_TAG_RE = re.compile(r"\[/?[a-zA-Z0-9_# =,-]+\]")
+
 
 def strip_tags(text: Any) -> str:
-    return _TAG_RE.sub('', str(text))
+    return _TAG_RE.sub("", str(text))
+
 
 class _StdlibTable(Table):
     """Compatibility wrapper rendering rich Table to plain text."""
+
     def __str__(self) -> str:
         s = StringIO()
         Console(file=s, force_terminal=False, color_system=None).print(self)
         return s.getvalue()
 
+
 class _StdlibPanel(Panel):
     """Compatibility wrapper rendering rich Panel to plain text."""
+
     def __str__(self) -> str:
         s = StringIO()
         Console(file=s, force_terminal=False, color_system=None).print(self)
         return s.getvalue()
+
 
 _StdlibConsole = Console
 
@@ -61,13 +66,16 @@ def _get_term_width(console: Any, default: int = 70) -> int:
         if hasattr(console, "width") and console.width:
             return max(40, min(80, console.width - 2))
         import shutil
+
         cols = shutil.get_terminal_size((70, 20)).columns
         return max(40, min(80, cols - 2))
     except Exception:
         return default
 
 
-def render_gemini_box_top(console: Any, db_path: str = "data/mdrap.db", width: Optional[int] = None) -> None:
+def render_gemini_box_top(
+    console: Any, db_path: str = "data/mdrap.db", width: Optional[int] = None
+) -> None:
     """Render Gemini-CLI status header and top border of the input container."""
     if width is None:
         width = _get_term_width(console)
@@ -77,18 +85,22 @@ def render_gemini_box_top(console: Any, db_path: str = "data/mdrap.db", width: O
         console.print(f"[dim #818cf8]{left_header} | {right_header}[/dim #818cf8]")
     else:
         space = max(2, width - len(left_header) - len(right_header))
-        console.print(f"[dim #818cf8]{left_header}{' ' * space}{right_header}[/dim #818cf8]")
+        console.print(
+            f"[dim #818cf8]{left_header}{' ' * space}{right_header}[/dim #818cf8]"
+        )
     console.print(f"[bold #818cf8]┌{'─' * max(10, width - 2)}┐[/bold #818cf8]")
 
 
-def render_gemini_box_bottom(console: Any, db_path: str = "data/mdrap.db", width: Optional[int] = None) -> None:
+def render_gemini_box_bottom(
+    console: Any, db_path: str = "data/mdrap.db", width: Optional[int] = None
+) -> None:
     """Render bottom border and footer status bar with auto-responsive width."""
     if width is None:
         width = _get_term_width(console)
     console.print(f"[bold #818cf8]└{'─' * max(10, width - 2)}┘[/bold #818cf8]")
     left_footer = f"~/{db_path}"
     right_footer = "mdrap-v3-fastpath"
-    
+
     if width < 62:
         console.print(f"[dim #64748b]{left_footer}  {right_footer}[/dim #64748b]\n")
     else:
@@ -97,6 +109,6 @@ def render_gemini_box_bottom(console: Any, db_path: str = "data/mdrap.db", width
         rem = max(2, width - total_text)
         s1 = rem // 2
         s2 = rem - s1
-        console.print(f"[dim #64748b]{left_footer}{' ' * s1}{center_footer}{' ' * s2}{right_footer}[/dim #64748b]\n")
-
-
+        console.print(
+            f"[dim #64748b]{left_footer}{' ' * s1}{center_footer}{' ' * s2}{right_footer}[/dim #64748b]\n"
+        )

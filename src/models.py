@@ -1,31 +1,55 @@
-"""
-Canonical market event model and shared enums.
+"""Canonical market event model and shared domain enumerations.
 
-This is the single normalized representation every event is converted
-into before quality checks, reconciliation, and storage. See
-docs/data-model.md for field-by-field rationale.
+This module defines the single normalized representation that every incoming market
+data feed is converted into before undergoing data-quality checks, cross-feed
+reconciliation, and persistent storage.
+
+Architectural Principles (from MDRAP System Specification §26):
+  1. Correctness before optimization: Schema normalization guarantees strict types.
+  2. Never silently discard bad data: Events with missing or invalid fields are
+     retained, tagged with Reason codes, and routed to quarantine.
+  3. Memory layout efficiency: Dataclasses utilize `__slots__ = True` to eliminate
+     per-instance `__dict__` overhead, drastically reducing memory footprint and
+     improving cache locality in high-throughput hot paths.
+  4. Lineage tracking: Every CanonicalEvent retains its originating `raw_id` and
+     `source` identifier, ensuring complete provenance back to raw vendor ticks.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional
 
 
 class EventType(str, Enum):
+    """Enumeration of market data event categories."""
+
     TRADE = "TRADE"
     QUOTE = "QUOTE"
 
 
 class QualityStatus(str, Enum):
+    """Data quality classification status.
+
+    Status Priority Hierarchy:
+        INVALID (2) > SUSPICIOUS (1) > VALID (0)
+
+    In accordance with MDRAP design invariants, an event's quality status can
+    never be downgraded (e.g. an INVALID event can never transition back to
+    SUSPICIOUS or VALID).
+    """
+
     VALID = "VALID"
     SUSPICIOUS = "SUSPICIOUS"
     INVALID = "INVALID"
 
 
-# Reason codes attached to SUSPICIOUS/INVALID events. Kept as short,
-# stable strings so they can be aggregated in metrics and lineage.
+# Reason codes attached to SUSPICIOUS or INVALID events. Kept as short,
+# stable uppercase strings so they can be efficiently indexed, queried,
+# and aggregated in metrics and lineage records.
 class Reason(str, Enum):
+    """Deterministic failure and anomaly reason codes."""
+
     SCHEMA_VIOLATION = "SCHEMA_VIOLATION"
     DUPLICATE = "DUPLICATE"
     SEQUENCE_GAP = "SEQUENCE_GAP"
@@ -35,13 +59,18 @@ class Reason(str, Enum):
     CROSSED_QUOTE = "CROSSED_QUOTE"
     CROSS_FEED_DISAGREEMENT = "CROSS_FEED_DISAGREEMENT"
     MALFORMED = "MALFORMED"
-    # Multi-market microstructure reasons
-    CIRCUIT_FILTER_BREACH = "CIRCUIT_FILTER_BREACH"          # NSE / BSE daily price band limit
-    VOLATILITY_INTERRUPTION = "VOLATILITY_INTERRUPTION"      # Deutsche Börse Xetra price corridor halt
-    SPECIAL_QUOTE_INDICATION = "SPECIAL_QUOTE_INDICATION"    # TSE Tokuhai sequential trade quote indication
+
+    # Multi-market exchange microstructure anomaly reasons:
+    CIRCUIT_FILTER_BREACH = (
+        "CIRCUIT_FILTER_BREACH"  # NSE / BSE daily price band limit breach (±10%)
+    )
+    VOLATILITY_INTERRUPTION = "VOLATILITY_INTERRUPTION"  # Deutsche Börse Xetra dynamic price corridor halt (±5%)
+    SPECIAL_QUOTE_INDICATION = "SPECIAL_QUOTE_INDICATION"  # Tokyo Stock Exchange (TSE) Tokuhai quote indication (±8%)
 
 
 class AssetClass(str, Enum):
+    """Supported asset classes across global venues."""
+
     EQUITY = "EQUITY"
     CRYPTO = "CRYPTO"
     FUTURES = "FUTURES"
@@ -52,6 +81,8 @@ class AssetClass(str, Enum):
 
 @dataclass(slots=True)
 class FuturesContract:
+    """Specification metadata for exchange-traded futures derivatives."""
+
     symbol: str
     underlying: str
     expiry_date: str
@@ -62,6 +93,8 @@ class FuturesContract:
 
 @dataclass(slots=True)
 class OptionDerivative:
+    """Specification metadata for listed equity/index options."""
+
     symbol: str
     underlying: str
     strike: float
@@ -72,6 +105,8 @@ class OptionDerivative:
 
 @dataclass(slots=True)
 class BondSecurity:
+    """Specification metadata for fixed income securities and corporate bonds."""
+
     cusip: str
     issuer: str
     coupon_rate: float
@@ -82,9 +117,12 @@ class BondSecurity:
 
 @dataclass(slots=True)
 class RawEvent:
-    """What the feed simulator / gateway hands to the pipeline before
-    normalization. Deliberately loose typing -- this is meant to model
-    "whatever a vendor sent us", including malformed payloads."""
+    """Raw ingestion payload handed to the pipeline before normalization.
+
+    Deliberately loose typing: this captures 'whatever the vendor feed delivered',
+    including corrupted bytes, missing keys, or type-coerced JSON strings.
+    """
+
     source: str
     payload: dict
     receive_timestamp: float = 0.0
@@ -93,6 +131,19 @@ class RawEvent:
 
 @dataclass(slots=True)
 class CanonicalEvent:
+    """Standardized, normalized, validated market data record.
+
+    Memory Layout:
+        `slots=True` eliminates the instance dictionary overhead, allocating
+        fixed-size descriptor offsets for each field. This is vital when buffering
+        millions of events per second in memory.
+
+    Timestamp Conventions:
+        - exchange_timestamp: Source venue clock time (seconds since Unix epoch).
+        - receive_timestamp: Gateway wall-clock ingress time (seconds since Unix epoch).
+        - processing_timestamp: Quality engine completion time (seconds since Unix epoch).
+    """
+
     event_id: str
     instrument_id: str
     event_type: EventType
@@ -100,46 +151,68 @@ class CanonicalEvent:
     receive_timestamp: float
     processing_timestamp: float
     source: str
-    sequence_number: Optional[int]
-    price: Optional[float] = None
-    quantity: Optional[float] = None
-    bid_price: Optional[float] = None
-    bid_size: Optional[float] = None
-    ask_price: Optional[float] = None
-    ask_size: Optional[float] = None
+    sequence_number: int | None
+    price: float | None = None
+    quantity: float | None = None
+    bid_price: float | None = None
+    bid_size: float | None = None
+    ask_price: float | None = None
+    ask_size: float | None = None
     quality_status: QualityStatus = QualityStatus.VALID
     reasons: list[str] = field(default_factory=list)
     raw_id: str = ""
+
     # Multi-asset class extensions
     asset_class: AssetClass = AssetClass.EQUITY
-    expiry_date: Optional[str] = None
-    contract_size: Optional[float] = None
-    underlying_id: Optional[str] = None
-    open_interest: Optional[float] = None
-    strike: Optional[float] = None
-    put_call: Optional[str] = None
-    implied_vol: Optional[float] = None
-    delta: Optional[float] = None
-    gamma: Optional[float] = None
-    coupon: Optional[float] = None
-    maturity_date: Optional[str] = None
-    yield_to_worst: Optional[float] = None
-    duration: Optional[float] = None
+    expiry_date: str | None = None
+    contract_size: float | None = None
+    underlying_id: str | None = None
+    open_interest: float | None = None
+    strike: float | None = None
+    put_call: str | None = None
+    implied_vol: float | None = None
+    delta: float | None = None
+    gamma: float | None = None
+    coupon: float | None = None
+    maturity_date: str | None = None
+    yield_to_worst: float | None = None
+    duration: float | None = None
+
     # Global exchange metadata
     venue: str = "XNAS"
     currency: str = "USD"
 
     def dedup_key(self) -> tuple:
+        """Construct a deterministic hashable key for duplicate detection.
+
+        If the upstream feed provides monotonic integer sequence numbers, the
+        tuple `(source, instrument_id, sequence_number)` is uniquely identifying.
+
+        If sequence numbers are absent (e.g. REST snapshots or unsequenced websockets),
+        a content-based fingerprint tuple is computed. Microsecond rounding
+        (`round(self.exchange_timestamp, 6)`) prevents IEEE-754 floating-point
+        precision jitter from triggering false negative duplicate evaluations.
+        """
         if self.sequence_number is not None:
             return (self.source, self.instrument_id, self.sequence_number)
+
         # Include quote fields so distinct quotes at the same timestamp don't collide.
         if self.event_type == EventType.QUOTE:
             return (
-                self.source, self.instrument_id, self.event_type.value,
+                self.source,
+                self.instrument_id,
+                self.event_type.value,
                 round(self.exchange_timestamp, 6),
-                self.bid_price, self.ask_price, self.bid_size, self.ask_size,
+                self.bid_price,
+                self.ask_price,
+                self.bid_size,
+                self.ask_size,
             )
         return (
-            self.source, self.instrument_id, self.event_type.value,
-            round(self.exchange_timestamp, 6), self.price, self.quantity,
+            self.source,
+            self.instrument_id,
+            self.event_type.value,
+            round(self.exchange_timestamp, 6),
+            self.price,
+            self.quantity,
         )

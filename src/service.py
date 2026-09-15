@@ -6,28 +6,27 @@ Provides enterprise-grade, headless market data infrastructure:
 - StreamClient: Composable client for piping canonical ticks into trading bots and Unix CLI tools.
 - TerminalCockpit: Dynamic live terminal monitor (htop-style) for operations and SREs.
 """
+
 from __future__ import annotations
 
 import json
 import os
 import queue
-import select
 import socket
 import sys
 import threading
 import time
-from collections import deque
-from dataclasses import asdict, dataclass, field
-from typing import Any, Dict, Iterator, List, Optional, Set, Tuple
+from dataclasses import dataclass, field
+from typing import Any, Dict, Iterator, Optional, Set
 
-from bbo import BBOEngine, ConsolidatedBBO
-from depth import ConsolidatedDepthEngine, ConsolidatedLadder
+from bbo import BBOEngine
+from depth import ConsolidatedDepthEngine
 from fastpath import NativeReplayBuffer
-from models import CanonicalEvent, EventType, QualityStatus, RawEvent
+from models import RawEvent
 from pipeline import Pipeline
 from protocol import pack_depth_frame, pack_tick_frame
 from reconciliation import ReliabilityTracker
-from security import ClientEntitlement, SecurityManager, Tier, TokenBucketRateLimiter
+from security import ClientEntitlement, SecurityManager, TokenBucketRateLimiter
 from simulator import FeedSimulator, SimulatorConfig
 from storage import Store
 from watchdog import SourceWatchdog
@@ -36,6 +35,7 @@ from watchdog import SourceWatchdog
 @dataclass
 class _ClientSession:
     """Session state for an individual connected TCP client."""
+
     sock: socket.socket
     symbols: Set[str] = field(default_factory=set)
     queue: queue.Queue = field(default_factory=lambda: queue.Queue(maxsize=1000))
@@ -78,12 +78,19 @@ class MarketDataDaemon:
         self.shm_name = shm_name
         self.require_auth = require_auth
         import os
-        self.auth_token = auth_token if auth_token is not None else os.environ.get("MDRAP_DAEMON_TOKEN", "")
+
+        self.auth_token = (
+            auth_token
+            if auth_token is not None
+            else os.environ.get("MDRAP_DAEMON_TOKEN", "")
+        )
 
         self.store = Store(db_path)
         self.security_manager = SecurityManager(store=self.store)
         self.reliability = ReliabilityTracker()
-        self.watchdog = SourceWatchdog(reliability=self.reliability, silence_threshold_s=3.0)
+        self.watchdog = SourceWatchdog(
+            reliability=self.reliability, silence_threshold_s=3.0
+        )
         self.bbo = BBOEngine(quote_ttl_s=10.0, watchdog=self.watchdog)
         self.depth = ConsolidatedDepthEngine(depth_ttl_s=10.0, watchdog=self.watchdog)
         self.pipeline = Pipeline(
@@ -98,10 +105,14 @@ class MarketDataDaemon:
         if self.enable_shm:
             try:
                 from shm import SHMWriter
+
                 self.shm_writer = SHMWriter(name=self.shm_name)
             except Exception as exc:
                 self.shm_writer = None
-                print(f"[mdrap SERVICE WARNING] Shared memory publisher unavailable ({self.shm_name}): {exc}", file=sys.stderr)
+                print(
+                    f"[mdrap SERVICE WARNING] Shared memory publisher unavailable ({self.shm_name}): {exc}",
+                    file=sys.stderr,
+                )
 
         self._running = False
         self._server_sock: Optional[socket.socket] = None
@@ -134,14 +145,16 @@ class MarketDataDaemon:
         self._server_sock.listen(64)
         self._server_sock.settimeout(0.2)
 
-
-
         # 4. Start socket listener thread
-        self._server_thread = threading.Thread(target=self._socket_accept_loop, daemon=True, name="mdrap-socket-listener")
+        self._server_thread = threading.Thread(
+            target=self._socket_accept_loop, daemon=True, name="mdrap-socket-listener"
+        )
         self._server_thread.start()
 
         # 5. Start decoupled sequencer ingestion thread
-        self._ingest_thread = threading.Thread(target=self._ingestion_loop, daemon=True, name="mdrap-feed-ingest")
+        self._ingest_thread = threading.Thread(
+            target=self._ingestion_loop, daemon=True, name="mdrap-feed-ingest"
+        )
         self._ingest_thread.start()
 
         if blocking:
@@ -206,9 +219,19 @@ class MarketDataDaemon:
                     self._sessions[client_sock] = sess
                     self._subscribers[client_sock] = sess.symbols
                 # Start non-blocking writer thread (isolates slow consumers)
-                threading.Thread(target=self._client_writer, args=(sess,), daemon=True, name="mdrap-client-writer").start()
+                threading.Thread(
+                    target=self._client_writer,
+                    args=(sess,),
+                    daemon=True,
+                    name="mdrap-client-writer",
+                ).start()
                 # Start incoming command reader thread
-                threading.Thread(target=self._client_handler, args=(client_sock,), daemon=True, name="mdrap-client-reader").start()
+                threading.Thread(
+                    target=self._client_handler,
+                    args=(client_sock,),
+                    daemon=True,
+                    name="mdrap-client-reader",
+                ).start()
             except (socket.timeout, OSError):
                 continue
             except Exception:
@@ -322,12 +345,16 @@ class MarketDataDaemon:
             ent = self.security_manager.get_entitlement(token)
             if ent:
                 if not ent.is_active:
-                    resp = json.dumps({"status": "ERROR", "error": "REVOKED_TOKEN"}) + "\n"
+                    resp = (
+                        json.dumps({"status": "ERROR", "error": "REVOKED_TOKEN"}) + "\n"
+                    )
                     client_sock.sendall(resp.encode("utf-8"))
                     client_sock.close()
                     return
                 if ent.expires_at and time.time() > ent.expires_at:
-                    resp = json.dumps({"status": "ERROR", "error": "TOKEN_EXPIRED"}) + "\n"
+                    resp = (
+                        json.dumps({"status": "ERROR", "error": "TOKEN_EXPIRED"}) + "\n"
+                    )
                     client_sock.sendall(resp.encode("utf-8"))
                     client_sock.close()
                     return
@@ -336,24 +363,42 @@ class MarketDataDaemon:
                     if sess:
                         sess.entitlement = ent
                         if ent.rate_limit_eps > 0:
-                            sess.rate_limiter = TokenBucketRateLimiter(rate=ent.rate_limit_eps, capacity=ent.rate_limit_eps * 2)
+                            sess.rate_limiter = TokenBucketRateLimiter(
+                                rate=ent.rate_limit_eps, capacity=ent.rate_limit_eps * 2
+                            )
                     self._authenticated_clients.add(client_sock)
-                resp = json.dumps({
-                    "status": "OK",
-                    "action": "AUTH",
-                    "client_id": ent.client_id,
-                    "tier": "STANDARD",
-                    "rate_limit_eps": ent.rate_limit_eps,
-                    "can_l2": True,
-                    "can_binary": True,
-                }) + "\n"
+                resp = (
+                    json.dumps(
+                        {
+                            "status": "OK",
+                            "action": "AUTH",
+                            "client_id": ent.client_id,
+                            "tier": "STANDARD",
+                            "rate_limit_eps": ent.rate_limit_eps,
+                            "can_l2": True,
+                            "can_binary": True,
+                        }
+                    )
+                    + "\n"
+                )
                 self._send_client_response(client_sock, resp)
                 return
             elif self.auth_token and token == self.auth_token:
                 # Legacy static token fallback
                 with self._sub_lock:
                     self._authenticated_clients.add(client_sock)
-                resp = json.dumps({"status": "OK", "action": "AUTH", "tier": "STANDARD", "can_l2": True, "can_binary": True}) + "\n"
+                resp = (
+                    json.dumps(
+                        {
+                            "status": "OK",
+                            "action": "AUTH",
+                            "tier": "STANDARD",
+                            "can_l2": True,
+                            "can_binary": True,
+                        }
+                    )
+                    + "\n"
+                )
                 self._send_client_response(client_sock, resp)
                 return
             else:
@@ -371,8 +416,18 @@ class MarketDataDaemon:
             return
 
         # Enforce authentication if require_auth or auth_token configured
-        if (self.require_auth or self.auth_token) and client_sock not in self._authenticated_clients:
-            resp = json.dumps({"status": "ERROR", "error": "UNAUTHORIZED: Authentication token required (use AUTH <token>)"}) + "\n"
+        if (
+            self.require_auth or self.auth_token
+        ) and client_sock not in self._authenticated_clients:
+            resp = (
+                json.dumps(
+                    {
+                        "status": "ERROR",
+                        "error": "UNAUTHORIZED: Authentication token required (use AUTH <token>)",
+                    }
+                )
+                + "\n"
+            )
             self._send_client_response(client_sock, resp)
             return
 
@@ -381,8 +436,6 @@ class MarketDataDaemon:
         ent = sess.entitlement if sess else None
 
         # Unified access: all clients have full access to L2 depth, binary formats, and replays
-        can_l2 = True
-        can_binary = True
         max_replay = 100_000
 
         if verb == "FORMAT":
@@ -390,9 +443,11 @@ class MarketDataDaemon:
             with self._sub_lock:
                 sess = self._sessions.get(client_sock)
                 if sess:
-                    sess.is_binary = (fmt == "BINARY")
-                    sess.is_sbe = (fmt == "SBE")
-            resp = json.dumps({"status": "OK", "action": "FORMAT", "format": fmt}) + "\n"
+                    sess.is_binary = fmt == "BINARY"
+                    sess.is_sbe = fmt == "SBE"
+            resp = (
+                json.dumps({"status": "OK", "action": "FORMAT", "format": fmt}) + "\n"
+            )
             self._send_client_response(client_sock, resp)
 
         elif verb in ("SUB", "SUBSCRIBE"):
@@ -435,7 +490,9 @@ class MarketDataDaemon:
 
         elif verb == "DEPTH":
             sym = parts[1].upper() if len(parts) > 1 else "BTC/USD"
-            self._send_client_response(client_sock, self.depth.get_ladder_wire_bytes(sym))
+            self._send_client_response(
+                client_sock, self.depth.get_ladder_wire_bytes(sym)
+            )
 
         elif verb == "VWAP":
             sym = parts[1].upper() if len(parts) > 1 else "BTC/USD"
@@ -445,7 +502,9 @@ class MarketDataDaemon:
                     sizes = [float(x) for x in parts[2:]]
                 except ValueError:
                     sizes = None
-            self._send_client_response(client_sock, self.depth.get_vwap_wire_bytes(sym, sizes=sizes))
+            self._send_client_response(
+                client_sock, self.depth.get_vwap_wire_bytes(sym, sizes=sizes)
+            )
 
         elif verb == "REPLAY":
             try:
@@ -454,31 +513,46 @@ class MarketDataDaemon:
                 sym_filter = parts[3].upper() if len(parts) > 3 else None
                 requested = max(1, to_seq - from_seq + 1)
                 if requested > max_replay:
-                    resp = json.dumps({
-                        "status": "ERROR",
-                        "action": "REPLAY",
-                        "error": f"INVALID_RANGE: Requested replay range ({requested}) exceeds maximum safety buffer of {max_replay} events"
-                    }) + "\n"
+                    resp = (
+                        json.dumps(
+                            {
+                                "status": "ERROR",
+                                "action": "REPLAY",
+                                "error": f"INVALID_RANGE: Requested replay range ({requested}) exceeds maximum safety buffer of {max_replay} events",
+                            }
+                        )
+                        + "\n"
+                    )
                     self._send_client_response(client_sock, resp)
                     return
 
                 if sess and sess.is_binary:
-                    bin_data = self._replay_buffer.replay_binary(from_seq, to_seq, sym_filter)
+                    bin_data = self._replay_buffer.replay_binary(
+                        from_seq, to_seq, sym_filter
+                    )
                     self._send_client_response(client_sock, bin_data)
                     return
 
                 replayed = self._replay_buffer.replay(from_seq, to_seq, sym_filter)
-                resp = json.dumps({
-                    "status": "OK",
-                    "action": "REPLAY",
-                    "from_seq": from_seq,
-                    "to_seq": to_seq,
-                    "count": len(replayed),
-                    "events": replayed,
-                }) + "\n"
+                resp = (
+                    json.dumps(
+                        {
+                            "status": "OK",
+                            "action": "REPLAY",
+                            "from_seq": from_seq,
+                            "to_seq": to_seq,
+                            "count": len(replayed),
+                            "events": replayed,
+                        }
+                    )
+                    + "\n"
+                )
                 self._send_client_response(client_sock, resp)
             except Exception as e:
-                resp = json.dumps({"status": "ERROR", "action": "REPLAY", "error": str(e)}) + "\n"
+                resp = (
+                    json.dumps({"status": "ERROR", "action": "REPLAY", "error": str(e)})
+                    + "\n"
+                )
                 self._send_client_response(client_sock, resp)
 
         elif verb == "HEALTH":
@@ -501,6 +575,7 @@ class MarketDataDaemon:
         """Main feed ingestion loop: streams ticks into pipeline and broadcasts."""
         if self.use_live:
             from live import YahooFinanceFeed
+
             feed = YahooFinanceFeed(poll_interval_s=1.0)
             for raw in feed.poll():
                 if not self._running:
@@ -509,7 +584,11 @@ class MarketDataDaemon:
         else:
             num_events = self.sim_events if self.sim_events > 0 else 10_000_000
             sim = FeedSimulator(SimulatorConfig(seed=42, num_events=num_events))
-            sleep_s = (1.0 / self.sim_speed_eps) if (self.sim_speed_eps > 0 and self.sim_speed_eps < 1000.0) else 0.0
+            sleep_s = (
+                (1.0 / self.sim_speed_eps)
+                if (self.sim_speed_eps > 0 and self.sim_speed_eps < 1000.0)
+                else 0.0
+            )
             for raw, _label in sim.generate():
                 if not self._running:
                     break
@@ -560,7 +639,9 @@ class MarketDataDaemon:
                 "spread": bbo_q.spread,
                 "mid": bbo_q.mid_price,
                 "crossed": bbo_q.is_crossed,
-            } if bbo_q else None,
+            }
+            if bbo_q
+            else None,
         }
         self._record_replay(payload)
         if self.shm_writer:
@@ -585,7 +666,10 @@ class MarketDataDaemon:
             except Exception as exc:
                 self._shm_errors += 1
                 if self._shm_errors <= 3 or self._shm_errors % 1000 == 0:
-                    print(f"[mdrap SERVICE WARNING] SHM tick write failed: {exc} (total errors={self._shm_errors})", file=sys.stderr)
+                    print(
+                        f"[mdrap SERVICE WARNING] SHM tick write failed: {exc} (total errors={self._shm_errors})",
+                        file=sys.stderr,
+                    )
 
         if self.shm_writer and ladder:
             try:
@@ -607,12 +691,19 @@ class MarketDataDaemon:
             except Exception as exc:
                 self._shm_errors += 1
                 if self._shm_errors <= 3 or self._shm_errors % 1000 == 0:
-                    print(f"[mdrap SERVICE WARNING] SHM depth write failed: {exc} (total errors={self._shm_errors})", file=sys.stderr)
+                    print(
+                        f"[mdrap SERVICE WARNING] SHM depth write failed: {exc} (total errors={self._shm_errors})",
+                        file=sys.stderr,
+                    )
 
         msg = (json.dumps(payload) + "\n").encode("utf-8")
 
         with self._sub_lock:
-            active_sessions = [s for s in self._sessions.values() if s.is_alive] if self._sessions else []
+            active_sessions = (
+                [s for s in self._sessions.values() if s.is_alive]
+                if self._sessions
+                else []
+            )
 
         if not active_sessions:
             return
@@ -660,7 +751,9 @@ class MarketDataDaemon:
                 "ofi": round(ladder.imbalance_ratio, 4),
                 "is_crossed": ladder.is_crossed,
                 "arbitrage": ladder.crossed_opportunities,
-                "vwap_curve": ladder.vwap_curve.to_dict() if ladder.vwap_curve else None,
+                "vwap_curve": ladder.vwap_curve.to_dict()
+                if ladder.vwap_curve
+                else None,
                 "total_bid_notional": round(ladder.total_bid_notional, 2),
                 "total_ask_notional": round(ladder.total_ask_notional, 2),
                 "exchange_ts": ladder.timestamp,
@@ -718,6 +811,7 @@ class MarketDataDaemon:
         if any(s.is_sbe for s in active_sessions):
             try:
                 from sbe import pack_sbe_tick
+
                 sbe_msg = pack_sbe_tick(
                     seq=seq,
                     symbol=ev.instrument_id,
@@ -751,7 +845,9 @@ class MarketDataDaemon:
             else:
                 out_tick = msg
 
-            out_depth = depth_bin_msg if (sess.is_binary and depth_bin_msg) else depth_msg
+            out_depth = (
+                depth_bin_msg if (sess.is_binary and depth_bin_msg) else depth_msg
+            )
 
             # L1 Tick delivery
             if "ALL" in sess.symbols or ev.instrument_id in sess.symbols:
@@ -761,14 +857,18 @@ class MarketDataDaemon:
                     sess.dropped_ticks += 1
 
             # L2 Depth delivery
-            if out_depth and ("L2:ALL" in sess.symbols or f"L2:{ev.instrument_id}" in sess.symbols):
+            if out_depth and (
+                "L2:ALL" in sess.symbols or f"L2:{ev.instrument_id}" in sess.symbols
+            ):
                 try:
                     sess.queue.put_nowait(out_depth)
                 except queue.Full:
                     sess.dropped_ticks += 1
 
             # Real-time VWAP delivery
-            if vwap_msg and ("VWAP:ALL" in sess.symbols or f"VWAP:{ev.instrument_id}" in sess.symbols):
+            if vwap_msg and (
+                "VWAP:ALL" in sess.symbols or f"VWAP:{ev.instrument_id}" in sess.symbols
+            ):
                 try:
                     sess.queue.put_nowait(vwap_msg)
                 except queue.Full:
@@ -779,11 +879,19 @@ class MarketDataDaemon:
         eps = (self._total_broadcast / uptime) if uptime > 0 else 0.0
         with self._sub_lock:
             client_count = len(self._sessions)
-            total_dropped = self._total_dropped + sum(s.dropped_ticks for s in self._sessions.values())
-            total_rate_limited = self._total_rate_limited + sum(s.rate_limited_ticks for s in self._sessions.values())
+            total_dropped = self._total_dropped + sum(
+                s.dropped_ticks for s in self._sessions.values()
+            )
+            total_rate_limited = self._total_rate_limited + sum(
+                s.rate_limited_ticks for s in self._sessions.values()
+            )
             tier_breakdown: Dict[str, int] = {}
             for s in self._sessions.values():
-                t = s.entitlement.tier.value if (s.entitlement and hasattr(s.entitlement.tier, "value")) else "DEFAULT"
+                t = (
+                    s.entitlement.tier.value
+                    if (s.entitlement and hasattr(s.entitlement.tier, "value"))
+                    else "DEFAULT"
+                )
                 tier_breakdown[t] = tier_breakdown.get(t, 0) + 1
         return {
             "uptime_s": round(uptime, 2),
@@ -810,12 +918,23 @@ class StreamClient:
     Yields parsed canonical ticks as JSON/dicts.
     """
 
-    def __init__(self, host: str = "127.0.0.1", port: int = 9876, timeout: float = 5.0, auth_token: Optional[str] = None):
+    def __init__(
+        self,
+        host: str = "127.0.0.1",
+        port: int = 9876,
+        timeout: float = 5.0,
+        auth_token: Optional[str] = None,
+    ):
         self.host = host
         self.port = port
         self.timeout = timeout
         import os
-        self.auth_token = auth_token if auth_token is not None else os.environ.get("MDRAP_DAEMON_TOKEN", "")
+
+        self.auth_token = (
+            auth_token
+            if auth_token is not None
+            else os.environ.get("MDRAP_DAEMON_TOKEN", "")
+        )
         self.sock: Optional[socket.socket] = None
         self._query_sock: Optional[socket.socket] = None
         self._query_lock = threading.Lock()
@@ -835,7 +954,9 @@ class StreamClient:
                 buf += chunk
             ack = json.loads(buf.strip().split("\n")[0])
             if ack.get("status") != "OK":
-                raise PermissionError(f"Daemon authentication failed: {ack.get('error')}")
+                raise PermissionError(
+                    f"Daemon authentication failed: {ack.get('error')}"
+                )
 
     def _get_query_sock(self) -> socket.socket:
         """Get or lazily establish a persistent, authenticated keep-alive query socket."""
@@ -856,7 +977,9 @@ class StreamClient:
             ack = json.loads(buf.strip().split("\n")[0])
             if ack.get("status") != "OK":
                 sock.close()
-                raise PermissionError(f"Daemon authentication failed: {ack.get('error')}")
+                raise PermissionError(
+                    f"Daemon authentication failed: {ack.get('error')}"
+                )
         self._query_sock = sock
         return self._query_sock
 
@@ -887,8 +1010,10 @@ class StreamClient:
             return {}
 
     def close(self) -> None:
+        """Gracefully terminate client connection and release query/stream sockets."""
         if self.sock:
             try:
+                self.sock.sendall(b"QUIT\n")
                 self.sock.close()
             except Exception:
                 pass
@@ -910,7 +1035,9 @@ class StreamClient:
     def get_depth(self, symbol: str = "BTC/USD") -> Optional[dict]:
         return self._send_query(f"DEPTH {symbol}").get("depth")
 
-    def request_replay(self, from_seq: int, to_seq: int, symbol: Optional[str] = None) -> list[dict]:
+    def request_replay(
+        self, from_seq: int, to_seq: int, symbol: Optional[str] = None
+    ) -> list[dict]:
         cmd = f"REPLAY {from_seq} {to_seq}"
         if symbol:
             cmd += f" {symbol}"
@@ -959,18 +1086,10 @@ class StreamClient:
             except Exception:
                 break
 
-    def close(self) -> None:
-        if self.sock:
-            try:
-                self.sock.sendall(b"QUIT\n")
-                self.sock.close()
-            except Exception:
-                pass
-            self.sock = None
-
 
 def _strip_ansi(text: str) -> str:
     import re
+
     return re.sub(r"\x1b\[[0-9;]*[a-zA-Z]", "", text)
 
 
@@ -980,7 +1099,12 @@ class TerminalCockpit:
     Displays real-time throughput, latency sparklines, venue health, and consolidated BBO.
     """
 
-    def __init__(self, host: str = "127.0.0.1", port: int = 9876, auth_token: Optional[str] = None):
+    def __init__(
+        self,
+        host: str = "127.0.0.1",
+        port: int = 9876,
+        auth_token: Optional[str] = None,
+    ):
         self.client = StreamClient(host=host, port=port, auth_token=auth_token)
 
     def run(self) -> None:
@@ -991,8 +1115,10 @@ class TerminalCockpit:
                 pass
         try:
             self.client.connect()
-        except Exception as exc:
-            print(f"\033[91mFailed to connect to MDRAP Daemon at {self.client.host}:{self.client.port}\033[0m")
+        except Exception:
+            print(
+                f"\033[91mFailed to connect to MDRAP Daemon at {self.client.host}:{self.client.port}\033[0m"
+            )
             print("Ensure the daemon is running with: \033[96mmdrap daemon\033[0m")
             return
 
@@ -1000,7 +1126,9 @@ class TerminalCockpit:
         try:
             from terminal_display import poll_keypress
         except Exception:
-            poll_keypress = lambda: None
+
+            def poll_keypress():
+                return None
 
         paused = False
         try:
@@ -1015,7 +1143,9 @@ class TerminalCockpit:
                         break
 
                     # 2. Render cockpit frame
-                    out = self._render_frame(telemetry, bbo_btc, bbo_aapl, paused=paused)
+                    out = self._render_frame(
+                        telemetry, bbo_btc, bbo_aapl, paused=paused
+                    )
                     if sys.platform == "win32":
                         os.system("cls")
                         sys.stdout.write(out)
@@ -1032,7 +1162,9 @@ class TerminalCockpit:
                         elif key == " ":
                             paused = not paused
                             # Re-render immediately when paused/unpaused
-                            out = self._render_frame(telemetry, bbo_btc, bbo_aapl, paused=paused)
+                            out = self._render_frame(
+                                telemetry, bbo_btc, bbo_aapl, paused=paused
+                            )
                             if sys.platform == "win32":
                                 os.system("cls")
                                 sys.stdout.write(out)
@@ -1051,7 +1183,13 @@ class TerminalCockpit:
         pad = " " * max(0, width - visible_len)
         return f"\033[1;36m│\033[0m{content}{pad}\033[1;36m│\033[0m"
 
-    def _render_frame(self, st: dict, bbo_btc: Optional[dict], bbo_aapl: Optional[dict], paused: bool = False) -> str:
+    def _render_frame(
+        self,
+        st: dict,
+        bbo_btc: Optional[dict],
+        bbo_aapl: Optional[dict],
+        paused: bool = False,
+    ) -> str:
         uptime = st.get("uptime_s", 0)
         eps = st.get("throughput_eps", 0)
         total = st.get("total_broadcast", 0)
@@ -1064,18 +1202,32 @@ class TerminalCockpit:
 
         lines = [
             border_top,
-            self._render_box_row("  \033[1;37mMDRAP Terminal Service Cockpit (htop-style monitor)\033[0m"),
+            self._render_box_row(
+                "  \033[1;37mMDRAP Terminal Service Cockpit (htop-style monitor)\033[0m"
+            ),
         ]
         if paused:
-            lines.append(self._render_box_row("  \033[1;37;41m  ⏸ TELEMETRY FROZEN — PRESS SPACE TO RESUME ⏸  \033[0m"))
+            lines.append(
+                self._render_box_row(
+                    "  \033[1;37;41m  ⏸ TELEMETRY FROZEN — PRESS SPACE TO RESUME ⏸  \033[0m"
+                )
+            )
 
-        lines.extend([
-            self._render_box_row(f"  Daemon: \033[92mONLINE\033[0m (127.0.0.1:{st.get('port', 9876)})  |  Uptime: \033[93m{uptime:.1f}s\033[0m  |  Clients: \033[95m{clients}\033[0m"),
-            border_mid,
-            self._render_box_row(f"  Throughput: \033[1;92m{eps:>8,.1f} eps\033[0m  |  Total Ingested: \033[1;97m{total:>10,}\033[0m ticks"),
-            border_mid,
-            self._render_box_row("  \033[1;33mVenue Health & Watchdog Failover Matrix\033[0m"),
-        ])
+        lines.extend(
+            [
+                self._render_box_row(
+                    f"  Daemon: \033[92mONLINE\033[0m (127.0.0.1:{st.get('port', 9876)})  |  Uptime: \033[93m{uptime:.1f}s\033[0m  |  Clients: \033[95m{clients}\033[0m"
+                ),
+                border_mid,
+                self._render_box_row(
+                    f"  Throughput: \033[1;92m{eps:>8,.1f} eps\033[0m  |  Total Ingested: \033[1;97m{total:>10,}\033[0m ticks"
+                ),
+                border_mid,
+                self._render_box_row(
+                    "  \033[1;33mVenue Health & Watchdog Failover Matrix\033[0m"
+                ),
+            ]
+        )
 
         if sources:
             src_parts = []
@@ -1084,25 +1236,43 @@ class TerminalCockpit:
                 src_parts.append(f"{src}: {color}{state}\033[0m")
             lines.append(self._render_box_row(f"  {'  |  '.join(src_parts)}"))
         else:
-            lines.append(self._render_box_row("  Venues: \033[92mFEEDX: HEALTHY\033[0m  |  \033[92mFEEDY: HEALTHY\033[0m  |  \033[92mFEEDZ: HEALTHY\033[0m"))
+            lines.append(
+                self._render_box_row(
+                    "  Venues: \033[92mFEEDX: HEALTHY\033[0m  |  \033[92mFEEDY: HEALTHY\033[0m  |  \033[92mFEEDZ: HEALTHY\033[0m"
+                )
+            )
 
         lines.append(border_mid)
-        lines.append(self._render_box_row("  \033[1;33mConsolidated Best Bid & Offer (Synthetic NBBO)\033[0m"))
+        lines.append(
+            self._render_box_row(
+                "  \033[1;33mConsolidated Best Bid & Offer (Synthetic NBBO)\033[0m"
+            )
+        )
 
         for sym, bbo in [("BTC/USD", bbo_btc), ("AAPL", bbo_aapl)]:
             if bbo and bbo.get("bid") is not None:
                 bid = f"${bbo['bid']:,.2f}"
                 ask = f"${bbo['ask']:,.2f}"
                 spread = f"${bbo['spread']:.2f}"
-                status = "\033[91m[CROSSED]\033[0m" if bbo.get("crossed") else "\033[92m[NORMAL]\033[0m"
+                status = (
+                    "\033[91m[CROSSED]\033[0m"
+                    if bbo.get("crossed")
+                    else "\033[92m[NORMAL]\033[0m"
+                )
                 row = f"  {sym:<8} Bid: \033[92m{bid:>11}\033[0m  Ask: \033[91m{ask:>11}\033[0m  Spr: {spread:>7} {status}"
                 lines.append(self._render_box_row(row))
             else:
-                lines.append(self._render_box_row(f"  {sym:<8} \033[90mAwaiting market ticks from active venues...\033[0m"))
+                lines.append(
+                    self._render_box_row(
+                        f"  {sym:<8} \033[90mAwaiting market ticks from active venues...\033[0m"
+                    )
+                )
 
         pause_tag = "Resume" if paused else "Freeze"
-        lines.extend([
-            border_bot,
-            f"\033[90m[Hotkeys] [bold white]q[/bold white]: Detach  |  [bold white]Space[/bold white]: {pause_tag} Telemetry\033[0m",
-        ])
+        lines.extend(
+            [
+                border_bot,
+                f"\033[90m[Hotkeys] [bold white]q[/bold white]: Detach  |  [bold white]Space[/bold white]: {pause_tag} Telemetry\033[0m",
+            ]
+        )
         return "\n".join(lines) + "\n"

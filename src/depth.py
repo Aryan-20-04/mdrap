@@ -7,11 +7,11 @@ calculates volume-weighted micro-price, computes order flow imbalance (OFI),
 detects cross-exchange depth arbitrage, and computes real-time VWAP execution
 and slippage curves across multi-tier order sizing slices.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 import json
-import time
 from typing import Any, Dict, List, Optional, Tuple
 
 from models import CanonicalEvent, EventType, QualityStatus, RawEvent
@@ -38,6 +38,7 @@ class AggregatedLevel:
     """
     Consolidated order book price level aggregating depth across multiple venues.
     """
+
     price: float
     total_size: float
     venue_sizes: Dict[str, float]
@@ -63,13 +64,14 @@ class VWAPSlice:
     Simulates walking the consolidated order book ladder to estimate market impact,
     slippage vs NBBO, and cross-venue routing attribution without executing orders.
     """
-    side: str                          # 'BUY' or 'SELL'
+
+    side: str  # 'BUY' or 'SELL'
     target_size: float
     filled_size: float
     vwap_price: float
-    slippage_bps: float                # Basis points vs NBBO best ask (BUY) or best bid (SELL)
-    slippage_dollars: float            # |VWAP - BestPrice|
-    effective_spread_bps: float        # (VWAP - mid_price) / mid_price * 10,000
+    slippage_bps: float  # Basis points vs NBBO best ask (BUY) or best bid (SELL)
+    slippage_dollars: float  # |VWAP - BestPrice|
+    effective_spread_bps: float  # (VWAP - mid_price) / mid_price * 10,000
     is_fully_filled: bool
     venue_breakdown: Dict[str, float] = field(default_factory=dict)
     total_notional: float = 0.0
@@ -84,7 +86,9 @@ class VWAPSlice:
             "slippage_dollars": round(self.slippage_dollars, 4),
             "effective_spread_bps": round(self.effective_spread_bps, 2),
             "is_fully_filled": self.is_fully_filled,
-            "venue_breakdown": {v: round(s, 4) for v, s in self.venue_breakdown.items()},
+            "venue_breakdown": {
+                v: round(s, 4) for v, s in self.venue_breakdown.items()
+            },
             "total_notional": round(self.total_notional, 2),
         }
 
@@ -94,6 +98,7 @@ class VWAPCurve:
     """
     Complete real-time multi-tier VWAP execution curve across both sides of the book.
     """
+
     instrument_id: str
     timestamp: float
     mid_price: float
@@ -101,7 +106,7 @@ class VWAPCurve:
     best_ask: float
     buy_slices: List[VWAPSlice] = field(default_factory=list)
     sell_slices: List[VWAPSlice] = field(default_factory=list)
-    depth_10bps: Tuple[float, float] = (0.0, 0.0)   # (bid_notional, ask_notional)
+    depth_10bps: Tuple[float, float] = (0.0, 0.0)  # (bid_notional, ask_notional)
     depth_50bps: Tuple[float, float] = (0.0, 0.0)
     depth_100bps: Tuple[float, float] = (0.0, 0.0)
 
@@ -114,30 +119,39 @@ class VWAPCurve:
             "best_ask": round(self.best_ask, 4),
             "buy_slices": [s.to_dict() for s in self.buy_slices],
             "sell_slices": [s.to_dict() for s in self.sell_slices],
-            "depth_10bps": {"bid": round(self.depth_10bps[0], 2), "ask": round(self.depth_10bps[1], 2)},
-            "depth_50bps": {"bid": round(self.depth_50bps[0], 2), "ask": round(self.depth_50bps[1], 2)},
-            "depth_100bps": {"bid": round(self.depth_100bps[0], 2), "ask": round(self.depth_100bps[1], 2)},
+            "depth_10bps": {
+                "bid": round(self.depth_10bps[0], 2),
+                "ask": round(self.depth_10bps[1], 2),
+            },
+            "depth_50bps": {
+                "bid": round(self.depth_50bps[0], 2),
+                "ask": round(self.depth_50bps[1], 2),
+            },
+            "depth_100bps": {
+                "bid": round(self.depth_100bps[0], 2),
+                "ask": round(self.depth_100bps[1], 2),
+            },
         }
 
 
 @dataclass
 class ConsolidatedLadder:
     instrument_id: str
-    bids: List[DepthLevel]                     # Sorted descending by price (highest bid first)
-    asks: List[DepthLevel]                     # Sorted ascending by price (lowest ask first)
+    bids: List[DepthLevel]  # Sorted descending by price (highest bid first)
+    asks: List[DepthLevel]  # Sorted ascending by price (lowest ask first)
     timestamp: float
-    micro_price: float                         # Volume-weighted top-of-book mid-price
-    imbalance_ratio: float                     # Order book imbalance [-1.0, 1.0]
-    is_crossed: bool                           # Global book crossed indicator
+    micro_price: float  # Volume-weighted top-of-book mid-price
+    imbalance_ratio: float  # Order book imbalance [-1.0, 1.0]
+    is_crossed: bool  # Global book crossed indicator
     crossed_opportunities: List[dict] = field(default_factory=list)
     aggregated_bids: List[AggregatedLevel] = field(default_factory=list)
     aggregated_asks: List[AggregatedLevel] = field(default_factory=list)
     total_bid_notional: float = 0.0
     total_ask_notional: float = 0.0
     vwap_curve: Optional[VWAPCurve] = None
-    ofi: float = 0.0                           # Level-1 Order Flow Imbalance for current update
-    cumulative_ofi: float = 0.0                # Running sum of OFI
-    cvd: float = 0.0                           # Cumulative Volume Delta
+    ofi: float = 0.0  # Level-1 Order Flow Imbalance for current update
+    cumulative_ofi: float = 0.0  # Running sum of OFI
+    cvd: float = 0.0  # Cumulative Volume Delta
 
     def depth_within_bps(self, bps: float) -> Tuple[float, float]:
         """
@@ -154,13 +168,31 @@ class ConsolidatedLadder:
         ask_ceiling = mid * (1.0 + (bps / 10000.0))
 
         bid_notional = sum(b.price * b.size for b in self.bids if b.price >= bid_floor)
-        ask_notional = sum(a.price * a.size for a in self.asks if a.price <= ask_ceiling)
+        ask_notional = sum(
+            a.price * a.size for a in self.asks if a.price <= ask_ceiling
+        )
         return (bid_notional, ask_notional)
 
     def compute_vwap(self, side: str, target_size: float) -> VWAPSlice:
         """
-        Simulate an institutional order of target_size, walking the consolidated book
-        to compute volume-weighted average fill price, slippage in bps, and venue routing attribution.
+        Simulate an institutional order of target_size by walking the consolidated limit order book.
+
+        Algorithmic Workflow:
+        1. Select appropriate side of the book:
+           - BUY sweeps through Ask levels (ascending price order).
+           - SELL sweeps through Bid levels (descending price order).
+        2. Book Walking Loop:
+           - Iterates through depth levels, filling liquidity up to the available level size:
+               fill = min(remaining, level.size)
+               cumulative_notional += level.price * fill
+               remaining -= fill
+        3. Volume-Weighted Price Calculation:
+           - VWAP = cumulative_notional / filled_size
+        4. Slippage & Effective Spread Attribution:
+           - Slippage (bps) = |VWAP - BestPrice| / BestPrice * 10,000
+           - Effective Spread (bps) = |VWAP - MidPrice| / MidPrice * 10,000
+        5. Venue Routing Attribution:
+           - Tracks fill quantity attributed to each contributing exchange venue.
         """
         side_norm = side.upper()
         if side_norm not in ("BUY", "SELL"):
@@ -170,12 +202,17 @@ class ConsolidatedLadder:
         best_bid = self.bids[0].price if self.bids else 0.0
         best_ask = self.asks[0].price if self.asks else 0.0
         best_price = best_ask if side_norm == "BUY" else best_bid
-        mid_price = (best_bid + best_ask) / 2.0 if (best_bid > 0 and best_ask > 0) else best_price
+        mid_price = (
+            (best_bid + best_ask) / 2.0
+            if (best_bid > 0 and best_ask > 0)
+            else best_price
+        )
 
         remaining = float(target_size)
         cum_notional = 0.0
-        venue_breakdown: Dict[str, float] = {}
+        venue_breakdown: dict[str, float] = {}
 
+        # Sweep through consolidated book levels until target order size is exhausted
         for lvl in levels:
             if remaining <= 1e-9:
                 break
@@ -189,12 +226,24 @@ class ConsolidatedLadder:
 
         if side_norm == "BUY":
             slippage_dollars = max(0.0, vwap_price - best_price)
-            slippage_bps = (slippage_dollars / best_price * 10000.0) if best_price > 0 else 0.0
-            eff_spread_bps = ((vwap_price - mid_price) / mid_price * 10000.0) if mid_price > 0 else 0.0
+            slippage_bps = (
+                (slippage_dollars / best_price * 10000.0) if best_price > 0 else 0.0
+            )
+            eff_spread_bps = (
+                ((vwap_price - mid_price) / mid_price * 10000.0)
+                if mid_price > 0
+                else 0.0
+            )
         else:
             slippage_dollars = max(0.0, best_price - vwap_price)
-            slippage_bps = (slippage_dollars / best_price * 10000.0) if best_price > 0 else 0.0
-            eff_spread_bps = ((mid_price - vwap_price) / mid_price * 10000.0) if mid_price > 0 else 0.0
+            slippage_bps = (
+                (slippage_dollars / best_price * 10000.0) if best_price > 0 else 0.0
+            )
+            eff_spread_bps = (
+                ((mid_price - vwap_price) / mid_price * 10000.0)
+                if mid_price > 0
+                else 0.0
+            )
 
         return VWAPSlice(
             side=side_norm,
@@ -218,7 +267,9 @@ class ConsolidatedLadder:
 
         best_bid = self.bids[0].price if self.bids else 0.0
         best_ask = self.asks[0].price if self.asks else 0.0
-        mid_price = (best_bid + best_ask) / 2.0 if (best_bid > 0 and best_ask > 0) else 0.0
+        mid_price = (
+            (best_bid + best_ask) / 2.0 if (best_bid > 0 and best_ask > 0) else 0.0
+        )
 
         buy_slices = [self.compute_vwap("BUY", s) for s in sizes]
         sell_slices = [self.compute_vwap("SELL", s) for s in sizes]
@@ -259,7 +310,9 @@ class ConsolidatedLadder:
         return d
 
 
-def _aggregate_levels(levels: List[DepthLevel], is_descending: bool) -> List[AggregatedLevel]:
+def _aggregate_levels(
+    levels: List[DepthLevel], is_descending: bool
+) -> List[AggregatedLevel]:
     """
     Coalesce individual venue depth levels into unified price rungs with venue attribution.
     """
@@ -274,7 +327,9 @@ def _aggregate_levels(levels: List[DepthLevel], is_descending: bool) -> List[Agg
             }
         entry = price_map[p]
         entry["total_size"] += lvl.size
-        entry["venue_sizes"][lvl.venue] = entry["venue_sizes"].get(lvl.venue, 0.0) + lvl.size
+        entry["venue_sizes"][lvl.venue] = (
+            entry["venue_sizes"].get(lvl.venue, 0.0) + lvl.size
+        )
         entry["order_count"] += lvl.order_count
 
     sorted_prices = sorted(price_map.keys(), reverse=is_descending)
@@ -287,14 +342,16 @@ def _aggregate_levels(levels: List[DepthLevel], is_descending: bool) -> List[Agg
         sz = entry["total_size"]
         cum_size += sz
         cum_notional += p * sz
-        agg_levels.append(AggregatedLevel(
-            price=p,
-            total_size=sz,
-            venue_sizes=entry["venue_sizes"],
-            order_count=entry["order_count"],
-            cumulative_size=cum_size,
-            cumulative_notional=cum_notional,
-        ))
+        agg_levels.append(
+            AggregatedLevel(
+                price=p,
+                total_size=sz,
+                venue_sizes=entry["venue_sizes"],
+                order_count=entry["order_count"],
+                cumulative_size=cum_size,
+                cumulative_notional=cum_notional,
+            )
+        )
     return agg_levels
 
 
@@ -381,12 +438,18 @@ class ConsolidatedDepthEngine:
             inst = str(p.get("instrument", "UNKNOWN"))
             try:
                 t_val = p.get("exchange_ts", event.receive_timestamp)
-                t_event = float(t_val) if t_val is not None else float(event.receive_timestamp)
+                t_event = (
+                    float(t_val)
+                    if t_val is not None
+                    else float(event.receive_timestamp)
+                )
             except (ValueError, TypeError):
                 t_event = float(event.receive_timestamp)
 
             evt_t = str(p.get("type") or p.get("event_type") or "").upper()
-            if evt_t == "TRADE" or ("price" in p and "quantity" in p and "bids" not in p and "asks" not in p):
+            if evt_t == "TRADE" or (
+                "price" in p and "quantity" in p and "bids" not in p and "asks" not in p
+            ):
                 try:
                     px = float(p["price"])
                     qty = float(p.get("quantity", 1.0))
@@ -415,8 +478,16 @@ class ConsolidatedDepthEngine:
                 q = event.quantity or 1.0
                 if event.price > 0 and q > 0:
                     self.observe_trade(inst, event.price, q, None)
-            bids_raw = [[event.bid_price, event.bid_size or 1.0]] if event.bid_price is not None else []
-            asks_raw = [[event.ask_price, event.ask_size or 1.0]] if event.ask_price is not None else []
+            bids_raw = (
+                [[event.bid_price, event.bid_size or 1.0]]
+                if event.bid_price is not None
+                else []
+            )
+            asks_raw = (
+                [[event.ask_price, event.ask_size or 1.0]]
+                if event.ask_price is not None
+                else []
+            )
         else:
             return None
 
@@ -475,8 +546,8 @@ class ConsolidatedDepthEngine:
         all_bids.sort(key=lambda x: x.price, reverse=True)
         all_asks.sort(key=lambda x: x.price, reverse=False)
 
-        merged_bids = all_bids[:self.max_levels_per_side]
-        merged_asks = all_asks[:self.max_levels_per_side]
+        merged_bids = all_bids[: self.max_levels_per_side]
+        merged_asks = all_asks[: self.max_levels_per_side]
 
         # Calculate Micro-Price (Volume-Weighted Mid-Price)
         best_bid = merged_bids[0].price
@@ -485,7 +556,9 @@ class ConsolidatedDepthEngine:
         best_ask_sz = merged_asks[0].size
 
         if (best_bid_sz + best_ask_sz) > 0:
-            micro_price = (best_bid * best_ask_sz + best_ask * best_bid_sz) / (best_bid_sz + best_ask_sz)
+            micro_price = (best_bid * best_ask_sz + best_ask * best_bid_sz) / (
+                best_bid_sz + best_ask_sz
+            )
         else:
             micro_price = (best_bid + best_ask) / 2.0
 
@@ -529,16 +602,18 @@ class ConsolidatedDepthEngine:
         for b in merged_bids:
             for a in merged_asks:
                 if b.price > a.price and b.venue != a.venue:
-                    crossed_opps.append({
-                        "bid_venue": b.venue,
-                        "bid_price": b.price,
-                        "bid_size": b.size,
-                        "ask_venue": a.venue,
-                        "ask_price": a.price,
-                        "ask_size": a.size,
-                        "arb_spread": round(b.price - a.price, 4),
-                        "max_volume": min(b.size, a.size),
-                    })
+                    crossed_opps.append(
+                        {
+                            "bid_venue": b.venue,
+                            "bid_price": b.price,
+                            "bid_size": b.size,
+                            "ask_venue": a.venue,
+                            "ask_price": a.price,
+                            "ask_size": a.size,
+                            "arb_spread": round(b.price - a.price, 4),
+                            "max_volume": min(b.size, a.size),
+                        }
+                    )
 
         is_crossed = len(crossed_opps) > 0
         if is_crossed:
@@ -546,8 +621,12 @@ class ConsolidatedDepthEngine:
         self._total_updates += 1
 
         # Price-aggregated ladders (merges identical price rungs)
-        agg_bids = _aggregate_levels(all_bids, is_descending=True)[:self.max_levels_per_side]
-        agg_asks = _aggregate_levels(all_asks, is_descending=False)[:self.max_levels_per_side]
+        agg_bids = _aggregate_levels(all_bids, is_descending=True)[
+            : self.max_levels_per_side
+        ]
+        agg_asks = _aggregate_levels(all_asks, is_descending=False)[
+            : self.max_levels_per_side
+        ]
 
         tot_bid_notional = sum(b.price * b.size for b in all_bids)
         tot_ask_notional = sum(a.price * a.size for a in all_asks)
@@ -578,8 +657,14 @@ class ConsolidatedDepthEngine:
         self._cached_depth_json[inst] = (json.dumps(depth_dict) + "\n").encode("utf-8")
 
         if ladder.vwap_curve:
-            vwap_dict = {"status": "OK", "symbol": inst, "vwap_curve": ladder.vwap_curve.to_dict()}
-            self._cached_vwap_json[inst] = (json.dumps(vwap_dict) + "\n").encode("utf-8")
+            vwap_dict = {
+                "status": "OK",
+                "symbol": inst,
+                "vwap_curve": ladder.vwap_curve.to_dict(),
+            }
+            self._cached_vwap_json[inst] = (json.dumps(vwap_dict) + "\n").encode(
+                "utf-8"
+            )
 
         return ladder
 
@@ -591,9 +676,13 @@ class ConsolidatedDepthEngine:
         cached = self._cached_depth_json.get(instrument_id)
         if cached:
             return cached
-        return (json.dumps({"status": "OK", "symbol": instrument_id, "depth": None}) + "\n").encode("utf-8")
+        return (
+            json.dumps({"status": "OK", "symbol": instrument_id, "depth": None}) + "\n"
+        ).encode("utf-8")
 
-    def current_vwap_curve(self, instrument_id: str, sizes: Optional[List[float]] = None) -> Optional[VWAPCurve]:
+    def current_vwap_curve(
+        self, instrument_id: str, sizes: Optional[List[float]] = None
+    ) -> Optional[VWAPCurve]:
         ladder = self._current_ladders.get(instrument_id)
         if not ladder:
             return None
@@ -601,14 +690,25 @@ class ConsolidatedDepthEngine:
             return ladder.compute_vwap_curve(sizes=sizes)
         return ladder.vwap_curve
 
-    def get_vwap_wire_bytes(self, instrument_id: str, sizes: Optional[List[float]] = None) -> bytes:
+    def get_vwap_wire_bytes(
+        self, instrument_id: str, sizes: Optional[List[float]] = None
+    ) -> bytes:
         """Return pre-rendered UTF-8 JSON wire bytes for VWAP slicing curve."""
         if sizes is None:
             cached = self._cached_vwap_json.get(instrument_id)
             if cached:
                 return cached
         curve = self.current_vwap_curve(instrument_id, sizes=sizes)
-        return (json.dumps({"status": "OK", "symbol": instrument_id, "vwap_curve": curve.to_dict() if curve else None}) + "\n").encode("utf-8")
+        return (
+            json.dumps(
+                {
+                    "status": "OK",
+                    "symbol": instrument_id,
+                    "vwap_curve": curve.to_dict() if curve else None,
+                }
+            )
+            + "\n"
+        ).encode("utf-8")
 
     def stats(self) -> dict:
         return {

@@ -14,6 +14,7 @@ Features:
 - High-fidelity offline wire mock generator for zero-key local testing and profiling.
 - Exponential backoff reconnect and keepalive heartbeat pings.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -24,11 +25,9 @@ import os
 import queue
 import random
 import ssl
-import sys
 import threading
 import time
-from dataclasses import dataclass, field
-from typing import Any, Dict, Generator, List, Optional, Set, Tuple
+from typing import Dict, Generator, List, Optional
 
 from models import RawEvent
 
@@ -40,6 +39,7 @@ _raw_counter = itertools.count(1)
 # Check optional websockets dependency
 try:
     import websockets
+
     HAS_WEBSOCKETS = True
 except ImportError:
     HAS_WEBSOCKETS = False
@@ -134,7 +134,13 @@ def parse_polygon_quote(item: dict) -> Optional[RawEvent]:
     except Exception as exc:
         return RawEvent(
             source="POLYGON",
-            payload={"instrument": item.get("sym", "UNKNOWN") if isinstance(item, dict) else "UNKNOWN", "is_malformed": True, "error": str(exc)},
+            payload={
+                "instrument": item.get("sym", "UNKNOWN")
+                if isinstance(item, dict)
+                else "UNKNOWN",
+                "is_malformed": True,
+                "error": str(exc),
+            },
             receive_timestamp=t_recv,
             raw_id=f"poly-q-err-{next(_raw_counter)}",
         )
@@ -168,7 +174,11 @@ def parse_polygon_trade(item: dict) -> Optional[RawEvent]:
         if p <= 0 or s <= 0:
             return RawEvent(
                 source="POLYGON",
-                payload={"instrument": sym, "is_malformed": True, "error": f"non-positive price/size (p={p}, s={s})"},
+                payload={
+                    "instrument": sym,
+                    "is_malformed": True,
+                    "error": f"non-positive price/size (p={p}, s={s})",
+                },
                 receive_timestamp=t_recv,
                 raw_id=f"poly-t-err-{next(_raw_counter)}",
             )
@@ -196,7 +206,13 @@ def parse_polygon_trade(item: dict) -> Optional[RawEvent]:
     except Exception as exc:
         return RawEvent(
             source="POLYGON",
-            payload={"instrument": item.get("sym", "UNKNOWN") if isinstance(item, dict) else "UNKNOWN", "is_malformed": True, "error": str(exc)},
+            payload={
+                "instrument": item.get("sym", "UNKNOWN")
+                if isinstance(item, dict)
+                else "UNKNOWN",
+                "is_malformed": True,
+                "error": str(exc),
+            },
             receive_timestamp=t_recv,
             raw_id=f"poly-t-err-{next(_raw_counter)}",
         )
@@ -216,14 +232,20 @@ def parse_polygon_aggregate(item: dict) -> Optional[RawEvent]:
             return None
 
         raw_e = item.get("e", 0)
-        exchange_ts = (raw_e / 1e3) if raw_e > 1e11 else (float(raw_e) if raw_e > 0 else t_recv)
+        exchange_ts = (
+            (raw_e / 1e3) if raw_e > 1e11 else (float(raw_e) if raw_e > 0 else t_recv)
+        )
 
         c = float(item.get("c", 0.0))
         v = float(item.get("v", 1.0))
         if c <= 0:
             return RawEvent(
                 source="POLYGON-AGG",
-                payload={"instrument": sym, "is_malformed": True, "error": f"non-positive close price (c={c})"},
+                payload={
+                    "instrument": sym,
+                    "is_malformed": True,
+                    "error": f"non-positive close price (c={c})",
+                },
                 receive_timestamp=t_recv,
                 raw_id=f"poly-a-err-{next(_raw_counter)}",
             )
@@ -249,7 +271,13 @@ def parse_polygon_aggregate(item: dict) -> Optional[RawEvent]:
     except Exception as exc:
         return RawEvent(
             source="POLYGON-AGG",
-            payload={"instrument": item.get("sym", "UNKNOWN") if isinstance(item, dict) else "UNKNOWN", "is_malformed": True, "error": str(exc)},
+            payload={
+                "instrument": item.get("sym", "UNKNOWN")
+                if isinstance(item, dict)
+                else "UNKNOWN",
+                "is_malformed": True,
+                "error": str(exc),
+            },
             receive_timestamp=t_recv,
             raw_id=f"poly-a-err-{next(_raw_counter)}",
         )
@@ -264,12 +292,18 @@ def parse_polygon_frame(raw_msg: str | dict | list) -> List[RawEvent]:
         try:
             data = json.loads(raw_msg)
         except Exception as exc:
-            return [RawEvent(
-                source="POLYGON",
-                payload={"instrument": "UNKNOWN", "is_malformed": True, "error": f"JSON parse error: {exc}"},
-                receive_timestamp=time.time(),
-                raw_id=f"poly-err-{next(_raw_counter)}",
-            )]
+            return [
+                RawEvent(
+                    source="POLYGON",
+                    payload={
+                        "instrument": "UNKNOWN",
+                        "is_malformed": True,
+                        "error": f"JSON parse error: {exc}",
+                    },
+                    receive_timestamp=time.time(),
+                    raw_id=f"poly-err-{next(_raw_counter)}",
+                )
+            ]
     else:
         data = raw_msg
 
@@ -304,7 +338,12 @@ class PolygonMockStream:
     for local development, CI/CD testing, and latency benchmarking.
     """
 
-    def __init__(self, symbols: List[str], seed: int = 42, base_prices: Optional[Dict[str, float]] = None):
+    def __init__(
+        self,
+        symbols: List[str],
+        seed: int = 42,
+        base_prices: Optional[Dict[str, float]] = None,
+    ):
         self.symbols = [s.upper() for s in symbols]
         self.rng = random.Random(seed)
         self.prices = base_prices or {
@@ -406,7 +445,9 @@ class PolygonFeedManager:
 
         self._stop_event.clear()
         target = self._run_mock_loop if self.mock_mode else self._run_ws_loop
-        self._thread = threading.Thread(target=target, daemon=True, name="mdrap-polygon-feed")
+        self._thread = threading.Thread(
+            target=target, daemon=True, name="mdrap-polygon-feed"
+        )
         self._thread.start()
 
     def stop(self) -> None:
@@ -416,7 +457,11 @@ class PolygonFeedManager:
             self._thread.join(timeout=2.0)
 
     def is_running(self) -> bool:
-        return self._thread is not None and self._thread.is_alive() and not self._stop_event.is_set()
+        return (
+            self._thread is not None
+            and self._thread.is_alive()
+            and not self._stop_event.is_set()
+        )
 
     def stats(self) -> dict:
         return dict(self._stats)
@@ -448,7 +493,9 @@ class PolygonFeedManager:
     def _run_ws_loop(self) -> None:
         """Run persistent asyncio WebSocket loop."""
         if not HAS_WEBSOCKETS:
-            logger.warning("[polygon_feed] 'websockets' library absent, falling back to mock mode.")
+            logger.warning(
+                "[polygon_feed] 'websockets' library absent, falling back to mock mode."
+            )
             self._stats["mock_mode"] = True
             self._run_mock_loop()
             return
@@ -457,7 +504,7 @@ class PolygonFeedManager:
         asyncio.set_event_loop(loop)
         try:
             loop.run_until_complete(self._async_ws_worker())
-        except Exception as e:
+        except Exception:
             self._stats["errors"] += 1
         finally:
             loop.close()
@@ -480,12 +527,12 @@ class PolygonFeedManager:
                     backoff = 1.0
 
                     # 1. Wait for connected status message
-                    init_msg = await asyncio.wait_for(ws.recv(), timeout=5.0)
+                    _init_msg = await asyncio.wait_for(ws.recv(), timeout=5.0)
 
                     # 2. Authenticate
                     auth_req = {"action": "auth", "params": self.api_key}
                     await ws.send(json.dumps(auth_req))
-                    auth_resp = await asyncio.wait_for(ws.recv(), timeout=5.0)
+                    _auth_resp = await asyncio.wait_for(ws.recv(), timeout=5.0)
 
                     # 3. Subscribe to Trades and Quotes for requested symbols
                     # Stocks: "Q.AAPL,T.AAPL", Crypto: "XT.BTC-USD,XQ.BTC-USD"
@@ -506,7 +553,7 @@ class PolygonFeedManager:
                         events = parse_polygon_frame(raw_str)
                         for ev in events:
                             self._enqueue_event(ev)
-            except Exception as e:
+            except Exception:
                 self._stats["errors"] += 1
                 self._stats["connected"] = False
                 if self._stop_event.is_set():

@@ -9,6 +9,7 @@ written with the full reproducibility record the spec asks for
 timestamp -- nothing is reported as a "result" without an actual
 timed, versioned run behind it.
 """
+
 from __future__ import annotations
 
 import json
@@ -17,8 +18,8 @@ import platform
 import sys
 import time
 from dataclasses import asdict
-from typing import Optional
 
+from fastpath import FastQualityEngine
 from models import QualityStatus, Reason
 from pipeline import Pipeline
 from simulator import FeedSimulator, SimulatorConfig
@@ -53,23 +54,25 @@ def _env_info() -> dict:
     return info
 
 
-from fastpath import FastQualityEngine
-
-
-def run_benchmark(sim_config: SimulatorConfig, db_path: str = ":memory:",
-                   warmup_events: int = 0, label: str = "run", version: str = "v1",
-                   fastpath: bool = True) -> dict:
+def run_benchmark(
+    sim_config: SimulatorConfig,
+    db_path: str = ":memory:",
+    warmup_events: int = 0,
+    label: str = "run",
+    version: str = "v1",
+    fastpath: bool = True,
+) -> dict:
     sim = FeedSimulator(sim_config)
     store = Store(db_path)
     if fastpath:
         quality = FastQualityEngine()
     else:
         from quality import QualityEngine
+
         quality = QualityEngine()
     pipeline = Pipeline(store, quality=quality)
 
-
-    ground_truth = {}   # raw_id -> label (for labeled fault types other than "missing")
+    _ground_truth = {}  # raw_id -> label (for labeled fault types other than "missing")
     detected = {k: 0 for k in EXPECTED}
     injected_seen = {k: 0 for k in EXPECTED}
     false_positive_counts = {r.value: 0 for r in Reason}
@@ -94,8 +97,11 @@ def run_benchmark(sim_config: SimulatorConfig, db_path: str = ":memory:",
         if label_ is not None:
             injected_seen[label_] += 1
             expected_status, expected_reason = EXPECTED[label_]
-            if result is not None and result.quality_status == expected_status \
-                    and expected_reason.value in result.reasons:
+            if (
+                result is not None
+                and result.quality_status == expected_status
+                and expected_reason.value in result.reasons
+            ):
                 detected[label_] += 1
         else:
             total_valid_no_fault += 1
@@ -103,7 +109,7 @@ def run_benchmark(sim_config: SimulatorConfig, db_path: str = ":memory:",
                 for r in result.reasons:
                     false_positive_counts[r] = false_positive_counts.get(r, 0) + 1
     pipeline.finish()
-    t1 = time.time()
+    _t1 = time.time()
 
     # "missing" can't be scored per-event (nothing was emitted); use the
     # sequence-gap reason count as an approximate proxy and say so plainly.
@@ -124,7 +130,8 @@ def run_benchmark(sim_config: SimulatorConfig, db_path: str = ":memory:",
     }
     false_positive_rate = (
         sum(false_positive_counts.values()) / total_valid_no_fault
-        if total_valid_no_fault else None
+        if total_valid_no_fault
+        else None
     )
 
     result = {
@@ -141,7 +148,10 @@ def run_benchmark(sim_config: SimulatorConfig, db_path: str = ":memory:",
         "quality": {
             "detection_by_fault_type": quality_report,
             "false_positive_rate_on_clean_events": (
-                round(false_positive_rate, 6) if false_positive_rate is not None else None),
+                round(false_positive_rate, 6)
+                if false_positive_rate is not None
+                else None
+            ),
             "false_positive_breakdown": false_positive_counts,
             "clean_events_evaluated": total_valid_no_fault,
         },

@@ -3,9 +3,9 @@ Observability: throughput, tail latency, dropped/invalid counters,
 resource usage. Kept dependency-light (stdlib only) so it never
 becomes the bottleneck it's supposed to be measuring.
 """
+
 from __future__ import annotations
 
-import os
 import sys
 import time
 from collections import deque
@@ -28,14 +28,20 @@ def percentile(sorted_values: List[float], pct: float) -> float:
         return 0.0
     idx = (len(sorted_values) - 1) * pct
     f, c = int(idx), min(int(idx) + 1, len(sorted_values) - 1)
-    return sorted_values[f] if f == c else sorted_values[f] + (sorted_values[c] - sorted_values[f]) * (idx - f)
+    return (
+        sorted_values[f]
+        if f == c
+        else sorted_values[f] + (sorted_values[c] - sorted_values[f]) * (idx - f)
+    )
 
 
 def get_rss_mb() -> float:
     """Return process Resident Set Size (RSS) in MB without external dependencies."""
     if resource:
         rss_kb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-        return rss_kb / 1024.0 if sys.platform == "linux" else rss_kb / (1024.0 * 1024.0)
+        return (
+            rss_kb / 1024.0 if sys.platform == "linux" else rss_kb / (1024.0 * 1024.0)
+        )
     if sys.platform == "win32":
         try:
             import ctypes
@@ -43,22 +49,26 @@ def get_rss_mb() -> float:
 
             class PROCESS_MEMORY_COUNTERS(ctypes.Structure):
                 _fields_ = [
-                    ('cb', wintypes.DWORD),
-                    ('PageFaultCount', wintypes.DWORD),
-                    ('PeakWorkingSetSize', ctypes.c_size_t),
-                    ('WorkingSetSize', ctypes.c_size_t),
-                    ('QuotaPeakPagedPoolUsage', ctypes.c_size_t),
-                    ('QuotaPagedPoolUsage', ctypes.c_size_t),
-                    ('QuotaPeakNonPagedPoolUsage', ctypes.c_size_t),
-                    ('QuotaNonPagedPoolUsage', ctypes.c_size_t),
-                    ('PagefileUsage', ctypes.c_size_t),
-                    ('PeakPagefileUsage', ctypes.c_size_t),
+                    ("cb", wintypes.DWORD),
+                    ("PageFaultCount", wintypes.DWORD),
+                    ("PeakWorkingSetSize", ctypes.c_size_t),
+                    ("WorkingSetSize", ctypes.c_size_t),
+                    ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
+                    ("QuotaPagedPoolUsage", ctypes.c_size_t),
+                    ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+                    ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+                    ("PagefileUsage", ctypes.c_size_t),
+                    ("PeakPagefileUsage", ctypes.c_size_t),
                 ]
 
             kernel32 = ctypes.windll.kernel32
             psapi = ctypes.windll.psapi
             kernel32.GetCurrentProcess.restype = wintypes.HANDLE
-            psapi.GetProcessMemoryInfo.argtypes = [wintypes.HANDLE, ctypes.POINTER(PROCESS_MEMORY_COUNTERS), wintypes.DWORD]
+            psapi.GetProcessMemoryInfo.argtypes = [
+                wintypes.HANDLE,
+                ctypes.POINTER(PROCESS_MEMORY_COUNTERS),
+                wintypes.DWORD,
+            ]
             psapi.GetProcessMemoryInfo.restype = wintypes.BOOL
 
             pmc = PROCESS_MEMORY_COUNTERS()
@@ -82,21 +92,53 @@ class RunMetrics:
     deques (see LIVE_WINDOW) that dashboard.py reads instead, so live
     percentiles stay cheap regardless of how long the run has been going.
     """
+
     start_time: float = field(default_factory=time.time)
     end_time: Optional[float] = None
     processed: int = 0
     dropped: int = 0  # events that raised an unrecoverable error (rare; schema failures are INVALID, not dropped)
-    quality_counts: Dict[str, int] = field(default_factory=lambda: {"VALID": 0, "SUSPICIOUS": 0, "INVALID": 0})
-    _latencies_us: List[float] = field(default_factory=list)  # exchange -> canonical-decision latency
-    _proc_latencies_us: List[float] = field(default_factory=list)  # ingest -> canonical-decision compute time
-    recent_latencies_us: deque = field(default_factory=lambda: deque(maxlen=LIVE_WINDOW))
-    recent_proc_latencies_us: deque = field(default_factory=lambda: deque(maxlen=LIVE_WINDOW))
+    quality_counts: Dict[str, int] = field(
+        default_factory=lambda: {"VALID": 0, "SUSPICIOUS": 0, "INVALID": 0}
+    )
+    _latencies_us: List[float] = field(
+        default_factory=list
+    )  # exchange -> canonical-decision latency
+    _proc_latencies_us: List[float] = field(
+        default_factory=list
+    )  # ingest -> canonical-decision compute time
+    recent_latencies_us: deque = field(
+        default_factory=lambda: deque(maxlen=LIVE_WINDOW)
+    )
+    recent_proc_latencies_us: deque = field(
+        default_factory=lambda: deque(maxlen=LIVE_WINDOW)
+    )
     max_queue_depth: int = 0
     backpressure_stalls: int = 0
     _queue_depths: List[int] = field(default_factory=list)
     _storage_lags_us: List[float] = field(default_factory=list)
+    _ingest_latencies_us: List[float] = field(default_factory=list)
+    _quality_latencies_us: List[float] = field(default_factory=list)
+    _reconcile_latencies_us: List[float] = field(default_factory=list)
+    _enqueue_latencies_us: List[float] = field(default_factory=list)
+    _query_latencies_us: List[float] = field(default_factory=list)
+    recent_query_latencies_us: deque = field(
+        default_factory=lambda: deque(maxlen=LIVE_WINDOW)
+    )
+    _by_source_us: Dict[str, List[float]] = field(default_factory=dict)
+    _by_instrument_us: Dict[str, List[float]] = field(default_factory=dict)
 
-    def record(self, e2e_latency_s: float, processing_latency_s: float, status: str):
+    def record(
+        self,
+        e2e_latency_s: float,
+        processing_latency_s: float,
+        status: str,
+        source: str | None = None,
+        instrument_id: str | None = None,
+        ingest_latency_s: float = 0.0,
+        quality_latency_s: float = 0.0,
+        reconcile_latency_s: float = 0.0,
+        enqueue_latency_s: float = 0.0,
+    ):
         self.processed += 1
         self.quality_counts[status] = self.quality_counts.get(status, 0) + 1
         e2e_us = e2e_latency_s * 1_000_000
@@ -106,7 +148,37 @@ class RunMetrics:
         self.recent_latencies_us.append(e2e_us)
         self.recent_proc_latencies_us.append(proc_us)
 
-    def record_streaming(self, queue_depth: int, backpressure_stall: bool = False, storage_lag_s: float = 0.0):
+        if ingest_latency_s > 0.0:
+            self._ingest_latencies_us.append(ingest_latency_s * 1_000_000)
+        if quality_latency_s > 0.0:
+            self._quality_latencies_us.append(quality_latency_s * 1_000_000)
+        if reconcile_latency_s > 0.0:
+            self._reconcile_latencies_us.append(reconcile_latency_s * 1_000_000)
+        if enqueue_latency_s > 0.0:
+            self._enqueue_latencies_us.append(enqueue_latency_s * 1_000_000)
+
+        if source:
+            if source not in self._by_source_us:
+                self._by_source_us[source] = []
+            self._by_source_us[source].append(proc_us)
+
+        if instrument_id:
+            if instrument_id not in self._by_instrument_us:
+                self._by_instrument_us[instrument_id] = []
+            self._by_instrument_us[instrument_id].append(proc_us)
+
+    def record_query(self, query_latency_s: float):
+        """Record point or analytical query latency in microseconds."""
+        q_us = query_latency_s * 1_000_000
+        self._query_latencies_us.append(q_us)
+        self.recent_query_latencies_us.append(q_us)
+
+    def record_streaming(
+        self,
+        queue_depth: int,
+        backpressure_stall: bool = False,
+        storage_lag_s: float = 0.0,
+    ):
         if queue_depth > self.max_queue_depth:
             self.max_queue_depth = queue_depth
         self._queue_depths.append(queue_depth)
@@ -130,6 +202,9 @@ class RunMetrics:
         proc = sorted(self._proc_latencies_us)
         rss_mb = get_rss_mb()
 
+        e2e_p50 = percentile(lat, 0.50)
+        proc_p50 = percentile(proc, 0.50)
+
         result = {
             "processed": self.processed,
             "dropped": self.dropped,
@@ -137,26 +212,85 @@ class RunMetrics:
             "throughput_eps": round(self.throughput(), 1),
             "quality_counts": self.quality_counts,
             "e2e_latency_us": {
-                "p50": round(percentile(lat, 0.50), 1),
+                "p50": round(e2e_p50, 1),
                 "p95": round(percentile(lat, 0.95), 1),
                 "p99": round(percentile(lat, 0.99), 1),
                 "p999": round(percentile(lat, 0.999), 1),
                 "max": round(lat[-1], 1) if lat else 0.0,
             },
             "processing_latency_us": {
-                "p50": round(percentile(proc, 0.50), 1),
+                "p50": round(proc_p50, 1),
                 "p95": round(percentile(proc, 0.95), 1),
                 "p99": round(percentile(proc, 0.99), 1),
                 "max": round(proc[-1], 1) if proc else 0.0,
             },
             "processing_latency_ns": {
-                "p50": int(percentile(proc, 0.50) * 1000),
+                "p50": int(proc_p50 * 1000),
                 "p95": int(percentile(proc, 0.95) * 1000),
                 "p99": int(percentile(proc, 0.99) * 1000),
                 "max": int((proc[-1] if proc else 0.0) * 1000),
             },
+            "latency_split_e2e_vs_proc": {
+                "e2e_p50_us": round(e2e_p50, 1),
+                "proc_p50_us": round(proc_p50, 1),
+                "e2e_to_proc_ratio": round(e2e_p50 / max(0.001, proc_p50), 2)
+                if proc_p50
+                else 1.0,
+            },
             "max_rss_mb": round(rss_mb, 1) if rss_mb else None,
         }
+
+        # Stage breakdowns (Phase 0)
+        def _calc_stage(vals: List[float]) -> dict:
+            if not vals:
+                return {"p50": 0.0, "p95": 0.0, "p99": 0.0}
+            s = sorted(vals)
+            return {
+                "p50": round(percentile(s, 0.50), 2),
+                "p95": round(percentile(s, 0.95), 2),
+                "p99": round(percentile(s, 0.99), 2),
+            }
+
+        if any(
+            [
+                self._ingest_latencies_us,
+                self._quality_latencies_us,
+                self._reconcile_latencies_us,
+                self._enqueue_latencies_us,
+            ]
+        ):
+            result["stages_us"] = {
+                "ingest_normalize": _calc_stage(self._ingest_latencies_us),
+                "quality_evaluate": _calc_stage(self._quality_latencies_us),
+                "reconcile_analytics": _calc_stage(self._reconcile_latencies_us),
+                "enqueue_storage": _calc_stage(self._enqueue_latencies_us),
+            }
+
+        # Per-source breakdown (Q2)
+        if self._by_source_us:
+            result["by_source_proc_us"] = {
+                src: _calc_stage(vals) for src, vals in sorted(self._by_source_us.items())
+            }
+
+        # Per-instrument breakdown (top 10 by volume) (Q2)
+        if self._by_instrument_us:
+            sorted_insts = sorted(
+                self._by_instrument_us.items(), key=lambda kv: len(kv[1]), reverse=True
+            )[:10]
+            result["by_instrument_proc_us"] = {
+                inst: _calc_stage(vals) for inst, vals in sorted_insts
+            }
+
+        # Query latency breakdown
+        if self._query_latencies_us:
+            q_sorted = sorted(self._query_latencies_us)
+            result["query_latency_us"] = {
+                "count": len(self._query_latencies_us),
+                "p50": round(percentile(q_sorted, 0.50), 2),
+                "p95": round(percentile(q_sorted, 0.95), 2),
+                "p99": round(percentile(q_sorted, 0.99), 2),
+                "max": round(q_sorted[-1], 2),
+            }
 
         if self._queue_depths:
             q_sorted = sorted(self._queue_depths)
@@ -175,4 +309,3 @@ class RunMetrics:
                 }
 
         return result
-

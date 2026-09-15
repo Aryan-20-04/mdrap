@@ -8,6 +8,7 @@ Implements enterprise-grade market data infrastructure security:
 - Token bucket high-throughput rate limiter for DoS / flood mitigation
 - Strict input sanitization and schema bounds validation
 """
+
 from __future__ import annotations
 
 import enum
@@ -25,9 +26,9 @@ from typing import Any, Dict, Optional, Tuple
 
 
 class Role(str, enum.Enum):
-    VIEWER = "VIEWER"       # Read BBO, candles, spreads, analytics, platform status
-    OPERATOR = "OPERATOR"   # Run ingestion, live streaming, inspect quarantine
-    ADMIN = "ADMIN"         # Manual source block/unblock, secrets management, chaos drills, audit review
+    VIEWER = "VIEWER"  # Read BBO, candles, spreads, analytics, platform status
+    OPERATOR = "OPERATOR"  # Run ingestion, live streaming, inspect quarantine
+    ADMIN = "ADMIN"  # Manual source block/unblock, secrets management, chaos drills, audit review
 
 
 _ROLE_HIERARCHY = {
@@ -39,6 +40,7 @@ _ROLE_HIERARCHY = {
 
 class Tier(str, enum.Enum):
     """Client entitlement tier (unified platform capabilities)."""
+
     STANDARD = "STANDARD"
     FREE = "STANDARD"
     PRO = "STANDARD"
@@ -48,6 +50,7 @@ class Tier(str, enum.Enum):
 @dataclass
 class ClientEntitlement:
     """Client entitlement, permissions, and rate limit definition."""
+
     token: str
     client_id: str
     rate_limit_eps: float = 20_000.0
@@ -87,13 +90,16 @@ class ClientEntitlement:
             can_use_shm=bool(data.get("can_use_shm", True)),
             max_replay_events=int(data.get("max_replay_events", 100_000)),
             created_at=float(data.get("created_at", time.time())),
-            expires_at=float(data["expires_at"]) if data.get("expires_at") is not None else None,
+            expires_at=float(data["expires_at"])
+            if data.get("expires_at") is not None
+            else None,
             is_active=bool(data.get("is_active", True)),
         )
 
 
 class PermissionError(Exception):
     """Raised when an actor lacks sufficient RBAC privileges."""
+
     pass
 
 
@@ -114,7 +120,7 @@ class TokenBucketRateLimiter:
         with self._lock:
             now = time.perf_counter()
             current_tokens, last_time = self._buckets.get(source, (self.capacity, now))
-            
+
             # Refill tokens based on elapsed time
             elapsed = now - last_time
             current_tokens = min(self.capacity, current_tokens + elapsed * self.rate)
@@ -139,6 +145,7 @@ class InputSanitizer:
     Strict input validation guard ensuring data bounds and safe representations
     before events enter gateway normalization.
     """
+
     SYMBOL_PATTERN = re.compile(r"^[A-Za-z0-9/_\-\.]{1,20}$")
     MAX_PRICE = 10_000_000.0
     MIN_PRICE = 0.00000001
@@ -156,32 +163,56 @@ class InputSanitizer:
 
         price = payload.get("price")
         if price is not None:
-            if isinstance(price, bool) or not isinstance(price, (int, float)) or price < cls.MIN_PRICE or price > cls.MAX_PRICE:
+            if (
+                isinstance(price, bool)
+                or not isinstance(price, (int, float))
+                or price < cls.MIN_PRICE
+                or price > cls.MAX_PRICE
+            ):
                 return False, f"Price out of acceptable bounds: {price}"
 
         bid = payload.get("bid")
         if bid is not None:
-            if isinstance(bid, bool) or not isinstance(bid, (int, float)) or bid < 0.0 or bid > cls.MAX_PRICE:
+            if (
+                isinstance(bid, bool)
+                or not isinstance(bid, (int, float))
+                or bid < 0.0
+                or bid > cls.MAX_PRICE
+            ):
                 return False, f"Bid price out of bounds: {bid}"
 
         ask = payload.get("ask")
         if ask is not None:
-            if isinstance(ask, bool) or not isinstance(ask, (int, float)) or ask < 0.0 or ask > cls.MAX_PRICE:
+            if (
+                isinstance(ask, bool)
+                or not isinstance(ask, (int, float))
+                or ask < 0.0
+                or ask > cls.MAX_PRICE
+            ):
                 return False, f"Ask price out of bounds: {ask}"
 
         qty = payload.get("quantity")
         if qty is not None:
-            if isinstance(qty, bool) or not isinstance(qty, (int, float)) or qty < 0.0 or qty > cls.MAX_QUANTITY:
+            if (
+                isinstance(qty, bool)
+                or not isinstance(qty, (int, float))
+                or qty < 0.0
+                or qty > cls.MAX_QUANTITY
+            ):
                 return False, f"Quantity out of bounds: {qty}"
 
         seq = payload.get("sequence")
-        if seq is not None and (isinstance(seq, bool) or not isinstance(seq, int) or seq < 0):
+        if seq is not None and (
+            isinstance(seq, bool) or not isinstance(seq, int) or seq < 0
+        ):
             return False, f"Sequence number must be integer: {seq}"
 
         return True, None
 
 
-def format_audit_payload(prev_hash: str, ts: float, actor: str, role: str, action: str, details: str) -> str:
+def format_audit_payload(
+    prev_hash: str, ts: float, actor: str, role: str, action: str, details: str
+) -> str:
     """Format and escape audit entry fields to prevent delimiter collision/injection."""
     esc_actor = str(actor).replace("|", r"\|")
     esc_role = str(role).replace("|", r"\|")
@@ -223,9 +254,17 @@ class SecurityManager:
         },
     }
 
-    def __init__(self, store: Optional[Any] = None, rate_limit: float = 20_000.0, require_env_secrets: bool = False):
+    def __init__(
+        self,
+        store: Optional[Any] = None,
+        rate_limit: float = 20_000.0,
+        require_env_secrets: bool = False,
+    ):
         self.store = store
-        mandate_env = require_env_secrets or (os.environ.get("MDRAP_REQUIRE_ENV_SECRETS", "").lower() in ("1", "true", "yes"))
+        mandate_env = require_env_secrets or (
+            os.environ.get("MDRAP_REQUIRE_ENV_SECRETS", "").lower()
+            in ("1", "true", "yes")
+        )
         self._secrets: Dict[str, bytes] = {}
         if not mandate_env:
             self._secrets = {
@@ -234,11 +273,13 @@ class SecurityManager:
         # Pluggable secrets: load environment overrides (e.g. MDRAP_SECRET_FEEDX=...)
         for k, v in os.environ.items():
             if k.startswith("MDRAP_SECRET_"):
-                source_name = k[len("MDRAP_SECRET_"):].upper()
+                source_name = k[len("MDRAP_SECRET_") :].upper()
                 self._secrets[source_name] = v.encode("utf-8")
 
         if mandate_env and not self._secrets:
-            raise ValueError("MDRAP_REQUIRE_ENV_SECRETS enabled but no MDRAP_SECRET_* variables defined")
+            raise ValueError(
+                "MDRAP_REQUIRE_ENV_SECRETS enabled but no MDRAP_SECRET_* variables defined"
+            )
 
         self.rate_limiter = TokenBucketRateLimiter(rate=rate_limit)
         self.sanitizer = InputSanitizer()
@@ -261,7 +302,7 @@ class SecurityManager:
         # Load API key overrides from environment (e.g. MDRAP_API_KEY_PRO=custom_token)
         for k, v in os.environ.items():
             if k.startswith("MDRAP_API_KEY_"):
-                suffix = k[len("MDRAP_API_KEY_"):].upper()
+                suffix = k[len("MDRAP_API_KEY_") :].upper()
                 self._api_keys[v] = ClientEntitlement(
                     token=v,
                     client_id=f"Env_Client_{suffix}",
@@ -277,7 +318,10 @@ class SecurityManager:
                 for ent in self.store.load_api_keys():
                     self._api_keys[ent.token] = ent
             except Exception as exc:
-                print(f"[mdrap SECURITY WARNING] Failed to load API keys from store: {exc}", file=sys.stderr)
+                print(
+                    f"[mdrap SECURITY WARNING] Failed to load API keys from store: {exc}",
+                    file=sys.stderr,
+                )
 
     def register_feed_secret(self, source: str, secret_key: str) -> None:
         """Register or rotate a pre-shared cryptographic key for a market data feed."""
@@ -296,7 +340,9 @@ class SecurityManager:
 
         # Exclude existing signature field if present to avoid recursive self-reference
         filtered = {k: v for k, v in payload.items() if k != "signature"}
-        serialized = json.dumps(filtered, sort_keys=True, default=str, separators=(',', ':')).encode("utf-8")
+        serialized = json.dumps(
+            filtered, sort_keys=True, default=str, separators=(",", ":")
+        ).encode("utf-8")
         return hmac.new(secret, serialized, hashlib.sha256).hexdigest()
 
     def verify_payload(self, source: str, payload: dict, signature: str) -> bool:
@@ -308,18 +354,30 @@ class SecurityManager:
         if not signature:
             self._tampered_count += 1
             if self.store:
-                self.log_audit("HMAC_MISSING", actor=src, role=Role.VIEWER, details="Payload arrived with no signature")
+                self.log_audit(
+                    "HMAC_MISSING",
+                    actor=src,
+                    role=Role.VIEWER,
+                    details="Payload arrived with no signature",
+                )
             return False
 
         secret = self._secrets.get(src)
         if not secret:
             self._tampered_count += 1
             if self.store:
-                self.log_audit("HMAC_UNKNOWN_FEED", actor=src, role=Role.VIEWER, details="No secret registered for feed")
+                self.log_audit(
+                    "HMAC_UNKNOWN_FEED",
+                    actor=src,
+                    role=Role.VIEWER,
+                    details="No secret registered for feed",
+                )
             return False
 
         filtered = {k: v for k, v in payload.items() if k != "signature"}
-        serialized = json.dumps(filtered, sort_keys=True, default=str, separators=(',', ':')).encode("utf-8")
+        serialized = json.dumps(
+            filtered, sort_keys=True, default=str, separators=(",", ":")
+        ).encode("utf-8")
         expected_sig = hmac.new(secret, serialized, hashlib.sha256).hexdigest()
 
         is_valid = hmac.compare_digest(expected_sig, signature)
@@ -328,10 +386,17 @@ class SecurityManager:
         else:
             self._tampered_count += 1
             if self.store:
-                self.log_audit("HMAC_SIGNATURE_INVALID", actor=src, role=Role.VIEWER, details="Payload HMAC signature mismatch")
+                self.log_audit(
+                    "HMAC_SIGNATURE_INVALID",
+                    actor=src,
+                    role=Role.VIEWER,
+                    details="Payload HMAC signature mismatch",
+                )
         return is_valid
 
-    def authorize(self, actor_role: Role, required_role: Role, action_name: str = "") -> None:
+    def authorize(
+        self, actor_role: Role, required_role: Role, action_name: str = ""
+    ) -> None:
         """Enforce Role-Based Access Control hierarchy."""
         if _ROLE_HIERARCHY.get(actor_role, 0) < _ROLE_HIERARCHY.get(required_role, 99):
             raise PermissionError(
@@ -354,11 +419,15 @@ class SecurityManager:
         if timestamp is None:
             timestamp = time.time()
 
-        prev_hash = "GENESIS_0000000000000000000000000000000000000000000000000000000000000000"
+        prev_hash = (
+            "GENESIS_0000000000000000000000000000000000000000000000000000000000000000"
+        )
         if self.store and hasattr(self.store, "get_latest_audit_hash"):
             prev_hash = self.store.get_latest_audit_hash()
 
-        payload_str = format_audit_payload(prev_hash, timestamp, actor, role.value, action, details)
+        payload_str = format_audit_payload(
+            prev_hash, timestamp, actor, role.value, action, details
+        )
         entry_hash = hashlib.sha256(payload_str.encode("utf-8")).hexdigest()
 
         if self.store and hasattr(self.store, "write_audit_entry"):
@@ -407,7 +476,9 @@ class SecurityManager:
             can_access_l2=can_access_l2 if can_access_l2 is not None else True,
             can_use_binary=can_use_binary if can_use_binary is not None else True,
             can_use_shm=can_use_shm if can_use_shm is not None else True,
-            max_replay_events=max_replay_events if max_replay_events is not None else 100_000,
+            max_replay_events=max_replay_events
+            if max_replay_events is not None
+            else 100_000,
             expires_at=expires_at,
             is_active=True,
         )
@@ -418,7 +489,9 @@ class SecurityManager:
                 self.store.save_api_key(ent)
             except Exception as exc:
                 self._api_keys.pop(token, None)
-                raise RuntimeError(f"Failed to persist API key to storage: {exc}") from exc
+                raise RuntimeError(
+                    f"Failed to persist API key to storage: {exc}"
+                ) from exc
         return ent
 
     def revoke_api_key(self, token: str) -> bool:
@@ -429,7 +502,9 @@ class SecurityManager:
                 try:
                     self.store.revoke_api_key(token)
                 except Exception as exc:
-                    raise RuntimeError(f"Failed to persist API key revocation to storage: {exc}") from exc
+                    raise RuntimeError(
+                        f"Failed to persist API key revocation to storage: {exc}"
+                    ) from exc
             ent.is_active = False
             return True
         return False
@@ -438,7 +513,7 @@ class SecurityManager:
         """Lookup entitlement by token. Returns None if invalid or missing."""
         return self._api_keys.get(token)
 
-    def list_api_keys(self) -> List[ClientEntitlement]:
+    def list_api_keys(self) -> list[ClientEntitlement]:
         """List all known client entitlements."""
         return list(self._api_keys.values())
 

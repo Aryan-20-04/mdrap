@@ -1,23 +1,31 @@
 """
-Historical Backtesting Engine for MDRAP.
+Historical Backtesting Engine for MDRAP (Spec §18, §26).
 
-This implements the historical backtesting engine — the core research tool for 
-quantitative strategy development. It integrates with the existing `StrategyRunner` 
-and `PaperExecutor` to replay historical market events with point-in-time accuracy,
-generating comprehensive performance metrics like Sharpe, Sortino, max drawdown, etc.
+Implements event-driven point-in-time historical backtesting:
+- Replays canonical trade/quote event streams through algorithmic strategies (`StrategyRunner` / `PaperExecutor`).
+- Point-in-time market state reconstruction (synthesizing BBO, depth rungs, and whale print detection).
+- Periodic equity curve sampling and drawdown tracking.
+- Risk-adjusted return analytics:
+    * Annualized Return (compounded or linear depending on horizon)
+    * Annualized Sharpe Ratio: (mean(R) / stdev(R)) * sqrt(annualization_factor)
+    * Annualized Sortino Ratio: (mean(R) / downside_stdev(R)) * sqrt(annualization_factor)
+    * Calmar Ratio: Annualized Return / Max Drawdown
+    * Profit Factor: Gross Profit / Gross Loss
+- Anchored Walk-Forward out-of-sample cross-validation splits.
 """
 
+from __future__ import annotations
+
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, Iterator, Any
 import json
 import math
-import time
 import statistics
-from itertools import count
+import time
 
 from models import CanonicalEvent, EventType, QualityStatus
-from strategy_sdk import Strategy, StrategyRunner, PaperExecutor
-from storage import Store
+from strategy_sdk import PaperExecutor, Strategy, StrategyRunner
+
 
 @dataclass
 class BacktestResult:
@@ -31,11 +39,11 @@ class BacktestResult:
     annualized_return_pct: float
     max_drawdown_pct: float
     max_drawdown_duration_s: float
-    sharpe_ratio: float           # annualized, rf=0
-    sortino_ratio: float          # annualized, rf=0
-    calmar_ratio: float           # annualized return / max drawdown
-    win_rate: float               # percentage of winning trades
-    profit_factor: float          # gross profit / gross loss
+    sharpe_ratio: float  # annualized, rf=0
+    sortino_ratio: float  # annualized, rf=0
+    calmar_ratio: float  # annualized return / max drawdown
+    win_rate: float  # percentage of winning trades
+    profit_factor: float  # gross profit / gross loss
     total_trades: int
     winning_trades: int
     losing_trades: int
@@ -46,13 +54,15 @@ class BacktestResult:
     avg_trade_duration_s: float
     equity_curve: list[tuple[float, float]]  # (timestamp, equity)
     drawdown_curve: list[tuple[float, float]]  # (timestamp, drawdown_pct)
-    trades: list[dict]             # execution ledger from strategy
-    benchmark_return_pct: float    # buy-and-hold return
-    alpha_pct: float               # strategy return - benchmark return
+    trades: list[dict]  # execution ledger from strategy
+    benchmark_return_pct: float  # buy-and-hold return
+    alpha_pct: float  # strategy return - benchmark return
 
 
 class BacktestEngine:
-    def __init__(self, initial_capital: float = 100_000.0, benchmark_symbol: str | None = None):
+    def __init__(
+        self, initial_capital: float = 100_000.0, benchmark_symbol: str | None = None
+    ):
         self.initial_capital = initial_capital
         self.benchmark_symbol = benchmark_symbol
 
@@ -75,15 +85,17 @@ class BacktestEngine:
         equity_curve = []
         last_sample_time = 0.0
         duration_range = end_time - start_time
-        sample_interval = max(0.1, duration_range / 200.0) if duration_range > 0 else 1.0
+        sample_interval = (
+            max(0.1, duration_range / 200.0) if duration_range > 0 else 1.0
+        )
 
         runner = StrategyRunner(strategy)
         runner.strategy.on_start()
-        
+
         real_start_time = time.time()
         latest_prices: dict[str, float] = {}
         has_quote_feed: set[str] = set()
-        
+
         for event in events:
             if self.benchmark_symbol and event.instrument_id == self.benchmark_symbol:
                 if first_benchmark_price is None:
@@ -102,7 +114,11 @@ class BacktestEngine:
                         "ask_size": event.quantity or 1000.0,
                     }
                     runner.strategy.get_order_book(event.instrument_id).update_quote(
-                        event.price, event.price, event.quantity or 1000.0, event.quantity or 1000.0, event.exchange_timestamp
+                        event.price,
+                        event.price,
+                        event.quantity or 1000.0,
+                        event.quantity or 1000.0,
+                        event.exchange_timestamp,
                     )
                 # Dispatch tick
                 runner.strategy.on_tick(event)
@@ -111,7 +127,9 @@ class BacktestEngine:
                 if event.quantity:
                     notional = event.price * event.quantity
                     if notional >= 100_000.0 or event.quantity >= 500:
-                        mid_ref = runner.strategy._current_mid.get(event.instrument_id, event.price)
+                        mid_ref = runner.strategy._current_mid.get(
+                            event.instrument_id, event.price
+                        )
                         whale_info = {
                             "instrument": event.instrument_id,
                             "price": event.price,
@@ -150,7 +168,7 @@ class BacktestEngine:
                 last_sample_time = event.exchange_timestamp
 
         runner.strategy.on_stop()
-        
+
         real_duration = time.time() - real_start_time
 
         # Get trades and final equity
@@ -162,13 +180,15 @@ class BacktestEngine:
         # Compute metrics
         total_return = (final_equity - self.initial_capital) / self.initial_capital
         duration_days = (end_time - start_time) / 86400.0
-        
+
         if duration_days >= 1.0:
             if 1.0 + total_return <= 0.0:
                 annualized_return = -1.0
             else:
                 try:
-                    annualized_return = ((1.0 + total_return) ** (365.25 / duration_days)) - 1.0
+                    annualized_return = (
+                        (1.0 + total_return) ** (365.25 / duration_days)
+                    ) - 1.0
                 except OverflowError:
                     annualized_return = total_return * (365.25 / duration_days)
         elif duration_days > 0:
@@ -197,31 +217,41 @@ class BacktestEngine:
             if eq > peak_equity:
                 peak_equity = eq
                 current_dd_start = ts
-            
+
             dd = (peak_equity - eq) / peak_equity if peak_equity > 0 else 0.0
             drawdown_curve.append((ts, dd * 100))
-            
+
             if dd > max_drawdown:
                 max_drawdown = dd
                 max_dd_duration = max(max_dd_duration, ts - current_dd_start)
 
         # Sharpe / Sortino
         annualize_factor = math.sqrt(252 * 6.5 * 3600 / sample_interval)
-        
+
         if len(returns) > 1 and statistics.stdev(returns) > 0:
-            sharpe_ratio = (statistics.mean(returns) / statistics.stdev(returns)) * annualize_factor
+            sharpe_ratio = (
+                statistics.mean(returns) / statistics.stdev(returns)
+            ) * annualize_factor
             downside_returns = [r for r in returns if r < 0]
             if len(downside_returns) >= 2 and statistics.stdev(downside_returns) > 0:
-                sortino_ratio = (statistics.mean(returns) / statistics.stdev(downside_returns)) * annualize_factor
+                sortino_ratio = (
+                    statistics.mean(returns) / statistics.stdev(downside_returns)
+                ) * annualize_factor
             elif len(downside_returns) == 1 and abs(downside_returns[0]) > 0:
-                sortino_ratio = (statistics.mean(returns) / abs(downside_returns[0])) * annualize_factor
+                sortino_ratio = (
+                    statistics.mean(returns) / abs(downside_returns[0])
+                ) * annualize_factor
             else:
-                sortino_ratio = float('inf') if statistics.mean(returns) > 0 else 0.0
+                sortino_ratio = float("inf") if statistics.mean(returns) > 0 else 0.0
         else:
             sharpe_ratio = 0.0
             sortino_ratio = 0.0
 
-        calmar_ratio = (annualized_return * 100) / (max_drawdown * 100) if max_drawdown > 0 else float('inf')
+        calmar_ratio = (
+            (annualized_return * 100) / (max_drawdown * 100)
+            if max_drawdown > 0
+            else float("inf")
+        )
 
         # Trade metrics
         winning_trades = 0
@@ -230,11 +260,11 @@ class BacktestEngine:
         gross_loss = 0.0
         largest_win = 0.0
         largest_loss = 0.0
-        
+
         trade_pnls = []
         last_realized = 0.0
         for t in trades:
-            curr_realized = t.get('realized_pnl', 0.0)
+            curr_realized = t.get("realized_pnl", 0.0)
             diff = curr_realized - last_realized
             if abs(diff) > 1e-9:
                 trade_pnls.append(diff)
@@ -250,18 +280,28 @@ class BacktestEngine:
                     losing_trades += 1
                     gross_loss += abs(pnl)
                     largest_loss = max(largest_loss, abs(pnl))
-        
+
         total_closed_trades = winning_trades + losing_trades
         total_trades = total_closed_trades if total_closed_trades > 0 else len(trades)
-        win_rate = (winning_trades / total_closed_trades * 100) if total_closed_trades > 0 else 0.0
-        profit_factor = (gross_profit / gross_loss) if gross_loss > 0 else (float('inf') if gross_profit > 0 else 0.0)
-        
+        win_rate = (
+            (winning_trades / total_closed_trades * 100)
+            if total_closed_trades > 0
+            else 0.0
+        )
+        profit_factor = (
+            (gross_profit / gross_loss)
+            if gross_loss > 0
+            else (float("inf") if gross_profit > 0 else 0.0)
+        )
+
         avg_win = gross_profit / winning_trades if winning_trades > 0 else 0.0
         avg_loss = gross_loss / losing_trades if losing_trades > 0 else 0.0
 
         benchmark_return = 0.0
         if first_benchmark_price and last_benchmark_price:
-            benchmark_return = (last_benchmark_price - first_benchmark_price) / first_benchmark_price
+            benchmark_return = (
+                last_benchmark_price - first_benchmark_price
+            ) / first_benchmark_price
 
         alpha = (total_return - benchmark_return) * 100
 
@@ -293,40 +333,50 @@ class BacktestEngine:
             drawdown_curve=drawdown_curve,
             trades=trades,
             benchmark_return_pct=benchmark_return * 100,
-            alpha_pct=alpha
+            alpha_pct=alpha,
         )
 
-    def run_walkforward(self, strategy_factory: Callable[[], Strategy], events: list[CanonicalEvent], n_splits: int = 5, train_pct: float = 0.6) -> list[BacktestResult]:
+    def run_walkforward(
+        self,
+        strategy_factory: Callable[[], Strategy],
+        events: list[CanonicalEvent],
+        n_splits: int = 5,
+        train_pct: float = 0.6,
+    ) -> list[BacktestResult]:
         if not events:
             return []
-            
+
         events = sorted(events, key=lambda e: e.exchange_timestamp)
         total_events = len(events)
         window_size = total_events // n_splits
-        
+
         results = []
         for i in range(n_splits):
             start_idx = i * window_size
             end_idx = start_idx + window_size if i < n_splits - 1 else total_events
             window_events = events[start_idx:end_idx]
-            
+
             if not window_events:
                 continue
-                
+
             train_size = int(len(window_events) * train_pct)
             test_events = window_events[train_size:]
-            
+
             if not test_events:
                 continue
-                
+
             strategy = strategy_factory()
             res = self.run(strategy, test_events)
             results.append(res)
-            
+
         return results
 
-def load_events_from_store(db_path: str, instrument_id: str | None = None) -> list[CanonicalEvent]:
+
+def load_events_from_store(
+    db_path: str, instrument_id: str | None = None
+) -> list[CanonicalEvent]:
     import sqlite3
+
     conn = sqlite3.connect(db_path)
     try:
         query = (
@@ -340,30 +390,32 @@ def load_events_from_store(db_path: str, instrument_id: str | None = None) -> li
             query += " WHERE instrument_id = ?"
             params.append(instrument_id)
         query += " ORDER BY exchange_timestamp ASC"
-        
+
         cursor = conn.execute(query, params)
         events: list[CanonicalEvent] = []
         for row in cursor.fetchall():
             reasons = json.loads(row[15]) if row[15] else []
-            events.append(CanonicalEvent(
-                event_id=row[0],
-                instrument_id=row[1],
-                event_type=EventType(row[2]),
-                exchange_timestamp=row[3],
-                receive_timestamp=row[4],
-                processing_timestamp=row[5],
-                source=row[6],
-                sequence_number=row[7],
-                price=row[8],
-                quantity=row[9],
-                bid_price=row[10],
-                bid_size=row[11],
-                ask_price=row[12],
-                ask_size=row[13],
-                quality_status=QualityStatus(row[14]),
-                reasons=reasons,
-                raw_id=row[16] or "",
-            ))
+            events.append(
+                CanonicalEvent(
+                    event_id=row[0],
+                    instrument_id=row[1],
+                    event_type=EventType(row[2]),
+                    exchange_timestamp=row[3],
+                    receive_timestamp=row[4],
+                    processing_timestamp=row[5],
+                    source=row[6],
+                    sequence_number=row[7],
+                    price=row[8],
+                    quantity=row[9],
+                    bid_price=row[10],
+                    bid_size=row[11],
+                    ask_price=row[12],
+                    ask_size=row[13],
+                    quality_status=QualityStatus(row[14]),
+                    reasons=reasons,
+                    raw_id=row[16] or "",
+                )
+            )
         return events
     finally:
         conn.close()

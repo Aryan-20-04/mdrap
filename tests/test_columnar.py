@@ -259,3 +259,54 @@ def test_export_parquet_injection_blocked(memory_store):
     with pytest.raises(ValueError):
         memory_store.export_parquet("test.parquet", compression="INVALID_CODEC")
 
+
+def test_columnar_query_as_of(memory_store):
+    """Verify historical as-of point-in-time state reconstruction (Invariant Q6)."""
+    events = [
+        make_trade("t1", "AAPL", 150.0, 100.0, 1000.0),
+        make_trade("t2", "AAPL", 151.0, 150.0, 1005.0),
+        make_trade("t3", "AAPL", 152.0, 200.0, 1010.0),
+        make_trade("t4", "MSFT", 300.0, 50.0, 1008.0),
+    ]
+    memory_store.ingest_events(events)
+
+    # As of ts=1006.0: should return t2 (ts=1005.0, price=151.0)
+    snap = memory_store.query_as_of("AAPL", as_of_ts=1006.0)
+    assert snap is not None
+    assert snap["event_id"] == "t2"
+    assert snap["price"] == 151.0
+
+    # As of ts=999.0: before any trades exist -> should return None
+    assert memory_store.query_as_of("AAPL", as_of_ts=999.0) is None
+
+    # As of ts=1010.0 exact match: should return t3
+    snap3 = memory_store.query_as_of("AAPL", as_of_ts=1010.0)
+    assert snap3 is not None
+    assert snap3["event_id"] == "t3"
+    assert snap3["price"] == 152.0
+
+
+def test_export_parquet_partitioned(memory_store):
+    """Verify partitioned Parquet dataset export (Invariant Q6)."""
+    events = [
+        make_trade("t1", "AAPL", 150.0, 100.0, 1700000000.0),
+        make_trade("t2", "AAPL", 151.0, 200.0, 1700000010.0),
+        make_trade("t3", "MSFT", 350.0, 50.0, 1700000020.0),
+    ]
+    memory_store.ingest_events(events)
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        part_dir = os.path.join(tmp_dir, "partitioned_parquet")
+        out = memory_store.export_parquet(
+            part_dir, partition_by=["date", "instrument_id"]
+        )
+        assert os.path.isdir(out)
+
+        # Read back via DuckDB glob
+        glob_path = os.path.join(out, "**", "*.parquet").replace("\\", "/")
+        cnt = memory_store.con.execute(
+            f"SELECT count(*) FROM read_parquet('{glob_path}')"
+        ).fetchone()[0]
+        assert cnt == 3
+
+

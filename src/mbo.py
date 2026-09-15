@@ -2,19 +2,20 @@
 Market-By-Order (Level-3 / L3 MBO) Matching Queue Engine for MDRAP (Spec §18, §26).
 
 Implements institutional order lifecycle and matching queue mechanics (CME MDP 3.0, NASDAQ ITCH):
-- Tracks individual resting orders by unique order_id
-- Preserves exchange FIFO price-time queue priority
+- Tracks individual resting orders by unique order_id with O(1) map indexing.
+- Preserves exchange FIFO price-time queue priority at every discrete price rung.
 - Order modify semantics: size reductions preserve priority; price changes and size increases lose priority
-- Microsecond queue position estimation (orders ahead, size ahead, queue rank)
-- Real-time Level-3 to Level-2 (MBP) book projection
+  and re-queue at the tail of the respective price rung.
+- Microsecond queue position estimation (orders ahead, size ahead, queue rank, fill probability).
+- Real-time Level-3 (MBO) to Level-2 (MBP) consolidated order book projection with micro-price and imbalance.
 """
+
 from __future__ import annotations
 
 import collections
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 import time
-from typing import Any, Deque, Dict, List, Optional, Tuple
 
 
 class OrderSide(str, Enum):
@@ -26,12 +27,12 @@ class OrderSide(str, Enum):
 class RestingOrder:
     order_id: str
     instrument_id: str
-    side: str                          # 'BUY' or 'SELL'
+    side: str  # 'BUY' or 'SELL'
     price: float
     size: float
     venue: str = ""
     timestamp: float = 0.0
-    priority: int = 0                  # Monotonic arrival sequence for FIFO rank
+    priority: int = 0  # Monotonic arrival sequence for FIFO rank
 
     def to_dict(self) -> dict:
         return {
@@ -57,12 +58,16 @@ class QueuePositionInfo:
     size_ahead: float
     total_level_size: float
     total_level_orders: int
-    queue_rank: int                     # 1-indexed rank in queue
+    queue_rank: int  # 1-indexed rank in queue
 
     @property
     def fill_probability_pct(self) -> float:
         return round(
-            max(0.0, 100.0 * (1.0 - (self.size_ahead / max(0.001, self.total_level_size)))), 2
+            max(
+                0.0,
+                100.0 * (1.0 - (self.size_ahead / max(0.001, self.total_level_size))),
+            ),
+            2,
         )
 
     def to_dict(self) -> dict:
@@ -82,26 +87,38 @@ class QueuePositionInfo:
 
 
 class PriceLevelQueue:
-    """FIFO Queue of resting orders at a discrete price rung."""
+    """
+    Strict FIFO Queue of resting orders residing at a single discrete price rung.
+
+    Maintains constant-time additions to the tail, size aggregation across all orders,
+    and granular breakdown by originating venue.
+    """
 
     __slots__ = ("price", "order_ids", "total_size", "venue_sizes")
 
     def __init__(self, price: float):
         self.price = price
-        self.order_ids: Deque[str] = collections.deque()
+        self.order_ids: collections.deque[str] = collections.deque()
         self.total_size = 0.0
-        self.venue_sizes: Dict[str, float] = {}
+        self.venue_sizes: dict[str, float] = {}
 
     @property
     def order_count(self) -> int:
+        """Return the number of resting orders currently queued at this price level."""
         return len(self.order_ids)
 
     def add_order(self, order_id: str, size: float, venue: str) -> None:
+        """Append an order to the tail of the FIFO queue and update aggregate sizes."""
         self.order_ids.append(order_id)
         self.total_size += size
         self.venue_sizes[venue] = self.venue_sizes.get(venue, 0.0) + size
 
     def remove_order(self, order_id: str, size: float, venue: str) -> bool:
+        """
+        Remove an order from the queue (cancellation or full fill).
+
+        Returns True if the order was present and successfully removed, False otherwise.
+        """
         try:
             self.order_ids.remove(order_id)
             self.total_size = max(0.0, self.total_size - size)
@@ -114,6 +131,11 @@ class PriceLevelQueue:
             return False
 
     def reduce_order_size(self, size_reduction: float, venue: str) -> None:
+        """
+        Reduce the queued volume for an in-place size reduction (partial cancel or partial fill).
+
+        Does not alter order position within the queue, preserving FIFO priority.
+        """
         self.total_size = max(0.0, self.total_size - size_reduction)
         if venue in self.venue_sizes:
             self.venue_sizes[venue] = max(0.0, self.venue_sizes[venue] - size_reduction)
@@ -122,6 +144,9 @@ class PriceLevelQueue:
 class OrderBookMBO:
     """
     Market-By-Order (L3) Order Book with FIFO Queue Priority & Level-2 Projection.
+
+    Maintains full depth-of-book at individual order granularity, enforcing exchange matching
+    engine rules (CME MDP 3.0 / NASDAQ ITCH 5.0).
     """
 
     def __init__(self, instrument_id: str, max_depth_levels: int = 10):
@@ -129,11 +154,11 @@ class OrderBookMBO:
         self.max_depth_levels = max_depth_levels
 
         # Order lookup by order_id: O(1)
-        self.orders: Dict[str, RestingOrder] = {}
+        self.orders: dict[str, RestingOrder] = {}
 
         # Price level queues: price -> PriceLevelQueue
-        self.bids: Dict[float, PriceLevelQueue] = {}
-        self.asks: Dict[float, PriceLevelQueue] = {}
+        self.bids: dict[float, PriceLevelQueue] = {}
+        self.asks: dict[float, PriceLevelQueue] = {}
 
         self._priority_seq = 0
         self._total_adds = 0
@@ -142,6 +167,7 @@ class OrderBookMBO:
         self._total_executes = 0
 
     def _next_priority(self) -> int:
+        """Generate monotonically increasing sequence number for queue arrival priority."""
         self._priority_seq += 1
         return self._priority_seq
 
@@ -152,10 +178,16 @@ class OrderBookMBO:
         price: float,
         size: float,
         venue: str = "",
-        timestamp: Optional[float] = None,
+        timestamp: float | None = None,
     ) -> bool:
         """
-        Add a new resting order to the book. Appends order to tail of price queue.
+        Add a new resting order to the book.
+
+        Appends the order to the tail of the price level queue, establishing lowest
+        priority at that price point.
+
+        Returns:
+            True if successfully inserted, False if duplicate order_id or invalid price/size.
         """
         if order_id in self.orders or price <= 0 or size <= 0:
             return False
@@ -190,13 +222,20 @@ class OrderBookMBO:
         self,
         order_id: str,
         new_size: float,
-        new_price: Optional[float] = None,
-        timestamp: Optional[float] = None,
+        new_price: float | None = None,
+        timestamp: float | None = None,
     ) -> bool:
         """
-        Modify an existing resting order.
-        - Size reduction: Preserves FIFO queue priority.
-        - Size increase or price change: Loses priority and moves to tail of queue.
+        Modify an existing resting order following standard exchange queue priority rules.
+
+        Rules:
+        - Size reduction at same price: Preserves FIFO queue priority (remains at same queue rank).
+        - Size increase or price change: Loses priority, forfeiting queue rank and re-queueing
+          at the tail of the target price level.
+        - Size <= 0: Treated as an order cancellation.
+
+        Returns:
+            True if order was found and modified/cancelled, False otherwise.
         """
         order = self.orders.get(order_id)
         if not order:
@@ -259,7 +298,7 @@ class OrderBookMBO:
         self._total_cancels += 1
         return True
 
-    def order_execute(self, order_id: str, filled_size: float) -> Tuple[bool, float]:
+    def order_execute(self, order_id: str, filled_size: float) -> tuple[bool, float]:
         """
         Execute trade against resting order.
         Deducts filled_size in place, preserving FIFO priority for any remaining size.
@@ -287,7 +326,7 @@ class OrderBookMBO:
         self._total_executes += 1
         return True, remaining
 
-    def get_queue_position(self, order_id: str) -> Optional[QueuePositionInfo]:
+    def get_queue_position(self, order_id: str) -> QueuePositionInfo | None:
         """
         Estimate exact FIFO queue position (orders ahead and size ahead) for an order.
         """
@@ -326,7 +365,7 @@ class OrderBookMBO:
             queue_rank=rank,
         )
 
-    def project_l2(self, max_levels: Optional[int] = None) -> dict:
+    def project_l2(self, max_levels: int | None = None) -> dict:
         """
         Project L3 resting orders into consolidated Level-2 (MBP) aggregated order book.
         """
@@ -343,14 +382,16 @@ class OrderBookMBO:
             sz = round(q.total_size, 4)
             cum_bid_size += sz
             cum_bid_notional += p * sz
-            l2_bids.append({
-                "price": p,
-                "size": sz,
-                "order_count": q.order_count,
-                "venues": {v: round(s, 4) for v, s in q.venue_sizes.items()},
-                "cumulative_size": round(cum_bid_size, 4),
-                "cumulative_notional": round(cum_bid_notional, 2),
-            })
+            l2_bids.append(
+                {
+                    "price": p,
+                    "size": sz,
+                    "order_count": q.order_count,
+                    "venues": {v: round(s, 4) for v, s in q.venue_sizes.items()},
+                    "cumulative_size": round(cum_bid_size, 4),
+                    "cumulative_notional": round(cum_bid_notional, 2),
+                }
+            )
 
         l2_asks = []
         cum_ask_size = 0.0
@@ -360,14 +401,16 @@ class OrderBookMBO:
             sz = round(q.total_size, 4)
             cum_ask_size += sz
             cum_ask_notional += p * sz
-            l2_asks.append({
-                "price": p,
-                "size": sz,
-                "order_count": q.order_count,
-                "venues": {v: round(s, 4) for v, s in q.venue_sizes.items()},
-                "cumulative_size": round(cum_ask_size, 4),
-                "cumulative_notional": round(cum_ask_notional, 2),
-            })
+            l2_asks.append(
+                {
+                    "price": p,
+                    "size": sz,
+                    "order_count": q.order_count,
+                    "venues": {v: round(s, 4) for v, s in q.venue_sizes.items()},
+                    "cumulative_size": round(cum_ask_size, 4),
+                    "cumulative_notional": round(cum_ask_notional, 2),
+                }
+            )
 
         best_bid = sorted_bid_prices[0] if sorted_bid_prices else 0.0
         best_ask = sorted_ask_prices[0] if sorted_ask_prices else 0.0
@@ -377,10 +420,14 @@ class OrderBookMBO:
         # Micro-price calculation: (P_ask * Q_bid + P_bid * Q_ask) / (Q_bid + Q_ask)
         tot_tob_size = best_bid_sz + best_ask_sz
         if tot_tob_size > 0:
-            micro_price = (best_ask * best_bid_sz + best_bid * best_ask_sz) / tot_tob_size
+            micro_price = (
+                best_ask * best_bid_sz + best_bid * best_ask_sz
+            ) / tot_tob_size
             imbalance = (best_bid_sz - best_ask_sz) / tot_tob_size
         else:
-            micro_price = (best_bid + best_ask) / 2.0 if (best_bid > 0 and best_ask > 0) else 0.0
+            micro_price = (
+                (best_bid + best_ask) / 2.0 if (best_bid > 0 and best_ask > 0) else 0.0
+            )
             imbalance = 0.0
 
         is_crossed = (best_bid > best_ask) if (best_bid > 0 and best_ask > 0) else False
@@ -391,7 +438,9 @@ class OrderBookMBO:
             "asks": l2_asks,
             "best_bid": best_bid,
             "best_ask": best_ask,
-            "spread": round(best_ask - best_bid, 4) if (best_bid > 0 and best_ask > 0) else 0.0,
+            "spread": round(best_ask - best_bid, 4)
+            if (best_bid > 0 and best_ask > 0)
+            else 0.0,
             "micro_price": round(micro_price, 4),
             "imbalance_ratio": round(imbalance, 4),
             "is_crossed": is_crossed,

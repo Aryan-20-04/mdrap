@@ -5,13 +5,12 @@ Provides clutter-free in-place updating terminal dashboards, single-ticker
 institutional focus cockpits, and visual ASCII/Unicode candlestick charts.
 Never scrolls line-by-line; updates tables and graphs in place via Rich Live.
 """
+
 from __future__ import annotations
 
-import math
-import os
 import sys
 import time
-from typing import Any, Callable, Dict, Generator, List, Optional, Tuple
+from typing import Any, Dict, Generator, List, Optional
 
 if sys.platform == "win32":
     try:
@@ -31,20 +30,22 @@ from rich.table import Table
 from rich.text import Text
 
 from analytics import OHLCVAggregator
-from bbo import BBOEngine, ConsolidatedBBO
-from depth import ConsolidatedDepthEngine, ConsolidatedLadder
-from models import CanonicalEvent, EventType, QualityStatus, RawEvent
+from bbo import BBOEngine
+from depth import ConsolidatedDepthEngine
+from models import CanonicalEvent, EventType, RawEvent
 
 
 # ---------------------------------------------------------------------------
 # Cross-Platform Non-Blocking Keyboard Input (Windows msvcrt / POSIX select)
 # ---------------------------------------------------------------------------
 
+
 def poll_keypress() -> Optional[str]:
     """Check if a keyboard key was pressed without blocking (Windows & POSIX)."""
     if sys.platform == "win32":
         try:
             import msvcrt
+
             if msvcrt.kbhit():
                 ch = msvcrt.getch()
                 if ch in (b"\xe0", b"\x00"):  # Special key prefix (arrows, F-keys)
@@ -60,6 +61,7 @@ def poll_keypress() -> Optional[str]:
     else:
         try:
             import select
+
             r, _, _ = select.select([sys.stdin], [], [], 0)
             if r:
                 return sys.stdin.read(1)
@@ -89,12 +91,19 @@ CURRENCY_SYMBOLS: Dict[str, str] = {
 }
 
 
-def get_currency_symbol(currency_code: Optional[str] = None, instrument: str = "") -> str:
+def get_currency_symbol(
+    currency_code: Optional[str] = None, instrument: str = ""
+) -> str:
     """Resolve active fiat/asset currency symbol for terminal tables and charts."""
     if currency_code and currency_code.upper() in CURRENCY_SYMBOLS:
         return CURRENCY_SYMBOLS[currency_code.upper()]
     inst = (instrument or "").upper()
-    if inst.endswith(".NS") or inst.endswith(".BO") or inst in ("TMPV", "TATAMOTORS", "RELIANCE", "TCS", "INFY", "HDFCBANK", "SBIN", "ITC"):
+    if (
+        inst.endswith(".NS")
+        or inst.endswith(".BO")
+        or inst
+        in ("TMPV", "TATAMOTORS", "RELIANCE", "TCS", "INFY", "HDFCBANK", "SBIN", "ITC")
+    ):
         return "₹"
     if any(inst.endswith(sfx) for sfx in (".DE", ".PA", ".AS", ".MI", ".MC", ".BR")):
         return "€"
@@ -197,7 +206,9 @@ def render_candlestick_chart(
     last_c = vis[-1]
     first_c = vis[0]
     chg_usd = last_c.get("close", 0.0) - first_c.get("open", 0.0)
-    chg_pct = (chg_usd / first_c.get("open", 1.0) * 100.0) if first_c.get("open") else 0.0
+    chg_pct = (
+        (chg_usd / first_c.get("open", 1.0) * 100.0) if first_c.get("open") else 0.0
+    )
     chg_style = "bold green" if chg_usd >= 0 else "bold red"
     chg_sign = "+" if chg_usd >= 0 else ""
 
@@ -268,11 +279,17 @@ def render_candlestick_chart(
             v_idx = max(0, min(v_idx, len(VOLUME_BARS) - 1))
             vol_chars.append(f"[{v_col}] {VOLUME_BARS[v_idx]} [/{v_col}]")
 
-        lines.append("".join(vol_chars) + f" [dim]┤[/dim] [dim]Vol (Max:{max_vol:,.0f})[/dim]")
+        lines.append(
+            "".join(vol_chars) + f" [dim]┤[/dim] [dim]Vol (Max:{max_vol:,.0f})[/dim]"
+        )
 
     # Time indicators (First and Last candle bucket time)
-    t0 = time.strftime("%H:%M:%S", time.localtime(vis[0].get("bucket_start", time.time())))
-    t1 = time.strftime("%H:%M:%S", time.localtime(vis[-1].get("bucket_start", time.time())))
+    t0 = time.strftime(
+        "%H:%M:%S", time.localtime(vis[0].get("bucket_start", time.time()))
+    )
+    t1 = time.strftime(
+        "%H:%M:%S", time.localtime(vis[-1].get("bucket_start", time.time()))
+    )
     spacing = " " * max(1, (chart_cols_len - len(t0) - len(t1)))
     lines.append(f"[dim]{t0}{spacing}{t1}[/dim]")
 
@@ -282,6 +299,7 @@ def render_candlestick_chart(
 # ---------------------------------------------------------------------------
 # In-Place Live Ticker Dashboard
 # ---------------------------------------------------------------------------
+
 
 class LiveTickerDashboard:
     """
@@ -319,23 +337,35 @@ class LiveTickerDashboard:
         self.analytics = OHLCVAggregator(interval_s=candle_interval_s)
 
         # In-memory tracking state
-        self.last_prices: Dict[str, float] = {}          # symbol -> price
-        self.price_directions: Dict[str, str] = {}       # symbol -> "UP" / "DOWN" / "FLAT"
-        self.price_histories: Dict[str, List[float]] = {}# symbol -> [prices...]
-        self.venue_quotes: Dict[str, Dict[str, dict]] = {}# symbol -> {venue: quote_data}
-        self.session_stats: Dict[str, dict] = {}        # symbol -> {high, low, open, vol, count}
-        self.instrument_currencies: Dict[str, str] = {} # symbol -> currency symbol ($, ₹, €, £, etc.)
+        self.last_prices: Dict[str, float] = {}  # symbol -> price
+        self.price_directions: Dict[str, str] = {}  # symbol -> "UP" / "DOWN" / "FLAT"
+        self.price_histories: Dict[str, List[float]] = {}  # symbol -> [prices...]
+        self.venue_quotes: Dict[
+            str, Dict[str, dict]
+        ] = {}  # symbol -> {venue: quote_data}
+        self.session_stats: Dict[
+            str, dict
+        ] = {}  # symbol -> {high, low, open, vol, count}
+        self.instrument_currencies: Dict[
+            str, str
+        ] = {}  # symbol -> currency symbol ($, ₹, €, £, etc.)
         self.event_count = 0
         self.start_time = time.time()
 
-    def update_with_event(self, raw: RawEvent, ev: Optional[CanonicalEvent], engine_ns: int = 0) -> None:
+    def update_with_event(
+        self, raw: RawEvent, ev: Optional[CanonicalEvent], engine_ns: int = 0
+    ) -> None:
         """Feed a processed market event into the live dashboard state."""
         self.event_count += 1
-        sym = (ev.instrument_id if ev else raw.payload.get("instrument", "UNKNOWN")).upper()
+        sym = (
+            ev.instrument_id if ev else raw.payload.get("instrument", "UNKNOWN")
+        ).upper()
         p = raw.payload
 
         if p.get("currency"):
-            self.instrument_currencies[sym] = get_currency_symbol(p.get("currency"), sym)
+            self.instrument_currencies[sym] = get_currency_symbol(
+                p.get("currency"), sym
+            )
         elif sym not in self.instrument_currencies:
             self.instrument_currencies[sym] = get_currency_symbol(None, sym)
 
@@ -397,7 +427,7 @@ class LiveTickerDashboard:
         # Track venue-specific quote
         if sym not in self.venue_quotes:
             self.venue_quotes[sym] = {}
-        
+
         # Determine venue name (prefer exchange from payload if available, else raw.source)
         src_raw = (p.get("exchange") or raw.source or "EQUITIES").upper()
         if src_raw in ("NSI", "NSE"):
@@ -418,17 +448,33 @@ class LiveTickerDashboard:
         existing_vq = self.venue_quotes[sym].get(src, {})
         new_bid = bid if bid > 0 else existing_vq.get("bid", 0.0)
         new_ask = ask if ask > 0 else existing_vq.get("ask", 0.0)
-        new_spread = (new_ask - new_bid) if (new_ask > 0 and new_bid > 0) else existing_vq.get("spread", 0.0)
+        new_spread = (
+            (new_ask - new_bid)
+            if (new_ask > 0 and new_bid > 0)
+            else existing_vq.get("spread", 0.0)
+        )
 
         self.venue_quotes[sym][src] = {
             "bid": new_bid,
             "ask": new_ask,
             "spread": new_spread,
-            "bid_size": float(p.get("bid_size") or p.get("bidQty") or existing_vq.get("bid_size", 100.0)),
-            "ask_size": float(p.get("ask_size") or p.get("askQty") or existing_vq.get("ask_size", 100.0)),
+            "bid_size": float(
+                p.get("bid_size")
+                or p.get("bidQty")
+                or existing_vq.get("bid_size", 100.0)
+            ),
+            "ask_size": float(
+                p.get("ask_size")
+                or p.get("askQty")
+                or existing_vq.get("ask_size", 100.0)
+            ),
             "timestamp": raw.receive_timestamp,
-            "engine_us": (engine_ns / 1000.0) if engine_ns > 0 else existing_vq.get("engine_us", 0.0),
-            "quality": ev.quality_status.value if ev else existing_vq.get("quality", "VALID"),
+            "engine_us": (engine_ns / 1000.0)
+            if engine_ns > 0
+            else existing_vq.get("engine_us", 0.0),
+            "quality": ev.quality_status.value
+            if ev
+            else existing_vq.get("quality", "VALID"),
         }
 
     # -----------------------------------------------------------------------
@@ -453,19 +499,32 @@ class LiveTickerDashboard:
         sym_clean = sym.replace("-", "/")
 
         bbo = self.bbo_engine.current_bbo(sym) or self.bbo_engine.current_bbo(sym_clean)
-        ladder = self.depth_engine.current_ladder(sym) or self.depth_engine.current_ladder(sym_clean)
-        candles = self.analytics.candles_for(sym) or self.analytics.candles_for(sym_clean)
-        stat = self.session_stats.get(sym, self.session_stats.get(sym_clean, {
-            "open": 0.0, "high": 0.0, "low": 0.0, "volume": 0.0, "count": 0
-        }))
+        ladder = self.depth_engine.current_ladder(
+            sym
+        ) or self.depth_engine.current_ladder(sym_clean)
+        candles = self.analytics.candles_for(sym) or self.analytics.candles_for(
+            sym_clean
+        )
+        stat = self.session_stats.get(
+            sym,
+            self.session_stats.get(
+                sym_clean,
+                {"open": 0.0, "high": 0.0, "low": 0.0, "volume": 0.0, "count": 0},
+            ),
+        )
         venues = self.venue_quotes.get(sym, self.venue_quotes.get(sym_clean, {}))
 
         last_px = self.last_prices.get(sym, self.last_prices.get(sym_clean, 0.0))
-        direction = self.price_directions.get(sym, self.price_directions.get(sym_clean, "FLAT"))
+        direction = self.price_directions.get(
+            sym, self.price_directions.get(sym_clean, "FLAT")
+        )
         open_px = stat["open"] or last_px
         chg_usd = last_px - open_px if open_px else 0.0
         chg_pct = (chg_usd / open_px * 100.0) if open_px else 0.0
-        curr = self.instrument_currencies.get(sym, self.instrument_currencies.get(sym_clean, get_currency_symbol(None, sym)))
+        curr = self.instrument_currencies.get(
+            sym,
+            self.instrument_currencies.get(sym_clean, get_currency_symbol(None, sym)),
+        )
 
         # Arrow and styling
         if direction == "UP":
@@ -499,13 +558,25 @@ class LiveTickerDashboard:
 
         # 2. NBBO & Microstructure Strip
         if bbo and bbo.best_bid and bbo.best_ask:
-            spread_bps = (bbo.spread / bbo.mid_price * 10000.0) if bbo.mid_price else 0.0
+            spread_bps = (
+                (bbo.spread / bbo.mid_price * 10000.0) if bbo.mid_price else 0.0
+            )
             bid_v_col = self.VENUE_COLORS.get(bbo.best_bid_source, "white")
             ask_v_col = self.VENUE_COLORS.get(bbo.best_ask_source, "white")
-            arb_state = "[bold red]CROSSED (ARBITRAGE)[/bold red]" if bbo.is_crossed else "[bold green]NORMAL[/bold green]"
-            micro_str = f"{curr}{ladder.micro_price:,.2f}" if ladder else f"{curr}{bbo.mid_price:,.2f}"
+            arb_state = (
+                "[bold red]CROSSED (ARBITRAGE)[/bold red]"
+                if bbo.is_crossed
+                else "[bold green]NORMAL[/bold green]"
+            )
+            micro_str = (
+                f"{curr}{ladder.micro_price:,.2f}"
+                if ladder
+                else f"{curr}{bbo.mid_price:,.2f}"
+            )
             ofi_val = ladder.imbalance_ratio if ladder else 0.0
-            ofi_style = "green" if ofi_val > 0.1 else ("red" if ofi_val < -0.1 else "white")
+            ofi_style = (
+                "green" if ofi_val > 0.1 else ("red" if ofi_val < -0.1 else "white")
+            )
 
             nbbo_table = Table(box=None, expand=True, pad_edge=False)
             nbbo_table.add_column("Consolidated NBBO", justify="left")
@@ -587,11 +658,29 @@ class LiveTickerDashboard:
         # Combine into main focus cockpit
         cockpit = Table.grid(padding=(0, 0))
         if paused:
-            cockpit.add_row(Panel("[bold white on red] ⏸ STREAM PAUSED / FROZEN — PRESS SPACE TO RESUME ⏸ [/bold white on red]", style="bold red", border_style="red"))
+            cockpit.add_row(
+                Panel(
+                    "[bold white on red] ⏸ STREAM PAUSED / FROZEN — PRESS SPACE TO RESUME ⏸ [/bold white on red]",
+                    style="bold red",
+                    border_style="red",
+                )
+            )
         cockpit.add_row(Panel(header_text, style="blue", border_style="cyan"))
-        cockpit.add_row(Panel(nbbo_table, title="[bold]Consolidated Market Microstructure[/bold]", border_style="blue"))
+        cockpit.add_row(
+            Panel(
+                nbbo_table,
+                title="[bold]Consolidated Market Microstructure[/bold]",
+                border_style="blue",
+            )
+        )
         if show_chart:
-            cockpit.add_row(Panel(Text.from_markup(chart_str), title="[bold]Real-Time Technical Candlestick Graph[/bold]", border_style="green"))
+            cockpit.add_row(
+                Panel(
+                    Text.from_markup(chart_str),
+                    title="[bold]Real-Time Technical Candlestick Graph[/bold]",
+                    border_style="green",
+                )
+            )
         if show_depth:
             depth_table = Table(box=None, expand=True, show_header=True)
             depth_table.add_column("Bid Size", justify="right", style="green")
@@ -609,20 +698,28 @@ class LiveTickerDashboard:
                     b_px = f"{curr}{b.price:,.2f}" if b else "-"
                     a_px = f"{curr}{a.price:,.2f}" if a else "-"
                     a_sz = f"{a.total_size:,.2f}" if a else "-"
-                    depth_table.add_row(b_sz, b_px, f"L{i+1}", a_px, a_sz)
+                    depth_table.add_row(b_sz, b_px, f"L{i + 1}", a_px, a_sz)
             else:
                 depth_table.add_row("-", "-", "[dim]No L2 depth[/dim]", "-", "-")
-            cockpit.add_row(Panel(depth_table, title="[bold]Consolidated Level-2 Depth Book[/bold]", border_style="cyan"))
+            cockpit.add_row(
+                Panel(
+                    depth_table,
+                    title="[bold]Consolidated Level-2 Depth Book[/bold]",
+                    border_style="cyan",
+                )
+            )
         cockpit.add_row(Panel(venue_table, border_style="dim"))
         c_tag = "[green]ON[/green]" if show_chart else "[dim]OFF[/dim]"
         d_tag = "[green]ON[/green]" if show_depth else "[dim]OFF[/dim]"
-        cockpit.add_row(Text.from_markup(
-            f"[dim]Hotkeys: [bold white][q][/bold white] Quit  "
-            f"[bold white][Space][/bold white] {'[bold yellow]Resume[/bold yellow]' if paused else 'Freeze'}  "
-            f"[bold white][c][/bold white] Chart ({c_tag})  "
-            f"[bold white][d][/bold white] Depth ({d_tag})  "
-            f"[bold white][Tab][/bold white] Next Symbol[/dim]"
-        ))
+        cockpit.add_row(
+            Text.from_markup(
+                f"[dim]Hotkeys: [bold white][q][/bold white] Quit  "
+                f"[bold white][Space][/bold white] {'[bold yellow]Resume[/bold yellow]' if paused else 'Freeze'}  "
+                f"[bold white][c][/bold white] Chart ({c_tag})  "
+                f"[bold white][d][/bold white] Depth ({d_tag})  "
+                f"[bold white][Tab][/bold white] Next Symbol[/dim]"
+            )
+        )
 
         return cockpit
 
@@ -630,7 +727,9 @@ class LiveTickerDashboard:
     # Rendering: Multi-Ticker Overview Table
     # -----------------------------------------------------------------------
 
-    def render_multi_ticker_table(self, symbols: List[str], paused: bool = False) -> RenderableType:
+    def render_multi_ticker_table(
+        self, symbols: List[str], paused: bool = False
+    ) -> RenderableType:
         """
         Build an in-place updating multi-symbol market matrix table.
         Each symbol has its dedicated row that updates in-place.
@@ -658,15 +757,25 @@ class LiveTickerDashboard:
 
         for sym in symbols:
             s_clean = sym.replace("-", "/")
-            bbo = self.bbo_engine.current_bbo(sym) or self.bbo_engine.current_bbo(s_clean)
-            ladder = self.depth_engine.current_ladder(sym) or self.depth_engine.current_ladder(s_clean)
-            stat = self.session_stats.get(sym, self.session_stats.get(s_clean, {
-                "open": 0.0, "high": 0.0, "low": 0.0, "volume": 0.0, "count": 0
-            }))
+            bbo = self.bbo_engine.current_bbo(sym) or self.bbo_engine.current_bbo(
+                s_clean
+            )
+            ladder = self.depth_engine.current_ladder(
+                sym
+            ) or self.depth_engine.current_ladder(s_clean)
+            stat = self.session_stats.get(
+                sym,
+                self.session_stats.get(
+                    s_clean,
+                    {"open": 0.0, "high": 0.0, "low": 0.0, "volume": 0.0, "count": 0},
+                ),
+            )
             venues = self.venue_quotes.get(sym, self.venue_quotes.get(s_clean, {}))
 
             last_px = self.last_prices.get(sym, self.last_prices.get(s_clean, 0.0))
-            direction = self.price_directions.get(sym, self.price_directions.get(s_clean, "FLAT"))
+            direction = self.price_directions.get(
+                sym, self.price_directions.get(s_clean, "FLAT")
+            )
             open_px = stat["open"] or last_px
             chg_usd = last_px - open_px if open_px else 0.0
             chg_pct = (chg_usd / open_px * 100.0) if open_px else 0.0
@@ -684,34 +793,62 @@ class LiveTickerDashboard:
             chg_sign = "+" if chg_usd >= 0 else ""
             chg_style = "green" if chg_usd >= 0 else "red"
 
-            row_curr = self.instrument_currencies.get(sym, self.instrument_currencies.get(s_clean, get_currency_symbol(None, sym)))
+            row_curr = self.instrument_currencies.get(
+                sym,
+                self.instrument_currencies.get(s_clean, get_currency_symbol(None, sym)),
+            )
 
             # BBO metrics
             if bbo and bbo.best_bid and bbo.best_ask:
                 bid_str = f"{row_curr}{bbo.best_bid:,.2f}"
                 ask_str = f"{row_curr}{bbo.best_ask:,.2f}"
                 spr_str = f"{row_curr}{bbo.spread:,.2f}"
-                arb_str = "[bold red]CROSS[/bold red]" if bbo.is_crossed else "[green]VALID[/green]"
+                arb_str = (
+                    "[bold red]CROSS[/bold red]"
+                    if bbo.is_crossed
+                    else "[green]VALID[/green]"
+                )
             else:
                 bid_str = "-"
                 ask_str = "-"
                 spr_str = "-"
                 arb_str = "[dim]PENDING[/dim]"
 
-            micro_str = f"{row_curr}{ladder.micro_price:,.2f}" if ladder else (
-                f"{row_curr}{bbo.mid_price:,.2f}" if (bbo and bbo.mid_price) else "-"
+            micro_str = (
+                f"{row_curr}{ladder.micro_price:,.2f}"
+                if ladder
+                else (
+                    f"{row_curr}{bbo.mid_price:,.2f}"
+                    if (bbo and bbo.mid_price)
+                    else "-"
+                )
             )
 
-            ofi_val = ladder.ofi if (ladder and ladder.ofi != 0.0) else (ladder.imbalance_ratio if ladder else 0.0)
-            ofi_style = "green" if ofi_val > 0.05 else ("red" if ofi_val < -0.05 else "dim")
+            ofi_val = (
+                ladder.ofi
+                if (ladder and ladder.ofi != 0.0)
+                else (ladder.imbalance_ratio if ladder else 0.0)
+            )
+            ofi_style = (
+                "green" if ofi_val > 0.05 else ("red" if ofi_val < -0.05 else "dim")
+            )
             ofi_str = f"[{ofi_style}]{ofi_val:+.2f}[/{ofi_style}]"
 
             cvd_val = ladder.cvd if ladder else 0.0
-            cvd_style = "bold green" if cvd_val > 0 else ("bold red" if cvd_val < 0 else "dim")
-            cvd_str = f"[{cvd_style}]{cvd_val:+,.0f}[/{cvd_style}]" if cvd_val != 0 else "[dim]0[/dim]"
+            cvd_style = (
+                "bold green" if cvd_val > 0 else ("bold red" if cvd_val < 0 else "dim")
+            )
+            cvd_str = (
+                f"[{cvd_style}]{cvd_val:+,.0f}[/{cvd_style}]"
+                if cvd_val != 0
+                else "[dim]0[/dim]"
+            )
 
             # Sparkline
-            spark = render_sparkline(self.price_histories.get(sym, self.price_histories.get(s_clean, [])), width=10)
+            spark = render_sparkline(
+                self.price_histories.get(sym, self.price_histories.get(s_clean, [])),
+                width=10,
+            )
 
             # Active venue badges
             v_badges = []
@@ -722,7 +859,9 @@ class LiveTickerDashboard:
 
             table.add_row(
                 sym,
-                f"[{px_style}]{arr} {row_curr}{last_px:,.2f}[/{px_style}]" if last_px > 0 else "[dim]Waiting[/dim]",
+                f"[{px_style}]{arr} {row_curr}{last_px:,.2f}[/{px_style}]"
+                if last_px > 0
+                else "[dim]Waiting[/dim]",
                 f"[{chg_style}]{chg_sign}{chg_pct:.1f}%[/{chg_style}]",
                 bid_str,
                 ask_str,
@@ -743,7 +882,13 @@ class LiveTickerDashboard:
         )
         grid = Table.grid()
         if paused:
-            grid.add_row(Panel("[bold white on red] ⏸ STREAM PAUSED / FROZEN — PRESS SPACE TO RESUME ⏸ [/bold white on red]", style="bold red", border_style="red"))
+            grid.add_row(
+                Panel(
+                    "[bold white on red] ⏸ STREAM PAUSED / FROZEN — PRESS SPACE TO RESUME ⏸ [/bold white on red]",
+                    style="bold red",
+                    border_style="red",
+                )
+            )
         grid.add_row(table)
         grid.add_row(footer)
         return grid
@@ -766,7 +911,9 @@ class LiveTickerDashboard:
         Never prints new scrolling lines. Supports interactive hotkeys (Space freeze, q quit, c/d toggles).
         """
         console = Console()
-        is_single = bool(single_ticker) or (len(symbols) == 1 and symbols[0].upper() not in ("ALL", "*"))
+        is_single = bool(single_ticker) or (
+            len(symbols) == 1 and symbols[0].upper() not in ("ALL", "*")
+        )
         target_sym = single_ticker or (symbols[0] if is_single else None)
 
         paused = False
@@ -774,11 +921,19 @@ class LiveTickerDashboard:
         show_depth = False
 
         initial_render = (
-            self.render_single_ticker(target_sym, paused=paused, show_chart=show_chart, show_depth=show_depth) if is_single
+            self.render_single_ticker(
+                target_sym, paused=paused, show_chart=show_chart, show_depth=show_depth
+            )
+            if is_single
             else self.render_multi_ticker_table(symbols, paused=paused)
         )
 
-        with Live(initial_render, console=console, refresh_per_second=refresh_hz, transient=False) as live:
+        with Live(
+            initial_render,
+            console=console,
+            refresh_per_second=refresh_hz,
+            transient=False,
+        ) as live:
             count = 0
             stream_iter = iter(event_stream)
             while True:
@@ -790,17 +945,40 @@ class LiveTickerDashboard:
                     elif key == " ":
                         paused = not paused
                         if is_single and target_sym:
-                            live.update(self.render_single_ticker(target_sym, paused=paused, show_chart=show_chart, show_depth=show_depth))
+                            live.update(
+                                self.render_single_ticker(
+                                    target_sym,
+                                    paused=paused,
+                                    show_chart=show_chart,
+                                    show_depth=show_depth,
+                                )
+                            )
                         else:
-                            live.update(self.render_multi_ticker_table(symbols, paused=paused))
+                            live.update(
+                                self.render_multi_ticker_table(symbols, paused=paused)
+                            )
                     elif key in ("c", "C"):
                         show_chart = not show_chart
                         if is_single and target_sym:
-                            live.update(self.render_single_ticker(target_sym, paused=paused, show_chart=show_chart, show_depth=show_depth))
+                            live.update(
+                                self.render_single_ticker(
+                                    target_sym,
+                                    paused=paused,
+                                    show_chart=show_chart,
+                                    show_depth=show_depth,
+                                )
+                            )
                     elif key in ("d", "D"):
                         show_depth = not show_depth
                         if is_single and target_sym:
-                            live.update(self.render_single_ticker(target_sym, paused=paused, show_chart=show_chart, show_depth=show_depth))
+                            live.update(
+                                self.render_single_ticker(
+                                    target_sym,
+                                    paused=paused,
+                                    show_chart=show_chart,
+                                    show_depth=show_depth,
+                                )
+                            )
                     elif key == "\t":
                         if len(symbols) > 1:
                             if target_sym in symbols:
@@ -809,12 +987,26 @@ class LiveTickerDashboard:
                             else:
                                 target_sym = symbols[0]
                             is_single = True
-                            live.update(self.render_single_ticker(target_sym, paused=paused, show_chart=show_chart, show_depth=show_depth))
+                            live.update(
+                                self.render_single_ticker(
+                                    target_sym,
+                                    paused=paused,
+                                    show_chart=show_chart,
+                                    show_depth=show_depth,
+                                )
+                            )
                     elif key.isdigit() and 1 <= int(key) <= len(symbols):
                         idx = int(key) - 1
                         target_sym = symbols[idx]
                         is_single = True
-                        live.update(self.render_single_ticker(target_sym, paused=paused, show_chart=show_chart, show_depth=show_depth))
+                        live.update(
+                            self.render_single_ticker(
+                                target_sym,
+                                paused=paused,
+                                show_chart=show_chart,
+                                show_depth=show_depth,
+                            )
+                        )
 
                 if paused:
                     time.sleep(0.05)
@@ -837,7 +1029,14 @@ class LiveTickerDashboard:
 
                 # Update terminal in place
                 if is_single and target_sym:
-                    live.update(self.render_single_ticker(target_sym, paused=paused, show_chart=show_chart, show_depth=show_depth))
+                    live.update(
+                        self.render_single_ticker(
+                            target_sym,
+                            paused=paused,
+                            show_chart=show_chart,
+                            show_depth=show_depth,
+                        )
+                    )
                 else:
                     live.update(self.render_multi_ticker_table(symbols, paused=paused))
 
@@ -852,6 +1051,7 @@ TerminalDisplay = LiveTickerDashboard
 # ---------------------------------------------------------------------------
 # External Gateway TUI Dashboard
 # ---------------------------------------------------------------------------
+
 
 class DashboardState:
     def __init__(self):
@@ -869,12 +1069,9 @@ def create_layout() -> Layout:
     layout.split_column(
         Layout(name="header", size=3),
         Layout(name="main"),
-        Layout(name="footer", size=3)
+        Layout(name="footer", size=3),
     )
-    layout["main"].split_row(
-        Layout(name="bbo", ratio=1),
-        Layout(name="vwap", ratio=1)
-    )
+    layout["main"].split_row(Layout(name="bbo", ratio=1), Layout(name="vwap", ratio=1))
     return layout
 
 
@@ -882,13 +1079,15 @@ def _generate_ascii_sparkline(data: List[int]) -> str:
     """Generates an ASCII sparkline from a list of ints."""
     if not data:
         return ""
-    ticks = [' ', ' ', '▂', '▃', '▄', '▅', '▆', '▇', '█']
+    ticks = [" ", " ", "▂", "▃", "▄", "▅", "▆", "▇", "█"]
     min_val = min(data)
     max_val = max(data)
     if max_val == min_val:
         return " " * len(data)
     range_val = max_val - min_val
-    return "".join(ticks[int(((v - min_val) / range_val) * (len(ticks) - 1))] for v in data)
+    return "".join(
+        ticks[int(((v - min_val) / range_val) * (len(ticks) - 1))] for v in data
+    )
 
 
 def render_dashboard_bbo_table(dashboard_state: DashboardState) -> Panel:
@@ -906,9 +1105,13 @@ def render_dashboard_bbo_table(dashboard_state: DashboardState) -> Panel:
             sym,
             f"{bid:.2f}" if bid else "-",
             f"{spread:.3f}" if spread else "-",
-            f"{ask:.2f}" if ask else "-"
+            f"{ask:.2f}" if ask else "-",
         )
-    return Panel(table, title="[bold green]Live Top of Book (BBO)[/bold green]", border_style="green")
+    return Panel(
+        table,
+        title="[bold green]Live Top of Book (BBO)[/bold green]",
+        border_style="green",
+    )
 
 
 def render_dashboard_vwap_table(dashboard_state: DashboardState) -> Panel:
@@ -923,7 +1126,11 @@ def render_dashboard_vwap_table(dashboard_state: DashboardState) -> Panel:
         v = (vol_price / vol) if vol > 0 else 0.0
         table.add_row(sym, f"${v:.3f}", f"{int(vol):,}")
 
-    return Panel(table, title="[bold yellow]Execution VWAP Tracking[/bold yellow]", border_style="yellow")
+    return Panel(
+        table,
+        title="[bold yellow]Execution VWAP Tracking[/bold yellow]",
+        border_style="yellow",
+    )
 
 
 def render_dashboard_header(dashboard_state: DashboardState) -> Panel:
@@ -932,14 +1139,24 @@ def render_dashboard_header(dashboard_state: DashboardState) -> Panel:
     header_text.append("MDRAP QUANTITATIVE DASHBOARD", style="bold white")
     header_text.append(" | Gateway Status: ")
     header_text.append(f"{dashboard_state.status}", style=f"bold {status_color}")
-    header_text.append(f" | Events Processed: {dashboard_state.events_received:,}", style="cyan")
+    header_text.append(
+        f" | Events Processed: {dashboard_state.events_received:,}", style="cyan"
+    )
     return Panel(Align.center(header_text), style="bold blue")
 
 
 def render_dashboard_footer(dashboard_state: DashboardState) -> Panel:
     spark = _generate_ascii_sparkline(dashboard_state.throughput_history)
-    eps = dashboard_state.throughput_history[-1] if dashboard_state.throughput_history else 0
-    return Panel(f"Throughput: {eps:,} eps | [cyan]{spark}[/cyan]", title="Network Telemetry", border_style="blue")
+    eps = (
+        dashboard_state.throughput_history[-1]
+        if dashboard_state.throughput_history
+        else 0
+    )
+    return Panel(
+        f"Throughput: {eps:,} eps | [cyan]{spark}[/cyan]",
+        title="Network Telemetry",
+        border_style="blue",
+    )
 
 
 def build_dashboard(dashboard_state: DashboardState) -> Layout:
@@ -977,8 +1194,8 @@ async def run_dashboard(host: str = "127.0.0.1", port: int = 9000):
         elif evt_type == "TRADE":
             if sym not in dash_state.vwap:
                 dash_state.vwap[sym] = {"vol": 0.0, "vol_price": 0.0}
-            dash_state.vwap[sym]["vol"] += (size or 0.0)
-            dash_state.vwap[sym]["vol_price"] += (price * (size or 0.0))
+            dash_state.vwap[sym]["vol"] += size or 0.0
+            dash_state.vwap[sym]["vol_price"] += price * (size or 0.0)
 
     def on_system(msg: Dict[str, Any]):
         dash_state.status = "CONNECTED"
@@ -989,7 +1206,9 @@ async def run_dashboard(host: str = "127.0.0.1", port: int = 9000):
     network_task = asyncio.create_task(client.subscribe())
     console = Console()
 
-    with Live(build_dashboard(dash_state), console=console, refresh_per_second=10, screen=True) as live:
+    with Live(
+        build_dashboard(dash_state), console=console, refresh_per_second=10, screen=True
+    ) as live:
         try:
             while not network_task.done():
                 current = dash_state.events_received
@@ -1011,4 +1230,3 @@ async def run_dashboard(host: str = "127.0.0.1", port: int = 9000):
             pass
         finally:
             await client.close()
-

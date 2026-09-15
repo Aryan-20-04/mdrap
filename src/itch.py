@@ -1,31 +1,46 @@
-"""
-NASDAQ TotalView-ITCH 5.0 Binary Protocol Engine & Global Benchmark for MDRAP.
+"""NASDAQ TotalView-ITCH 5.0 Binary Protocol Engine & High-Speed Ingestion for MDRAP.
 
-Implements the official NASDAQ TotalView-ITCH 5.0 binary feed protocol:
-- Pre-compiled struct.Struct decoders for all standard ITCH 5.0 record types.
-- 48-bit (6-byte) nanosecond epoch timestamps and 1e4 fixed-point price scaling.
-- Full Level-3 Market-By-Order (MBO) order book reconstruction and BBO synthesis.
-- Streaming replayer for raw (.itch) and compressed (.itch.gz) files.
-- High-speed deterministic synthetic binary packet generator for reproducible benchmarks.
+Implements the official NASDAQ TotalView-ITCH 5.0 direct feed protocol:
+  - Pre-compiled `struct.Struct` decoders for all standard ITCH 5.0 record types.
+  - 48-bit (6-byte) big-endian nanosecond epoch timestamp unpacking.
+  - Fixed-point integer price scaling ($10^{-4}$ scaling factor; prices divided by 10,000.0).
+  - Full Level-3 Market-By-Order (MBO) order book reconstruction and real-time BBO synthesis.
+  - Streaming replayer for raw binary (`.itch`) and compressed (`.itch.gz`) files.
+  - High-speed deterministic synthetic binary packet generator for reproducible benchmarks.
+
+Protocol Mechanics (Nasdaq ITCH 5.0 Specification):
+  1. Framing:
+     Each message record is framed with a 2-byte big-endian integer specifying the payload
+     length ($L$). The subsequent $L$ bytes contain the 1-byte message type identifier followed
+     by fixed-width payload fields.
+  2. Nanosecond Timestamps:
+     Timestamps represent integer nanoseconds since midnight EDT, encoded as 6 bytes (48 bits)
+     in big-endian byte order (`int.from_bytes(b, 'big')`).
+  3. Market-By-Order (MBO) State Machine:
+     Unlike aggregated Level-2 feeds, ITCH streams atomic lifecycle events for every individual
+     resting order. Orders are keyed by a 64-bit integer `order_reference_number` and transition
+     through Add (`A`/`F`), Execute (`E`/`C`), Cancel (`X`), Delete (`D`), and Replace (`U`).
 """
+
 from __future__ import annotations
 
+from collections.abc import Generator
 import gzip
-import io
-import itertools
 import os
 import random
 import struct
 import time
 from dataclasses import dataclass, field
-from typing import Any, Dict, Generator, Iterator, List, Optional, Set, Tuple
+from typing import Any
 
-from models import CanonicalEvent, EventType, QualityStatus, RawEvent
+from models import CanonicalEvent, EventType, QualityStatus
 
 # ---------------------------------------------------------------------------
 # ITCH 5.0 Constants & Message Type Identifiers
 # ---------------------------------------------------------------------------
-PRICE_FACTOR_ITCH = 10_000.0  # ITCH prices are fixed-point integers with 4 decimal places
+PRICE_FACTOR_ITCH = (
+    10_000.0  # ITCH prices are fixed-point integers with 4 decimal places
+)
 
 MSG_SYSTEM_EVENT = b"S"
 MSG_STOCK_DIRECTORY = b"R"
@@ -99,16 +114,14 @@ class ITCHMessage:
     match_number: int = 0
     new_order_ref: int = 0
     event_code: str = ""
-    details: Dict[str, Any] = field(default_factory=dict)
+    details: dict[str, Any] = field(default_factory=dict)
 
 
 class ITCHParser:
-    """
-    Sub-microsecond binary parser for NASDAQ TotalView-ITCH 5.0 frames.
-    """
+    """Sub-microsecond binary parser for NASDAQ TotalView-ITCH 5.0 frames."""
 
     @staticmethod
-    def parse_payload(msg_type_byte: bytes, body: bytes) -> Optional[ITCHMessage]:
+    def parse_payload(msg_type_byte: bytes, body: bytes) -> ITCHMessage | None:
         """Parse the payload of an ITCH message (excluding the type byte)."""
         if msg_type_byte == MSG_ADD_ORDER:
             # A: locate(H), tracking(H), ts(6s), order_ref(Q), buy_sell(c), shares(I), stock(8s), price(I)
@@ -177,7 +190,9 @@ class ITCHParser:
 
         elif msg_type_byte == MSG_TRADE_NON_CROSS:
             # P: locate(H), tracking(H), ts(6s), order_ref(Q), buy_sell(c), shares(I), stock(8s), price(I), match_num(Q)
-            loc, trk, ts_b, o_ref, side, shs, stock, px, match_num = STRUCT_P.unpack(body)
+            loc, trk, ts_b, o_ref, side, shs, stock, px, match_num = STRUCT_P.unpack(
+                body
+            )
             return ITCHMessage(
                 msg_type="P",
                 locate=loc,
@@ -264,7 +279,10 @@ class ITCHParser:
                 tracking=trk,
                 timestamp_ns=_decode_ts6(ts_b),
                 stock=stock.decode("ascii").strip(),
-                details={"state": state.decode("ascii"), "reason": reason.decode("ascii").strip()},
+                details={
+                    "state": state.decode("ascii"),
+                    "reason": reason.decode("ascii").strip(),
+                },
             )
 
         elif msg_type_byte == MSG_BROKEN_TRADE:
@@ -278,7 +296,20 @@ class ITCHParser:
             )
 
         elif msg_type_byte == MSG_NOII:
-            loc, trk, ts_b, paired, imb, imb_dir, stock, far_px, near_px, ref_px, c_type, var_ind = STRUCT_I.unpack(body)
+            (
+                loc,
+                trk,
+                ts_b,
+                paired,
+                imb,
+                imb_dir,
+                stock,
+                far_px,
+                near_px,
+                ref_px,
+                c_type,
+                var_ind,
+            ) = STRUCT_I.unpack(body)
             return ITCHMessage(
                 msg_type="I",
                 locate=loc,
@@ -306,24 +337,23 @@ class ITCHOrderBookTracker:
 
     def __init__(self):
         # order_ref -> [stock, side, price, shares]
-        self.orders: Dict[int, List[Any]] = {}
+        self.orders: dict[int, list[Any]] = {}
         # symbol -> { "B": {price: total_shares}, "S": {price: total_shares} }
-        self.depth: Dict[str, Dict[str, Dict[float, int]]] = {}
-        # Metrics
+        self.depth: dict[str, dict[str, dict[float, int]]] = {}
+        # Operational telemetry metrics
         self.total_adds = 0
         self.total_executes = 0
         self.total_cancels = 0
         self.total_replaces = 0
         self.total_trades = 0
 
-    def _ensure_symbol(self, symbol: str):
+    def _ensure_symbol(self, symbol: str) -> None:
+        """Initialize empty bids and asks price ladders for a given symbol."""
         if symbol not in self.depth:
             self.depth[symbol] = {"B": {}, "S": {}}
 
-    def process_message(self, msg: ITCHMessage) -> Optional[CanonicalEvent]:
-        """
-        Updates internal book state and optionally yields a CanonicalEvent.
-        """
+    def process_message(self, msg: ITCHMessage) -> CanonicalEvent | None:
+        """Update internal MBO order books and optionally synthesize a CanonicalEvent."""
         t = msg.msg_type
 
         # 1. Add Order (A or F)
@@ -451,10 +481,16 @@ class ITCHOrderBookTracker:
 
         return None
 
-    def get_bbo(self, symbol: str) -> Dict[str, Any]:
+    def get_bbo(self, symbol: str) -> dict[str, Any]:
         """Compute the current Best Bid & Offer for a symbol."""
         if symbol not in self.depth:
-            return {"symbol": symbol, "bid": None, "ask": None, "bid_size": 0, "ask_size": 0}
+            return {
+                "symbol": symbol,
+                "bid": None,
+                "ask": None,
+                "bid_size": 0,
+                "ask_size": 0,
+            }
 
         bids = self.depth[symbol]["B"]
         asks = self.depth[symbol]["S"]
@@ -472,17 +508,19 @@ class ITCHOrderBookTracker:
 
 
 class ITCHSyntheticGenerator:
-    """
-    Deterministic high-speed binary ITCH 5.0 packet generator for benchmarks and tests.
+    """Deterministic high-speed binary ITCH 5.0 packet generator for benchmarks and tests.
+
     Generates byte-perfect binary frames following the NASDAQ TotalView-ITCH 5.0 spec.
     """
 
-    def __init__(self, seed: int = 42, symbols: Optional[List[str]] = None):
+    def __init__(self, seed: int = 42, symbols: list[str] | None = None):
         self.rng = random.Random(seed)
         self.symbols = symbols or ["AAPL", "MSFT", "NVDA", "AMZN"]
         self.order_counter = 100_000
         self.match_counter = 500_000
-        self.active_orders: List[Tuple[int, str, str, float, int]] = []  # (ref, stock, side, price, shares)
+        self.active_orders: list[
+            tuple[int, str, str, float, int]
+        ] = []  # (ref, stock, side, price, shares)
         self.current_prices = {s: 150.0 + i * 50.0 for i, s in enumerate(self.symbols)}
         self.base_ns = 34_200_000_000_000  # 9:30:00 AM in nanoseconds
 
@@ -502,7 +540,9 @@ class ITCHSyntheticGenerator:
             stock = self.rng.choice(self.symbols)
             side = self.rng.choice(["B", "S"])
             drift = self.rng.gauss(0, 0.20)
-            self.current_prices[stock] = max(1.0, round(self.current_prices[stock] + drift, 2))
+            self.current_prices[stock] = max(
+                1.0, round(self.current_prices[stock] + drift, 2)
+            )
             base_px = self.current_prices[stock]
             px_val = base_px - 0.05 if side == "B" else base_px + 0.05
             px_int = int(round(px_val * PRICE_FACTOR_ITCH))
@@ -512,7 +552,14 @@ class ITCHSyntheticGenerator:
 
             stock_b = stock.encode("ascii").ljust(8)
             payload = MSG_ADD_ORDER + STRUCT_A.pack(
-                1, 0, ts_b, self.order_counter, side.encode("ascii"), shares, stock_b, px_int
+                1,
+                0,
+                ts_b,
+                self.order_counter,
+                side.encode("ascii"),
+                shares,
+                stock_b,
+                px_int,
             )
             return STRUCT_FRAME_LEN.pack(len(payload)) + payload
 
@@ -524,10 +571,18 @@ class ITCHSyntheticGenerator:
             if exec_shs >= shares:
                 self.active_orders.pop(idx)
             else:
-                self.active_orders[idx] = (o_ref, stock, side, px_val, shares - exec_shs)
+                self.active_orders[idx] = (
+                    o_ref,
+                    stock,
+                    side,
+                    px_val,
+                    shares - exec_shs,
+                )
 
             self.match_counter += 1
-            payload = MSG_ORDER_EXECUTED + STRUCT_E.pack(1, 0, ts_b, o_ref, exec_shs, self.match_counter)
+            payload = MSG_ORDER_EXECUTED + STRUCT_E.pack(
+                1, 0, ts_b, o_ref, exec_shs, self.match_counter
+            )
             return STRUCT_FRAME_LEN.pack(len(payload)) + payload
 
         # 15% Order Cancel / Delete (X or D)
@@ -536,7 +591,9 @@ class ITCHSyntheticGenerator:
             o_ref, stock, side, px_val, shares = self.active_orders.pop(idx)
             if self.rng.random() < 0.5:
                 # Cancel partial
-                payload = MSG_ORDER_CANCEL + STRUCT_X.pack(1, 0, ts_b, o_ref, min(100, shares))
+                payload = MSG_ORDER_CANCEL + STRUCT_X.pack(
+                    1, 0, ts_b, o_ref, min(100, shares)
+                )
             else:
                 # Delete full
                 payload = MSG_ORDER_DELETE + STRUCT_D.pack(1, 0, ts_b, o_ref)
@@ -552,13 +609,17 @@ class ITCHSyntheticGenerator:
             px_int = int(round(new_px * PRICE_FACTOR_ITCH))
             self.active_orders.append((new_ref, stock, side, new_px, shares))
 
-            payload = MSG_ORDER_REPLACE + STRUCT_U.pack(1, 0, ts_b, orig_ref, new_ref, shares, px_int)
+            payload = MSG_ORDER_REPLACE + STRUCT_U.pack(
+                1, 0, ts_b, orig_ref, new_ref, shares, px_int
+            )
             return STRUCT_FRAME_LEN.pack(len(payload)) + payload
 
         # Fallback Add
         self.order_counter += 1
         stock_b = b"AAPL    "
-        payload = MSG_ADD_ORDER + STRUCT_A.pack(1, 0, ts_b, self.order_counter, b"B", 100, stock_b, 1500000)
+        payload = MSG_ADD_ORDER + STRUCT_A.pack(
+            1, 0, ts_b, self.order_counter, b"B", 100, stock_b, 1500000
+        )
         return STRUCT_FRAME_LEN.pack(len(payload)) + payload
 
     def generate_stream(self, num_messages: int) -> Generator[bytes, None, None]:
@@ -568,14 +629,14 @@ class ITCHSyntheticGenerator:
 
 
 class ITCHFeedReplayer:
-    """
-    High-throughput replayer for binary ITCH 5.0 files (.itch or .itch.gz).
-    """
+    """High-throughput replayer for binary ITCH 5.0 files (.itch or .itch.gz)."""
 
     def __init__(self, file_path: str):
         self.file_path = file_path
 
-    def iterate_messages(self, limit: Optional[int] = None) -> Generator[ITCHMessage, None, None]:
+    def iterate_messages(
+        self, limit: int | None = None
+    ) -> Generator[ITCHMessage, None, None]:
         """Stream parsed ITCH messages from a binary file."""
         open_fn = gzip.open if self.file_path.endswith(".gz") else open
         count = 0
@@ -606,9 +667,9 @@ def run_itch_benchmark(
     num_messages: int = 1_000_000,
     seed: int = 42,
     reconstruct_book: bool = True,
-) -> Dict[str, Any]:
-    """
-    Global Benchmark Harness for NASDAQ TotalView-ITCH 5.0.
+) -> dict[str, Any]:
+    """Global Benchmark Harness for NASDAQ TotalView-ITCH 5.0.
+
     Generates and processes `num_messages` binary frames, measuring:
     1. Pure binary deserialization throughput (messages/sec).
     2. End-to-end Level-3 order book reconstruction throughput.
@@ -672,15 +733,17 @@ def run_itch_benchmark(
             "executes": book.total_executes if book else 0,
             "cancels": book.total_cancels if book else 0,
             "replaces": book.total_replaces if book else 0,
-        } if book else {},
+        }
+        if book
+        else {},
     }
 
 
 def run_itch_file_benchmark(
     file_path: str,
-    max_messages: Optional[int] = 1_000_000,
+    max_messages: int | None = 1_000_000,
     reconstruct_book: bool = True,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Benchmarks parsing and order book reconstruction directly from a real
     NASDAQ TotalView-ITCH 5.0 binary file (.itch or .itch.gz).
@@ -738,5 +801,7 @@ def run_itch_file_benchmark(
             "executes": book.total_executes if book else 0,
             "cancels": book.total_cancels if book else 0,
             "replaces": book.total_replaces if book else 0,
-        } if book else {},
+        }
+        if book
+        else {},
     }

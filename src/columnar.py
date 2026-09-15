@@ -8,6 +8,7 @@ Implements Phase 3 (Spec §14, §26):
 - Compressed Apache Parquet exporting with zstd/snappy compression.
 - Scale-up comparative micro-benchmarking (SQLite row scan vs DuckDB columnar scan).
 """
+
 from __future__ import annotations
 
 import json
@@ -15,14 +16,14 @@ import os
 import re
 import threading
 import time
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional
 
 try:
     import duckdb
 except ImportError:
     duckdb = None
 
-from models import CanonicalEvent, EventType, QualityStatus
+from models import CanonicalEvent
 
 
 COLUMNAR_SCHEMA = """
@@ -62,7 +63,9 @@ class ColumnarStore:
         memory_limit: str = "2GB",
     ):
         if duckdb is None:
-            raise RuntimeError("duckdb is not installed. Install with 'pip install duckdb'.")
+            raise RuntimeError(
+                "duckdb is not installed. Install with 'pip install duckdb'."
+            )
 
         self.db_path = db_path
         self.read_only = read_only
@@ -80,7 +83,7 @@ class ColumnarStore:
                 self.read_only = True
             else:
                 raise exc
-        
+
         # Configure resource limits
         self.con.execute(f"PRAGMA threads={max(1, threads)}")
         if memory_limit:
@@ -116,44 +119,57 @@ class ColumnarStore:
         rows = []
         for ev in events:
             reasons_str = json.dumps(ev.reasons) if ev.reasons else ""
-            rows.append((
-                ev.event_id,
-                ev.instrument_id,
-                ev.event_type.value if hasattr(ev.event_type, "value") else str(ev.event_type),
-                ev.exchange_timestamp,
-                ev.receive_timestamp,
-                ev.processing_timestamp,
-                ev.source,
-                ev.sequence_number,
-                ev.price,
-                ev.quantity,
-                ev.bid_price,
-                ev.bid_size,
-                ev.ask_price,
-                ev.ask_size,
-                ev.quality_status.value if hasattr(ev.quality_status, "value") else str(ev.quality_status),
-                reasons_str,
-                ev.raw_id or "",
-            ))
+            rows.append(
+                (
+                    ev.event_id,
+                    ev.instrument_id,
+                    ev.event_type.value
+                    if hasattr(ev.event_type, "value")
+                    else str(ev.event_type),
+                    ev.exchange_timestamp,
+                    ev.receive_timestamp,
+                    ev.processing_timestamp,
+                    ev.source,
+                    ev.sequence_number,
+                    ev.price,
+                    ev.quantity,
+                    ev.bid_price,
+                    ev.bid_size,
+                    ev.ask_price,
+                    ev.ask_size,
+                    ev.quality_status.value
+                    if hasattr(ev.quality_status, "value")
+                    else str(ev.quality_status),
+                    reasons_str,
+                    ev.raw_id or "",
+                )
+            )
 
         if not rows:
             return 0
 
         with self._lock:
-            self.con.executemany("""
+            self.con.executemany(
+                """
                 INSERT OR IGNORE INTO canonical_ticks VALUES (
                     ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                 )
-            """, rows)
+            """,
+                rows,
+            )
             return len(rows)
 
     def max_timestamp(self) -> float:
         """Return highest exchange timestamp stored in columnar store."""
         with self._lock:
-            res = self.con.execute("SELECT MAX(exchange_timestamp) FROM canonical_ticks").fetchone()
+            res = self.con.execute(
+                "SELECT MAX(exchange_timestamp) FROM canonical_ticks"
+            ).fetchone()
             return float(res[0]) if res and res[0] is not None else 0.0
 
-    def sync_from_sqlite(self, sqlite_path: str = "data/mdrap.db", incremental: bool = True) -> int:
+    def sync_from_sqlite(
+        self, sqlite_path: str = "data/mdrap.db", incremental: bool = True
+    ) -> int:
         """
         Directly attach SQLite database and bulk copy canonical events into DuckDB
         using zero-copy vectorized scanning.
@@ -172,7 +188,8 @@ class ColumnarStore:
             try:
                 before = self.count()
                 if incremental and max_ts > 0.0:
-                    self.con.execute("""
+                    self.con.execute(
+                        """
                         INSERT OR IGNORE INTO canonical_ticks
                         SELECT 
                             event_id, instrument_id, event_type,
@@ -182,7 +199,9 @@ class ColumnarStore:
                             quality_status, reasons, raw_id
                         FROM sqldb.canonical_events
                         WHERE exchange_timestamp >= ?;
-                    """, [max_ts])
+                    """,
+                        [max_ts],
+                    )
                 else:
                     self.con.execute("""
                         INSERT OR IGNORE INTO canonical_ticks
@@ -212,10 +231,13 @@ class ColumnarStore:
         sql_max_ts = 0.0
         if os.path.exists(sqlite_path):
             import sqlite3
+
             try:
                 con = sqlite3.connect(sqlite_path)
                 cur = con.cursor()
-                r = cur.execute("SELECT count(*), max(exchange_timestamp) FROM canonical_events").fetchone()
+                r = cur.execute(
+                    "SELECT count(*), max(exchange_timestamp) FROM canonical_events"
+                ).fetchone()
                 if r:
                     sql_count = int(r[0] or 0)
                     sql_max_ts = float(r[1] or 0.0)
@@ -242,7 +264,9 @@ class ColumnarStore:
     def symbols(self) -> List[str]:
         """Return sorted list of all unique instruments present in ticks."""
         with self._lock:
-            res = self.con.execute("SELECT DISTINCT instrument_id FROM canonical_ticks ORDER BY 1").fetchall()
+            res = self.con.execute(
+                "SELECT DISTINCT instrument_id FROM canonical_ticks ORDER BY 1"
+            ).fetchall()
             return [r[0] for r in res if r[0]]
 
     # -----------------------------------------------------------------------
@@ -282,21 +306,25 @@ class ColumnarStore:
             LIMIT ?
         """
         with self._lock:
-            res = self.con.execute(query, [interval_s, interval_s, interval_s, sym, sym_clean, limit]).fetchall()
+            res = self.con.execute(
+                query, [interval_s, interval_s, interval_s, sym, sym_clean, limit]
+            ).fetchall()
 
         candles = []
         for r in reversed(res):
-            candles.append({
-                "instrument_id": r[0],
-                "bucket_start": float(r[1]),
-                "interval_s": float(r[2]),
-                "open": round(float(r[3]), 4),
-                "high": round(float(r[4]), 4),
-                "low": round(float(r[5]), 4),
-                "close": round(float(r[6]), 4),
-                "volume": round(float(r[7] or 0.0), 2),
-                "event_count": int(r[8]),
-            })
+            candles.append(
+                {
+                    "instrument_id": r[0],
+                    "bucket_start": float(r[1]),
+                    "interval_s": float(r[2]),
+                    "open": round(float(r[3]), 4),
+                    "high": round(float(r[4]), 4),
+                    "low": round(float(r[5]), 4),
+                    "close": round(float(r[6]), 4),
+                    "volume": round(float(r[7] or 0.0), 2),
+                    "event_count": int(r[8]),
+                }
+            )
         return candles
 
     def query_vwap(
@@ -315,7 +343,7 @@ class ColumnarStore:
             "(instrument_id = ? OR instrument_id = ?)",
             "event_type = 'TRADE'",
             "price IS NOT NULL",
-            "quantity > 0"
+            "quantity > 0",
         ]
         params = [sym, sym_clean]
 
@@ -362,7 +390,9 @@ class ColumnarStore:
             "max_price": round(float(r[5] or 0.0), 4),
         }
 
-    def query_spread_analytics(self, symbol: Optional[str] = None) -> List[Dict[str, Any]]:
+    def query_spread_analytics(
+        self, symbol: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
         """
         Compute bid-ask spread telemetry, crossed-market anomalies, and venue spread metrics.
         """
@@ -396,15 +426,17 @@ class ColumnarStore:
 
         out = []
         for r in res:
-            out.append({
-                "instrument_id": r[0],
-                "quote_count": int(r[1]),
-                "mean_spread": round(float(r[2] or 0.0), 4),
-                "min_spread": round(float(r[3] or 0.0), 4),
-                "max_spread": round(float(r[4] or 0.0), 4),
-                "crossed_count": int(r[5] or 0),
-                "crossed_pct": round(float(r[6] or 0.0), 2),
-            })
+            out.append(
+                {
+                    "instrument_id": r[0],
+                    "quote_count": int(r[1]),
+                    "mean_spread": round(float(r[2] or 0.0), 4),
+                    "min_spread": round(float(r[3] or 0.0), 4),
+                    "max_spread": round(float(r[4] or 0.0), 4),
+                    "crossed_count": int(r[5] or 0),
+                    "crossed_pct": round(float(r[6] or 0.0), 2),
+                }
+            )
         return out
 
     def query_latency_quantiles(self) -> Dict[str, Any]:
@@ -464,10 +496,19 @@ class ColumnarStore:
         with self._lock:
             b_res = self.con.execute(query_bounds, [sym, sym_clean]).fetchone()
 
-        if not b_res or b_res[0] is None or b_res[1] is None or abs(float(b_res[1]) - float(b_res[0])) < 1e-6:
+        if (
+            not b_res
+            or b_res[0] is None
+            or b_res[1] is None
+            or abs(float(b_res[1]) - float(b_res[0])) < 1e-6
+        ):
             return []
 
-        min_p, max_p, total_vol = float(b_res[0]), float(b_res[1]), float(b_res[2] or 1.0)
+        min_p, max_p, total_vol = (
+            float(b_res[0]),
+            float(b_res[1]),
+            float(b_res[2] or 1.0),
+        )
         bin_width = (max_p - min_p) / max(1, bins)
         if bin_width <= 0:
             return []
@@ -484,7 +525,9 @@ class ColumnarStore:
             ORDER BY 1
         """
         with self._lock:
-            rows = self.con.execute(query, [min_p, bin_width, sym, sym_clean]).fetchall()
+            rows = self.con.execute(
+                query, [min_p, bin_width, sym, sym_clean]
+            ).fetchall()
 
         profile = []
         for r in rows:
@@ -493,13 +536,15 @@ class ColumnarStore:
             b_high = b_low + bin_width
             vol = float(r[1] or 0.0)
             pct = (vol / total_vol) * 100.0 if total_vol > 0 else 0.0
-            profile.append({
-                "bin_low": round(b_low, 2),
-                "bin_high": round(b_high, 2),
-                "volume": round(vol, 2),
-                "trades": int(r[2]),
-                "pct": round(pct, 1),
-            })
+            profile.append(
+                {
+                    "bin_low": round(b_low, 2),
+                    "bin_high": round(b_high, 2),
+                    "volume": round(vol, 2),
+                    "trades": int(r[2]),
+                    "pct": round(pct, 1),
+                }
+            )
         return profile
 
     # -----------------------------------------------------------------------
@@ -512,9 +557,11 @@ class ColumnarStore:
         instrument_id: Optional[str] = None,
         compression: str = "zstd",
         symbol: Optional[str] = None,
+        partition_by: Optional[list[str]] = None,
     ) -> str:
         """
-        Export ticks directly to an Apache Parquet file using columnar compression.
+        Export ticks directly to an Apache Parquet file or partitioned directory.
+        Supports directory partitioning via partition_by (e.g. ['date', 'instrument_id']).
         """
         instrument_id = instrument_id or symbol
         os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
@@ -536,22 +583,63 @@ class ColumnarStore:
             escaped_clean = sym_clean.replace("'", "''")
             where_clause = f"WHERE (instrument_id = '{escaped_sym}' OR instrument_id = '{escaped_clean}')"
 
-        query = f"""
-            COPY (
-                SELECT * FROM canonical_ticks {where_clause}
-                ORDER BY exchange_timestamp
-            ) TO '{escaped_out}' (FORMAT PARQUET, COMPRESSION '{comp}');
-        """
+        if partition_by:
+            os.makedirs(abs_out, exist_ok=True)
+            cols = ", ".join(partition_by)
+            select_cols = (
+                "*, strftime(to_timestamp(exchange_timestamp), '%Y-%m-%d') AS date"
+            )
+            query = f"""
+                COPY (
+                    SELECT {select_cols} FROM canonical_ticks {where_clause}
+                    ORDER BY exchange_timestamp
+                ) TO '{escaped_out}' (FORMAT PARQUET, COMPRESSION '{comp}', PARTITION_BY ({cols}));
+            """
+        else:
+            query = f"""
+                COPY (
+                    SELECT * FROM canonical_ticks {where_clause}
+                    ORDER BY exchange_timestamp
+                ) TO '{escaped_out}' (FORMAT PARQUET, COMPRESSION '{comp}');
+            """
         with self._lock:
             self.con.execute(query)
 
         return abs_out
 
+    def query_as_of(
+        self, symbol: str, as_of_ts: float
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Reconstruct canonical market state as of a historical timestamp (Invariant Q6).
+        Returns the last valid/suspicious canonical tick for the symbol at or before as_of_ts.
+        """
+        sym = symbol.upper().strip()
+        sym_clean = sym.replace("-", "/")
+        query = """
+            SELECT *
+            FROM canonical_ticks
+            WHERE (instrument_id = ? OR instrument_id = ?)
+              AND exchange_timestamp <= ?
+              AND quality_status != 'INVALID'
+            ORDER BY exchange_timestamp DESC, sequence_number DESC
+            LIMIT 1;
+        """
+        with self._lock:
+            rel = self.con.execute(query, [sym, sym_clean, as_of_ts])
+            cols = [desc[0] for desc in rel.description]
+            row = rel.fetchone()
+            if not row:
+                return None
+            return dict(zip(cols, row))
+
     # -----------------------------------------------------------------------
     # Raw SQL Execution
     # -----------------------------------------------------------------------
 
-    def sql(self, query: str, params: Optional[list | tuple | dict] = None) -> List[Dict[str, Any]]:
+    def sql(
+        self, query: str, params: Optional[list | tuple | dict] = None
+    ) -> List[Dict[str, Any]]:
         """Execute arbitrary SQL query returning a list of dictionaries."""
         with self._lock:
             rel = self.con.execute(query, params or [])
@@ -574,7 +662,9 @@ class ColumnarStore:
         import sqlite3
 
         if not os.path.exists(sqlite_path):
-            raise FileNotFoundError(f"SQLite database {sqlite_path} does not exist for benchmark.")
+            raise FileNotFoundError(
+                f"SQLite database {sqlite_path} does not exist for benchmark."
+            )
 
         # 1. Connect SQLite directly
         sql_con = sqlite3.connect(sqlite_path)
@@ -605,7 +695,7 @@ class ColumnarStore:
             WHERE event_type = 'TRADE' AND price IS NOT NULL AND quantity > 0
             GROUP BY instrument_id
         """)
-        sql_vwap_res = sql_cur.fetchall()
+        _sql_vwap_res = sql_cur.fetchall()
         t_sql_vwap = (time.perf_counter() - t0) * 1000.0
 
         sql_con.close()
@@ -633,7 +723,7 @@ class ColumnarStore:
 
         # Query 2 in DuckDB: VWAP
         t0 = time.perf_counter()
-        duck_vwap_res = self.con.execute("""
+        _duck_vwap_res = self.con.execute("""
             SELECT instrument_id, sum(price * quantity) / sum(quantity), sum(quantity), count(*)
             FROM canonical_ticks
             WHERE event_type = 'TRADE' AND price IS NOT NULL AND quantity > 0
@@ -660,6 +750,9 @@ class ColumnarStore:
             "speedup": {
                 "ohlcv": round(ohlcv_speedup, 1),
                 "vwap": round(vwap_speedup, 1),
-                "overall": round((t_sql_ohlcv + t_sql_vwap) / max(0.001, t_duck_ohlcv + t_duck_vwap), 1),
-            }
+                "overall": round(
+                    (t_sql_ohlcv + t_sql_vwap) / max(0.001, t_duck_ohlcv + t_duck_vwap),
+                    1,
+                ),
+            },
         }

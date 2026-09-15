@@ -12,20 +12,17 @@ Models realistic operational conditions where multiple independent devices/clien
 Measures operation throughput, tail latencies (p50, p90, p95, p99, max),
 socket queue drops, and database contention across scaling tiers (2 to 24+ devices).
 """
+
 from __future__ import annotations
 
 import concurrent.futures
-import json
-import math
 import os
 import random
 import socket
-import sys
 import time
-import urllib.request
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from columnar import ColumnarStore
 from service import MarketDataDaemon, StreamClient
@@ -48,7 +45,9 @@ class DeviceConfig:
     duckdb_path: str = "data/mdrap.duckdb"
     duration_s: float = 5.0
     auth_token: str = "mdrap_demo_pro_key"
-    symbols: List[str] = field(default_factory=lambda: ["BTC/USD", "AAPL", "MSFT", "NVDA"])
+    symbols: List[str] = field(
+        default_factory=lambda: ["BTC/USD", "AAPL", "MSFT", "NVDA"]
+    )
 
 
 @dataclass
@@ -103,7 +102,9 @@ def run_device_worker(cfg: DeviceConfig) -> DeviceResult:
     # Connect client if needed
     try:
         if cfg.archetype in (UserArchetype.NORMAL_USER, UserArchetype.FAST_PACED_BOT):
-            client = StreamClient(host=cfg.host, port=cfg.port, timeout=3.0, auth_token=cfg.auth_token)
+            client = StreamClient(
+                host=cfg.host, port=cfg.port, timeout=3.0, auth_token=cfg.auth_token
+            )
             client.connect()
     except Exception as exc:
         res.errors.append(f"Connection failed: {exc}")
@@ -146,26 +147,28 @@ def run_device_worker(cfg: DeviceConfig) -> DeviceResult:
                 if dice < 0.35:
                     # Query BBO Quote
                     t0 = time.perf_counter_ns()
-                    bbo = client.get_bbo(sym) if client else None
+                    _bbo = client.get_bbo(sym) if client else None
                     _record_op("BBO_QUOTE", (time.perf_counter_ns() - t0) / 1e6)
 
                 elif dice < 0.55:
                     # Query Venue Health
                     t0 = time.perf_counter_ns()
-                    h = client.get_health() if client else {}
+                    _h = client.get_health() if client else {}
                     _record_op("VENUE_HEALTH", (time.perf_counter_ns() - t0) / 1e6)
 
                 elif dice < 0.70:
                     # Query Platform Status
                     t0 = time.perf_counter_ns()
-                    st = client.get_status() if client else {}
+                    _st = client.get_status() if client else {}
                     _record_op("STATUS", (time.perf_counter_ns() - t0) / 1e6)
 
                 elif dice < 0.85:
                     # Query DuckDB Candlesticks / OHLCV
                     t0 = time.perf_counter_ns()
                     if columnar_store:
-                        candles = columnar_store.query_ohlcv(sym, interval_s=60.0, limit=5)
+                        _candles = columnar_store.query_ohlcv(
+                            sym, interval_s=60.0, limit=5
+                        )
                     else:
                         time.sleep(0.001)
                     _record_op("CANDLESTICK_OHLCV", (time.perf_counter_ns() - t0) / 1e6)
@@ -174,7 +177,7 @@ def run_device_worker(cfg: DeviceConfig) -> DeviceResult:
                     # Query Microstructure Spread Analytics
                     t0 = time.perf_counter_ns()
                     if columnar_store:
-                        spr = columnar_store.query_spread_analytics(sym)
+                        _spr = columnar_store.query_spread_analytics(sym)
                     else:
                         time.sleep(0.001)
                     _record_op("SPREAD_ANALYTICS", (time.perf_counter_ns() - t0) / 1e6)
@@ -200,6 +203,7 @@ def run_device_worker(cfg: DeviceConfig) -> DeviceResult:
         shm_reader = None
         try:
             from shm import SHMReader
+
             shm_reader = SHMReader()
         except Exception:
             shm_reader = None
@@ -230,28 +234,28 @@ def run_device_worker(cfg: DeviceConfig) -> DeviceResult:
                 if dice < 0.30:
                     # Query L2 Order Book Depth Ladder
                     t0 = time.perf_counter_ns()
-                    d = client.get_depth(sym) if client else None
+                    _d = client.get_depth(sym) if client else None
                     _record_op("L2_DEPTH_LADDER", (time.perf_counter_ns() - t0) / 1e6)
 
                 elif dice < 0.55:
                     # Query Real-Time VWAP Slicing Curve
                     t0 = time.perf_counter_ns()
-                    v = client._send_query(f"VWAP {sym}") if client else {}
+                    _v = client._send_query(f"VWAP {sym}") if client else {}
                     _record_op("VWAP_CURVE", (time.perf_counter_ns() - t0) / 1e6)
 
                 elif dice < 0.75:
                     # Drain Streaming Tick Buffer (SHM ultra-fastpath or TCP)
                     t0 = time.perf_counter_ns()
-                    ticks_read = 0
+                    _ticks_read = 0
                     if shm_reader:
                         h_seq = shm_reader.read_latest_seq()
                         slot = shm_reader.read_slot(h_seq)
-                        ticks_read = 1 if slot else 0
+                        _ticks_read = 1 if slot else 0
                     elif stream_sock:
                         try:
                             chunk = stream_sock.recv(8192)
                             if chunk:
-                                ticks_read = chunk.count(b"\n")
+                                _ticks_read = chunk.count(b"\n")
                         except (BlockingIOError, socket.error):
                             pass
                     _record_op("STREAM_TICK_DRAIN", (time.perf_counter_ns() - t0) / 1e6)
@@ -259,14 +263,16 @@ def run_device_worker(cfg: DeviceConfig) -> DeviceResult:
                 elif dice < 0.88:
                     # Historical Tick Gap Replay
                     t0 = time.perf_counter_ns()
-                    replayed = client.request_replay(1, 50, symbol=sym) if client else []
+                    _replayed = (
+                        client.request_replay(1, 50, symbol=sym) if client else []
+                    )
                     _record_op("TICK_GAP_REPLAY", (time.perf_counter_ns() - t0) / 1e6)
 
                 else:
                     # Vectorized In-Process DuckDB SIMD Query
                     t0 = time.perf_counter_ns()
                     if columnar_store:
-                        vwap_stat = columnar_store.query_vwap(sym)
+                        _vwap_stat = columnar_store.query_vwap(sym)
                     else:
                         time.sleep(0.0005)
                     _record_op("DUCKDB_SIMD_VWAP", (time.perf_counter_ns() - t0) / 1e6)
@@ -446,10 +452,14 @@ class ConcurrentWorkloadSimulator:
         t0 = time.perf_counter()
 
         if mode == "process":
-            with concurrent.futures.ProcessPoolExecutor(max_workers=len(configs)) as executor:
+            with concurrent.futures.ProcessPoolExecutor(
+                max_workers=len(configs)
+            ) as executor:
                 results = list(executor.map(run_device_worker, configs))
         else:
-            with concurrent.futures.ThreadPoolExecutor(max_workers=len(configs)) as executor:
+            with concurrent.futures.ThreadPoolExecutor(
+                max_workers=len(configs)
+            ) as executor:
                 results = list(executor.map(run_device_worker, configs))
 
         wall_time_s = max(0.001, time.perf_counter() - t0)
@@ -559,7 +569,9 @@ class ConcurrentWorkloadSimulator:
         )
 
         # 1. Comparative Archetype Latency Table
-        t_arch = Table(title=f"User Archetype Latency Distribution (ms)", border_style="dim")
+        t_arch = Table(
+            title="User Archetype Latency Distribution (ms)", border_style="dim"
+        )
         t_arch.add_column("Archetype", style="bold")
         t_arch.add_column("Devices", justify="right")
         t_arch.add_column("Total Ops", justify="right")
@@ -574,7 +586,7 @@ class ConcurrentWorkloadSimulator:
                 "Normal User (Desk)",
                 str(report["normal_count"]),
                 f"{norm['ops']:,}",
-                f"{norm['ops']/report['duration_s']:.1f} ops/s",
+                f"{norm['ops'] / report['duration_s']:.1f} ops/s",
                 f"{norm['p50_ms']:.3f} ms",
                 f"{norm['p95_ms']:.3f} ms",
                 f"{norm['p99_ms']:.3f} ms",
@@ -586,7 +598,7 @@ class ConcurrentWorkloadSimulator:
                 "Fast-Paced Bot (HFT)",
                 str(report["fast_count"]),
                 f"{fast['ops']:,}",
-                f"{fast['ops']/report['duration_s']:.1f} ops/s",
+                f"{fast['ops'] / report['duration_s']:.1f} ops/s",
                 f"{fast['p50_ms']:.3f} ms",
                 f"{fast['p95_ms']:.3f} ms",
                 f"{fast['p99_ms']:.3f} ms",
@@ -598,7 +610,7 @@ class ConcurrentWorkloadSimulator:
                 "DevOps Monitor (SRE)",
                 str(report["monitor_count"]),
                 f"{mon['ops']:,}",
-                f"{mon['ops']/report['duration_s']:.1f} ops/s",
+                f"{mon['ops'] / report['duration_s']:.1f} ops/s",
                 f"{mon['p50_ms']:.3f} ms",
                 f"{mon['p95_ms']:.3f} ms",
                 f"{mon['p99_ms']:.3f} ms",
@@ -617,19 +629,27 @@ class ConcurrentWorkloadSimulator:
         self.console.print(t_arch)
 
         # 2. Breakdown by Financial Operation
-        t_op = Table(title="Micro-Operation Breakdown & p95 Tail Latencies", border_style="dim")
+        t_op = Table(
+            title="Micro-Operation Breakdown & p95 Tail Latencies", border_style="dim"
+        )
         t_op.add_column("Operation Type", style="bold")
         t_op.add_column("Count", justify="right")
         t_op.add_column("Share %", justify="right")
         t_op.add_column("p95 Latency", justify="right", style="cyan")
 
-        for op, cnt in sorted(report["operation_breakdown"].items(), key=lambda x: -x[1]):
-            pct = (cnt / report["total_ops"] * 100.0) if report["total_ops"] > 0 else 0.0
+        for op, cnt in sorted(
+            report["operation_breakdown"].items(), key=lambda x: -x[1]
+        ):
+            pct = (
+                (cnt / report["total_ops"] * 100.0) if report["total_ops"] > 0 else 0.0
+            )
             p95 = report["operation_p95_ms"].get(op, 0.0)
             t_op.add_row(op, f"{cnt:,}", f"{pct:.1f}%", f"{p95:.3f} ms")
         self.console.print(t_op)
 
-    def run_sweep(self, duration_s: float = 4.0, mode: str = "thread") -> List[Dict[str, Any]]:
+    def run_sweep(
+        self, duration_s: float = 4.0, mode: str = "thread"
+    ) -> List[Dict[str, Any]]:
         """
         Execute full scaling progression across 4 tiers:
         Tier 1 (Pilot): 2 Devices (1 Normal, 1 Fast)
@@ -646,16 +666,26 @@ class ConcurrentWorkloadSimulator:
 
         sweep_results = []
         self.console.print()
-        self.console.print("[bold cyan]══════════════════════════════════════════════════════════════════[/bold cyan]")
-        self.console.print("[bold cyan]   Starting MDRAP Multi-Device Concurrency Scaling Sweep (§26)    [/bold cyan]")
-        self.console.print("[bold cyan]══════════════════════════════════════════════════════════════════[/bold cyan]")
+        self.console.print(
+            "[bold cyan]══════════════════════════════════════════════════════════════════[/bold cyan]"
+        )
+        self.console.print(
+            "[bold cyan]   Starting MDRAP Multi-Device Concurrency Scaling Sweep (§26)    [/bold cyan]"
+        )
+        self.console.print(
+            "[bold cyan]══════════════════════════════════════════════════════════════════[/bold cyan]"
+        )
 
         try:
             self.start_services()
 
             for name, n_cnt, f_cnt, m_cnt in tiers:
-                self.console.print(f"\n[dim yellow]▶ Running {name} ({n_cnt + f_cnt + m_cnt} concurrent devices)...[/dim yellow]")
-                rep = self.run_tier(n_cnt, f_cnt, m_cnt, duration_s=duration_s, mode=mode)
+                self.console.print(
+                    f"\n[dim yellow]▶ Running {name} ({n_cnt + f_cnt + m_cnt} concurrent devices)...[/dim yellow]"
+                )
+                rep = self.run_tier(
+                    n_cnt, f_cnt, m_cnt, duration_s=duration_s, mode=mode
+                )
                 self.render_tier_report(name, rep)
                 sweep_results.append({"tier": name, "report": rep})
                 time.sleep(0.5)
@@ -665,7 +695,10 @@ class ConcurrentWorkloadSimulator:
 
         # Render Scaling Progression Matrix
         self.console.print()
-        t_prog = Table(title="Concurrent Scaling Progression Matrix (§26 Verification)", border_style="cyan")
+        t_prog = Table(
+            title="Concurrent Scaling Progression Matrix (§26 Verification)",
+            border_style="cyan",
+        )
         t_prog.add_column("Tier", style="bold")
         t_prog.add_column("Devices", justify="right")
         t_prog.add_column("Throughput", justify="right", style="green")

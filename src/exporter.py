@@ -6,21 +6,19 @@ multi-venue VWAP slippage curves, and data quality audits into production-grade
 Microsoft Excel (.xlsx) workbooks and CSV report packages for quantitative
 researchers, risk desks, and algorithmic execution analysts.
 """
+
 from __future__ import annotations
 
 import csv
-import math
 import os
 import sys
-import time
 from datetime import datetime
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import List, Optional
 
 from analytics import MarketAnalytics
-from bbo import BBOEngine, ConsolidatedBBO
-from depth import ConsolidatedDepthEngine, ConsolidatedLadder, VWAPCurve
-from models import CanonicalEvent, EventType, QualityStatus, RawEvent
+from bbo import BBOEngine
+from depth import ConsolidatedDepthEngine
+from models import CanonicalEvent, EventType, QualityStatus
 from pipeline import Pipeline
 from simulator import FeedSimulator, SimulatorConfig
 from storage import Store
@@ -80,9 +78,19 @@ class MarketDataExporter:
             for d in raw_rows:
                 try:
                     ev_type_str = d.get("event_type", "TRADE")
-                    ev_type = EventType.QUOTE if ev_type_str == "QUOTE" else EventType.TRADE
+                    ev_type = (
+                        EventType.QUOTE if ev_type_str == "QUOTE" else EventType.TRADE
+                    )
                     st_str = d.get("quality_status", "VALID")
-                    st = QualityStatus.INVALID if st_str == "INVALID" else (QualityStatus.SUSPICIOUS if st_str == "SUSPICIOUS" else QualityStatus.VALID)
+                    st = (
+                        QualityStatus.INVALID
+                        if st_str == "INVALID"
+                        else (
+                            QualityStatus.SUSPICIOUS
+                            if st_str == "SUSPICIOUS"
+                            else QualityStatus.VALID
+                        )
+                    )
                     ev = CanonicalEvent(
                         event_id=d.get("event_id", ""),
                         instrument_id=d.get("instrument_id", symbol),
@@ -106,16 +114,32 @@ class MarketDataExporter:
                 except Exception:
                     pass
 
-            ladder = depth_eng.current_ladder(symbol) or depth_eng.current_ladder(sym_clean)
+            ladder = depth_eng.current_ladder(symbol) or depth_eng.current_ladder(
+                sym_clean
+            )
             bbo_obj = bbo_eng.current_bbo(symbol) or bbo_eng.current_bbo(sym_clean)
             sizes = [1.0, 5.0, 10.0, 25.0, 50.0]
-            curve = depth_eng.current_vwap_curve(symbol, sizes) or (ladder.compute_vwap_curve(sizes) if ladder else None)
+            curve = depth_eng.current_vwap_curve(symbol, sizes) or (
+                ladder.compute_vwap_curve(sizes) if ladder else None
+            )
 
             # Analytics
             analytics_summary = analytics_eng.full_summary()
-            candles = [c for c in analytics_summary.get("ohlcv", []) if c.get("instrument_id") in (symbol, sym_clean)]
-            spreads = [s for s in analytics_summary.get("spreads", []) if s.get("instrument_id") in (symbol, sym_clean)]
-            volatility = [v for v in analytics_summary.get("volatility", []) if v.get("instrument_id") in (symbol, sym_clean)]
+            candles = [
+                c
+                for c in analytics_summary.get("ohlcv", [])
+                if c.get("instrument_id") in (symbol, sym_clean)
+            ]
+            spreads = [
+                s
+                for s in analytics_summary.get("spreads", [])
+                if s.get("instrument_id") in (symbol, sym_clean)
+            ]
+            volatility = [
+                v
+                for v in analytics_summary.get("volatility", [])
+                if v.get("instrument_id") in (symbol, sym_clean)
+            ]
 
             # Feed health & quality statistics
             health = store.feed_health()
@@ -165,7 +189,9 @@ class MarketDataExporter:
         timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
 
         if output_path is None:
-            output_path = os.path.abspath(f"data/reports/MDRAP_{clean_sym}_{timestamp_str}.xlsx")
+            output_path = os.path.abspath(
+                f"data/reports/MDRAP_{clean_sym}_{timestamp_str}.xlsx"
+            )
         else:
             output_path = os.path.abspath(output_path)
 
@@ -180,11 +206,21 @@ class MarketDataExporter:
         font_cell = Font(name="Segoe UI", size=10, color="1E293B")
         font_bold = Font(name="Segoe UI", size=10, bold=True, color="1E293B")
 
-        fill_hdr = PatternFill(start_color="1E293B", end_color="1E293B", fill_type="solid")
-        fill_subhdr = PatternFill(start_color="334155", end_color="334155", fill_type="solid")
-        fill_bid = PatternFill(start_color="ECFDF5", end_color="ECFDF5", fill_type="solid")
-        fill_ask = PatternFill(start_color="FEF2F2", end_color="FEF2F2", fill_type="solid")
-        fill_accent = PatternFill(start_color="EFF6FF", end_color="EFF6FF", fill_type="solid")
+        fill_hdr = PatternFill(
+            start_color="1E293B", end_color="1E293B", fill_type="solid"
+        )
+        fill_subhdr = PatternFill(
+            start_color="334155", end_color="334155", fill_type="solid"
+        )
+        fill_bid = PatternFill(
+            start_color="ECFDF5", end_color="ECFDF5", fill_type="solid"
+        )
+        fill_ask = PatternFill(
+            start_color="FEF2F2", end_color="FEF2F2", fill_type="solid"
+        )
+        _fill_accent = PatternFill(
+            start_color="EFF6FF", end_color="EFF6FF", fill_type="solid"
+        )
 
         font_bid = Font(name="Segoe UI", size=10, color="065F46", bold=True)
         font_ask = Font(name="Segoe UI", size=10, color="991B1B", bold=True)
@@ -197,7 +233,7 @@ class MarketDataExporter:
         )
 
         align_center = Alignment(horizontal="center", vertical="center")
-        align_right = Alignment(horizontal="right", vertical="center")
+        _align_right = Alignment(horizontal="right", vertical="center")
         align_left = Alignment(horizontal="left", vertical="center")
 
         # ==========================================
@@ -220,12 +256,38 @@ class MarketDataExporter:
             ("National Best Ask (NBBO)", bbo.best_ask if bbo else 0.0, "$#,##0.00"),
             ("Consolidated Mid-Price", bbo.mid_price if bbo else 0.0, "$#,##0.00"),
             ("Quoted Spread ($)", bbo.spread if bbo else 0.0, "$#,##0.00"),
-            ("Quoted Spread (bps)", (bbo.spread / bbo.mid_price * 10000.0) if (bbo and bbo.mid_price) else 0.0, '0.00" bps"'),
-            ("Micro-Price (VWAP Mid)", ladder.micro_price if ladder else 0.0, "$#,##0.00"),
-            ("Order Flow Imbalance (OFI)", ladder.imbalance_ratio if ladder else 0.0, "+0.00;-0.00;0.00"),
-            ("Cross-Market Arbitrage", "DETECTED (CROSS)" if (bbo and bbo.is_crossed) else "NONE (HEALTHY)", "@"),
-            ("Total Bid Book Notional ($)", ladder.total_bid_notional if ladder else 0.0, "$#,##0.00"),
-            ("Total Ask Book Notional ($)", ladder.total_ask_notional if ladder else 0.0, "$#,##0.00"),
+            (
+                "Quoted Spread (bps)",
+                (bbo.spread / bbo.mid_price * 10000.0)
+                if (bbo and bbo.mid_price)
+                else 0.0,
+                '0.00" bps"',
+            ),
+            (
+                "Micro-Price (VWAP Mid)",
+                ladder.micro_price if ladder else 0.0,
+                "$#,##0.00",
+            ),
+            (
+                "Order Flow Imbalance (OFI)",
+                ladder.imbalance_ratio if ladder else 0.0,
+                "+0.00;-0.00;0.00",
+            ),
+            (
+                "Cross-Market Arbitrage",
+                "DETECTED (CROSS)" if (bbo and bbo.is_crossed) else "NONE (HEALTHY)",
+                "@",
+            ),
+            (
+                "Total Bid Book Notional ($)",
+                ladder.total_bid_notional if ladder else 0.0,
+                "$#,##0.00",
+            ),
+            (
+                "Total Ask Book Notional ($)",
+                ladder.total_ask_notional if ladder else 0.0,
+                "$#,##0.00",
+            ),
             ("Total Processed Canonical Events", data["total_canonical"], "#,##0"),
             ("Total Quarantined Events", data["total_quarantine"], "#,##0"),
         ]
@@ -264,7 +326,16 @@ class MarketDataExporter:
             ws2["A4"] = "BUY SIDE (Walking Asks)"
             ws2["A4"].font = font_sec
 
-            buy_headers = ["Order Size", "Fill Size", "Expected VWAP", "Slippage ($)", "Slippage (bps)", "Eff Spread (bps)", "Fill %", "Venue Attribution"]
+            buy_headers = [
+                "Order Size",
+                "Fill Size",
+                "Expected VWAP",
+                "Slippage ($)",
+                "Slippage (bps)",
+                "Eff Spread (bps)",
+                "Fill %",
+                "Venue Attribution",
+            ]
             for col_i, h in enumerate(buy_headers, 1):
                 cell = ws2.cell(row=5, column=col_i, value=h)
                 cell.fill = fill_hdr
@@ -273,16 +344,32 @@ class MarketDataExporter:
 
             curr_row = 6
             for s in curve.buy_slices:
-                venues_str = ", ".join(f"{v}: {q:.1f}" for v, q in s.venue_breakdown.items())
+                venues_str = ", ".join(
+                    f"{v}: {q:.1f}" for v, q in s.venue_breakdown.items()
+                )
                 fill_pct = (s.filled_size / s.target_size) if s.target_size else 0.0
-                ws2.cell(row=curr_row, column=1, value=s.target_size).number_format = "#,##0.00"
-                ws2.cell(row=curr_row, column=2, value=s.filled_size).number_format = "#,##0.00"
-                ws2.cell(row=curr_row, column=3, value=s.vwap_price).number_format = "$#,##0.00"
-                ws2.cell(row=curr_row, column=4, value=s.slippage_dollars).number_format = "+$#,##0.00;-$#,##0.00;$0.00"
-                ws2.cell(row=curr_row, column=5, value=s.slippage_bps).number_format = '0.00" bps"'
-                ws2.cell(row=curr_row, column=6, value=s.effective_spread_bps).number_format = '0.00" bps"'
+                ws2.cell(
+                    row=curr_row, column=1, value=s.target_size
+                ).number_format = "#,##0.00"
+                ws2.cell(
+                    row=curr_row, column=2, value=s.filled_size
+                ).number_format = "#,##0.00"
+                ws2.cell(
+                    row=curr_row, column=3, value=s.vwap_price
+                ).number_format = "$#,##0.00"
+                ws2.cell(
+                    row=curr_row, column=4, value=s.slippage_dollars
+                ).number_format = "+$#,##0.00;-$#,##0.00;$0.00"
+                ws2.cell(
+                    row=curr_row, column=5, value=s.slippage_bps
+                ).number_format = '0.00" bps"'
+                ws2.cell(
+                    row=curr_row, column=6, value=s.effective_spread_bps
+                ).number_format = '0.00" bps"'
                 ws2.cell(row=curr_row, column=7, value=fill_pct).number_format = "0.0%"
-                ws2.cell(row=curr_row, column=8, value=venues_str).alignment = align_left
+                ws2.cell(
+                    row=curr_row, column=8, value=venues_str
+                ).alignment = align_left
 
                 for ci in range(1, 9):
                     ws2.cell(row=curr_row, column=ci).border = border_thin
@@ -291,10 +378,21 @@ class MarketDataExporter:
 
             # SELL SIDE
             curr_row += 2
-            ws2.cell(row=curr_row, column=1, value="SELL SIDE (Walking Bids)").font = font_sec
+            ws2.cell(
+                row=curr_row, column=1, value="SELL SIDE (Walking Bids)"
+            ).font = font_sec
             curr_row += 1
 
-            sell_headers = ["Order Size", "Fill Size", "Expected VWAP", "Slippage ($)", "Slippage (bps)", "Eff Spread (bps)", "Fill %", "Venue Attribution"]
+            sell_headers = [
+                "Order Size",
+                "Fill Size",
+                "Expected VWAP",
+                "Slippage ($)",
+                "Slippage (bps)",
+                "Eff Spread (bps)",
+                "Fill %",
+                "Venue Attribution",
+            ]
             for col_i, h in enumerate(sell_headers, 1):
                 cell = ws2.cell(row=curr_row, column=col_i, value=h)
                 cell.fill = fill_subhdr
@@ -303,16 +401,32 @@ class MarketDataExporter:
 
             curr_row += 1
             for s in curve.sell_slices:
-                venues_str = ", ".join(f"{v}: {q:.1f}" for v, q in s.venue_breakdown.items())
+                venues_str = ", ".join(
+                    f"{v}: {q:.1f}" for v, q in s.venue_breakdown.items()
+                )
                 fill_pct = (s.filled_size / s.target_size) if s.target_size else 0.0
-                ws2.cell(row=curr_row, column=1, value=s.target_size).number_format = "#,##0.00"
-                ws2.cell(row=curr_row, column=2, value=s.filled_size).number_format = "#,##0.00"
-                ws2.cell(row=curr_row, column=3, value=s.vwap_price).number_format = "$#,##0.00"
-                ws2.cell(row=curr_row, column=4, value=s.slippage_dollars).number_format = "+$#,##0.00;-$#,##0.00;$0.00"
-                ws2.cell(row=curr_row, column=5, value=s.slippage_bps).number_format = '0.00" bps"'
-                ws2.cell(row=curr_row, column=6, value=s.effective_spread_bps).number_format = '0.00" bps"'
+                ws2.cell(
+                    row=curr_row, column=1, value=s.target_size
+                ).number_format = "#,##0.00"
+                ws2.cell(
+                    row=curr_row, column=2, value=s.filled_size
+                ).number_format = "#,##0.00"
+                ws2.cell(
+                    row=curr_row, column=3, value=s.vwap_price
+                ).number_format = "$#,##0.00"
+                ws2.cell(
+                    row=curr_row, column=4, value=s.slippage_dollars
+                ).number_format = "+$#,##0.00;-$#,##0.00;$0.00"
+                ws2.cell(
+                    row=curr_row, column=5, value=s.slippage_bps
+                ).number_format = '0.00" bps"'
+                ws2.cell(
+                    row=curr_row, column=6, value=s.effective_spread_bps
+                ).number_format = '0.00" bps"'
                 ws2.cell(row=curr_row, column=7, value=fill_pct).number_format = "0.0%"
-                ws2.cell(row=curr_row, column=8, value=venues_str).alignment = align_left
+                ws2.cell(
+                    row=curr_row, column=8, value=venues_str
+                ).alignment = align_left
 
                 for ci in range(1, 9):
                     ws2.cell(row=curr_row, column=ci).border = border_thin
@@ -321,10 +435,18 @@ class MarketDataExporter:
 
             # LIQUIDITY DEPTH BANDS
             curr_row += 2
-            ws2.cell(row=curr_row, column=1, value="LIQUIDITY DEPTH BANDS (USD Available)").font = font_sec
+            ws2.cell(
+                row=curr_row, column=1, value="LIQUIDITY DEPTH BANDS (USD Available)"
+            ).font = font_sec
             curr_row += 1
 
-            band_headers = ["Depth Band", "Bid Liquidity ($)", "Ask Liquidity ($)", "Total Liquidity ($)", "Imbalance"]
+            band_headers = [
+                "Depth Band",
+                "Bid Liquidity ($)",
+                "Ask Liquidity ($)",
+                "Total Liquidity ($)",
+                "Imbalance",
+            ]
             for col_i, h in enumerate(band_headers, 1):
                 cell = ws2.cell(row=curr_row, column=col_i, value=h)
                 cell.fill = fill_hdr
@@ -332,16 +454,28 @@ class MarketDataExporter:
                 cell.alignment = align_center
 
             curr_row += 1
-            for bname, band in [("±10 bps (0.10%)", curve.depth_10bps), ("±50 bps (0.50%)", curve.depth_50bps), ("±100 bps (1.00%)", curve.depth_100bps)]:
+            for bname, band in [
+                ("±10 bps (0.10%)", curve.depth_10bps),
+                ("±50 bps (0.50%)", curve.depth_50bps),
+                ("±100 bps (1.00%)", curve.depth_100bps),
+            ]:
                 bid_n, ask_n = band
                 tot_n = bid_n + ask_n
                 imb = (bid_n - ask_n) / tot_n if tot_n > 0 else 0.0
 
                 ws2.cell(row=curr_row, column=1, value=bname).font = font_bold
-                ws2.cell(row=curr_row, column=2, value=bid_n).number_format = "$#,##0.00"
-                ws2.cell(row=curr_row, column=3, value=ask_n).number_format = "$#,##0.00"
-                ws2.cell(row=curr_row, column=4, value=tot_n).number_format = "$#,##0.00"
-                ws2.cell(row=curr_row, column=5, value=imb).number_format = "+0.00;-0.00;0.00"
+                ws2.cell(
+                    row=curr_row, column=2, value=bid_n
+                ).number_format = "$#,##0.00"
+                ws2.cell(
+                    row=curr_row, column=3, value=ask_n
+                ).number_format = "$#,##0.00"
+                ws2.cell(
+                    row=curr_row, column=4, value=tot_n
+                ).number_format = "$#,##0.00"
+                ws2.cell(
+                    row=curr_row, column=5, value=imb
+                ).number_format = "+0.00;-0.00;0.00"
 
                 for ci in range(1, 6):
                     ws2.cell(row=curr_row, column=ci).border = border_thin
@@ -356,12 +490,21 @@ class MarketDataExporter:
 
         ws3["A1"] = f"Consolidated Multi-Venue Order Book Depth: {symbol}"
         ws3["A1"].font = font_title
-        ws3["A2"] = "Price ladder coalesced across Binance, Coinbase, Kraken, OKX, Bybit"
+        ws3["A2"] = (
+            "Price ladder coalesced across Binance, Coinbase, Kraken, OKX, Bybit"
+        )
         ws3["A2"].font = Font(name="Segoe UI", size=9, italic=True, color="64748B")
 
         depth_headers = [
-            "Bid Venue", "Cum Bid Size", "Bid Size", "Bid Price", " | ",
-            "Ask Price", "Ask Size", "Cum Ask Size", "Ask Venue"
+            "Bid Venue",
+            "Cum Bid Size",
+            "Bid Size",
+            "Bid Price",
+            " | ",
+            "Ask Price",
+            "Ask Size",
+            "Cum Ask Size",
+            "Ask Venue",
         ]
 
         for col_i, h in enumerate(depth_headers, 1):
@@ -442,7 +585,16 @@ class MarketDataExporter:
         ws4["A2"] = "Aggregated trade candlesticks ready for Excel charting"
         ws4["A2"].font = Font(name="Segoe UI", size=9, italic=True, color="64748B")
 
-        candle_headers = ["Bucket Time", "Interval (s)", "Open ($)", "High ($)", "Low ($)", "Close ($)", "Volume", "Trades"]
+        candle_headers = [
+            "Bucket Time",
+            "Interval (s)",
+            "Open ($)",
+            "High ($)",
+            "Low ($)",
+            "Close ($)",
+            "Volume",
+            "Trades",
+        ]
         for col_i, h in enumerate(candle_headers, 1):
             cell = ws4.cell(row=4, column=col_i, value=h)
             cell.fill = fill_hdr
@@ -452,15 +604,31 @@ class MarketDataExporter:
         candles = data.get("candles", [])
         c_row = 5
         for c in candles[:200]:
-            t_str = datetime.fromtimestamp(c.get("bucket_start", 0)).strftime("%H:%M:%S")
+            t_str = datetime.fromtimestamp(c.get("bucket_start", 0)).strftime(
+                "%H:%M:%S"
+            )
             ws4.cell(row=c_row, column=1, value=t_str).alignment = align_center
-            ws4.cell(row=c_row, column=2, value=c.get("interval_s", 5.0)).number_format = "#,##0"
-            ws4.cell(row=c_row, column=3, value=c.get("open")).number_format = "$#,##0.00"
-            ws4.cell(row=c_row, column=4, value=c.get("high")).number_format = "$#,##0.00"
-            ws4.cell(row=c_row, column=5, value=c.get("low")).number_format = "$#,##0.00"
-            ws4.cell(row=c_row, column=6, value=c.get("close")).number_format = "$#,##0.00"
-            ws4.cell(row=c_row, column=7, value=c.get("volume")).number_format = "#,##0.00"
-            ws4.cell(row=c_row, column=8, value=c.get("event_count")).number_format = "#,##0"
+            ws4.cell(
+                row=c_row, column=2, value=c.get("interval_s", 5.0)
+            ).number_format = "#,##0"
+            ws4.cell(
+                row=c_row, column=3, value=c.get("open")
+            ).number_format = "$#,##0.00"
+            ws4.cell(
+                row=c_row, column=4, value=c.get("high")
+            ).number_format = "$#,##0.00"
+            ws4.cell(
+                row=c_row, column=5, value=c.get("low")
+            ).number_format = "$#,##0.00"
+            ws4.cell(
+                row=c_row, column=6, value=c.get("close")
+            ).number_format = "$#,##0.00"
+            ws4.cell(
+                row=c_row, column=7, value=c.get("volume")
+            ).number_format = "#,##0.00"
+            ws4.cell(
+                row=c_row, column=8, value=c.get("event_count")
+            ).number_format = "#,##0"
 
             for ci in range(1, 9):
                 ws4.cell(row=c_row, column=ci).border = border_thin
@@ -481,7 +649,14 @@ class MarketDataExporter:
         ws5["A4"] = "Feed Reliability Status"
         ws5["A4"].font = font_sec
 
-        h_headers = ["Feed Source", "State", "Reliability Score", "Total Events", "Invalid Events", "Last Seen"]
+        h_headers = [
+            "Feed Source",
+            "State",
+            "Reliability Score",
+            "Total Events",
+            "Invalid Events",
+            "Last Seen",
+        ]
         for col_i, h in enumerate(h_headers, 1):
             cell = ws5.cell(row=5, column=col_i, value=h)
             cell.fill = fill_hdr
@@ -496,10 +671,18 @@ class MarketDataExporter:
             ws5.cell(row=h_row, column=1, value=h.get("source")).font = font_bold
             ws5.cell(row=h_row, column=2, value=st_str).alignment = align_center
             ws5.cell(row=h_row, column=3, value=score).number_format = "0.00%"
-            ws5.cell(row=h_row, column=4, value=h.get("total", h.get("total_events", 0))).number_format = "#,##0"
-            ws5.cell(row=h_row, column=5, value=h.get("invalid", h.get("invalid_events", 0))).number_format = "#,##0"
+            ws5.cell(
+                row=h_row, column=4, value=h.get("total", h.get("total_events", 0))
+            ).number_format = "#,##0"
+            ws5.cell(
+                row=h_row, column=5, value=h.get("invalid", h.get("invalid_events", 0))
+            ).number_format = "#,##0"
             t_up = h.get("updated_at")
-            last_seen = datetime.fromtimestamp(t_up).strftime("%H:%M:%S") if t_up else str(h.get("last_seen", "-"))
+            last_seen = (
+                datetime.fromtimestamp(t_up).strftime("%H:%M:%S")
+                if t_up
+                else str(h.get("last_seen", "-"))
+            )
             ws5.cell(row=h_row, column=6, value=last_seen).alignment = align_center
 
             for ci in range(1, 7):
@@ -511,10 +694,19 @@ class MarketDataExporter:
         quarantine = data.get("quarantine", [])
         if quarantine:
             h_row += 2
-            ws5.cell(row=h_row, column=1, value="Quarantine Audit Sample (Invalid Events)").font = font_sec
+            ws5.cell(
+                row=h_row, column=1, value="Quarantine Audit Sample (Invalid Events)"
+            ).font = font_sec
             h_row += 1
 
-            q_headers = ["Event ID", "Instrument", "Source", "Status", "Violation Reasons", "Timestamp"]
+            q_headers = [
+                "Event ID",
+                "Instrument",
+                "Source",
+                "Status",
+                "Violation Reasons",
+                "Timestamp",
+            ]
             for col_i, h in enumerate(q_headers, 1):
                 cell = ws5.cell(row=h_row, column=col_i, value=h)
                 cell.fill = fill_subhdr
@@ -523,15 +715,27 @@ class MarketDataExporter:
 
             h_row += 1
             for q in quarantine[:30]:
-                ws5.cell(row=h_row, column=1, value=str(q.get("event_id", ""))).font = font_cell
-                ws5.cell(row=h_row, column=2, value=str(q.get("instrument_id", ""))).alignment = align_center
-                ws5.cell(row=h_row, column=3, value=str(q.get("source", ""))).font = font_bold
-                st_cell = ws5.cell(row=h_row, column=4, value=str(q.get("quality_status", "")))
+                ws5.cell(
+                    row=h_row, column=1, value=str(q.get("event_id", ""))
+                ).font = font_cell
+                ws5.cell(
+                    row=h_row, column=2, value=str(q.get("instrument_id", ""))
+                ).alignment = align_center
+                ws5.cell(
+                    row=h_row, column=3, value=str(q.get("source", ""))
+                ).font = font_bold
+                st_cell = ws5.cell(
+                    row=h_row, column=4, value=str(q.get("quality_status", ""))
+                )
                 st_cell.alignment = align_center
                 st_cell.font = font_ask
-                ws5.cell(row=h_row, column=5, value=str(q.get("reasons", ""))).alignment = align_left
+                ws5.cell(
+                    row=h_row, column=5, value=str(q.get("reasons", ""))
+                ).alignment = align_left
                 t_rec = q.get("receive_timestamp")
-                rec_str = datetime.fromtimestamp(t_rec).strftime("%H:%M:%S") if t_rec else "-"
+                rec_str = (
+                    datetime.fromtimestamp(t_rec).strftime("%H:%M:%S") if t_rec else "-"
+                )
                 ws5.cell(row=h_row, column=6, value=rec_str).alignment = align_center
 
                 for ci in range(1, 7):
@@ -573,7 +777,9 @@ class MarketDataExporter:
         timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
 
         if output_dir is None:
-            output_dir = os.path.abspath(f"data/reports/csv_{clean_sym}_{timestamp_str}")
+            output_dir = os.path.abspath(
+                f"data/reports/csv_{clean_sym}_{timestamp_str}"
+            )
         else:
             output_dir = os.path.abspath(output_dir)
 
@@ -603,16 +809,60 @@ class MarketDataExporter:
         curve = data.get("vwap_curve")
         with open(vwap_path, "w", newline="", encoding="utf-8") as f:
             w = csv.writer(f)
-            w.writerow(["side", "target_size", "filled_size", "vwap_price", "slippage_dollars", "slippage_bps", "effective_spread_bps", "fill_pct", "venue_breakdown"])
+            w.writerow(
+                [
+                    "side",
+                    "target_size",
+                    "filled_size",
+                    "vwap_price",
+                    "slippage_dollars",
+                    "slippage_bps",
+                    "effective_spread_bps",
+                    "fill_pct",
+                    "venue_breakdown",
+                ]
+            )
             if curve:
                 for s in curve.buy_slices:
-                    fill_pct = (s.filled_size / s.target_size * 100.0) if s.target_size else 0.0
+                    fill_pct = (
+                        (s.filled_size / s.target_size * 100.0)
+                        if s.target_size
+                        else 0.0
+                    )
                     v_str = ";".join(f"{k}={v}" for k, v in s.venue_breakdown.items())
-                    w.writerow(["BUY", s.target_size, s.filled_size, s.vwap_price, s.slippage_dollars, s.slippage_bps, s.effective_spread_bps, round(fill_pct, 2), v_str])
+                    w.writerow(
+                        [
+                            "BUY",
+                            s.target_size,
+                            s.filled_size,
+                            s.vwap_price,
+                            s.slippage_dollars,
+                            s.slippage_bps,
+                            s.effective_spread_bps,
+                            round(fill_pct, 2),
+                            v_str,
+                        ]
+                    )
                 for s in curve.sell_slices:
-                    fill_pct = (s.filled_size / s.target_size * 100.0) if s.target_size else 0.0
+                    fill_pct = (
+                        (s.filled_size / s.target_size * 100.0)
+                        if s.target_size
+                        else 0.0
+                    )
                     v_str = ";".join(f"{k}={v}" for k, v in s.venue_breakdown.items())
-                    w.writerow(["SELL", s.target_size, s.filled_size, s.vwap_price, s.slippage_dollars, s.slippage_bps, s.effective_spread_bps, round(fill_pct, 2), v_str])
+                    w.writerow(
+                        [
+                            "SELL",
+                            s.target_size,
+                            s.filled_size,
+                            s.vwap_price,
+                            s.slippage_dollars,
+                            s.slippage_bps,
+                            s.effective_spread_bps,
+                            round(fill_pct, 2),
+                            v_str,
+                        ]
+                    )
         generated_files.append(vwap_path)
 
         # 3. L2 Depth Ladder CSV
@@ -622,38 +872,116 @@ class MarketDataExporter:
             w.writerow(["side", "level", "price", "size", "cum_size", "venues"])
             if ladder:
                 for idx, b in enumerate(ladder.aggregated_bids):
-                    w.writerow(["BID", idx + 1, b.price, b.total_size, b.cumulative_size, ";".join(b.venue_sizes.keys())])
+                    w.writerow(
+                        [
+                            "BID",
+                            idx + 1,
+                            b.price,
+                            b.total_size,
+                            b.cumulative_size,
+                            ";".join(b.venue_sizes.keys()),
+                        ]
+                    )
                 for idx, a in enumerate(ladder.aggregated_asks):
-                    w.writerow(["ASK", idx + 1, a.price, a.total_size, a.cumulative_size, ";".join(a.venue_sizes.keys())])
+                    w.writerow(
+                        [
+                            "ASK",
+                            idx + 1,
+                            a.price,
+                            a.total_size,
+                            a.cumulative_size,
+                            ";".join(a.venue_sizes.keys()),
+                        ]
+                    )
         generated_files.append(depth_path)
 
         # 4. OHLCV Candles CSV
         candles_path = os.path.join(output_dir, "ohlcv_candles.csv")
         with open(candles_path, "w", newline="", encoding="utf-8") as f:
             w = csv.writer(f)
-            w.writerow(["bucket_start", "interval_s", "open", "high", "low", "close", "volume", "event_count"])
+            w.writerow(
+                [
+                    "bucket_start",
+                    "interval_s",
+                    "open",
+                    "high",
+                    "low",
+                    "close",
+                    "volume",
+                    "event_count",
+                ]
+            )
             for c in data.get("candles", []):
-                w.writerow([c.get("bucket_start"), c.get("interval_s"), c.get("open"), c.get("high"), c.get("low"), c.get("close"), c.get("volume"), c.get("event_count")])
+                w.writerow(
+                    [
+                        c.get("bucket_start"),
+                        c.get("interval_s"),
+                        c.get("open"),
+                        c.get("high"),
+                        c.get("low"),
+                        c.get("close"),
+                        c.get("volume"),
+                        c.get("event_count"),
+                    ]
+                )
         generated_files.append(candles_path)
 
         # 5. Feed Health CSV
         health_path = os.path.join(output_dir, "feed_health.csv")
         with open(health_path, "w", newline="", encoding="utf-8") as f:
             w = csv.writer(f)
-            w.writerow(["source", "reliability_score", "total_events", "invalid_events", "last_seen"])
+            w.writerow(
+                [
+                    "source",
+                    "reliability_score",
+                    "total_events",
+                    "invalid_events",
+                    "last_seen",
+                ]
+            )
             for h in data.get("health", []):
                 t_up = h.get("updated_at")
-                last_seen = datetime.fromtimestamp(t_up).strftime("%H:%M:%S") if t_up else str(h.get("last_seen", "-"))
-                w.writerow([h.get("source"), h.get("score", h.get("reliability_score", 1.0)), h.get("total", h.get("total_events", 0)), h.get("invalid", h.get("invalid_events", 0)), last_seen])
+                last_seen = (
+                    datetime.fromtimestamp(t_up).strftime("%H:%M:%S")
+                    if t_up
+                    else str(h.get("last_seen", "-"))
+                )
+                w.writerow(
+                    [
+                        h.get("source"),
+                        h.get("score", h.get("reliability_score", 1.0)),
+                        h.get("total", h.get("total_events", 0)),
+                        h.get("invalid", h.get("invalid_events", 0)),
+                        last_seen,
+                    ]
+                )
         generated_files.append(health_path)
 
         # 6. Quarantine CSV
         quarantine_path = os.path.join(output_dir, "quarantine_sample.csv")
         with open(quarantine_path, "w", newline="", encoding="utf-8") as f:
             w = csv.writer(f)
-            w.writerow(["event_id", "instrument_id", "source", "quality_status", "reasons", "receive_timestamp"])
+            w.writerow(
+                [
+                    "event_id",
+                    "instrument_id",
+                    "source",
+                    "quality_status",
+                    "reasons",
+                    "receive_timestamp",
+                ]
+            )
             for q in data.get("quarantine", []):
-                w.writerow([q.get("event_id"), q.get("instrument_id"), q.get("source"), q.get("quality_status"), q.get("reasons"), q.get("receive_timestamp")])
+                w.writerow(
+                    [
+                        q.get("event_id"),
+                        q.get("instrument_id"),
+                        q.get("source"),
+                        q.get("quality_status"),
+                        q.get("reasons"),
+                        q.get("receive_timestamp"),
+                    ]
+                )
         generated_files.append(quarantine_path)
 
         return generated_files
@@ -679,7 +1007,9 @@ class MarketDataExporter:
         timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
 
         if output_path is None:
-            output_path = os.path.abspath(f"data/reports/MDRAP_TCA_{clean_sym}_{timestamp_str}.xlsx")
+            output_path = os.path.abspath(
+                f"data/reports/MDRAP_TCA_{clean_sym}_{timestamp_str}.xlsx"
+            )
         else:
             output_path = os.path.abspath(output_path)
 
@@ -693,9 +1023,15 @@ class MarketDataExporter:
         font_improved = Font(name="Segoe UI", size=10, color="065F46", bold=True)
         font_disimproved = Font(name="Segoe UI", size=10, color="991B1B", bold=True)
 
-        fill_hdr = PatternFill(start_color="1E293B", end_color="1E293B", fill_type="solid")
-        fill_improved = PatternFill(start_color="ECFDF5", end_color="ECFDF5", fill_type="solid")
-        fill_disimproved = PatternFill(start_color="FEF2F2", end_color="FEF2F2", fill_type="solid")
+        fill_hdr = PatternFill(
+            start_color="1E293B", end_color="1E293B", fill_type="solid"
+        )
+        fill_improved = PatternFill(
+            start_color="ECFDF5", end_color="ECFDF5", fill_type="solid"
+        )
+        fill_disimproved = PatternFill(
+            start_color="FEF2F2", end_color="FEF2F2", fill_type="solid"
+        )
         border_thin = Border(
             left=Side(style="thin", color="E2E8F0"),
             right=Side(style="thin", color="E2E8F0"),
@@ -709,24 +1045,82 @@ class MarketDataExporter:
         ws1.views.sheetView[0].showGridLines = True
         ws1["A1"] = f"MDRAP Best Execution & TCA Audit Report: {symbol}"
         ws1["A1"].font = font_title
-        ws1["A2"] = f"Regulatory Compliance Benchmark (SEC Rule 606 & MiFID II RTS 28) | Merkle Proof: {tca_report.get('merkle_root', '')[:24]}..."
+        ws1["A2"] = (
+            f"Regulatory Compliance Benchmark (SEC Rule 606 & MiFID II RTS 28) | Merkle Proof: {tca_report.get('merkle_root', '')[:24]}..."
+        )
         ws1["A2"].font = Font(name="Segoe UI", size=9, italic=True, color="64748B")
 
         summary_rows = [
-            ("Execution Quality Score", f"{tca_report.get('overall_quality_score', 0):.1f} / 100", "Composite execution benchmark vs true consolidated NBBO"),
-            ("Regulatory Compliance Verdict", tca_report.get("compliance_status", "COMPLIANT"), "SEC Rule 605/606 & MiFID II RTS 27/28 Best Execution standard"),
-            ("Cryptographic Merkle Root", tca_report.get("merkle_root", ""), "Immutable SHA-256 tamper-evident verification hash"),
-            ("Total Orders Evaluated", f"{tca_report.get('total_trades', 0):,}", "Executed fills matched to contemporary microsecond quotes"),
-            ("Total Executed Shares", f"{tca_report.get('total_shares', 0):,}", "Cumulative share volume"),
-            ("Total Traded Notional ($)", f"${tca_report.get('total_notional', 0):,.2f}", "Gross traded dollar volume"),
-            ("Mean Slippage vs Arrival", f"{tca_report.get('mean_slippage_bps', 0):.2f} bps", "Average basis points slipped vs arrival price"),
-            ("p50 Median Slippage", f"{tca_report.get('p50_slippage_bps', 0):.2f} bps", "Median execution slippage"),
-            ("p95 Tail Slippage", f"{tca_report.get('p95_slippage_bps', 0):.2f} bps", "95th percentile slippage"),
-            ("Effective Spread", f"{tca_report.get('mean_effective_spread_bps', 0):.2f} bps", "2 * |Price - Midpoint|"),
-            ("Quoted NBBO Spread", f"{tca_report.get('mean_quoted_spread_bps', 0):.2f} bps", "Consolidated prevailing bid-ask spread"),
-            ("Price Improvement Rate", f"{tca_report.get('price_improvement_rate_pct', 0):.1f}%", f"{tca_report.get('price_improvement_count', 0)} orders filled inside the spread"),
-            ("Total Price Improvement ($)", f"${tca_report.get('total_price_improvement_usd', 0):,.2f}", "Total money saved vs prevailing quote"),
-            ("Total Slippage Cost ($)", f"${tca_report.get('total_slippage_cost_usd', 0):,.2f}", "Total execution drag"),
+            (
+                "Execution Quality Score",
+                f"{tca_report.get('overall_quality_score', 0):.1f} / 100",
+                "Composite execution benchmark vs true consolidated NBBO",
+            ),
+            (
+                "Regulatory Compliance Verdict",
+                tca_report.get("compliance_status", "COMPLIANT"),
+                "SEC Rule 605/606 & MiFID II RTS 27/28 Best Execution standard",
+            ),
+            (
+                "Cryptographic Merkle Root",
+                tca_report.get("merkle_root", ""),
+                "Immutable SHA-256 tamper-evident verification hash",
+            ),
+            (
+                "Total Orders Evaluated",
+                f"{tca_report.get('total_trades', 0):,}",
+                "Executed fills matched to contemporary microsecond quotes",
+            ),
+            (
+                "Total Executed Shares",
+                f"{tca_report.get('total_shares', 0):,}",
+                "Cumulative share volume",
+            ),
+            (
+                "Total Traded Notional ($)",
+                f"${tca_report.get('total_notional', 0):,.2f}",
+                "Gross traded dollar volume",
+            ),
+            (
+                "Mean Slippage vs Arrival",
+                f"{tca_report.get('mean_slippage_bps', 0):.2f} bps",
+                "Average basis points slipped vs arrival price",
+            ),
+            (
+                "p50 Median Slippage",
+                f"{tca_report.get('p50_slippage_bps', 0):.2f} bps",
+                "Median execution slippage",
+            ),
+            (
+                "p95 Tail Slippage",
+                f"{tca_report.get('p95_slippage_bps', 0):.2f} bps",
+                "95th percentile slippage",
+            ),
+            (
+                "Effective Spread",
+                f"{tca_report.get('mean_effective_spread_bps', 0):.2f} bps",
+                "2 * |Price - Midpoint|",
+            ),
+            (
+                "Quoted NBBO Spread",
+                f"{tca_report.get('mean_quoted_spread_bps', 0):.2f} bps",
+                "Consolidated prevailing bid-ask spread",
+            ),
+            (
+                "Price Improvement Rate",
+                f"{tca_report.get('price_improvement_rate_pct', 0):.1f}%",
+                f"{tca_report.get('price_improvement_count', 0)} orders filled inside the spread",
+            ),
+            (
+                "Total Price Improvement ($)",
+                f"${tca_report.get('total_price_improvement_usd', 0):,.2f}",
+                "Total money saved vs prevailing quote",
+            ),
+            (
+                "Total Slippage Cost ($)",
+                f"${tca_report.get('total_slippage_cost_usd', 0):,.2f}",
+                "Total execution drag",
+            ),
         ]
 
         ws1.cell(row=4, column=1, value="Metric").fill = fill_hdr
@@ -752,10 +1146,24 @@ class MarketDataExporter:
         ws2.views.sheetView[0].showGridLines = True
         ws2["A1"] = f"Broker & Venue Execution Quality Scorecard: {symbol}"
         ws2["A1"].font = font_title
-        ws2["A2"] = "Comparative routing quality, PFOF markup detection, and price improvement ranking"
+        ws2["A2"] = (
+            "Comparative routing quality, PFOF markup detection, and price improvement ranking"
+        )
         ws2["A2"].font = Font(name="Segoe UI", size=9, italic=True, color="64748B")
 
-        b_headers = ["Broker / Execution Desk", "Orders", "Volume (Shares)", "Notional ($)", "Avg Slippage (bps)", "Avg Eff Spread (bps)", "Improvement Rate", "Total Improvement ($)", "Slippage Cost ($)", "Score", "Rating"]
+        b_headers = [
+            "Broker / Execution Desk",
+            "Orders",
+            "Volume (Shares)",
+            "Notional ($)",
+            "Avg Slippage (bps)",
+            "Avg Eff Spread (bps)",
+            "Improvement Rate",
+            "Total Improvement ($)",
+            "Slippage Cost ($)",
+            "Score",
+            "Rating",
+        ]
         for col_i, h in enumerate(b_headers, 1):
             cell = ws2.cell(row=4, column=col_i, value=h)
             cell.fill = fill_hdr
@@ -764,14 +1172,30 @@ class MarketDataExporter:
 
         for r_idx, sc in enumerate(tca_report.get("broker_scorecards", []), start=5):
             ws2.cell(row=r_idx, column=1, value=sc.get("broker")).font = font_bold
-            ws2.cell(row=r_idx, column=2, value=sc.get("orders")).number_format = "#,##0"
-            ws2.cell(row=r_idx, column=3, value=sc.get("shares")).number_format = "#,##0"
-            ws2.cell(row=r_idx, column=4, value=sc.get("notional")).number_format = "$#,##0.00"
-            ws2.cell(row=r_idx, column=5, value=sc.get("avg_slippage_bps")).number_format = '0.00" bps"'
-            ws2.cell(row=r_idx, column=6, value=sc.get("avg_eff_spread_bps")).number_format = '0.00" bps"'
-            ws2.cell(row=r_idx, column=7, value=sc.get("improvement_rate_pct", 0) / 100.0).number_format = "0.0%"
-            ws2.cell(row=r_idx, column=8, value=sc.get("total_improvement_usd")).number_format = "$#,##0.00"
-            ws2.cell(row=r_idx, column=9, value=sc.get("slippage_cost_usd")).number_format = "$#,##0.00"
+            ws2.cell(
+                row=r_idx, column=2, value=sc.get("orders")
+            ).number_format = "#,##0"
+            ws2.cell(
+                row=r_idx, column=3, value=sc.get("shares")
+            ).number_format = "#,##0"
+            ws2.cell(
+                row=r_idx, column=4, value=sc.get("notional")
+            ).number_format = "$#,##0.00"
+            ws2.cell(
+                row=r_idx, column=5, value=sc.get("avg_slippage_bps")
+            ).number_format = '0.00" bps"'
+            ws2.cell(
+                row=r_idx, column=6, value=sc.get("avg_eff_spread_bps")
+            ).number_format = '0.00" bps"'
+            ws2.cell(
+                row=r_idx, column=7, value=sc.get("improvement_rate_pct", 0) / 100.0
+            ).number_format = "0.0%"
+            ws2.cell(
+                row=r_idx, column=8, value=sc.get("total_improvement_usd")
+            ).number_format = "$#,##0.00"
+            ws2.cell(
+                row=r_idx, column=9, value=sc.get("slippage_cost_usd")
+            ).number_format = "$#,##0.00"
             ws2.cell(row=r_idx, column=10, value=sc.get("score")).number_format = "0.0"
             ws2.cell(row=r_idx, column=11, value=sc.get("rating")).font = font_bold
 
@@ -784,7 +1208,22 @@ class MarketDataExporter:
         ws3["A1"] = f"Microsecond Execution Fill Audit Log: {symbol}"
         ws3["A1"].font = font_title
 
-        log_headers = ["Trade ID", "Side", "Exec Price", "Shares", "Arrival Price", "NBBO Bid", "NBBO Ask", "Spread (bps)", "Slippage (bps)", "Improvement ($)", "Broker", "Venue", "Score", "Merkle Leaf Hash"]
+        log_headers = [
+            "Trade ID",
+            "Side",
+            "Exec Price",
+            "Shares",
+            "Arrival Price",
+            "NBBO Bid",
+            "NBBO Ask",
+            "Spread (bps)",
+            "Slippage (bps)",
+            "Improvement ($)",
+            "Broker",
+            "Venue",
+            "Score",
+            "Merkle Leaf Hash",
+        ]
         for col_i, h in enumerate(log_headers, 1):
             cell = ws3.cell(row=3, column=col_i, value=h)
             cell.fill = fill_hdr
@@ -794,15 +1233,29 @@ class MarketDataExporter:
         for r_idx, m in enumerate(tca_report.get("metrics", [])[:500], start=4):
             ws3.cell(row=r_idx, column=1, value=m.get("trade_id")).font = font_cell
             ws3.cell(row=r_idx, column=2, value=m.get("side")).font = font_bold
-            ws3.cell(row=r_idx, column=3, value=m.get("price")).number_format = "$#,##0.0000"
+            ws3.cell(
+                row=r_idx, column=3, value=m.get("price")
+            ).number_format = "$#,##0.0000"
             ws3.cell(row=r_idx, column=4, value=m.get("shares")).number_format = "#,##0"
-            ws3.cell(row=r_idx, column=5, value=m.get("arrival_price")).number_format = "$#,##0.0000"
-            ws3.cell(row=r_idx, column=6, value=m.get("bid")).number_format = "$#,##0.0000"
-            ws3.cell(row=r_idx, column=7, value=m.get("ask")).number_format = "$#,##0.0000"
-            ws3.cell(row=r_idx, column=8, value=m.get("quoted_spread_bps")).number_format = "0.00"
-            ws3.cell(row=r_idx, column=9, value=m.get("slippage_bps")).number_format = "0.00"
+            ws3.cell(
+                row=r_idx, column=5, value=m.get("arrival_price")
+            ).number_format = "$#,##0.0000"
+            ws3.cell(
+                row=r_idx, column=6, value=m.get("bid")
+            ).number_format = "$#,##0.0000"
+            ws3.cell(
+                row=r_idx, column=7, value=m.get("ask")
+            ).number_format = "$#,##0.0000"
+            ws3.cell(
+                row=r_idx, column=8, value=m.get("quoted_spread_bps")
+            ).number_format = "0.00"
+            ws3.cell(
+                row=r_idx, column=9, value=m.get("slippage_bps")
+            ).number_format = "0.00"
 
-            imp_cell = ws3.cell(row=r_idx, column=10, value=m.get("price_improvement_usd"))
+            imp_cell = ws3.cell(
+                row=r_idx, column=10, value=m.get("price_improvement_usd")
+            )
             imp_cell.number_format = "$#,##0.00"
             if m.get("is_improved"):
                 imp_cell.fill = fill_improved
@@ -814,7 +1267,9 @@ class MarketDataExporter:
             ws3.cell(row=r_idx, column=11, value=m.get("broker")).font = font_cell
             ws3.cell(row=r_idx, column=12, value=m.get("venue")).font = font_cell
             ws3.cell(row=r_idx, column=13, value=m.get("score")).number_format = "0.0"
-            ws3.cell(row=r_idx, column=14, value=m.get("merkle_hash", "")[:16] + "...").font = font_cell
+            ws3.cell(
+                row=r_idx, column=14, value=m.get("merkle_hash", "")[:16] + "..."
+            ).font = font_cell
 
             for ci in range(1, 15):
                 ws3.cell(row=r_idx, column=ci).border = border_thin
@@ -857,7 +1312,9 @@ class MarketDataExporter:
         timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
 
         if output_path is None:
-            output_path = os.path.abspath(f"data/reports/MDRAP_FLOW_{clean_sym}_{timestamp_str}.xlsx")
+            output_path = os.path.abspath(
+                f"data/reports/MDRAP_FLOW_{clean_sym}_{timestamp_str}.xlsx"
+            )
         else:
             output_path = os.path.abspath(output_path)
 
@@ -871,9 +1328,15 @@ class MarketDataExporter:
         font_buy = Font(name="Segoe UI", size=10, color="065F46", bold=True)
         font_sell = Font(name="Segoe UI", size=10, color="991B1B", bold=True)
 
-        fill_hdr = PatternFill(start_color="1E293B", end_color="1E293B", fill_type="solid")
-        fill_accum = PatternFill(start_color="ECFDF5", end_color="ECFDF5", fill_type="solid")
-        fill_distrib = PatternFill(start_color="FEF2F2", end_color="FEF2F2", fill_type="solid")
+        fill_hdr = PatternFill(
+            start_color="1E293B", end_color="1E293B", fill_type="solid"
+        )
+        fill_accum = PatternFill(
+            start_color="ECFDF5", end_color="ECFDF5", fill_type="solid"
+        )
+        fill_distrib = PatternFill(
+            start_color="FEF2F2", end_color="FEF2F2", fill_type="solid"
+        )
         border_thin = Border(
             left=Side(style="thin", color="E2E8F0"),
             right=Side(style="thin", color="E2E8F0"),
@@ -887,20 +1350,46 @@ class MarketDataExporter:
         ws1.views.sheetView[0].showGridLines = True
         ws1["A1"] = f"MDRAP Institutional Order Flow & CVD: {symbol}"
         ws1["A1"].font = font_title
-        ws1["A2"] = f"Lee-Ready (1991) Aggressor Classification | Stance: {flow_summary.get('institutional_bias', '')}"
+        ws1["A2"] = (
+            f"Lee-Ready (1991) Aggressor Classification | Stance: {flow_summary.get('institutional_bias', '')}"
+        )
         ws1["A2"].font = Font(name="Segoe UI", size=9, italic=True, color="64748B")
 
         summary_rows = [
-            ("Institutional Flow Bias", flow_summary.get("institutional_bias", "BALANCED")),
-            ("Cumulative Volume Delta (CVD)", f"{flow_summary.get('cvd', 0):+,.2f} shares"),
+            (
+                "Institutional Flow Bias",
+                flow_summary.get("institutional_bias", "BALANCED"),
+            ),
+            (
+                "Cumulative Volume Delta (CVD)",
+                f"{flow_summary.get('cvd', 0):+,.2f} shares",
+            ),
             ("Cumulative Notional Delta (CND)", f"${flow_summary.get('cnd', 0):+,.2f}"),
-            ("Aggressor Ratio (% Buyer Initiated)", f"{flow_summary.get('aggressor_ratio_pct', 50):.1f}%"),
+            (
+                "Aggressor Ratio (% Buyer Initiated)",
+                f"{flow_summary.get('aggressor_ratio_pct', 50):.1f}%",
+            ),
             ("Total Trade Count", f"{flow_summary.get('total_trades', 0):,}"),
-            ("Total Traded Volume", f"{flow_summary.get('total_volume', 0):,.2f} shares"),
-            ("Buyer-Initiated Volume (Lifting Ask)", f"{flow_summary.get('buy_volume', 0):,.2f} shares"),
-            ("Seller-Initiated Volume (Hitting Bid)", f"{flow_summary.get('sell_volume', 0):,.2f} shares"),
-            ("Whale / Institutional Block Trades", f"{flow_summary.get('whale_trades', 0) + flow_summary.get('block_trades', 0):,}"),
-            ("Retail Sized Trades (<100 shares)", f"{flow_summary.get('retail_trades', 0):,}"),
+            (
+                "Total Traded Volume",
+                f"{flow_summary.get('total_volume', 0):,.2f} shares",
+            ),
+            (
+                "Buyer-Initiated Volume (Lifting Ask)",
+                f"{flow_summary.get('buy_volume', 0):,.2f} shares",
+            ),
+            (
+                "Seller-Initiated Volume (Hitting Bid)",
+                f"{flow_summary.get('sell_volume', 0):,.2f} shares",
+            ),
+            (
+                "Whale / Institutional Block Trades",
+                f"{flow_summary.get('whale_trades', 0) + flow_summary.get('block_trades', 0):,}",
+            ),
+            (
+                "Retail Sized Trades (<100 shares)",
+                f"{flow_summary.get('retail_trades', 0):,}",
+            ),
         ]
 
         ws1.cell(row=4, column=1, value="Order Flow Metric").fill = fill_hdr
@@ -922,7 +1411,18 @@ class MarketDataExporter:
         ws2["A1"] = f"Market Participant (MPID) Accumulation vs Distribution: {symbol}"
         ws2["A1"].font = font_title
 
-        p_headers = ["MPID", "Participant Name", "Buy Vol", "Sell Vol", "Net Delta (Shares)", "Net Notional ($)", "Buy Ratio", "Trades", "Whales", "Stance"]
+        p_headers = [
+            "MPID",
+            "Participant Name",
+            "Buy Vol",
+            "Sell Vol",
+            "Net Delta (Shares)",
+            "Net Notional ($)",
+            "Buy Ratio",
+            "Trades",
+            "Whales",
+            "Stance",
+        ]
         for col_i, h in enumerate(p_headers, 1):
             cell = ws2.cell(row=3, column=col_i, value=h)
             cell.fill = fill_hdr
@@ -932,8 +1432,12 @@ class MarketDataExporter:
         for r_idx, p in enumerate(flow_summary.get("top_participants", []), start=4):
             ws2.cell(row=r_idx, column=1, value=p.get("mpid")).font = font_bold
             ws2.cell(row=r_idx, column=2, value=p.get("name")).font = font_cell
-            ws2.cell(row=r_idx, column=3, value=p.get("buy_volume")).number_format = "#,##0"
-            ws2.cell(row=r_idx, column=4, value=p.get("sell_volume")).number_format = "#,##0"
+            ws2.cell(
+                row=r_idx, column=3, value=p.get("buy_volume")
+            ).number_format = "#,##0"
+            ws2.cell(
+                row=r_idx, column=4, value=p.get("sell_volume")
+            ).number_format = "#,##0"
 
             delta_cell = ws2.cell(row=r_idx, column=5, value=p.get("net_volume"))
             delta_cell.number_format = "+#,##0;-#,##0;0"
@@ -942,8 +1446,12 @@ class MarketDataExporter:
             elif p.get("net_volume", 0) < 0:
                 delta_cell.font = font_sell
 
-            ws2.cell(row=r_idx, column=6, value=p.get("net_notional")).number_format = "$#,##0.00"
-            ws2.cell(row=r_idx, column=7, value=p.get("buy_ratio_pct", 50) / 100.0).number_format = "0.0%"
+            ws2.cell(
+                row=r_idx, column=6, value=p.get("net_notional")
+            ).number_format = "$#,##0.00"
+            ws2.cell(
+                row=r_idx, column=7, value=p.get("buy_ratio_pct", 50) / 100.0
+            ).number_format = "0.0%"
             ws2.cell(row=r_idx, column=8, value=p.get("trades")).number_format = "#,##0"
             ws2.cell(row=r_idx, column=9, value=p.get("whales")).number_format = "#,##0"
 
@@ -965,7 +1473,16 @@ class MarketDataExporter:
         ws3["A1"] = f"Whale & Institutional Block Trades: {symbol}"
         ws3["A1"].font = font_title
 
-        b_headers = ["Trade ID", "Side", "Price", "Size", "Notional ($)", "Category", "Broker MPID", "Venue"]
+        b_headers = [
+            "Trade ID",
+            "Side",
+            "Price",
+            "Size",
+            "Notional ($)",
+            "Category",
+            "Broker MPID",
+            "Venue",
+        ]
         for col_i, h in enumerate(b_headers, 1):
             cell = ws3.cell(row=3, column=col_i, value=h)
             cell.fill = fill_hdr
@@ -975,9 +1492,13 @@ class MarketDataExporter:
         for r_idx, b in enumerate(flow_summary.get("recent_blocks", []), start=4):
             ws3.cell(row=r_idx, column=1, value=b.get("trade_id")).font = font_cell
             ws3.cell(row=r_idx, column=2, value=b.get("side")).font = font_bold
-            ws3.cell(row=r_idx, column=3, value=b.get("price")).number_format = "$#,##0.0000"
+            ws3.cell(
+                row=r_idx, column=3, value=b.get("price")
+            ).number_format = "$#,##0.0000"
             ws3.cell(row=r_idx, column=4, value=b.get("size")).number_format = "#,##0"
-            ws3.cell(row=r_idx, column=5, value=b.get("notional")).number_format = "$#,##0.00"
+            ws3.cell(
+                row=r_idx, column=5, value=b.get("notional")
+            ).number_format = "$#,##0.00"
             ws3.cell(row=r_idx, column=6, value=b.get("category")).font = font_bold
             ws3.cell(row=r_idx, column=7, value=b.get("broker")).font = font_cell
             ws3.cell(row=r_idx, column=8, value=b.get("venue")).font = font_cell

@@ -9,19 +9,20 @@ Directly routes into the MDRAP ingestion gateway, quality engine, BBO aggregator
 Zero mandatory external dependencies: uses Python standard library urllib/ssl/json
 with automatic graceful degradation and exception shielding.
 """
+
 from __future__ import annotations
 
 import http.client
 import itertools
 import json
 import ssl
-import sys
 import time
 import urllib.parse
 import urllib.request
-from typing import Any, Callable, Dict, Generator, List, Optional, Tuple
+from collections.abc import Generator
+from typing import Any
 
-from models import CanonicalEvent, EventType, QualityStatus, RawEvent
+from models import RawEvent
 
 _seq_counter = itertools.count(1)
 _raw_counter = itertools.count(1)
@@ -31,8 +32,12 @@ BINANCE_TICKER_URL = "https://api.binance.com/api/v3/ticker/bookTicker?symbol={s
 COINBASE_TICKER_URL = "https://api.exchange.coinbase.com/products/{symbol}/ticker"
 KRAKEN_TICKER_URL = "https://api.kraken.com/0/public/Ticker?pair={symbol}"
 OKX_TICKER_URL = "https://www.okx.com/api/v5/market/ticker?instId={symbol}"
-BYBIT_TICKER_URL = "https://api.bybit.com/v5/market/tickers?category=spot&symbol={symbol}"
-YAHOO_CHART_URL = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?interval=1m&range=1d"
+BYBIT_TICKER_URL = (
+    "https://api.bybit.com/v5/market/tickers?category=spot&symbol={symbol}"
+)
+YAHOO_CHART_URL = (
+    "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?interval=1m&range=1d"
+)
 
 # Known Equity & Commodity symbols
 KNOWN_EQUITIES = {
@@ -75,13 +80,41 @@ KNOWN_EQUITIES = {
 # Major international exchange suffixes recognized by Yahoo Finance
 # (must preserve the dot '.' in queries, e.g. TMPV.NS, RELIANCE.NS, VOD.L, BMW.DE)
 INTERNATIONAL_EXCHANGE_SUFFIXES = {
-    "NS", "BO", "L", "TO", "V", "AX", "HK", "SS", "SZ", "DE", "PA", "AS",
-    "MI", "MC", "BR", "SA", "KS", "KQ", "SI", "TW", "T", "F", "SG", "BK",
-    "JK", "ST", "OL", "CO", "HE", "SW", "VX",
+    "NS",
+    "BO",
+    "L",
+    "TO",
+    "V",
+    "AX",
+    "HK",
+    "SS",
+    "SZ",
+    "DE",
+    "PA",
+    "AS",
+    "MI",
+    "MC",
+    "BR",
+    "SA",
+    "KS",
+    "KQ",
+    "SI",
+    "TW",
+    "T",
+    "F",
+    "SG",
+    "BK",
+    "JK",
+    "ST",
+    "OL",
+    "CO",
+    "HE",
+    "SW",
+    "VX",
 }
 
 # Crypto venue symbol mappings: canonical -> (binance, coinbase, kraken, okx, bybit)
-CRYPTO_VENUE_MAP: Dict[str, Tuple[str, str, str, str, str]] = {
+CRYPTO_VENUE_MAP: dict[str, tuple[str, str, str, str, str]] = {
     "BTC/USD": ("BTCUSDT", "BTC-USD", "XBTUSD", "BTC-USDT", "BTCUSDT"),
     "ETH/USD": ("ETHUSDT", "ETH-USD", "ETHUSD", "ETH-USDT", "ETHUSDT"),
     "SOL/USD": ("SOLUSDT", "SOL-USD", "SOLUSD", "SOL-USDT", "SOLUSDT"),
@@ -91,13 +124,13 @@ CRYPTO_VENUE_MAP: Dict[str, Tuple[str, str, str, str, str]] = {
 }
 
 
-def normalize_symbol_pair(symbol: str) -> Tuple[str, str, str]:
+def normalize_symbol_pair(symbol: str) -> tuple[str, str, str]:
     """Legacy backward compatibility: returns (canonical, binance_sym, coinbase_sym)."""
     norm = resolve_venue_symbols(symbol)
     return norm["canonical"], norm["binance"], norm["coinbase"]
 
 
-def resolve_venue_symbols(symbol: str) -> Dict[str, str]:
+def resolve_venue_symbols(symbol: str) -> dict[str, str]:
     """
     Resolve any input symbol string (e.g. 'BTC', 'BTC/USD', 'AAPL', 'TMPV', 'TMPV.NS', 'GOLD')
     into canonical format and specific venue ticker representations.
@@ -130,7 +163,11 @@ def resolve_venue_symbols(symbol: str) -> Dict[str, str]:
     if is_crypto:
         # Normalize crypto keys (e.g. 'BTCUSD', 'BTC-USD', 'BTC')
         key = s.replace("/", "").replace("-", "")
-        if not key.endswith("USD") and not key.endswith("USDT") and f"{key}/USD" in CRYPTO_VENUE_MAP:
+        if (
+            not key.endswith("USD")
+            and not key.endswith("USDT")
+            and f"{key}/USD" in CRYPTO_VENUE_MAP
+        ):
             key = f"{key}/USD"
         elif f"{s}/USD" in CRYPTO_VENUE_MAP:
             key = f"{s}/USD"
@@ -177,7 +214,9 @@ def resolve_venue_symbols(symbol: str) -> Dict[str, str]:
     if "." in s:
         parts = s.split(".")
         # If suffix is a recognized international exchange or 2+ letters (e.g. .NS, .BO, .TO), preserve '.'
-        if parts[-1] in INTERNATIONAL_EXCHANGE_SUFFIXES or (len(parts[-1]) >= 2 and parts[-1] not in ("PR", "WS", "WT", "RT")):
+        if parts[-1] in INTERNATIONAL_EXCHANGE_SUFFIXES or (
+            len(parts[-1]) >= 2 and parts[-1] not in ("PR", "WS", "WT", "RT")
+        ):
             yahoo_ticker = s
         else:
             yahoo_ticker = s.replace(".", "-")
@@ -209,22 +248,26 @@ class LiveConnector:
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
             "Connection": "keep-alive",
         }
-        self._synthetic_state: Dict[str, Dict[str, Any]] = {}
-        self._online_symbol_cache: Dict[str, Optional[Tuple[str, dict]]] = {}
-        self._equity_venues_cache: Dict[str, List[Tuple[str, str, dict]]] = {}
-        self._http_conns: Dict[str, http.client.HTTPSConnection] = {}
+        self._synthetic_state: dict[str, dict[str, Any]] = {}
+        self._online_symbol_cache: dict[str, tuple[str, dict[str, Any]] | None] = {}
+        self._equity_venues_cache: dict[str, list[tuple[str, str, dict[str, Any]]]] = {}
+        self._http_conns: dict[str, http.client.HTTPSConnection] = {}
 
-    def _get_json(self, url: str) -> Optional[dict]:
+    def _get_json(self, url: str) -> dict[str, Any] | None:
         """
         Fetch and decode JSON with high-speed persistent HTTPS connection pooling.
         Reuses SSL/TLS handshakes for sub-100ms round trips across ticks.
         Falls back to urllib.request on socket drop or redirect.
         """
         # If urlopen is mocked in unit tests, dispatch directly to urlopen
-        if getattr(urllib.request.urlopen, "_mock_return_value", None) is not None or hasattr(urllib.request.urlopen, "assert_called"):
+        if getattr(
+            urllib.request.urlopen, "_mock_return_value", None
+        ) is not None or hasattr(urllib.request.urlopen, "assert_called"):
             try:
                 req = urllib.request.Request(url, headers=self._headers)
-                with urllib.request.urlopen(req, timeout=self.timeout, context=self._ctx) as resp:
+                with urllib.request.urlopen(
+                    req, timeout=self.timeout, context=self._ctx
+                ) as resp:
                     raw = resp.read()
                     if isinstance(raw, bytes):
                         raw = raw.decode("utf-8")
@@ -239,7 +282,9 @@ class LiveConnector:
 
             conn = self._http_conns.get(host)
             if conn is None:
-                conn = http.client.HTTPSConnection(host, context=self._ctx, timeout=self.timeout)
+                conn = http.client.HTTPSConnection(
+                    host, context=self._ctx, timeout=self.timeout
+                )
                 self._http_conns[host] = conn
 
             try:
@@ -256,7 +301,9 @@ class LiveConnector:
                     conn.close()
                 except Exception:
                     pass
-                conn = http.client.HTTPSConnection(host, context=self._ctx, timeout=self.timeout)
+                conn = http.client.HTTPSConnection(
+                    host, context=self._ctx, timeout=self.timeout
+                )
                 self._http_conns[host] = conn
                 conn.request("GET", path, headers=self._headers)
                 resp = conn.getresponse()
@@ -269,13 +316,15 @@ class LiveConnector:
         except Exception:
             try:
                 req = urllib.request.Request(url, headers=self._headers)
-                with urllib.request.urlopen(req, timeout=self.timeout, context=self._ctx) as resp:
+                with urllib.request.urlopen(
+                    req, timeout=self.timeout, context=self._ctx
+                ) as resp:
                     return json.loads(resp.read().decode("utf-8"))
             except Exception:
                 return None
 
     # 1. Binance
-    def fetch_binance_quote(self, symbol: str) -> Optional[RawEvent]:
+    def fetch_binance_quote(self, symbol: str) -> RawEvent | None:
         """Fetch current top of book quote from Binance public API."""
         mapping = resolve_venue_symbols(symbol)
         if not mapping["binance"]:
@@ -312,7 +361,7 @@ class LiveConnector:
             return None
 
     # 2. Coinbase
-    def fetch_coinbase_quote(self, symbol: str) -> Optional[RawEvent]:
+    def fetch_coinbase_quote(self, symbol: str) -> RawEvent | None:
         """Fetch current top of book quote from Coinbase public API."""
         mapping = resolve_venue_symbols(symbol)
         if not mapping["coinbase"]:
@@ -348,7 +397,7 @@ class LiveConnector:
             return None
 
     # 3. Kraken
-    def fetch_kraken_quote(self, symbol: str) -> Optional[RawEvent]:
+    def fetch_kraken_quote(self, symbol: str) -> RawEvent | None:
         """Fetch current top of book quote from Kraken public API."""
         mapping = resolve_venue_symbols(symbol)
         if not mapping["kraken"]:
@@ -386,7 +435,7 @@ class LiveConnector:
             return None
 
     # 4. OKX
-    def fetch_okx_quote(self, symbol: str) -> Optional[RawEvent]:
+    def fetch_okx_quote(self, symbol: str) -> RawEvent | None:
         """Fetch current top of book quote from OKX public API."""
         mapping = resolve_venue_symbols(symbol)
         if not mapping["okx"]:
@@ -424,7 +473,7 @@ class LiveConnector:
             return None
 
     # 5. Bybit
-    def fetch_bybit_quote(self, symbol: str) -> Optional[RawEvent]:
+    def fetch_bybit_quote(self, symbol: str) -> RawEvent | None:
         """Fetch current top of book quote from Bybit public API."""
         mapping = resolve_venue_symbols(symbol)
         if not mapping["bybit"]:
@@ -461,13 +510,16 @@ class LiveConnector:
         except Exception:
             return None
 
-    def _generate_synthetic_equity_events(self, symbol: str, canonical_sym: str, t_recv: float) -> List[RawEvent]:
+    def _generate_synthetic_equity_events(
+        self, symbol: str, canonical_sym: str, t_recv: float
+    ) -> list[RawEvent]:
         """
         Synthesize realistic equity ticks when public market data is unavailable
         (e.g. unlisted/OTC ticker like TMPV, 404, network rate limits, or closed sessions).
         Prevents event loop starvation and UI freeze while maintaining valid microstructure.
         """
         import random
+
         state = self._synthetic_state.get(canonical_sym)
         if not state:
             seed_val = sum(ord(c) for c in canonical_sym)
@@ -493,8 +545,15 @@ class LiveConnector:
         bid_p = round(new_px - spread_offset, 2)
         ask_p = round(new_px + spread_offset, 2)
 
-        bids_l2 = [[round(bid_p - i * spread_offset, 2), float(100 * (i + 1))] for i in range(5) if round(bid_p - i * spread_offset, 2) > 0]
-        asks_l2 = [[round(ask_p + i * spread_offset, 2), float(100 * (i + 1))] for i in range(5)]
+        bids_l2 = [
+            [round(bid_p - i * spread_offset, 2), float(100 * (i + 1))]
+            for i in range(5)
+            if round(bid_p - i * spread_offset, 2) > 0
+        ]
+        asks_l2 = [
+            [round(ask_p + i * spread_offset, 2), float(100 * (i + 1))]
+            for i in range(5)
+        ]
 
         q_payload = {
             "instrument": canonical_sym,
@@ -534,9 +593,12 @@ class LiveConnector:
             ),
         ]
 
-    def _generate_synthetic_crypto_events(self, symbol: str, t_recv: float) -> List[RawEvent]:
+    def _generate_synthetic_crypto_events(
+        self, symbol: str, t_recv: float
+    ) -> list[RawEvent]:
         """Synthesize crypto ticks when symbol is not traded on connected crypto exchanges."""
         import random
+
         state = self._synthetic_state.get(symbol)
         if not state:
             seed_val = sum(ord(c) for c in symbol)
@@ -581,9 +643,9 @@ class LiveConnector:
             )
         ]
 
-    _online_symbol_cache: Dict[str, Tuple[str, dict]] = {}
+    _online_symbol_cache: dict[str, tuple[str, dict[str, Any]] | None] = {}
 
-    def probe_or_resolve_equity(self, symbol: str) -> Optional[Tuple[str, dict]]:
+    def probe_or_resolve_equity(self, symbol: str) -> tuple[str, dict[str, Any]] | None:
         """
         Probe and resolve any global equity or commodity symbol online with multi-exchange fallback.
         Supports un-suffixed international tickers (e.g. 'TMPV' -> 'TMPV.NS' on NSE India).
@@ -594,7 +656,7 @@ class LiveConnector:
             return self._online_symbol_cache[s]
 
         mapping = resolve_venue_symbols(s)
-        candidates: List[str] = []
+        candidates: list[str] = []
         if mapping.get("yahoo"):
             candidates.append(mapping["yahoo"])
         if s not in candidates:
@@ -621,7 +683,9 @@ class LiveConnector:
         self._online_symbol_cache[s] = None
         return None
 
-    def resolve_equity_venues(self, symbol: str) -> List[Tuple[str, str, dict]]:
+    def resolve_equity_venues(
+        self, symbol: str
+    ) -> list[tuple[str, str, dict[str, Any]]]:
         """
         Resolve all active trading venues for an equity symbol.
         For Indian equities (e.g. TMPV, TATAMOTORS, RELIANCE, TCS), detects dual listings
@@ -633,7 +697,7 @@ class LiveConnector:
         if s in self._equity_venues_cache:
             return self._equity_venues_cache[s]
 
-        venues: List[Tuple[str, str, dict]] = []
+        venues: list[tuple[str, str, dict[str, Any]]] = []
 
         # Check if already explicitly suffixed
         if s.endswith(".NS"):
@@ -695,9 +759,9 @@ class LiveConnector:
         symbol: str,
         fallback_sim: bool = False,
         source: str = "EQUITIES",
-        canonical_symbol: Optional[str] = None,
-        resolved_ticker: Optional[str] = None,
-    ) -> List[RawEvent]:
+        canonical_symbol: str | None = None,
+        resolved_ticker: str | None = None,
+    ) -> list[RawEvent]:
         """
         Fetch real-time equity/commodity market events (top-of-book quote and latest trade)
         for any global stock ticker (e.g. TMPV.NS, AAPL, PLTR, AMD, TSLA, SPY, GOLD).
@@ -715,30 +779,49 @@ class LiveConnector:
         canon_sym = canonical_symbol or mapping["canonical"]
 
         if not resolved:
-            return self._generate_synthetic_equity_events(symbol, canon_sym, t_recv) if fallback_sim else []
+            return (
+                self._generate_synthetic_equity_events(symbol, canon_sym, t_recv)
+                if fallback_sim
+                else []
+            )
 
         ticker, meta = resolved
         url = YAHOO_CHART_URL.format(symbol=ticker)
         data = self._get_json(url)
         if not data or not data.get("chart", {}).get("result"):
-            return self._generate_synthetic_equity_events(symbol, canon_sym, t_recv) if fallback_sim else []
+            return (
+                self._generate_synthetic_equity_events(symbol, canon_sym, t_recv)
+                if fallback_sim
+                else []
+            )
 
-        events: List[RawEvent] = []
+        events: list[RawEvent] = []
         try:
             live_meta = data["chart"]["result"][0]["meta"]
             price = float(live_meta["regularMarketPrice"])
             currency = live_meta.get("currency", "USD")
-            exchange = source if source != "EQUITIES" else live_meta.get("exchangeName", "EQUITIES")
+            exchange = (
+                source
+                if source != "EQUITIES"
+                else live_meta.get("exchangeName", "EQUITIES")
+            )
 
             # Estimate tight consolidated spread and multi-level depth book around market price
             spread_offset = max(0.01, round(price * 0.0005, 2))
             bid_p = round(float(live_meta.get("bid", price - spread_offset)), 2)
             ask_p = round(float(live_meta.get("ask", price + spread_offset)), 2)
-            vol = float(live_meta.get("regularMarketVolume", 1000.0) or 1000.0)
+            _vol = float(live_meta.get("regularMarketVolume", 1000.0) or 1000.0)
 
             # Build 5-level depth book for Level-2 books
-            bids_l2 = [[round(bid_p - i * spread_offset, 2), float(100 * (i + 1))] for i in range(5) if round(bid_p - i * spread_offset, 2) > 0]
-            asks_l2 = [[round(ask_p + i * spread_offset, 2), float(100 * (i + 1))] for i in range(5)]
+            bids_l2 = [
+                [round(bid_p - i * spread_offset, 2), float(100 * (i + 1))]
+                for i in range(5)
+                if round(bid_p - i * spread_offset, 2) > 0
+            ]
+            asks_l2 = [
+                [round(ask_p + i * spread_offset, 2), float(100 * (i + 1))]
+                for i in range(5)
+            ]
 
             # 1. Quote event (updates BBO NBBO and Level-2 order book depth)
             q_payload = {
@@ -756,12 +839,14 @@ class LiveConnector:
                 "bids": bids_l2,
                 "asks": asks_l2,
             }
-            events.append(RawEvent(
-                source=source,
-                payload=q_payload,
-                receive_timestamp=t_recv,
-                raw_id=f"live-equities-quote-{next(_raw_counter)}",
-            ))
+            events.append(
+                RawEvent(
+                    source=source,
+                    payload=q_payload,
+                    receive_timestamp=t_recv,
+                    raw_id=f"live-equities-quote-{next(_raw_counter)}",
+                )
+            )
 
             # 2. Trade event (updates OHLCV candlestick aggregator and trade volume)
             t_payload = {
@@ -774,22 +859,30 @@ class LiveConnector:
                 "currency": currency,
                 "exchange": exchange,
             }
-            events.append(RawEvent(
-                source=source,
-                payload=t_payload,
-                receive_timestamp=t_recv,
-                raw_id=f"live-equities-trade-{next(_raw_counter)}",
-            ))
+            events.append(
+                RawEvent(
+                    source=source,
+                    payload=t_payload,
+                    receive_timestamp=t_recv,
+                    raw_id=f"live-equities-trade-{next(_raw_counter)}",
+                )
+            )
             return events
         except Exception:
-            return self._generate_synthetic_equity_events(symbol, canon_sym, t_recv) if fallback_sim else []
+            return (
+                self._generate_synthetic_equity_events(symbol, canon_sym, t_recv)
+                if fallback_sim
+                else []
+            )
 
-    def fetch_equity_quote(self, symbol: str) -> Optional[RawEvent]:
+    def fetch_equity_quote(self, symbol: str) -> RawEvent | None:
         """Fetch real-time top-of-book equity or commodity quote."""
         evs = self.fetch_equity_events(symbol, fallback_sim=False)
         return evs[0] if evs else None
 
-    def fetch_equity_candles(self, symbol: str, limit: int = 25) -> List[dict]:
+    def fetch_equity_candles(
+        self, symbol: str, limit: int = 25
+    ) -> list[dict[str, Any]]:
         """Fetch real historical OHLCV candles for any equity or commodity directly from Yahoo Finance."""
         resolved = self.probe_or_resolve_equity(symbol)
         mapping = resolve_venue_symbols(symbol)
@@ -817,27 +910,34 @@ class LiveConnector:
                 cl = closes[i] if i < len(closes) else None
                 vl = volumes[i] if i < len(volumes) else 0.0
 
-                if op is not None and hi is not None and lo is not None and cl is not None:
+                if (
+                    op is not None
+                    and hi is not None
+                    and lo is not None
+                    and cl is not None
+                ):
                     b_start = float(timestamps[i])
-                    candles.append({
-                        "instrument_id": mapping["canonical"],
-                        "bucket_start": b_start,
-                        "interval_s": 60.0,
-                        "open": round(float(op), 2),
-                        "high": round(float(hi), 2),
-                        "low": round(float(lo), 2),
-                        "close": round(float(cl), 2),
-                        "volume": round(float(vl or 0.0), 1),
-                        "event_count": 10,
-                        "_first_ts": b_start,
-                        "_last_ts": b_start + 59.0,
-                    })
+                    candles.append(
+                        {
+                            "instrument_id": mapping["canonical"],
+                            "bucket_start": b_start,
+                            "interval_s": 60.0,
+                            "open": round(float(op), 2),
+                            "high": round(float(hi), 2),
+                            "low": round(float(lo), 2),
+                            "close": round(float(cl), 2),
+                            "volume": round(float(vl or 0.0), 1),
+                            "event_count": 10,
+                            "_first_ts": b_start,
+                            "_last_ts": b_start + 59.0,
+                        }
+                    )
 
             return candles[-limit:] if limit and limit > 0 else candles
         except Exception:
             return []
 
-    def fetch_quote(self, symbol: str, source: str) -> Optional[RawEvent]:
+    def fetch_quote(self, symbol: str, source: str) -> RawEvent | None:
         """Dispatch quote fetch by source venue name."""
         src = source.upper()
         if src == "BINANCE":
@@ -854,9 +954,10 @@ class LiveConnector:
             return self.fetch_equity_quote(symbol)
         return None
 
-    def fetch_snapshot(self, symbol: str) -> List[RawEvent]:
+    def fetch_snapshot(self, symbol: str) -> list[RawEvent]:
         """Fetch current top of book quotes across all active venues concurrently in parallel."""
         import concurrent.futures
+
         mapping = resolve_venue_symbols(symbol)
         if mapping["type"] == "EQUITY":
             return self.fetch_equity_events(symbol)
@@ -868,8 +969,10 @@ class LiveConnector:
             self.fetch_okx_quote,
             self.fetch_bybit_quote,
         ]
-        events: List[RawEvent] = []
-        with concurrent.futures.ThreadPoolExecutor(max_workers=len(fetchers)) as executor:
+        events: list[RawEvent] = []
+        with concurrent.futures.ThreadPoolExecutor(
+            max_workers=len(fetchers)
+        ) as executor:
             future_to_fetcher = {executor.submit(f, symbol): f for f in fetchers}
             for future in concurrent.futures.as_completed(future_to_fetcher):
                 try:
@@ -882,12 +985,12 @@ class LiveConnector:
 
     def stream_ticks(
         self,
-        symbols: List[str],
-        limit: Optional[int] = 20,
-        sources: Optional[List[str]] = None,
+        symbols: list[str],
+        limit: int | None = 20,
+        sources: list[str] | None = None,
         poll_interval_s: float = 0.05,
         fallback_sim: bool = False,
-        max_empty_polls: Optional[int] = None,
+        max_empty_polls: int | None = None,
     ) -> Generator[RawEvent, None, None]:
         """
         Stream live market ticks round-robin across specified symbols and exchanges.
@@ -918,16 +1021,20 @@ class LiveConnector:
                                 if limit and count >= limit:
                                     return
                     else:
-                        for raw in self.fetch_equity_events(sym, fallback_sim=fallback_sim):
+                        for raw in self.fetch_equity_events(
+                            sym, fallback_sim=fallback_sim
+                        ):
                             yield raw
                             count += 1
                             poll_events += 1
                             if limit and count >= limit:
                                 return
                 else:
-                    venue_list = [s.upper() for s in sources] if sources else [
-                        "BINANCE", "COINBASE", "KRAKEN", "OKX", "BYBIT"
-                    ]
+                    venue_list = (
+                        [s.upper() for s in sources]
+                        if sources
+                        else ["BINANCE", "COINBASE", "KRAKEN", "OKX", "BYBIT"]
+                    )
 
                     venue_found = 0
                     for v in venue_list:
@@ -941,7 +1048,9 @@ class LiveConnector:
                                 return
 
                     if venue_found == 0 and fallback_sim:
-                        for raw in self._generate_synthetic_crypto_events(sym, time.time()):
+                        for raw in self._generate_synthetic_crypto_events(
+                            sym, time.time()
+                        ):
                             yield raw
                             count += 1
                             poll_events += 1
