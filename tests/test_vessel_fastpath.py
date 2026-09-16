@@ -42,7 +42,7 @@ def _pure_python_haversine(lat1: float, lon1: float, lat2: float, lon2: float) -
 
 
 def test_native_c_library_loaded():
-    """Verify that the compiled fastpath.dll/so is loaded and exports spatial functions."""
+    """Verify that the compiled _fastpath_native library is loaded and exports spatial functions."""
     assert _NATIVE_LIB is not None
     assert hasattr(_NATIVE_LIB, "fastpath_haversine_nm")
     assert hasattr(_NATIVE_LIB, "fastpath_vessel_chokepoint_eval")

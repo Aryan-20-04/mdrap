@@ -91,7 +91,15 @@ py-modules = [
 package-dir = {"" = "src"}
 
 [tool.setuptools.package-data]
-"*" = ["fastpath.c", "fastpath.dll", "fastpath.so", "fastpath.dylib"]
+"*" = [
+    "fastpath.c",
+    "_fastpath_native.dll",
+    "_fastpath_native.so",
+    "_fastpath_native.dylib",
+    "_fastpath_native.pyd",
+    "fastpath.dll",
+    "fastpath.dylib",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -2,7 +2,7 @@
 Python ctypes wrapper for MDRAP Native C Hot Path.
 
 Exposes FastQualityEngine as a drop-in replacement for QualityEngine:
-- Loads src/fastpath.dll (Windows) or src/fastpath.so (Linux/macOS)
+- Loads src/_fastpath_native.dll (Windows) or src/_fastpath_native.so (Linux/macOS)
 - Marshals CanonicalEvent to 64-byte aligned C struct
 - Decodes 32-bit packed status & reason bitmask
 - Seamless fallback to pure Python QualityEngine if native library is unavailable
@@ -175,11 +175,11 @@ def _load_native_lib():
     src_dir = os.path.dirname(os.path.abspath(__file__))
     candidates = []
     if sys.platform == "win32":
-        candidates = ["fastpath.dll", "fastpath.pyd"]
+        candidates = ["_fastpath_native.dll", "_fastpath_native.pyd"]
     elif sys.platform == "darwin":
-        candidates = ["fastpath.dylib", "fastpath.so"]
+        candidates = ["_fastpath_native.dylib", "_fastpath_native.so"]
     else:
-        candidates = ["fastpath.so"]
+        candidates = ["_fastpath_native.so"]
 
     dll_path = None
     for name in candidates:
@@ -207,6 +207,19 @@ def _load_native_lib():
                             dll_path = p
                             break
             except Exception:
+                pass
+
+    # Backward compatibility: on Windows, if legacy fastpath.dll exists and _fastpath_native.dll doesn't, copy it
+    if dll_path is None and sys.platform == "win32":
+        legacy_win = os.path.join(src_dir, "fastpath.dll")
+        native_win = os.path.join(src_dir, "_fastpath_native.dll")
+        if os.path.isfile(legacy_win):
+            try:
+                import shutil
+                shutil.copy2(legacy_win, native_win)
+                if os.path.isfile(native_win):
+                    dll_path = native_win
+            except OSError:
                 pass
 
     if dll_path and os.path.exists(dll_path):

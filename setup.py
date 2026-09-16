@@ -30,7 +30,14 @@ class BuildPyWithFastpath(build_py):
                 import shutil
                 shutil.copy2(bfp, os.path.join(self.build_lib, "build_fastpath.py"))
             # Also copy precompiled shared libraries from src/ if they exist
-            for lib in ("fastpath.dll", "fastpath.so", "fastpath.dylib"):
+            for lib in (
+                "_fastpath_native.dll",
+                "_fastpath_native.so",
+                "_fastpath_native.dylib",
+                "_fastpath_native.pyd",
+                "fastpath.dll",
+                "fastpath.dylib",
+            ):
                 src_lib = os.path.join(base_dir, "src", lib)
                 dest_lib = os.path.join(self.build_lib, lib)
                 if os.path.isfile(src_lib) and not os.path.isfile(dest_lib):
@@ -68,7 +75,15 @@ setup(
     packages=find_packages(where="src"),
     py_modules=py_modules,
     package_data={
-        "": ["fastpath.c", "fastpath.dll", "fastpath.so", "fastpath.dylib"],
+        "": [
+            "fastpath.c",
+            "_fastpath_native.dll",
+            "_fastpath_native.so",
+            "_fastpath_native.dylib",
+            "_fastpath_native.pyd",
+            "fastpath.dll",
+            "fastpath.dylib",
+        ],
     },
     include_package_data=True,
     cmdclass={

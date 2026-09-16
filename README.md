@@ -1,4 +1,5 @@
 # Market Data Reliability & Acceleration Platform (MDRAP)
+### The reliability and audit layer between raw market data feeds and everything else
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue.svg)](https://www.python.org/)
 [![Tests](https://img.shields.io/badge/tests-650%2F650%20passing-brightgreen.svg)](tests/)
@@ -8,7 +9,28 @@
 [![Dependencies](https://img.shields.io/badge/dependencies-zero%20mandatory-success.svg)](requirements.txt)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-A high-performance financial market infrastructure platform designed to ingest, validate, accelerate, and reconcile noisy, delayed, duplicated, and inconsistent market data from disparate exchanges and internal feeds into a unified, ultra-low-latency canonical stream with mathematical reliability scoring, cryptographic lineage auditing, and institutional execution analytics.
+MDRAP ingests multiple live market data feeds, cross-reconciles them, flags anomalies with explainable reason codes, and produces a cryptographically auditable record of every data quality decision. It sits *before* your trading engine, database, or research code.
+
+| Feature | MDRAP | QuestDB | NautilusTrader | kdb+ |
+|---------|-------|---------|----------------|------|
+| Cross-source reconciliation | ✅ Built-in | ❌ | ❌ | ❌ |
+| Statistical quality scoring | ✅ 7-rule engine | ❌ | ❌ | Manual |
+| Explainable reason codes | ✅ Per-event | ❌ | ❌ | ❌ |
+| Cryptographic audit trail | ✅ Merkle-chained | ❌ | ❌ | ❌ |
+| Tick-level storage | Via SQLite | ✅ Purpose-built | ✅ Parquet catalog | ✅ Purpose-built |
+| Strategy execution | ❌ Not its job | ❌ | ✅ Purpose-built | Via q |
+| `pip install` + CLI | ✅ | ❌ (Java) | ✅ | ❌ (Commercial) |
+
+> MDRAP is not a replacement for QuestDB, NautilusTrader, or kdb+ — it's the layer you run *before* them, so you can trust what you're trading or backtesting on.
+
+### 🤖 Built for AI Agents & Automated Pipelines
+Every data-producing command supports `--json` for direct consumption by AI agents (Claude Code, Cursor, Codex) and automated research scripts with zero text-scraping:
+```bash
+mdrap bbo AAPL --json          # Real-time consolidated NBBO in structured JSON
+mdrap status --json            # Pipeline health, queue counts, and database metrics
+mdrap analytics spread --json  # Bid/ask spread statistics & crossed quotes
+mdrap q latest AAPL            # Canonical tick records with provenance metadata
+```
 
 📖 **Complete Documentation**: See the [**Comprehensive Operator & User Manual**](docs/USER_GUIDE.md) for full syntax, flags, hotkeys, and role-based workflows.
 

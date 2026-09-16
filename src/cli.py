@@ -670,7 +670,7 @@ def cmd_throughput(args):
     engine = FastQualityEngine()
     if not engine.is_native:
         console.print(
-            "[bold red]Error:[/bold red] Native C acceleration library (fastpath.dll) not loaded."
+            "[bold red]Error:[/bold red] Native C acceleration library (_fastpath_native) not loaded."
         )
         return
 
@@ -1282,6 +1282,19 @@ def cmd_status(args):
 
     store.close()
 
+    if getattr(args, "json", False):
+        data = {
+            "database": args.db,
+            "db_size_mb": round(db_size_mb, 4),
+            "counts": {"total": tot, "valid": val, "suspicious": susp, "invalid": inv},
+            "quarantine_count": quar_count,
+            "lineage_count": lineage_count,
+            "health": health,
+            "alerts": alerts,
+        }
+        print(json.dumps(data, indent=2))
+        return
+
     console.print()
     console.print(
         Panel.fit(
@@ -1494,6 +1507,30 @@ def cmd_analytics(args):
     action = getattr(args, "action", None)
     target = getattr(args, "target", None)
 
+    if getattr(args, "json", False):
+        if action in ("ohlcv", "candles", "candle") or getattr(args, "ohlcv", None):
+            instr = target or getattr(args, "ohlcv", "AAPL") or "AAPL"
+            rows = store.query_ohlcv(instrument_id=instr, limit=args.limit)
+            print(json.dumps(rows, indent=2))
+        elif action in ("spread", "spreads") or getattr(args, "spread", None):
+            query_instr = target or getattr(args, "spread", "all") or "all"
+            rows = store.query_spread(
+                instrument_id=query_instr if query_instr.lower() != "all" else None
+            )
+            print(json.dumps(rows, indent=2))
+        elif action in ("vol", "volatility", "v") or getattr(args, "volatility", False):
+            rows = store.query_volatility()
+            print(json.dumps(rows, indent=2))
+        else:
+            data = {
+                "ohlcv": store.query_ohlcv(limit=args.limit),
+                "spread": store.query_spread(),
+                "volatility": store.query_volatility(),
+            }
+            print(json.dumps(data, indent=2))
+        store.close()
+        return
+
     # Normalize positional arguments or flags
     if action in ("ohlcv", "candles", "candle") or getattr(args, "ohlcv", None):
         instr = target or getattr(args, "ohlcv", "AAPL") or "AAPL"
@@ -1646,6 +1683,24 @@ def cmd_watchdog(args):
     action = getattr(args, "action", None)
     target = getattr(args, "target", None)
 
+    if getattr(args, "json", False):
+        if action in ("alerts", "alert", "a") or getattr(args, "alerts", None):
+            lim = (
+                args.limit
+                if target is None
+                else (int(target) if target.isdigit() else args.limit)
+            )
+            a_arg = getattr(args, "alerts", None)
+            if a_arg is not None and isinstance(a_arg, int):
+                lim = a_arg
+            rows = store.query_alerts(limit=lim)
+            print(json.dumps(rows, indent=2))
+        else:
+            health = store.feed_health()
+            print(json.dumps(health, indent=2))
+        store.close()
+        return
+
     if action in ("alerts", "alert", "a") or getattr(args, "alerts", None):
         lim = (
             args.limit
@@ -1748,6 +1803,10 @@ def cmd_bbo(args):
             pass
 
     store.close()
+
+    if getattr(args, "json", False):
+        print(json.dumps(rows or [], indent=2))
+        return
 
     if not rows:
         sym_msg = f"for {target}" if target else ""
@@ -5637,6 +5696,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser = MDRAPArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output structured JSON instead of formatted tables",
+    )
     sub = parser.add_subparsers(
         dest="command", required=False, parser_class=MDRAPArgumentParser
     )
@@ -5659,6 +5723,11 @@ def build_parser() -> argparse.ArgumentParser:
                 default=default_db,
                 help="Database path" if default_db != ":memory:" else None,
             )
+        p.add_argument(
+            "--json",
+            action="store_true",
+            help="Output structured JSON instead of formatted tables",
+        )
         p.set_defaults(func=func)
         return p
 
@@ -6329,7 +6398,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_sub.add_argument(
         "-j",
-        "--json",
+        dest="json",
         action="store_true",
         help="Output raw JSON for piping into jq or trading bots",
     )
@@ -7670,10 +7739,16 @@ def main():
             sys.argv = [sys.argv[0]] + QUICK_ACTIONS[raw_cmd]
             raw_cmd = sys.argv[1]
 
-        # Check for Command Palette help request
-        if raw_cmd in ("?", "help", "menu", "palette"):
-            render_command_palette(Console())
-            return
+        # Check for Help / Command Palette request
+        if raw_cmd in ("?", "help", "menu", "palette", "-h", "--help", "-help"):
+            if len(sys.argv) > 2 and raw_cmd in ("help", "?"):
+                topic = sys.argv[2].lower().lstrip("/")
+                topic = MNEMONIC_MAP.get(topic, topic)
+                sys.argv = [sys.argv[0], topic, "--help"]
+                raw_cmd = topic
+            else:
+                render_command_palette(Console())
+                return
 
         # Check for Ticker-First syntax (e.g. `mdrap btc bbo`, `mdrap aapl cnd`, `mdrap btc`)
         first_upper = raw_cmd.upper()
@@ -7708,7 +7783,7 @@ def main():
         if raw_cmd in MNEMONIC_MAP:
             raw_cmd = MNEMONIC_MAP[raw_cmd]
             sys.argv[1] = raw_cmd
-        elif raw_cmd in ALL_CANONICAL_COMMANDS:
+        elif raw_cmd in ALL_CANONICAL_COMMANDS or raw_cmd.startswith("-"):
             pass
         else:
             # Fuzzy match typo correction for CLI command line

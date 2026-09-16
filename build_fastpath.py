@@ -1,9 +1,9 @@
 """
 Build script for MDRAP Native C Hot-Path Accelerator.
 Compiles src/fastpath.c to produce:
-  - fastpath.dll (Windows)
-  - fastpath.so (Linux / Unix)
-  - fastpath.dylib / fastpath.so (macOS)
+  - _fastpath_native.dll (Windows)
+  - _fastpath_native.so (Linux / Unix)
+  - _fastpath_native.dylib / _fastpath_native.so (macOS)
 
 Supports GCC, Clang, and MSVC (cl.exe).
 Can be executed standalone (`python build_fastpath.py`) or called programmatically
@@ -18,14 +18,17 @@ import sys
 from typing import Optional
 
 
-def get_lib_name() -> str:
+def get_lib_name(extension: Optional[str] = None) -> str:
     """Return platform-standard shared library name."""
+    if extension:
+        ext = extension.lstrip(".")
+        return f"_fastpath_native.{ext}"
     if sys.platform == "win32":
-        return "fastpath.dll"
+        return "_fastpath_native.dll"
     elif sys.platform == "darwin":
-        return "fastpath.dylib"
+        return "_fastpath_native.dylib"
     else:
-        return "fastpath.so"
+        return "_fastpath_native.so"
 
 
 def find_source_file(custom_dir: Optional[str] = None) -> Optional[str]:
@@ -77,6 +80,21 @@ def build(target_dir: Optional[str] = None, quiet: bool = False) -> bool:
 
     compiler = _find_compiler()
     if not compiler:
+        src_dir = os.path.dirname(c_source)
+        legacy_name = (
+            "fastpath.dll"
+            if sys.platform == "win32"
+            else ("fastpath.dylib" if sys.platform == "darwin" else "fastpath.so")
+        )
+        legacy_file = os.path.join(src_dir, legacy_name)
+        if os.path.isfile(legacy_file) and not os.path.isfile(out_lib):
+            try:
+                shutil.copy2(legacy_file, out_lib)
+                if not quiet:
+                    print(f"[build] Copied legacy {legacy_file} -> {out_lib}")
+                return True
+            except OSError:
+                pass
         if not quiet:
             print("[build] Notice: No C compiler (gcc, clang, cl) found on PATH.")
         return False
@@ -121,8 +139,8 @@ def build(target_dir: Optional[str] = None, quiet: bool = False) -> bool:
         return False
 
     if result.returncode == 0 and os.path.isfile(out_lib):
-        if sys.platform == "darwin" and lib_name == "fastpath.dylib":
-            so_link = os.path.normpath(os.path.join(target_dir, "fastpath.so"))
+        if sys.platform == "darwin" and lib_name == "_fastpath_native.dylib":
+            so_link = os.path.normpath(os.path.join(target_dir, "_fastpath_native.so"))
             try:
                 shutil.copy2(out_lib, so_link)
             except OSError:
