@@ -20,11 +20,23 @@ class BuildPyWithFastpath(build_py):
             base_dir = os.path.dirname(os.path.abspath(__file__))
             # Compile into wheel/install target directory
             build_fastpath.build(target_dir=self.build_lib, quiet=False)
-            # Copy fastpath.c and build_fastpath.py into wheel target so JIT works anywhere
+            # Copy fastpath.c, rules.def, py.typed, fastpath.pyi, and build_fastpath.py into wheel target so JIT works anywhere
             src_c = os.path.join(base_dir, "src", "fastpath.c")
             if os.path.isfile(src_c):
                 import shutil
                 shutil.copy2(src_c, os.path.join(self.build_lib, "fastpath.c"))
+            src_rules = os.path.join(base_dir, "src", "rules.def")
+            if os.path.isfile(src_rules):
+                import shutil
+                shutil.copy2(src_rules, os.path.join(self.build_lib, "rules.def"))
+            src_typed = os.path.join(base_dir, "src", "py.typed")
+            if os.path.isfile(src_typed):
+                import shutil
+                shutil.copy2(src_typed, os.path.join(self.build_lib, "py.typed"))
+            src_pyi = os.path.join(base_dir, "src", "fastpath.pyi")
+            if os.path.isfile(src_pyi):
+                import shutil
+                shutil.copy2(src_pyi, os.path.join(self.build_lib, "fastpath.pyi"))
             bfp = os.path.join(base_dir, "build_fastpath.py")
             if os.path.isfile(bfp):
                 import shutil
@@ -69,7 +81,7 @@ py_modules = list(set(["cli"] + [os.path.basename(f)[:-3] for f in src_files if 
 
 setup(
     name="mdrap",
-    version="1.2.2",
+    version="2.0.0",
     description="Market Data Reliability & Acceleration Platform",
     package_dir={"": "src"},
     packages=find_packages(where="src"),
@@ -77,6 +89,9 @@ setup(
     package_data={
         "": [
             "fastpath.c",
+            "rules.def",
+            "py.typed",
+            "*.pyi",
             "_fastpath_native.dll",
             "_fastpath_native.so",
             "_fastpath_native.dylib",

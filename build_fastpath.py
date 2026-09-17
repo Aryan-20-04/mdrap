@@ -99,6 +99,17 @@ def build(target_dir: Optional[str] = None, quiet: bool = False) -> bool:
             print("[build] Notice: No C compiler (gcc, clang, cl) found on PATH.")
         return False
 
+    # Include directories: source directory, target directory, and project src directory
+    inc_dirs = [os.path.dirname(os.path.abspath(c_source))]
+    if target_dir:
+        inc_dirs.append(os.path.abspath(target_dir))
+    base_src = os.path.join(os.path.dirname(os.path.abspath(__file__)), "src")
+    if os.path.isdir(base_src):
+        inc_dirs.append(base_src)
+
+    # De-duplicate while preserving order
+    unique_incs = list(dict.fromkeys(inc_dirs))
+
     if compiler in ("gcc", "clang"):
         cmd = [
             compiler,
@@ -106,6 +117,8 @@ def build(target_dir: Optional[str] = None, quiet: bool = False) -> bool:
             "-shared",
             "-fPIC",
         ]
+        for inc in unique_incs:
+            cmd.extend(["-I", inc])
         if sys.platform == "win32":
             cmd.extend(["-Wl,--enable-stdcall-fixup"])
         elif sys.platform == "darwin":
@@ -116,9 +129,13 @@ def build(target_dir: Optional[str] = None, quiet: bool = False) -> bool:
             "cl.exe",
             "/O2",
             "/LD",
+        ]
+        for inc in unique_incs:
+            cmd.append(f"/I{inc}")
+        cmd.extend([
             c_source,
             f"/Fe:{out_lib}",
-        ]
+        ])
     else:
         return False
 

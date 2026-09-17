@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mdrap"
-version = "1.2.2"
+version = "2.0.0"
 description = "Market Data Reliability & Acceleration Platform - Financial market infrastructure for converting noisy market feeds into validated canonical streams"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -79,20 +79,23 @@ mdrap = "cli:main"
 [tool.setuptools]
 py-modules = [
     "alerts", "analytics", "archive", "backtest", "bardb", "bbo", "benchmark",
-    "chaos", "chd", "chd_history", "cli", "client", "columnar", "config", "corporate_actions",
-    "dashboard", "databento_feed", "depth", "exporter", "fastpath", "features",
-    "feed_handler", "fix_engine", "flow_tracker", "gateway", "gateway_tcp", "itch",
-    "live", "mbo", "metrics", "models", "multicast_arbitrator", "news", "options", "pipeline",
+    "chaos", "chd", "chd_history", "cli", "client", "columnar", "config", "config_loader", "corporate_actions",
+    "dashboard", "databento_feed", "depth", "export", "exporter", "fastpath", "features",
+    "feed_handler", "fix_engine", "flow_tracker", "fx", "gateway", "gateway_tcp", "itch",
+    "live", "manifest", "mbo", "metrics", "models", "multicast_arbitrator", "navigator", "news", "options", "pipeline",
     "polygon_feed", "portfolio", "protocol", "quality", "reconciliation",
-    "research", "risk", "sbe", "scheduler", "security", "service",
+    "research", "risk", "rules", "sbe", "scheduler", "security", "service",
     "shm", "simulator", "storage", "strategy_sdk", "stresstest", "symbology", "tca", "term",
-    "terminal_display", "trading_cli", "venues", "watchdog", "workload_simulator", "ws_feed", "fx", "vessel", "navigator"
+    "terminal_display", "trading_cli", "venues", "vessel", "watchdog", "workload_simulator", "ws_feed"
 ]
 package-dir = {"" = "src"}
 
 [tool.setuptools.package-data]
 "*" = [
     "fastpath.c",
+    "rules.def",
+    "py.typed",
+    "*.pyi",
     "_fastpath_native.dll",
     "_fastpath_native.so",
     "_fastpath_native.dylib",
