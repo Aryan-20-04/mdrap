@@ -2,7 +2,7 @@
 ### The reliability and audit layer between raw market data feeds and everything else
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue.svg)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-650%2F650%20passing-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-725%2F725%20passing-brightgreen.svg)](tests/)
 [![Hot Path Latency](https://img.shields.io/badge/hot--path-19.4%20ns%20%7C%2051.4M%20eps-orange.svg)](src/fastpath.c)
 [![Architecture](https://img.shields.io/badge/architecture-V1%20%7C%20V2%20%7C%20V3%20%7C%20V4%20C--Fastpath-purple.svg)](docs/architecture.md)
 [![User Guide](https://img.shields.io/badge/manual-Operator%20%26%20User%20Guide-teal.svg)](docs/USER_GUIDE.md)
@@ -29,6 +29,7 @@ Every data-producing command supports `--json` for direct consumption by AI agen
 mdrap bbo AAPL --json          # Real-time consolidated NBBO in structured JSON
 mdrap status --json            # Pipeline health, queue counts, and database metrics
 mdrap analytics spread --json  # Bid/ask spread statistics & crossed quotes
+mdrap retention --json         # Pruning stats and WAL compaction summary
 mdrap q latest AAPL            # Canonical tick records with provenance metadata
 ```
 

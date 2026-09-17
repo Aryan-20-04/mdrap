@@ -695,6 +695,25 @@ mdrap replay -s POLYGON
 
 ---
 
+#### `mdrap retention` (Aliases: `compact`, `prune`)
+Executes database lifecycle pruning and disk space reclamation. Prunes operational ticks older than a configurable retention window while keeping `quarantine` compliance records longer. Runs WAL checkpoint truncation (`TRUNCATE`) and optional SQLite `VACUUM` to reclaim filesystem space. Note that WORM audit tables (`audit_log`, `lineage`) are strictly immutable and never pruned.
+
+```bash
+# Prune canonical events >30 days and quarantine >90 days
+mdrap retention
+
+# Custom retention windows
+mdrap retention --days 14 --quarantine-days 180
+
+# Reclaim filesystem disk pages via full VACUUM
+mdrap retention --vacuum
+
+# Machine-readable output for automated maintenance scripts
+mdrap retention --json
+```
+
+---
+
 ### 4.8 Headless Streaming Socket Daemon & IPC Transports
 
 #### `mdrap daemon` (Aliases: `d`)
