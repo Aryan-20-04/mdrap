@@ -335,4 +335,7 @@ class QualityEngine:
 
         self.counts[event.quality_status.value] += 1
         return event
-        return event
+
+
+# Phase 5: Explicit Two-Tier Architecture Aliases
+PythonQualityEngine = QualityEngine

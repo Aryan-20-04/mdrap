@@ -8,7 +8,6 @@ canonical MDRAP instrument IDs with exchange MIC and currency resolution.
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from typing import Dict
 
@@ -363,6 +362,42 @@ GLOBAL_SECURITY_DIRECTORY: Dict[str, SymbolInfo] = {
         bloomberg="AZN:LN",
         isin="GB0009895292",
     ),
+    # -----------------------------------------------------------------------
+    # 6. Global Benchmark Commodity & Futures
+    # -----------------------------------------------------------------------
+    "ES": SymbolInfo(
+        canonical_id="ES.CME",
+        ticker="ES",
+        venue_mic="XCME",
+        currency="USD",
+        country="US",
+        name="E-mini S&P 500 Futures",
+        ric="ESc1",
+        bloomberg="ESA:INDEX",
+        isin="",
+    ),
+    "CL": SymbolInfo(
+        canonical_id="CL.NYM",
+        ticker="CL",
+        venue_mic="XNYM",
+        currency="USD",
+        country="US",
+        name="WTI Light Sweet Crude Oil Futures",
+        ric="CLc1",
+        bloomberg="CLA:COMDTY",
+        isin="",
+    ),
+    "BRENT": SymbolInfo(
+        canonical_id="BRENT.ICE",
+        ticker="BRENT",
+        venue_mic="IFEU",
+        currency="USD",
+        country="GB",
+        name="Brent Crude Futures",
+        ric="LCOc1",
+        bloomberg="COA:COMDTY",
+        isin="",
+    ),
 }
 
 # Add alias mappings for common names and variations
@@ -437,7 +472,7 @@ def resolve_symbol(
             return GLOBAL_SECURITY_DIRECTORY[mapped_sym]
 
     # Handle Yahoo / Exchange Suffixes
-    if raw.endswith(".NS"):
+    if len(raw) > 3 and raw.endswith(".NS"):
         base = raw[:-3]
         return SymbolInfo(
             canonical_id=raw,
@@ -450,7 +485,7 @@ def resolve_symbol(
             bloomberg=f"{base}:IN",
             isin="",
         )
-    elif raw.endswith(".BO"):
+    elif len(raw) > 3 and raw.endswith(".BO"):
         base = raw[:-3]
         return SymbolInfo(
             canonical_id=raw,
@@ -463,7 +498,7 @@ def resolve_symbol(
             bloomberg=f"{base}:IN",
             isin="",
         )
-    elif raw.endswith(".DE"):
+    elif len(raw) > 3 and raw.endswith(".DE"):
         base = raw[:-3]
         return SymbolInfo(
             canonical_id=raw,
@@ -476,7 +511,7 @@ def resolve_symbol(
             bloomberg=f"{base}:GY",
             isin="",
         )
-    elif raw.endswith(".T"):
+    elif len(raw) > 2 and raw.endswith(".T"):
         base = raw[:-2]
         return SymbolInfo(
             canonical_id=raw,
@@ -489,7 +524,7 @@ def resolve_symbol(
             bloomberg=f"{base}:JP",
             isin="",
         )
-    elif raw.endswith(".L"):
+    elif len(raw) > 2 and raw.endswith(".L"):
         base = raw[:-2]
         return SymbolInfo(
             canonical_id=raw,
@@ -502,7 +537,7 @@ def resolve_symbol(
             bloomberg=f"{base}:LN",
             isin="",
         )
-    elif raw.endswith(".HK"):
+    elif len(raw) > 3 and raw.endswith(".HK"):
         base = raw[:-3]
         return SymbolInfo(
             canonical_id=raw,
@@ -515,9 +550,61 @@ def resolve_symbol(
             bloomberg=f"{base}:HK",
             isin="",
         )
+    elif len(raw) > 3 and raw.endswith(".SI"):
+        base = raw[:-3]
+        return SymbolInfo(
+            canonical_id=raw,
+            ticker=base,
+            venue_mic="XSES",
+            currency="SGD",
+            country="SG",
+            name=f"{base} (Singapore Exchange)",
+            ric=raw,
+            bloomberg=f"{base}:SP",
+            isin="",
+        )
+    elif len(raw) > 3 and raw.endswith(".KS"):
+        base = raw[:-3]
+        return SymbolInfo(
+            canonical_id=raw,
+            ticker=base,
+            venue_mic="XKRX",
+            currency="KRW",
+            country="KR",
+            name=f"{base} (Korea Exchange)",
+            ric=raw,
+            bloomberg=f"{base}:KS",
+            isin="",
+        )
+    elif len(raw) > 3 and raw.endswith(".TW"):
+        base = raw[:-3]
+        return SymbolInfo(
+            canonical_id=raw,
+            ticker=base,
+            venue_mic="XTWS",
+            currency="TWD",
+            country="TW",
+            name=f"{base} (Taiwan Stock Exchange)",
+            ric=raw,
+            bloomberg=f"{base}:TT",
+            isin="",
+        )
+    elif len(raw) > 3 and raw.endswith(".PA"):
+        base = raw[:-3]
+        return SymbolInfo(
+            canonical_id=raw,
+            ticker=base,
+            venue_mic="XPAR",
+            currency="EUR",
+            country="FR",
+            name=f"{base} (Euronext Paris)",
+            ric=raw,
+            bloomberg=f"{base}:FP",
+            isin="",
+        )
 
     # 4-digit numeric code heuristics for Japan (e.g. 7203, 6758)
-    if re.fullmatch(r"\d{4}", raw):
+    if len(raw) == 4 and raw.isdigit():
         return SymbolInfo(
             canonical_id=f"{raw}.T",
             ticker=raw,

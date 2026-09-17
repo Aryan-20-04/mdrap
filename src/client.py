@@ -266,13 +266,23 @@ class MDRAPClient:
 
         if self.auth_token:
             sock.sendall(f"AUTH {self.auth_token}\n".encode("utf-8"))
-            buf = ""
-            while "\n" not in buf:
-                chunk = sock.recv(4096).decode("utf-8")
+            buf = bytearray()
+            while b"\n" not in buf:
+                chunk = sock.recv(4096)
                 if not chunk:
                     break
-                buf += chunk
-            ack = json.loads(buf.strip().split("\n")[0])
+                buf.extend(chunk)
+            if not buf:
+                sock.close()
+                raise ConnectionError(
+                    "Connection closed before receiving authentication response"
+                )
+            line = buf.decode("utf-8", errors="replace").strip().split("\n")[0]
+            try:
+                ack = json.loads(line)
+            except json.JSONDecodeError:
+                sock.close()
+                raise ConnectionError("Malformed authentication response from server")
             if ack.get("status") != "OK":
                 sock.close()
                 raise PermissionError(
@@ -320,28 +330,25 @@ class MDRAPClient:
         sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 
         try:
+            rfile = sock.makefile(mode="r", encoding="utf-8")
             if self.auth_token:
                 sock.sendall(f"AUTH {self.auth_token}\n".encode("utf-8"))
-                buf = ""
-                while "\n" not in buf:
-                    chunk = sock.recv(4096).decode("utf-8")
-                    if not chunk:
-                        break
-                    buf += chunk
-                ack = json.loads(buf.strip().split("\n")[0])
+                line = rfile.readline()
+                if not line.strip():
+                    return {"error": "CONNECTION_CLOSED"}
+                try:
+                    ack = json.loads(line.strip())
+                except json.JSONDecodeError:
+                    return {"error": "INVALID_RESPONSE"}
                 if ack.get("status") != "OK":
                     return {"error": "UNAUTHORIZED"}
 
             sock.sendall((cmd.strip() + "\n").encode("utf-8"))
-            buf = ""
-            while "\n" not in buf:
-                chunk = sock.recv(4096).decode("utf-8")
-                if not chunk:
-                    break
-                buf += chunk
-            line = buf.strip().split("\n")[0] if buf else "{}"
+            line = rfile.readline()
+            if not line.strip():
+                return {}
             try:
-                return json.loads(line)
+                return json.loads(line.strip())
             except json.JSONDecodeError:
                 return {}
         finally:

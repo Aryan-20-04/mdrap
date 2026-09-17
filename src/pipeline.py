@@ -429,9 +429,8 @@ class Pipeline:
                 for ev in valid_events:
                     self.quality.evaluate(ev)
             t_qual_end_ns = time.perf_counter_ns()
-            avg_qual_latency_s = (
-                (t_qual_end_ns - t_qual_start_ns)
-                / (len(valid_events) * 1_000_000_000.0)
+            avg_qual_latency_s = (t_qual_end_ns - t_qual_start_ns) / (
+                len(valid_events) * 1_000_000_000.0
             )
         else:
             avg_qual_latency_s = 0.0

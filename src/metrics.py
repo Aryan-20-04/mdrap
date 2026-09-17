@@ -269,7 +269,8 @@ class RunMetrics:
         # Per-source breakdown (Q2)
         if self._by_source_us:
             result["by_source_proc_us"] = {
-                src: _calc_stage(vals) for src, vals in sorted(self._by_source_us.items())
+                src: _calc_stage(vals)
+                for src, vals in sorted(self._by_source_us.items())
             }
 
         # Per-instrument breakdown (top 10 by volume) (Q2)

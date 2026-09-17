@@ -27,6 +27,9 @@ class FXMatrix:
             "CHF": 0.8850,  # Swiss Franc
             "CAD": 1.3850,  # Canadian Dollar
             "AUD": 1.5400,  # Australian Dollar
+            "SGD": 1.3400,  # Singapore Dollar
+            "KRW": 1340.0,  # South Korean Won
+            "TWD": 32.00,  # New Taiwan Dollar
         }
         if initial_rates:
             for pair, rate in initial_rates.items():

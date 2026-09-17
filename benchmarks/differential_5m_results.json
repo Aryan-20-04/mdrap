@@ -1,0 +1,115 @@
+{
+  "timestamp": "2026-09-17 22:29:20",
+  "total_events": 5000000,
+  "total_elapsed_s": 267.58,
+  "overall_eps": 18686.0,
+  "total_discrepancies": 0,
+  "seeds": [
+    {
+      "seed": 42,
+      "events": 1000000,
+      "elapsed_s": 50.488,
+      "eps": 19806.6,
+      "counts": {
+        "VALID": 905519,
+        "SUSPICIOUS": 43039,
+        "INVALID": 51442
+      },
+      "reasons": {
+        "SCHEMA_VIOLATION": 33388,
+        "DUPLICATE": 14670,
+        "SEQUENCE_GAP": 12029,
+        "PRICE_ANOMALY": 14593,
+        "CROSSED_QUOTE": 3909,
+        "STALE": 8333,
+        "OUT_OF_ORDER": 10046
+      },
+      "discrepancies": 0
+    },
+    {
+      "seed": 1337,
+      "events": 1000000,
+      "elapsed_s": 51.674,
+      "eps": 19352.0,
+      "counts": {
+        "VALID": 903676,
+        "SUSPICIOUS": 44942,
+        "INVALID": 51382
+      },
+      "reasons": {
+        "SCHEMA_VIOLATION": 33400,
+        "PRICE_ANOMALY": 16972,
+        "STALE": 8333,
+        "CROSSED_QUOTE": 3789,
+        "DUPLICATE": 14739,
+        "OUT_OF_ORDER": 9989,
+        "SEQUENCE_GAP": 11866
+      },
+      "discrepancies": 0
+    },
+    {
+      "seed": 777,
+      "events": 1000000,
+      "elapsed_s": 51.68,
+      "eps": 19349.9,
+      "counts": {
+        "VALID": 903605,
+        "SUSPICIOUS": 45258,
+        "INVALID": 51137
+      },
+      "reasons": {
+        "SCHEMA_VIOLATION": 33205,
+        "DUPLICATE": 14702,
+        "STALE": 8333,
+        "PRICE_ANOMALY": 17426,
+        "SEQUENCE_GAP": 11776,
+        "OUT_OF_ORDER": 9747,
+        "CROSSED_QUOTE": 3786
+      },
+      "discrepancies": 0
+    },
+    {
+      "seed": 2026,
+      "events": 1000000,
+      "elapsed_s": 56.514,
+      "eps": 17694.9,
+      "counts": {
+        "VALID": 905564,
+        "SUSPICIOUS": 42802,
+        "INVALID": 51634
+      },
+      "reasons": {
+        "SCHEMA_VIOLATION": 33452,
+        "SEQUENCE_GAP": 11779,
+        "DUPLICATE": 14890,
+        "OUT_OF_ORDER": 10039,
+        "PRICE_ANOMALY": 14593,
+        "STALE": 8333,
+        "CROSSED_QUOTE": 3825
+      },
+      "discrepancies": 0
+    },
+    {
+      "seed": 99999,
+      "events": 1000000,
+      "elapsed_s": 56.606,
+      "eps": 17665.9,
+      "counts": {
+        "VALID": 904212,
+        "SUSPICIOUS": 44519,
+        "INVALID": 51269
+      },
+      "reasons": {
+        "DUPLICATE": 14606,
+        "SCHEMA_VIOLATION": 33210,
+        "STALE": 8333,
+        "SEQUENCE_GAP": 11863,
+        "PRICE_ANOMALY": 16652,
+        "OUT_OF_ORDER": 9717,
+        "CROSSED_QUOTE": 3912
+      },
+      "discrepancies": 0
+    }
+  ],
+  "status": "PASSED"
+}

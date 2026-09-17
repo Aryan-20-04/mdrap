@@ -1,7 +1,7 @@
 """
 Tests for Exchange Venue Registry, Market Schedules, and Microstructure.
 """
-import pytest
+
 import datetime
 from venues import (
     GLOBAL_VENUES,
@@ -52,7 +52,12 @@ def test_session_phase_weekend():
     sat_dt = datetime.datetime(2026, 9, 12, 12, 0, tzinfo=datetime.timezone.utc)
     sat_ts = sat_dt.timestamp()
 
-    for venue in (get_venue("XNSE"), get_venue("XETR"), get_venue("XTKS"), get_venue("XNAS")):
+    for venue in (
+        get_venue("XNSE"),
+        get_venue("XETR"),
+        get_venue("XTKS"),
+        get_venue("XNAS"),
+    ):
         is_open, phase, desc = get_session_phase(venue, sat_ts)
         assert not is_open
         assert phase == MarketPhase.CLOSED
@@ -116,3 +121,26 @@ def test_currency_formatting():
 
     # USD standard formatting
     assert format_currency(195.25, "USD") == "$195.25"
+
+
+def test_new_commodity_and_apac_venues():
+    """Verify CME futures, SGX, KRX, TWSE, and Euronext Paris registrations."""
+    assert "XCME" in GLOBAL_VENUES
+    assert GLOBAL_VENUES["XCME"].currency == "USD"
+    assert get_venue("cme").mic == "XCME"
+
+    assert "XSES" in GLOBAL_VENUES
+    assert GLOBAL_VENUES["XSES"].currency == "SGD"
+    assert get_venue("sgx").mic == "XSES"
+
+    assert "XKRX" in GLOBAL_VENUES
+    assert GLOBAL_VENUES["XKRX"].currency == "KRW"
+    assert get_venue("korea").mic == "XKRX"
+
+    assert "XTWS" in GLOBAL_VENUES
+    assert GLOBAL_VENUES["XTWS"].currency == "TWD"
+    assert get_venue("taiwan").mic == "XTWS"
+
+    assert "XPAR" in GLOBAL_VENUES
+    assert GLOBAL_VENUES["XPAR"].currency == "EUR"
+    assert get_venue("paris").mic == "XPAR"

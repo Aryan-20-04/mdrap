@@ -27,6 +27,11 @@ _STATUS_MAP = {
     1: QualityStatus.SUSPICIOUS,
     2: QualityStatus.INVALID,
 }
+_PRIORITY_MAP = {
+    QualityStatus.VALID: 0,
+    QualityStatus.SUSPICIOUS: 1,
+    QualityStatus.INVALID: 2,
+}
 
 # Bitmask values matching fastpath.c
 _REASON_BITS = [
@@ -175,11 +180,16 @@ def _load_native_lib():
     src_dir = os.path.dirname(os.path.abspath(__file__))
     candidates = []
     if sys.platform == "win32":
-        candidates = ["_fastpath_native.dll", "_fastpath_native.pyd"]
+        candidates = ["_fastpath_native.dll", "_fastpath_native.pyd", "fastpath.dll"]
     elif sys.platform == "darwin":
-        candidates = ["_fastpath_native.dylib", "_fastpath_native.so"]
+        candidates = [
+            "_fastpath_native.dylib",
+            "_fastpath_native.so",
+            "fastpath.dylib",
+            "fastpath.so",
+        ]
     else:
-        candidates = ["_fastpath_native.so"]
+        candidates = ["_fastpath_native.so", "fastpath.so"]
 
     dll_path = None
     for name in candidates:
@@ -216,6 +226,7 @@ def _load_native_lib():
         if os.path.isfile(legacy_win):
             try:
                 import shutil
+
                 shutil.copy2(legacy_win, native_win)
                 if os.path.isfile(native_win):
                     dll_path = native_win
@@ -263,6 +274,49 @@ def _load_native_lib():
                 ctypes.c_double,
             ]
             lib.fastpath_eval_fast.restype = ctypes.c_uint64
+            if hasattr(lib, "fastpath_noop"):
+                lib.fastpath_noop.argtypes = lib.fastpath_eval_fast.argtypes
+                lib.fastpath_noop.restype = ctypes.c_uint64
+
+            # Phase 2: Explicit FastEngine context bindings
+            if hasattr(lib, "fastpath_engine_create"):
+                lib.fastpath_engine_create.argtypes = [
+                    ctypes.c_double,
+                    ctypes.c_double,
+                    ctypes.c_int32,
+                ]
+                lib.fastpath_engine_create.restype = ctypes.c_void_p
+
+            if hasattr(lib, "fastpath_engine_destroy"):
+                lib.fastpath_engine_destroy.argtypes = [ctypes.c_void_p]
+                lib.fastpath_engine_destroy.restype = None
+
+            if hasattr(lib, "fastpath_engine_reset"):
+                lib.fastpath_engine_reset.argtypes = [ctypes.c_void_p]
+                lib.fastpath_engine_reset.restype = None
+
+            if hasattr(lib, "fastpath_engine_eval_fast"):
+                lib.fastpath_engine_eval_fast.argtypes = [ctypes.c_void_p] + list(
+                    lib.fastpath_eval_fast.argtypes
+                )
+                lib.fastpath_engine_eval_fast.restype = ctypes.c_uint64
+
+            if hasattr(lib, "fastpath_engine_evaluate"):
+                lib.fastpath_engine_evaluate.argtypes = [
+                    ctypes.c_void_p,
+                    ctypes.POINTER(_CFastEvent),
+                    ctypes.POINTER(_CFastResult),
+                ]
+                lib.fastpath_engine_evaluate.restype = None
+
+            if hasattr(lib, "fastpath_engine_evaluate_batch"):
+                lib.fastpath_engine_evaluate_batch.argtypes = [
+                    ctypes.c_void_p,
+                    ctypes.POINTER(_CFastEvent),
+                    ctypes.POINTER(_CFastResult),
+                    ctypes.c_int32,
+                ]
+                lib.fastpath_engine_evaluate_batch.restype = None
 
             # Phase F: Replay Buffer bindings
             if hasattr(lib, "fastpath_replay_record"):
@@ -566,6 +620,11 @@ def _load_native_lib():
 _NATIVE_LIB = _load_native_lib()
 HAS_FASTPATH: bool = bool(_NATIVE_LIB is not None)
 _FAST_EVAL = _NATIVE_LIB.fastpath_eval_fast if _NATIVE_LIB else None
+_ENGINE_FAST_EVAL = (
+    _NATIVE_LIB.fastpath_engine_eval_fast
+    if (_NATIVE_LIB and hasattr(_NATIVE_LIB, "fastpath_engine_eval_fast"))
+    else None
+)
 _NAN = math.nan
 
 
@@ -579,9 +638,7 @@ class FastQualityEngine:
     Drop-in replacement for QualityEngine backed by compiled C shared library.
     """
 
-    def __init__(
-        self, config: QualityConfig | None = None, thread_safe: bool = False
-    ):
+    def __init__(self, config: QualityConfig | None = None, thread_safe: bool = False):
         if config is None:
             try:
                 from config import load_config
@@ -600,14 +657,51 @@ class FastQualityEngine:
         self.thread_safe = thread_safe
         self._eval_lock = threading.Lock()
 
+        self._engine_ptr = None
         if _NATIVE_LIB:
-            _NATIVE_LIB.fastpath_init(
-                self.cfg.staleness_threshold_s,
-                self.cfg.price_anomaly_stddev,
-                self.cfg.price_window,
-            )
+            if hasattr(_NATIVE_LIB, "fastpath_engine_create"):
+                self._engine_ptr = _NATIVE_LIB.fastpath_engine_create(
+                    self.cfg.staleness_threshold_s,
+                    self.cfg.price_anomaly_stddev,
+                    self.cfg.price_window,
+                )
+            else:
+                _NATIVE_LIB.fastpath_init(
+                    self.cfg.staleness_threshold_s,
+                    self.cfg.price_anomaly_stddev,
+                    self.cfg.price_window,
+                )
         else:
             self._fallback_engine = QualityEngine(self.cfg)
+
+    def close(self) -> None:
+        """Release native C engine context heap allocations."""
+        if (
+            getattr(self, "_engine_ptr", None)
+            and _NATIVE_LIB
+            and hasattr(_NATIVE_LIB, "fastpath_engine_destroy")
+        ):
+            _NATIVE_LIB.fastpath_engine_destroy(self._engine_ptr)
+            self._engine_ptr = None
+
+    def __del__(self) -> None:
+        self.close()
+
+    def reset(self) -> None:
+        """Reset engine tracking state."""
+        with self._eval_lock:
+            self.counts = {"VALID": 0, "SUSPICIOUS": 0, "INVALID": 0}
+            self.reason_counts = {}
+            if (
+                self._engine_ptr
+                and _NATIVE_LIB
+                and hasattr(_NATIVE_LIB, "fastpath_engine_reset")
+            ):
+                _NATIVE_LIB.fastpath_engine_reset(self._engine_ptr)
+            elif _NATIVE_LIB:
+                _NATIVE_LIB.fastpath_reset()
+            if self._fallback_engine:
+                self._fallback_engine.reset()
 
     def _get_source_id(self, source: str) -> int:
         if source not in self._source_map:
@@ -634,59 +728,32 @@ class FastQualityEngine:
             self.reason_counts = self._fallback_engine.reason_counts
             return res
 
-        # Numerical Validity Bounds: reject non-finite and negative values
-        if event.price is not None and (
-            math.isnan(event.price) or math.isinf(event.price) or event.price < 0
-        ):
-            event.quality_status = QualityStatus.INVALID
-            event.reasons.append(Reason.SCHEMA_VIOLATION.value)
-            self.reason_counts[Reason.SCHEMA_VIOLATION.value] = (
-                self.reason_counts.get(Reason.SCHEMA_VIOLATION.value, 0) + 1
-            )
-            self.counts[QualityStatus.INVALID.value] += 1
-            return event
+        # Fast NaN check: map float('nan') to -1.0 so C engine flags SCHEMA_VIOLATION while evaluating all other rules
+        p = event.price
+        c_price = -1.0 if (p is not None and p != p) else (p if p is not None else _NAN)
 
-        if event.quantity is not None and (
-            math.isnan(event.quantity)
-            or math.isinf(event.quantity)
-            or event.quantity < 0
-        ):
-            event.quality_status = QualityStatus.INVALID
-            event.reasons.append(Reason.SCHEMA_VIOLATION.value)
-            self.reason_counts[Reason.SCHEMA_VIOLATION.value] = (
-                self.reason_counts.get(Reason.SCHEMA_VIOLATION.value, 0) + 1
-            )
-            self.counts[QualityStatus.INVALID.value] += 1
-            return event
+        q = event.quantity
+        c_qty = -1.0 if (q is not None and q != q) else (q if q is not None else _NAN)
 
-        if event.bid_price is not None and (
-            math.isnan(event.bid_price)
-            or math.isinf(event.bid_price)
-            or event.bid_price < 0
-        ):
-            event.quality_status = QualityStatus.INVALID
-            event.reasons.append(Reason.SCHEMA_VIOLATION.value)
-            self.reason_counts[Reason.SCHEMA_VIOLATION.value] = (
-                self.reason_counts.get(Reason.SCHEMA_VIOLATION.value, 0) + 1
-            )
-            self.counts[QualityStatus.INVALID.value] += 1
-            return event
+        bp = event.bid_price
+        c_bid_px = -1.0 if (bp is not None and bp != bp) else (bp if bp is not None else _NAN)
 
-        if event.ask_price is not None and (
-            math.isnan(event.ask_price)
-            or math.isinf(event.ask_price)
-            or event.ask_price < 0
-        ):
-            event.quality_status = QualityStatus.INVALID
-            event.reasons.append(Reason.SCHEMA_VIOLATION.value)
-            self.reason_counts[Reason.SCHEMA_VIOLATION.value] = (
-                self.reason_counts.get(Reason.SCHEMA_VIOLATION.value, 0) + 1
-            )
-            self.counts[QualityStatus.INVALID.value] += 1
-            return event
+        ap = event.ask_price
+        c_ask_px = -1.0 if (ap is not None and ap != ap) else (ap if ap is not None else _NAN)
 
-        s_id = self._get_source_id(event.source)
-        i_id = self._get_instrument_id(event.instrument_id)
+        s_id = event.source_id
+        if s_id < 0:
+            s_id = self._source_map.get(event.source)
+            if s_id is None:
+                s_id = self._source_map[event.source] = len(self._source_map)
+            event.source_id = s_id
+
+        i_id = event.instrument_id_int
+        if i_id < 0:
+            i_id = self._inst_map.get(event.instrument_id)
+            if i_id is None:
+                i_id = self._inst_map[event.instrument_id] = len(self._inst_map)
+            event.instrument_id_int = i_id
 
         # Graceful fallback: C static tables have MAX_SOURCES=32, MAX_INSTRUMENTS=8192.
         # If the number of unique sources or instruments exceeds C bounds, evaluate with Python engine.
@@ -703,20 +770,37 @@ class FastQualityEngine:
 
         try:
             # Direct CPU register call to C hot path (< 100 ns)
-            packed = _FAST_EVAL(
-                s_id,
-                i_id,
-                1 if event.event_type == EventType.QUOTE else 0,
-                event.exchange_timestamp,
-                event.receive_timestamp,
-                event.sequence_number if event.sequence_number is not None else -1,
-                event.price if event.price is not None else _NAN,
-                event.quantity if event.quantity is not None else _NAN,
-                event.bid_price if event.bid_price is not None else _NAN,
-                event.ask_price if event.ask_price is not None else _NAN,
-                event.bid_size if event.bid_size is not None else _NAN,
-                event.ask_size if event.ask_size is not None else _NAN,
-            )
+            if self._engine_ptr and _ENGINE_FAST_EVAL:
+                packed = _ENGINE_FAST_EVAL(
+                    self._engine_ptr,
+                    s_id,
+                    i_id,
+                    1 if event.event_type == EventType.QUOTE else 0,
+                    event.exchange_timestamp,
+                    event.receive_timestamp,
+                    event.sequence_number if event.sequence_number is not None else -1,
+                    c_price,
+                    c_qty,
+                    c_bid_px,
+                    c_ask_px,
+                    event.bid_size if event.bid_size is not None else _NAN,
+                    event.ask_size if event.ask_size is not None else _NAN,
+                )
+            else:
+                packed = _FAST_EVAL(
+                    s_id,
+                    i_id,
+                    1 if event.event_type == EventType.QUOTE else 0,
+                    event.exchange_timestamp,
+                    event.receive_timestamp,
+                    event.sequence_number if event.sequence_number is not None else -1,
+                    c_price,
+                    c_qty,
+                    c_bid_px,
+                    c_ask_px,
+                    event.bid_size if event.bid_size is not None else _NAN,
+                    event.ask_size if event.ask_size is not None else _NAN,
+                )
         except Exception:
             # Fault-tolerant shield: seamlessly fall back to pure Python if C DLL faults
             if not self._fallback_engine:
@@ -731,12 +815,7 @@ class FastQualityEngine:
         status = _STATUS_MAP[status_code]
 
         # Priority guard: never downgrade if already marked
-        priority = {
-            QualityStatus.VALID: 0,
-            QualityStatus.SUSPICIOUS: 1,
-            QualityStatus.INVALID: 2,
-        }
-        if priority[status] > priority.get(event.quality_status, 0):
+        if _PRIORITY_MAP[status] > _PRIORITY_MAP.get(event.quality_status, 0):
             event.quality_status = status
 
         if mask:
@@ -750,9 +829,7 @@ class FastQualityEngine:
         self.counts[event.quality_status.value] += 1
         return event
 
-    def evaluate_batch(
-        self, events: list[CanonicalEvent]
-    ) -> list[CanonicalEvent]:
+    def evaluate_batch(self, events: list[CanonicalEvent]) -> list[CanonicalEvent]:
         """
         Evaluate a micro-batch of CanonicalEvents in a single C boundary crossing.
         Strictly preserves per-source/per-instrument arrival order (Invariant A5).
@@ -796,15 +873,22 @@ class FastQualityEngine:
             c_ev.sequence_num = (
                 ev.sequence_number if ev.sequence_number is not None else -1
             )
-            c_ev.price = ev.price if ev.price is not None else _NAN
-            c_ev.quantity = ev.quantity if ev.quantity is not None else _NAN
-            c_ev.bid_price = ev.bid_price if ev.bid_price is not None else _NAN
-            c_ev.ask_price = ev.ask_price if ev.ask_price is not None else _NAN
+            p = ev.price
+            c_ev.price = -1.0 if (p is not None and p != p) else (p if p is not None else _NAN)
+            q = ev.quantity
+            c_ev.quantity = -1.0 if (q is not None and q != q) else (q if q is not None else _NAN)
+            bp = ev.bid_price
+            c_ev.bid_price = -1.0 if (bp is not None and bp != bp) else (bp if bp is not None else _NAN)
+            ap = ev.ask_price
+            c_ev.ask_price = -1.0 if (ap is not None and ap != ap) else (ap if ap is not None else _NAN)
             c_ev.bid_size = ev.bid_size if ev.bid_size is not None else _NAN
             c_ev.ask_size = ev.ask_size if ev.ask_size is not None else _NAN
 
         try:
-            _NATIVE_LIB.fastpath_evaluate_batch(c_events, c_results, n)
+            if self._engine_ptr and hasattr(_NATIVE_LIB, "fastpath_engine_evaluate_batch"):
+                _NATIVE_LIB.fastpath_engine_evaluate_batch(self._engine_ptr, c_events, c_results, n)
+            else:
+                _NATIVE_LIB.fastpath_evaluate_batch(c_events, c_results, n)
         except Exception:
             # Fallback to individual evaluate if batch call fails
             for ev in events:
@@ -841,15 +925,6 @@ class FastQualityEngine:
             self.counts[ev.quality_status.value] += 1
 
         return events
-
-    def reset(self):
-        with self._eval_lock:
-            if _NATIVE_LIB:
-                _NATIVE_LIB.fastpath_reset()
-            if self._fallback_engine:
-                self._fallback_engine = QualityEngine(self.cfg)
-            self.counts = {"VALID": 0, "SUSPICIOUS": 0, "INVALID": 0}
-            self.reason_counts.clear()
 
     def process_sbe_stream(
         self,
@@ -906,6 +981,19 @@ class FastQualityEngine:
                     status="VALID",
                 )
         return buf
+
+
+# Phase 5: Explicit Two-Tier Architecture Aliases and Runtime Switch
+NativeQualityEngine = FastQualityEngine
+
+
+def get_quality_engine(
+    config: QualityConfig | None = None, prefer_native: bool = True
+) -> FastQualityEngine | QualityEngine:
+    """Runtime switch between Tier 1 (Native C) and Tier 2 (Pure Python)."""
+    if prefer_native and is_available():
+        return NativeQualityEngine(config)
+    return QualityEngine(config)
 
 
 class NativeReplayBuffer:

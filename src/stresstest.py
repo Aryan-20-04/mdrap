@@ -847,4 +847,3 @@ def stress_instrument_sharded_pipeline(
         "throughput_eps": round(eps, 1),
         "cross_feed_consensus_preserved": True,
     }
-

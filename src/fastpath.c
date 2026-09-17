@@ -70,274 +70,6 @@ typedef struct {
     int32_t window;
 } FastRollingStats;
 
-// Engine State
-static double g_staleness_threshold_s = 0.05;
-static double g_price_anomaly_stddev = 6.0;
-static int32_t g_price_window = 50;
-
-// Dynamic Heap-backed state buffers (allocated in fastpath_init)
-static int64_t *g_last_seq = NULL;
-static double *g_last_ts = NULL;
-static FastRollingStats *g_price_stats = NULL;
-
-static inline uint32_t get_slot(int32_t s_id, int32_t i_id) {
-    return (uint32_t)((s_id << INSTRUMENT_SHIFT) | i_id);
-}
-
-// Deduplication Hash Table (open-addressing with linear probing)
-static uint64_t g_dedup_keys[DEDUP_CACHE_SIZE];
-static uint8_t g_dedup_occupied[DEDUP_CACHE_SIZE];
-
-// FNV-1a 64-bit hash
-static inline uint64_t fnv1a_64(const void *data, size_t len, uint64_t hash) {
-    const uint8_t *ptr = (const uint8_t *)data;
-    for (size_t i = 0; i < len; ++i) {
-        hash ^= (uint64_t)ptr[i];
-        hash *= 1099511628211ULL;
-    }
-    return hash;
-}
-
-static inline uint64_t compute_dedup_key(const FastEvent *ev) {
-    uint64_t h = 14695981039346656037ULL;
-    h = fnv1a_64(&ev->source_id, sizeof(ev->source_id), h);
-    h = fnv1a_64(&ev->instrument_id, sizeof(ev->instrument_id), h);
-
-    if (ev->sequence_num >= 0) {
-        h = fnv1a_64(&ev->sequence_num, sizeof(ev->sequence_num), h);
-        return h;
-    }
-
-    h = fnv1a_64(&ev->event_type, sizeof(ev->event_type), h);
-    int64_t rounded_ts = (int64_t)(ev->exchange_ts * 1000000.0 + 0.5);
-    h = fnv1a_64(&rounded_ts, sizeof(rounded_ts), h);
-
-    if (ev->event_type == 1) { // QUOTE
-        h = fnv1a_64(&ev->bid_price, sizeof(ev->bid_price), h);
-        h = fnv1a_64(&ev->ask_price, sizeof(ev->ask_price), h);
-        h = fnv1a_64(&ev->bid_size, sizeof(ev->bid_size), h);
-        h = fnv1a_64(&ev->ask_size, sizeof(ev->ask_size), h);
-    } else { // TRADE
-        h = fnv1a_64(&ev->price, sizeof(ev->price), h);
-        h = fnv1a_64(&ev->quantity, sizeof(ev->quantity), h);
-    }
-    return h;
-}
-
-static inline int check_and_insert_dedup(uint64_t key) {
-    uint32_t idx = (uint32_t)(key & DEDUP_MASK);
-    for (int i = 0; i < 16; ++i) {
-        uint32_t slot = (idx + i) & DEDUP_MASK;
-        if (!g_dedup_occupied[slot]) {
-            g_dedup_keys[slot] = key;
-            g_dedup_occupied[slot] = 1;
-            return 0; // Not a duplicate, inserted
-        }
-        if (g_dedup_keys[slot] == key) {
-            return 1; // Duplicate detected
-        }
-    }
-    // Hash table capacity reached slot limit, evict and replace
-    g_dedup_keys[idx] = key;
-    return 0;
-}
-
-static inline void mark(FastResult *res, int32_t status, uint32_t reason) {
-    if (status > res->status) {
-        res->status = status;
-    }
-    res->reason_mask |= reason;
-}
-
-// Exported C Functions
-#ifdef _WIN32
-#define EXPORT __declspec(dllexport)
-#else
-#define EXPORT
-#endif
-
-EXPORT void fastpath_cleanup(void) {
-    if (g_last_seq) { free(g_last_seq); g_last_seq = NULL; }
-    if (g_last_ts) { free(g_last_ts); g_last_ts = NULL; }
-    if (g_price_stats) { free(g_price_stats); g_price_stats = NULL; }
-}
-
-EXPORT void fastpath_init(double staleness_threshold_s, double anomaly_stddev, int32_t price_window) {
-    g_staleness_threshold_s = staleness_threshold_s;
-    g_price_anomaly_stddev = anomaly_stddev;
-    g_price_window = price_window > MAX_WINDOW ? MAX_WINDOW : price_window;
-
-    size_t total_slots = (size_t)TOTAL_SLOTS;
-    if (!g_last_seq) {
-        g_last_seq = (int64_t *)malloc(total_slots * sizeof(int64_t));
-    }
-    if (!g_last_ts) {
-        g_last_ts = (double *)malloc(total_slots * sizeof(double));
-    }
-    if (!g_price_stats) {
-        g_price_stats = (FastRollingStats *)calloc(total_slots, sizeof(FastRollingStats));
-    }
-
-    if (g_last_seq && g_last_ts && g_price_stats) {
-        for (size_t idx = 0; idx < total_slots; ++idx) {
-            g_last_seq[idx] = -1;
-            g_last_ts[idx] = 0.0;
-            g_price_stats[idx].mean = 0.0;
-            g_price_stats[idx].m2 = 0.0;
-            g_price_stats[idx].n = 0;
-            g_price_stats[idx].head = 0;
-            g_price_stats[idx].window = g_price_window;
-        }
-    }
-    memset(g_dedup_occupied, 0, sizeof(g_dedup_occupied));
-}
-
-EXPORT void fastpath_reset(void) {
-    fastpath_init(g_staleness_threshold_s, g_price_anomaly_stddev, g_price_window);
-}
-
-EXPORT void fastpath_evaluate(const FastEvent *ev, FastResult *res) {
-    res->status = STATUS_VALID;
-    res->reason_mask = REASON_NONE;
-
-    int32_t s_id = ev->source_id;
-    int32_t i_id = ev->instrument_id;
-
-    if (s_id < 0 || s_id >= MAX_SOURCES || i_id < 0 || i_id >= MAX_INSTRUMENTS) {
-        mark(res, STATUS_INVALID, REASON_SCHEMA_VIOLATION);
-        return;
-    }
-
-    // Numerical Validity Bounds: reject inf or negative prices / quantities
-    if ((!isnan(ev->price) && (isinf(ev->price) || ev->price < 0.0)) ||
-        (!isnan(ev->quantity) && (isinf(ev->quantity) || ev->quantity < 0.0)) ||
-        (!isnan(ev->bid_price) && (isinf(ev->bid_price) || ev->bid_price < 0.0)) ||
-        (!isnan(ev->ask_price) && (isinf(ev->ask_price) || ev->ask_price < 0.0))) {
-        mark(res, STATUS_INVALID, REASON_SCHEMA_VIOLATION);
-        return;
-    }
-
-    if (!g_last_seq || !g_last_ts || !g_price_stats) {
-        fastpath_init(g_staleness_threshold_s, g_price_anomaly_stddev, g_price_window);
-        if (!g_last_seq || !g_last_ts || !g_price_stats) {
-            mark(res, STATUS_INVALID, REASON_SCHEMA_VIOLATION);
-            return;
-        }
-    }
-
-    uint32_t slot = get_slot(s_id, i_id);
-
-    // 1. Deduplication
-    uint64_t key = compute_dedup_key(ev);
-    if (check_and_insert_dedup(key)) {
-        mark(res, STATUS_INVALID, REASON_DUPLICATE);
-    }
-
-    // 2. Sequence-gap detection
-    int64_t last_s = g_last_seq[slot];
-    if (ev->sequence_num >= 0) {
-        if (last_s >= 0 && ev->sequence_num > last_s + 1) {
-            mark(res, STATUS_SUSPICIOUS, REASON_SEQUENCE_GAP);
-        }
-        if (last_s < 0 || ev->sequence_num > last_s) {
-            g_last_seq[slot] = ev->sequence_num;
-        }
-    }
-
-    // 3. Ordering regression
-    double last_t = g_last_ts[slot];
-    if (last_t > 0.0 && ev->exchange_ts < last_t) {
-        mark(res, STATUS_SUSPICIOUS, REASON_OUT_OF_ORDER);
-    } else {
-        g_last_ts[slot] = ev->exchange_ts;
-    }
-
-    // 4. Staleness
-    if (ev->receive_ts - ev->exchange_ts > g_staleness_threshold_s) {
-        mark(res, STATUS_SUSPICIOUS, REASON_STALE);
-    }
-
-    // 5. Quote consistency: crossed book
-    if (!isnan(ev->bid_price) && !isnan(ev->ask_price)) {
-        if (ev->bid_price > ev->ask_price) {
-            mark(res, STATUS_INVALID, REASON_CROSSED_QUOTE);
-        }
-    }
-
-    // 6. Price sanity (Welford's algorithm)
-    if (!isnan(ev->price)) {
-        FastRollingStats *st = &g_price_stats[slot];
-        double mean_prior, std_prior;
-
-        if (st->n == 0) {
-            mean_prior = ev->price;
-            std_prior = 0.0;
-        } else {
-            mean_prior = st->mean;
-            double var = st->m2 / st->n;
-            std_prior = sqrt(var > 0.0 ? var : 0.0);
-        }
-
-        // Anomaly threshold
-        int is_anomaly = (std_prior > 0.0 && fabs(ev->price - mean_prior) > g_price_anomaly_stddev * std_prior);
-        if (is_anomaly) {
-            mark(res, STATUS_SUSPICIOUS, REASON_PRICE_ANOMALY);
-        } else {
-            // Add to clean baseline window only
-            st->values[st->head] = ev->price;
-            st->head = (st->head + 1) % st->window;
-            st->n++;
-            double delta = ev->price - st->mean;
-            st->mean += delta / st->n;
-            st->m2 += delta * (ev->price - st->mean);
-
-            // Reverse Welford update if window exceeded
-            if (st->n > st->window) {
-                int32_t old_idx = st->head;
-                double old_val = st->values[old_idx];
-                st->n--;
-                double delta_old = old_val - st->mean;
-                st->mean -= delta_old / st->n;
-                st->m2 -= delta_old * (old_val - st->mean);
-                if (st->m2 < 0.0) st->m2 = 0.0;
-            }
-        }
-    }
-}
-
-EXPORT void fastpath_evaluate_batch(const FastEvent *events, FastResult *results, int32_t count) {
-    for (int32_t i = 0; i < count; ++i) {
-        fastpath_evaluate(&events[i], &results[i]);
-    }
-}
-
-EXPORT uint64_t fastpath_eval_fast(
-    int32_t source_id, int32_t instrument_id, int32_t event_type,
-    double exchange_ts, double receive_ts, int64_t sequence_num,
-    double price, double quantity, double bid_price, double ask_price,
-    double bid_size, double ask_size
-) {
-    FastEvent ev;
-    ev.source_id = source_id;
-    ev.instrument_id = instrument_id;
-    ev.event_type = event_type;
-    ev.exchange_ts = exchange_ts;
-    ev.receive_ts = receive_ts;
-    ev.sequence_num = sequence_num;
-    ev.price = price;
-    ev.quantity = quantity;
-    ev.bid_price = bid_price;
-    ev.ask_price = ask_price;
-    ev.bid_size = bid_size;
-    ev.ask_size = ask_size;
-
-    FastResult res;
-    fastpath_evaluate(&ev, &res);
-
-    return (((uint64_t)res.status) << 32) | ((uint64_t)res.reason_mask);
-}
-
-
 // ============================================================================
 // Phase F: High-Performance Native C Circular Replay Buffer (Spec §18)
 // ============================================================================
@@ -388,12 +120,315 @@ typedef struct {
 } FastBinTickFrame;
 #pragma pack(pop)
 
-static FastReplayRecord g_replay_ring[REPLAY_RING_SIZE];
-static uint64_t g_replay_min_seq = 0;
-static uint64_t g_replay_max_seq = 0;
-static uint64_t g_replay_total_recorded = 0;
+typedef struct FastEngine {
+    double   staleness_threshold_s;
+    double   price_anomaly_stddev;
+    int32_t  price_window;
+    int64_t *last_seq;
+    double  *last_ts;
+    FastRollingStats *price_stats;
+    uint64_t dedup_keys[DEDUP_CACHE_SIZE];
+    uint8_t  dedup_occupied[DEDUP_CACHE_SIZE];
+    FastReplayRecord replay_ring[REPLAY_RING_SIZE];
+    uint64_t replay_min_seq;
+    uint64_t replay_max_seq;
+    uint64_t replay_total_recorded;
+} FastEngine;
 
-EXPORT void fastpath_replay_record(
+static inline uint32_t get_slot(int32_t s_id, int32_t i_id) {
+    return (uint32_t)((s_id << INSTRUMENT_SHIFT) | i_id);
+}
+
+// FNV-1a 64-bit hash
+static inline uint64_t fnv1a_64(const void *data, size_t len, uint64_t hash) {
+    const uint8_t *ptr = (const uint8_t *)data;
+    for (size_t i = 0; i < len; ++i) {
+        hash ^= (uint64_t)ptr[i];
+        hash *= 1099511628211ULL;
+    }
+    return hash;
+}
+
+static inline uint64_t compute_dedup_key(const FastEvent *ev) {
+    uint64_t h = 14695981039346656037ULL;
+    h = fnv1a_64(&ev->source_id, sizeof(ev->source_id), h);
+    h = fnv1a_64(&ev->instrument_id, sizeof(ev->instrument_id), h);
+
+    if (ev->sequence_num >= 0) {
+        h = fnv1a_64(&ev->sequence_num, sizeof(ev->sequence_num), h);
+        return h;
+    }
+
+    h = fnv1a_64(&ev->event_type, sizeof(ev->event_type), h);
+    int64_t rounded_ts = (int64_t)(ev->exchange_ts * 1000000.0 + 0.5);
+    h = fnv1a_64(&rounded_ts, sizeof(rounded_ts), h);
+
+    if (ev->event_type == 1) { // QUOTE
+        h = fnv1a_64(&ev->bid_price, sizeof(ev->bid_price), h);
+        h = fnv1a_64(&ev->ask_price, sizeof(ev->ask_price), h);
+        h = fnv1a_64(&ev->bid_size, sizeof(ev->bid_size), h);
+        h = fnv1a_64(&ev->ask_size, sizeof(ev->ask_size), h);
+    } else { // TRADE
+        h = fnv1a_64(&ev->price, sizeof(ev->price), h);
+        h = fnv1a_64(&ev->quantity, sizeof(ev->quantity), h);
+    }
+    return h;
+}
+
+static inline int check_and_insert_dedup(FastEngine *eng, uint64_t key) {
+    uint32_t idx = (uint32_t)(key & DEDUP_MASK);
+    for (int i = 0; i < 16; ++i) {
+        uint32_t slot = (idx + i) & DEDUP_MASK;
+        if (!eng->dedup_occupied[slot]) {
+            eng->dedup_keys[slot] = key;
+            eng->dedup_occupied[slot] = 1;
+            return 0; // Not a duplicate, inserted
+        }
+        if (eng->dedup_keys[slot] == key) {
+            return 1; // Duplicate detected
+        }
+    }
+    // Hash table capacity reached slot limit, evict and replace
+    eng->dedup_keys[idx] = key;
+    return 0;
+}
+
+static inline void mark(FastResult *res, int32_t status, uint32_t reason) {
+    if (status > res->status) {
+        res->status = status;
+    }
+    res->reason_mask |= reason;
+}
+
+// Exported C Functions
+#ifdef _WIN32
+#define EXPORT __declspec(dllexport)
+#else
+#define EXPORT
+#endif
+
+EXPORT FastEngine *fastpath_engine_create(double staleness, double stddev, int32_t window) {
+    FastEngine *eng = (FastEngine *)calloc(1, sizeof(FastEngine));
+    if (!eng) return NULL;
+
+    eng->staleness_threshold_s = staleness > 0.0 ? staleness : 0.05;
+    eng->price_anomaly_stddev = stddev > 0.0 ? stddev : 6.0;
+    eng->price_window = window > MAX_WINDOW ? MAX_WINDOW : (window > 0 ? window : 50);
+
+    size_t total_slots = (size_t)TOTAL_SLOTS;
+    eng->last_seq = (int64_t *)malloc(total_slots * sizeof(int64_t));
+    eng->last_ts = (double *)malloc(total_slots * sizeof(double));
+    eng->price_stats = (FastRollingStats *)calloc(total_slots, sizeof(FastRollingStats));
+
+    if (!eng->last_seq || !eng->last_ts || !eng->price_stats) {
+        if (eng->last_seq) free(eng->last_seq);
+        if (eng->last_ts) free(eng->last_ts);
+        if (eng->price_stats) free(eng->price_stats);
+        free(eng);
+        return NULL;
+    }
+
+    for (size_t idx = 0; idx < total_slots; ++idx) {
+        eng->last_seq[idx] = -1;
+        eng->last_ts[idx] = 0.0;
+        eng->price_stats[idx].window = eng->price_window;
+    }
+    return eng;
+}
+
+EXPORT void fastpath_engine_destroy(FastEngine *eng) {
+    if (!eng) return;
+    if (eng->last_seq) free(eng->last_seq);
+    if (eng->last_ts) free(eng->last_ts);
+    if (eng->price_stats) free(eng->price_stats);
+    free(eng);
+}
+
+EXPORT void fastpath_engine_reset(FastEngine *eng) {
+    if (!eng) return;
+    size_t total_slots = (size_t)TOTAL_SLOTS;
+    if (eng->last_seq && eng->last_ts && eng->price_stats) {
+        for (size_t idx = 0; idx < total_slots; ++idx) {
+            eng->last_seq[idx] = -1;
+            eng->last_ts[idx] = 0.0;
+            eng->price_stats[idx].mean = 0.0;
+            eng->price_stats[idx].m2 = 0.0;
+            eng->price_stats[idx].n = 0;
+            eng->price_stats[idx].head = 0;
+            eng->price_stats[idx].window = eng->price_window;
+        }
+    }
+    memset(eng->dedup_occupied, 0, sizeof(eng->dedup_occupied));
+    memset(eng->replay_ring, 0, sizeof(eng->replay_ring));
+    eng->replay_min_seq = 0;
+    eng->replay_max_seq = 0;
+    eng->replay_total_recorded = 0;
+}
+
+EXPORT void fastpath_engine_evaluate(FastEngine *eng, const FastEvent *ev, FastResult *res) {
+    res->status = STATUS_VALID;
+    res->reason_mask = REASON_NONE;
+
+    if (!eng) {
+        mark(res, STATUS_INVALID, REASON_SCHEMA_VIOLATION);
+        return;
+    }
+
+    int32_t s_id = ev->source_id;
+    int32_t i_id = ev->instrument_id;
+
+    if (s_id < 0 || s_id >= MAX_SOURCES || i_id < 0 || i_id >= MAX_INSTRUMENTS) {
+        mark(res, STATUS_INVALID, REASON_SCHEMA_VIOLATION);
+        return;
+    }
+
+    if (!eng->last_seq || !eng->last_ts || !eng->price_stats) {
+        mark(res, STATUS_INVALID, REASON_SCHEMA_VIOLATION);
+        return;
+    }
+
+    uint32_t slot = get_slot(s_id, i_id);
+
+    // 1. Deduplication
+    uint64_t key = compute_dedup_key(ev);
+    if (check_and_insert_dedup(eng, key)) {
+        mark(res, STATUS_INVALID, REASON_DUPLICATE);
+    }
+
+    // 2. Sequence-gap detection
+    int64_t last_s = eng->last_seq[slot];
+    if (ev->sequence_num >= 0) {
+        if (last_s >= 0 && ev->sequence_num > last_s + 1) {
+            mark(res, STATUS_SUSPICIOUS, REASON_SEQUENCE_GAP);
+        }
+        if (last_s < 0 || ev->sequence_num > last_s) {
+            eng->last_seq[slot] = ev->sequence_num;
+        }
+    }
+
+    // 3. Ordering regression
+    double last_t = eng->last_ts[slot];
+    if (last_t > 0.0 && ev->exchange_ts < last_t) {
+        mark(res, STATUS_SUSPICIOUS, REASON_OUT_OF_ORDER);
+    } else {
+        eng->last_ts[slot] = ev->exchange_ts;
+    }
+
+    // 4. Numerical Validity Bounds: reject inf or negative prices / quantities
+    int invalid_num = 0;
+    if ((!isnan(ev->price) && (isinf(ev->price) || ev->price < 0.0)) ||
+        (!isnan(ev->quantity) && (isinf(ev->quantity) || ev->quantity < 0.0)) ||
+        (!isnan(ev->bid_price) && (isinf(ev->bid_price) || ev->bid_price < 0.0)) ||
+        (!isnan(ev->ask_price) && (isinf(ev->ask_price) || ev->ask_price < 0.0))) {
+        mark(res, STATUS_INVALID, REASON_SCHEMA_VIOLATION);
+        invalid_num = 1;
+    }
+
+    // 5. Staleness
+    if (ev->receive_ts - ev->exchange_ts > eng->staleness_threshold_s) {
+        mark(res, STATUS_SUSPICIOUS, REASON_STALE);
+    }
+
+    // 6. Quote consistency: crossed book
+    if (!invalid_num && !isnan(ev->bid_price) && !isnan(ev->ask_price)) {
+        if (ev->bid_price > ev->ask_price) {
+            mark(res, STATUS_INVALID, REASON_CROSSED_QUOTE);
+        }
+    }
+
+    // 7. Price sanity (Welford's algorithm + flat history anomaly)
+    if (!invalid_num && !isnan(ev->price)) {
+        FastRollingStats *st = &eng->price_stats[slot];
+        double mean_prior, std_prior;
+
+        if (st->n == 0) {
+            mean_prior = ev->price;
+            std_prior = 0.0;
+        } else {
+            mean_prior = st->mean;
+            double var = st->m2 / st->n;
+            std_prior = sqrt(var > 0.0 ? var : 0.0);
+        }
+
+        // Anomaly threshold: standard deviation or flat history
+        int is_anomaly = (std_prior > 0.0 && fabs(ev->price - mean_prior) > eng->price_anomaly_stddev * std_prior) ||
+                         (std_prior == 0.0 && mean_prior > 0.0 && st->n >= 3 && fabs(ev->price - mean_prior) / mean_prior > 0.10);
+        if (is_anomaly) {
+            mark(res, STATUS_SUSPICIOUS, REASON_PRICE_ANOMALY);
+        } else {
+            // Add to clean baseline window only
+            int has_old = (st->n >= st->window);
+            double old_val = has_old ? st->values[st->head] : 0.0;
+
+            st->values[st->head] = ev->price;
+            st->head = (st->head + 1) % st->window;
+
+            st->n++;
+            double delta = ev->price - st->mean;
+            st->mean += delta / st->n;
+            st->m2 += delta * (ev->price - st->mean);
+
+            // Reverse Welford update if window exceeded
+            if (has_old) {
+                st->n--;
+                double delta_old = old_val - st->mean;
+                st->mean -= delta_old / st->n;
+                st->m2 -= delta_old * (old_val - st->mean);
+                if (st->m2 < 0.0) st->m2 = 0.0;
+            }
+        }
+    }
+}
+
+EXPORT void fastpath_engine_evaluate_batch(FastEngine *eng, const FastEvent *events, FastResult *results, int32_t count) {
+    for (int32_t i = 0; i < count; ++i) {
+        fastpath_engine_evaluate(eng, &events[i], &results[i]);
+    }
+}
+
+EXPORT uint64_t fastpath_engine_eval_fast(
+    FastEngine *eng,
+    int32_t source_id, int32_t instrument_id, int32_t event_type,
+    double exchange_ts, double receive_ts, int64_t sequence_num,
+    double price, double quantity, double bid_price, double ask_price,
+    double bid_size, double ask_size
+) {
+    FastEvent ev;
+    ev.source_id = source_id;
+    ev.instrument_id = instrument_id;
+    ev.event_type = event_type;
+    ev.exchange_ts = exchange_ts;
+    ev.receive_ts = receive_ts;
+    ev.sequence_num = sequence_num;
+    ev.price = price;
+    ev.quantity = quantity;
+    ev.bid_price = bid_price;
+    ev.ask_price = ask_price;
+    ev.bid_size = bid_size;
+    ev.ask_size = ask_size;
+
+    FastResult res;
+    fastpath_engine_evaluate(eng, &ev, &res);
+
+    return (((uint64_t)res.status) << 32) | ((uint64_t)res.reason_mask);
+}
+
+EXPORT uint64_t fastpath_engine_noop(
+    FastEngine *eng,
+    int32_t source_id, int32_t instrument_id, int32_t event_type,
+    double exchange_ts, double receive_ts, int64_t sequence_num,
+    double price, double quantity, double bid_price, double ask_price,
+    double bid_size, double ask_size
+) {
+    (void)eng; (void)source_id; (void)instrument_id; (void)event_type;
+    (void)exchange_ts; (void)receive_ts; (void)sequence_num;
+    (void)price; (void)quantity; (void)bid_price; (void)ask_price;
+    (void)bid_size; (void)ask_size;
+    return 0;
+}
+
+EXPORT void fastpath_engine_replay_record(
+    FastEngine *eng,
     uint64_t seq,
     const char *symbol,
     const char *source,
@@ -411,8 +446,9 @@ EXPORT void fastpath_replay_record(
     double broadcast_ts,
     double engine_us
 ) {
+    if (!eng) return;
     uint32_t slot = (uint32_t)(seq & REPLAY_RING_MASK);
-    FastReplayRecord *rec = &g_replay_ring[slot];
+    FastReplayRecord *rec = &eng->replay_ring[slot];
 
     rec->seq = seq;
     strncpy(rec->symbol, symbol ? symbol : "", sizeof(rec->symbol) - 1);
@@ -436,25 +472,26 @@ EXPORT void fastpath_replay_record(
     rec->engine_us = engine_us;
     rec->is_valid = 1;
 
-    if (g_replay_total_recorded == 0 || seq > g_replay_max_seq) {
-        g_replay_max_seq = seq;
+    if (eng->replay_total_recorded == 0 || seq > eng->replay_max_seq) {
+        eng->replay_max_seq = seq;
     }
     if (seq >= REPLAY_RING_SIZE) {
-        g_replay_min_seq = seq - REPLAY_RING_SIZE + 1;
-    } else if (g_replay_min_seq == 0) {
-        g_replay_min_seq = seq;
+        eng->replay_min_seq = seq - REPLAY_RING_SIZE + 1;
+    } else if (eng->replay_min_seq == 0) {
+        eng->replay_min_seq = seq;
     }
-    g_replay_total_recorded++;
+    eng->replay_total_recorded++;
 }
 
-EXPORT int32_t fastpath_replay_slice(
+EXPORT int32_t fastpath_engine_replay_slice(
+    FastEngine *eng,
     uint64_t from_seq,
     uint64_t to_seq,
     const char *symbol,
     FastReplayRecord *out_records,
     int32_t max_out
 ) {
-    if (to_seq < from_seq || max_out <= 0 || !out_records) {
+    if (!eng || to_seq < from_seq || max_out <= 0 || !out_records) {
         return 0;
     }
 
@@ -466,7 +503,7 @@ EXPORT int32_t fastpath_replay_slice(
             break;
         }
         uint32_t slot = (uint32_t)(s & REPLAY_RING_MASK);
-        FastReplayRecord *rec = &g_replay_ring[slot];
+        FastReplayRecord *rec = &eng->replay_ring[slot];
 
         if (rec->is_valid && rec->seq == s) {
             if (!filter_sym || strcmp(rec->symbol, symbol) == 0) {
@@ -478,7 +515,8 @@ EXPORT int32_t fastpath_replay_slice(
     return count;
 }
 
-EXPORT int32_t fastpath_replay_binary_slice(
+EXPORT int32_t fastpath_engine_replay_binary_slice(
+    FastEngine *eng,
     uint64_t from_seq,
     uint64_t to_seq,
     const char *symbol,
@@ -486,7 +524,7 @@ EXPORT int32_t fastpath_replay_binary_slice(
     int32_t max_bytes
 ) {
     int32_t frame_len = (int32_t)sizeof(FastBinTickFrame); // 92 bytes
-    if (to_seq < from_seq || max_bytes < frame_len || !out_bytes) {
+    if (!eng || to_seq < from_seq || max_bytes < frame_len || !out_bytes) {
         return 0;
     }
 
@@ -499,7 +537,7 @@ EXPORT int32_t fastpath_replay_binary_slice(
             break;
         }
         uint32_t slot = (uint32_t)(s & REPLAY_RING_MASK);
-        FastReplayRecord *rec = &g_replay_ring[slot];
+        FastReplayRecord *rec = &eng->replay_ring[slot];
 
         if (rec->is_valid && rec->seq == s) {
             if (!filter_sym || strcmp(rec->symbol, symbol) == 0) {
@@ -534,23 +572,155 @@ EXPORT int32_t fastpath_replay_binary_slice(
     return frames_written;
 }
 
+EXPORT void fastpath_engine_replay_stats(
+    FastEngine *eng,
+    uint64_t *out_min_seq,
+    uint64_t *out_max_seq,
+    uint64_t *out_total_recorded,
+    int32_t *out_capacity
+) {
+    if (!eng) return;
+    if (out_min_seq) *out_min_seq = eng->replay_min_seq;
+    if (out_max_seq) *out_max_seq = eng->replay_max_seq;
+    if (out_total_recorded) *out_total_recorded = eng->replay_total_recorded;
+    if (out_capacity) *out_capacity = REPLAY_RING_SIZE;
+}
+
+EXPORT void fastpath_engine_replay_clear(FastEngine *eng) {
+    if (!eng) return;
+    memset(eng->replay_ring, 0, sizeof(eng->replay_ring));
+    eng->replay_min_seq = 0;
+    eng->replay_max_seq = 0;
+    eng->replay_total_recorded = 0;
+}
+
+// ---------------------------------------------------------------------------
+// Deprecated Global Singleton Compatibility Shim
+// ---------------------------------------------------------------------------
+
+static FastEngine *g_default_engine = NULL;
+
+static inline FastEngine *get_default_engine(void) {
+    if (!g_default_engine) {
+        g_default_engine = fastpath_engine_create(0.05, 6.0, 50);
+    }
+    return g_default_engine;
+}
+
+EXPORT void fastpath_cleanup(void) {
+    if (g_default_engine) {
+        fastpath_engine_destroy(g_default_engine);
+        g_default_engine = NULL;
+    }
+}
+
+EXPORT void fastpath_init(double staleness_threshold_s, double anomaly_stddev, int32_t price_window) {
+    if (g_default_engine) {
+        fastpath_engine_destroy(g_default_engine);
+    }
+    g_default_engine = fastpath_engine_create(staleness_threshold_s, anomaly_stddev, price_window);
+}
+
+EXPORT void fastpath_reset(void) {
+    if (g_default_engine) {
+        fastpath_engine_reset(g_default_engine);
+    } else {
+        g_default_engine = fastpath_engine_create(0.05, 6.0, 50);
+    }
+}
+
+EXPORT void fastpath_evaluate(const FastEvent *ev, FastResult *res) {
+    fastpath_engine_evaluate(get_default_engine(), ev, res);
+}
+
+EXPORT void fastpath_evaluate_batch(const FastEvent *events, FastResult *results, int32_t count) {
+    fastpath_engine_evaluate_batch(get_default_engine(), events, results, count);
+}
+
+EXPORT uint64_t fastpath_eval_fast(
+    int32_t source_id, int32_t instrument_id, int32_t event_type,
+    double exchange_ts, double receive_ts, int64_t sequence_num,
+    double price, double quantity, double bid_price, double ask_price,
+    double bid_size, double ask_size
+) {
+    return fastpath_engine_eval_fast(
+        get_default_engine(),
+        source_id, instrument_id, event_type,
+        exchange_ts, receive_ts, sequence_num,
+        price, quantity, bid_price, ask_price,
+        bid_size, ask_size
+    );
+}
+
+EXPORT uint64_t fastpath_noop(
+    int32_t source_id, int32_t instrument_id, int32_t event_type,
+    double exchange_ts, double receive_ts, int64_t sequence_num,
+    double price, double quantity, double bid_price, double ask_price,
+    double bid_size, double ask_size
+) {
+    (void)source_id; (void)instrument_id; (void)event_type;
+    (void)exchange_ts; (void)receive_ts; (void)sequence_num;
+    (void)price; (void)quantity; (void)bid_price; (void)ask_price;
+    (void)bid_size; (void)ask_size;
+    return 0;
+}
+
+EXPORT void fastpath_replay_record(
+    uint64_t seq,
+    const char *symbol,
+    const char *source,
+    const char *event_type,
+    double price,
+    double size,
+    double bid,
+    double ask,
+    double bid_size,
+    double ask_size,
+    uint8_t status,
+    uint8_t is_crossed,
+    double exchange_ts,
+    double ingest_ts,
+    double broadcast_ts,
+    double engine_us
+) {
+    fastpath_engine_replay_record(
+        get_default_engine(),
+        seq, symbol, source, event_type, price, size, bid, ask, bid_size, ask_size,
+        status, is_crossed, exchange_ts, ingest_ts, broadcast_ts, engine_us
+    );
+}
+
+EXPORT int32_t fastpath_replay_slice(
+    uint64_t from_seq,
+    uint64_t to_seq,
+    const char *symbol,
+    FastReplayRecord *out_records,
+    int32_t max_out
+) {
+    return fastpath_engine_replay_slice(get_default_engine(), from_seq, to_seq, symbol, out_records, max_out);
+}
+
+EXPORT int32_t fastpath_replay_binary_slice(
+    uint64_t from_seq,
+    uint64_t to_seq,
+    const char *symbol,
+    uint8_t *out_bytes,
+    int32_t max_bytes
+) {
+    return fastpath_engine_replay_binary_slice(get_default_engine(), from_seq, to_seq, symbol, out_bytes, max_bytes);
+}
+
 EXPORT void fastpath_replay_stats(
     uint64_t *out_min_seq,
     uint64_t *out_max_seq,
     uint64_t *out_total_recorded,
     int32_t *out_capacity
 ) {
-    if (out_min_seq) *out_min_seq = g_replay_min_seq;
-    if (out_max_seq) *out_max_seq = g_replay_max_seq;
-    if (out_total_recorded) *out_total_recorded = g_replay_total_recorded;
-    if (out_capacity) *out_capacity = REPLAY_RING_SIZE;
+    fastpath_engine_replay_stats(get_default_engine(), out_min_seq, out_max_seq, out_total_recorded, out_capacity);
 }
 
 EXPORT void fastpath_replay_clear(void) {
-    memset(g_replay_ring, 0, sizeof(g_replay_ring));
-    g_replay_min_seq = 0;
-    g_replay_max_seq = 0;
-    g_replay_total_recorded = 0;
+    fastpath_engine_replay_clear(get_default_engine());
 }
 
 
@@ -797,7 +967,7 @@ EXPORT int32_t fastpath_process_sbe_stream(
         // 3. Deduplication Check
         if (p->seq > 0) {
             uint64_t key = p->seq;
-            if (check_and_insert_dedup(key)) {
+            if (check_and_insert_dedup(get_default_engine(), key)) {
                 status = STATUS_INVALID;
                 reason_mask |= REASON_DUPLICATE;
             }

@@ -161,6 +161,8 @@ class CanonicalEvent:
     quality_status: QualityStatus = QualityStatus.VALID
     reasons: list[str] = field(default_factory=list)
     raw_id: str = ""
+    source_id: int = -1
+    instrument_id_int: int = -1
 
     # Multi-asset class extensions
     asset_class: AssetClass = AssetClass.EQUITY

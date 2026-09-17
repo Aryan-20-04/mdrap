@@ -66,3 +66,24 @@ Measures pure hardware bus saturation and SIMD execution speed on contiguous SBE
 - **Sub-Microsecond Latency**: Nanoseconds per event (< 20 ns).
 - **Memory Bandwidth**: Processing throughput in GB/sec across contiguous C memory buffers.
 - **Ground-Truth Scored Accuracy**: Exact classification verification of crossed quotes, negative prices, and duplicate sequence numbers.
+
+---
+
+## 6. Phase 0 Empirical Hot-Path Profiling & FFI Boundary Finding
+
+Executed via `python benchmarks/profile_hotpath.py --events 100000 --seed 42` and `python benchmarks/micro_ffi.py --iterations 10000000`:
+
+### Empirical Stage Breakdown (100,000 Events, seed=42)
+| Pipeline Stage | Measured Latency (p50) | Share of Budget |
+|---|---|---|
+| **Reconciliation & Reliability** | **22.70 µs** | **43.3%** |
+| **Gateway Normalize (`RawEvent` -> `CanonicalEvent`)** | **14.10 µs** | **26.9%** |
+| **Python Quality Wrapper** | **9.87 µs** | **18.8%** |
+| **Storage Batch Flush (`Store.write_*`)** | **4.10 µs** | **7.8%** |
+| **ctypes FFI Boundary Tax** | **2.45 µs** (2,448 ns) | **4.7%** |
+| **C-Side Quality Math Logic** | **0.08 µs** (82 ns) | **0.2%** |
+| **Total End-to-End Processing (p50)** | **52.40 µs** | **100.0%** |
+
+- **Sum of Stages**: 53.30 µs (1.72% discrepancy against 52.40 µs p50, within 10% acceptance gate).
+- **FFI Boundary Share**: **4.7%** of the end-to-end processing budget.
+- **Phase 0 Gate Decision**: Since the ctypes FFI tax is 4.7% (< 15% threshold), handwritten CPython C-API extensions (`.pyd`) in Phases 3–4 are cancelled. Optimization effort focuses on high-leverage bottlenecks (Reconciliation, Gateway Normalization, and Python Quality marshaling).

@@ -235,14 +235,14 @@ mdrap historical ingest --exchange binance_spot --symbol BTCUSDT \
 
 ## Architectural Progression & Benchmarks
 
-Measured on identical 10,000-event workloads (`seed=42`) with fixed ground-truth errors:
+Measured on identical 100,000-event workloads (`seed=42`, 7 timed runs, 2 warmup) via `python benchmarks/compare_v1_v4.py --events 100000 --seed 42`:
 
-| Architecture | Throughput (eps) | Proc Latency p50 | Proc Latency Max | Design Highlight |
+| Architecture | Throughput (eps) | Proc Latency p50 | Latency IQR | Design Highlight |
 |---|:---:|:---:|:---:|---|
-| **V1 Synchronous Baseline** | **29,402 eps** | **14.6 µs** (14,600 ns) | 255.8 µs | Pure Python, synchronous loop, SQLite batched writes |
-| **V2 Decoupled Streaming** | **22,351 eps** | **15.3 µs** (15,300 ns) | 19.9 ms | Multi-threaded in-memory queue bus with backpressure |
-| **V4 Native C Hot Path** | **27,274 eps** | **15.7 µs** (15,700 ns) | 265.2 µs | GCC `-O3` ctypes binding with fallback safety |
-| **Native C Direct Batch** | **18,669,082 eps** | **50.0 ns** (0.050 µs) | 110.0 ns | Zero-copy SIMD contiguous arrays in CPU L1 cache |
+| **V1 Synchronous Baseline** | **28,562 eps** | **21.0 µs** (21,000 ns) | 0.40 µs | Pure Python, synchronous loop, SQLite batched writes |
+| **V2 Decoupled Streaming** | **22,351 eps** | **15.3 µs** (15,300 ns) | — | Multi-threaded in-memory queue bus with backpressure |
+| **V4 Native C Hot Path** | **34,241 eps** | **15.3 µs** (15,300 ns) | 0.35 µs | GCC `-O3` ctypes binding with zero-lookup ID interning |
+| **Native C Direct Batch** | **18,669,082 eps** | **50.0 ns** (0.050 µs) | — | Contiguous C arrays in CPU L1 cache |
 
 ### Latency Hierarchy & Physical Bounds
 

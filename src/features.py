@@ -16,13 +16,20 @@ except ImportError:
 
 
 def sma(prices: list[float], period: int) -> list[float]:
-    """Simple Moving Average"""
-    result = []
-    for i in range(len(prices)):
-        if i < period - 1:
-            result.append(math.nan)
+    """Simple Moving Average (O(N) running sum)"""
+    if not prices or period <= 0:
+        return []
+    result = [math.nan] * min(len(prices), period - 1)
+    if len(prices) < period:
+        return result
+    window_sum = sum(prices[:period])
+    result.append(window_sum / period)
+    for i in range(period, len(prices)):
+        if i % 10000 == 0:
+            window_sum = sum(prices[i - period + 1 : i + 1])
         else:
-            result.append(sum(prices[i - period + 1 : i + 1]) / period)
+            window_sum += prices[i] - prices[i - period]
+        result.append(window_sum / period)
     return result
 
 
@@ -49,7 +56,7 @@ def ema(prices: list[float], period: int) -> list[float]:
 
 
 def rsi(prices: list[float], period: int = 14) -> list[float]:
-    """Relative Strength Index"""
+    """Relative Strength Index (O(1) memory scalar recurrence)"""
     if not prices:
         return []
 
@@ -59,30 +66,36 @@ def rsi(prices: list[float], period: int = 14) -> list[float]:
             return c_rsi
 
     result = [math.nan]
-    gains = []
-    losses = []
+    if len(prices) == 1:
+        return result
 
+    init_gain = 0.0
+    init_loss = 0.0
     avg_gain = 0.0
     avg_loss = 0.0
 
     for i in range(1, len(prices)):
         change = prices[i] - prices[i - 1]
-        gains.append(change if change > 0 else 0.0)
-        losses.append(abs(change) if change < 0 else 0.0)
+        gain = change if change > 0 else 0.0
+        loss = -change if change < 0 else 0.0
 
         if i < period:
+            init_gain += gain
+            init_loss += loss
             result.append(math.nan)
         elif i == period:
-            avg_gain = sum(gains) / period
-            avg_loss = sum(losses) / period
+            init_gain += gain
+            init_loss += loss
+            avg_gain = init_gain / period
+            avg_loss = init_loss / period
             if avg_loss == 0:
                 result.append(100.0)
             else:
                 rs = avg_gain / avg_loss
                 result.append(100.0 - (100.0 / (1.0 + rs)))
         else:
-            avg_gain = (avg_gain * (period - 1) + gains[-1]) / period
-            avg_loss = (avg_loss * (period - 1) + losses[-1]) / period
+            avg_gain = (avg_gain * (period - 1) + gain) / period
+            avg_loss = (avg_loss * (period - 1) + loss) / period
             if avg_loss == 0:
                 result.append(100.0)
             else:

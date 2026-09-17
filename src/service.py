@@ -939,6 +939,23 @@ class StreamClient:
         self._query_sock: Optional[socket.socket] = None
         self._query_lock = threading.Lock()
 
+    @staticmethod
+    def _recv_json_line(sock: socket.socket) -> dict:
+        """Read a single newline-terminated JSON payload from a socket."""
+        buf = bytearray()
+        while b"\n" not in buf:
+            chunk = sock.recv(4096)
+            if not chunk:
+                break
+            buf.extend(chunk)
+        line = buf.decode("utf-8", errors="replace").strip()
+        if not line:
+            return {}
+        try:
+            return json.loads(line.split("\n", 1)[0])
+        except json.JSONDecodeError:
+            return {}
+
     def connect(self) -> None:
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.sock.settimeout(self.timeout)
@@ -946,13 +963,7 @@ class StreamClient:
         self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         if self.auth_token:
             self.sock.sendall(f"AUTH {self.auth_token}\n".encode("utf-8"))
-            buf = ""
-            while "\n" not in buf:
-                chunk = self.sock.recv(4096).decode("utf-8")
-                if not chunk:
-                    break
-                buf += chunk
-            ack = json.loads(buf.strip().split("\n")[0])
+            ack = self._recv_json_line(self.sock)
             if ack.get("status") != "OK":
                 raise PermissionError(
                     f"Daemon authentication failed: {ack.get('error')}"
@@ -968,13 +979,7 @@ class StreamClient:
         sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         if self.auth_token:
             sock.sendall(f"AUTH {self.auth_token}\n".encode("utf-8"))
-            buf = ""
-            while "\n" not in buf:
-                chunk = sock.recv(4096).decode("utf-8")
-                if not chunk:
-                    break
-                buf += chunk
-            ack = json.loads(buf.strip().split("\n")[0])
+            ack = self._recv_json_line(sock)
             if ack.get("status") != "OK":
                 sock.close()
                 raise PermissionError(
@@ -990,14 +995,10 @@ class StreamClient:
                 try:
                     sock = self._get_query_sock()
                     sock.sendall((cmd.strip() + "\n").encode("utf-8"))
-                    buf = ""
-                    while "\n" not in buf:
-                        chunk = sock.recv(4096).decode("utf-8")
-                        if not chunk:
-                            raise ConnectionResetError("Socket closed by daemon")
-                        buf += chunk
-                    line = buf.strip().split("\n")[0]
-                    return json.loads(line)
+                    res = self._recv_json_line(sock)
+                    if not res:
+                        raise ConnectionResetError("Socket closed by daemon")
+                    return res
                 except Exception:
                     if self._query_sock:
                         try:
@@ -1052,19 +1053,21 @@ class StreamClient:
         if not self.sock:
             self.connect()
         self.sock.sendall(f"SUB {symbol}\n".encode("utf-8"))
-        buf = ""
-        while "\n" not in buf:
-            chunk = self.sock.recv(4096).decode("utf-8")
+        raw_buf = bytearray()
+        while b"\n" not in raw_buf:
+            chunk = self.sock.recv(4096)
             if not chunk:
                 break
-            buf += chunk
+            raw_buf.extend(chunk)
 
-        ack_line, buf = buf.split("\n", 1)
+        _, _, rest = raw_buf.partition(b"\n")
+        raw_buf = bytearray(rest)
         count = 0
         while True:
-            while "\n" in buf:
-                line, buf = buf.split("\n", 1)
-                line = line.strip()
+            while b"\n" in raw_buf:
+                line_bytes, _, rest = raw_buf.partition(b"\n")
+                raw_buf = bytearray(rest)
+                line = line_bytes.decode("utf-8", errors="replace").strip()
                 if not line:
                     continue
                 try:
@@ -1077,10 +1080,10 @@ class StreamClient:
                 except json.JSONDecodeError:
                     continue
             try:
-                data = self.sock.recv(4096).decode("utf-8")
+                data = self.sock.recv(4096)
                 if not data:
                     break
-                buf += data
+                raw_buf.extend(data)
             except (KeyboardInterrupt, GeneratorExit):
                 break
             except Exception:

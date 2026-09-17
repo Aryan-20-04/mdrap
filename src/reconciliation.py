@@ -109,13 +109,19 @@ class ReliabilityTracker:
 
     def observe(self, event: CanonicalEvent) -> None:
         """Update EWMA telemetry and score cache with the latest CanonicalEvent."""
-        s = self.stats.setdefault(event.source, SourceStats(source=event.source))
+        s = self.stats.get(event.source)
+        if s is None:
+            s = self.stats[event.source] = SourceStats(source=event.source)
         s.total += 1
 
         is_invalid = event.quality_status == QualityStatus.INVALID
         is_suspicious = event.quality_status == QualityStatus.SUSPICIOUS
-        is_dup = Reason.DUPLICATE.value in event.reasons
-        is_gap = Reason.SEQUENCE_GAP.value in event.reasons
+        if event.reasons:
+            is_dup = Reason.DUPLICATE.value in event.reasons
+            is_gap = Reason.SEQUENCE_GAP.value in event.reasons
+        else:
+            is_dup = False
+            is_gap = False
 
         if is_invalid:
             s.invalid += 1
@@ -208,36 +214,56 @@ class Reconciler:
             return None  # Only trade events with usable prices undergo pricing reconciliation
 
         market_now = event.exchange_timestamp
-        per_instrument = self._latest.setdefault(event.instrument_id, {})
+        per_instrument = self._latest.get(event.instrument_id)
+        if per_instrument is None:
+            per_instrument = self._latest[event.instrument_id] = {}
         per_instrument[event.source] = (event, market_now)
 
-        # Filter for competitor feeds active within the agreement time window
-        recent = {
-            src: (ev, ts)
-            for src, (ev, ts) in per_instrument.items()
-            if abs(market_now - ts) <= self.cfg.agreement_window_s
-            and src not in self._blocked_sources
-        }
-        if len(recent) < 2:
-            return None  # Multi-feed quorum not yet established for this time window
+        # Fast path: multi-feed quorum cannot be established with < 2 feeds
+        if len(per_instrument) < 2:
+            return None
 
-        prices = {src: ev.price for src, (ev, _ts) in recent.items()}
-        mean_price = sum(prices.values()) / len(prices)
-        disagreement = any(
-            abs(p - mean_price) / mean_price > self.cfg.disagreement_pct_threshold
-            for p in prices.values()
-            if mean_price
-        )
-
+        window = self.cfg.agreement_window_s
+        blocked = self._blocked_sources
         scores = self.reliability._cached_scores
-        chosen_source = max(recent.keys(), key=lambda s: scores.get(s, 0.0))
-        chosen_event = recent[chosen_source][0]
+
+        recent_sources: list[str] = []
+        recent_prices: dict[str, float] = {}
+        chosen_source = ""
+        chosen_event = None
+        best_score = -1.0
+        total_price = 0.0
+
+        for src, (ev, ts) in per_instrument.items():
+            if abs(market_now - ts) <= window and src not in blocked:
+                p = ev.price
+                recent_sources.append(src)
+                recent_prices[src] = p
+                total_price += p
+                sc = scores.get(src, 0.0)
+                if sc > best_score:
+                    best_score = sc
+                    chosen_source = src
+                    chosen_event = ev
+
+        n_recent = len(recent_sources)
+        if n_recent < 2 or chosen_event is None:
+            return None
+
+        mean_price = total_price / n_recent
+        thresh = self.cfg.disagreement_pct_threshold
+        disagreement = False
+        if mean_price > 0:
+            for p in recent_prices.values():
+                if abs(p - mean_price) / mean_price > thresh:
+                    disagreement = True
+                    break
 
         if disagreement:
             chosen_event.reasons.append(Reason.CROSS_FEED_DISAGREEMENT.value)
             reason = (
-                f"disagreement across {list(recent.keys())} "
-                f"(prices={prices}); selected highest-reliability source"
+                f"disagreement across {recent_sources} "
+                f"(prices={recent_prices}); selected highest-reliability source"
             )
         else:
             reason = (
@@ -250,7 +276,7 @@ class Reconciler:
             chosen_event_id=chosen_event.event_id,
             disagreement=disagreement,
             reason=reason,
-            competing_sources=list(recent.keys()),
+            competing_sources=recent_sources,
         )
 
 

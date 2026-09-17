@@ -30,6 +30,14 @@ from models import CanonicalEvent, EventType, RawEvent
 # Fast lock-free monotonic counter for hot-path ID generation
 _gateway_id_counter = itertools.count(1)
 
+# Hot-path metadata cache mapping instrument_id -> (venue_mic, currency)
+_symbol_metadata_cache: dict[str, tuple[str, str]] = {}
+
+_SOURCES = ["FEEDX", "FEEDY", "FEEDZ", "SOURCEA", "SOURCEB", "SOURCEC"]
+_INSTRUMENTS = ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "TSLA", "META", "JPM"]
+_SOURCE_ID_MAP: dict[str, int] = {s: i for i, s in enumerate(_SOURCES)}
+_INSTRUMENT_ID_MAP: dict[str, int] = {inst: i for i, inst in enumerate(_INSTRUMENTS)}
+
 
 class SchemaError(Exception):
     """Raised when an incoming raw vendor payload violates structural schema constraints."""
@@ -104,6 +112,13 @@ def normalize(raw: RawEvent) -> CanonicalEvent:
     if not isinstance(instrument, str) or not instrument:
         raise SchemaError("instrument missing or not a string")
 
+    s_id = _SOURCE_ID_MAP.get(raw.source)
+    if s_id is None:
+        s_id = _SOURCE_ID_MAP[raw.source] = len(_SOURCE_ID_MAP)
+    i_id = _INSTRUMENT_ID_MAP.get(instrument)
+    if i_id is None:
+        i_id = _INSTRUMENT_ID_MAP[instrument] = len(_INSTRUMENT_ID_MAP)
+
     event = CanonicalEvent(
         event_id=f"evt-{next(_gateway_id_counter)}",
         instrument_id=instrument,
@@ -114,17 +129,23 @@ def normalize(raw: RawEvent) -> CanonicalEvent:
         source=raw.source,
         sequence_number=sequence,
         raw_id=raw.raw_id,
+        source_id=s_id,
+        instrument_id_int=i_id,
     )
 
-    try:
-        from symbology import resolve_symbol
+    meta = _symbol_metadata_cache.get(instrument)
+    if meta is None:
+        try:
+            from symbology import resolve_symbol
 
-        sym_info = resolve_symbol(instrument)
-        event.venue = p.get("venue") or sym_info.venue_mic
-        event.currency = p.get("currency") or sym_info.currency
-    except Exception:
-        event.venue = p.get("venue") or "XNAS"
-        event.currency = p.get("currency") or "USD"
+            sym_info = resolve_symbol(instrument)
+            meta = (sym_info.venue_mic, sym_info.currency)
+        except Exception:
+            meta = ("XNAS", "USD")
+        _symbol_metadata_cache[instrument] = meta
+
+    event.venue = p.get("venue") or meta[0]
+    event.currency = p.get("currency") or meta[1]
 
     if event_type_raw == "TRADE":
         price, qty = p["price"], p["quantity"]

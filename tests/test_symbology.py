@@ -1,6 +1,7 @@
 """
 Tests for Universal Symbology Normalizer across Indian, German, Japanese, and US Markets.
 """
+
 import os
 import sys
 
@@ -98,3 +99,35 @@ def test_resolve_as_of_date_prevents_lookahead_bias():
     assert resolve_symbol("META").ticker == "META"
     assert resolve_symbol("FB").ticker == "FB"
 
+
+def test_resolve_apac_suffixes_and_futures():
+    """Verify regional APAC suffixes (.SI, .KS, .TW, .PA) and benchmark futures resolution."""
+    # Singapore (.SI)
+    si = resolve_symbol("DBS.SI")
+    assert si.venue_mic == "XSES"
+    assert si.currency == "SGD"
+
+    # Korea (.KS)
+    ks = resolve_symbol("005930.KS")
+    assert ks.venue_mic == "XKRX"
+    assert ks.currency == "KRW"
+
+    # Taiwan (.TW)
+    tw = resolve_symbol("2330.TW")
+    assert tw.venue_mic == "XTWS"
+    assert tw.currency == "TWD"
+
+    # Paris (.PA)
+    pa = resolve_symbol("MC.PA")
+    assert pa.venue_mic == "XPAR"
+    assert pa.currency == "EUR"
+
+    # Benchmark futures
+    es = resolve_symbol("ES")
+    assert es.canonical_id == "ES.CME"
+    assert es.venue_mic == "XCME"
+    assert es.currency == "USD"
+
+    cl = resolve_symbol("CL")
+    assert cl.canonical_id == "CL.NYM"
+    assert cl.venue_mic == "XNYM"

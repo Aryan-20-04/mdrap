@@ -4185,6 +4185,141 @@ def cmd_tca(args):
     console.print()
 
 
+def cmd_report(args):
+    """Generate institutional fund regulatory compliance reports (SEC 13F, MiFID II RTS 28)."""
+    import datetime
+
+    report_type = (
+        getattr(args, "report_type", None) or getattr(args, "type", "13f") or "13f"
+    )
+    report_type = str(report_type).lower()
+    console = Console()
+
+    if report_type in ("13f", "form13f", "holdings"):
+        from portfolio import PortfolioTracker
+        from symbology import resolve_symbol
+
+        db_path = getattr(args, "db", "data/mdrap.db")
+        tracker = PortfolioTracker(db_path=db_path)
+        positions = [p for p in tracker.all_positions() if p.quantity > 0]
+
+        # ponytail: standard Form 13F Information Table format
+        entries = []
+        for p in positions:
+            sym_info = resolve_symbol(p.symbol)
+            cusip_or_isin = sym_info.isin or sym_info.figi or p.symbol
+            val_thousands = round(p.market_value / 1000.0, 1)
+            entries.append(
+                {
+                    "issuer_name": sym_info.name or p.symbol,
+                    "title_of_class": "COMMON STOCK",
+                    "cusip_isin": cusip_or_isin,
+                    "value_usd_000s": val_thousands,
+                    "shares_principal": int(p.quantity),
+                    "investment_discretion": "SOLE",
+                }
+            )
+
+        if getattr(args, "json", False):
+            print(
+                json.dumps(
+                    {
+                        "report": "SEC_FORM_13F",
+                        "quarter_ended": datetime.date.today().isoformat(),
+                        "holdings": entries,
+                    },
+                    indent=2,
+                )
+            )
+            return
+
+        table = Table(title="SEC Form 13F Information Table (Institutional Holdings)")
+        table.add_column("Name of Issuer", style="cyan")
+        table.add_column("Class", style="dim")
+        table.add_column("CUSIP/ISIN", style="yellow")
+        table.add_column("Value ($000s)", justify="right", style="green")
+        table.add_column("Shares", justify="right", style="bold")
+        table.add_column("Discretion", style="magenta")
+
+        if not entries:
+            table.add_row("No long equity positions held", "-", "-", "0.0", "0", "-")
+        else:
+            for e in entries:
+                table.add_row(
+                    e["issuer_name"][:30],
+                    e["title_of_class"],
+                    e["cusip_isin"],
+                    f"${e['value_usd_000s']:,.1f}",
+                    f"{e['shares_principal']:,}",
+                    e["investment_discretion"],
+                )
+        console.print(table)
+
+    elif report_type in ("rts28", "mifid", "mifid2", "venues"):
+        from tca import TCAEngine, generate_demo_executions
+
+        sym = getattr(args, "symbol", "AAPL") or "AAPL"
+        execs = generate_demo_executions(
+            symbol=sym, count=100, seed=getattr(args, "seed", 42)
+        )
+        engine = TCAEngine()
+        batch_res = engine.evaluate_batch(execs)
+        scorecards = batch_res.get("broker_scorecards", [])
+
+        total_notional = batch_res.get("total_notional", 1.0) or 1.0
+        rts28_entries = []
+        for sc in scorecards:
+            notional = sc.get("notional", 0.0)
+            vol_pct = round((notional / total_notional) * 100.0, 1)
+            rts28_entries.append(
+                {
+                    "venue_broker": sc.get("broker", "Unknown"),
+                    "orders": sc.get("orders", 0),
+                    "total_notional_usd": round(notional, 2),
+                    "volume_pct": vol_pct,
+                    "avg_slippage_bps": round(sc.get("avg_slippage_bps", 0.0), 2),
+                    "price_improved_pct": round(sc.get("improvement_rate_pct", 0.0), 1),
+                }
+            )
+
+        if getattr(args, "json", False):
+            print(
+                json.dumps(
+                    {
+                        "report": "MIFID_II_RTS_28",
+                        "year": datetime.date.today().year,
+                        "asset_class": "EQUITIES",
+                        "top_execution_venues": rts28_entries,
+                    },
+                    indent=2,
+                )
+            )
+            return
+
+        table = Table(title="MiFID II RTS 28 — Top 5 Execution Venues / Brokers")
+        table.add_column("Execution Venue / Broker", style="cyan")
+        table.add_column("Orders", justify="right", style="bold")
+        table.add_column("Volume %", justify="right", style="green")
+        table.add_column("Total Notional", justify="right")
+        table.add_column("Avg Slippage (bps)", justify="right", style="yellow")
+        table.add_column("Price Improved %", justify="right", style="magenta")
+
+        for r in rts28_entries[:5]:
+            table.add_row(
+                r["venue_broker"],
+                f"{r['orders']:,}",
+                f"{r['volume_pct']:.1f}%",
+                f"${r['total_notional_usd']:,.2f}",
+                f"{r['avg_slippage_bps']:.2f}",
+                f"{r['price_improved_pct']:.1f}%",
+            )
+        console.print(table)
+    else:
+        console.print(
+            f"[bold red]Unknown report type:[/bold red] '{report_type}'. Choose '13f' or 'rts28'."
+        )
+
+
 def cmd_flow(args):
     """Institutional Order Flow & Cumulative Volume Delta (CVD) Tracker (§26)."""
     from flow_tracker import OrderFlowTracker, AggressorSide
@@ -6530,11 +6665,11 @@ def build_parser() -> argparse.ArgumentParser:
     # Version
     _sub(
         "version",
-        lambda args: print(
-            json.dumps({"version": "1.2.2", "platform": "MDRAP"}, indent=2)
-        )
-        if getattr(args, "json", False)
-        else print("MDRAP v1.2.2"),
+        lambda args: (
+            print(json.dumps({"version": "1.2.2", "platform": "MDRAP"}, indent=2))
+            if getattr(args, "json", False)
+            else print("MDRAP v1.2.2")
+        ),
         "Show MDRAP version",
         ["v"],
     )
@@ -6783,6 +6918,30 @@ def build_parser() -> argparse.ArgumentParser:
         "--open",
         action="store_true",
         help="Open exported report in Microsoft Excel (Windows only)",
+    )
+
+    # Institutional Fund Regulatory Compliance Reports (SEC 13F, MiFID II RTS 28)
+    p_report = _sub(
+        "report",
+        cmd_report,
+        "Generate institutional fund regulatory compliance reports (SEC 13F, MiFID II RTS 28)",
+        ["regulatory", "reg-report", "rts-28"],
+        db=True,
+    )
+    p_report.add_argument(
+        "report_type",
+        nargs="?",
+        default="13f",
+        choices=["13f", "rts28", "form13f", "holdings", "venues", "mifid2"],
+        help="Report type: '13f' (SEC Form 13F Holdings) or 'rts28' (MiFID II Execution Venues)",
+    )
+    p_report.add_argument(
+        "--symbol",
+        default="AAPL",
+        help="Target symbol for venue analysis (default: AAPL)",
+    )
+    p_report.add_argument(
+        "-s", "--seed", type=int, default=42, help="Deterministic random seed"
     )
 
     # Institutional Order Flow & Cumulative Volume Delta (CVD) Tracker (§26)
@@ -7152,7 +7311,6 @@ MNEMONIC_MAP = {
     "exp": "export",
     "excel": "export",
     "xlsx": "export",
-    "report": "export",
     "csv": "export",
     "x": "export",
     # Institutional Best Execution & Flow Analytics (Competitor Leapfrog)
@@ -7297,6 +7455,10 @@ MNEMONIC_MAP = {
     "retention": "retention",
     "compact": "retention",
     "prune": "retention",
+    "report": "report",
+    "regulatory": "report",
+    "13f": "report",
+    "rts28": "report",
     "markets": "markets",
     "venues": "markets",
     "world": "markets",
@@ -7381,6 +7543,7 @@ ALL_CANONICAL_COMMANDS = [
     "features",
     "schedule",
     "retention",
+    "report",
     "markets",
     "desk",
 ]

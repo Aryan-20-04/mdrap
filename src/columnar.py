@@ -607,9 +607,7 @@ class ColumnarStore:
 
         return abs_out
 
-    def query_as_of(
-        self, symbol: str, as_of_ts: float
-    ) -> Optional[Dict[str, Any]]:
+    def query_as_of(self, symbol: str, as_of_ts: float) -> Optional[Dict[str, Any]]:
         """
         Reconstruct canonical market state as of a historical timestamp (Invariant Q6).
         Returns the last valid/suspicious canonical tick for the symbol at or before as_of_ts.

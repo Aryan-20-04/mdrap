@@ -315,7 +315,7 @@ class Store:
                     e.ask_price,
                     e.ask_size,
                     e.quality_status.value,
-                    json.dumps(e.reasons),
+                    json.dumps(e.reasons) if e.reasons else "[]",
                     e.raw_id,
                 )
                 for e in events

@@ -11,6 +11,15 @@ import json
 from dataclasses import dataclass, field
 from typing import Any
 
+from fx import convert_currency
+from symbology import resolve_symbol
+
+
+class _WatchlistSearchResult(str):
+    @property
+    def name(self) -> str:
+        return str(self)
+
 
 @dataclass
 class Watchlist:
@@ -31,6 +40,7 @@ class PortfolioPosition:
     strategy: str = ""
     currency: str = "USD"
     venue: str = "XNAS"
+    borrow_rate_bps: float = 0.0  # Annualized borrow fee for short positions (bps)
 
     @property
     def unrealized_pnl(self) -> float:
@@ -60,6 +70,7 @@ class PerformanceSnapshot:
     realized_pnl: float
     unrealized_pnl: float
     daily_pnl: float = 0.0
+    borrow_cost: float = 0.0
 
 
 class WatchlistManager:
@@ -178,11 +189,6 @@ class WatchlistManager:
         return list(self._watchlists.values())
 
     def search(self, symbol: str) -> list[Any]:
-        class _WatchlistSearchResult(str):
-            @property
-            def name(self) -> str:
-                return str(self)
-
         return [
             _WatchlistSearchResult(name)
             for name, wl in self._watchlists.items()
@@ -191,10 +197,16 @@ class WatchlistManager:
 
 
 class PortfolioTracker:
-    def __init__(self, initial_cash: float = 100_000.0, db_path: str | None = None):
+    def __init__(
+        self,
+        initial_cash: float = 100_000.0,
+        db_path: str | None = None,
+        base_currency: str = "USD",
+    ):
         self.db_path = db_path
         self._initial_cash = initial_cash
         self._cash = initial_cash
+        self.base_currency = base_currency
         self._positions: dict[str, PortfolioPosition] = {}
         self._snapshots: list[PerformanceSnapshot] = []
         self._conn: sqlite3.Connection | None = None
@@ -257,8 +269,6 @@ class PortfolioTracker:
         )
         for row in cursor:
             try:
-                from symbology import resolve_symbol
-
                 sym_info = resolve_symbol(row[0])
                 pos = PortfolioPosition(
                     symbol=row[0],
@@ -353,13 +363,12 @@ class PortfolioTracker:
         price: float,
         sector: str = "",
         strategy: str = "",
+        borrow_rate_bps: float = 0.0,
     ) -> PortfolioPosition:
         """Record a trade. Positive qty = buy, negative = sell.
         Updates avg_cost on buys, records realized P&L on sells."""
         if symbol not in self._positions:
             try:
-                from symbology import resolve_symbol
-
                 sym_info = resolve_symbol(symbol)
                 pos = PortfolioPosition(
                     symbol=symbol,
@@ -369,6 +378,7 @@ class PortfolioTracker:
                     strategy=strategy,
                     currency=sym_info.currency,
                     venue=sym_info.venue_mic,
+                    borrow_rate_bps=borrow_rate_bps,
                 )
             except Exception:
                 pos = PortfolioPosition(
@@ -377,6 +387,7 @@ class PortfolioTracker:
                     avg_cost=0,
                     sector=sector,
                     strategy=strategy,
+                    borrow_rate_bps=borrow_rate_bps,
                 )
             self._positions[symbol] = pos
         else:
@@ -385,9 +396,14 @@ class PortfolioTracker:
                 pos.sector = sector
             if strategy:
                 pos.strategy = strategy
+            if borrow_rate_bps > 0:
+                pos.borrow_rate_bps = borrow_rate_bps
 
         trade_value = quantity * price
-        self._cash -= trade_value
+        trade_value_base = convert_currency(
+            trade_value, pos.currency, self.base_currency
+        )
+        self._cash -= trade_value_base
 
         if pos.quantity * quantity > 0 or pos.quantity == 0:
             # increasing position
@@ -435,11 +451,20 @@ class PortfolioTracker:
 
     @property
     def market_value(self) -> float:
-        return sum(pos.market_value for pos in self._positions.values())
+        # ponytail: cached FX rate conversion; live websocket rates when sub-second needed
+        from fx import convert_currency
+
+        return sum(
+            convert_currency(pos.market_value, pos.currency, self.base_currency)
+            for pos in self._positions.values()
+        )
 
     @property
     def total_equity(self) -> float:
-        return self.cash + self.market_value
+        from fx import convert_currency
+
+        cash_in_base = convert_currency(self.cash, "USD", self.base_currency)
+        return cash_in_base + self.market_value
 
     def total_equity_in(self, target_currency: str = "USD") -> float:
         """Converts cash and all position market values into target currency using live FX matrix."""
@@ -455,11 +480,34 @@ class PortfolioTracker:
 
     @property
     def total_realized_pnl(self) -> float:
-        return sum(pos.realized_pnl for pos in self._positions.values())
+        from fx import convert_currency
+
+        return sum(
+            convert_currency(pos.realized_pnl, pos.currency, self.base_currency)
+            for pos in self._positions.values()
+        )
 
     @property
     def total_unrealized_pnl(self) -> float:
-        return sum(pos.unrealized_pnl for pos in self._positions.values())
+        from fx import convert_currency
+
+        return sum(
+            convert_currency(pos.unrealized_pnl, pos.currency, self.base_currency)
+            for pos in self._positions.values()
+        )
+
+    def total_daily_borrow_cost(self) -> float:
+        """Annualized borrow fee accrued on open short positions."""
+        from fx import convert_currency
+
+        cost = 0.0
+        for pos in self._positions.values():
+            if pos.quantity < 0 and pos.borrow_rate_bps > 0:
+                mv = convert_currency(
+                    pos.market_value, pos.currency, self.base_currency
+                )
+                cost += mv * (pos.borrow_rate_bps / 10_000.0) / 365.0
+        return cost
 
     def snapshot(self, timestamp: float | None = None) -> PerformanceSnapshot:
         """Take a point-in-time portfolio snapshot."""
@@ -468,7 +516,8 @@ class PortfolioTracker:
             self._snapshots[-1].total_equity if self._snapshots else self._initial_cash
         )
         equity = self.total_equity
-        daily_pnl = equity - prev_equity
+        borrow_cost = self.total_daily_borrow_cost()
+        daily_pnl = (equity - prev_equity) - borrow_cost
 
         snap = PerformanceSnapshot(
             timestamp=ts,
@@ -478,6 +527,7 @@ class PortfolioTracker:
             realized_pnl=self.total_realized_pnl,
             unrealized_pnl=self.total_unrealized_pnl,
             daily_pnl=daily_pnl,
+            borrow_cost=borrow_cost,
         )
         self._snapshots.append(snap)
         self._save_snapshot_to_db(snap)
