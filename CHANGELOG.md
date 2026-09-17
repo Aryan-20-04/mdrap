@@ -3,6 +3,11 @@
 All notable changes to MDRAP are documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.1] - 2026-09-18
+
+### Fixed
+- **Desk Navigator Parameter Error**: Updated `MDRAPNavigator.__init__` to accept `db_path` parameter and guarded `mdrap demo` to cleanly handle headless/non-TTY execution without failing raw input mode.
+
 ## [2.0.0] - 2026-09-18
 
 ### Added
