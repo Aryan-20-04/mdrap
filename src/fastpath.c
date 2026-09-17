@@ -665,6 +665,16 @@ EXPORT uint64_t fastpath_noop(
     return 0;
 }
 
+EXPORT uint64_t fastpath_noop_struct(const FastEvent *ev) {
+    (void)ev;
+    return 0;
+}
+
+EXPORT uint64_t fastpath_noop_scalar1(int64_t val) {
+    (void)val;
+    return 0;
+}
+
 EXPORT void fastpath_replay_record(
     uint64_t seq,
     const char *symbol,

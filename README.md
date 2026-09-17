@@ -253,8 +253,10 @@ Measured on identical 100,000-event workloads (`seed=42`, 7 timed runs, 2 warmup
 | Tier | Scope / Boundary | Latency (p50) | Throughput | Use Case |
 |---|---|:---:|:---:|---|
 | **Tier 1: Core C L1 Algorithm** | Isolated Native C rolling math (`fastpath.c`) | **50.0 ns** | 18,669,082 eps | Micro-benchmark core arithmetic |
-| **Tier 2: In-Memory Pipeline** | End-to-end stream: gateway + 7 quality rules + BBO | **15.7 µs** | ~63,000 eps | Real-time IPC streaming to bots |
+| **Tier 2: In-Memory Pipeline** | End-to-end compute path: gateway + 7 quality rules + BBO | **14.90 µs** (V4) / **19.00 µs** (V1) | 33,686 eps (V4) / 29,624 eps (V1) | Real-time IPC streaming to bots |
 | **Tier 3: Durable Ingest-to-Disk** | Full pipeline with SQLite WAL batched disk persistence | **783.6 µs** | 18,000–22,000 eps | Regulatory audit & persistent storage |
+
+> **Reproducibility Command**: Run `python benchmarks/compare_v1_v4.py --events 50000 --seed 42` to reproduce V1 vs V4 benchmarks back-to-back across 7 timed runs. See [`docs/benchmark-methodology.md`](docs/benchmark-methodology.md) for full denominator definitions.
 
 ---
 
