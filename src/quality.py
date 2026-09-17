@@ -333,6 +333,13 @@ class QualityEngine:
                 # Valid price: fold into rolling baseline
                 stats.update(event.price)
 
+        try:
+            from rules import _USER_RULES, evaluate_user_rules
+            if _USER_RULES:
+                event = evaluate_user_rules(event)
+        except ImportError:
+            pass
+
         self.counts[event.quality_status.value] += 1
         return event
 

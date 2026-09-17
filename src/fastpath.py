@@ -721,8 +721,18 @@ class FastQualityEngine:
     def evaluate(self, event: CanonicalEvent) -> CanonicalEvent:
         if self.thread_safe:
             with self._eval_lock:
-                return self._evaluate_unlocked(event)
-        return self._evaluate_unlocked(event)
+                res = self._evaluate_unlocked(event)
+        else:
+            res = self._evaluate_unlocked(event)
+
+        try:
+            from rules import _USER_RULES, evaluate_user_rules
+            if _USER_RULES:
+                res = evaluate_user_rules(res)
+        except ImportError:
+            pass
+
+        return res
 
     def _evaluate_unlocked(self, event: CanonicalEvent) -> CanonicalEvent:
         if not _FAST_EVAL:

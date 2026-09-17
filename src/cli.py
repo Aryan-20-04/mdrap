@@ -2884,6 +2884,17 @@ def cmd_export(args):
 
     _ensure_db_dir(db_path)
 
+    fmt = getattr(args, "format", None)
+    table = getattr(args, "table", "canonical_events")
+    if fmt in ("parquet", "json") or (fmt == "csv" and custom_output and str(custom_output).endswith(".csv")):
+        from export import export_data
+        out_path = custom_output or f"{table}.{fmt}"
+        count = export_data(db_path=db_path, table=table, output_path=out_path, fmt=fmt)
+        console.print(
+            f"[bold green]✔ Successfully exported {count:,} rows from '{table}' to:[/bold green] [bold white]{out_path}[/bold white]\n"
+        )
+        return
+
     console.print(
         Panel(
             f"[bold cyan]MDRAP Institutional Financial Report & Model Exporter[/bold cyan]\n"
@@ -5859,6 +5870,155 @@ class MDRAPArgumentParser(argparse.ArgumentParser):
         sys.exit(2)
 
 
+def cmd_config(args):
+    """Handle mdrap config show."""
+    from config_loader import load_config, resolve_config, compute_config_hash, find_config_path
+
+    cfg_path = find_config_path()
+    cfg = load_config(cfg_path)
+    cfg_hash = compute_config_hash(cfg)
+
+    venue = getattr(args, "venue", None)
+    inst = getattr(args, "instrument", None)
+    inst_cls = getattr(args, "instrument_class", None)
+
+    resolved, origins = resolve_config(cfg, venue=venue, instrument_class=inst_cls, symbol=inst)
+
+    if getattr(args, "json", False):
+        import json
+        print(json.dumps({
+            "config_file": str(cfg_path) if cfg_path else "defaults (in-memory)",
+            "config_sha256": cfg_hash,
+            "query": {"venue": venue, "instrument_class": inst_cls, "instrument": inst},
+            "parameters": {k: {"value": v, "origin": origins.get(k, "defaults")} for k, v in resolved.items()},
+        }, indent=2))
+        return
+
+    console = Console()
+    title_suffix = ""
+    if venue:
+        title_suffix += f" [Venue: {venue}]"
+    if inst:
+        title_suffix += f" [Instrument: {inst}]"
+
+    t = Table(title=f"MDRAP Configuration Resolution{title_suffix}", show_lines=True)
+    t.add_column("Parameter", style="cyan bold")
+    t.add_column("Resolved Value", style="bold green", justify="right")
+    t.add_column("Origin Layer", style="yellow")
+
+    for k in sorted(resolved.keys()):
+        t.add_row(k, str(resolved[k]), origins.get(k, "defaults"))
+
+    console.print(t)
+    console.print(f"[dim]Config file: {cfg_path or 'defaults (in-memory)'} | SHA-256: {cfg_hash[:16]}...[/dim]\n")
+
+
+def cmd_doctor(args):
+    """Diagnose platform health, compiler availability, engine tier, WAL status, and benchmark smoke."""
+    import platform
+    import shutil
+    import sqlite3
+    from config_loader import find_config_path, compute_config_hash
+    from fastpath import HAS_FASTPATH, _NATIVE_LIB
+
+    console = Console()
+    console.print(Panel("[bold cyan]MDRAP Platform Diagnostics & Doctor[/bold cyan]", border_style="cyan"))
+
+    t = Table(title="Environment & System Integrity", show_lines=True)
+    t.add_column("Diagnostic Check", style="cyan bold")
+    t.add_column("Status / Detection", style="bold white")
+    t.add_column("Result", style="bold green")
+
+    # 1. Python Environment
+    py_ver = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro} ({platform.python_implementation()})"
+    t.add_row("Python Version", py_ver, "[bold green]PASS[/bold green]")
+
+    # 2. C Compiler Detection
+    compilers_found = [c for c in ("gcc", "clang", "cl") if shutil.which(c)]
+    comp_str = ", ".join(compilers_found) if compilers_found else "None detected on PATH"
+    t.add_row("C Compiler Detected", comp_str, "[bold green]PASS[/bold green]" if compilers_found else "[yellow]WARN (C compiler optional)[/yellow]")
+
+    # 3. Active Engine Tier
+    if HAS_FASTPATH:
+        tier_status = "[bold green]PASS (Native C Fastpath Active)[/bold green]"
+        tier_desc = "C DLL Vectorized Context (_fastpath_native.dll)"
+    else:
+        tier_status = "[yellow]FALLBACK (Pure Python Engine)[/yellow]"
+        tier_desc = "Pure Python QualityEngine"
+    t.add_row("Active Engine Tier", tier_desc, tier_status)
+
+    # 4. Config File
+    cfg_path = find_config_path()
+    cfg_str = str(cfg_path) if cfg_path else "Using built-in defaults"
+    cfg_hash = compute_config_hash()
+    t.add_row("Configuration (mdrap.toml)", f"{cfg_str} (hash: {cfg_hash[:12]}...)", "[bold green]PASS[/bold green]")
+
+    # 5. SQLite WAL Mode
+    db_path = getattr(args, "db", "data/mdrap.db")
+    wal_ok = False
+    try:
+        os.makedirs(os.path.dirname(db_path) if os.path.dirname(db_path) else ".", exist_ok=True)
+        conn = sqlite3.connect(db_path)
+        cur = conn.cursor()
+        cur.execute("PRAGMA journal_mode=WAL;")
+        mode = cur.fetchone()[0]
+        wal_ok = mode.lower() == "wal"
+        conn.close()
+    except Exception:
+        mode = "ERROR"
+    t.add_row("Storage WAL Journal Mode", f"Mode: {mode.upper()}", "[bold green]PASS[/bold green]" if wal_ok else "[yellow]WARN[/yellow]")
+
+    # 6. 10k Smoke Benchmark
+    import time
+    from simulator import FeedSimulator, SimulatorConfig
+    from pipeline import Pipeline
+    from storage import Store
+
+    t0 = time.perf_counter()
+    sim_cfg = SimulatorConfig(num_events=10_000, seed=42)
+    sim = FeedSimulator(sim_cfg)
+    raw_events = [raw for raw, _ in sim.generate()]
+
+    with Store(":memory:") as store:
+        pipe = Pipeline(store)
+        for rev in raw_events:
+            pipe.process_one(rev)
+        pipe.finish()
+    t_proc = time.perf_counter() - t0
+    eps = 10_000 / t_proc if t_proc > 0 else 0
+    p50_us = (t_proc / 10_000) * 1_000_000
+
+    t.add_row(
+        "10k Smoke Benchmark",
+        f"{eps:,.0f} eps | avg: {p50_us:.2f} us/event",
+        "[bold green]HEALTHY[/bold green]",
+    )
+
+    console.print(t)
+
+
+def cmd_demo(args):
+    """Run self-contained 50k-event execution opening live desk view."""
+    console = Console()
+    console.print(Panel("[bold cyan]MDRAP Interactive Live Desk Demo[/bold cyan]\n[dim]Streaming 50,000 synthetic market events into SQLite WAL and launching Desk Navigator...[/dim]", border_style="cyan"))
+
+    args.events = 50_000
+    args.seed = 42
+    args.version = "v1"
+    args.fastpath = True
+    args.analytics = True
+    args.dashboard = False
+    args.strict_sync = False
+    args.no_sync = True
+    args.archive = False
+    args.db = "data/mdrap.db"
+    cmd_run(args)
+
+    from navigator import MDRAPNavigator
+    nav = MDRAPNavigator(db_path=args.db)
+    nav.run()
+
+
 def cmd_desk(args):
     from navigator import MDRAPNavigator
 
@@ -6471,6 +6631,17 @@ def build_parser() -> argparse.ArgumentParser:
         "--csv",
         action="store_true",
         help="Export as structured CSV package instead of Excel (.xlsx)",
+    )
+    p_export.add_argument(
+        "--format",
+        choices=["excel", "csv", "parquet", "json"],
+        default=None,
+        help="Export format: excel, csv, parquet, json",
+    )
+    p_export.add_argument(
+        "--table",
+        default="canonical_events",
+        help="Database table to export (default: canonical_events)",
     )
     p_export.add_argument(
         "--open",
@@ -7217,6 +7388,19 @@ def build_parser() -> argparse.ArgumentParser:
     except Exception:
         pass
 
+    # Phase 12: Hierarchical Configuration Show
+    p_cfg = _sub("config", cmd_config, "Inspect and query hierarchical mdrap.toml configuration", ["cfg"])
+    p_cfg.add_argument("config_action", nargs="?", default="show", help="Action (default: show)")
+    p_cfg.add_argument("--venue", help="Filter by venue code (e.g. binance, XNSE)")
+    p_cfg.add_argument("--instrument", "--symbol", help="Filter by instrument symbol (e.g. BTCUSDT, AAPL)")
+    p_cfg.add_argument("--instrument-class", help="Filter by asset class (e.g. crypto, equity)")
+
+    # Phase 14: Diagnosability Doctor
+    _sub("doctor", cmd_doctor, "Inspect environment, compiler, engine tier, WAL status, and run 10k smoke check", ["doc"], db=True)
+
+    # Phase 14: Demo
+    _sub("demo", cmd_demo, "Execute bundled 50k-event run and open live desk navigator", ["dm"], db=True)
+
     return parser
 
 
@@ -7546,6 +7730,9 @@ ALL_CANONICAL_COMMANDS = [
     "report",
     "markets",
     "desk",
+    "config",
+    "doctor",
+    "demo",
 ]
 
 

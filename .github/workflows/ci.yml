@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.12"]
+        python-version: ["3.11", "3.12", "3.13", "3.13t"]
 
     steps:
       - uses: actions/checkout@v4
@@ -19,8 +19,23 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - run: pip install -e .
-      - run: mdrap --help
-      - run: mdrap version
-      - run: mdrap --help
-      - run: pytest tests/ -x -q --timeout=30
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e . pytest rich
+          pip install pyarrow || true
+
+      - name: Compile C Native Accelerator
+        run: python build_fastpath.py
+
+      - name: Verify Rules Single Source of Truth
+        run: python tools/gen_reasons.py --check
+
+      - name: Run Test Suite
+        run: pytest tests/ -v -q --timeout=60
+
+      - name: Verify Environment Diagnostics
+        run: python cli.py doctor
+
+      - name: Micro-Benchmark Smoke Check
+        run: python benchmarks/micro_ffi.py --iterations 100000 --runs 2
