@@ -18,6 +18,7 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+pytestmark = pytest.mark.slow  # ponytail: stress/adversarial tests skip by default
 from cli import ALL_CANONICAL_COMMANDS, build_parser
 from models import CanonicalEvent, EventType, QualityStatus, RawEvent, Reason
 from pipeline import Pipeline

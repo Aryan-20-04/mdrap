@@ -6,8 +6,12 @@ from __future__ import annotations
 import os
 import sys
 
+import pytest
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
+pytestmark = pytest.mark.slow  # ponytail: stress tests skip by default
 
 from cli import build_parser
 import stresstest

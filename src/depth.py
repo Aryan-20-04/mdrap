@@ -365,10 +365,12 @@ class ConsolidatedDepthEngine:
         depth_ttl_s: float = 3.0,
         max_levels_per_side: int = 10,
         watchdog: Optional[Any] = None,
+        max_instruments: int = 2000,  # ponytail: cap memory growth on long daemons
     ):
         self.depth_ttl_s = depth_ttl_s
         self.max_levels_per_side = max_levels_per_side
         self.watchdog = watchdog
+        self.max_instruments = max_instruments
         # _venue_books[instrument][venue] = {"bids": [[price, size], ...], "asks": [[price, size], ...], "updated_at": ts}
         self._venue_books: Dict[str, Dict[str, dict]] = {}
         # Cached current ladders per instrument
@@ -381,6 +383,25 @@ class ConsolidatedDepthEngine:
         self._prev_tob: Dict[str, Tuple[float, float, float, float]] = {}
         self._cum_ofi: Dict[str, float] = {}
         self._cum_cvd: Dict[str, float] = {}
+        # Track last-seen timestamp per instrument for eviction
+        self._last_seen: Dict[str, float] = {}
+
+    def _evict_stale(self) -> None:
+        """Evict least-recently-seen instruments when over max_instruments cap."""
+        if len(self._current_ladders) <= self.max_instruments:
+            return
+        # Sort by last seen, evict oldest half above the cap
+        by_age = sorted(self._last_seen.items(), key=lambda kv: kv[1])
+        n_evict = len(self._current_ladders) - self.max_instruments
+        for inst, _ in by_age[:n_evict]:
+            self._venue_books.pop(inst, None)
+            self._current_ladders.pop(inst, None)
+            self._cached_depth_json.pop(inst, None)
+            self._cached_vwap_json.pop(inst, None)
+            self._prev_tob.pop(inst, None)
+            self._cum_ofi.pop(inst, None)
+            self._cum_cvd.pop(inst, None)
+            self._last_seen.pop(inst, None)
 
     def observe_trade(
         self,
@@ -495,12 +516,14 @@ class ConsolidatedDepthEngine:
             return None
 
         inst_books = self._venue_books.setdefault(inst, {})
+        self._last_seen[inst] = t_event  # ponytail: track for LRU eviction
         if bids_raw or asks_raw:
             inst_books[src] = {
                 "bids": bids_raw,
                 "asks": asks_raw,
                 "updated_at": t_event,
             }
+        self._evict_stale()  # ponytail: cap memory on long daemons
 
         # Prune expired or inactive venue books
         dead_venues = []

@@ -437,6 +437,39 @@ class Store:
             self.conn.close()
             self.conn = None
 
+    # -- Data lifecycle: retention & compaction --
+    # ponytail: WORM tables (audit_log, lineage) are never touched — spec A3.
+
+    @_synchronized
+    def retention_compact(self, retain_days: int = 30) -> dict:
+        """Delete canonical_events older than retain_days, then reclaim disk.
+
+        Does NOT touch audit_log or lineage (append-only / WORM by design).
+        Returns dict with counts of deleted rows and compaction status.
+        """
+        cutoff = time.time() - (retain_days * 86400)
+        cur = self.conn.execute(
+            "DELETE FROM canonical_events WHERE exchange_timestamp < ?", (cutoff,)
+        )
+        deleted_canonical = cur.rowcount
+        # Also prune operational hot tables that reference old data
+        self.conn.execute(
+            "DELETE FROM quarantine WHERE receive_timestamp < ?", (cutoff,)
+        )
+        self.conn.commit()
+        # Reclaim disk: checkpoint WAL then incremental vacuum
+        try:
+            self.conn.execute("PRAGMA wal_checkpoint(TRUNCATE);")
+        except Exception:
+            pass  # :memory: or non-WAL mode
+        return {"deleted_canonical": deleted_canonical, "cutoff_ts": cutoff}
+
+    @_synchronized
+    def vacuum(self):
+        """Full VACUUM to reclaim disk space after large deletions."""
+        self.conn.execute("VACUUM;")
+        return True
+
     # -- V3 Analytical write methods --
 
     @_synchronized

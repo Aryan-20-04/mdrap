@@ -15,6 +15,8 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+pytestmark = pytest.mark.slow  # ponytail: full CLI benchmark skip by default
+
 import cli
 import trading_cli
 

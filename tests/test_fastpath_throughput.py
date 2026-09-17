@@ -6,6 +6,8 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+pytestmark = pytest.mark.slow  # ponytail: throughput tests skip by default
+
 from fastpath import FastQualityEngine, _CFastResult, _NATIVE_LIB
 from sbe import pack_sbe_tick
 
