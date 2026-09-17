@@ -441,28 +441,38 @@ class Store:
     # ponytail: WORM tables (audit_log, lineage) are never touched — spec A3.
 
     @_synchronized
-    def retention_compact(self, retain_days: int = 30) -> dict:
+    def retention_compact(
+        self, retain_days: int = 30, quarantine_days: int = 90
+    ) -> dict:
         """Delete canonical_events older than retain_days, then reclaim disk.
 
-        Does NOT touch audit_log or lineage (append-only / WORM by design).
+        quarantine records are kept for quarantine_days (default 90) for
+        evidentiary/audit compliance, while operational events prune at retain_days.
+        Does NOT touch audit_log or lineage (append-only / WORM by design, spec A3).
         Returns dict with counts of deleted rows and compaction status.
         """
         cutoff = time.time() - (retain_days * 86400)
+        q_cutoff = time.time() - (quarantine_days * 86400)
         cur = self.conn.execute(
             "DELETE FROM canonical_events WHERE exchange_timestamp < ?", (cutoff,)
         )
         deleted_canonical = cur.rowcount
-        # Also prune operational hot tables that reference old data
-        self.conn.execute(
-            "DELETE FROM quarantine WHERE receive_timestamp < ?", (cutoff,)
+        cur_q = self.conn.execute(
+            "DELETE FROM quarantine WHERE receive_timestamp < ?", (q_cutoff,)
         )
+        deleted_quarantine = cur_q.rowcount
         self.conn.commit()
-        # Reclaim disk: checkpoint WAL then incremental vacuum
+        # Reclaim disk: checkpoint WAL then truncate
         try:
             self.conn.execute("PRAGMA wal_checkpoint(TRUNCATE);")
         except Exception:
             pass  # :memory: or non-WAL mode
-        return {"deleted_canonical": deleted_canonical, "cutoff_ts": cutoff}
+        return {
+            "deleted_canonical": deleted_canonical,
+            "deleted_quarantine": deleted_quarantine,
+            "cutoff_ts": cutoff,
+            "quarantine_cutoff_ts": q_cutoff,
+        }
 
     @_synchronized
     def vacuum(self):

@@ -181,6 +181,7 @@ class CanonicalEvent:
     # Global exchange metadata
     venue: str = "XNAS"
     currency: str = "USD"
+    clock_source: str = "HOST_SYS_CLOCK"  # MiFID II RTS 25 timestamp traceability
 
     def dedup_key(self) -> tuple:
         """Construct a deterministic hashable key for duplicate detection.

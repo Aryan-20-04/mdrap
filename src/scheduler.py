@@ -191,3 +191,19 @@ class Scheduler:
                 pass
 
         return report
+
+    def schedule_retention(
+        self,
+        store: Any,
+        cron_expr: str = "@daily",
+        retain_days: int = 30,
+        quarantine_days: int = 90,
+    ) -> ScheduledJob:
+        """Schedules recurring data retention pruning and WAL checkpoint compaction."""
+        return self.add_job(
+            name="data_retention_compact",
+            cron_expr=cron_expr,
+            action=lambda: store.retention_compact(
+                retain_days=retain_days, quarantine_days=quarantine_days
+            ),
+        )

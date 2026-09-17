@@ -1497,6 +1497,45 @@ def cmd_archive(args):
     console.print(table)
 
 
+def cmd_retention(args):
+    """Run storage retention compaction and disk reclamation."""
+    _ensure_db_dir(args.db)
+    store = Store(args.db)
+    days = getattr(args, "days", 30)
+    quarantine_days = getattr(args, "quarantine_days", 90)
+    do_vacuum = getattr(args, "vacuum", False)
+
+    res = store.retention_compact(retain_days=days, quarantine_days=quarantine_days)
+    if do_vacuum:
+        store.vacuum()
+        res["vacuum"] = True
+    else:
+        res["vacuum"] = False
+    store.close()
+
+    if getattr(args, "json", False):
+        print(json.dumps(res, indent=2))
+        return
+
+    console = Console()
+    table = Table(title="Storage Retention & Compaction")
+    table.add_column("Parameter", style="cyan")
+    table.add_column("Value", style="green")
+    table.add_row("Database", args.db)
+    table.add_row("Canonical Retention Window", f"{days} days")
+    table.add_row(
+        "Quarantine Retention Window",
+        f"{quarantine_days} days (evidentiary compliance)",
+    )
+    table.add_row("Deleted Canonical Rows", f"{res['deleted_canonical']:,}")
+    table.add_row("Deleted Quarantine Rows", f"{res['deleted_quarantine']:,}")
+    table.add_row("WAL Checkpointed", "Yes (TRUNCATE)")
+    table.add_row(
+        "VACUUM Executed", "Yes" if do_vacuum else "No (pass --vacuum to run)"
+    )
+    console.print(table)
+
+
 def cmd_analytics(args):
     """Query analytical data (OHLCV, spreads, volatility)."""
     _ensure_db_dir(args.db)
@@ -5726,6 +5765,7 @@ def build_parser() -> argparse.ArgumentParser:
         p.add_argument(
             "--json",
             action="store_true",
+            default=argparse.SUPPRESS,
             help="Output structured JSON instead of formatted tables",
         )
         p.set_defaults(func=func)
@@ -6027,6 +6067,31 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_archive.add_argument(
         "--base-dir", default="data/raw_archive", help="Archive directory"
+    )
+
+    p_ret = _sub(
+        "retention",
+        cmd_retention,
+        "Run storage retention compaction and disk reclamation",
+        ["compact", "prune"],
+        db=True,
+    )
+    p_ret.add_argument(
+        "--days",
+        type=int,
+        default=30,
+        help="Retention window for canonical events in days (default: 30)",
+    )
+    p_ret.add_argument(
+        "--quarantine-days",
+        type=int,
+        default=90,
+        help="Retention window for quarantine records in days (default: 90)",
+    )
+    p_ret.add_argument(
+        "--vacuum",
+        action="store_true",
+        help="Execute full SQLite VACUUM to reclaim filesystem disk space",
     )
 
     # V3: Analytics commands
@@ -6463,7 +6528,16 @@ def build_parser() -> argparse.ArgumentParser:
     p_test_all.add_argument("-s", "--seed", type=int, default=42)
 
     # Version
-    _sub("version", lambda args: print("MDRAP v1.2.1"), "Show MDRAP version", ["v"])
+    _sub(
+        "version",
+        lambda args: print(
+            json.dumps({"version": "1.2.1", "platform": "MDRAP"}, indent=2)
+        )
+        if getattr(args, "json", False)
+        else print("MDRAP v1.2.1"),
+        "Show MDRAP version",
+        ["v"],
+    )
 
     # Phase 3: DuckDB Columnar Time-Series Storage & Vectorized Analytics
     p_col = _sub(
@@ -7220,6 +7294,9 @@ MNEMONIC_MAP = {
     "schedule": "schedule",
     "sched": "schedule",
     "cron": "schedule",
+    "retention": "retention",
+    "compact": "retention",
+    "prune": "retention",
     "markets": "markets",
     "venues": "markets",
     "world": "markets",
@@ -7303,6 +7380,7 @@ ALL_CANONICAL_COMMANDS = [
     "corpact",
     "features",
     "schedule",
+    "retention",
     "markets",
     "desk",
 ]
@@ -7761,12 +7839,15 @@ def main():
                 cutoff=0.6,
             )
         )
-        is_ticker_first = (first_upper in KNOWN_SYMBOLS) or (
-            not has_cmd_typo
-            and raw_cmd not in MNEMONIC_MAP
-            and raw_cmd not in ALL_CANONICAL_COMMANDS
-            and first_clean.isalpha()
-            and 1 <= len(first_clean) <= 8
+        is_ticker_first = not raw_cmd.startswith("-") and (
+            (first_upper in KNOWN_SYMBOLS)
+            or (
+                not has_cmd_typo
+                and raw_cmd not in MNEMONIC_MAP
+                and raw_cmd not in ALL_CANONICAL_COMMANDS
+                and first_clean.isalpha()
+                and 1 <= len(first_clean) <= 8
+            )
         )
         if is_ticker_first:
             sym = KNOWN_SYMBOLS.get(first_upper, first_upper)

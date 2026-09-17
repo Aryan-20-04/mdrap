@@ -24,6 +24,7 @@ class SymbolInfo:
     ric: str  # Reuters Instrument Code
     bloomberg: str  # Bloomberg ticker
     isin: str  # International Securities Identification Number
+    figi: str = ""  # Financial Instrument Global Identifier (OpenFIGI)
 
 
 # Reference directory of high-liquidity global benchmark constituents
@@ -420,6 +421,14 @@ def resolve_symbol(
     # Direct directory match
     if raw in GLOBAL_SECURITY_DIRECTORY:
         return GLOBAL_SECURITY_DIRECTORY[raw]
+
+    # OpenFIGI or ISIN 12-character global identifier resolution
+    if len(raw) == 12:
+        for info in GLOBAL_SECURITY_DIRECTORY.values():
+            if info.figi and info.figi == raw:
+                return info
+            if info.isin and info.isin == raw:
+                return info
 
     # Check named alias
     if raw in ALIASES_TO_TICKER:

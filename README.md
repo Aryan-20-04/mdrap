@@ -767,3 +767,7 @@ mdrap/
 ## License
 
 This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
+
+### Market Data Licensing & Redistribution Disclaimer
+
+MDRAP is open-source financial-market infrastructure software designed to process, reconcile, and validate market data feeds that the user is legally authorized and licensed to receive. MDRAP does not provide, resell, or grant rights to redistribute proprietary exchange or vendor data (including CME, Nasdaq, NYSE, OPRA, Polygon.io, or Databento). Users are solely responsible for ensuring their ingestion, storage, processing, and downstream routing comply with their respective data vendor and exchange subscriber agreements.

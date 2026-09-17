@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import os
 import sys
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -306,6 +306,7 @@ def test_modal_navigator_render():
     nav.render()
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="msvcrt is Windows-only")
 def test_key_reader_all_keys():
     from navigator import KeyReader, Key
     kr = KeyReader()
