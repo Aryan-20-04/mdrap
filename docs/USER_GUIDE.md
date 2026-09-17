@@ -1139,3 +1139,54 @@ Use `mdrap historical` (aliases `history`, `chd`) for symbol discovery, hourly
 file planning, native Parquet downloads and canonical historical imports. See
 the [CHD guide](CHD.md) for installation, UTC intervals, snapshot warmup,
 authentication, provenance and complete CLI/Python examples.
+
+---
+
+## 8. Diagnostics, Configuration & Extension Points (Round 2)
+
+### Platform Health & Integrity Diagnostics (`mdrap doctor`)
+Run comprehensive self-checks across Python environment, compiler detection on PATH, active engine tier, configuration SHA-256, SQLite WAL status, and execute a 10,000-event smoke benchmark:
+```bash
+mdrap doctor
+```
+
+### Self-Contained Interactive Demo (`mdrap demo`)
+Stream 50,000 synthetic market events into SQLite WAL storage and automatically launch the keyboard-first modal desk navigator:
+```bash
+mdrap demo
+```
+
+### Layered Configuration Inspection (`mdrap config show`)
+Inspect resolved data quality thresholds and track origin provenance (`defaults -> venue -> instrument_class -> instrument`):
+```bash
+# Query global defaults
+mdrap config show
+
+# Query specific venue and instrument overrides
+mdrap config show --venue binance --instrument BTCUSDT --json
+```
+
+### Table Export to Parquet, JSON, and CSV (`mdrap export`)
+Export canonical market data or quarantined anomalies from SQLite into compressed Parquet, JSON, or CSV:
+```bash
+# Export to Apache Parquet (requires optional pyarrow)
+mdrap export AAPL --format parquet --output canonical.parquet
+
+# Export to JSON
+mdrap export AAPL --format json --output canonical.json
+```
+
+### Custom Feed Adapters and User Rules (Bits 32–63)
+To ingest from proprietary venues or brokers, implement the `FeedAdapter` protocol and register custom quality rules:
+```python
+from adapters import FeedAdapter
+from rules import register_rule
+from models import CanonicalEvent, QualityStatus
+
+@register_rule(bit=32, name="CUSTOM_WIDE_SPREAD", severity=QualityStatus.SUSPICIOUS)
+def check_spread(event: CanonicalEvent) -> bool:
+    if event.bid_price and event.ask_price:
+        return (event.ask_price - event.bid_price) > 5.0
+    return False
+```
+See `examples/custom_venue/` for a complete runnable walkthrough.

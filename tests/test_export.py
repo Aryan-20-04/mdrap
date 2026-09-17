@@ -170,3 +170,24 @@ def test_cli_export_command(temp_env):
     args.func(args)
     assert os.path.exists(out_file)
     assert os.path.getsize(out_file) > 1000
+
+
+def test_export_data_json_and_sql_injection_defense(temp_env):
+    """Verify export_data exports valid JSON and defends against SQL injection."""
+    from export import export_data
+
+    # 1. Valid export to JSON
+    json_out = os.path.join(temp_env["dir"], "valid.json")
+    count = export_data(temp_env["db"], table="canonical_events", output_path=json_out, fmt="json")
+    assert count > 0
+    assert os.path.exists(json_out)
+
+    # 2. SQL injection attempt in table name rejected
+    malicious_out = os.path.join(temp_env["dir"], "hacked.json")
+    with pytest.raises(ValueError, match="does not exist in database"):
+        export_data(
+            temp_env["db"],
+            table="canonical_events; DROP TABLE canonical_events; --",
+            output_path=malicious_out,
+            fmt="json",
+        )

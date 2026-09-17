@@ -1,4 +1,4 @@
-﻿"""MDRAP Data Export Utility.
+"""MDRAP Data Export Utility.
 
 Exports canonical market data and quarantined events from SQLite storage into
 Parquet (optional dependency `pyarrow`), JSON, or CSV.
@@ -32,7 +32,13 @@ def export_data(
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
 
-    query = f"SELECT * FROM {table}"
+    # Parameterized verification against sqlite_master to strictly prevent SQL injection
+    cursor.execute("SELECT name FROM sqlite_master WHERE type IN ('table', 'view') AND name = ?", (table,))
+    if not cursor.fetchone():
+        conn.close()
+        raise ValueError(f"Table or view '{table}' does not exist in database.")
+
+    query = f'SELECT * FROM "{table}"'
     if limit is not None:
         query += f" LIMIT {int(limit)}"
 

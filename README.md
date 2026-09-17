@@ -2,7 +2,7 @@
 ### The reliability and audit layer between raw market data feeds and everything else
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue.svg)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-725%2F725%20passing-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-690%2F690%20passing%20(749%20total)-brightgreen.svg)](tests/)
 [![Hot Path Latency](https://img.shields.io/badge/hot--path-19.4%20ns%20%7C%2051.4M%20eps-orange.svg)](src/fastpath.c)
 [![Architecture](https://img.shields.io/badge/architecture-V1%20%7C%20V2%20%7C%20V3%20%7C%20V4%20C--Fastpath-purple.svg)](docs/architecture.md)
 [![User Guide](https://img.shields.io/badge/manual-Operator%20%26%20User%20Guide-teal.svg)](docs/USER_GUIDE.md)
@@ -230,6 +230,14 @@ mdrap historical ingest --exchange binance_spot --symbol BTCUSDT \
 - **Directional Grid Traversal**: Vim keys (`h`/`j`/`k`/`l` or arrow keys) navigate active symbol watchlists, market stats, and Level-2 order books.
 - **Quick Metric Sorting & Filtering**: One-key sorting (`s`) by Volume, Spread, Change %, or Symbol, and live incremental filtering (`/`) with instant debounce.
 - **Two-Stage Armed Execution Safeguard**: Pressing `b` (Buy) or `S` (Sell) arms a dedicated order ticket with clear color warning; requires explicit confirmation (`Enter` or `y`) to execute or `Esc`/`n` to safely cancel, completely preventing stray key accidental order submissions.
+
+### 18. Gate Audit, Configuration & Extension Points (Round 2 Architecture)
+- **Single Source of Truth (`src/rules.def`)**: Canonical X-Macro reserving bitmask ranges: bits 0–15 (core quality rules), bits 16–31 (future platform rules), and bits 32–63 (user-defined rules). Python `Reason` enum and native C `#define`s are auto-synchronized and validated in CI via `python tools/gen_reasons.py --check`.
+- **Hierarchical Zero-Dependency Configuration (`mdrap.toml`, `src/config_loader.py`)**: Powered by Python 3.11+ stdlib `tomllib` with layered resolution provenance tracking: `defaults -> venue -> instrument_class -> instrument`. Queryable on the CLI via `mdrap config show --venue binance --instrument BTCUSDT`.
+- **Feed Adapter Protocol & User Rule Registry (`src/adapters/`, `src/rules.py`)**: `@runtime_checkable` `FeedAdapter` protocol (`open`, `__iter__`, `close`) with dynamic discovery via entry points (`mdrap.adapters`), and user rule registration decorator `@register_rule(bit=32..63, name=...)` evaluated in Python post-native pass.
+- **Institutional Diagnosability (`mdrap doctor`, `mdrap demo`)**: Instant self-checks verifying Python environment, compiler detection on PATH, active engine tier, configuration SHA-256, SQLite WAL status, and 10k smoke benchmark execution; `mdrap demo` executes 50k events into the live desk view.
+- **Reproducibility Manifests & Parquet Export (`src/manifest.py`, `src/export.py`)**: Generates structured `manifest.json` capturing git commit SHA, config hash, active engine tier, and system hardware. Exports canonical data and quarantine tables to Parquet (`--format parquet`), JSON, or CSV.
+- **Continuous Fuzzing (`fuzz/`)**: libFuzzer C harnesses and differential fuzzer testing 5,000+ mutated byte streams to assert 100% acceptance/rejection parity between Python and C decoders.
 
 ---
 
