@@ -6014,8 +6014,11 @@ def cmd_demo(args):
     args.db = "data/mdrap.db"
     cmd_run(args)
 
+    if getattr(args, "json", False) or not sys.stdin.isatty():
+        return
+
     from navigator import MDRAPNavigator
-    nav = MDRAPNavigator(db_path=args.db)
+    nav = MDRAPNavigator(console=console, db_path=args.db)
     nav.run()
 
 

@@ -346,8 +346,9 @@ class DataGrid:
 class MDRAPNavigator:
     """Full-screen interactive keyboard desk managing tabs, grids, and safe execution."""
 
-    def __init__(self, console: Console | None = None):
+    def __init__(self, console: Console | None = None, db_path: str | None = None):
         self.console = console or Console()
+        self.db_path = db_path
         self.reader = KeyReader()
         self.mode = NavigatorMode.NORMAL
 
