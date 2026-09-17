@@ -28,16 +28,18 @@
 #define STATUS_SUSPICIOUS 1
 #define STATUS_INVALID 2
 
-// Reason Bitmasks
-#define REASON_NONE 0
-#define REASON_SCHEMA_VIOLATION (1 << 0)
-#define REASON_DUPLICATE (1 << 1)
-#define REASON_SEQUENCE_GAP (1 << 2)
-#define REASON_OUT_OF_ORDER (1 << 3)
-#define REASON_STALE (1 << 4)
-#define REASON_PRICE_ANOMALY (1 << 5)
-#define REASON_CROSSED_QUOTE (1 << 6)
-#define REASON_CROSS_FEED_DISAGREEMENT (1 << 7)
+// Reason Bitmasks (Single source of truth: rules.def)
+#define REASON_NONE 0ULL
+
+#define RULE_DEF(name, bit, desc) REASON_##name = (1ULL << (bit)),
+enum ReasonBits {
+    REASON_BIT_NONE = 0,
+#include "rules.def"
+};
+#undef RULE_DEF
+
+#define CORE_REASON_MASK 0xFFFFFFFFULL
+#define USER_REASON_MASK 0xFFFFFFFF00000000ULL
 
 #pragma pack(push, 8)
 typedef struct {
@@ -57,7 +59,8 @@ typedef struct {
 
 typedef struct {
     int32_t status;
-    uint32_t reason_mask;
+    uint32_t _reserved; // Explicit 4-byte padding for 8-byte boundary
+    uint64_t reason_mask;
 } FastResult;
 #pragma pack(pop)
 
@@ -193,11 +196,12 @@ static inline int check_and_insert_dedup(FastEngine *eng, uint64_t key) {
     return 0;
 }
 
-static inline void mark(FastResult *res, int32_t status, uint32_t reason) {
+static inline void mark(FastResult *res, int32_t status, uint64_t reason) {
     if (status > res->status) {
         res->status = status;
     }
-    res->reason_mask |= reason;
+    // Strict enforcement: native C engine never sets bits >= 32 (reserved for user rules in Python)
+    res->reason_mask |= (reason & CORE_REASON_MASK);
 }
 
 // Exported C Functions
@@ -985,7 +989,8 @@ EXPORT int32_t fastpath_process_sbe_stream(
 
         if (out_results) {
             out_results[i].status = status;
-            out_results[i].reason_mask = reason_mask;
+            out_results[i]._reserved = 0;
+            out_results[i].reason_mask = reason_mask & CORE_REASON_MASK;
         }
 
         if (status == STATUS_VALID) {

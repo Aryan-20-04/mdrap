@@ -33,7 +33,7 @@ _PRIORITY_MAP = {
     QualityStatus.INVALID: 2,
 }
 
-# Bitmask values matching fastpath.c
+# Bitmask values matching fastpath.c and rules.def
 _REASON_BITS = [
     (1 << 0, Reason.SCHEMA_VIOLATION.value),
     (1 << 1, Reason.DUPLICATE.value),
@@ -43,6 +43,10 @@ _REASON_BITS = [
     (1 << 5, Reason.PRICE_ANOMALY.value),
     (1 << 6, Reason.CROSSED_QUOTE.value),
     (1 << 7, Reason.CROSS_FEED_DISAGREEMENT.value),
+    (1 << 8, Reason.MALFORMED.value),
+    (1 << 9, Reason.CIRCUIT_FILTER_BREACH.value),
+    (1 << 10, Reason.VOLATILITY_INTERRUPTION.value),
+    (1 << 11, Reason.SPECIAL_QUOTE_INDICATION.value),
 ]
 
 _SOURCES = ["FEEDX", "FEEDY", "FEEDZ", "SOURCEA", "SOURCEB", "SOURCEC"]
@@ -74,7 +78,8 @@ class _CFastResult(ctypes.Structure):
     _pack_ = 8
     _fields_ = [
         ("status", ctypes.c_int32),
-        ("reason_mask", ctypes.c_uint32),
+        ("_reserved", ctypes.c_uint32),
+        ("reason_mask", ctypes.c_uint64),
     ]
 
 
