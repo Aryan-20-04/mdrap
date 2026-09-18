@@ -52,6 +52,10 @@ def export_data(
     col_names = [col[0] for col in cursor.description]
     data_dicts = [dict(row) for row in rows]
 
+    parent_dir = os.path.dirname(os.path.abspath(output_path))
+    if parent_dir:
+        os.makedirs(parent_dir, exist_ok=True)
+
     fmt_lower = fmt.lower()
 
     if fmt_lower == "parquet":
