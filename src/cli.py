@@ -4640,7 +4640,10 @@ def cmd_strategy(args):
 
     # Single-pass streaming: generate → ingest → normalize → strategy dispatch
     # No intermediate list, no second pass. ~2x faster and zero memory bloat.
-    sim = FeedSimulator(SimulatorConfig(seed=42, num_events=events_count))
+    sim_cfg = SimulatorConfig(seed=42, num_events=events_count)
+    if not is_all_market and sym_list:
+        sim_cfg.instruments = sym_list
+    sim = FeedSimulator(sim_cfg)
     active_symbols = set()
     event_count = 0
 
