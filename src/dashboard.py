@@ -12,8 +12,7 @@ from typing import Optional
 
 from rich.console import Group
 from rich.live import Live
-from rich.panel import Panel
-from rich.table import Table
+from term import Table, Panel, format_status
 
 from metrics import LIVE_WINDOW, percentile
 from pipeline import Pipeline
@@ -27,7 +26,7 @@ def _quality_table(pipeline: Pipeline) -> Table:
     total = max(1, sum(counts.values()))
     for status in ("VALID", "SUSPICIOUS", "INVALID"):
         c = counts.get(status, 0)
-        t.add_row(status, f"{c:,} ({100 * c / total:.2f}%)")
+        t.add_row(format_status(status), f"{c:,} ({100 * c / total:.2f}%)")
     return t
 
 

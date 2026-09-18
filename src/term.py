@@ -1,17 +1,74 @@
 # terminal rendering abstraction with stdlib fallback
+import os
 import re
 from typing import Any, Optional
 
-from rich.console import Console
-from rich.table import Table
+from rich import box
+from rich.console import Console as _RichConsole
+from rich.table import Table as _RichTable
 from rich.panel import Panel
 from io import StringIO
 
 _TAG_RE = re.compile(r"\[/?[a-zA-Z0-9_# =,-]+\]")
 
 
+def is_no_color_active() -> bool:
+    """Check if color suppression is explicitly requested via flag or NO_COLOR environment."""
+    return bool(os.environ.get("NO_COLOR") or os.environ.get("MDRAP_NO_COLOR"))
+
+
+class Console(_RichConsole):
+    """Rich Console that automatically suppresses ANSI styling when NO_COLOR is active."""
+
+    def __init__(self, *args, **kwargs):
+        if is_no_color_active():
+            kwargs.setdefault("color_system", None)
+            kwargs.setdefault("no_color", True)
+        super().__init__(*args, **kwargs)
+
+
+class Table(_RichTable):
+    """Rich Table with standard institutional rounded box border across MDRAP."""
+
+    def __init__(self, *args, **kwargs):
+        kwargs.setdefault("box", box.ROUNDED)
+        super().__init__(*args, **kwargs)
+
+
 def strip_tags(text: Any) -> str:
     return _TAG_RE.sub("", str(text))
+
+
+def format_status(status: str) -> str:
+    """Colorblind-safe status indicator combining distinct Unicode glyph with styling."""
+    s = str(status).upper()
+    if s in ("VALID", "PASS", "HEALTHY", "OK"):
+        lbl = s if s in ("PASS", "HEALTHY", "OK") else "VALID"
+        return f"[bold green]● {lbl}[/bold green]"
+    elif s in ("SUSPICIOUS", "WARN", "DEGRADED"):
+        lbl = s if s in ("WARN", "DEGRADED") else "SUSPICIOUS"
+        return f"[bold yellow]▲ {lbl}[/bold yellow]"
+    elif s in ("INVALID", "FAIL", "ERROR", "CROSS", "CROSSED"):
+        lbl = s if s in ("FAIL", "ERROR", "CROSS", "CROSSED") else "INVALID"
+        return f"[bold red]✕ {lbl}[/bold red]"
+    return f"[dim]{status}[/dim]"
+
+
+def format_direction(direction: str, val: float, curr: str = "$") -> str:
+    """Colorblind-safe market movement indicator with directional arrows and styling."""
+    d = str(direction).upper()
+    if d in ("UP", "BUY", "GAIN"):
+        return f"[bold green]▲ {curr}{val:,.2f}[/bold green]"
+    elif d in ("DOWN", "SELL", "LOSS"):
+        return f"[bold red]▼ {curr}{val:,.2f}[/bold red]"
+    return f"[dim]■ {curr}{val:,.2f}[/dim]"
+
+
+def format_num(val: float | int, decimals: int = 2) -> str:
+    """Standardized institutional number formatting with commas."""
+    if isinstance(val, int):
+        return f"{val:,}"
+    return f"{val:,.{decimals}f}"
 
 
 class _StdlibTable(Table):
@@ -33,6 +90,7 @@ class _StdlibPanel(Panel):
 
 
 _StdlibConsole = Console
+
 
 
 def render_gemini_banner(console: Any) -> None:

@@ -428,5 +428,130 @@ def test_cmd_run_duckdb_sync_error_handling(tmp_path, capsys, monkeypatch):
     mock_store_cls.assert_not_called()
 
 
+def test_no_color_flag_and_environment(monkeypatch):
+    from term import is_no_color_active, Console
+    from cli import build_parser
+
+    # 1. Environment variable test
+    monkeypatch.setenv("NO_COLOR", "1")
+    assert is_no_color_active() is True
+    con = Console()
+    assert con.no_color is True
+    assert con.color_system is None
+
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    monkeypatch.delenv("MDRAP_NO_COLOR", raising=False)
+    assert is_no_color_active() is False
+
+    # 2. CLI flag test
+    parser = build_parser()
+    args = parser.parse_args(["--no-color", "status"])
+    assert getattr(args, "no_color", False) is True
+
+    args_plain = parser.parse_args(["status", "--plain"])
+    assert getattr(args_plain, "no_color", False) is True
+
+
+def test_colorblind_safe_formatters():
+    from term import format_status, format_direction, format_num
+
+    # Status indicators: glyph + status
+    val_status = format_status("VALID")
+    assert "●" in val_status
+    assert "VALID" in val_status
+
+    warn_status = format_status("SUSPICIOUS")
+    assert "▲" in warn_status
+    assert "SUSPICIOUS" in warn_status
+
+    inv_status = format_status("INVALID")
+    assert "✕" in inv_status
+    assert "INVALID" in inv_status
+
+    pass_status = format_status("PASS")
+    assert "●" in pass_status
+    assert "PASS" in pass_status
+
+    # Direction indicators: arrows
+    up_dir = format_direction("UP", 100.50)
+    assert "▲" in up_dir
+    assert "$100.50" in up_dir
+
+    down_dir = format_direction("DOWN", 95.25)
+    assert "▼" in down_dir
+    assert "$95.25" in down_dir
+
+    flat_dir = format_direction("FLAT", 100.00)
+    assert "■" in flat_dir
+
+    # Number formatting
+    assert format_num(1000000) == "1,000,000"
+    assert format_num(1234.567, decimals=2) == "1,234.57"
+
+
+def test_error_path_palette_fallback(capsys):
+    from cli import build_parser
+
+    parser = build_parser()
+    with pytest.raises(SystemExit) as exc_info:
+        parser.parse_args(["completely_unrecognized_choice_xyz"])
+    assert exc_info.value.code != 0
+    captured = capsys.readouterr()
+    # Stderr should show clean categorized palette and not raw choice list
+    assert "unrecognized command or choice" in captured.err or "unrecognized command or choice" in captured.out
+    assert "Available command categories:" in captured.err or "Available command categories:" in captured.out or "Market Desk" in captured.err or "Market Desk" in captured.out
+
+
+def test_completion_command_generation(capsys):
+    from cli import build_parser, cmd_completion
+
+    parser = build_parser()
+
+    # Bash completion
+    args_bash = parser.parse_args(["completion", "bash"])
+    cmd_completion(args_bash)
+    captured = capsys.readouterr()
+    assert "_mdrap_completions()" in captured.out
+    assert "complete -F _mdrap_completions mdrap" in captured.out
+
+    # Zsh completion
+    args_zsh = parser.parse_args(["completion", "zsh"])
+    cmd_completion(args_zsh)
+    captured = capsys.readouterr()
+    assert "#compdef mdrap" in captured.out
+    assert "_describe -t commands" in captured.out
+
+    # Fish completion
+    args_fish = parser.parse_args(["completion", "fish"])
+    cmd_completion(args_fish)
+    captured = capsys.readouterr()
+    assert "complete -c mdrap" in captured.out
+
+    # PowerShell completion
+    args_ps = parser.parse_args(["completion", "powershell"])
+    cmd_completion(args_ps)
+    captured = capsys.readouterr()
+    assert "Register-ArgumentCompleter -Native -CommandName mdrap" in captured.out
+
+
+def test_trimmed_aliases_and_mnemonic_backward_compatibility():
+    from cli import build_parser, MNEMONIC_MAP
+
+    parser = build_parser()
+
+    # 1. Primary short aliases on subparser work
+    assert parser.parse_args(["s"]).func is not None
+    assert parser.parse_args(["r", "-e", "10"]).func is not None
+    assert parser.parse_args(["a", "ohlcv"]).func is not None
+    assert parser.parse_args(["l2", "BTC/USD"]).func is not None
+    assert parser.parse_args(["cvd", "AAPL"]).func is not None
+
+    # 2. Trimmed legacy mnemonics exist in MNEMONIC_MAP for transparent interception
+    legacy_keys = ["navigator", "tui", "compact", "prune", "ladder", "book", "whales", "duckdb"]
+    for k in legacy_keys:
+        assert k in MNEMONIC_MAP
+
+
+
 
 

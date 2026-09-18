@@ -48,6 +48,9 @@ from term import (  # noqa: E402
     Console,
     Table,
     Panel,
+    format_status,
+    format_direction,
+    format_num,
     render_gemini_banner,
     render_gemini_tips,
     render_gemini_box_top,
@@ -1305,14 +1308,14 @@ def cmd_status(args):
 
     t1_rows = [
         ("Canonical Events", f"{tot:,}", "100.0%"),
-        ("  + VALID", f"{val:,}", f"[green]{val / max(1, tot) * 100:.1f}%[/green]"),
+        ("  ● VALID", f"{val:,}", f"[green]{val / max(1, tot) * 100:.1f}%[/green]"),
         (
-            "  + SUSPICIOUS",
+            "  ▲ SUSPICIOUS",
             f"{susp:,}",
             f"[yellow]{susp / max(1, tot) * 100:.1f}%[/yellow]",
         ),
         (
-            "  + INVALID (Quarantine)",
+            "  ✕ INVALID (Quarantine)",
             f"{inv:,}",
             f"[red]{inv / max(1, tot) * 100:.1f}%[/red]",
         ),
@@ -1346,7 +1349,6 @@ def cmd_status(args):
         for h in health:
             score = h.get("score", 0)
             status = "HEALTHY" if score >= 0.90 else "DEGRADED"
-            style = "green" if status == "HEALTHY" else "red"
             routing = (
                 "Primary"
                 if score >= 0.95
@@ -1357,7 +1359,7 @@ def cmd_status(args):
                     h["source"],
                     f"{h['total']:,}",
                     f"{score:.4f}",
-                    f"[{style} bold]{status}[/{style} bold]",
+                    format_status(status),
                     routing,
                 )
             )
@@ -5796,14 +5798,28 @@ def cmd_sdk_demo(args):
 class MDRAPArgumentParser(argparse.ArgumentParser):
     """
     Enhanced ArgumentParser with concise, targeted error reporting,
-    fuzzy typo suggestions, and suppressed multi-page usage dumps.
+    fuzzy typo suggestions, transparent mnemonic alias routing, and suppressed multi-page usage dumps.
     """
+
+    def parse_known_args(self, args=None, namespace=None):
+        if args is None:
+            args = sys.argv[1:]
+        else:
+            args = list(args)
+        # Only map top-level verbs on the root parser (prog has no space), not subparser options
+        if " " not in (self.prog or "") and "MNEMONIC_MAP" in globals():
+            m_map = globals()["MNEMONIC_MAP"]
+            for i, a in enumerate(args):
+                if not a.startswith("-"):
+                    cmd = a.lower()
+                    if cmd in m_map:
+                        args[i] = m_map[cmd]
+                    break
+        return super().parse_known_args(args, namespace)
 
     def error(self, message: str):
         console = Console(stderr=True)
         prog_name = self.prog.split()[-1] if self.prog else "mdrap"
-
-        console.print(f"\n[bold red]Error in '{prog_name}':[/bold red] {message}")
 
         # 1. Fuzzy match on invalid choices
         m_choice = re.search(
@@ -5814,12 +5830,17 @@ class MDRAPArgumentParser(argparse.ArgumentParser):
             valid_choices = [
                 c.strip().strip("'\"") for c in m_choice.group(2).split(",")
             ]
+            console.print(f"\n[bold red]Error in '{prog_name}':[/bold red] unrecognized command or choice '[bold yellow]{bad_val}[/bold yellow]'")
             matches = difflib.get_close_matches(bad_val, valid_choices, n=2, cutoff=0.5)
             if matches:
                 console.print(
                     f"  [bold green]Did you mean:[/bold green] [bold cyan]{matches[0]}[/bold cyan]?"
                 )
-            console.print(f"  [dim]Available choices:[/dim] {', '.join(valid_choices)}")
+            elif len(valid_choices) > 20:
+                console.print("  [dim]Available command categories:[/dim]\n")
+                render_command_palette(console)
+            else:
+                console.print(f"  [dim]Available choices:[/dim] {', '.join(valid_choices)}")
 
         # 2. Unrecognized arguments
         elif "unrecognized arguments:" in message:
@@ -5934,19 +5955,19 @@ def cmd_doctor(args):
 
     # 1. Python Environment
     py_ver = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro} ({platform.python_implementation()})"
-    t.add_row("Python Version", py_ver, "[bold green]PASS[/bold green]")
+    t.add_row("Python Version", py_ver, format_status("PASS"))
 
     # 2. C Compiler Detection
     compilers_found = [c for c in ("gcc", "clang", "cl") if shutil.which(c)]
     comp_str = ", ".join(compilers_found) if compilers_found else "None detected on PATH"
-    t.add_row("C Compiler Detected", comp_str, "[bold green]PASS[/bold green]" if compilers_found else "[yellow]WARN (C compiler optional)[/yellow]")
+    t.add_row("C Compiler Detected", comp_str, format_status("PASS") if compilers_found else format_status("WARN"))
 
     # 3. Active Engine Tier
     if HAS_FASTPATH:
-        tier_status = "[bold green]PASS (Native C Fastpath Active)[/bold green]"
+        tier_status = "[bold green]● PASS[/bold green] (Native C Fastpath Active)"
         tier_desc = "C DLL Vectorized Context (_fastpath_native.dll)"
     else:
-        tier_status = "[yellow]FALLBACK (Pure Python Engine)[/yellow]"
+        tier_status = "[yellow]▲ FALLBACK[/yellow] (Pure Python Engine)"
         tier_desc = "Pure Python QualityEngine"
     t.add_row("Active Engine Tier", tier_desc, tier_status)
 
@@ -5954,7 +5975,7 @@ def cmd_doctor(args):
     cfg_path = find_config_path()
     cfg_str = str(cfg_path) if cfg_path else "Using built-in defaults"
     cfg_hash = compute_config_hash()
-    t.add_row("Configuration (mdrap.toml)", f"{cfg_str} (hash: {cfg_hash[:12]}...)", "[bold green]PASS[/bold green]")
+    t.add_row("Configuration (mdrap.toml)", f"{cfg_str} (hash: {cfg_hash[:12]}...)", format_status("PASS"))
 
     # 5. SQLite WAL Mode
     db_path = getattr(args, "db", "data/mdrap.db")
@@ -5969,7 +5990,7 @@ def cmd_doctor(args):
         conn.close()
     except Exception:
         mode = "ERROR"
-    t.add_row("Storage WAL Journal Mode", f"Mode: {mode.upper()}", "[bold green]PASS[/bold green]" if wal_ok else "[yellow]WARN[/yellow]")
+    t.add_row("Storage WAL Journal Mode", f"Mode: {mode.upper()}", format_status("PASS") if wal_ok else format_status("WARN"))
 
     # 6. 10k Smoke Benchmark
     import time
@@ -5994,7 +6015,7 @@ def cmd_doctor(args):
     t.add_row(
         "10k Smoke Benchmark",
         f"{eps:,.0f} eps | avg: {p50_us:.2f} us/event",
-        "[bold green]HEALTHY[/bold green]",
+        format_status("HEALTHY"),
     )
 
     console.print(t)
@@ -6032,6 +6053,88 @@ def cmd_desk(args):
     nav.run()
 
 
+def cmd_completion(args):
+    """Generate shell autocompletion script for bash, zsh, fish, or powershell."""
+    shell = getattr(args, "shell", "bash").lower()
+    commands = sorted(list(set(ALL_CANONICAL_COMMANDS)))
+    cmds_str = " ".join(commands)
+
+    if shell == "bash":
+        script = f"""# MDRAP bash completion
+_mdrap_completions() {{
+    local cur="${{COMP_WORDS[COMP_CWORD]}}"
+    local prev="${{COMP_WORDS[COMP_CWORD-1]}}"
+    local commands="{cmds_str}"
+    local global_flags="--help --json --no-color --plain"
+
+    if [ $COMP_CWORD -eq 1 ]; then
+        COMPREPLY=( $(compgen -W "${{commands}} ${{global_flags}}" -- "${{cur}}") )
+        return 0
+    fi
+}}
+complete -F _mdrap_completions mdrap
+"""
+    elif shell == "zsh":
+        cmd_entries = "\n".join(f"        '{cmd}:MDRAP {cmd} command'" for cmd in commands)
+        script = f"""#compdef mdrap
+# MDRAP zsh completion
+
+_mdrap() {{
+    local -a commands
+    commands=(
+{cmd_entries}
+    )
+    _arguments -C \\
+        '--help[Show help message]' \\
+        '--json[Output structured JSON]' \\
+        '--no-color[Suppress ANSI color]' \\
+        '--plain[Suppress ANSI color]' \\
+        '1: :->cmds' \\
+        '*:: :->args'
+
+    case $state in
+        cmds)
+            _describe -t commands 'mdrap command' commands
+            ;;
+    esac
+}}
+
+compdef _mdrap mdrap
+"""
+    elif shell == "fish":
+        lines = [
+            "# MDRAP fish completion",
+            "complete -c mdrap -f",
+            "complete -c mdrap -l help -d 'Show help message'",
+            "complete -c mdrap -l json -d 'Output structured JSON'",
+            "complete -c mdrap -l no-color -d 'Suppress ANSI color styling'",
+            "complete -c mdrap -l plain -d 'Suppress ANSI color styling'",
+        ]
+        for cmd in commands:
+            lines.append(f"complete -c mdrap -n '__fish_use_subcommand' -a {cmd} -d 'MDRAP {cmd}'")
+        script = "\n".join(lines) + "\n"
+    elif shell in ("pwsh", "powershell", "ps1"):
+        script = f"""# MDRAP PowerShell completion
+Register-ArgumentCompleter -Native -CommandName mdrap -ScriptBlock {{
+    param($wordToComplete, $commandAst, $cursorPosition)
+    $commands = @({', '.join(f"'{c}'" for c in commands)})
+    $flags = @('--help', '--json', '--no-color', '--plain')
+    $elements = $commandAst.CommandElements
+    if ($elements.Count -le 2) {{
+        $candidates = $commands + $flags
+        $candidates | Where-Object {{ $_ -like "$wordToComplete*" }} | ForEach-Object {{
+            [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
+        }}
+    }}
+}}
+"""
+    else:
+        print(f"Unsupported shell: {shell}. Supported: bash, zsh, fish, powershell", file=sys.stderr)
+        return
+
+    print(script, end="")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = MDRAPArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -6040,6 +6143,13 @@ def build_parser() -> argparse.ArgumentParser:
         "--json",
         action="store_true",
         help="Output structured JSON instead of formatted tables",
+    )
+    parser.add_argument(
+        "--no-color",
+        "--plain",
+        action="store_true",
+        dest="no_color",
+        help="Suppress all ANSI color and styling (honors NO_COLOR=1)",
     )
     sub = parser.add_subparsers(
         dest="command", required=False, parser_class=MDRAPArgumentParser
@@ -6069,6 +6179,14 @@ def build_parser() -> argparse.ArgumentParser:
             default=argparse.SUPPRESS,
             help="Output structured JSON instead of formatted tables",
         )
+        p.add_argument(
+            "--no-color",
+            "--plain",
+            action="store_true",
+            dest="no_color",
+            default=argparse.SUPPRESS,
+            help="Suppress all ANSI color and styling (honors NO_COLOR=1)",
+        )
         p.set_defaults(func=func)
         return p
 
@@ -6077,7 +6195,7 @@ def build_parser() -> argparse.ArgumentParser:
         "desk",
         cmd_desk,
         "Launch interactive keyboard-first modal desk navigator (Vim/Excel ergonomics)",
-        ["navigator", "nav", "tui"],
+        ["nav"],
     )
 
     # Status dashboard (quick overview)
@@ -6085,7 +6203,7 @@ def build_parser() -> argparse.ArgumentParser:
         "status",
         cmd_status,
         "Show comprehensive platform status overview",
-        ["s", "stat"],
+        ["s"],
         db=True,
     )
 
@@ -6164,7 +6282,7 @@ def build_parser() -> argparse.ArgumentParser:
         "benchmark",
         cmd_benchmark,
         "Run controlled benchmark and score quality detection",
-        ["bench", "b"],
+        ["bench"],
         db=True,
         default_db=":memory:",
     )
@@ -6203,7 +6321,7 @@ def build_parser() -> argparse.ArgumentParser:
         "compare",
         cmd_compare,
         "Run V1 Pure Python vs V1 Native C on identical workloads and compare",
-        ["comp", "c"],
+        ["comp"],
         db=True,
         default_db=":memory:",
     )
@@ -6217,7 +6335,7 @@ def build_parser() -> argparse.ArgumentParser:
         "loadtest",
         cmd_loadtest,
         "Sweep increasing event volumes and report trend",
-        ["load", "l"],
+        ["load"],
     )
     p_load.add_argument(
         "--levels",
@@ -6374,7 +6492,7 @@ def build_parser() -> argparse.ArgumentParser:
         "retention",
         cmd_retention,
         "Run storage retention compaction and disk reclamation",
-        ["compact", "prune"],
+        ["prune"],
         db=True,
     )
     p_ret.add_argument(
@@ -6400,7 +6518,7 @@ def build_parser() -> argparse.ArgumentParser:
         "analytics",
         cmd_analytics,
         "Query OHLCV candles, bid-ask spreads, and realized volatility",
-        ["a", "an"],
+        ["a"],
         db=True,
     )
     p_analytics.add_argument(
@@ -6447,7 +6565,7 @@ def build_parser() -> argparse.ArgumentParser:
         "live",
         cmd_live,
         "Stream live market ticks with in-place updating table & candlestick chart",
-        ["stream", "watch", "ticker", "tick"],
+        ["stream"],
         db=True,
     )
     p_live.add_argument(
@@ -6514,7 +6632,7 @@ def build_parser() -> argparse.ArgumentParser:
         "feed",
         cmd_feed,
         "Inspect, benchmark, and test streaming feeds (Polygon, Databento, Crypto WS)",
-        ["stream-feed", "feeds"],
+        ["feeds"],
     )
     p_feed.add_argument(
         "--source",
@@ -6541,7 +6659,7 @@ def build_parser() -> argparse.ArgumentParser:
         "chart",
         cmd_chart,
         "Display visual in-terminal ASCII/Unicode candlestick chart",
-        ["candle", "candlestick", "graph"],
+        ["candle"],
         db=True,
     )
     p_chart.add_argument(
@@ -6581,7 +6699,7 @@ def build_parser() -> argparse.ArgumentParser:
         "depth",
         cmd_depth,
         "Show Consolidated Level-2 Multi-Venue Market Depth Ladder",
-        ["l2", "book", "ladder"],
+        ["l2"],
         db=True,
     )
     p_depth.add_argument(
@@ -6600,7 +6718,7 @@ def build_parser() -> argparse.ArgumentParser:
         "vwap",
         cmd_vwap,
         "Compute multi-venue real-time VWAP execution & slippage curves",
-        ["curve", "slip", "slippage"],
+        ["curve"],
         db=True,
     )
     p_vwap.add_argument(
@@ -6619,7 +6737,7 @@ def build_parser() -> argparse.ArgumentParser:
         "export",
         cmd_export,
         "Export market microstructure data to Excel (.xlsx) or CSV",
-        ["exp", "excel", "xlsx"],
+        ["exp"],
         db=True,
     )
     p_export.add_argument(
@@ -6660,7 +6778,7 @@ def build_parser() -> argparse.ArgumentParser:
         "watchdog",
         cmd_watchdog,
         "Show source health status and watchdog alerts",
-        ["w", "wd"],
+        ["w"],
         db=True,
     )
     p_watchdog.add_argument(
@@ -6731,7 +6849,7 @@ def build_parser() -> argparse.ArgumentParser:
         "sub",
         cmd_sub,
         "Subscribe to daemon stream and output ticks or depth to stdout",
-        ["subscribe", "client", "listen"],
+        ["subscribe"],
     )
     p_sub.add_argument(
         "symbol",
@@ -6787,7 +6905,7 @@ def build_parser() -> argparse.ArgumentParser:
         "top",
         cmd_top,
         "Launch dynamic full-screen terminal service cockpit",
-        ["mon", "monitor"],
+        ["mon"],
     )
     p_top.add_argument("--host", default="127.0.0.1")
     p_top.add_argument("-p", "--port", type=int, default=9876)
@@ -6830,7 +6948,7 @@ def build_parser() -> argparse.ArgumentParser:
         "test-all",
         cmd_test_all,
         "Run all CLI tests, benchmarks, queries, and validations in one place",
-        ["test", "t"],
+        ["t"],
         db=True,
         default_db="data/mdrap_test.db",
     )
@@ -6856,7 +6974,7 @@ def build_parser() -> argparse.ArgumentParser:
         "columnar",
         cmd_columnar,
         "Query high-performance DuckDB columnar time-series storage & analytics (Phase 3)",
-        ["col", "duck", "duckdb"],
+        ["col"],
         db=True,
     )
     p_col.add_argument(
@@ -6912,7 +7030,7 @@ def build_parser() -> argparse.ArgumentParser:
         "simulate",
         cmd_simulate,
         "Simulate concurrent multi-device normal vs fast-paced user workloads (§26)",
-        ["usersim", "devices", "sim-users", "sim-devices"],
+        ["sim"],
         db=True,
     )
     p_sim.add_argument(
@@ -6982,7 +7100,7 @@ def build_parser() -> argparse.ArgumentParser:
         "mbo",
         cmd_mbo,
         "Inspect Level-3 Market-By-Order (MBO) FIFO queue ranks and L2 book projection (§18, §26)",
-        ["l3", "queue"],
+        ["l3"],
     )
     p_mbo.add_argument(
         "symbol", nargs="?", default="AAPL", help="Symbol to inspect (default: AAPL)"
@@ -7000,7 +7118,7 @@ def build_parser() -> argparse.ArgumentParser:
         "arbitrate",
         cmd_arbitrate,
         "Run dual-path Multicast UDP A/B feed arbitration and TCP replay test (§18, §26)",
-        ["arb", "multicast", "udp"],
+        ["arb"],
     )
     p_arb.add_argument(
         "-e",
@@ -7027,7 +7145,7 @@ def build_parser() -> argparse.ArgumentParser:
         "throughput",
         cmd_throughput,
         "Benchmark 500,000 to 1,000,000+ events/sec on vectorized Native C SBE stream (§26)",
-        ["tp", "meps", "million"],
+        ["tp"],
     )
     p_tp.add_argument(
         "-e",
@@ -7053,7 +7171,7 @@ def build_parser() -> argparse.ArgumentParser:
         "tca",
         cmd_tca,
         "Run Institutional Best Execution & TCA Slippage Engine with Merkle Proofs",
-        ["bestex", "slip-audit"],
+        ["bestex"],
         db=True,
     )
     p_tca.add_argument(
@@ -7102,7 +7220,7 @@ def build_parser() -> argparse.ArgumentParser:
         "report",
         cmd_report,
         "Generate institutional fund regulatory compliance reports (SEC 13F, MiFID II RTS 28)",
-        ["regulatory", "reg-report", "rts-28"],
+        ["reg"],
         db=True,
     )
     p_report.add_argument(
@@ -7126,7 +7244,7 @@ def build_parser() -> argparse.ArgumentParser:
         "flow",
         cmd_flow,
         "Track Institutional Order Flow, Lee-Ready Aggressor Side, CVD & MPID Net Deltas",
-        ["cvd", "orderflow", "whales"],
+        ["cvd"],
         db=True,
     )
     p_flow.add_argument(
@@ -7165,7 +7283,7 @@ def build_parser() -> argparse.ArgumentParser:
         "strategy",
         cmd_strategy,
         "Institutional Algorithmic Strategy Engine & Paper EMS (§26)",
-        ["strat", "algo", "ems"],
+        ["strat"],
         db=True,
     )
     p_strat.add_argument(
@@ -7220,7 +7338,7 @@ def build_parser() -> argparse.ArgumentParser:
         "gateway",
         cmd_gateway,
         "Launch AsyncIO TCP Gateway for external clients",
-        ["gw", "tcp-gw"],
+        ["gw"],
     )
     p_gw.add_argument(
         "--host", default="127.0.0.1", help="TCP bind host (default: 127.0.0.1)"
@@ -7286,7 +7404,7 @@ def build_parser() -> argparse.ArgumentParser:
         "edgar",
         cmd_edgar,
         "SEC EDGAR Alternative Data: 8-K material events, Form 4 insiders, GAAP facts",
-        ["research", "events", "filings", "company"],
+        ["filings"],
     )
     p_edgar.add_argument(
         "action",
@@ -7340,7 +7458,7 @@ def build_parser() -> argparse.ArgumentParser:
         "vessel",
         cmd_vessel,
         "Maritime Tanker & Cargo Tracking: Crude oil, LNG, bulk, and container tracking",
-        ["vessels", "tankers", "ships", "ais"],
+        ["ais"],
     )
     p_vessel.add_argument(
         "action",
@@ -7406,6 +7524,21 @@ def build_parser() -> argparse.ArgumentParser:
 
     # Phase 14: Demo
     _sub("demo", cmd_demo, "Execute bundled 50k-event run and open live desk navigator", ["dm"], db=True)
+
+    # Shell Autocompletion Generator
+    p_comp = _sub(
+        "completion",
+        cmd_completion,
+        "Generate shell autocompletion script (bash, zsh, fish, powershell)",
+        ["complete"],
+    )
+    p_comp.add_argument(
+        "shell",
+        nargs="?",
+        default="bash",
+        choices=["bash", "zsh", "fish", "powershell", "pwsh"],
+        help="Target shell (default: bash)",
+    )
 
     return parser
 
@@ -7656,9 +7789,13 @@ MNEMONIC_MAP = {
     "navigator": "desk",
     "nav": "desk",
     "tui": "desk",
+    "completion": "completion",
+    "complete": "completion",
+    "load": "loadtest",
+    "loadtest": "loadtest",
     "exit": "exit",
     "quit": "exit",
-    "q": "exit",
+    "q": "query",
 }
 
 QUICK_ACTIONS = {
@@ -7739,6 +7876,7 @@ ALL_CANONICAL_COMMANDS = [
     "config",
     "doctor",
     "demo",
+    "completion",
 ]
 
 
@@ -7760,7 +7898,7 @@ def render_command_palette(console: Console) -> None:
         "[bold #818cf8]└───────────────────────────────┴─────────────────────────────────┘[/bold #818cf8]\n"
         "[dim]⚡ 1-Key Launches: [0] Desk Navigator  [1] Live BTC  [2] BBO Quote  [3] Top Cockpit  [4] Chart  [5] Depth  [6] VWAP  [7] Polygon  [8] Databento  [9] Status[/dim]\n"
         "[dim]💡 Traders: Type '<TICKER> <CMD>' (e.g. AAPL TCA, AAPL FLOW, BTC BBO, AAPL CHART) or just ticker (e.g. AAPL)[/dim]\n"
-        "[dim]⌨️ Live Hotkeys: [q] Quit  [Space] Freeze/Resume  [c] Chart Toggle  [d] Depth Toggle  [Tab] Switch Symbol[/dim]\n"
+        "[dim]⌨️ Global Flags: --no-color / --plain (suppress ANSI, honors NO_COLOR=1)  |  --json (structured data)[/dim]\n"
     )
     console.print(palette)
 
@@ -8162,6 +8300,11 @@ def cmd_shell(args=None, parser=None):
 
 
 def main():
+    # Detect explicit color suppression before any Console is constructed
+    if "--no-color" in sys.argv or "--plain" in sys.argv or os.environ.get("NO_COLOR"):
+        os.environ["NO_COLOR"] = "1"
+        os.environ["MDRAP_NO_COLOR"] = "1"
+
     # Pre-process direct slash commands, Wall Street mnemonics, or ticker-first syntax
     if len(sys.argv) > 1:
         arg1 = sys.argv[1]
