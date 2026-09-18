@@ -6,11 +6,12 @@ becomes the bottleneck it's supposed to be measuring.
 
 from __future__ import annotations
 
+import array
 import sys
 import time
 from collections import deque
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 try:
     import resource  # POSIX only, fine for this sandbox
@@ -21,6 +22,48 @@ except ImportError:  # pragma: no cover
 # Sorting this is O(bound log bound) on every refresh instead of
 # O(total_events log total_events) -- see RunMetrics docstring.
 LIVE_WINDOW = 5000
+
+
+class CompactSampleBuffer:
+    """Memory-efficient downsampled array buffer using 32-bit floats.
+
+    Replaces unbounded Python list[float] (32 bytes per entry) with array('f')
+    (4 bytes per entry) and systematic 2x downsampling when capacity is reached.
+    Guarantees O(1) space (< 200 KB) for any number of events (100k to 1B)
+    while preserving temporal representation and exact max value.
+    """
+
+    __slots__ = ("capacity", "data", "stride", "_counter", "max_val")
+
+    def __init__(self, capacity: int = 50_000):
+        self.capacity = capacity
+        self.data = array.array("f")
+        self.stride = 1
+        self._counter = 0
+        self.max_val = 0.0
+
+    def append(self, val: float) -> None:
+        val_f = float(val)
+        if val_f > self.max_val:
+            self.max_val = val_f
+        self._counter += 1
+        if self._counter % self.stride == 0:
+            self.data.append(val_f)
+            if len(self.data) >= self.capacity:
+                self.data = self.data[::2]
+                self.stride *= 2
+
+    def __len__(self) -> int:
+        return len(self.data)
+
+    def __bool__(self) -> bool:
+        return len(self.data) > 0
+
+    def __iter__(self):
+        return iter(self.data)
+
+    def sorted(self) -> list[float]:
+        return sorted(self.data)
 
 
 def percentile(sorted_values: List[float], pct: float) -> float:
@@ -100,11 +143,11 @@ class RunMetrics:
     quality_counts: Dict[str, int] = field(
         default_factory=lambda: {"VALID": 0, "SUSPICIOUS": 0, "INVALID": 0}
     )
-    _latencies_us: List[float] = field(
-        default_factory=list
+    _latencies_us: CompactSampleBuffer = field(
+        default_factory=lambda: CompactSampleBuffer(50_000)
     )  # exchange -> canonical-decision latency
-    _proc_latencies_us: List[float] = field(
-        default_factory=list
+    _proc_latencies_us: CompactSampleBuffer = field(
+        default_factory=lambda: CompactSampleBuffer(50_000)
     )  # ingest -> canonical-decision compute time
     recent_latencies_us: deque = field(
         default_factory=lambda: deque(maxlen=LIVE_WINDOW)
@@ -114,18 +157,32 @@ class RunMetrics:
     )
     max_queue_depth: int = 0
     backpressure_stalls: int = 0
-    _queue_depths: List[int] = field(default_factory=list)
-    _storage_lags_us: List[float] = field(default_factory=list)
-    _ingest_latencies_us: List[float] = field(default_factory=list)
-    _quality_latencies_us: List[float] = field(default_factory=list)
-    _reconcile_latencies_us: List[float] = field(default_factory=list)
-    _enqueue_latencies_us: List[float] = field(default_factory=list)
-    _query_latencies_us: List[float] = field(default_factory=list)
+    _queue_depths: CompactSampleBuffer = field(
+        default_factory=lambda: CompactSampleBuffer(10_000)
+    )
+    _storage_lags_us: CompactSampleBuffer = field(
+        default_factory=lambda: CompactSampleBuffer(10_000)
+    )
+    _ingest_latencies_us: CompactSampleBuffer = field(
+        default_factory=lambda: CompactSampleBuffer(20_000)
+    )
+    _quality_latencies_us: CompactSampleBuffer = field(
+        default_factory=lambda: CompactSampleBuffer(20_000)
+    )
+    _reconcile_latencies_us: CompactSampleBuffer = field(
+        default_factory=lambda: CompactSampleBuffer(20_000)
+    )
+    _enqueue_latencies_us: CompactSampleBuffer = field(
+        default_factory=lambda: CompactSampleBuffer(20_000)
+    )
+    _query_latencies_us: CompactSampleBuffer = field(
+        default_factory=lambda: CompactSampleBuffer(10_000)
+    )
     recent_query_latencies_us: deque = field(
         default_factory=lambda: deque(maxlen=LIVE_WINDOW)
     )
-    _by_source_us: Dict[str, List[float]] = field(default_factory=dict)
-    _by_instrument_us: Dict[str, List[float]] = field(default_factory=dict)
+    _by_source_us: Dict[str, CompactSampleBuffer] = field(default_factory=dict)
+    _by_instrument_us: Dict[str, CompactSampleBuffer] = field(default_factory=dict)
 
     def record(
         self,
@@ -159,12 +216,12 @@ class RunMetrics:
 
         if source:
             if source not in self._by_source_us:
-                self._by_source_us[source] = []
+                self._by_source_us[source] = CompactSampleBuffer(10_000)
             self._by_source_us[source].append(proc_us)
 
         if instrument_id:
             if instrument_id not in self._by_instrument_us:
-                self._by_instrument_us[instrument_id] = []
+                self._by_instrument_us[instrument_id] = CompactSampleBuffer(10_000)
             self._by_instrument_us[instrument_id].append(proc_us)
 
     def record_query(self, query_latency_s: float):
@@ -198,12 +255,14 @@ class RunMetrics:
         return self.processed / el if el > 0 else 0.0
 
     def summary(self) -> dict:
-        lat = sorted(self._latencies_us)
-        proc = sorted(self._proc_latencies_us)
+        lat = self._latencies_us.sorted() if isinstance(self._latencies_us, CompactSampleBuffer) else sorted(self._latencies_us)
+        proc = self._proc_latencies_us.sorted() if isinstance(self._proc_latencies_us, CompactSampleBuffer) else sorted(self._proc_latencies_us)
         rss_mb = get_rss_mb()
 
         e2e_p50 = percentile(lat, 0.50)
         proc_p50 = percentile(proc, 0.50)
+        max_e2e = round(self._latencies_us.max_val if isinstance(self._latencies_us, CompactSampleBuffer) else (lat[-1] if lat else 0.0), 1)
+        max_proc = round(self._proc_latencies_us.max_val if isinstance(self._proc_latencies_us, CompactSampleBuffer) else (proc[-1] if proc else 0.0), 1)
 
         result = {
             "processed": self.processed,
@@ -216,19 +275,19 @@ class RunMetrics:
                 "p95": round(percentile(lat, 0.95), 1),
                 "p99": round(percentile(lat, 0.99), 1),
                 "p999": round(percentile(lat, 0.999), 1),
-                "max": round(lat[-1], 1) if lat else 0.0,
+                "max": max_e2e,
             },
             "processing_latency_us": {
                 "p50": round(proc_p50, 1),
                 "p95": round(percentile(proc, 0.95), 1),
                 "p99": round(percentile(proc, 0.99), 1),
-                "max": round(proc[-1], 1) if proc else 0.0,
+                "max": max_proc,
             },
             "processing_latency_ns": {
                 "p50": int(proc_p50 * 1000),
                 "p95": int(percentile(proc, 0.95) * 1000),
                 "p99": int(percentile(proc, 0.99) * 1000),
-                "max": int((proc[-1] if proc else 0.0) * 1000),
+                "max": int(max_proc * 1000),
             },
             "latency_split_e2e_vs_proc": {
                 "e2e_p50_us": round(e2e_p50, 1),
@@ -241,10 +300,10 @@ class RunMetrics:
         }
 
         # Stage breakdowns (Phase 0)
-        def _calc_stage(vals: List[float]) -> dict:
+        def _calc_stage(vals: Any) -> dict:
             if not vals:
                 return {"p50": 0.0, "p95": 0.0, "p99": 0.0}
-            s = sorted(vals)
+            s = vals.sorted() if isinstance(vals, CompactSampleBuffer) else sorted(vals)
             return {
                 "p50": round(percentile(s, 0.50), 2),
                 "p95": round(percentile(s, 0.95), 2),
@@ -284,17 +343,18 @@ class RunMetrics:
 
         # Query latency breakdown
         if self._query_latencies_us:
-            q_sorted = sorted(self._query_latencies_us)
+            q_sorted = self._query_latencies_us.sorted() if isinstance(self._query_latencies_us, CompactSampleBuffer) else sorted(self._query_latencies_us)
+            max_q = round(self._query_latencies_us.max_val if isinstance(self._query_latencies_us, CompactSampleBuffer) else (q_sorted[-1] if q_sorted else 0.0), 2)
             result["query_latency_us"] = {
                 "count": len(self._query_latencies_us),
                 "p50": round(percentile(q_sorted, 0.50), 2),
                 "p95": round(percentile(q_sorted, 0.95), 2),
                 "p99": round(percentile(q_sorted, 0.99), 2),
-                "max": round(q_sorted[-1], 2),
+                "max": max_q,
             }
 
         if self._queue_depths:
-            q_sorted = sorted(self._queue_depths)
+            q_sorted = self._queue_depths.sorted() if isinstance(self._queue_depths, CompactSampleBuffer) else sorted(self._queue_depths)
             result["streaming"] = {
                 "max_queue_depth": self.max_queue_depth,
                 "p50_queue_depth": round(percentile(q_sorted, 0.50), 1),
@@ -302,11 +362,12 @@ class RunMetrics:
                 "backpressure_stalls": self.backpressure_stalls,
             }
             if self._storage_lags_us:
-                sl_sorted = sorted(self._storage_lags_us)
+                sl_sorted = self._storage_lags_us.sorted() if isinstance(self._storage_lags_us, CompactSampleBuffer) else sorted(self._storage_lags_us)
+                max_sl = round(self._storage_lags_us.max_val if isinstance(self._storage_lags_us, CompactSampleBuffer) else (sl_sorted[-1] if sl_sorted else 0.0), 1)
                 result["streaming"]["storage_lag_us"] = {
                     "p50": round(percentile(sl_sorted, 0.50), 1),
                     "p95": round(percentile(sl_sorted, 0.95), 1),
-                    "max": round(sl_sorted[-1], 1),
+                    "max": max_sl,
                 }
 
         return result

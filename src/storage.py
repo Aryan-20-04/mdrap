@@ -27,6 +27,7 @@ Performance & Concurrency Pragmas:
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import threading
 import time
@@ -262,8 +263,13 @@ class Store:
             except sqlite3.OperationalError:
                 pass  # In-memory or read-only filesystems do not support WAL
             self.conn.execute("PRAGMA synchronous=NORMAL;")
-            self.conn.execute("PRAGMA mmap_size=268435456;")  # 256MB memory-mapped I/O
-            self.conn.execute("PRAGMA cache_size=-64000;")  # 64MB page cache
+            # Memory-tuned pragmas: 64MB mmap and 16MB page cache by default (down from 256MB/64MB)
+            mmap_mb = int(os.environ.get("MDRAP_SQLITE_MMAP_MB", 64))
+            cache_mb = int(os.environ.get("MDRAP_SQLITE_CACHE_MB", 16))
+            mmap_bytes = mmap_mb * 1024 * 1024
+            cache_kib = cache_mb * 1000
+            self.conn.execute(f"PRAGMA mmap_size={mmap_bytes};")
+            self.conn.execute(f"PRAGMA cache_size=-{cache_kib};")
             self.conn.execute(
                 "PRAGMA temp_store=MEMORY;"
             )  # In-memory temporary B-trees
@@ -277,7 +283,7 @@ class Store:
                     )
                     self.read_conn.execute("PRAGMA query_only=ON;")
                     self.read_conn.execute("PRAGMA busy_timeout=5000;")
-                    self.read_conn.execute("PRAGMA mmap_size=268435456;")
+                    self.read_conn.execute(f"PRAGMA mmap_size={mmap_bytes};")
                 except Exception:
                     self.read_conn = self.conn
             else:

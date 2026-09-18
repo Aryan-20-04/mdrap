@@ -6961,9 +6961,9 @@ def build_parser() -> argparse.ArgumentParser:
     _sub(
         "version",
         lambda args: (
-            print(json.dumps({"version": "2.0.1", "platform": "MDRAP"}, indent=2))
+            print(json.dumps({"version": "2.0.2", "platform": "MDRAP"}, indent=2))
             if getattr(args, "json", False)
-            else print("MDRAP v2.0.1")
+            else print("MDRAP v2.0.2")
         ),
         "Show MDRAP version",
         ["v"],

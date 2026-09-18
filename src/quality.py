@@ -45,7 +45,7 @@ class QualityConfig:
         6.0  # Flag prices exceeding k * rolling standard deviations
     )
     price_window: int = 50  # Rolling sample window size per (source, instrument)
-    dedup_cache_size: int = 200_000  # Bounded LRU deduplication window per feed gateway
+    dedup_cache_size: int = 50_000  # Bounded LRU deduplication window per feed gateway
 
 
 class _RollingStats:
@@ -186,12 +186,12 @@ class QualityEngine:
         # Stage 1: Exact Duplicate Detection
         # Events sharing an identical dedup_key within the sliding LRU cache window are
         # marked INVALID. This prevents double-counting volume or re-executing strategy fills.
-        dedup_key = event.dedup_key()
-        if dedup_key in self._seen_keys:
+        dedup_hash = hash(event.dedup_key())
+        if dedup_hash in self._seen_keys:
             self._mark(event, QualityStatus.INVALID, Reason.DUPLICATE)
             self._bump(Reason.DUPLICATE)
         else:
-            self._seen_keys[dedup_key] = None
+            self._seen_keys[dedup_hash] = None
             if len(self._seen_keys) > self.cfg.dedup_cache_size:
                 # Evict oldest entry in O(1) time
                 self._seen_keys.popitem(last=False)

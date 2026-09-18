@@ -17,6 +17,7 @@ import enum
 import json
 import os
 import time
+from collections import deque
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -490,10 +491,14 @@ class PaperExecutor:
         self.cash = initial_cash
         self.risk_manager = risk_manager or RiskManager(initial_capital=initial_cash)
         self.positions: dict[str, Position] = {}
-        self.orders: list[Order] = []
-        self.fills: list[dict[str, Any]] = []
-        self.equity_curve: list[tuple[float, float]] = []  # (timestamp, equity)
+        self.orders: deque[Order] = deque(maxlen=10_000)
+        self.fills: deque[dict[str, Any]] = deque(maxlen=10_000)
+        self.equity_curve: deque[tuple[float, float]] = deque(maxlen=10_000)  # (timestamp, equity)
         self._order_counter = 0
+        self._total_trades = 0
+        self._win_count = 0
+        self._slippage_bps_sum = 0.0
+        self._total_slippage_usd = 0.0
 
     def get_position(self, symbol: str) -> Position:
         if symbol not in self.positions:
@@ -714,6 +719,12 @@ class PaperExecutor:
                     pos.avg_cost = fill_price
 
         pos.update_market_price(fill_price)
+        self._total_trades += 1
+        self._slippage_bps_sum += slippage_bps
+        if order.slippage_usd:
+            self._total_slippage_usd += order.slippage_usd
+        if pos.realized_pnl > 0:
+            self._win_count += 1
         self.fills.append(
             {
                 "order_id": order.order_id,
@@ -982,7 +993,7 @@ class Strategy:
     def performance_summary(self) -> dict[str, Any]:
         """Compute institutional performance metrics."""
         fills = self.executor.fills
-        total_trades = len(fills)
+        total_trades = self.executor._total_trades or len(fills)
         realized_pnl = sum(pos.realized_pnl for pos in self.executor.positions.values())
         unrealized_pnl = sum(
             pos.unrealized_pnl for pos in self.executor.positions.values()
@@ -990,13 +1001,17 @@ class Strategy:
         total_pnl = realized_pnl + unrealized_pnl
         equity = self.get_equity()
 
-        win_count = sum(1 for f in fills if f.get("realized_pnl", 0) > 0)
+        win_count = (
+            self.executor._win_count
+            if self.executor._total_trades > 0
+            else sum(1 for f in fills if f.get("realized_pnl", 0) > 0)
+        )
         win_rate = (win_count / total_trades * 100.0) if total_trades > 0 else 0.0
 
         avg_slippage = (
-            sum(f.get("slippage_bps", 0) for f in fills) / total_trades
+            (self.executor._slippage_bps_sum / total_trades)
             if total_trades > 0
-            else 0.0
+            else (sum(f.get("slippage_bps", 0) for f in fills) / len(fills) if fills else 0.0)
         )
 
         return {
