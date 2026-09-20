@@ -18,6 +18,7 @@ from strategy_sdk import (
     Strategy,
     StrategyRunner,
     WhaleMomentumStrategy,
+    AvellanedaStoikovStrategy,
 )
 from models import CanonicalEvent, EventType, QualityStatus
 
@@ -304,4 +305,93 @@ def test_strategy_export_executions_json_and_csv(tmp_path):
     assert rows[0][0] == "trade_id"
     assert rows[1][0] == "trd-0001"
     assert rows[1][3] == "AAPL"
+
+
+def test_avellaneda_stoikov_quoting_and_inventory_skew():
+    strat = AvellanedaStoikovStrategy(symbol="AAPL", gamma=0.1, kappa=1.5, quote_size=50.0, max_inventory=500.0)
+    runner = StrategyRunner(strat)
+
+    # Initial quote at 100.00 / 100.05
+    q1 = CanonicalEvent(
+        event_id="q1", instrument_id="AAPL", event_type=EventType.QUOTE,
+        exchange_timestamp=1000.0, receive_timestamp=1000.001, processing_timestamp=1000.002,
+        source="FEEDX", sequence_number=1, bid_price=100.00, ask_price=100.05,
+    )
+    runner.run_events([q1])
+
+    # Should have placed two-sided limit orders
+    orders = [o for o in strat.executor.orders if o.status == OrderStatus.PENDING]
+    assert len(orders) == 2
+    buy_order = next(o for o in orders if o.side == OrderSide.BUY)
+    sell_order = next(o for o in orders if o.side == OrderSide.SELL)
+    assert buy_order.price <= 100.00
+    assert sell_order.price >= 100.05
+
+    # Simulate long inventory position
+    strat.executor.get_position("AAPL").quantity = 300.0  # long 300 shares (>= 50% max_inventory)
+    q2 = CanonicalEvent(
+        event_id="q2", instrument_id="AAPL", event_type=EventType.QUOTE,
+        exchange_timestamp=1001.0, receive_timestamp=1001.001, processing_timestamp=1001.002,
+        source="FEEDX", sequence_number=2, bid_price=100.00, ask_price=100.05,
+    )
+    runner.run_events([q2])
+
+    # With long inventory, reservation price drops and strategy asymmetrically quotes only the sell side
+    assert strat.reservation_prices["AAPL"] < 100.025
+    active_orders = [o for o in strat.executor.orders if o.status == OrderStatus.PENDING]
+    assert all(o.side == OrderSide.SELL for o in active_orders)
+
+
+def test_avellaneda_stoikov_quality_shield():
+    strat = AvellanedaStoikovStrategy(symbol="AAPL", gamma=0.1, kappa=1.5, quote_size=50.0)
+    runner = StrategyRunner(strat)
+
+    # 1. Crossed quote with INVALID status should be completely rejected
+    crossed = CanonicalEvent(
+        event_id="bad_q", instrument_id="AAPL", event_type=EventType.QUOTE,
+        exchange_timestamp=1000.0, receive_timestamp=1000.001, processing_timestamp=1000.002,
+        source="FEEDX", sequence_number=1, bid_price=101.00, ask_price=100.00,
+        quality_status=QualityStatus.INVALID,
+    )
+    runner.run_events([crossed])
+    assert len(strat.executor.orders) == 0
+
+    # 2. SUSPICIOUS quote should trigger 3x spread expansion defense
+    suspicious = CanonicalEvent(
+        event_id="sus_q", instrument_id="AAPL", event_type=EventType.QUOTE,
+        exchange_timestamp=1001.0, receive_timestamp=1001.001, processing_timestamp=1001.002,
+        source="FEEDX", sequence_number=2, bid_price=100.00, ask_price=100.06,
+        quality_status=QualityStatus.SUSPICIOUS,
+    )
+    runner.run_events([suspicious])
+    assert strat.toxic_flow_detected["AAPL"] is True
+    # Spread should be at least 3x the normal half-spread
+    assert strat.optimal_spreads["AAPL"] >= 0.06 * 3.0
+
+
+def test_avellaneda_stoikov_passive_fills():
+    strat = AvellanedaStoikovStrategy(symbol="AAPL", quote_size=50.0)
+    runner = StrategyRunner(strat)
+
+    # Quote placed: Bid=100.00, Ask=100.05
+    q1 = CanonicalEvent(
+        event_id="q1", instrument_id="AAPL", event_type=EventType.QUOTE,
+        exchange_timestamp=1000.0, receive_timestamp=1000.001, processing_timestamp=1000.002,
+        source="FEEDX", sequence_number=1, bid_price=100.00, ask_price=100.05,
+    )
+    # Trade print crosses our buy limit (market sell trade at 99.98 <= 100.00)
+    t1 = CanonicalEvent(
+        event_id="t1", instrument_id="AAPL", event_type=EventType.TRADE,
+        exchange_timestamp=1000.1, receive_timestamp=1000.101, processing_timestamp=1000.102,
+        source="FEEDX", sequence_number=2, price=99.98, quantity=100.0,
+    )
+    runner.run_events([q1, t1])
+
+    pos = strat.executor.get_position("AAPL")
+    assert pos.quantity == 50.0  # Bought 50 shares passively
+    assert len(strat.executor.fills) == 1
+    fill = strat.executor.fills[0]
+    assert fill["side"] == "BUY"
+    assert fill["qty"] == 50.0
+
 

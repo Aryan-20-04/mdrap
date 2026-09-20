@@ -15,13 +15,14 @@ from __future__ import annotations
 import csv
 import enum
 import json
+import math
 import os
 import time
 from collections import deque
 from dataclasses import dataclass, field
 from typing import Any
 
-from models import CanonicalEvent, EventType
+from models import CanonicalEvent, EventType, QualityStatus
 
 
 class OrderSide(str, enum.Enum):
@@ -680,6 +681,7 @@ class PaperExecutor:
         pos = self.get_position(order.symbol)
         fill_cost = order.quantity * fill_price
 
+        trade_pnl = 0.0
         if order.side == OrderSide.BUY:
             self.cash -= fill_cost
             if pos.quantity >= 0:
@@ -693,8 +695,8 @@ class PaperExecutor:
             else:
                 # Covering short
                 closed_qty = min(abs(pos.quantity), order.quantity)
-                pnl = closed_qty * (pos.avg_cost - fill_price)
-                pos.realized_pnl += pnl
+                trade_pnl = closed_qty * (pos.avg_cost - fill_price)
+                pos.realized_pnl += trade_pnl
                 pos.quantity += order.quantity
                 if pos.quantity > 0:
                     pos.avg_cost = fill_price
@@ -712,8 +714,8 @@ class PaperExecutor:
             else:
                 # Closing long
                 closed_qty = min(pos.quantity, order.quantity)
-                pnl = closed_qty * (fill_price - pos.avg_cost)
-                pos.realized_pnl += pnl
+                trade_pnl = closed_qty * (fill_price - pos.avg_cost)
+                pos.realized_pnl += trade_pnl
                 pos.quantity -= order.quantity
                 if pos.quantity < 0:
                     pos.avg_cost = fill_price
@@ -723,7 +725,7 @@ class PaperExecutor:
         self._slippage_bps_sum += slippage_bps
         if order.slippage_usd:
             self._total_slippage_usd += order.slippage_usd
-        if pos.realized_pnl > 0:
+        if trade_pnl > 0:
             self._win_count += 1
         self.fills.append(
             {
@@ -732,6 +734,7 @@ class PaperExecutor:
                 "side": order.side.value,
                 "qty": order.quantity,
                 "price": fill_price,
+                "trade_pnl": trade_pnl,
                 "arrival_price": order.arrival_price,
                 "slippage_bps": slippage_bps,
                 "slippage_usd": order.slippage_usd,
@@ -746,6 +749,39 @@ class PaperExecutor:
                 "rungs_consumed": order.rungs_consumed,
             }
         )
+
+    def cancel_pending_orders(self, symbol: str | None = None) -> int:
+        """Cancel pending limit orders for a symbol or all symbols."""
+        count = 0
+        for order in self.orders:
+            if order.status == OrderStatus.PENDING:
+                if symbol is None or order.symbol == symbol:
+                    order.status = OrderStatus.CANCELLED
+                    count += 1
+        return count
+
+    def match_pending_orders(
+        self, symbol: str, trade_price: float, trade_size: float = 100.0
+    ) -> list[Order]:
+        """
+        Simulate exchange matching engine: fills resting limit orders crossed by aggressive market trades.
+        - Buy Limit at P_limit: if trade_price <= P_limit, executed at P_limit.
+        - Sell Limit at P_limit: if trade_price >= P_limit, executed at P_limit.
+        """
+        filled = []
+        for order in self.orders:
+            if order.symbol != symbol or order.status != OrderStatus.PENDING:
+                continue
+            if order.price is None:
+                continue
+
+            if order.side == OrderSide.BUY and trade_price <= order.price:
+                self._fill_order(order, order.price, slippage_bps=0.0)
+                filled.append(order)
+            elif order.side == OrderSide.SELL and trade_price >= order.price:
+                self._fill_order(order, order.price, slippage_bps=0.0)
+                filled.append(order)
+        return filled
 
 
 class Strategy:
@@ -782,7 +818,12 @@ class Strategy:
 
     def on_tick(self, event: CanonicalEvent) -> None:
         """Called on every canonical trade event."""
-        pass
+        if event.price and event.instrument_id:
+            filled = self.executor.match_pending_orders(
+                event.instrument_id, event.price, event.quantity or 100.0
+            )
+            for ord_ in filled:
+                self.on_fill(ord_)
 
     def on_quote(self, event: CanonicalEvent) -> None:
         """Called on every canonical quote event."""
@@ -1172,6 +1213,203 @@ class SpreadCaptureMarketMaker(Strategy):
                     self.quote_size,
                     price=sell_px,
                     reason=f"Market Making: Passive Ask ({spread_bps:.1f} bps)",
+                )
+
+
+class AvellanedaStoikovStrategy(Strategy):
+    """
+    Avellaneda-Stoikov High-Frequency Market Making Strategy (AS-MM).
+
+    The foundational quantitative HFT model for electronic market making (Avellaneda & Stoikov 2008):
+    1. Computes inventory-skewed reservation price:
+       r(s, q) = s - q * gamma * sigma^2
+    2. Incorporates Level-2 Micro-Price and Order Book Imbalance (OBI) to preempt toxic flow:
+       micro_price = mid + 0.5 * spread * imbalance
+       r_eff = micro_price - q * gamma * sigma^2
+    3. Calculates optimal half-spread delta:
+       delta = 0.5 * [gamma * sigma^2 + (2 / gamma) * ln(1 + gamma / kappa)]
+    4. Posts dynamic two-sided passive limit orders:
+       Bid = min(best_bid, round(r_eff - delta, 2))
+       Ask = max(best_ask, round(r_eff + delta, 2))
+    5. Toxic Flow Shield:
+       - Skips INVALID quotes (crossed books, corrupt ticks).
+       - Widens quote half-spread by 3x when SUSPICIOUS quality flags (e.g. PRICE_ANOMALY, STALE) are raised.
+       - Clamps quoting when position reaches max_inventory limits.
+    """
+
+    def __init__(
+        self,
+        symbol: str = "AAPL",
+        gamma: float = 0.1,
+        kappa: float = 1.5,
+        quote_size: float = 50.0,
+        max_inventory: float = 500.0,
+        min_spread_bps: float = 1.0,
+        vol_window: int = 50,
+        risk_limits: RiskLimits | None = None,
+    ):
+        self.symbol = symbol
+        self.is_all = symbol.upper() in ("ALL", "*", "MARKET")
+        syms = None if self.is_all else [s.strip() for s in symbol.split(",")]
+        super().__init__(name="AvellanedaStoikovMM", symbols=syms, risk_limits=risk_limits)
+        self.gamma = gamma
+        self.kappa = kappa
+        self.quote_size = quote_size
+        self.max_inventory = max_inventory
+        self.min_spread_bps = min_spread_bps
+        self.vol_window = vol_window
+
+        self._price_history: dict[str, deque[float]] = {}
+        self._volatilities: dict[str, float] = {}
+        self.reservation_prices: dict[str, float] = {}
+        self.optimal_spreads: dict[str, float] = {}
+        self.toxic_flow_detected: dict[str, bool] = {}
+
+    def on_quote(self, event: CanonicalEvent) -> None:
+        super().on_quote(event)
+        inst = event.instrument_id
+        if not self.is_all and inst != self.symbol and inst not in self.symbols:
+            return
+        if not event.bid_price or not event.ask_price:
+            return
+
+        # Quality Guard: Drop crossed or invalid quotes
+        if (
+            event.bid_price >= event.ask_price
+            or getattr(event, "quality_status", QualityStatus.VALID) == QualityStatus.INVALID
+        ):
+            return
+
+        mid = (event.bid_price + event.ask_price) / 2.0
+        spread = event.ask_price - event.bid_price
+
+        # Update rolling mid-price history
+        if inst not in self._price_history:
+            self._price_history[inst] = deque(maxlen=self.vol_window)
+        hist = self._price_history[inst]
+        hist.append(mid)
+
+        # Estimate tick return volatility sigma
+        if len(hist) >= 5:
+            returns = [
+                (hist[i] - hist[i - 1]) / hist[i - 1]
+                for i in range(1, len(hist))
+                if hist[i - 1] > 0
+            ]
+            if returns:
+                mean_ret = sum(returns) / len(returns)
+                var = sum((r - mean_ret) ** 2 for r in returns) / len(returns)
+                sigma = math.sqrt(max(1e-8, var))
+            else:
+                sigma = 0.001
+        else:
+            sigma = 0.001
+        self._volatilities[inst] = sigma
+
+        # Order Book Imbalance (OBI) & Micro-Price
+        book = self.get_order_book(inst)
+        micro_price = getattr(book, "micro_price", mid)
+        if not micro_price or math.isnan(micro_price) or micro_price <= 0:
+            micro_price = mid
+
+        pos = self.executor.get_position(inst)
+        q = pos.quantity  # current net inventory (shares)
+
+        # 1. Avellaneda-Stoikov Reservation Price with Micro-Price & Inventory Skew
+        # When long (q > 0), reservation price drops below mid to attract sell flow.
+        # When short (q < 0), reservation price rises above mid to attract buy flow.
+        tick_size = 0.01
+        base_half = max(tick_size, spread / 2.0)
+        vol_scale = max(0.01, sigma * mid)
+        inventory_skew = q * self.gamma * (vol_scale * 0.05)
+        reservation_price = micro_price - inventory_skew
+        self.reservation_prices[inst] = reservation_price
+
+        # 2. Optimal Half-Spread (delta)
+        half_spread = max(tick_size, spread / 2.0)
+
+        # Adverse Selection Guard: widen by 3x on SUSPICIOUS quality flag
+        is_suspicious = getattr(event, "quality_status", QualityStatus.VALID) == QualityStatus.SUSPICIOUS
+        self.toxic_flow_detected[inst] = is_suspicious
+        if is_suspicious:
+            half_spread *= 3.0
+
+        self.optimal_spreads[inst] = half_spread * 2.0
+
+        # Reservation price centered quoting
+        raw_bid = round(reservation_price - half_spread, 2)
+        raw_ask = round(reservation_price + half_spread, 2)
+
+        # Passive maker prices: bid cannot exceed market bid, ask cannot undercut market ask
+        bid_px = min(event.bid_price, raw_bid)
+        ask_px = max(event.ask_price, raw_ask)
+        if ask_px <= bid_px:
+            ask_px = round(bid_px + tick_size, 2)
+
+        # Cancel old resting quotes for this instrument before posting new quotes
+        self.executor.cancel_pending_orders(inst)
+
+        # Asymmetric Quoting & Inventory Skew:
+        # If long (q >= 50% max_inventory), only quote passive sell limit to rebalance
+        # If short (q <= -50% max_inventory), only quote passive buy limit to rebalance
+        # Otherwise post two-sided market
+        if q >= self.max_inventory * 0.5:
+            self.sell(
+                inst,
+                self.quote_size,
+                price=ask_px,
+                reason=f"AS-MM Shed Long (q={q:.0f}, r={reservation_price:.2f})",
+            )
+        elif q <= -self.max_inventory * 0.5:
+            self.buy(
+                inst,
+                self.quote_size,
+                price=bid_px,
+                reason=f"AS-MM Cover Short (q={q:.0f}, r={reservation_price:.2f})",
+            )
+        else:
+            self.buy(
+                inst,
+                self.quote_size,
+                price=bid_px,
+                reason=f"AS-MM Bid (q={q:.0f}, r={reservation_price:.2f}, σ={sigma*1e4:.1f}bps)",
+            )
+            self.sell(
+                inst,
+                self.quote_size,
+                price=ask_px,
+                reason=f"AS-MM Ask (q={q:.0f}, r={reservation_price:.2f}, σ={sigma*1e4:.1f}bps)",
+            )
+
+    def on_tick(self, event: CanonicalEvent) -> None:
+        super().on_tick(event)
+        inst = event.instrument_id
+        if not self.is_all and inst != self.symbol and inst not in self.symbols:
+            return
+        if event.price is None:
+            return
+
+        if getattr(event, "quality_status", QualityStatus.VALID) == QualityStatus.INVALID:
+            return
+
+        pos = self.executor.get_position(inst)
+        pos.update_market_price(event.price)
+
+        # Extreme Inventory De-risking
+        if abs(pos.quantity) >= self.max_inventory * 0.8:
+            if pos.quantity > 0:
+                self.sell(
+                    inst,
+                    self.quote_size,
+                    price=event.price,
+                    reason=f"AS-MM Inventory Clamp (q={pos.quantity:.0f} >= 80% limit)",
+                )
+            elif pos.quantity < 0:
+                self.buy(
+                    inst,
+                    self.quote_size,
+                    price=event.price,
+                    reason=f"AS-MM Inventory Clamp (q={pos.quantity:.0f} <= -80% limit)",
                 )
 
 

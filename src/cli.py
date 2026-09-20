@@ -4563,11 +4563,15 @@ def cmd_flow(args):
 
 def cmd_strategy(args):
     """Institutional Algorithmic Strategy Engine & Paper EMS (§26)."""
-    from strategy_sdk import WhaleMomentumStrategy, SpreadCaptureMarketMaker
+    from strategy_sdk import (
+        WhaleMomentumStrategy,
+        SpreadCaptureMarketMaker,
+        AvellanedaStoikovStrategy,
+    )
     from simulator import FeedSimulator, SimulatorConfig
     from gateway import ingest, normalize
     from flow_tracker import OrderFlowTracker
-    from models import EventType
+    from models import EventType, QualityStatus
 
     console = Console()
 
@@ -4600,6 +4604,12 @@ def cmd_strategy(args):
                 "Provides two-sided passive liquidity inside wide bid-ask spreads (>= 3 bps);\nQuotes Buy Limit above Bid and Sell Limit below Ask, avoiding adverse selection.",
                 "Max Order: 500 shs | Max Pos: 2,500 shs\nPrice Collar: 30 bps | Max DD: 5.0%",
             ),
+            (
+                "avellaneda_stoikov",
+                "Quantitative HFT Market Maker (AS-MM)",
+                "Avellaneda-Stoikov (2008) reservation price with Level-2 micro-price & OBI skew;\nDynamic optimal half-spread quoting with inventory risk dampening and toxic-flow shield.",
+                "Max Order: 500 shs | Max Pos: 500 shs\nToxic Flow Spread Guard | Risk Collar: 50 bps",
+            ),
         ]
         console.print(
             _t(
@@ -4614,7 +4624,7 @@ def cmd_strategy(args):
             )
         )
         console.print(
-            "[dim]Run a strategy: [bold]mdrap strategy run -s whale_momentum -i AAPL -e 2000[/bold][/dim]\n"
+            "[dim]Run a strategy: [bold]mdrap strategy run -s avellaneda_stoikov -i AAPL -e 2000[/bold][/dim]\n"
         )
         return
 
@@ -4635,13 +4645,31 @@ def cmd_strategy(args):
         strat = SpreadCaptureMarketMaker(
             symbol=sym, min_spread_bps=3.0, quote_size=50.0
         )
+    elif strat_name in ("avellaneda_stoikov", "as_mm", "hft_mm", "hft_market_maker"):
+        strat = AvellanedaStoikovStrategy(
+            symbol=sym, gamma=0.1, kappa=1.5, quote_size=50.0, max_inventory=500.0
+        )
     else:
         strat = WhaleMomentumStrategy(symbol=sym, trade_size=100.0, stop_loss_pct=0.5)
 
     flow_tracker = OrderFlowTracker()
 
-    # Single-pass streaming: generate → ingest → normalize → strategy dispatch
-    # No intermediate list, no second pass. ~2x faster and zero memory bloat.
+    # Data Quality Engine initialization (defaults to Native C Fastpath)
+    quality_engine = None
+    use_fastpath = getattr(args, "fastpath", True)
+    if use_fastpath:
+        try:
+            from fastpath import FastQualityEngine, is_available
+
+            quality_engine = FastQualityEngine() if is_available() else None
+        except Exception:
+            quality_engine = None
+    if quality_engine is None:
+        from quality import QualityEngine
+
+        quality_engine = QualityEngine()
+
+    # Single-pass streaming: generate → ingest → normalize → quality evaluate → strategy dispatch
     sim_cfg = SimulatorConfig(seed=42, num_events=events_count)
     if not is_all_market and sym_list:
         sim_cfg.instruments = sym_list
@@ -4663,6 +4691,12 @@ def cmd_strategy(args):
             is_all_market or can.instrument_id == sym or can.instrument_id in sym_list
         ):
             continue
+
+        # Fastpath Data Quality Guard: Filter corrupted or crossed events
+        if quality_engine is not None:
+            can = quality_engine.evaluate(can)
+            if getattr(can, "quality_status", QualityStatus.VALID) == QualityStatus.INVALID:
+                continue
 
         event_count += 1
         active_symbols.add(can.instrument_id)
@@ -7297,7 +7331,7 @@ def build_parser() -> argparse.ArgumentParser:
         "-s",
         "--strategy",
         default="whale_momentum",
-        choices=["whale_momentum", "spread_capture"],
+        choices=["whale_momentum", "spread_capture", "avellaneda_stoikov", "as_mm"],
         help="Strategy name",
     )
     p_strat.add_argument(
