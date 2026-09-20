@@ -285,6 +285,7 @@ class SecurityManager:
         store: Optional[Any] = None,
         rate_limit: float = 20_000.0,
         require_env_secrets: bool = False,
+        require_hmac: bool | set[str] | list[str] = False,
     ):
         self.store = store
         mandate_env = require_env_secrets or (
@@ -292,6 +293,15 @@ class SecurityManager:
             in ("1", "true", "yes")
         )
         is_demo = os.environ.get("MDRAP_DEMO", "").lower() in ("1", "true", "yes")
+
+        if isinstance(require_hmac, str):
+            self.require_hmac: bool | set[str] = {require_hmac.upper()}
+        elif isinstance(require_hmac, (set, list, tuple)):
+            self.require_hmac = {s.upper() for s in require_hmac}
+        else:
+            self.require_hmac = bool(require_hmac) or (
+                os.environ.get("MDRAP_REQUIRE_HMAC", "").lower() in ("1", "true", "yes")
+            )
 
         self._secrets: Dict[str, bytes] = {}
         if is_demo:
@@ -365,6 +375,16 @@ class SecurityManager:
     def register_feed_secret(self, source: str, secret_key: str) -> None:
         """Register or rotate a pre-shared cryptographic key for a market data feed."""
         self._secrets[source.upper()] = secret_key.encode("utf-8")
+
+    def hmac_required(self, source: str) -> bool:
+        """Check if cryptographic HMAC verification is required for a feed source."""
+        src = source.upper()
+        # Public exchange sources NEVER require HMAC
+        if src in ("BINANCE", "COINBASE", "KRAKEN", "OKX", "BYBIT"):
+            return False
+        if isinstance(self.require_hmac, set):
+            return src in self.require_hmac
+        return bool(self.require_hmac)
 
     def _fail(self, reason: str, source: str, details: str = "") -> bool:
         self._tampered_count += 1

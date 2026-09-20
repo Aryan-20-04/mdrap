@@ -26,6 +26,7 @@ class EventType(str, Enum):
 
     TRADE = "TRADE"
     QUOTE = "QUOTE"
+    UNKNOWN = "UNKNOWN"
 
 
 class QualityStatus(str, Enum):

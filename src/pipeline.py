@@ -152,6 +152,7 @@ class Pipeline:
         raw: RawEvent,
         reason_msg: str,
         lineage_desc: str,
+        reason_code: Reason | str = Reason.SCHEMA_VIOLATION,
         instrument_fallback: str = "MALFORMED",
         record_lineage: bool = True,
     ) -> CanonicalEvent:
@@ -161,17 +162,18 @@ class Pipeline:
             if isinstance(raw.payload, dict)
             else instrument_fallback
         )
+        r_val = reason_code.value if isinstance(reason_code, Reason) else str(reason_code)
         fake = CanonicalEvent(
             event_id=raw.raw_id,
             instrument_id=instrument,
-            event_type=EventType.TRADE,
-            exchange_timestamp=0.0,
+            event_type=EventType.UNKNOWN,
+            exchange_timestamp=raw.receive_timestamp if raw.receive_timestamp else 0.0,
             receive_timestamp=raw.receive_timestamp,
             processing_timestamp=time.time(),
             source=raw.source,
             sequence_number=None,
             quality_status=QualityStatus.INVALID,
-            reasons=[Reason.SCHEMA_VIOLATION.value],
+            reasons=[r_val],
             raw_id=raw.raw_id,
         )
         self._enqueue_quarantine(
@@ -212,6 +214,10 @@ class Pipeline:
         self, raw: RawEvent, source_label: str | None = None
     ) -> CanonicalEvent | None:
         t_start_ns = time.perf_counter_ns()
+        # Write-ahead: archive raw event BEFORE any processing or security decisions (P1)
+        if self.archive:
+            self.archive.write(raw)
+
         # Security Guard: Rate Limiting & Input Sanitization (Spec §19)
         if self.security:
             if not self.security.rate_limiter.allow(raw.source):
@@ -220,7 +226,7 @@ class Pipeline:
                     raw,
                     "Security: Rate limit exceeded",
                     "quarantined (security: rate limit exceeded)",
-                    "RATE_LIMITED",
+                    Reason.RATE_LIMITED.value,
                 )
             valid, err_msg = self.security.sanitizer.sanitize(raw.payload)
             if not valid:
@@ -228,23 +234,23 @@ class Pipeline:
                     raw,
                     f"Security sanitization: {err_msg}",
                     f"quarantined (security sanitization: {err_msg})",
-                    "MALFORMED",
+                    Reason.MALFORMED.value,
                 )
-            # Cryptographic HMAC verification
-            if isinstance(raw.payload, dict) and "signature" in raw.payload:
-                if not self.security.verify_payload(
-                    raw.source, raw.payload, raw.payload["signature"]
+            # Cryptographic HMAC verification (P2)
+            if isinstance(raw.payload, dict) and (
+                self.security.hmac_required(raw.source) or "signature" in raw.payload
+            ):
+                sig = raw.payload.get("signature")
+                if not sig or not self.security.verify_payload(
+                    raw.source, raw.payload, sig
                 ):
                     return self._create_quarantined_event(
                         raw,
-                        "Cryptographic HMAC verification failed: tampered payload",
+                        "Cryptographic HMAC verification failed: missing or tampered signature",
                         "quarantined (security: HMAC verification failed)",
-                        "UNKNOWN",
+                        Reason.SECURITY_REJECT.value,
                     )
 
-        # Write-ahead: archive raw event BEFORE any processing
-        if self.archive:
-            self.archive.write(raw)
         raw = ingest(raw)
 
         try:
@@ -255,8 +261,8 @@ class Pipeline:
                 raw,
                 "Schema violation",
                 "quarantined (schema error)",
-                "UNKNOWN",
-                record_lineage=False,
+                Reason.SCHEMA_VIOLATION.value,
+                record_lineage=True,
             )
 
         t_norm_ns = time.perf_counter_ns()
@@ -362,6 +368,10 @@ class Pipeline:
             t_start = time.perf_counter_ns()
             start_times_ns.append(t_start)
 
+            # Write-ahead: archive raw event BEFORE any processing or security decisions (P1)
+            if self.archive:
+                self.archive.write(raw)
+
             # Security Guard: Rate Limiting & Input Sanitization (Spec §19)
             if self.security:
                 if not self.security.rate_limiter.allow(raw.source):
@@ -370,7 +380,7 @@ class Pipeline:
                         raw,
                         "Security: Rate limit exceeded",
                         "quarantined (security: rate limit exceeded)",
-                        "RATE_LIMITED",
+                        Reason.RATE_LIMITED.value,
                     )
                     norm_times_ns.append(time.perf_counter_ns())
                     continue
@@ -380,27 +390,27 @@ class Pipeline:
                         raw,
                         f"Security sanitization: {err_msg}",
                         f"quarantined (security sanitization: {err_msg})",
-                        "MALFORMED",
+                        Reason.MALFORMED.value,
                     )
                     norm_times_ns.append(time.perf_counter_ns())
                     continue
-                # Cryptographic HMAC verification
-                if isinstance(raw.payload, dict) and "signature" in raw.payload:
-                    if not self.security.verify_payload(
-                        raw.source, raw.payload, raw.payload["signature"]
+                # Cryptographic HMAC verification (P2)
+                if isinstance(raw.payload, dict) and (
+                    self.security.hmac_required(raw.source) or "signature" in raw.payload
+                ):
+                    sig = raw.payload.get("signature")
+                    if not sig or not self.security.verify_payload(
+                        raw.source, raw.payload, sig
                     ):
                         results[idx] = self._create_quarantined_event(
                             raw,
-                            "Cryptographic HMAC verification failed: tampered payload",
+                            "Cryptographic HMAC verification failed: missing or tampered signature",
                             "quarantined (security: HMAC verification failed)",
-                            "UNKNOWN",
+                            Reason.SECURITY_REJECT.value,
                         )
                         norm_times_ns.append(time.perf_counter_ns())
                         continue
 
-            # Write-ahead: archive raw event BEFORE any processing
-            if self.archive:
-                self.archive.write(raw)
             raw = ingest(raw)
 
             try:
@@ -410,8 +420,8 @@ class Pipeline:
                     raw,
                     "Schema violation",
                     "quarantined (schema error)",
-                    "UNKNOWN",
-                    record_lineage=False,
+                    Reason.SCHEMA_VIOLATION.value,
+                    record_lineage=True,
                 )
                 norm_times_ns.append(time.perf_counter_ns())
                 continue
