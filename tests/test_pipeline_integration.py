@@ -60,15 +60,13 @@ def test_different_seeds_can_diverge():
 
 
 def test_lineage_written_for_every_canonical_event():
-    """Lineage is recorded for every quality-evaluated event. canonical_events
-    excludes INVALID events (they go to quarantine only), so lineage_count >=
-    canonical_count. The difference should equal the INVALID events detected
-    by the quality engine (not counting schema errors, which never reach lineage)."""
+    """Lineage is recorded for every event (Invariant A6: fully evidentiary).
+    canonical_events excludes INVALID events (they go to quarantine only), so
+    lineage_count == canonical_count + all_invalid."""
     pipeline, store = _run(3000)
     cur = store.conn.execute("SELECT COUNT(*) FROM lineage")
     lineage_count = cur.fetchone()[0]
     cur2 = store.conn.execute("SELECT COUNT(*) FROM canonical_events")
     canonical_count = cur2.fetchone()[0]
-    # Every quality-evaluated event gets a lineage row; only VALID+SUSPICIOUS get canonical rows.
-    invalid_quality = pipeline.quality.counts.get("INVALID", 0)
-    assert lineage_count == canonical_count + invalid_quality
+    total_invalid = pipeline.metrics.quality_counts.get("INVALID", 0)
+    assert lineage_count == canonical_count + total_invalid

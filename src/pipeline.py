@@ -26,11 +26,14 @@ Architectural Foundations (MDRAP Spec §14 & §26):
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 import gc
+import hashlib
 import json
+import os
 import subprocess
 import time
-from typing import TYPE_CHECKING
+from typing import Any, TYPE_CHECKING
 
 from gateway import SchemaError, ingest, normalize
 from metrics import RunMetrics
@@ -71,16 +74,16 @@ _CACHED_CODE_VERSION: str | None = None
 
 
 def _code_version() -> str:
-    """Retrieve Git commit SHA once and cache globally for lineage records."""
+    """Retrieve Git commit SHA once from MDRAP directory and cache globally for lineage records."""
     global _CACHED_CODE_VERSION
     if _CACHED_CODE_VERSION is not None:
         return _CACHED_CODE_VERSION
+    repo_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     try:
         out = subprocess.run(
-            ["git", "rev-parse", "--short", "HEAD"],
+            ["git", "-C", repo_dir, "rev-parse", "--short", "HEAD"],
             capture_output=True,
             text=True,
-            cwd=None,
             timeout=2,
         )
         if out.returncode == 0:
@@ -90,6 +93,31 @@ def _code_version() -> str:
         pass
     _CACHED_CODE_VERSION = "unversioned"
     return _CACHED_CODE_VERSION
+
+
+@contextmanager
+def tuned_gc():
+    """Context manager for elevated gen-0 GC threshold during hot paths, restored on exit."""
+    old = gc.get_threshold()
+    try:
+        gc.set_threshold(50_000, 10, 10)
+        yield
+    finally:
+        gc.set_threshold(*old)
+
+
+def _safe_payload_json(payload: Any) -> str:
+    """Truncate payloads > 64 KiB with sha256 metadata to prevent storage DoS."""
+    s = json.dumps(payload, default=str)
+    if len(s) > 65536:
+        h = hashlib.sha256(s.encode("utf-8")).hexdigest()
+        return json.dumps({
+            "truncated": True,
+            "sha256": h,
+            "orig_bytes": len(s),
+            "prefix": s[:65536],
+        })
+    return s
 
 
 class Pipeline:
@@ -134,9 +162,6 @@ class Pipeline:
         self._canonical_batch: list[CanonicalEvent] = []
         self._quarantine_batch: list[tuple] = []
         self._lineage_batch: list[tuple] = []
-
-        # Suppress erratic GC pauses during hot tick loops; collect deterministically during flushes
-        gc.set_threshold(100_000, 10, 10)
 
     def _enqueue_canonical(self, event: CanonicalEvent) -> None:
         self._canonical_batch.append(event)
@@ -183,7 +208,7 @@ class Pipeline:
                 fake.source,
                 fake.quality_status.value,
                 json.dumps([reason_msg]),
-                json.dumps(raw.payload, default=str),
+                _safe_payload_json(raw.payload),
                 raw.receive_timestamp,
             )
         )
@@ -192,7 +217,7 @@ class Pipeline:
                 (
                     fake.event_id,
                     fake.instrument_id,
-                    f'["{fake.raw_id}"]',
+                    json.dumps([fake.raw_id]),
                     fake.raw_id,
                     _TRANSFORMATIONS_JSON[False],
                     _VALIDATIONS_RUN_JSON,
@@ -203,6 +228,10 @@ class Pipeline:
                     fake.processing_timestamp,
                 )
             )
+        if self.reliability:
+            self.reliability.observe(fake)
+        if self.watchdog:
+            self.watchdog.observe(fake)
         self.metrics.quality_counts["INVALID"] = (
             self.metrics.quality_counts.get("INVALID", 0) + 1
         )
@@ -300,12 +329,12 @@ class Pipeline:
                     event.source,
                     event.quality_status.value,
                     reasons_json,
-                    json.dumps(raw.payload, default=str),
+                    _safe_payload_json(raw.payload),
                     event.receive_timestamp,
                 )
             )
 
-        raw_id_json = f'["{event.raw_id}"]'
+        raw_id_json = json.dumps([event.raw_id])
         self._enqueue_lineage(
             (
                 event.event_id,
@@ -480,12 +509,12 @@ class Pipeline:
                         event.source,
                         event.quality_status.value,
                         reasons_json,
-                        json.dumps(raw.payload, default=str),
+                        _safe_payload_json(raw.payload),
                         event.receive_timestamp,
                     )
                 )
 
-            raw_id_json = f'["{event.raw_id}"]'
+            raw_id_json = json.dumps([event.raw_id])
             self._enqueue_lineage(
                 (
                     event.event_id,
@@ -542,33 +571,52 @@ class Pipeline:
         if batch_full or time_elapsed:
             self.flush()
 
+    def _spill_dead_letter(self, canon: list, quar: list, lin: list) -> None:
+        """Spill unwritten batches to fsync'd JSONL under data/deadletter/ on storage failure."""
+        dl_dir = os.path.join("data", "deadletter")
+        os.makedirs(dl_dir, exist_ok=True)
+        fname = os.path.join(dl_dir, f"spill-{time.time_ns()}.jsonl")
+        with open(fname, "w", encoding="utf-8") as f:
+            for c in canon:
+                f.write(json.dumps(c.to_dict() if hasattr(c, "to_dict") else str(c)) + "\n")
+            for q in quar:
+                f.write(json.dumps({"type": "quarantine", "row": q}, default=str) + "\n")
+            for l in lin:
+                f.write(json.dumps({"type": "lineage", "row": l}, default=str) + "\n")
+            f.flush()
+            os.fsync(f.fileno())
+
     def flush(self):
+        if not (self._canonical_batch or self._quarantine_batch or self._lineage_batch):
+            return
         self._last_flush_ts = time.time()
-        self.store.write_canonical_batch(self._canonical_batch)
-        self.store.write_quarantine_batch(self._quarantine_batch)
-        self.store.write_lineage_batch(self._lineage_batch)
-        health_rows = []
-        now = time.time()
-        for src, st in self.reliability.stats.items():
-            health_rows.append(
-                (
-                    src,
-                    st.total,
-                    st.invalid,
-                    st.suspicious,
-                    st.duplicate,
-                    st.gap,
-                    round(st.ewma_latency_s, 6),
-                    st.score,
-                    now,
+        canon, quar, lin = self._canonical_batch, self._quarantine_batch, self._lineage_batch
+        self._canonical_batch, self._quarantine_batch, self._lineage_batch = [], [], []
+        try:
+            self.store.write_canonical_batch(canon)
+            self.store.write_quarantine_batch(quar)
+            self.store.write_lineage_batch(lin)
+            health_rows = []
+            now = time.time()
+            for src, st in self.reliability.stats.items():
+                health_rows.append(
+                    (
+                        src,
+                        st.total,
+                        st.invalid,
+                        st.suspicious,
+                        st.duplicate,
+                        st.gap,
+                        round(st.ewma_latency_s, 6),
+                        st.score,
+                        now,
+                    )
                 )
-            )
-        self.store.upsert_source_health(health_rows)
-        self.store.commit()
-        self._canonical_batch.clear()
-        self._quarantine_batch.clear()
-        self._lineage_batch.clear()
-        gc.collect(1)
+            self.store.upsert_source_health(health_rows)
+            self.store.commit()
+        except Exception:
+            self._spill_dead_letter(canon, quar, lin)
+            raise
 
     def finish(self):
         self.flush()
