@@ -485,10 +485,23 @@ class SecurityManager:
             actor_role = actor_or_token
             actor_name = f"role:{actor_role.value}"
         elif isinstance(actor_or_token, ClientEntitlement):
+            if not actor_or_token.is_active or (
+                actor_or_token.expires_at is not None
+                and time.time() > actor_or_token.expires_at
+            ):
+                self.log_audit(
+                    action="ACCESS_DENIED",
+                    actor=actor_or_token.client_id,
+                    role=getattr(actor_or_token, "role", Role.VIEWER),
+                    details=f"Inactive or expired entitlement attempting '{action_name}'",
+                )
+                raise AccessDenied(
+                    f"Access denied: Inactive or expired entitlement for action '{action_name}'"
+                )
             actor_role = getattr(actor_or_token, "role", Role.VIEWER)
             actor_name = actor_or_token.client_id
         elif isinstance(actor_or_token, str):
-            ent = self.get_entitlement(actor_or_token)
+            ent = self.get_entitlement(actor_or_token, active_only=True)
             if ent is None:
                 self.log_audit(
                     action="ACCESS_DENIED",
@@ -634,16 +647,21 @@ class SecurityManager:
             return True
         return False
 
-    def get_entitlement(self, token: str) -> Optional[ClientEntitlement]:
-        """Lookup entitlement by token or sha256 hash. Returns None if invalid, inactive, or expired."""
+    def get_entitlement(
+        self, token: str, active_only: bool = False
+    ) -> Optional[ClientEntitlement]:
+        """Lookup entitlement by token or sha256 hash."""
         ent = self._api_keys.get(token)
         if not ent:
             tok_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
             ent = self._api_keys.get(tok_hash)
-        if not ent or not ent.is_active:
+        if not ent:
             return None
-        if ent.expires_at is not None and time.time() > ent.expires_at:
-            return None
+        if active_only:
+            if not ent.is_active:
+                return None
+            if ent.expires_at is not None and time.time() > ent.expires_at:
+                return None
         return ent
 
     def list_api_keys(self) -> list[ClientEntitlement]:

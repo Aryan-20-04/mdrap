@@ -30,15 +30,25 @@ def test_s5_key_expiration_and_inactive():
     # Active, not expired
     sm.register_api_key("client1", token="tok_active", expires_at=now + 3600)
     assert sm.get_entitlement("tok_active") is not None
+    assert sm.get_entitlement("tok_active", active_only=True) is not None
 
     # Inactive
     sm.register_api_key("client2", token="tok_inactive")
     sm.revoke_api_key("tok_inactive")
-    assert sm.get_entitlement("tok_inactive") is None
+    assert sm.get_entitlement("tok_inactive") is not None
+    assert sm.get_entitlement("tok_inactive").is_active is False
+    assert sm.get_entitlement("tok_inactive", active_only=True) is None
 
     # Expired
     sm.register_api_key("client3", token="tok_expired", expires_at=now - 10)
-    assert sm.get_entitlement("tok_expired") is None
+    assert sm.get_entitlement("tok_expired") is not None
+    assert sm.get_entitlement("tok_expired", active_only=True) is None
+
+    # Inactive or expired tokens cannot authorize
+    with pytest.raises(AccessDenied):
+        sm.authorize("tok_inactive", Role.VIEWER)
+    with pytest.raises(AccessDenied):
+        sm.authorize("tok_expired", Role.VIEWER)
 
 
 def test_s7_access_denied_hierarchy_and_audit():
