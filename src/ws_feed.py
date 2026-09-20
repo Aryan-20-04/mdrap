@@ -18,22 +18,46 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Generator
+from datetime import datetime, timezone
 import itertools
 import json
 import logging
+import math
 import queue
 import ssl
 import threading
 import time
 from typing import Any
+import uuid
 
 from live import resolve_venue_symbols
 from models import RawEvent
 
 logger = logging.getLogger("mdrap.ws_feed")
 
-_seq_counter = itertools.count(1)
+RUN_ID = uuid.uuid4().hex[:12]
 _raw_counter = itertools.count(1)
+
+
+def _num(x: Any) -> float | None:
+    if x is None:
+        return None
+    try:
+        val = float(x)
+        return val if math.isfinite(val) else None
+    except (ValueError, TypeError):
+        return None
+
+
+def _parse_iso(s: Any) -> float | None:
+    if not s or not isinstance(s, str):
+        return None
+    try:
+        if s.endswith("Z"):
+            s = s[:-1] + "+00:00"
+        return datetime.fromisoformat(s).timestamp()
+    except Exception:
+        return None
 
 # Check optional websockets dependency
 try:
@@ -55,56 +79,76 @@ WS_ENDPOINTS = {
 }
 
 
-def parse_binance_frame(data: dict, canonical_sym: str) -> RawEvent | None:
+def parse_binance_frame(
+    data: dict, canonical_sym: str, t_recv: float | None = None, wire: str | bytes = ""
+) -> RawEvent | None:
     """Parse Binance @depth5 or @bookTicker WebSocket JSON frame."""
-    t_recv = time.time()
+    t_recv = t_recv if t_recv is not None else time.time()
     try:
+        ex_ts = (
+            (_num(data["E"]) / 1000.0)
+            if ("E" in data and _num(data["E"]) is not None)
+            else None
+        )
+
         # Check depth format (e.g. @depth5)
         if "bids" in data and "asks" in data and data["bids"] and data["asks"]:
-            bids = [[float(p), float(s)] for p, s in data["bids"]]
-            asks = [[float(p), float(s)] for p, s in data["asks"]]
-            best_bid, best_bid_size = bids[0]
-            best_ask, best_ask_size = asks[0]
+            bids = [
+                [_num(p), _num(s)]
+                for p, s in data["bids"][:5]
+                if _num(p) is not None and _num(s) is not None
+            ]
+            asks = [
+                [_num(p), _num(s)]
+                for p, s in data["asks"][:5]
+                if _num(p) is not None and _num(s) is not None
+            ]
+            best_bid, best_bid_size = bids[0] if bids else (None, None)
+            best_ask, best_ask_size = asks[0] if asks else (None, None)
             return RawEvent(
                 source="BINANCE",
                 payload={
                     "instrument": canonical_sym,
                     "event_type": "QUOTE",
-                    "exchange_ts": t_recv - 0.002,
-                    "sequence": next(_seq_counter),
+                    "exchange_ts": ex_ts,
+                    "sequence": None,
                     "bid": best_bid,
                     "ask": best_ask,
                     "bid_size": best_bid_size,
                     "ask_size": best_ask_size,
                     "bids": bids,
                     "asks": asks,
+                    "venue_update_id": data.get("lastUpdateId"),
                 },
                 receive_timestamp=t_recv,
-                raw_id=f"ws-binance-{next(_raw_counter)}",
+                raw_id=f"ws-binance-{RUN_ID}-{next(_raw_counter)}",
+                wire=wire,
             )
 
         # Check bookTicker format
         if "b" in data and "a" in data:
-            best_bid = float(data["b"])
-            best_bid_size = float(data.get("B", 1.0))
-            best_ask = float(data["a"])
-            best_ask_size = float(data.get("A", 1.0))
+            best_bid = _num(data["b"])
+            best_bid_size = _num(data.get("B"))
+            best_ask = _num(data["a"])
+            best_ask_size = _num(data.get("A"))
             return RawEvent(
                 source="BINANCE",
                 payload={
                     "instrument": canonical_sym,
                     "event_type": "QUOTE",
-                    "exchange_ts": t_recv - 0.002,
-                    "sequence": next(_seq_counter),
+                    "exchange_ts": ex_ts,
+                    "sequence": None,
                     "bid": best_bid,
                     "ask": best_ask,
                     "bid_size": best_bid_size,
                     "ask_size": best_ask_size,
-                    "bids": [[best_bid, best_bid_size]],
-                    "asks": [[best_ask, best_ask_size]],
+                    "bids": [[best_bid, best_bid_size]] if best_bid is not None else [],
+                    "asks": [[best_ask, best_ask_size]] if best_ask is not None else [],
+                    "venue_update_id": data.get("u"),
                 },
                 receive_timestamp=t_recv,
-                raw_id=f"ws-binance-{next(_raw_counter)}",
+                raw_id=f"ws-binance-{RUN_ID}-{next(_raw_counter)}",
+                wire=wire,
             )
     except Exception as exc:
         return RawEvent(
@@ -112,52 +156,71 @@ def parse_binance_frame(data: dict, canonical_sym: str) -> RawEvent | None:
             payload={
                 "instrument": canonical_sym,
                 "is_malformed": True,
-                "error": str(exc),
+                "error": repr(exc)[:200],
             },
             receive_timestamp=t_recv,
-            raw_id=f"ws-binance-err-{next(_raw_counter)}",
+            raw_id=f"ws-binance-err-{RUN_ID}-{next(_raw_counter)}",
+            wire=wire,
         )
     return None
 
 
-def parse_coinbase_frame(data: dict, canonical_sym: str) -> RawEvent | None:
+def parse_coinbase_frame(
+    data: dict, canonical_sym: str, t_recv: float | None = None, wire: str | bytes = ""
+) -> RawEvent | None:
     """Parse Coinbase ticker or snapshot/l2update WebSocket frame."""
-    t_recv = time.time()
+    t_recv = t_recv if t_recv is not None else time.time()
     try:
         msg_type = data.get("type")
+        ex_ts = _parse_iso(data.get("time"))
+        seq = (
+            int(data["sequence"])
+            if ("sequence" in data and _num(data["sequence"]) is not None)
+            else None
+        )
+
         if msg_type == "ticker":
-            bid = float(data["best_bid"])
-            ask = float(data["best_ask"])
-            bid_s = float(data.get("best_bid_size", 1.0))
-            ask_s = float(data.get("best_ask_size", 1.0))
+            bid = _num(data.get("best_bid"))
+            ask = _num(data.get("best_ask"))
+            bid_s = _num(data.get("best_bid_size"))
+            ask_s = _num(data.get("best_ask_size"))
             return RawEvent(
                 source="COINBASE",
                 payload={
                     "instrument": canonical_sym,
                     "event_type": "QUOTE",
-                    "exchange_ts": t_recv - 0.003,
-                    "sequence": next(_seq_counter),
+                    "exchange_ts": ex_ts,
+                    "sequence": seq,
                     "bid": bid,
                     "ask": ask,
                     "bid_size": bid_s,
                     "ask_size": ask_s,
-                    "bids": [[bid, bid_s]],
-                    "asks": [[ask, ask_s]],
+                    "bids": [[bid, bid_s]] if bid is not None else [],
+                    "asks": [[ask, ask_s]] if ask is not None else [],
                 },
                 receive_timestamp=t_recv,
-                raw_id=f"ws-coinbase-{next(_raw_counter)}",
+                raw_id=f"ws-coinbase-{RUN_ID}-{next(_raw_counter)}",
+                wire=wire,
             )
         elif msg_type == "snapshot" and "bids" in data and "asks" in data:
-            bids = [[float(p), float(s)] for p, s in data["bids"][:5]]
-            asks = [[float(p), float(s)] for p, s in data["asks"][:5]]
+            bids = [
+                [_num(p), _num(s)]
+                for p, s in data["bids"][:5]
+                if _num(p) is not None and _num(s) is not None
+            ]
+            asks = [
+                [_num(p), _num(s)]
+                for p, s in data["asks"][:5]
+                if _num(p) is not None and _num(s) is not None
+            ]
             if bids and asks:
                 return RawEvent(
                     source="COINBASE",
                     payload={
                         "instrument": canonical_sym,
                         "event_type": "QUOTE",
-                        "exchange_ts": t_recv - 0.003,
-                        "sequence": next(_seq_counter),
+                        "exchange_ts": ex_ts,
+                        "sequence": seq,
                         "bid": bids[0][0],
                         "ask": asks[0][0],
                         "bid_size": bids[0][1],
@@ -166,7 +229,8 @@ def parse_coinbase_frame(data: dict, canonical_sym: str) -> RawEvent | None:
                         "asks": asks,
                     },
                     receive_timestamp=t_recv,
-                    raw_id=f"ws-coinbase-{next(_raw_counter)}",
+                    raw_id=f"ws-coinbase-{RUN_ID}-{next(_raw_counter)}",
+                    wire=wire,
                 )
     except Exception as exc:
         return RawEvent(
@@ -174,64 +238,82 @@ def parse_coinbase_frame(data: dict, canonical_sym: str) -> RawEvent | None:
             payload={
                 "instrument": canonical_sym,
                 "is_malformed": True,
-                "error": str(exc),
+                "error": repr(exc)[:200],
             },
             receive_timestamp=t_recv,
-            raw_id=f"ws-coinbase-err-{next(_raw_counter)}",
+            raw_id=f"ws-coinbase-err-{RUN_ID}-{next(_raw_counter)}",
+            wire=wire,
         )
     return None
 
 
-def parse_kraken_frame(data: Any, canonical_sym: str) -> RawEvent | None:
+def parse_kraken_frame(
+    data: Any, canonical_sym: str, t_recv: float | None = None, wire: str | bytes = ""
+) -> RawEvent | None:
     """Parse Kraken book or ticker WebSocket list-based frame."""
-    t_recv = time.time()
+    t_recv = t_recv if t_recv is not None else time.time()
     try:
         if isinstance(data, list) and len(data) >= 2:
             body = data[1]
             if isinstance(body, dict):
                 # Book snapshot: "bs" and "as"
                 if "bs" in body and "as" in body and body["bs"] and body["as"]:
-                    bids = [[float(row[0]), float(row[1])] for row in body["bs"][:5]]
-                    asks = [[float(row[0]), float(row[1])] for row in body["as"][:5]]
+                    bids = [
+                        [_num(row[0]), _num(row[1])]
+                        for row in body["bs"][:5]
+                        if _num(row[0]) is not None and _num(row[1]) is not None
+                    ]
+                    asks = [
+                        [_num(row[0]), _num(row[1])]
+                        for row in body["as"][:5]
+                        if _num(row[0]) is not None and _num(row[1]) is not None
+                    ]
+                    ex_ts = (
+                        _num(body["bs"][0][2])
+                        if (len(body["bs"][0]) > 2)
+                        else None
+                    )
                     return RawEvent(
                         source="KRAKEN",
                         payload={
                             "instrument": canonical_sym,
                             "event_type": "QUOTE",
-                            "exchange_ts": t_recv - 0.004,
-                            "sequence": next(_seq_counter),
-                            "bid": bids[0][0],
-                            "ask": asks[0][0],
-                            "bid_size": bids[0][1],
-                            "ask_size": asks[0][1],
+                            "exchange_ts": ex_ts,
+                            "sequence": None,
+                            "bid": bids[0][0] if bids else None,
+                            "ask": asks[0][0] if asks else None,
+                            "bid_size": bids[0][1] if bids else None,
+                            "ask_size": asks[0][1] if asks else None,
                             "bids": bids,
                             "asks": asks,
                         },
                         receive_timestamp=t_recv,
-                        raw_id=f"ws-kraken-{next(_raw_counter)}",
+                        raw_id=f"ws-kraken-{RUN_ID}-{next(_raw_counter)}",
+                        wire=wire,
                     )
                 # Ticker update: "b" and "a"
                 elif "b" in body and "a" in body:
-                    bid = float(body["b"][0])
-                    ask = float(body["a"][0])
-                    bid_s = float(body["b"][2])
-                    ask_s = float(body["a"][2])
+                    bid = _num(body["b"][0])
+                    ask = _num(body["a"][0])
+                    bid_s = _num(body["b"][2]) if len(body["b"]) > 2 else None
+                    ask_s = _num(body["a"][2]) if len(body["a"]) > 2 else None
                     return RawEvent(
                         source="KRAKEN",
                         payload={
                             "instrument": canonical_sym,
                             "event_type": "QUOTE",
-                            "exchange_ts": t_recv - 0.004,
-                            "sequence": next(_seq_counter),
+                            "exchange_ts": None,
+                            "sequence": None,
                             "bid": bid,
                             "ask": ask,
                             "bid_size": bid_s,
                             "ask_size": ask_s,
-                            "bids": [[bid, bid_s]],
-                            "asks": [[ask, ask_s]],
+                            "bids": [[bid, bid_s]] if bid is not None else [],
+                            "asks": [[ask, ask_s]] if ask is not None else [],
                         },
                         receive_timestamp=t_recv,
-                        raw_id=f"ws-kraken-{next(_raw_counter)}",
+                        raw_id=f"ws-kraken-{RUN_ID}-{next(_raw_counter)}",
+                        wire=wire,
                     )
     except Exception as exc:
         return RawEvent(
@@ -239,62 +321,81 @@ def parse_kraken_frame(data: Any, canonical_sym: str) -> RawEvent | None:
             payload={
                 "instrument": canonical_sym,
                 "is_malformed": True,
-                "error": str(exc),
+                "error": repr(exc)[:200],
             },
             receive_timestamp=t_recv,
-            raw_id=f"ws-kraken-err-{next(_raw_counter)}",
+            raw_id=f"ws-kraken-err-{RUN_ID}-{next(_raw_counter)}",
+            wire=wire,
         )
     return None
 
 
-def parse_okx_frame(data: dict, canonical_sym: str) -> RawEvent | None:
+def parse_okx_frame(
+    data: dict, canonical_sym: str, t_recv: float | None = None, wire: str | bytes = ""
+) -> RawEvent | None:
     """Parse OKX books5 or tickers WebSocket frame."""
-    t_recv = time.time()
+    t_recv = t_recv if t_recv is not None else time.time()
     try:
         items = data.get("data")
         if isinstance(items, list) and len(items) > 0:
             item = items[0]
+            ex_ts = (_num(item.get("ts")) / 1000.0) if item.get("ts") else None
+            seq = (
+                int(item["seqId"])
+                if ("seqId" in item and _num(item["seqId"]) is not None)
+                else None
+            )
             if "bids" in item and "asks" in item and item["bids"] and item["asks"]:
-                bids = [[float(row[0]), float(row[1])] for row in item["bids"][:5]]
-                asks = [[float(row[0]), float(row[1])] for row in item["asks"][:5]]
+                bids = [
+                    [_num(row[0]), _num(row[1])]
+                    for row in item["bids"][:5]
+                    if _num(row[0]) is not None and _num(row[1]) is not None
+                ]
+                asks = [
+                    [_num(row[0]), _num(row[1])]
+                    for row in item["asks"][:5]
+                    if _num(row[0]) is not None and _num(row[1]) is not None
+                ]
                 return RawEvent(
                     source="OKX",
                     payload={
                         "instrument": canonical_sym,
                         "event_type": "QUOTE",
-                        "exchange_ts": t_recv - 0.003,
-                        "sequence": next(_seq_counter),
-                        "bid": bids[0][0],
-                        "ask": asks[0][0],
-                        "bid_size": bids[0][1],
-                        "ask_size": asks[0][1],
+                        "exchange_ts": ex_ts,
+                        "sequence": seq,
+                        "bid": bids[0][0] if bids else None,
+                        "ask": asks[0][0] if asks else None,
+                        "bid_size": bids[0][1] if bids else None,
+                        "ask_size": asks[0][1] if asks else None,
                         "bids": bids,
                         "asks": asks,
                     },
                     receive_timestamp=t_recv,
-                    raw_id=f"ws-okx-{next(_raw_counter)}",
+                    raw_id=f"ws-okx-{RUN_ID}-{next(_raw_counter)}",
+                    wire=wire,
                 )
             elif "bidPx" in item and "askPx" in item:
-                bid = float(item["bidPx"])
-                ask = float(item["askPx"])
-                bid_s = float(item.get("bidSz", 1.0))
-                ask_s = float(item.get("askSz", 1.0))
+                bid = _num(item.get("bidPx"))
+                ask = _num(item.get("askPx"))
+                bid_s = _num(item.get("bidSz"))
+                ask_s = _num(item.get("askSz"))
                 return RawEvent(
                     source="OKX",
                     payload={
                         "instrument": canonical_sym,
                         "event_type": "QUOTE",
-                        "exchange_ts": t_recv - 0.003,
-                        "sequence": next(_seq_counter),
+                        "exchange_ts": ex_ts,
+                        "sequence": seq,
                         "bid": bid,
                         "ask": ask,
                         "bid_size": bid_s,
                         "ask_size": ask_s,
-                        "bids": [[bid, bid_s]],
-                        "asks": [[ask, ask_s]],
+                        "bids": [[bid, bid_s]] if bid is not None else [],
+                        "asks": [[ask, ask_s]] if ask is not None else [],
                     },
                     receive_timestamp=t_recv,
-                    raw_id=f"ws-okx-{next(_raw_counter)}",
+                    raw_id=f"ws-okx-{RUN_ID}-{next(_raw_counter)}",
+                    wire=wire,
                 )
     except Exception as exc:
         return RawEvent(
@@ -302,60 +403,83 @@ def parse_okx_frame(data: dict, canonical_sym: str) -> RawEvent | None:
             payload={
                 "instrument": canonical_sym,
                 "is_malformed": True,
-                "error": str(exc),
+                "error": repr(exc)[:200],
             },
             receive_timestamp=t_recv,
-            raw_id=f"ws-okx-err-{next(_raw_counter)}",
+            raw_id=f"ws-okx-err-{RUN_ID}-{next(_raw_counter)}",
+            wire=wire,
         )
     return None
 
 
-def parse_bybit_frame(data: dict, canonical_sym: str) -> RawEvent | None:
+def parse_bybit_frame(
+    data: dict, canonical_sym: str, t_recv: float | None = None, wire: str | bytes = ""
+) -> RawEvent | None:
     """Parse Bybit orderbook.5 or tickers WebSocket frame."""
-    t_recv = time.time()
+    t_recv = t_recv if t_recv is not None else time.time()
     try:
         body = data.get("data", {})
+        ex_ts = (
+            (_num(data.get("ts") or data.get("cts")) / 1000.0)
+            if (data.get("ts") or data.get("cts"))
+            else None
+        )
+        seq = (
+            int(body.get("seq") or data.get("seq"))
+            if (body.get("seq") or data.get("seq"))
+            else None
+        )
         if "b" in body and "a" in body and body["b"] and body["a"]:
-            bids = [[float(row[0]), float(row[1])] for row in body["b"][:5]]
-            asks = [[float(row[0]), float(row[1])] for row in body["a"][:5]]
+            bids = [
+                [_num(row[0]), _num(row[1])]
+                for row in body["b"][:5]
+                if _num(row[0]) is not None and _num(row[1]) is not None
+            ]
+            asks = [
+                [_num(row[0]), _num(row[1])]
+                for row in body["a"][:5]
+                if _num(row[0]) is not None and _num(row[1]) is not None
+            ]
             return RawEvent(
                 source="BYBIT",
                 payload={
                     "instrument": canonical_sym,
                     "event_type": "QUOTE",
-                    "exchange_ts": t_recv - 0.003,
-                    "sequence": next(_seq_counter),
-                    "bid": bids[0][0],
-                    "ask": asks[0][0],
-                    "bid_size": bids[0][1],
-                    "ask_size": asks[0][1],
+                    "exchange_ts": ex_ts,
+                    "sequence": seq,
+                    "bid": bids[0][0] if bids else None,
+                    "ask": asks[0][0] if asks else None,
+                    "bid_size": bids[0][1] if bids else None,
+                    "ask_size": asks[0][1] if asks else None,
                     "bids": bids,
                     "asks": asks,
                 },
                 receive_timestamp=t_recv,
-                raw_id=f"ws-bybit-{next(_raw_counter)}",
+                raw_id=f"ws-bybit-{RUN_ID}-{next(_raw_counter)}",
+                wire=wire,
             )
         elif "bid1Price" in body and "ask1Price" in body:
-            bid = float(body["bid1Price"])
-            ask = float(body["ask1Price"])
-            bid_s = float(body.get("bid1Size", 1.0))
-            ask_s = float(body.get("ask1Size", 1.0))
+            bid = _num(body.get("bid1Price"))
+            ask = _num(body.get("ask1Price"))
+            bid_s = _num(body.get("bid1Size"))
+            ask_s = _num(body.get("ask1Size"))
             return RawEvent(
                 source="BYBIT",
                 payload={
                     "instrument": canonical_sym,
                     "event_type": "QUOTE",
-                    "exchange_ts": t_recv - 0.003,
-                    "sequence": next(_seq_counter),
+                    "exchange_ts": ex_ts,
+                    "sequence": seq,
                     "bid": bid,
                     "ask": ask,
                     "bid_size": bid_s,
                     "ask_size": ask_s,
-                    "bids": [[bid, bid_s]],
-                    "asks": [[ask, ask_s]],
+                    "bids": [[bid, bid_s]] if bid is not None else [],
+                    "asks": [[ask, ask_s]] if ask is not None else [],
                 },
                 receive_timestamp=t_recv,
-                raw_id=f"ws-bybit-{next(_raw_counter)}",
+                raw_id=f"ws-bybit-{RUN_ID}-{next(_raw_counter)}",
+                wire=wire,
             )
     except Exception as exc:
         return RawEvent(
@@ -363,19 +487,25 @@ def parse_bybit_frame(data: dict, canonical_sym: str) -> RawEvent | None:
             payload={
                 "instrument": canonical_sym,
                 "is_malformed": True,
-                "error": str(exc),
+                "error": repr(exc)[:200],
             },
             receive_timestamp=t_recv,
-            raw_id=f"ws-bybit-err-{next(_raw_counter)}",
+            raw_id=f"ws-bybit-err-{RUN_ID}-{next(_raw_counter)}",
+            wire=wire,
         )
     return None
 
 
 def parse_venue_frame(
-    venue: str, raw_msg: str | dict, canonical_sym: str
+    venue: str,
+    raw_msg: str | dict,
+    canonical_sym: str,
+    t_recv: float | None = None,
 ) -> RawEvent | None:
     """Universal frame parser dispatching to venue-specific unmarshaler."""
     v = venue.upper()
+    t_recv = t_recv if t_recv is not None else time.time()
+    wire = raw_msg if isinstance(raw_msg, (str, bytes)) else json.dumps(raw_msg)
     if isinstance(raw_msg, str):
         try:
             raw_msg = json.loads(raw_msg)
@@ -387,20 +517,21 @@ def parse_venue_frame(
                     "is_malformed": True,
                     "error": f"JSON parse error: {exc}",
                 },
-                receive_timestamp=time.time(),
-                raw_id=f"ws-{v.lower()}-err-{next(_raw_counter)}",
+                receive_timestamp=t_recv,
+                raw_id=f"ws-{v.lower()}-err-{RUN_ID}-{next(_raw_counter)}",
+                wire=wire,
             )
 
     if v == "BINANCE":
-        return parse_binance_frame(raw_msg, canonical_sym)
+        return parse_binance_frame(raw_msg, canonical_sym, t_recv=t_recv, wire=wire)
     elif v == "COINBASE":
-        return parse_coinbase_frame(raw_msg, canonical_sym)
+        return parse_coinbase_frame(raw_msg, canonical_sym, t_recv=t_recv, wire=wire)
     elif v == "KRAKEN":
-        return parse_kraken_frame(raw_msg, canonical_sym)
+        return parse_kraken_frame(raw_msg, canonical_sym, t_recv=t_recv, wire=wire)
     elif v == "OKX":
-        return parse_okx_frame(raw_msg, canonical_sym)
+        return parse_okx_frame(raw_msg, canonical_sym, t_recv=t_recv, wire=wire)
     elif v == "BYBIT":
-        return parse_bybit_frame(raw_msg, canonical_sym)
+        return parse_bybit_frame(raw_msg, canonical_sym, t_recv=t_recv, wire=wire)
     return None
 
 

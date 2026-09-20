@@ -126,6 +126,7 @@ class RawEvent:
     payload: dict
     receive_timestamp: float = 0.0
     raw_id: str = ""
+    wire: str | bytes = ""
 
 
 @dataclass(slots=True)
