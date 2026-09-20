@@ -365,6 +365,26 @@ class SecurityManager:
         """Register or rotate a pre-shared cryptographic key for a market data feed."""
         self._secrets[source.upper()] = secret_key.encode("utf-8")
 
+    def _fail(self, reason: str, source: str, details: str = "") -> bool:
+        self._tampered_count += 1
+        if self.store:
+            try:
+                self.log_audit(
+                    reason,
+                    actor=source,
+                    role=Role.VIEWER,
+                    details=details or reason,
+                )
+            except Exception:
+                pass
+        return False
+
+    def _signing_bytes(self, payload: dict) -> bytes:
+        filtered = {k: v for k, v in payload.items() if k != "signature"}
+        return json.dumps(
+            filtered, sort_keys=True, default=str, separators=(",", ":")
+        ).encode("utf-8")
+
     def sign_payload(self, source: str, payload: dict) -> str:
         """
         Generate HMAC-SHA256 signature for a feed payload.
@@ -376,61 +396,34 @@ class SecurityManager:
             secret = secrets.token_bytes(32)
             self._secrets[src] = secret
 
-        # Exclude existing signature field if present to avoid recursive self-reference
-        filtered = {k: v for k, v in payload.items() if k != "signature"}
-        serialized = json.dumps(
-            filtered, sort_keys=True, default=str, separators=(",", ":")
-        ).encode("utf-8")
-        return hmac.new(secret, serialized, hashlib.sha256).hexdigest()
+        serialized = self._signing_bytes(payload)
+        return hmac.digest(secret, serialized, "sha256").hex()
 
-    def verify_payload(self, source: str, payload: dict, signature: str) -> bool:
+    def verify_payload(self, source: str, payload: dict, signature: Any) -> bool:
         """
         Verify HMAC-SHA256 signature using constant-time digest comparison.
-        Shields against timing attacks.
+        Shields against timing attacks. Never raises on malformed signatures.
         """
         src = source.upper()
-        if not signature:
-            self._tampered_count += 1
-            if self.store:
-                self.log_audit(
-                    "HMAC_MISSING",
-                    actor=src,
-                    role=Role.VIEWER,
-                    details="Payload arrived with no signature",
-                )
-            return False
+        if not isinstance(signature, str) or not (1 <= len(signature) <= 128):
+            return self._fail("HMAC_BAD_TYPE", src, "Signature is not a valid-length string")
+        try:
+            sig_bytes = bytes.fromhex(signature)
+        except ValueError:
+            return self._fail("HMAC_BAD_ENCODING", src, "Signature is not valid hexadecimal")
 
         secret = self._secrets.get(src)
         if not secret:
-            self._tampered_count += 1
-            if self.store:
-                self.log_audit(
-                    "HMAC_UNKNOWN_FEED",
-                    actor=src,
-                    role=Role.VIEWER,
-                    details="No secret registered for feed",
-                )
-            return False
+            return self._fail("HMAC_UNKNOWN_FEED", src, "No secret registered for feed")
 
-        filtered = {k: v for k, v in payload.items() if k != "signature"}
-        serialized = json.dumps(
-            filtered, sort_keys=True, default=str, separators=(",", ":")
-        ).encode("utf-8")
-        expected_sig = hmac.new(secret, serialized, hashlib.sha256).hexdigest()
+        serialized = self._signing_bytes(payload)
+        expected_bytes = hmac.digest(secret, serialized, "sha256")
 
-        is_valid = hmac.compare_digest(expected_sig, signature)
+        is_valid = hmac.compare_digest(expected_bytes, sig_bytes)
         if is_valid:
             self._verified_count += 1
-        else:
-            self._tampered_count += 1
-            if self.store:
-                self.log_audit(
-                    "HMAC_SIGNATURE_INVALID",
-                    actor=src,
-                    role=Role.VIEWER,
-                    details="Payload HMAC signature mismatch",
-                )
-        return is_valid
+            return True
+        return self._fail("HMAC_SIGNATURE_INVALID", src, "Payload HMAC signature mismatch")
 
     def authorize(
         self, actor_role: Role, required_role: Role, action_name: str = ""
