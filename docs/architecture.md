@@ -26,11 +26,11 @@ The platform converts noisy, delayed, duplicated, and inconsistent market data f
 +-------------------------------------------------------------------------+
 |                 Data-Quality Engine & Native C Fastpath                 |
 |   - Schema validation (never drop, quarantine INVALID)                  |
-|   - Dedup (bounded LRU key cache)                                       |
+|   - Dedup (64-bit sequence sliding bitmap & 2-generation table)         |
 |   - Sequence-gap & out-of-order retrograde arrival detection            |
-|   - Staleness & price anomaly (Welford's z-score)                       |
+|   - Staleness & price anomaly (6σ Welford, σ-floor, regime re-seed)     |
 |   - Quote consistency (crossed and locked order books)                  |
-|   - Native C Accelerator: 8,192 symbols ($2^{13}$), 18.6M eps, 50.0 ns  |
+|   - Native C Accelerator: 24.4 ns batch / ~50 ns single                 |
 +------------------------------------+------------------------------------+
                                      |
                                      v
@@ -46,7 +46,7 @@ The platform converts noisy, delayed, duplicated, and inconsistent market data f
 +-------------------------------------------------------------------------+
 |                              Storage Sink                               |
 |   - Batched SQLite WAL (canonical_events, quarantine, lineage, health)  |
-|   - Tamper-Evident Merkle Tree Audit Trail with SHA-256 Hash Chaining   |
+|   - Cryptographic Audit Trail (Signed Hash Chain with External Anchors) |
 |   - Analytical Storage Engine (5s OHLCV Candles, Spreads, Volatility)   |
 +------------------------------------+------------------------------------+
                                      |
@@ -54,7 +54,7 @@ The platform converts noisy, delayed, duplicated, and inconsistent market data f
 +-------------------------------------------------------------------------+
 |                  Distribution, Presentation & Export                    |
 |   - Non-blocking Headless Streaming Daemon & Socket IPC                 |
-|   - Binary Shared Memory Transport (Zero-Copy Ring Buffer)              |
+|   - Binary Shared Memory Transport (SHM v3 Seqlock Ring Buffer)         |
 |   - In-Place Live Terminal Ticker & ANSI Candlestick Visualizer         |
 |   - Institutional 5-Tab Excel (.xlsx) & CSV Financial Exporter          |
 +-------------------------------------------------------------------------+
@@ -78,10 +78,10 @@ The platform converts noisy, delayed, duplicated, and inconsistent market data f
 - Uses Welford's algorithm (`_RollingStats`) for numerically stable rolling mean and standard deviation.
 - Deduplication uses an insertion-ordered LRU dictionary.
 - **Native C Accelerator**:
-  - Expanded to 8,192 symbols ($2^{13}$) and 32 sources with dynamic heap allocation.
-  - Zero-division bitshift slot index: `(source_id << 13) | instrument_id`.
-  - Contiguous SIMD-aligned arrays operate entirely inside CPU L1 cache.
-  - Achieves **18,669,082 events/sec (50.0 nanoseconds/event)**.
+  - Expanded to 8,192 symbols ($2^{13}$) and 32 sources with lazy 96-byte slot allocations.
+  - Bitshift slot index: `(source_id << 13) | instrument_id`.
+  - 64-bit sliding sequence bitmap and 2-generation dedup table with zero startup memory footprint.
+  - Measured latency: **24.4 ns/event** in sequenced batch C kernel; **~50 ns** single evaluation; **~16 µs** Python pipeline.
   - Automatic boundary fallback to pure Python if beyond 8,192 symbols.
 
 ### 2.3 Consolidated Depth & Real-Time VWAP Engine (`src/depth.py`)

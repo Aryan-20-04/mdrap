@@ -16,7 +16,7 @@ MDRAP ingests multiple live market data feeds, cross-reconciles them, flags anom
 | Cross-source reconciliation | ✅ Built-in | ❌ | ❌ | ❌ |
 | Statistical quality scoring | ✅ 7-rule engine | ❌ | ❌ | Manual |
 | Explainable reason codes | ✅ Per-event | ❌ | ❌ | ❌ |
-| Cryptographic audit trail | ✅ Merkle-chained | ❌ | ❌ | ❌ |
+| Cryptographic audit trail | ✅ Signed hash chain (v2) | ❌ | ❌ | ❌ |
 | Tick-level storage | Via SQLite | ✅ Purpose-built | ✅ Parquet catalog | ✅ Purpose-built |
 | Strategy execution | ❌ Not its job | ❌ | ✅ Purpose-built | Via q |
 | `pip install` + CLI | ✅ | ❌ (Java) | ✅ | ❌ (Commercial) |
@@ -58,8 +58,8 @@ flowchart TD
 
     subgraph PIPELINE ["3. Validation, Acceleration & Consensus Pipeline"]
         GW["Gateway & Normalization<br/>RawEvent -> CanonicalEvent"]
-        QE["7-Rule Quality Engine<br/>Schema, Dedup, Gap, Order, Stale, Crossed, 3-Sigma"]
-        FP["Native C Hot Path Accelerator<br/>8,192 Symbols | 18.6M eps | 50.0 ns"]
+        QE["7-Rule Quality Engine<br/>Schema, Dedup, Gap, Order, Stale, Crossed, 6σ"]
+        FP["Native C Hot Path Accelerator<br/>24.4 ns batch / ~50 ns single | ~16 µs Python pipeline | ~0.8 ms durable"]
         WD["Source Watchdog & Failover Circuit Breaker<br/>Silence & Degradation Monitoring"]
         BBO["Synthetic Consolidated BBO<br/>5-Venue Multi-Exchange NBBO"]
         DEPTH["Consolidated L2 Order Book<br/>Multi-Venue Depth Aggregation & VWAP Curves"]
@@ -67,24 +67,23 @@ flowchart TD
 
     subgraph STORAGE ["4. Columnar & Batched Storage, Archive & Audit (Spec §14, §19, §26)"]
         CAN[("canonical_events<br/>WAL SQLite Batch")]
-        QUAR[("quarantine<br/>Never Silently Drop")]
+        QUAR[("quarantine<br/>Every Drop Counted & Reported")]
         LIN[("lineage<br/>Transformation Lineage Proof")]
-        AUD[("audit_log<br/>Merkle Hash Chained")]
+        AUD[("audit_log<br/>Signed Hash Chain with External Anchors")]
         ARC[["Immutable Raw JSONL Archive<br/>Write-Ahead Partitioned Log"]]
         COL[("DuckDB Columnar Store<br/>SIMD Resampling & Parquet Export")]
     end
 
     subgraph PRESENTATION ["5. Presentation, IPC & Institutional Export"]
         DAEMON["Headless Streaming Daemon<br/>Non-blocking Socket IPC"]
-        SHM["Binary Shared Memory Transport<br/>Zero-Copy Ring Buffer"]
+        SHM["Binary Shared Memory Transport<br/>Seqlock Ring Buffer (v3 Layout)"]
         LIVE["In-Place Live Terminal Ticker<br/>Cursor-Repositioned Rich HUD"]
         CHART["Visual Candlestick Terminal Chart<br/>Unicode Wicks & Outlier Percentile Scaling"]
         EXCEL["Institutional 5-Tab Excel Exporter<br/>XLSX Financial Model & CSV Packages"]
     end
 
-    POLY & DBN & B & SIM --> FSUP --> RL
-    RL --> SAN --> HMAC --> RBAC --> GW
-    GW --> ARC
+    POLY & DBN & B & SIM --> FSUP --> ARC
+    ARC --> RL --> SAN --> HMAC --> RBAC --> GW
     GW --> QE
     QE <--> FP
     QE --> BBO & DEPTH
@@ -100,20 +99,19 @@ flowchart TD
 ## Key Platform Capabilities
 
 ### 1. 7-Rule Data Quality Engine (Spec §7)
-- **Structural Schema Validation**: Rejects malformed JSON and missing sequence/timestamp attributes.
-- **Sliding-Window Deduplication**: Identifies exact and sliding-window duplicate packet bursts without memory bloat.
-- **Monotonic Sequence Gap Detection**: Detects missing exchange packets and penalizes feed reputation.
-- **Out-of-Order Sequencing**: Catches retrograde arrival events across jittery network paths.
+- **Structural Schema Validation**: Rejects malformed JSON, invalid event types, and non-finite or missing attributes.
+- **Exact & Sliding-Window Deduplication**: 64-bit sequence bitmaps for sequenced feeds and 2-generation sliding tables for unsequenced feeds.
+- **Monotonic Sequence Gap Detection**: Detects missing exchange packets with candidate resynchronization.
+- **Out-of-Order Sequencing**: Catches retrograde arrival events within bounded sliding sequence windows.
 - **Timestamp Staleness Evaluation**: Flags lagging feeds exceeding max latency thresholds.
-- **Crossed Quote Detection**: Flags invalid book states where $\text{Bid} > \text{Ask}$.
-- **Statistical Price Sanity Checks**: Evaluates sudden price jumps ($>3\sigma$) using Welford's online variance algorithm.
-- **Strict Quality Priority**: Non-downgradable status progression: `INVALID` > `SUSPICIOUS` > `VALID`. Quarantines bad data; **never silently drops events**.
+- **Crossed Quote Detection**: Flags invalid book states where $\text{Bid} \ge \text{Ask}$.
+- **Statistical Price Sanity Checks**: Evaluates sudden price jumps ($>6\sigma$) using Welford's online variance algorithm with relative $\sigma$-floor and regime-shift re-seeding.
+- **Strict Quality Priority**: Non-downgradable status progression: `INVALID` > `SUSPICIOUS` > `VALID`. Quarantines bad data; **every drop is counted and reported**.
 
 ### 2. Native C Hot-Path Accelerator (`fastpath.c`)
-- Pure C implementation compiled with GCC `-O3` into a native shared library (`fastpath.dll`).
-- **Capacity Expanded to 8,192 Symbols ($2^{13}$)** and 32 feed sources with dynamically allocated, SIMD-aligned contiguous memory arrays.
-- **Zero-Division Bitshift Slot Indexing**: Computes slot offsets in 1 CPU cycle: `(source_id << 13) | instrument_id`.
-- **Ultra-High Throughput**: Evaluates **18,669,082 events/sec (50.0 nanoseconds/event)** in batch mode.
+- Pure C implementation compiled into native shared library (`_fastpath_native.dll`).
+- **Lazy 96-Byte Slot Allocation**: Contiguous memory indexing with bounded chunk pools and zero startup RSS bloat.
+- **Measured Latency Profile**: **24.4 ns/event** in sequenced batch C kernel; **~50 ns** single evaluation; **~16 µs** Python in-memory pipeline; **~0.8 ms** durable SQLite WAL commits.
 - Seamless, transparent boundary fallback to pure Python if instrument universe exceeds 8,192 symbols.
 
 ### 3. Direct High-Throughput Streaming Feed Handlers (`src/polygon_feed.py`, `src/databento_feed.py`, `src/feed_handler.py`)
@@ -430,8 +428,8 @@ For rapid trading desk operations with zero mouse latency and full keyboard cont
 | `chaos` | `ch` | Execute automated chaos & resilience drills (source kill, network jitter, storage outage) |
 | `watchdog` | `w`, `wd` | Show source health status, silence alerts, and automated failover events |
 | `security` | `sec` | Display platform security posture, HMAC verification, RBAC, and rate limiting status |
-| `keys` | — | Manage client API keys and entitlement tiers (`FREE`, `PRO`, `INSTITUTIONAL`) |
-| `audit` | — | View and cryptographically verify tamper-evident Merkle hash audit logs |
+| `keys` | — | Manage client API keys and entitlements |
+| `audit` | — | View and cryptographically verify signed hash audit logs with external anchors |
 | `query` | `q` | Inspect stored SQLite tables: health, latest ticks, lineage trail, and quarantine |
 | `historical` | `history`, `chd` | Discover, download and ingest CHD history with verified files and replay provenance |
 | `replay` | `rep` | Replay archived raw events deterministically through the pipeline |
@@ -676,9 +674,9 @@ mdrap/
 │   ├── research.py      # SEC EDGAR alternative data, Form 8-K taxonomy, Form 4 XML parser
 │   ├── risk.py          # Institutional portfolio risk: VaR (3 methods), CVaR, Circuit Breakers
 │   ├── scheduler.py     # Automated cron task scheduler (@hourly, @daily, @eod)
-│   ├── security.py      # HMAC-SHA256 signing, RBAC, Token Bucket rate limiter, Merkle audit log
+│   ├── security.py      # HMAC-SHA256 signing (private feeds), RBAC, Token Bucket rate limiter, signed audit log
 │   ├── service.py       # Headless streaming daemon, authenticated socket, and service cockpit
-│   ├── shm.py           # Lock-free binary shared memory ring buffer IPC
+│   ├── shm.py           # SHM v3 seqlock binary shared memory ring buffer IPC with epoch tracking
 │   ├── simulator.py     # Deterministic feed simulator with seeded anomaly injections
 │   ├── storage.py       # Batched SQLite store (canonical, quarantine, lineage, audit, health)
 │   ├── strategy_sdk.py  # Algorithmic trading SDK, order books & paper execution sandbox

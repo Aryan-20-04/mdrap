@@ -67,15 +67,15 @@ MDRAP operates as a high-throughput financial data pipeline enforcing strict **d
             ┌─────────────────────────────────────────────────────┐
             │   7-Rule Data Quality Engine + C Accelerator        │
             │   (Schema, Dedup, Monotonic Gap, Order, Stale,      │
-            │    Crossed Quote, 3-Sigma Rolling Welford Math)     │
-            │   * Native C Hot Path: 50.0 ns (18.6M eps, 8k syms) │
+            │    Crossed Quote, 6σ Rolling Welford Math)          │
+            │   * Native C Hot Path: 24.4 ns batch / ~50 ns single│
             └──────────────────────────┬──────────────────────────┘
                                        │
                      ┌─────────────────┴─────────────────┐
                      ▼                                   ▼
              [INVALID Events]                    [VALID Events]
              Quarantine Table                Consolidated BBO (NBBO)
-             & Merkle Audit Log              Multi-Venue L2 Depth & VWAP
+             & Signed Audit Log              Multi-Venue L2 Depth & VWAP
                      │                                   │
                      └─────────────────┬─────────────────┘
                                        ▼
@@ -563,8 +563,8 @@ mdrap run -e 50000 --no-sync
 - `--strict-sync`: Exit with status code 1 if automatic DuckDB synchronization fails or diverges from SQLite store. Recommended for CI/CD pipelines, cron jobs, and production automation.
 - `--no-sync`: Disable automatic post-run DuckDB sync for environments where DuckDB is not needed or locked by another process.
 - `--duplicate-rate <FLOAT>`: Fraction of events injected as duplicate bursts.
-- `--price-anomaly-rate <FLOAT>`: Fraction of events injected with $>3\sigma$ price jumps.
-- `--fastpath`: Enable compiled Native C hot-path accelerator (50.0 ns / 18.6M eps).
+- `--price-anomaly-rate <FLOAT>`: Fraction of events injected with $>6\sigma$ price jumps.
+- `--fastpath`: Enable compiled Native C hot-path accelerator (24.4 ns batch / ~50 ns single).
 
 ---
 
@@ -1085,7 +1085,7 @@ pipeline:
 quality:
   stale_threshold_seconds: 5.0     # Max event delay before STALE flag
   crossed_quote_check: true        # Flag if Bid > Ask
-  price_anomaly_sigma: 3.0         # Price jump threshold (standard deviations)
+  price_anomaly_sigma: 6.0         # Price jump threshold (standard deviations)
   price_window_size: 100           # Rolling Welford variance window
   out_of_order_tolerance: 0.1      # Timestamp jitter tolerance (seconds)
 
