@@ -173,7 +173,8 @@ CREATE TABLE IF NOT EXISTS audit_log (
     action TEXT,
     details TEXT,
     prev_hash TEXT,
-    entry_hash TEXT
+    entry_hash TEXT,
+    format_version INTEGER NOT NULL DEFAULT 2
 );
 CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_log(timestamp);
 
@@ -274,6 +275,10 @@ class Store:
                 "PRAGMA temp_store=MEMORY;"
             )  # In-memory temporary B-trees
             self.conn.executescript(SCHEMA)
+            try:
+                self.conn.execute("ALTER TABLE audit_log ADD COLUMN format_version INTEGER NOT NULL DEFAULT 2")
+            except Exception:
+                pass
             self.conn.commit()
 
             if path != ":memory:":
@@ -787,11 +792,12 @@ class Store:
         details: str,
         prev_hash: str,
         entry_hash: str,
+        format_version: int = 2,
     ) -> None:
         self.conn.execute(
-            """INSERT INTO audit_log (timestamp, actor, role, action, details, prev_hash, entry_hash)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (timestamp, actor, role, action, details, prev_hash, entry_hash),
+            """INSERT INTO audit_log (timestamp, actor, role, action, details, prev_hash, entry_hash, format_version)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (timestamp, actor, role, action, details, prev_hash, entry_hash, format_version),
         )
 
     @_synchronized
@@ -816,10 +822,11 @@ class Store:
 
     @_synchronized
     def verify_audit_integrity(self) -> tuple[bool, str, int]:
-        import hashlib
+        from audit_format import compute_audit_hash
 
         cur = self.conn.execute(
-            "SELECT entry_id, timestamp, actor, role, action, details, prev_hash, entry_hash FROM audit_log ORDER BY entry_id ASC"
+            "SELECT entry_id, timestamp, actor, role, action, details, prev_hash, entry_hash, "
+            "COALESCE(format_version, 1) FROM audit_log ORDER BY entry_id ASC"
         )
         rows = cur.fetchall()
         if not rows:
@@ -828,21 +835,16 @@ class Store:
         expected_prev = (
             "GENESIS_0000000000000000000000000000000000000000000000000000000000000000"
         )
-        for entry_id, ts, actor, role, action, details, prev_h, entry_h in rows:
+        for entry_id, ts, actor, role, action, details, prev_h, entry_h, f_ver in rows:
             if prev_h != expected_prev:
                 return (
                     False,
                     f"Broken chain link at entry #{entry_id}: expected prev_hash '{expected_prev[:12]}...', got '{prev_h[:12]}...'",
                     entry_id,
                 )
-            esc_actor = str(actor).replace("|", r"\|")
-            esc_role = str(role).replace("|", r"\|")
-            esc_action = str(action).replace("|", r"\|")
-            esc_details = str(details).replace("|", r"\|")
-            payload_str = (
-                f"{prev_h}|{ts:.6f}|{esc_actor}|{esc_role}|{esc_action}|{esc_details}"
+            recomputed_hash = compute_audit_hash(
+                prev_h, ts, actor, role, action, details, format_version=f_ver
             )
-            recomputed_hash = hashlib.sha256(payload_str.encode("utf-8")).hexdigest()
             if recomputed_hash != entry_h:
                 return (
                     False,
@@ -863,7 +865,8 @@ class Store:
         import json
 
         cur = self.conn.execute(
-            "SELECT entry_id, timestamp, actor, role, action, details, prev_hash, entry_hash FROM audit_log ORDER BY entry_id ASC"
+            "SELECT entry_id, timestamp, actor, role, action, details, prev_hash, entry_hash, "
+            "COALESCE(format_version, 1) FROM audit_log ORDER BY entry_id ASC"
         )
         cols = [
             "entry_id",
@@ -874,6 +877,7 @@ class Store:
             "details",
             "prev_hash",
             "entry_hash",
+            "format_version",
         ]
         entries = [dict(zip(cols, r)) for r in cur.fetchall()]
 
@@ -883,7 +887,7 @@ class Store:
             else "GENESIS_0000000000000000000000000000000000000000000000000000000000000000"
         )
         proof = {
-            "version": "1.0.0",
+            "version": "2.0.0",
             "specification": "MDRAP-Spec-19.3",
             "algorithm": "sha256",
             "genesis_hash": "GENESIS_0000000000000000000000000000000000000000000000000000000000000000",
@@ -899,8 +903,8 @@ class Store:
     @staticmethod
     def verify_standalone_proof(proof_data_or_path: Any) -> tuple[bool, str, int]:
         """Independently verify a JSON audit proof without database access."""
-        import hashlib
         import json
+        from audit_format import compute_audit_hash
 
         if isinstance(proof_data_or_path, str):
             with open(proof_data_or_path, "r", encoding="utf-8") as f:
@@ -920,6 +924,7 @@ class Store:
             entry_id = item["entry_id"]
             prev_h = item["prev_hash"]
             entry_h = item["entry_hash"]
+            f_ver = item.get("format_version", 1)
 
             if prev_h != expected_prev:
                 return (
@@ -928,12 +933,9 @@ class Store:
                     entry_id,
                 )
 
-            esc_actor = str(item["actor"]).replace("|", r"\|")
-            esc_role = str(item["role"]).replace("|", r"\|")
-            esc_action = str(item["action"]).replace("|", r"\|")
-            esc_details = str(item["details"]).replace("|", r"\|")
-            payload_str = f"{prev_h}|{item['timestamp']:.6f}|{esc_actor}|{esc_role}|{esc_action}|{esc_details}"
-            calc_hash = hashlib.sha256(payload_str.encode("utf-8")).hexdigest()
+            calc_hash = compute_audit_hash(
+                prev_h, item["timestamp"], item["actor"], item["role"], item["action"], item["details"], format_version=f_ver
+            )
             if calc_hash != entry_h:
                 return (
                     False,

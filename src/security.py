@@ -210,15 +210,16 @@ class InputSanitizer:
         return True, None
 
 
+from audit_format import audit_bytes_v1, audit_bytes_v2, compute_audit_hash
+
+
 def format_audit_payload(
-    prev_hash: str, ts: float, actor: str, role: str, action: str, details: str
+    prev_hash: str, ts: float, actor: str, role: str, action: str, details: str, format_version: int = 2
 ) -> str:
-    """Format and escape audit entry fields to prevent delimiter collision/injection."""
-    esc_actor = str(actor).replace("|", r"\|")
-    esc_role = str(role).replace("|", r"\|")
-    esc_action = str(action).replace("|", r"\|")
-    esc_details = str(details).replace("|", r"\|")
-    return f"{prev_hash}|{ts:.6f}|{esc_actor}|{esc_role}|{esc_action}|{esc_details}"
+    """Format audit entry fields using canonical format (default v2 JSON array)."""
+    if format_version == 1:
+        return audit_bytes_v1(prev_hash, ts, actor, role, action, details).decode("utf-8")
+    return audit_bytes_v2(prev_hash, ts, actor, role, action, details).decode("utf-8")
 
 
 _DEMO_SECRETS = {
@@ -456,10 +457,9 @@ class SecurityManager:
         if self.store and hasattr(self.store, "get_latest_audit_hash"):
             prev_hash = self.store.get_latest_audit_hash()
 
-        payload_str = format_audit_payload(
-            prev_hash, timestamp, actor, role.value, action, details
+        entry_hash = compute_audit_hash(
+            prev_hash, timestamp, actor, role.value, action, details, format_version=2
         )
-        entry_hash = hashlib.sha256(payload_str.encode("utf-8")).hexdigest()
 
         if self.store and hasattr(self.store, "write_audit_entry"):
             self.store.write_audit_entry(
@@ -470,6 +470,7 @@ class SecurityManager:
                 details=details,
                 prev_hash=prev_hash,
                 entry_hash=entry_hash,
+                format_version=2,
             )
             if hasattr(self.store, "commit"):
                 self.store.commit()
