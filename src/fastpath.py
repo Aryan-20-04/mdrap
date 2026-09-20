@@ -47,6 +47,9 @@ _REASON_BITS = [
     (1 << 9, Reason.CIRCUIT_FILTER_BREACH.value),
     (1 << 10, Reason.VOLATILITY_INTERRUPTION.value),
     (1 << 11, Reason.SPECIAL_QUOTE_INDICATION.value),
+    (1 << 12, Reason.TS_IMPLAUSIBLE.value),
+    (1 << 13, Reason.RATE_LIMITED.value),
+    (1 << 14, Reason.SECURITY_REJECT.value),
 ]
 
 _SOURCES = ["FEEDX", "FEEDY", "FEEDZ", "SOURCEA", "SOURCEB", "SOURCEC"]
@@ -62,6 +65,7 @@ class _CFastEvent(ctypes.Structure):
         ("source_id", ctypes.c_int32),
         ("instrument_id", ctypes.c_int32),
         ("event_type", ctypes.c_int32),
+        ("present_mask", ctypes.c_uint32),
         ("exchange_ts", ctypes.c_double),
         ("receive_ts", ctypes.c_double),
         ("sequence_num", ctypes.c_int64),
@@ -284,6 +288,13 @@ def _load_native_lib():
                 lib.fastpath_noop.restype = ctypes.c_uint64
 
             # Phase 2: Explicit FastEngine context bindings
+            if hasattr(lib, "fastpath_engine_abi_version"):
+                lib.fastpath_engine_abi_version.argtypes = []
+                lib.fastpath_engine_abi_version.restype = ctypes.c_int32
+                abi_ver = lib.fastpath_engine_abi_version()
+                if abi_ver != 5:
+                    raise RuntimeError(f"fastpath ABI mismatch: expected 5, got {abi_ver}")
+
             if hasattr(lib, "fastpath_engine_create"):
                 lib.fastpath_engine_create.argtypes = [
                     ctypes.c_double,
@@ -300,11 +311,52 @@ def _load_native_lib():
                 lib.fastpath_engine_reset.argtypes = [ctypes.c_void_p]
                 lib.fastpath_engine_reset.restype = None
 
+            if hasattr(lib, "fastpath_engine_source_reset"):
+                lib.fastpath_engine_source_reset.argtypes = [ctypes.c_void_p, ctypes.c_int32]
+                lib.fastpath_engine_source_reset.restype = None
+
+            if hasattr(lib, "fastpath_engine_set_hash_seed"):
+                lib.fastpath_engine_set_hash_seed.argtypes = [ctypes.c_void_p, ctypes.c_uint64]
+                lib.fastpath_engine_set_hash_seed.restype = None
+
+            if hasattr(lib, "fastpath_engine_configure"):
+                lib.fastpath_engine_configure.argtypes = [
+                    ctypes.c_void_p,
+                    ctypes.c_int32,
+                    ctypes.c_int32,
+                    ctypes.c_double,
+                    ctypes.c_double,
+                    ctypes.c_uint64,
+                    ctypes.c_uint64,
+                ]
+                lib.fastpath_engine_configure.restype = None
+
+            if hasattr(lib, "fastpath_engine_counters"):
+                lib.fastpath_engine_counters.argtypes = [
+                    ctypes.c_void_p,
+                    ctypes.POINTER(ctypes.c_uint64),
+                ]
+                lib.fastpath_engine_counters.restype = None
+
+            if hasattr(lib, "fastpath_engine_evaluate_unlocked"):
+                lib.fastpath_engine_evaluate_unlocked.argtypes = [
+                    ctypes.c_void_p,
+                    ctypes.POINTER(_CFastEvent),
+                    ctypes.POINTER(_CFastResult),
+                ]
+                lib.fastpath_engine_evaluate_unlocked.restype = None
+
             if hasattr(lib, "fastpath_engine_eval_fast"):
                 lib.fastpath_engine_eval_fast.argtypes = [ctypes.c_void_p] + list(
                     lib.fastpath_eval_fast.argtypes
                 )
                 lib.fastpath_engine_eval_fast.restype = ctypes.c_uint64
+
+            if hasattr(lib, "fastpath_engine_eval_fast2"):
+                lib.fastpath_engine_eval_fast2.argtypes = [ctypes.c_void_p] + list(
+                    lib.fastpath_eval_fast.argtypes
+                ) + [ctypes.c_uint32]
+                lib.fastpath_engine_eval_fast2.restype = ctypes.c_uint64
 
             if hasattr(lib, "fastpath_engine_evaluate"):
                 lib.fastpath_engine_evaluate.argtypes = [
@@ -412,6 +464,92 @@ def _load_native_lib():
                     ctypes.c_void_p,
                 ]
                 lib.fastpath_shm_read_slot.restype = ctypes.c_int32
+
+            if hasattr(lib, "fastpath_shm_init_v3"):
+                lib.fastpath_shm_init_v3.argtypes = [
+                    ctypes.c_void_p,
+                    ctypes.c_size_t,
+                    ctypes.c_uint32,
+                    ctypes.c_uint64,
+                ]
+                lib.fastpath_shm_init_v3.restype = ctypes.c_int32
+
+            if hasattr(lib, "fastpath_shm_write_tick_v3"):
+                lib.fastpath_shm_write_tick_v3.argtypes = [
+                    ctypes.c_void_p,
+                    ctypes.c_size_t,
+                    ctypes.c_uint32,
+                    ctypes.c_uint64,
+                    ctypes.c_char_p,
+                    ctypes.c_char_p,
+                    ctypes.c_double,
+                    ctypes.c_double,
+                    ctypes.c_double,
+                    ctypes.c_double,
+                    ctypes.c_double,
+                    ctypes.c_double,
+                    ctypes.c_uint8,
+                    ctypes.c_uint8,
+                    ctypes.c_uint8,
+                    ctypes.c_double,
+                    ctypes.c_double,
+                    ctypes.c_double,
+                    ctypes.c_float,
+                ]
+                lib.fastpath_shm_write_tick_v3.restype = ctypes.c_int32
+
+            if hasattr(lib, "fastpath_shm_read_slot_v3"):
+                lib.fastpath_shm_read_slot_v3.argtypes = [
+                    ctypes.c_void_p,
+                    ctypes.c_size_t,
+                    ctypes.c_uint32,
+                    ctypes.c_uint64,
+                    ctypes.c_void_p,
+                ]
+                lib.fastpath_shm_read_slot_v3.restype = ctypes.c_int32
+
+            if hasattr(lib, "fastpath_shm_head_v3"):
+                lib.fastpath_shm_head_v3.argtypes = [ctypes.c_void_p]
+                lib.fastpath_shm_head_v3.restype = ctypes.c_uint64
+
+            if hasattr(lib, "fastpath_shm_epoch_v3"):
+                lib.fastpath_shm_epoch_v3.argtypes = [ctypes.c_void_p]
+                lib.fastpath_shm_epoch_v3.restype = ctypes.c_uint64
+
+            if hasattr(lib, "fastpath_process_sbe_stream_n"):
+                lib.fastpath_process_sbe_stream_n.argtypes = [
+                    ctypes.POINTER(ctypes.c_uint8),
+                    ctypes.c_size_t,
+                    ctypes.c_int32,
+                    ctypes.POINTER(_CFastResult),
+                    ctypes.c_int32,
+                    ctypes.c_void_p,
+                    ctypes.c_size_t,
+                    ctypes.c_uint32,
+                ]
+                lib.fastpath_process_sbe_stream_n.restype = ctypes.c_int32
+
+            if hasattr(lib, "fastpath_sbe_pack_tick_n"):
+                lib.fastpath_sbe_pack_tick_n.argtypes = [
+                    ctypes.c_void_p,
+                    ctypes.c_size_t,
+                    ctypes.c_uint64,
+                    ctypes.c_char_p,
+                    ctypes.c_char_p,
+                    ctypes.c_double,
+                    ctypes.c_double,
+                    ctypes.c_double,
+                    ctypes.c_double,
+                    ctypes.c_double,
+                    ctypes.c_double,
+                    ctypes.c_uint8,
+                    ctypes.c_uint8,
+                    ctypes.c_double,
+                    ctypes.c_double,
+                    ctypes.c_double,
+                    ctypes.c_float,
+                ]
+                lib.fastpath_sbe_pack_tick_n.restype = ctypes.c_int32
 
             if hasattr(lib, "fastpath_process_sbe_stream"):
                 lib.fastpath_process_sbe_stream.argtypes = [
