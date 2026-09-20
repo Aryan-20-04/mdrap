@@ -28,7 +28,15 @@ class QualityConfig:
     staleness_threshold_s: float = 0.05
     price_anomaly_stddev: float = 6.0
     price_window: int = 50
+    price_min_samples: int = 20
+    price_reseed_after: int = 8
+    price_sigma_floor_rel: float = 2e-4
+    price_reseed_band_rel: float = 0.01
+    max_future_skew_s: float = 1.0
+    seq_jump_limit: int = 1 << 24
     dedup_cache_size: int = 200_000
+    allow_negative: bool = False
+    unseq_dup_status: str = "SUSPICIOUS"
     asset_classes: Dict[str, Dict[str, float]] = field(default_factory=dict)
 
     def for_instrument(self, instrument_id: str) -> "QualityConfig":
@@ -60,16 +68,24 @@ class QualityConfig:
             return self
 
         return QualityConfig(
-            staleness_threshold_s=overrides.get(
+            staleness_threshold_s=float(overrides.get(
                 "staleness_threshold_s", self.staleness_threshold_s
-            ),
-            price_anomaly_stddev=overrides.get(
+            )),
+            price_anomaly_stddev=float(overrides.get(
                 "price_anomaly_stddev", self.price_anomaly_stddev
-            ),
+            )),
             price_window=int(overrides.get("price_window", self.price_window)),
+            price_min_samples=int(overrides.get("price_min_samples", self.price_min_samples)),
+            price_reseed_after=int(overrides.get("price_reseed_after", self.price_reseed_after)),
+            price_sigma_floor_rel=float(overrides.get("price_sigma_floor_rel", self.price_sigma_floor_rel)),
+            price_reseed_band_rel=float(overrides.get("price_reseed_band_rel", self.price_reseed_band_rel)),
+            max_future_skew_s=float(overrides.get("max_future_skew_s", self.max_future_skew_s)),
+            seq_jump_limit=int(overrides.get("seq_jump_limit", self.seq_jump_limit)),
             dedup_cache_size=int(
                 overrides.get("dedup_cache_size", self.dedup_cache_size)
             ),
+            allow_negative=bool(overrides.get("allow_negative", self.allow_negative)),
+            unseq_dup_status=str(overrides.get("unseq_dup_status", self.unseq_dup_status)),
             asset_classes=self.asset_classes,
         )
 
