@@ -953,7 +953,43 @@ class Store:
         return [dict(zip(cols, row)) for row in cur.fetchall()]
 
     @_synchronized
-    def verify_audit_integrity(self) -> tuple[bool, str, int]:
+    def append_audit(
+        self,
+        actor: str,
+        role: str,
+        action: str,
+        details: str,
+        timestamp: float | None = None,
+        format_version: int = 2,
+    ) -> str:
+        """Atomic audit log append: reads head, computes hash, inserts, and commits in one transaction."""
+        from audit_format import compute_audit_hash
+
+        ts = timestamp if timestamp is not None else time.time()
+        with self.transaction():
+            cur = self.conn.execute(
+                "SELECT entry_hash FROM audit_log ORDER BY entry_id DESC LIMIT 1"
+            )
+            row = cur.fetchone()
+            prev_hash = (
+                row[0]
+                if row
+                else "GENESIS_0000000000000000000000000000000000000000000000000000000000000000"
+            )
+            entry_hash = compute_audit_hash(
+                prev_hash, ts, actor, role, action, details, format_version=format_version
+            )
+            self.conn.execute(
+                """INSERT INTO audit_log (timestamp, actor, role, action, details, prev_hash, entry_hash, format_version)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (ts, actor, role, action, details, prev_hash, entry_hash, format_version),
+            )
+        return entry_hash
+
+    @_synchronized
+    def verify_audit_integrity(
+        self, anchor: tuple[int, str] | None = None
+    ) -> tuple[bool, str, int]:
         from audit_format import compute_audit_hash
 
         cur = self.conn.execute(
@@ -962,7 +998,28 @@ class Store:
         )
         rows = cur.fetchall()
         if not rows:
+            if anchor is not None and (
+                anchor[0] != 0
+                or anchor[1]
+                != "GENESIS_0000000000000000000000000000000000000000000000000000000000000000"
+            ):
+                return False, f"Audit log is wiped: expected {anchor[0]} entries", 0
             return True, "Audit log is empty (valid)", 0
+
+        if anchor is not None:
+            expected_count, expected_head = anchor
+            if len(rows) != expected_count:
+                return (
+                    False,
+                    f"Tail truncation detected: expected {expected_count} entries, got {len(rows)}",
+                    len(rows),
+                )
+            if rows[-1][7] != expected_head:
+                return (
+                    False,
+                    f"Chain head mismatch: expected '{expected_head[:12]}...', got '{rows[-1][7][:12]}...'",
+                    len(rows),
+                )
 
         expected_prev = (
             "GENESIS_0000000000000000000000000000000000000000000000000000000000000000"
@@ -1040,7 +1097,9 @@ class Store:
         return proof
 
     @staticmethod
-    def verify_standalone_proof(proof_data_or_path: Any) -> tuple[bool, str, int]:
+    def verify_standalone_proof(
+        proof_data_or_path: Any, anchor: tuple[int, str] | None = None
+    ) -> tuple[bool, str, int]:
         """Independently verify a JSON audit proof without database access."""
         import json
         from audit_format import compute_audit_hash
@@ -1052,13 +1111,48 @@ class Store:
             data = proof_data_or_path
 
         entries = data.get("entries", [])
-        if not entries:
-            return True, "Audit proof is empty (valid)", 0
-
-        expected_prev = data.get(
+        genesis_hash = data.get(
             "genesis_hash",
             "GENESIS_0000000000000000000000000000000000000000000000000000000000000000",
         )
+        expected_latest = entries[-1]["entry_hash"] if entries else genesis_hash
+        declared_latest = data.get("latest_hash")
+        declared_total = data.get("total_entries")
+
+        if declared_latest is not None and declared_latest != expected_latest:
+            return (
+                False,
+                f"Latest hash mismatch: declared '{declared_latest}', calculated '{expected_latest}'",
+                0,
+            )
+        if declared_total is not None and declared_total != len(entries):
+            return (
+                False,
+                f"Total entries mismatch: declared {declared_total}, actual {len(entries)}",
+                0,
+            )
+
+        if not entries:
+            if anchor is not None and anchor[0] == 0:
+                return True, "Audit proof is empty (valid by anchor)", 0
+            return False, "Audit proof is empty (invalid without confirmed anchor)", 0
+
+        if anchor is not None:
+            expected_count, expected_head = anchor
+            if len(entries) != expected_count:
+                return (
+                    False,
+                    f"Anchor count mismatch: expected {expected_count}, got {len(entries)}",
+                    len(entries),
+                )
+            if entries[-1]["entry_hash"] != expected_head:
+                return (
+                    False,
+                    f"Anchor head hash mismatch: expected '{expected_head[:12]}...', got '{entries[-1]['entry_hash'][:12]}...'",
+                    len(entries),
+                )
+
+        expected_prev = genesis_hash
         for item in entries:
             entry_id = item["entry_id"]
             prev_h = item["prev_hash"]
@@ -1073,7 +1167,13 @@ class Store:
                 )
 
             calc_hash = compute_audit_hash(
-                prev_h, item["timestamp"], item["actor"], item["role"], item["action"], item["details"], format_version=f_ver
+                prev_h,
+                item["timestamp"],
+                item["actor"],
+                item["role"],
+                item["action"],
+                item["details"],
+                format_version=f_ver,
             )
             if calc_hash != entry_h:
                 return (

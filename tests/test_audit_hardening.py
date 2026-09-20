@@ -314,9 +314,14 @@ def test_archive_replay_recovers_from_corrupted_jsonl():
 # ---------------------------------------------------------------------------
 
 def test_cryptographic_secrets_hardening():
-    """Verify sign_payload creates secure random secrets rather than predictable strings."""
+    """Verify create_feed_secret creates secure random secrets rather than predictable strings (S3)."""
     sec = SecurityManager()
     payload = {"instrument": "NVDA", "price": 120.5}
+    # Unknown source raises KeyError per S3
+    with pytest.raises(KeyError, match="Unknown feed source"):
+        sec.sign_payload("FEED_TEST", payload)
+
+    sec.create_feed_secret("FEED_TEST")
     token = sec.sign_payload("FEED_TEST", payload)
     assert token is not None
     assert len(token) == 64  # HMAC-SHA256 hex digest

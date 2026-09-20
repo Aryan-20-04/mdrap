@@ -11,10 +11,12 @@ Implements enterprise-grade market data infrastructure security:
 
 from __future__ import annotations
 
+import builtins
 import enum
 import hashlib
 import hmac
 import json
+import math
 import os
 import re
 import secrets
@@ -55,6 +57,7 @@ class ClientEntitlement:
     client_id: str
     rate_limit_eps: float = 20_000.0
     tier: Tier | str = Tier.STANDARD
+    role: Role = Role.VIEWER
     can_access_l2: bool = True
     can_use_binary: bool = True
     can_use_shm: bool = True
@@ -68,6 +71,7 @@ class ClientEntitlement:
             "token": self.token,
             "client_id": self.client_id,
             "tier": "STANDARD",
+            "role": self.role.value if hasattr(self.role, "value") else str(self.role),
             "rate_limit_eps": self.rate_limit_eps,
             "can_access_l2": self.can_access_l2,
             "can_use_binary": self.can_use_binary,
@@ -80,10 +84,13 @@ class ClientEntitlement:
 
     @classmethod
     def from_dict(cls, data: dict) -> ClientEntitlement:
+        role_raw = data.get("role", "VIEWER")
+        role = Role[role_raw] if role_raw in Role.__members__ else Role.VIEWER
         return cls(
             token=str(data.get("token", "")),
             client_id=str(data.get("client_id", "")),
             tier=Tier.STANDARD,
+            role=role,
             rate_limit_eps=float(data.get("rate_limit_eps", 20000.0)),
             can_access_l2=bool(data.get("can_access_l2", True)),
             can_use_binary=bool(data.get("can_use_binary", True)),
@@ -97,10 +104,14 @@ class ClientEntitlement:
         )
 
 
-class PermissionError(Exception):
+class AccessDenied(builtins.PermissionError):
     """Raised when an actor lacks sufficient RBAC privileges."""
 
     pass
+
+
+# Backward-compatible alias
+PermissionError = AccessDenied
 
 
 class TokenBucketRateLimiter:
@@ -125,6 +136,11 @@ class TokenBucketRateLimiter:
             elapsed = now - last_time
             current_tokens = min(self.capacity, current_tokens + elapsed * self.rate)
 
+            if len(self._buckets) > 1024 and source not in self._buckets:
+                # Evict oldest entry
+                oldest = min(self._buckets.items(), key=lambda item: item[1][1])[0]
+                self._buckets.pop(oldest, None)
+
             if current_tokens >= tokens:
                 self._buckets[source] = (current_tokens - tokens, now)
                 return True
@@ -140,16 +156,21 @@ class TokenBucketRateLimiter:
                 self._buckets.clear()
 
 
+def _finite(x: Any) -> bool:
+    return isinstance(x, (int, float)) and not isinstance(x, bool) and math.isfinite(x)
+
+
 class InputSanitizer:
     """
     Strict input validation guard ensuring data bounds and safe representations
     before events enter gateway normalization.
     """
 
-    SYMBOL_PATTERN = re.compile(r"^[A-Za-z0-9/_\-\.]{1,20}$")
-    MAX_PRICE = 10_000_000.0
-    MIN_PRICE = 0.00000001
-    MAX_QUANTITY = 1_000_000_000.0
+    SYMBOL_PATTERN = re.compile(r"^[A-Za-z0-9/_\-.:=^ ]{1,32}$")
+    MAX_PRICE = 1e12
+    MIN_PRICE = 0.0
+    MAX_QUANTITY = 1e12
+    MAX_SEQUENCE = (1 << 63) - 1
 
     @classmethod
     def sanitize(cls, payload: Any) -> Tuple[bool, Optional[str]]:
@@ -158,54 +179,55 @@ class InputSanitizer:
 
         inst = payload.get("instrument")
         if inst is not None:
-            if not isinstance(inst, str) or not cls.SYMBOL_PATTERN.match(inst):
-                return False, f"Invalid symbol format: {inst}"
+            if not isinstance(inst, str) or not cls.SYMBOL_PATTERN.fullmatch(inst):
+                err = str(inst)[:80]
+                return False, f"Invalid symbol format: {err}"
+
+        allow_neg = bool(payload.get("allow_negative", False))
+        min_p = -cls.MAX_PRICE if allow_neg else cls.MIN_PRICE
 
         price = payload.get("price")
         if price is not None:
-            if (
-                isinstance(price, bool)
-                or not isinstance(price, (int, float))
-                or price < cls.MIN_PRICE
-                or price > cls.MAX_PRICE
-            ):
-                return False, f"Price out of acceptable bounds: {price}"
+            if not _finite(price) or price < min_p or price > cls.MAX_PRICE:
+                err = str(price)[:80]
+                return False, f"Price out of acceptable bounds: {err}"
 
         bid = payload.get("bid")
         if bid is not None:
-            if (
-                isinstance(bid, bool)
-                or not isinstance(bid, (int, float))
-                or bid < 0.0
-                or bid > cls.MAX_PRICE
-            ):
-                return False, f"Bid price out of bounds: {bid}"
+            if not _finite(bid) or bid < min_p or bid > cls.MAX_PRICE:
+                err = str(bid)[:80]
+                return False, f"Bid price out of bounds: {err}"
 
         ask = payload.get("ask")
         if ask is not None:
-            if (
-                isinstance(ask, bool)
-                or not isinstance(ask, (int, float))
-                or ask < 0.0
-                or ask > cls.MAX_PRICE
-            ):
-                return False, f"Ask price out of bounds: {ask}"
+            if not _finite(ask) or ask < min_p or ask > cls.MAX_PRICE:
+                err = str(ask)[:80]
+                return False, f"Ask price out of bounds: {err}"
 
         qty = payload.get("quantity")
         if qty is not None:
-            if (
-                isinstance(qty, bool)
-                or not isinstance(qty, (int, float))
-                or qty < 0.0
-                or qty > cls.MAX_QUANTITY
-            ):
-                return False, f"Quantity out of bounds: {qty}"
+            if not _finite(qty) or qty < 0.0 or qty > cls.MAX_QUANTITY:
+                err = str(qty)[:80]
+                return False, f"Quantity out of bounds: {err}"
 
         seq = payload.get("sequence")
         if seq is not None and (
-            isinstance(seq, bool) or not isinstance(seq, int) or seq < 0
+            isinstance(seq, bool)
+            or not isinstance(seq, int)
+            or seq < 0
+            or seq > cls.MAX_SEQUENCE
         ):
-            return False, f"Sequence number must be integer: {seq}"
+            err = str(seq)[:80]
+            return False, f"Sequence number must be integer: {err}"
+
+        for book_side in ("bids", "asks"):
+            levels = payload.get(book_side)
+            if levels is not None:
+                if not isinstance(levels, (list, tuple)) or len(levels) > 50:
+                    return False, f"{book_side} depth must be list of length <= 50"
+                for lvl in levels:
+                    if not isinstance(lvl, (list, tuple)) or len(lvl) < 2 or not _finite(lvl[0]) or not _finite(lvl[1]):
+                        return False, f"Invalid {book_side} level price/size"
 
         return True, None
 
@@ -406,16 +428,25 @@ class SecurityManager:
             filtered, sort_keys=True, default=str, separators=(",", ":")
         ).encode("utf-8")
 
+    def create_feed_secret(self, source: str) -> str:
+        """Explicitly generate, register, and return a cryptographic secret for a source."""
+        src = source.upper()
+        secret = secrets.token_bytes(32)
+        self._secrets[src] = secret
+        return secret.hex()
+
     def sign_payload(self, source: str, payload: dict) -> str:
         """
         Generate HMAC-SHA256 signature for a feed payload.
         Keys are sorted to guarantee canonical determinism, with compact separators.
+        Raises KeyError if source is not registered.
         """
         src = source.upper()
         secret = self._secrets.get(src)
         if not secret:
-            secret = secrets.token_bytes(32)
-            self._secrets[src] = secret
+            raise KeyError(
+                f"Unknown feed source '{source}': no secret registered. Call create_feed_secret() first."
+            )
 
         serialized = self._signing_bytes(payload)
         return hmac.digest(secret, serialized, "sha256").hex()
@@ -447,11 +478,41 @@ class SecurityManager:
         return self._fail("HMAC_SIGNATURE_INVALID", src, "Payload HMAC signature mismatch")
 
     def authorize(
-        self, actor_role: Role, required_role: Role, action_name: str = ""
+        self, actor_or_token: Any, required_role: Role, action_name: str = ""
     ) -> None:
         """Enforce Role-Based Access Control hierarchy."""
+        if isinstance(actor_or_token, Role):
+            actor_role = actor_or_token
+            actor_name = f"role:{actor_role.value}"
+        elif isinstance(actor_or_token, ClientEntitlement):
+            actor_role = getattr(actor_or_token, "role", Role.VIEWER)
+            actor_name = actor_or_token.client_id
+        elif isinstance(actor_or_token, str):
+            ent = self.get_entitlement(actor_or_token)
+            if ent is None:
+                self.log_audit(
+                    action="ACCESS_DENIED",
+                    actor="unknown_token",
+                    role=Role.VIEWER,
+                    details=f"Invalid or expired token attempting '{action_name}'",
+                )
+                raise AccessDenied(
+                    f"Access denied: Invalid or expired token for action '{action_name}'"
+                )
+            actor_role = getattr(ent, "role", Role.VIEWER)
+            actor_name = ent.client_id
+        else:
+            actor_role = Role.VIEWER
+            actor_name = "unknown"
+
         if _ROLE_HIERARCHY.get(actor_role, 0) < _ROLE_HIERARCHY.get(required_role, 99):
-            raise PermissionError(
+            self.log_audit(
+                action="ACCESS_DENIED",
+                actor=actor_name,
+                role=actor_role,
+                details=f"Action '{action_name}' requires role '{required_role.value}', actor has '{actor_role.value}'",
+            )
+            raise AccessDenied(
                 f"Access denied: Action '{action_name}' requires role '{required_role.value}', "
                 f"but actor has '{actor_role.value}'"
             )
@@ -471,6 +532,18 @@ class SecurityManager:
         if timestamp is None:
             timestamp = time.time()
 
+        role_str = role.value if isinstance(role, Role) else str(role)
+
+        if self.store and hasattr(self.store, "append_audit"):
+            return self.store.append_audit(
+                actor=actor,
+                role=role_str,
+                action=action,
+                details=details,
+                timestamp=timestamp,
+                format_version=2,
+            )
+
         prev_hash = (
             "GENESIS_0000000000000000000000000000000000000000000000000000000000000000"
         )
@@ -478,14 +551,14 @@ class SecurityManager:
             prev_hash = self.store.get_latest_audit_hash()
 
         entry_hash = compute_audit_hash(
-            prev_hash, timestamp, actor, role.value, action, details, format_version=2
+            prev_hash, timestamp, actor, role_str, action, details, format_version=2
         )
 
         if self.store and hasattr(self.store, "write_audit_entry"):
             self.store.write_audit_entry(
                 timestamp=timestamp,
                 actor=actor,
-                role=role.value,
+                role=role_str,
                 action=action,
                 details=details,
                 prev_hash=prev_hash,
@@ -562,8 +635,16 @@ class SecurityManager:
         return False
 
     def get_entitlement(self, token: str) -> Optional[ClientEntitlement]:
-        """Lookup entitlement by token. Returns None if invalid or missing."""
-        return self._api_keys.get(token)
+        """Lookup entitlement by token or sha256 hash. Returns None if invalid, inactive, or expired."""
+        ent = self._api_keys.get(token)
+        if not ent:
+            tok_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+            ent = self._api_keys.get(tok_hash)
+        if not ent or not ent.is_active:
+            return None
+        if ent.expires_at is not None and time.time() > ent.expires_at:
+            return None
+        return ent
 
     def list_api_keys(self) -> list[ClientEntitlement]:
         """List all known client entitlements."""
