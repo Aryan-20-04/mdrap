@@ -1,7 +1,7 @@
 """
-MDRAP Decoupled Zero-Copy Shared Memory (SHM) Ring Buffer Engine (Spec §18).
+MDRAP Decoupled Zero-Copy Shared Memory (SHM) Ring Buffer Engine v3 (Spec §18).
 
-Provides sub-microsecond (<1µs) IPC market data delivery for co-located
+Provides sub-microsecond IPC market data delivery for co-located
 institutional trading algorithms using memory-mapped ring buffers.
 
 Key Architectural Guarantees:
@@ -11,12 +11,13 @@ Key Architectural Guarantees:
 4. Epoch Generation Tracking: automatic detection of publisher restarts.
 5. Overrun & Lap Detection: slow readers safely skip forward with telemetry.
 6. Decoupled Fault Isolation: reader crashes cannot block or poison the writer.
+7. Presence Bitmask: None values preserved without inventing 0.0 prices/sizes.
 """
 
 from __future__ import annotations
 
 from collections.abc import Generator
-import random
+import secrets
 import struct
 import time
 from dataclasses import dataclass
@@ -29,19 +30,29 @@ except ImportError:
     HAS_SHM = False
 
 # ---------------------------------------------------------------------------
-# Memory Layout & Cache-Line Alignment Constants
+# Memory Layout & Cache-Line Alignment Constants (SHM v3)
 # ---------------------------------------------------------------------------
 MAGIC = b"MDRP"
-VERSION = 2
+VERSION = 3
 DEFAULT_SLOT_COUNT = 16384  # Must be power of 2 for fast bitwise masking
 SLOT_SIZE = 128  # Cache-line aligned (2 x 64 bytes)
 HEADER_SIZE = 128  # Cache-line aligned (2 x 64 bytes)
 TOTAL_SHM_SIZE = HEADER_SIZE + (DEFAULT_SLOT_COUNT * SLOT_SIZE)
+UNCOMMITTED = 0xFFFFFFFFFFFFFFFF
 
-# Cache Line 1 (64 bytes) - Writer Hot Line:
-# magic(4s), version(H=2), slot_size(H=2), slot_count(I=4), epoch_id(Q=8), write_seq(Q=8), pad36(36s)
-# 4 + 2 + 2 + 4 + 8 + 8 + 36 = 64 bytes
-HEADER_LINE1_STRUCT = struct.Struct("<4sHHIQQ36s")
+# Presence Bitmask for Optional Numeric Fields
+SHM3_PRESENT_PRICE = 0x01
+SHM3_PRESENT_SIZE = 0x02
+SHM3_PRESENT_BID = 0x04
+SHM3_PRESENT_ASK = 0x08
+SHM3_PRESENT_BSZ = 0x10
+SHM3_PRESENT_ASZ = 0x20
+
+# Cache Line 1 (64 bytes) - Writer Hot Line (v3 aligned layout):
+# magic(4s), version(H=2), slot_size(H=2), slot_count(I=4), reserved(I=4),
+# epoch_id(Q=8) @ 16, head_seq(Q=8) @ 24, pad32(32s)
+# 4 + 2 + 2 + 4 + 4 + 8 + 8 + 32 = 64 bytes
+HEADER_LINE1_STRUCT = struct.Struct("<4sHHIIQQ32s")
 
 # Cache Line 2 (64 bytes) - Heartbeat & Diagnostics Line:
 # heartbeat_ts(d=8), dropped_ticks(Q=8), pad48(48s)
@@ -49,18 +60,20 @@ HEADER_LINE1_STRUCT = struct.Struct("<4sHHIQQ36s")
 HEADER_LINE2_STRUCT = struct.Struct("<dQ48s")
 
 # Slot (128 bytes, 2 cache lines):
-# commit_seq(Q=8), event_type(B=1), status(B=1), is_crossed(B=1), pad1(5s=5) -> 16B
-# exchange_ts(d=8), ingest_ts(d=8), broadcast_ts(d=8) -> 24B (total 40B)
-# engine_us(f=4), pad2(4s=4) -> 8B (total 48B)
-# price/micro_price(d=8), size/ofi(d=8), bid(d=8), ask(d=8), bid_sz(d=8), ask_sz(d=8) -> 48B (total 96B)
-# symbol(16s=16), source(8s=8), pad3(8s=8) -> 32B (total 128B)
-SLOT_STRUCT = struct.Struct("<QBBB5sdddf4sdddddd16s8s8s")
+# commit_seq(Q=8)
+# event_type(B=1), status(B=1), is_crossed(B=1), present(B=1), trunc(B=1), pad1(3s=3) -> 8B (offset 8..16)
+# exchange_ts(d=8), ingest_ts(d=8), broadcast_ts(d=8) -> 24B (offset 16..40)
+# engine_us(f=4), pad2(I=4) -> 8B (offset 40..48)
+# price(d=8), size(d=8), bid(d=8), ask(d=8), bid_sz(d=8), ask_sz(d=8) -> 48B (offset 48..96)
+# symbol(16s=16), source(8s=8), pad3(8s=8) -> 32B (offset 96..128)
+SLOT_STRUCT = struct.Struct("<QBBBBB3sdddfIdddddd16s8s8s")
+PAYLOAD_STRUCT = struct.Struct("<BBBBB3sdddfIdddddd16s8s8s")
 
 EVENT_TYPE_TICK = 1
 EVENT_TYPE_DEPTH = 2
 
-STATUS_MAP_REV = {"VALID": 1, "SUSPICIOUS": 2, "INVALID": 3}
-STATUS_MAP_FWD = {1: "VALID", 2: "SUSPICIOUS", 3: "INVALID"}
+STATUS_MAP_REV = {"UNKNOWN": 0, "VALID": 1, "SUSPICIOUS": 2, "INVALID": 3}
+STATUS_MAP_FWD = {0: "UNKNOWN", 1: "VALID", 2: "SUSPICIOUS", 3: "INVALID"}
 
 
 @dataclass
@@ -75,7 +88,7 @@ class SHMOverrunStats:
 
 class SHMWriter:
     """
-    High-throughput Shared Memory publisher.
+    High-throughput Shared Memory publisher (SHM v3).
     Allocates and maps a circular ring buffer, writing fixed-size binary slots
     with two-phase lock-free commit semantics and zero system calls on the hot path.
     """
@@ -86,24 +99,39 @@ class SHMWriter:
                 "multiprocessing.shared_memory is not supported in this Python environment."
             )
 
+        if slot_count < 2 or (slot_count & (slot_count - 1)) != 0:
+            raise ValueError(f"slot_count must be a power of 2, got {slot_count}")
+
         self.name = name
         self.slot_count = slot_count
         self.mask = slot_count - 1
         self.total_size = HEADER_SIZE + (slot_count * SLOT_SIZE)
         self.shm: SharedMemory | None = None
-        self.epoch_id = random.getrandbits(64)
-        self._write_seq = 0
+        self.epoch_id = secrets.randbits(64)
+        self._head_seq = 0
+        self._dropped_ticks = 0
         self._last_heartbeat = 0.0
 
         try:
             self.shm = SharedMemory(name=self.name, create=True, size=self.total_size)
         except FileExistsError:
-            # Segment already exists (e.g. active readers attached across daemon restart).
-            # Attach to existing segment and overwrite header with new epoch and sequence 0.
+            # Segment already exists across daemon restart.
+            # Attach to existing segment, verify capacity, and clear ring with new epoch.
             self.shm = SharedMemory(name=self.name, create=False)
+            if len(self.shm.buf) < self.total_size:
+                self.shm.close()
+                try:
+                    self.shm.unlink()
+                except Exception:
+                    pass
+                self.shm = SharedMemory(name=self.name, create=True, size=self.total_size)
+
+        # Clear ring slots: write UNCOMMITTED into all commit_seq words
+        for i in range(self.slot_count):
+            struct.pack_into("<Q", self.shm.buf, HEADER_SIZE + (i * SLOT_SIZE), UNCOMMITTED)
 
         # Initialize Cache Line 1 (Writer Hot Line)
-        pad36 = b"\x00" * 36
+        pad32 = b"\x00" * 32
         HEADER_LINE1_STRUCT.pack_into(
             self.shm.buf,
             0,
@@ -111,9 +139,10 @@ class SHMWriter:
             VERSION,
             SLOT_SIZE,
             self.slot_count,
+            0,
             self.epoch_id,
             0,
-            pad36,
+            pad32,
         )
 
         # Initialize Cache Line 2 (Heartbeat Line)
@@ -122,12 +151,14 @@ class SHMWriter:
         HEADER_LINE2_STRUCT.pack_into(self.shm.buf, 64, now, 0, pad48)
         self._last_heartbeat = now
 
-    def update_heartbeat(self, dropped_ticks: int = 0) -> None:
+    def update_heartbeat(self, dropped_ticks: int | None = None) -> None:
         """Update the publisher heartbeat timestamp in Cache Line 2."""
         if not self.shm:
             return
+        if dropped_ticks is not None:
+            self._dropped_ticks = dropped_ticks
         now = time.time()
-        struct.pack_into("<dQ", self.shm.buf, 64, now, dropped_ticks)
+        struct.pack_into("<dQ", self.shm.buf, 64, now, self._dropped_ticks)
         self._last_heartbeat = now
 
     def write_tick(
@@ -157,24 +188,45 @@ class SHMWriter:
         slot_idx = seq & self.mask
         offset = HEADER_SIZE + (slot_idx * SLOT_SIZE)
 
-        st_code = STATUS_MAP_REV.get(status, 1)
-        sym_bytes = symbol.encode("ascii", errors="replace")[:16].ljust(16, b"\x00")
-        src_bytes = source.encode("ascii", errors="replace")[:8].ljust(8, b"\x00")
+        st_code = STATUS_MAP_REV.get(status, 0)
+        sym_b = (symbol or "").encode("ascii", errors="replace")
+        src_b = (source or "").encode("ascii", errors="replace")
+        trunc = (1 if len(sym_b) > 16 else 0) | (2 if len(src_b) > 8 else 0)
+        sym_bytes = sym_b[:16].ljust(16, b"\x00")
+        src_bytes = src_b[:8].ljust(8, b"\x00")
 
-        # Phase 1: Pack the entire slot payload with commit_seq
-        SLOT_STRUCT.pack_into(
+        present = 0
+        if price is not None:
+            present |= SHM3_PRESENT_PRICE
+        if size is not None:
+            present |= SHM3_PRESENT_SIZE
+        if bid is not None:
+            present |= SHM3_PRESENT_BID
+        if ask is not None:
+            present |= SHM3_PRESENT_ASK
+        if bid_size is not None:
+            present |= SHM3_PRESENT_BSZ
+        if ask_size is not None:
+            present |= SHM3_PRESENT_ASZ
+
+        # Phase 1: Invalidate slot so readers cannot observe torn state
+        struct.pack_into("<Q", self.shm.buf, offset, UNCOMMITTED)
+
+        # Write payload fields (offset + 8)
+        PAYLOAD_STRUCT.pack_into(
             self.shm.buf,
-            offset,
-            seq,  # commit_seq at offset 0
+            offset + 8,
             EVENT_TYPE_TICK,
             st_code,
             1 if is_crossed else 0,
-            b"\x00" * 5,
+            present,
+            trunc,
+            b"\x00" * 3,
             float(exchange_ts or 0.0),
             float(ingest_ts or 0.0),
             float(broadcast_ts or 0.0),
             float(engine_us or 0.0),
-            b"\x00" * 4,
+            0,
             float(price or 0.0),
             float(size or 0.0),
             float(bid or 0.0),
@@ -186,12 +238,16 @@ class SHMWriter:
             b"\x00" * 8,
         )
 
-        # Phase 2: Atomically update write_seq in Header Cache Line 1 (offset 20: 4+2+2+4+8 = 20)
-        struct.pack_into("<Q", self.shm.buf, 20, seq)
-        self._write_seq = seq
+        # Phase 2: Commit slot sequence
+        struct.pack_into("<Q", self.shm.buf, offset, seq)
 
-        # Periodic heartbeat update every ~500 events
-        if (seq & 0x1FF) == 0:
+        # Publish new head (next sequence = seq + 1)
+        struct.pack_into("<Q", self.shm.buf, 24, seq + 1)
+        self._head_seq = seq + 1
+
+        # Periodic heartbeat update
+        now = time.time()
+        if (seq & 0x1FF) == 0 or (now - self._last_heartbeat) >= 0.1:
             self.update_heartbeat()
 
     def write_depth(
@@ -209,6 +265,7 @@ class SHMWriter:
         ingest_ts: float,
         broadcast_ts: float,
         engine_us: float,
+        status: str = "VALID",
     ) -> None:
         """
         Write a DEPTH event into the circular ring buffer slot with two-phase commit.
@@ -219,24 +276,47 @@ class SHMWriter:
         slot_idx = seq & self.mask
         offset = HEADER_SIZE + (slot_idx * SLOT_SIZE)
 
-        sym_bytes = symbol.encode("ascii", errors="replace")[:16].ljust(16, b"\x00")
-        src_bytes = b"DEPTH\x00\x00\x00"
+        st_code = STATUS_MAP_REV.get(status, 1)
+        sym_b = (symbol or "").encode("ascii", errors="replace")
+        src_b = b"DEPTH"
+        trunc = 1 if len(sym_b) > 16 else 0
+        sym_bytes = sym_b[:16].ljust(16, b"\x00")
+        src_bytes = src_b.ljust(8, b"\x00")
 
-        SLOT_STRUCT.pack_into(
+        present = 0
+        if micro_price is not None:
+            present |= SHM3_PRESENT_PRICE
+        if ofi is not None:
+            present |= SHM3_PRESENT_SIZE
+        if best_bid is not None:
+            present |= SHM3_PRESENT_BID
+        if best_ask is not None:
+            present |= SHM3_PRESENT_ASK
+        if bid_size is not None:
+            present |= SHM3_PRESENT_BSZ
+        if ask_size is not None:
+            present |= SHM3_PRESENT_ASZ
+
+        # Invalidate
+        struct.pack_into("<Q", self.shm.buf, offset, UNCOMMITTED)
+
+        # Write payload
+        PAYLOAD_STRUCT.pack_into(
             self.shm.buf,
-            offset,
-            seq,  # commit_seq at offset 0
+            offset + 8,
             EVENT_TYPE_DEPTH,
-            1,  # VALID
+            st_code,
             1 if is_crossed else 0,
-            b"\x00" * 5,
+            present,
+            trunc,
+            b"\x00" * 3,
             float(exchange_ts or 0.0),
             float(ingest_ts or 0.0),
             float(broadcast_ts or 0.0),
             float(engine_us or 0.0),
-            b"\x00" * 4,
-            float(micro_price or 0.0),  # price slot holds micro_price
-            float(ofi or 0.0),  # size slot holds ofi
+            0,
+            float(micro_price or 0.0),
+            float(ofi or 0.0),
             float(best_bid or 0.0),
             float(best_ask or 0.0),
             float(bid_size or 0.0),
@@ -246,10 +326,13 @@ class SHMWriter:
             b"\x00" * 8,
         )
 
-        struct.pack_into("<Q", self.shm.buf, 20, seq)
-        self._write_seq = seq
+        # Commit & Publish
+        struct.pack_into("<Q", self.shm.buf, offset, seq)
+        struct.pack_into("<Q", self.shm.buf, 24, seq + 1)
+        self._head_seq = seq + 1
 
-        if (seq & 0x1FF) == 0:
+        now = time.time()
+        if (seq & 0x1FF) == 0 or (now - self._last_heartbeat) >= 0.1:
             self.update_heartbeat()
 
     def close(self) -> None:
@@ -265,7 +348,7 @@ class SHMWriter:
 
 class SHMReader:
     """
-    Sub-microsecond (<1µs) Shared Memory reader.
+    Sub-microsecond Shared Memory reader (SHM v3).
     Attaches to the memory-mapped ring buffer with zero kernel locks.
     Detects publisher restarts, validates commit sequences, and tracks overruns.
     """
@@ -277,10 +360,22 @@ class SHMReader:
             )
 
         self.name = name
-        self.shm: SharedMemory | None = SharedMemory(name=self.name, create=False)
+        try:
+            self.shm: SharedMemory | None = SharedMemory(name=self.name, create=False, track=False)
+        except TypeError:
+            self.shm = SharedMemory(name=self.name, create=False)
+            try:
+                from multiprocessing import resource_tracker
+                resource_tracker.unregister(self.shm._name, "shared_memory")
+            except Exception:
+                pass
+
+        if len(self.shm.buf) < HEADER_SIZE + 2 * SLOT_SIZE:
+            self.close()
+            raise ValueError(f"SHM buffer too small: {len(self.shm.buf)} bytes")
 
         # Validate Line 1 Header
-        magic, ver, slot_sz, slot_cnt, epoch_id, write_seq, _ = (
+        magic, ver, slot_sz, slot_cnt, reserved, epoch_id, head_seq, _ = (
             HEADER_LINE1_STRUCT.unpack_from(self.shm.buf, 0)
         )
         if magic != MAGIC:
@@ -289,6 +384,15 @@ class SHMReader:
         if ver != VERSION:
             self.close()
             raise ValueError(f"Unsupported SHM version: {ver} (expected {VERSION})")
+        if slot_sz != SLOT_SIZE:
+            self.close()
+            raise ValueError(f"Unexpected slot size: {slot_sz} (expected {SLOT_SIZE})")
+        if slot_cnt < 2 or (slot_cnt & (slot_cnt - 1)) != 0:
+            self.close()
+            raise ValueError(f"Invalid slot count: {slot_cnt} (must be power of 2)")
+        if len(self.shm.buf) < HEADER_SIZE + (slot_cnt * SLOT_SIZE):
+            self.close()
+            raise ValueError("Buffer truncated for declared slot count")
 
         self.slot_size = slot_sz
         self.slot_count = slot_cnt
@@ -311,18 +415,17 @@ class SHMReader:
         if not self.shm:
             return False
         try:
-            current_epoch = struct.unpack_from("<Q", self.shm.buf, 12)[
-                0
-            ]  # offset 12: 4+2+2+4 = 12
+            current_epoch = struct.unpack_from("<Q", self.shm.buf, 16)[0]
             return current_epoch == self.epoch_id
         except Exception:
             return False
 
     def read_latest_seq(self) -> int:
-        """Read current head write sequence number atomically from Cache Line 1."""
+        """Read current latest published sequence number from Header Cache Line 1."""
         if not self.shm:
             return 0
-        return struct.unpack_from("<Q", self.shm.buf, 20)[0]
+        head = struct.unpack_from("<Q", self.shm.buf, 24)[0]
+        return max(0, head - 1) if head > 0 else 0
 
     def read_slot(self, seq: int) -> dict | None:
         """
@@ -332,12 +435,12 @@ class SHMReader:
         if not self.shm:
             return None
 
-        head_seq = self.read_latest_seq()
-        if seq > head_seq:
-            return None  # Future sequence, not yet published
+        head = struct.unpack_from("<Q", self.shm.buf, 24)[0]
+        if head == 0 or seq >= head:
+            return None  # Future sequence or nothing published
 
         # Overrun detection: publisher has lapped the reader
-        if head_seq - seq >= self.slot_count:
+        if head - seq > self.slot_count:
             self.overrun_stats.total_laps += 1
             self.overrun_stats.last_lap_seq = seq
             self.overrun_stats.last_lap_ts = time.time()
@@ -347,48 +450,68 @@ class SHMReader:
         offset = HEADER_SIZE + (slot_idx * SLOT_SIZE)
 
         # Pre-check commit_seq
-        commit_seq = struct.unpack_from("<Q", self.shm.buf, offset)[0]
-        if commit_seq != seq:
+        c1 = struct.unpack_from("<Q", self.shm.buf, offset)[0]
+        if c1 != seq:
             return None
 
-        # Unpack slot payload
-        unpacked = SLOT_STRUCT.unpack_from(self.shm.buf, offset)
-        post_commit_seq = unpacked[0]
-        if post_commit_seq != seq:
-            # Torn read detected: slot was overwritten during read
+        # Unpack payload
+        payload = PAYLOAD_STRUCT.unpack_from(self.shm.buf, offset + 8)
+
+        # Post-check commit_seq (seqlock double check for torn read detection)
+        c2 = struct.unpack_from("<Q", self.shm.buf, offset)[0]
+        if c2 != c1:
             return None
 
-        ev_type_code = unpacked[1]
-        st_code = unpacked[2]
-        crossed = bool(unpacked[3])
-        ex_ts = unpacked[5]
-        in_ts = unpacked[6]
-        bc_ts = unpacked[7]
-        eng_us = unpacked[8]
-        p1 = unpacked[10]
-        p2 = unpacked[11]
-        bid = unpacked[12]
-        ask = unpacked[13]
-        bid_sz = unpacked[14]
-        ask_sz = unpacked[15]
-        sym = unpacked[16].rstrip(b"\x00").decode("ascii", errors="replace")
-        src = unpacked[17].rstrip(b"\x00").decode("ascii", errors="replace")
+        (
+            ev_type_code,
+            st_code,
+            crossed,
+            present,
+            trunc,
+            pad1,
+            ex_ts,
+            in_ts,
+            bc_ts,
+            eng_us,
+            pad2,
+            p,
+            sz,
+            bid_val,
+            ask_val,
+            bid_sz,
+            ask_sz,
+            sym_bytes,
+            src_bytes,
+            pad3,
+        ) = payload
+
+        sym = sym_bytes.rstrip(b"\x00").decode("ascii", errors="replace")
+        src = src_bytes.rstrip(b"\x00").decode("ascii", errors="replace")
+
+        price = p if (present & SHM3_PRESENT_PRICE) else None
+        size = sz if (present & SHM3_PRESENT_SIZE) else None
+        bid = bid_val if (present & SHM3_PRESENT_BID) else None
+        ask = ask_val if (present & SHM3_PRESENT_ASK) else None
+        bid_size = bid_sz if (present & SHM3_PRESENT_BSZ) else None
+        ask_size = ask_sz if (present & SHM3_PRESENT_ASZ) else None
+
+        status_str = STATUS_MAP_FWD.get(st_code, "UNKNOWN")
 
         if ev_type_code == EVENT_TYPE_DEPTH:
             return {
                 "type": "DEPTH",
-                "seq": post_commit_seq,
+                "seq": c1,
                 "sym": sym,
-                "micro_price": p1,
-                "ofi": p2,
+                "micro_price": price,
+                "ofi": size,
                 "bid": bid,
                 "ask": ask,
-                "bid_size": bid_sz,
-                "ask_size": ask_sz,
-                "bids": [[bid, bid_sz, "AGG"]],
-                "asks": [[ask, ask_sz, "AGG"]],
-                "is_crossed": crossed,
-                "status": "VALID",
+                "bid_size": bid_size,
+                "ask_size": ask_size,
+                "bids": [[bid, bid_size, "AGG"]] if bid is not None else [],
+                "asks": [[ask, ask_size, "AGG"]] if ask is not None else [],
+                "is_crossed": bool(crossed),
+                "status": status_str,
                 "exchange_ts": ex_ts,
                 "ingest_ts": in_ts,
                 "broadcast_ts": bc_ts,
@@ -397,17 +520,17 @@ class SHMReader:
         else:
             return {
                 "type": "TICK",
-                "seq": post_commit_seq,
+                "seq": c1,
                 "sym": sym,
-                "price": p1,
-                "size": p2,
+                "price": price,
+                "size": size,
                 "bid": bid,
                 "ask": ask,
-                "bid_size": bid_sz,
-                "ask_size": ask_sz,
+                "bid_size": bid_size,
+                "ask_size": ask_size,
                 "source": src,
-                "status": STATUS_MAP_FWD.get(st_code, "VALID"),
-                "is_crossed": crossed,
+                "status": status_str,
+                "is_crossed": bool(crossed),
                 "exchange_ts": ex_ts,
                 "ingest_ts": in_ts,
                 "broadcast_ts": bc_ts,
@@ -427,15 +550,27 @@ class SHMReader:
         curr_seq = start_seq if start_seq is not None else self.read_latest_seq()
         count = 0
         t_start = time.time()
+        spin_count = 0
 
         while True:
-            head_seq = self.read_latest_seq()
-            if curr_seq <= head_seq:
-                # Check for buffer overrun (writer lapped reader)
-                if head_seq - curr_seq >= self.slot_count:
-                    skipped = (head_seq - self.slot_count + 1) - curr_seq
+            # Check epoch validity on each iteration
+            if not self.check_epoch_valid():
+                try:
+                    new_epoch = struct.unpack_from("<Q", self.shm.buf, 16)[0]
+                    self.epoch_id = new_epoch
+                except Exception:
+                    pass
+                curr_seq = 0
+                yield {"type": "EPOCH_CHANGE"}
+                continue
+
+            head = struct.unpack_from("<Q", self.shm.buf, 24)[0]
+            if curr_seq < head:
+                # Overrun check
+                if head - curr_seq > self.slot_count:
+                    skipped = (head - self.slot_count) - curr_seq
                     self.overrun_stats.skipped_ticks += max(0, skipped)
-                    curr_seq = head_seq - self.slot_count + 1
+                    curr_seq = head - self.slot_count
 
                 item = self.read_slot(curr_seq)
                 if item:
@@ -444,16 +579,34 @@ class SHMReader:
                     count += 1
                     curr_seq += 1
                     t_start = time.time()
+                    spin_count = 0
                     if max_events and count >= max_events:
                         return
                     continue
 
-            # No new data yet
+            # Timeout check
             if timeout is not None and (time.time() - t_start) > timeout:
                 return
 
-            # Sub-millisecond pause (100 µs)
-            time.sleep(0.0001)
+            # Spin-then-sleep (M14)
+            spin_count += 1
+            if spin_count < 2000:
+                pass
+            elif spin_count < 5000:
+                time.sleep(0.00005)  # 50 µs
+            else:
+                time.sleep(0.001)  # 1 ms
+
+    def read_batch(self, max_n: int = 64) -> list[dict]:
+        """Unpack up to max_n available slots in one call."""
+        results = []
+        curr = self.read_latest_seq()
+        for s in range(curr, curr + max_n):
+            item = self.read_slot(s)
+            if not item:
+                break
+            results.append(item)
+        return results
 
     def close(self) -> None:
         """Close shared memory handle."""
