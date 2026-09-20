@@ -254,6 +254,7 @@ class Store:
 
     def __init__(self, path: str = ":memory:"):
         self.path = path
+        self.conflicts: int = 0
         self._lock = threading.RLock()
         self._read_lock = threading.RLock()
         with self._lock:
@@ -303,12 +304,14 @@ class Store:
 
     @_synchronized
     def write_canonical_batch(self, events: list[CanonicalEvent]):
-        """Persist a batch of CanonicalEvents via executemany."""
+        """Persist a batch of CanonicalEvents via executemany with conflict preservation."""
         if not events:
             return
+        c_before = self.conn.total_changes
         self.conn.executemany(
-            """INSERT OR REPLACE INTO canonical_events VALUES
-               (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            """INSERT INTO canonical_events VALUES
+               (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+               ON CONFLICT(event_id) DO NOTHING""",
             [
                 (
                     e.event_id,
@@ -332,26 +335,37 @@ class Store:
                 for e in events
             ],
         )
+        inserted = self.conn.total_changes - c_before
+        if inserted < len(events):
+            self.conflicts += len(events) - inserted
 
     @_synchronized
     def write_quarantine_batch(self, rows: list[tuple]):
-        """Persist a batch of quarantined anomaly records."""
+        """Persist a batch of quarantined anomaly records with conflict preservation."""
         if not rows:
             return
+        c_before = self.conn.total_changes
         self.conn.executemany(
-            "INSERT OR REPLACE INTO quarantine VALUES (?,?,?,?,?,?,?)",
+            "INSERT INTO quarantine VALUES (?,?,?,?,?,?,?) ON CONFLICT(event_id) DO NOTHING",
             rows,
         )
+        inserted = self.conn.total_changes - c_before
+        if inserted < len(rows):
+            self.conflicts += len(rows) - inserted
 
     @_synchronized
     def write_lineage_batch(self, rows: list[tuple]):
-        """Persist a batch of audit lineage records."""
+        """Persist a batch of audit lineage records with conflict preservation."""
         if not rows:
             return
+        c_before = self.conn.total_changes
         self.conn.executemany(
-            "INSERT OR REPLACE INTO lineage VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO lineage VALUES (?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(event_id) DO NOTHING",
             rows,
         )
+        inserted = self.conn.total_changes - c_before
+        if inserted < len(rows):
+            self.conflicts += len(rows) - inserted
 
     @_synchronized
     def upsert_source_health(self, rows: list[tuple]):
