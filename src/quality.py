@@ -223,6 +223,11 @@ class QualityEngine:
         for k in keys_to_del:
             del self._slots[k]
 
+    @property
+    def _price_stats(self) -> dict:
+        """Backward-compatible map of instrument_id to _SlotState."""
+        return {k[1]: v for k, v in self._slots.items()}
+
     def _mark(
         self, event: CanonicalEvent, status: QualityStatus, reason: Reason
     ) -> None:
@@ -279,12 +284,12 @@ class QualityEngine:
         if not is_trade and not is_quote:
             bad = True
 
-        has_price = event.price is not None and not math.isnan(event.price)
-        has_qty = event.quantity is not None and not math.isnan(event.quantity)
-        has_bid = event.bid_price is not None and not math.isnan(event.bid_price)
-        has_ask = event.ask_price is not None and not math.isnan(event.ask_price)
-        has_bsz = event.bid_size is not None and not math.isnan(event.bid_size)
-        has_asz = event.ask_size is not None and not math.isnan(event.ask_size)
+        has_price = event.price is not None
+        has_qty = event.quantity is not None
+        has_bid = event.bid_price is not None
+        has_ask = event.ask_price is not None
+        has_bsz = event.bid_size is not None
+        has_asz = event.ask_size is not None
 
         allow_neg = cfg.allow_negative
 
@@ -432,7 +437,7 @@ class QualityEngine:
             self._bump(Reason.CROSSED_QUOTE)
 
         # Stage 5: Statistical Price Corridor Evaluation (LAST: Clean events only)
-        if event.quality_status != QualityStatus.INVALID and has_price:
+        if event.quality_status != QualityStatus.INVALID and has_price and math.isfinite(event.price):
             px = float(event.price)  # type: ignore[arg-type]
             anomaly = False
             sd2 = 0.0
@@ -454,6 +459,17 @@ class QualityEngine:
             if anomaly:
                 self._mark(event, QualityStatus.SUSPICIOUS, Reason.PRICE_ANOMALY)
                 self._bump(Reason.PRICE_ANOMALY)
+
+                # Venue circuit filter and volatility corridor rules
+                if event.venue == "XNSE" and sl.mean > 0 and abs(dev) / sl.mean >= 0.10:
+                    self._mark(event, QualityStatus.SUSPICIOUS, Reason.CIRCUIT_FILTER_BREACH)
+                    self._bump(Reason.CIRCUIT_FILTER_BREACH)
+                elif event.venue == "XETR" and sl.mean > 0 and abs(dev) / sl.mean >= 0.05:
+                    self._mark(event, QualityStatus.SUSPICIOUS, Reason.VOLATILITY_INTERRUPTION)
+                    self._bump(Reason.VOLATILITY_INTERRUPTION)
+                elif event.venue in ("XTKS", "TSE") and sl.mean > 0 and abs(dev) / sl.mean >= 0.08:
+                    self._mark(event, QualityStatus.SUSPICIOUS, Reason.SPECIAL_QUOTE_INDICATION)
+                    self._bump(Reason.SPECIAL_QUOTE_INDICATION)
 
                 band = cfg.price_anomaly_stddev * math.sqrt(sd2)
                 rel = cfg.price_reseed_band_rel * abs(px)

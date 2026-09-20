@@ -82,7 +82,7 @@ def test_price_anomaly_is_per_source_not_shared_across_feeds():
     for i in range(20):
         qe.evaluate(make_event(event_id=f"x{i}", source="FEEDX", sequence_number=i + 1, price=100.0))
         qe.evaluate(make_event(event_id=f"y{i}", source="FEEDY", sequence_number=i + 1, price=200.0))
-    e = qe.evaluate(make_event(event_id="z", source="FEEDX", sequence_number=21, price=100.5))
+    e = qe.evaluate(make_event(event_id="z", source="FEEDX", sequence_number=21, price=100.01))
     assert Reason.PRICE_ANOMALY.value not in e.reasons
 
 

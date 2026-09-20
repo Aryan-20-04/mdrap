@@ -904,7 +904,7 @@ def cmd_security(args):
             "Configured & Sealed",
             "Enforced (Sequence + Ts)",
         ]
-        for src in sec.DEFAULT_SECRETS.keys()
+        for src in sec._secrets.keys()
     ]
     console.print(
         _t(

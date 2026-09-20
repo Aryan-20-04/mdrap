@@ -326,8 +326,10 @@ def _load_native_lib():
                     ctypes.c_int32,
                     ctypes.c_double,
                     ctypes.c_double,
-                    ctypes.c_uint64,
-                    ctypes.c_uint64,
+                    ctypes.c_double,
+                    ctypes.c_int64,
+                    ctypes.c_int32,
+                    ctypes.c_int32,
                 ]
                 lib.fastpath_engine_configure.restype = None
 
@@ -768,7 +770,20 @@ _ENGINE_FAST_EVAL = (
     if (_NATIVE_LIB and hasattr(_NATIVE_LIB, "fastpath_engine_eval_fast"))
     else None
 )
+_ENGINE_FAST_EVAL2 = (
+    _NATIVE_LIB.fastpath_engine_eval_fast2
+    if (_NATIVE_LIB and hasattr(_NATIVE_LIB, "fastpath_engine_eval_fast2"))
+    else None
+)
 _NAN = math.nan
+
+FE_MASK_VALID = 0x80000000
+FE_HAS_PRICE  = 0x01
+FE_HAS_QTY    = 0x02
+FE_HAS_BID    = 0x04
+FE_HAS_ASK    = 0x08
+FE_HAS_BID_SZ = 0x10
+FE_HAS_ASK_SZ = 0x20
 
 
 def is_available() -> bool:
@@ -808,6 +823,28 @@ class FastQualityEngine:
                     self.cfg.price_anomaly_stddev,
                     self.cfg.price_window,
                 )
+                if hasattr(_NATIVE_LIB, "fastpath_engine_configure"):
+                    unseq_st = (
+                        2
+                        if getattr(self.cfg, "unseq_dup_status", "SUSPICIOUS")
+                        == "INVALID"
+                        else 1
+                    )
+                    _NATIVE_LIB.fastpath_engine_configure(
+                        self._engine_ptr,
+                        getattr(self.cfg, "price_min_samples", 20),
+                        getattr(self.cfg, "price_reseed_after", 8),
+                        ctypes.c_double(
+                            getattr(self.cfg, "price_sigma_floor_rel", 2e-4)
+                        ),
+                        ctypes.c_double(
+                            getattr(self.cfg, "price_reseed_band_rel", 0.01)
+                        ),
+                        ctypes.c_double(getattr(self.cfg, "max_future_skew_s", 1.0)),
+                        getattr(self.cfg, "seq_jump_limit", 1 << 24),
+                        unseq_st,
+                        1 if getattr(self.cfg, "allow_negative", False) else 0,
+                    )
             else:
                 _NATIVE_LIB.fastpath_init(
                     self.cfg.staleness_threshold_s,
@@ -881,18 +918,26 @@ class FastQualityEngine:
             self.reason_counts = self._fallback_engine.reason_counts
             return res
 
-        # Fast NaN check: map float('nan') to -1.0 so C engine flags SCHEMA_VIOLATION while evaluating all other rules
-        p = event.price
-        c_price = -1.0 if (p is not None and p != p) else (p if p is not None else _NAN)
+        pm = FE_MASK_VALID
+        if event.price is not None:
+            pm |= FE_HAS_PRICE
+        if event.quantity is not None:
+            pm |= FE_HAS_QTY
+        if event.bid_price is not None:
+            pm |= FE_HAS_BID
+        if event.ask_price is not None:
+            pm |= FE_HAS_ASK
+        if event.bid_size is not None:
+            pm |= FE_HAS_BID_SZ
+        if event.ask_size is not None:
+            pm |= FE_HAS_ASK_SZ
 
-        q = event.quantity
-        c_qty = -1.0 if (q is not None and q != q) else (q if q is not None else _NAN)
-
-        bp = event.bid_price
-        c_bid_px = -1.0 if (bp is not None and bp != bp) else (bp if bp is not None else _NAN)
-
-        ap = event.ask_price
-        c_ask_px = -1.0 if (ap is not None and ap != ap) else (ap if ap is not None else _NAN)
+        c_price = event.price if event.price is not None else _NAN
+        c_qty = event.quantity if event.quantity is not None else _NAN
+        c_bid_px = event.bid_price if event.bid_price is not None else _NAN
+        c_ask_px = event.ask_price if event.ask_price is not None else _NAN
+        c_bid_sz = event.bid_size if event.bid_size is not None else _NAN
+        c_ask_sz = event.ask_size if event.ask_size is not None else _NAN
 
         s_id = event.source_id
         if s_id < 0:
@@ -923,7 +968,24 @@ class FastQualityEngine:
 
         try:
             # Direct CPU register call to C hot path (< 100 ns)
-            if self._engine_ptr and _ENGINE_FAST_EVAL:
+            if self._engine_ptr and _ENGINE_FAST_EVAL2:
+                packed = _ENGINE_FAST_EVAL2(
+                    self._engine_ptr,
+                    s_id,
+                    i_id,
+                    1 if event.event_type == EventType.QUOTE else 0,
+                    event.exchange_timestamp,
+                    event.receive_timestamp,
+                    event.sequence_number if event.sequence_number is not None else -1,
+                    c_price,
+                    c_qty,
+                    c_bid_px,
+                    c_ask_px,
+                    c_bid_sz,
+                    c_ask_sz,
+                    pm,
+                )
+            elif self._engine_ptr and _ENGINE_FAST_EVAL:
                 packed = _ENGINE_FAST_EVAL(
                     self._engine_ptr,
                     s_id,
@@ -936,8 +998,8 @@ class FastQualityEngine:
                     c_qty,
                     c_bid_px,
                     c_ask_px,
-                    event.bid_size if event.bid_size is not None else _NAN,
-                    event.ask_size if event.ask_size is not None else _NAN,
+                    c_bid_sz,
+                    c_ask_sz,
                 )
             else:
                 packed = _FAST_EVAL(
@@ -951,8 +1013,8 @@ class FastQualityEngine:
                     c_qty,
                     c_bid_px,
                     c_ask_px,
-                    event.bid_size if event.bid_size is not None else _NAN,
-                    event.ask_size if event.ask_size is not None else _NAN,
+                    c_bid_sz,
+                    c_ask_sz,
                 )
         except Exception:
             # Fault-tolerant shield: seamlessly fall back to pure Python if C DLL faults
@@ -1020,20 +1082,31 @@ class FastQualityEngine:
             c_ev = c_events[idx]
             c_ev.source_id = s_id
             c_ev.instrument_id = i_id
+            pm = FE_MASK_VALID
+            if ev.price is not None:
+                pm |= FE_HAS_PRICE
+            if ev.quantity is not None:
+                pm |= FE_HAS_QTY
+            if ev.bid_price is not None:
+                pm |= FE_HAS_BID
+            if ev.ask_price is not None:
+                pm |= FE_HAS_ASK
+            if ev.bid_size is not None:
+                pm |= FE_HAS_BID_SZ
+            if ev.ask_size is not None:
+                pm |= FE_HAS_ASK_SZ
+
             c_ev.event_type = 1 if ev.event_type == EventType.QUOTE else 0
+            c_ev.present_mask = pm
             c_ev.exchange_ts = ev.exchange_timestamp
             c_ev.receive_ts = ev.receive_timestamp
             c_ev.sequence_num = (
                 ev.sequence_number if ev.sequence_number is not None else -1
             )
-            p = ev.price
-            c_ev.price = -1.0 if (p is not None and p != p) else (p if p is not None else _NAN)
-            q = ev.quantity
-            c_ev.quantity = -1.0 if (q is not None and q != q) else (q if q is not None else _NAN)
-            bp = ev.bid_price
-            c_ev.bid_price = -1.0 if (bp is not None and bp != bp) else (bp if bp is not None else _NAN)
-            ap = ev.ask_price
-            c_ev.ask_price = -1.0 if (ap is not None and ap != ap) else (ap if ap is not None else _NAN)
+            c_ev.price = ev.price if ev.price is not None else _NAN
+            c_ev.quantity = ev.quantity if ev.quantity is not None else _NAN
+            c_ev.bid_price = ev.bid_price if ev.bid_price is not None else _NAN
+            c_ev.ask_price = ev.ask_price if ev.ask_price is not None else _NAN
             c_ev.bid_size = ev.bid_size if ev.bid_size is not None else _NAN
             c_ev.ask_size = ev.ask_size if ev.ask_size is not None else _NAN
 
@@ -1410,6 +1483,35 @@ class NativeShmSlot(ctypes.Structure):
     ]
 
 
+class NativeShmSlotV3(ctypes.Structure):
+    """C-level binary representation of an MDRAP 128-byte SHM v3 slot."""
+
+    _pack_ = 1
+    _fields_ = [
+        ("commit_seq", ctypes.c_uint64),
+        ("event_type", ctypes.c_uint8),
+        ("status", ctypes.c_uint8),
+        ("is_crossed", ctypes.c_uint8),
+        ("present", ctypes.c_uint8),
+        ("trunc", ctypes.c_uint8),
+        ("pad1", ctypes.c_uint8 * 3),
+        ("exchange_ts", ctypes.c_double),
+        ("ingest_ts", ctypes.c_double),
+        ("broadcast_ts", ctypes.c_double),
+        ("engine_us", ctypes.c_float),
+        ("pad2", ctypes.c_uint32),
+        ("price", ctypes.c_double),
+        ("size", ctypes.c_double),
+        ("bid", ctypes.c_double),
+        ("ask", ctypes.c_double),
+        ("bid_sz", ctypes.c_double),
+        ("ask_sz", ctypes.c_double),
+        ("symbol", ctypes.c_char * 16),
+        ("source", ctypes.c_char * 8),
+        ("pad3", ctypes.c_uint8 * 8),
+    ]
+
+
 class _PyBuffer(ctypes.Structure):
     _fields_ = [
         ("buf", ctypes.c_void_p),
@@ -1453,8 +1555,49 @@ def native_shm_read_slot(buf_ptr, slot_count: int, target_seq: int) -> dict | No
     """Read an SHM slot using compiled native C acceleration in sub-30 nanoseconds."""
     if not has_native_shm():
         return None
-    slot = NativeShmSlot()
     raw_addr = get_buffer_address(buf_ptr)
+    magic = (ctypes.c_char * 4).from_address(raw_addr).value
+    if magic == b"MDRP" and hasattr(_NATIVE_LIB, "fastpath_shm_read_slot_v3"):
+        slot3 = NativeShmSlotV3()
+        total_len = 128 + slot_count * 128
+        res = _NATIVE_LIB.fastpath_shm_read_slot_v3(
+            ctypes.c_void_p(raw_addr),
+            ctypes.c_size_t(total_len),
+            ctypes.c_uint32(slot_count),
+            ctypes.c_uint64(target_seq),
+            ctypes.byref(slot3),
+        )
+        if res != 1:
+            return None
+        sym = slot3.symbol.rstrip(b"\x00").decode("ascii", errors="replace")
+        src = slot3.source.rstrip(b"\x00").decode("ascii", errors="replace")
+        status_map = {1: "VALID", 2: "SUSPICIOUS", 3: "INVALID"}
+        px = slot3.price if (slot3.present & 0x01) else None
+        sz = slot3.size if (slot3.present & 0x02) else None
+        b_px = slot3.bid if (slot3.present & 0x04) else None
+        a_px = slot3.ask if (slot3.present & 0x08) else None
+        b_sz = slot3.bid_sz if (slot3.present & 0x10) else None
+        a_sz = slot3.ask_sz if (slot3.present & 0x20) else None
+        return {
+            "type": "TICK",
+            "seq": slot3.commit_seq,
+            "sym": sym,
+            "price": px,
+            "size": sz,
+            "bid": b_px,
+            "ask": a_px,
+            "bid_size": b_sz,
+            "ask_size": a_sz,
+            "source": src,
+            "status": status_map.get(slot3.status, "VALID"),
+            "is_crossed": bool(slot3.is_crossed),
+            "exchange_ts": slot3.exchange_ts,
+            "ingest_ts": slot3.ingest_ts,
+            "broadcast_ts": slot3.broadcast_ts,
+            "engine_us": slot3.engine_us,
+        }
+
+    slot = NativeShmSlot()
     res = _NATIVE_LIB.fastpath_shm_read_slot(
         ctypes.c_void_p(raw_addr),
         ctypes.c_uint32(slot_count),

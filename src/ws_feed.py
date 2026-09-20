@@ -40,13 +40,10 @@ _raw_counter = itertools.count(1)
 
 
 def _num(x: Any) -> float | None:
-    if x is None:
+    if x is None or x == "":
         return None
-    try:
-        val = float(x)
-        return val if math.isfinite(val) else None
-    except (ValueError, TypeError):
-        return None
+    val = float(x)
+    return val if math.isfinite(val) else None
 
 
 def _parse_iso(s: Any) -> float | None:

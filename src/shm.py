@@ -151,6 +151,10 @@ class SHMWriter:
         HEADER_LINE2_STRUCT.pack_into(self.shm.buf, 64, now, 0, pad48)
         self._last_heartbeat = now
 
+    @property
+    def _write_seq(self) -> int:
+        return max(0, self._head_seq - 1)
+
     def update_heartbeat(self, dropped_ticks: int | None = None) -> None:
         """Update the publisher heartbeat timestamp in Cache Line 2."""
         if not self.shm:

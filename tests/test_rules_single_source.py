@@ -1,4 +1,4 @@
-﻿import subprocess
+import subprocess
 import sys
 from models import Reason
 from fastpath import HAS_FASTPATH, FastQualityEngine, _CFastEvent, _CFastResult, _NATIVE_LIB
@@ -17,10 +17,10 @@ def test_native_c_never_sets_user_bits():
     engine = FastQualityEngine()
     
     test_events = [
-        _CFastEvent(0, 0, 0, 1000.0, 1000.001, 1, 150.0, 10.0, float('nan'), float('nan'), float('nan'), float('nan')),
-        _CFastEvent(0, 0, 1, 1000.0, 1000.001, 2, float('nan'), float('nan'), 151.0, 150.0, 10.0, 10.0),
-        _CFastEvent(0, 0, 0, 1000.0, 1000.001, 3, -10.0, 5.0, float('nan'), float('nan'), float('nan'), float('nan')),
-        _CFastEvent(0, 0, 0, 500.0, 1000.0, 4, 150.0, 10.0, float('nan'), float('nan'), float('nan'), float('nan')),
+        _CFastEvent(0, 0, 0, 0, 1000.0, 1000.001, 1, 150.0, 10.0, float('nan'), float('nan'), float('nan'), float('nan')),
+        _CFastEvent(0, 0, 1, 0, 1000.0, 1000.001, 2, float('nan'), float('nan'), 151.0, 150.0, 10.0, 10.0),
+        _CFastEvent(0, 0, 0, 0, 1000.0, 1000.001, 3, -10.0, 5.0, float('nan'), float('nan'), float('nan'), float('nan')),
+        _CFastEvent(0, 0, 0, 0, 500.0, 1000.0, 4, 150.0, 10.0, float('nan'), float('nan'), float('nan'), float('nan')),
     ]
     
     user_mask = 0xFFFFFFFF00000000

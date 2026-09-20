@@ -71,6 +71,7 @@ data/*.db-wal
 data/*.db-shm
 data/*.db-journal
 data/raw_archive/
+data/deadletter/
 !data/.gitkeep
 
 # DuckDB & Columnar Parquet Data
