@@ -593,9 +593,6 @@ class Pipeline:
         canon, quar, lin = self._canonical_batch, self._quarantine_batch, self._lineage_batch
         self._canonical_batch, self._quarantine_batch, self._lineage_batch = [], [], []
         try:
-            self.store.write_canonical_batch(canon)
-            self.store.write_quarantine_batch(quar)
-            self.store.write_lineage_batch(lin)
             health_rows = []
             now = time.time()
             for src, st in self.reliability.stats.items():
@@ -612,8 +609,14 @@ class Pipeline:
                         now,
                     )
                 )
-            self.store.upsert_source_health(health_rows)
-            self.store.commit()
+            if hasattr(self.store, "write_batches_atomic"):
+                self.store.write_batches_atomic(canon, quar, lin, health_rows)
+            else:
+                self.store.write_canonical_batch(canon)
+                self.store.write_quarantine_batch(quar)
+                self.store.write_lineage_batch(lin)
+                self.store.upsert_source_health(health_rows)
+                self.store.commit()
         except Exception:
             self._spill_dead_letter(canon, quar, lin)
             raise

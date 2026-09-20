@@ -26,7 +26,9 @@ Performance & Concurrency Pragmas:
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 import json
+import logging
 import os
 import sqlite3
 import threading
@@ -34,6 +36,8 @@ import time
 from typing import Any
 
 from models import CanonicalEvent
+
+logger = logging.getLogger("mdrap.storage")
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS canonical_events (
@@ -55,8 +59,9 @@ CREATE TABLE IF NOT EXISTS canonical_events (
     reasons TEXT,
     raw_id TEXT
 );
-CREATE INDEX IF NOT EXISTS idx_canonical_instrument ON canonical_events(instrument_id, exchange_timestamp);
 CREATE INDEX IF NOT EXISTS idx_canonical_covering ON canonical_events(instrument_id, exchange_timestamp, price, quantity);
+CREATE INDEX IF NOT EXISTS idx_canonical_proc_ts ON canonical_events(processing_timestamp);
+CREATE INDEX IF NOT EXISTS idx_canonical_src_seq ON canonical_events(source, sequence_number);
 
 CREATE TABLE IF NOT EXISTS quarantine (
     event_id TEXT PRIMARY KEY,
@@ -211,17 +216,16 @@ def _synchronized(method):
     """Thread-safe synchronization wrapper with SQLite busy retry backoff."""
 
     def wrapper(self, *args, **kwargs):
-        with self._lock:
-            retries = 3
-            while True:
+        retries = 3
+        while True:
+            with self._lock:
                 try:
                     return method(self, *args, **kwargs)
                 except sqlite3.OperationalError as exc:
-                    if "locked" in str(exc).lower() and retries > 0:
-                        retries -= 1
-                        time.sleep(0.05)
-                    else:
+                    if "locked" not in str(exc).lower() or retries <= 0:
                         raise
+                    retries -= 1
+            time.sleep(0.05)
 
     wrapper.__name__ = method.__name__
     wrapper.__doc__ = method.__doc__
@@ -232,17 +236,16 @@ def _read_synchronized(method):
     """Thread-safe synchronization wrapper for read queries using decoupled read_conn."""
 
     def wrapper(self, *args, **kwargs):
-        with self._read_lock:
-            retries = 3
-            while True:
+        retries = 3
+        while True:
+            with self._read_lock:
                 try:
                     return method(self, *args, **kwargs)
                 except sqlite3.OperationalError as exc:
-                    if "locked" in str(exc).lower() and retries > 0:
-                        retries -= 1
-                        time.sleep(0.01)
-                    else:
+                    if "locked" not in str(exc).lower() or retries <= 0:
                         raise
+                    retries -= 1
+            time.sleep(0.01)
 
     wrapper.__name__ = method.__name__
     wrapper.__doc__ = method.__doc__
@@ -252,19 +255,32 @@ def _read_synchronized(method):
 class Store:
     """Thread-safe SQLite storage engine for MDRAP event stream and analytics."""
 
-    def __init__(self, path: str = ":memory:"):
+    def __init__(self, path: str = ":memory:", durability: str = "balanced"):
         self.path = path
+        self.durability = (durability or "balanced").lower()
+        if self.durability not in ("fast", "balanced", "compliance"):
+            self.durability = "balanced"
         self.conflicts: int = 0
         self._lock = threading.RLock()
         self._read_lock = threading.RLock()
         with self._lock:
             self.conn = sqlite3.connect(path, timeout=30.0, check_same_thread=False)
-            self.conn.execute("PRAGMA busy_timeout=5000;")
+            self.conn.execute("PRAGMA busy_timeout=30000;")
             try:
-                self.conn.execute("PRAGMA journal_mode=WAL;")
+                cur = self.conn.execute("PRAGMA journal_mode=WAL;")
+                jm_row = cur.fetchone()
+                if path != ":memory:" and not path.startswith("file::memory:") and jm_row and jm_row[0].lower() != "wal":
+                    logger.warning("SQLite database at %s could not set journal_mode=WAL (got %s)", path, jm_row[0])
             except sqlite3.OperationalError:
                 pass  # In-memory or read-only filesystems do not support WAL
-            self.conn.execute("PRAGMA synchronous=NORMAL;")
+
+            if self.durability == "fast":
+                self.conn.execute("PRAGMA synchronous=OFF;")
+            elif self.durability == "compliance":
+                self.conn.execute("PRAGMA synchronous=FULL;")
+            else:
+                self.conn.execute("PRAGMA synchronous=NORMAL;")
+
             # Memory-tuned pragmas: 64MB mmap and 16MB page cache by default (down from 256MB/64MB)
             mmap_mb = int(os.environ.get("MDRAP_SQLITE_MMAP_MB", 64))
             cache_mb = int(os.environ.get("MDRAP_SQLITE_CACHE_MB", 16))
@@ -272,9 +288,8 @@ class Store:
             cache_kib = cache_mb * 1000
             self.conn.execute(f"PRAGMA mmap_size={mmap_bytes};")
             self.conn.execute(f"PRAGMA cache_size=-{cache_kib};")
-            self.conn.execute(
-                "PRAGMA temp_store=MEMORY;"
-            )  # In-memory temporary B-trees
+            self.conn.execute("PRAGMA temp_store=MEMORY;")
+            self.conn.execute("PRAGMA user_version = 2;")
             self.conn.executescript(SCHEMA)
             try:
                 self.conn.execute("ALTER TABLE audit_log ADD COLUMN format_version INTEGER NOT NULL DEFAULT 2")
@@ -288,12 +303,24 @@ class Store:
                         path, timeout=30.0, check_same_thread=False
                     )
                     self.read_conn.execute("PRAGMA query_only=ON;")
-                    self.read_conn.execute("PRAGMA busy_timeout=5000;")
+                    self.read_conn.execute("PRAGMA busy_timeout=30000;")
                     self.read_conn.execute(f"PRAGMA mmap_size={mmap_bytes};")
                 except Exception:
                     self.read_conn = self.conn
             else:
                 self.read_conn = self.conn
+
+    @contextmanager
+    def transaction(self):
+        """Explicit transaction context manager: BEGIN IMMEDIATE, commit on success, rollback on error."""
+        with self._lock:
+            self.conn.execute("BEGIN IMMEDIATE;")
+            try:
+                yield self.conn
+                self.conn.commit()
+            except Exception:
+                self.conn.rollback()
+                raise
 
     def __enter__(self):
         return self
@@ -378,6 +405,68 @@ class Store:
         )
 
     @_synchronized
+    def write_batches_atomic(
+        self,
+        canonical: list[CanonicalEvent] | None = None,
+        quarantine: list[tuple] | None = None,
+        lineage: list[tuple] | None = None,
+        source_health: list[tuple] | None = None,
+    ) -> None:
+        """Atomic multi-batch write in a single BEGIN IMMEDIATE transaction."""
+        with self.transaction():
+            if canonical:
+                c_before = self.conn.total_changes
+                self.conn.executemany(
+                    """INSERT INTO canonical_events VALUES
+                       (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                       ON CONFLICT(event_id) DO NOTHING""",
+                    [
+                        (
+                            e.event_id,
+                            e.instrument_id,
+                            e.event_type.value,
+                            e.exchange_timestamp,
+                            e.receive_timestamp,
+                            e.processing_timestamp,
+                            e.source,
+                            e.sequence_number,
+                            e.price,
+                            e.quantity,
+                            e.bid_price,
+                            e.bid_size,
+                            e.ask_price,
+                            e.ask_size,
+                            e.quality_status.value,
+                            json.dumps(e.reasons),
+                            e.raw_id,
+                        )
+                        for e in canonical
+                    ],
+                )
+                ins = self.conn.total_changes - c_before
+                if ins < len(canonical):
+                    self.conflicts += len(canonical) - ins
+            if quarantine:
+                self.conn.executemany(
+                    """INSERT INTO quarantine VALUES
+                       (?,?,?,?,?,?,?)
+                       ON CONFLICT(event_id) DO NOTHING""",
+                    quarantine,
+                )
+            if lineage:
+                self.conn.executemany(
+                    """INSERT INTO lineage VALUES
+                       (?,?,?,?,?,?,?,?,?,?,?)
+                       ON CONFLICT(event_id) DO NOTHING""",
+                    lineage,
+                )
+            if source_health:
+                self.conn.executemany(
+                    "INSERT OR REPLACE INTO source_health VALUES (?,?,?,?,?,?,?,?,?)",
+                    source_health,
+                )
+
+    @_synchronized
     def commit(self):
         """Commit active database transaction."""
         self.conn.commit()
@@ -386,6 +475,7 @@ class Store:
 
     @_read_synchronized
     def latest(self, instrument_id: str, limit: int = 1):
+        limit = min(max(1, limit), 10000)
         cur = self.read_conn.execute(
             """SELECT * FROM canonical_events WHERE instrument_id=?
                ORDER BY exchange_timestamp DESC LIMIT ?""",
@@ -398,6 +488,7 @@ class Store:
     def query_events(
         self, instrument_id: str | None = None, limit: int = 1000
     ) -> list[dict]:
+        limit = min(max(1, limit), 10000)
         if instrument_id:
             cur = self.read_conn.execute(
                 "SELECT * FROM canonical_events WHERE instrument_id=? ORDER BY exchange_timestamp DESC LIMIT ?",
@@ -430,6 +521,7 @@ class Store:
 
     @_read_synchronized
     def quarantine_sample(self, limit: int = 20):
+        limit = min(max(1, limit), 10000)
         cur = self.read_conn.execute("SELECT * FROM quarantine LIMIT ?", (limit,))
         cols = [d[0] for d in cur.description]
         return [dict(zip(cols, row)) for row in cur.fetchall()]
@@ -469,7 +561,7 @@ class Store:
     def retention_compact(
         self, retain_days: int = 30, quarantine_days: int = 90
     ) -> dict:
-        """Delete canonical_events older than retain_days, then reclaim disk.
+        """Delete canonical_events older than retain_days in chunks, then reclaim disk.
 
         quarantine records are kept for quarantine_days (default 90) for
         evidentiary/audit compliance, while operational events prune at retain_days.
@@ -478,15 +570,40 @@ class Store:
         """
         cutoff = time.time() - (retain_days * 86400)
         q_cutoff = time.time() - (quarantine_days * 86400)
-        cur = self.conn.execute(
-            "DELETE FROM canonical_events WHERE exchange_timestamp < ?", (cutoff,)
-        )
-        deleted_canonical = cur.rowcount
-        cur_q = self.conn.execute(
-            "DELETE FROM quarantine WHERE receive_timestamp < ?", (q_cutoff,)
-        )
-        deleted_quarantine = cur_q.rowcount
-        self.conn.commit()
+        deleted_canonical = 0
+        deleted_quarantine = 0
+
+        while True:
+            cur = self.conn.execute(
+                "DELETE FROM canonical_events WHERE rowid IN ("
+                "SELECT rowid FROM canonical_events WHERE COALESCE(processing_timestamp, exchange_timestamp) < ? LIMIT 5000"
+                ")",
+                (cutoff,),
+            )
+            deleted_canonical += cur.rowcount
+            self.conn.commit()
+            if cur.rowcount < 5000:
+                break
+
+        while True:
+            cur_q = self.conn.execute(
+                "DELETE FROM quarantine WHERE rowid IN ("
+                "SELECT rowid FROM quarantine WHERE receive_timestamp < ? LIMIT 5000"
+                ")",
+                (q_cutoff,),
+            )
+            deleted_quarantine += cur_q.rowcount
+            self.conn.commit()
+            if cur_q.rowcount < 5000:
+                break
+
+        try:
+            self.conn.execute("DELETE FROM vwap_curves WHERE timestamp < ?", (cutoff,))
+            self.conn.execute("DELETE FROM watchdog_alerts WHERE timestamp < ?", (cutoff,))
+            self.conn.commit()
+        except Exception:
+            pass
+
         # Reclaim disk: checkpoint WAL then truncate
         try:
             self.conn.execute("PRAGMA wal_checkpoint(TRUNCATE);")
@@ -828,6 +945,7 @@ class Store:
 
     @_synchronized
     def query_audit_log(self, limit: int = 50) -> list[dict]:
+        limit = min(max(1, limit), 10000)
         cur = self.conn.execute(
             "SELECT * FROM audit_log ORDER BY entry_id DESC LIMIT ?", (limit,)
         )
@@ -910,8 +1028,15 @@ class Store:
             "entries": entries,
         }
         if output_file:
-            with open(output_file, "w", encoding="utf-8") as f:
+            dir_name = os.path.dirname(os.path.abspath(output_file))
+            if dir_name:
+                os.makedirs(dir_name, exist_ok=True)
+            tmp_file = f"{output_file}.tmp.{os.getpid()}"
+            with open(tmp_file, "w", encoding="utf-8") as f:
                 json.dump(proof, f, indent=2)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_file, output_file)
         return proof
 
     @staticmethod
