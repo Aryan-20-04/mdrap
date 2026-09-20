@@ -221,38 +221,63 @@ def format_audit_payload(
     return f"{prev_hash}|{ts:.6f}|{esc_actor}|{esc_role}|{esc_action}|{esc_details}"
 
 
+_DEMO_SECRETS = {
+    "FEEDX": "mdrap_feed_secret_x_7f9a2b1c",
+    "FEEDY": "mdrap_feed_secret_y_3d8e5f0a",
+    "FEEDZ": "mdrap_feed_secret_z_9c4b1a7d",
+    "BINANCE": "mdrap_pub_binance_key_001",
+    "COINBASE": "mdrap_pub_coinbase_key_002",
+}
+
+_DEMO_KEYS = {
+    "mdrap_demo_key": {
+        "client_id": "Demo_Client",
+        "rate_limit_eps": 50000.0,
+    },
+    "mdrap_demo_free_key": {
+        "client_id": "Demo_Client",
+        "rate_limit_eps": 50000.0,
+    },
+    "mdrap_demo_pro_key": {
+        "client_id": "Demo_Pro_Quant",
+        "rate_limit_eps": 50000.0,
+    },
+    "mdrap_demo_inst_key": {
+        "client_id": "Demo_Institutional_HFT",
+        "rate_limit_eps": 50000.0,
+    },
+}
+
+
+def _load_or_create_local_secrets() -> Dict[str, str]:
+    home = os.environ.get("USERPROFILE") or os.environ.get("HOME") or os.path.expanduser("~")
+    sec_dir = os.path.join(home, ".mdrap")
+    sec_file = os.path.join(sec_dir, "secrets.json")
+    if os.path.isfile(sec_file):
+        try:
+            with open(sec_file, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    default_feeds = ["FEEDX", "FEEDY", "FEEDZ", "BINANCE", "COINBASE"]
+    generated = {src: f"mdrap_{src.lower()}_{secrets.token_hex(16)}" for src in default_feeds}
+    try:
+        os.makedirs(sec_dir, exist_ok=True)
+        flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+        mode = 0o600
+        fd = os.open(sec_file, flags, mode)
+        with open(fd, "w", encoding="utf-8") as f:
+            json.dump(generated, f, indent=2)
+    except Exception:
+        pass
+    return generated
+
+
 class SecurityManager:
     """
     Central security and cryptographic coordinator for MDRAP.
     Manages HMAC feed authentication, RBAC authorization, and tamper-evident audit logs.
     """
-
-    DEFAULT_SECRETS = {
-        "FEEDX": "mdrap_feed_secret_x_7f9a2b1c",
-        "FEEDY": "mdrap_feed_secret_y_3d8e5f0a",
-        "FEEDZ": "mdrap_feed_secret_z_9c4b1a7d",
-        "BINANCE": "mdrap_pub_binance_key_001",
-        "COINBASE": "mdrap_pub_coinbase_key_002",
-    }
-
-    DEFAULT_KEYS = {
-        "mdrap_demo_key": {
-            "client_id": "Demo_Client",
-            "rate_limit_eps": 50000.0,
-        },
-        "mdrap_demo_free_key": {
-            "client_id": "Demo_Client",
-            "rate_limit_eps": 50000.0,
-        },
-        "mdrap_demo_pro_key": {
-            "client_id": "Demo_Pro_Quant",
-            "rate_limit_eps": 50000.0,
-        },
-        "mdrap_demo_inst_key": {
-            "client_id": "Demo_Institutional_HFT",
-            "rate_limit_eps": 50000.0,
-        },
-    }
 
     def __init__(
         self,
@@ -265,11 +290,23 @@ class SecurityManager:
             os.environ.get("MDRAP_REQUIRE_ENV_SECRETS", "").lower()
             in ("1", "true", "yes")
         )
+        is_demo = os.environ.get("MDRAP_DEMO", "").lower() in ("1", "true", "yes")
+
         self._secrets: Dict[str, bytes] = {}
-        if not mandate_env:
+        if is_demo:
+            print(
+                "[SECURITY WARNING] MDRAP demo mode active (MDRAP_DEMO=1). "
+                "Demo keys and secrets are enabled. NEVER run this in production or on non-loopback interfaces!",
+                file=sys.stderr,
+            )
             self._secrets = {
-                src: key.encode("utf-8") for src, key in self.DEFAULT_SECRETS.items()
+                src: key.encode("utf-8") for src, key in _DEMO_SECRETS.items()
             }
+        elif not mandate_env:
+            self._secrets = {
+                src: key.encode("utf-8") for src, key in _load_or_create_local_secrets().items()
+            }
+
         # Pluggable secrets: load environment overrides (e.g. MDRAP_SECRET_FEEDX=...)
         for k, v in os.environ.items():
             if k.startswith("MDRAP_SECRET_"):
@@ -288,17 +325,18 @@ class SecurityManager:
         self._rate_limited_count = 0
 
         self._api_keys: Dict[str, ClientEntitlement] = {}
-        for tok, cfg in self.DEFAULT_KEYS.items():
-            self._api_keys[tok] = ClientEntitlement(
-                token=tok,
-                client_id=cfg["client_id"],
-                tier=Tier.STANDARD,
-                rate_limit_eps=cfg["rate_limit_eps"],
-                can_access_l2=True,
-                can_use_binary=True,
-                can_use_shm=True,
-                max_replay_events=100_000,
-            )
+        if is_demo:
+            for tok, cfg in _DEMO_KEYS.items():
+                self._api_keys[tok] = ClientEntitlement(
+                    token=tok,
+                    client_id=cfg["client_id"],
+                    tier=Tier.STANDARD,
+                    rate_limit_eps=cfg["rate_limit_eps"],
+                    can_access_l2=True,
+                    can_use_binary=True,
+                    can_use_shm=True,
+                    max_replay_events=100_000,
+                )
         # Load API key overrides from environment (e.g. MDRAP_API_KEY_PRO=custom_token)
         for k, v in os.environ.items():
             if k.startswith("MDRAP_API_KEY_"):
