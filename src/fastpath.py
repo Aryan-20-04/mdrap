@@ -21,6 +21,14 @@ from typing import Any
 from models import CanonicalEvent, EventType, QualityStatus, Reason
 from quality import QualityConfig, QualityEngine
 
+# ---------------------------------------------------------------------------
+# Native C Kernel ABI Geometry Constants (Matching fastpath.c)
+# ---------------------------------------------------------------------------
+MAX_SOURCES: int = 32
+MAX_INSTRUMENTS: int = 8192
+INSTRUMENT_SHIFT: int = 13
+TOTAL_SLOTS: int = MAX_SOURCES * MAX_INSTRUMENTS
+
 # Status values
 _STATUS_MAP = {
     0: QualityStatus.VALID,
@@ -955,7 +963,7 @@ class FastQualityEngine:
 
         # Graceful fallback: C static tables have MAX_SOURCES=32, MAX_INSTRUMENTS=8192.
         # If the number of unique sources or instruments exceeds C bounds, evaluate with Python engine.
-        if s_id >= 32 or i_id >= 8192:
+        if s_id >= MAX_SOURCES or i_id >= MAX_INSTRUMENTS:
             if not self._fallback_engine:
                 self._fallback_engine = QualityEngine(self.cfg)
             res = self._fallback_engine.evaluate(event)
@@ -1075,7 +1083,7 @@ class FastQualityEngine:
             s_id = self._get_source_id(ev.source)
             i_id = self._get_instrument_id(ev.instrument_id)
 
-            if s_id >= 32 or i_id >= 8192:
+            if s_id >= MAX_SOURCES or i_id >= MAX_INSTRUMENTS:
                 needs_fallback.append(idx)
                 continue
 
@@ -1121,12 +1129,6 @@ class FastQualityEngine:
                 self._evaluate_unlocked(ev)
             return events
 
-        priority = {
-            QualityStatus.VALID: 0,
-            QualityStatus.SUSPICIOUS: 1,
-            QualityStatus.INVALID: 2,
-        }
-
         for idx, ev in enumerate(events):
             if idx in needs_fallback:
                 self._evaluate_unlocked(ev)
@@ -1137,7 +1139,7 @@ class FastQualityEngine:
             mask = res.reason_mask
             status = _STATUS_MAP.get(status_code, QualityStatus.VALID)
 
-            if priority[status] > priority.get(ev.quality_status, 0):
+            if _PRIORITY_MAP[status] > _PRIORITY_MAP.get(ev.quality_status, 0):
                 ev.quality_status = status
 
             if mask:
