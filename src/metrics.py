@@ -215,14 +215,16 @@ class RunMetrics:
             self._enqueue_latencies_us.append(enqueue_latency_s * 1_000_000)
 
         if source:
-            if source not in self._by_source_us:
-                self._by_source_us[source] = CompactSampleBuffer(10_000)
-            self._by_source_us[source].append(proc_us)
+            sb = self._by_source_us.get(source)
+            if sb is None:
+                sb = self._by_source_us[source] = CompactSampleBuffer(10_000)
+            sb.append(proc_us)
 
         if instrument_id:
-            if instrument_id not in self._by_instrument_us:
-                self._by_instrument_us[instrument_id] = CompactSampleBuffer(10_000)
-            self._by_instrument_us[instrument_id].append(proc_us)
+            ib = self._by_instrument_us.get(instrument_id)
+            if ib is None:
+                ib = self._by_instrument_us[instrument_id] = CompactSampleBuffer(10_000)
+            ib.append(proc_us)
 
     def record_query(self, query_latency_s: float):
         """Record point or analytical query latency in microseconds."""

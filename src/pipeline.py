@@ -578,19 +578,19 @@ class Pipeline:
         return [ev for ev in results if ev is not None]
 
     def _maybe_flush(self):
-        now = time.time()
         batch_full = (
             len(self._canonical_batch) >= BATCH_SIZE
             or len(self._quarantine_batch) >= BATCH_SIZE
             or len(self._lineage_batch) >= BATCH_SIZE
         )
-        time_elapsed = (now - self._last_flush_ts >= self.flush_interval_s) and (
-            bool(self._canonical_batch)
-            or bool(self._quarantine_batch)
-            or bool(self._lineage_batch)
-        )
-        if batch_full or time_elapsed:
+        if batch_full:
             self.flush()
+            return
+
+        if self._canonical_batch or self._quarantine_batch or self._lineage_batch:
+            now = time.time()
+            if now - self._last_flush_ts >= self.flush_interval_s:
+                self.flush()
 
     def _spill_dead_letter(self, canon: list, quar: list, lin: list) -> None:
         """Spill unwritten batches to fsync'd JSONL under data/deadletter/ on storage failure."""

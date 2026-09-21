@@ -81,6 +81,10 @@ REQUIRED_QUOTE_FIELDS = (
 )
 
 
+_EVENT_TYPE_TRADE = EventType.TRADE
+_EVENT_TYPE_QUOTE = EventType.QUOTE
+
+
 def normalize(raw: RawEvent) -> CanonicalEvent:
     """Map and parse a vendor RawEvent payload into a standardized CanonicalEvent.
 
@@ -96,9 +100,10 @@ def normalize(raw: RawEvent) -> CanonicalEvent:
     required = (
         REQUIRED_TRADE_FIELDS if event_type_raw == "TRADE" else REQUIRED_QUOTE_FIELDS
     )
-    missing = [f for f in required if f not in p]
-    if missing:
-        raise SchemaError(f"missing fields: {missing}")
+    for f in required:
+        if f not in p:
+            missing = [req for req in required if req not in p]
+            raise SchemaError(f"missing fields: {missing}")
 
     exchange_ts = p["exchange_ts"]
     if not isinstance(exchange_ts, (int, float)):
@@ -122,7 +127,7 @@ def normalize(raw: RawEvent) -> CanonicalEvent:
     event = CanonicalEvent(
         event_id=f"evt-{next(_gateway_id_counter)}",
         instrument_id=instrument,
-        event_type=EventType(event_type_raw),
+        event_type=_EVENT_TYPE_TRADE if event_type_raw == "TRADE" else _EVENT_TYPE_QUOTE,
         exchange_timestamp=float(exchange_ts),
         receive_timestamp=raw.receive_timestamp,
         processing_timestamp=0.0,  # Populated after quality evaluation
