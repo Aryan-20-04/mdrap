@@ -212,11 +212,25 @@ CREATE INDEX IF NOT EXISTS idx_vwap_curves_sym ON vwap_curves(instrument_id, tim
 """
 
 
+# ---------------------------------------------------------------------------
+# Storage Tier & SQLite Concurrency Tuning Constants (Spec §5 & §26)
+# ---------------------------------------------------------------------------
+DEFAULT_SQLITE_RETRIES: int = 3
+SQLITE_RETRY_BACKOFF_WRITE_S: float = 0.05  # 50 ms backoff on write lock contention
+SQLITE_RETRY_BACKOFF_READ_S: float = 0.01   # 10 ms backoff on read contention
+DEFAULT_SQLITE_TIMEOUT_S: float = 30.0      # 30-second busy timeout
+DEFAULT_BUSY_TIMEOUT_MS: int = 30000        # 30,000 ms pragma busy timeout
+DEFAULT_SQLITE_MMAP_MB: int = 64            # 64 MB mmap
+DEFAULT_SQLITE_CACHE_MB: int = 16           # 16 MB dedicated cache
+BYTES_PER_MB: int = 1024 * 1024
+PAGE_CACHE_KIB_PER_MB: int = 1000
+
+
 def _synchronized(method):
     """Thread-safe synchronization wrapper with SQLite busy retry backoff."""
 
     def wrapper(self, *args, **kwargs):
-        retries = 3
+        retries = DEFAULT_SQLITE_RETRIES
         while True:
             with self._lock:
                 try:
@@ -225,7 +239,7 @@ def _synchronized(method):
                     if "locked" not in str(exc).lower() or retries <= 0:
                         raise
                     retries -= 1
-            time.sleep(0.05)
+            time.sleep(SQLITE_RETRY_BACKOFF_WRITE_S)
 
     wrapper.__name__ = method.__name__
     wrapper.__doc__ = method.__doc__
@@ -236,7 +250,7 @@ def _read_synchronized(method):
     """Thread-safe synchronization wrapper for read queries using decoupled read_conn."""
 
     def wrapper(self, *args, **kwargs):
-        retries = 3
+        retries = DEFAULT_SQLITE_RETRIES
         while True:
             with self._read_lock:
                 try:
@@ -245,7 +259,7 @@ def _read_synchronized(method):
                     if "locked" not in str(exc).lower() or retries <= 0:
                         raise
                     retries -= 1
-            time.sleep(0.01)
+            time.sleep(SQLITE_RETRY_BACKOFF_READ_S)
 
     wrapper.__name__ = method.__name__
     wrapper.__doc__ = method.__doc__
@@ -264,8 +278,10 @@ class Store:
         self._lock = threading.RLock()
         self._read_lock = threading.RLock()
         with self._lock:
-            self.conn = sqlite3.connect(path, timeout=30.0, check_same_thread=False)
-            self.conn.execute("PRAGMA busy_timeout=30000;")
+            self.conn = sqlite3.connect(
+                path, timeout=DEFAULT_SQLITE_TIMEOUT_S, check_same_thread=False
+            )
+            self.conn.execute(f"PRAGMA busy_timeout={DEFAULT_BUSY_TIMEOUT_MS};")
             try:
                 cur = self.conn.execute("PRAGMA journal_mode=WAL;")
                 jm_row = cur.fetchone()
@@ -281,11 +297,11 @@ class Store:
             else:
                 self.conn.execute("PRAGMA synchronous=NORMAL;")
 
-            # Memory-tuned pragmas: 64MB mmap and 16MB page cache by default (down from 256MB/64MB)
-            mmap_mb = int(os.environ.get("MDRAP_SQLITE_MMAP_MB", 64))
-            cache_mb = int(os.environ.get("MDRAP_SQLITE_CACHE_MB", 16))
-            mmap_bytes = mmap_mb * 1024 * 1024
-            cache_kib = cache_mb * 1000
+            # Memory-tuned pragmas: 64MB mmap and 16MB page cache by default
+            mmap_mb = int(os.environ.get("MDRAP_SQLITE_MMAP_MB", DEFAULT_SQLITE_MMAP_MB))
+            cache_mb = int(os.environ.get("MDRAP_SQLITE_CACHE_MB", DEFAULT_SQLITE_CACHE_MB))
+            mmap_bytes = mmap_mb * BYTES_PER_MB
+            cache_kib = cache_mb * PAGE_CACHE_KIB_PER_MB
             self.conn.execute(f"PRAGMA mmap_size={mmap_bytes};")
             self.conn.execute(f"PRAGMA cache_size=-{cache_kib};")
             self.conn.execute("PRAGMA temp_store=MEMORY;")
@@ -300,10 +316,10 @@ class Store:
             if path != ":memory:":
                 try:
                     self.read_conn = sqlite3.connect(
-                        path, timeout=30.0, check_same_thread=False
+                        path, timeout=DEFAULT_SQLITE_TIMEOUT_S, check_same_thread=False
                     )
                     self.read_conn.execute("PRAGMA query_only=ON;")
-                    self.read_conn.execute("PRAGMA busy_timeout=30000;")
+                    self.read_conn.execute(f"PRAGMA busy_timeout={DEFAULT_BUSY_TIMEOUT_MS};")
                     self.read_conn.execute(f"PRAGMA mmap_size={mmap_bytes};")
                 except Exception:
                     self.read_conn = self.conn

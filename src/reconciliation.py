@@ -28,19 +28,27 @@ from dataclasses import dataclass
 from models import CanonicalEvent, QualityStatus, Reason
 
 
+# ---------------------------------------------------------------------------
+# Feed Reliability Scoring Weights & Windows (Spec §12 & §26)
+# ---------------------------------------------------------------------------
+DEFAULT_RELIABILITY_ALPHA: float = 0.02  # EWMA smoothing factor: S_t = (1 - alpha) * S_{t-1} + alpha * Y_t
+DEFAULT_DISAGREEMENT_PCT_THRESHOLD: float = 0.005  # 0.5% price divergence threshold for cross-feed conflict
+DEFAULT_AGREEMENT_WINDOW_S: float = 0.25  # Simulated market time window for concurrent observation
+
+WEIGHT_ACCURACY: float = 0.40
+WEIGHT_COMPLETENESS: float = 0.25
+WEIGHT_DEDUP: float = 0.20
+WEIGHT_LATENCY: float = 0.15
+LATENCY_PENALTY_FACTOR: float = 100.0
+
+
 @dataclass
 class ReliabilityConfig:
     """Configuration parameters for feed reliability scoring and windowing."""
 
-    alpha: float = (
-        0.02  # EWMA smoothing factor: S_t = (1 - alpha) * S_{t-1} + alpha * Y_t
-    )
-    disagreement_pct_threshold: float = (
-        0.005  # 0.5% price divergence threshold for cross-feed conflict
-    )
-    agreement_window_s: float = (
-        0.25  # Simulated market time window for concurrent observation
-    )
+    alpha: float = DEFAULT_RELIABILITY_ALPHA
+    disagreement_pct_threshold: float = DEFAULT_DISAGREEMENT_PCT_THRESHOLD
+    agreement_window_s: float = DEFAULT_AGREEMENT_WINDOW_S
 
 
 @dataclass
@@ -89,12 +97,12 @@ class SourceStats:
         completeness = max(0.0, 1.0 - min(1.0, self.ewma_gap_rate))
         accuracy = max(0.0, 1.0 - min(1.0, self.ewma_error_rate))
         dup_penalty = max(0.0, 1.0 - min(1.0, self.ewma_dup_rate))
-        latency_penalty = 1.0 / (1.0 + self.ewma_latency_s * 100)
+        latency_penalty = 1.0 / (1.0 + self.ewma_latency_s * LATENCY_PENALTY_FACTOR)
         return round(
-            0.4 * accuracy
-            + 0.25 * completeness
-            + 0.2 * dup_penalty
-            + 0.15 * latency_penalty,
+            WEIGHT_ACCURACY * accuracy
+            + WEIGHT_COMPLETENESS * completeness
+            + WEIGHT_DEDUP * dup_penalty
+            + WEIGHT_LATENCY * latency_penalty,
             4,
         )
 
