@@ -75,6 +75,36 @@ EVENT_TYPE_DEPTH = 2
 STATUS_MAP_REV = {"UNKNOWN": 0, "VALID": 1, "SUSPICIOUS": 2, "INVALID": 3}
 STATUS_MAP_FWD = {0: "UNKNOWN", 1: "VALID", 2: "SUSPICIOUS", 3: "INVALID"}
 
+# Bounded caching for hot-path ASCII byte-padding and string decoding
+_FAST_ENCODE_CACHE: dict[tuple[str, str], tuple[bytes, bytes, int]] = {}
+_BYTE_DECODE_CACHE: dict[bytes, str] = {}
+
+
+def _fast_encode_sym_src(symbol: str, source: str) -> tuple[bytes, bytes, int]:
+    pair = (symbol, source)
+    cached = _FAST_ENCODE_CACHE.get(pair)
+    if cached is not None:
+        return cached
+    sym_b = (symbol or "").encode("ascii", errors="replace")
+    src_b = (source or "").encode("ascii", errors="replace")
+    trunc = (1 if len(sym_b) > 16 else 0) | (2 if len(src_b) > 8 else 0)
+    sym_bytes = sym_b[:16].ljust(16, b"\x00")
+    src_bytes = src_b[:8].ljust(8, b"\x00")
+    res = (sym_bytes, src_bytes, trunc)
+    if len(_FAST_ENCODE_CACHE) < 2048:
+        _FAST_ENCODE_CACHE[pair] = res
+    return res
+
+
+def _fast_decode_ascii(b: bytes) -> str:
+    cached = _BYTE_DECODE_CACHE.get(b)
+    if cached is not None:
+        return cached
+    s = b.rstrip(b"\x00").decode("ascii", errors="replace")
+    if len(_BYTE_DECODE_CACHE) < 2048:
+        _BYTE_DECODE_CACHE[b] = s
+    return s
+
 
 @dataclass
 class SHMOverrunStats:
@@ -193,11 +223,7 @@ class SHMWriter:
         offset = HEADER_SIZE + (slot_idx * SLOT_SIZE)
 
         st_code = STATUS_MAP_REV.get(status, 0)
-        sym_b = (symbol or "").encode("ascii", errors="replace")
-        src_b = (source or "").encode("ascii", errors="replace")
-        trunc = (1 if len(sym_b) > 16 else 0) | (2 if len(src_b) > 8 else 0)
-        sym_bytes = sym_b[:16].ljust(16, b"\x00")
-        src_bytes = src_b[:8].ljust(8, b"\x00")
+        sym_bytes, src_bytes, trunc = _fast_encode_sym_src(symbol, source)
 
         present = 0
         if price is not None:
@@ -281,11 +307,7 @@ class SHMWriter:
         offset = HEADER_SIZE + (slot_idx * SLOT_SIZE)
 
         st_code = STATUS_MAP_REV.get(status, 1)
-        sym_b = (symbol or "").encode("ascii", errors="replace")
-        src_b = b"DEPTH"
-        trunc = 1 if len(sym_b) > 16 else 0
-        sym_bytes = sym_b[:16].ljust(16, b"\x00")
-        src_bytes = src_b.ljust(8, b"\x00")
+        sym_bytes, src_bytes, trunc = _fast_encode_sym_src(symbol, "DEPTH")
 
         present = 0
         if micro_price is not None:
@@ -489,8 +511,8 @@ class SHMReader:
             pad3,
         ) = payload
 
-        sym = sym_bytes.rstrip(b"\x00").decode("ascii", errors="replace")
-        src = src_bytes.rstrip(b"\x00").decode("ascii", errors="replace")
+        sym = _fast_decode_ascii(sym_bytes)
+        src = _fast_decode_ascii(src_bytes)
 
         price = p if (present & SHM3_PRESENT_PRICE) else None
         size = sz if (present & SHM3_PRESENT_SIZE) else None

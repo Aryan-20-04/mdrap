@@ -62,6 +62,7 @@ CREATE TABLE IF NOT EXISTS canonical_events (
 CREATE INDEX IF NOT EXISTS idx_canonical_covering ON canonical_events(instrument_id, exchange_timestamp, price, quantity);
 CREATE INDEX IF NOT EXISTS idx_canonical_proc_ts ON canonical_events(processing_timestamp);
 CREATE INDEX IF NOT EXISTS idx_canonical_src_seq ON canonical_events(source, sequence_number);
+CREATE INDEX IF NOT EXISTS idx_canonical_exch_ts ON canonical_events(exchange_timestamp DESC);
 
 CREATE TABLE IF NOT EXISTS quarantine (
     event_id TEXT PRIMARY KEY,
@@ -72,6 +73,7 @@ CREATE TABLE IF NOT EXISTS quarantine (
     payload_json TEXT,
     receive_timestamp REAL
 );
+CREATE INDEX IF NOT EXISTS idx_quarantine_recv_ts ON quarantine(receive_timestamp);
 
 CREATE TABLE IF NOT EXISTS lineage (
     event_id TEXT PRIMARY KEY,
@@ -321,6 +323,8 @@ class Store:
                     self.read_conn.execute("PRAGMA query_only=ON;")
                     self.read_conn.execute(f"PRAGMA busy_timeout={DEFAULT_BUSY_TIMEOUT_MS};")
                     self.read_conn.execute(f"PRAGMA mmap_size={mmap_bytes};")
+                    self.read_conn.execute(f"PRAGMA cache_size=-{cache_kib};")
+                    self.read_conn.execute("PRAGMA temp_store=MEMORY;")
                 except Exception:
                     self.read_conn = self.conn
             else:
@@ -355,7 +359,7 @@ class Store:
             """INSERT INTO canonical_events VALUES
                (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                ON CONFLICT(event_id) DO NOTHING""",
-            [
+            (
                 (
                     e.event_id,
                     e.instrument_id,
@@ -376,7 +380,7 @@ class Store:
                     e.raw_id,
                 )
                 for e in events
-            ],
+            ),
         )
         inserted = self.conn.total_changes - c_before
         if inserted < len(events):
@@ -436,7 +440,7 @@ class Store:
                     """INSERT INTO canonical_events VALUES
                        (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                        ON CONFLICT(event_id) DO NOTHING""",
-                    [
+                    (
                         (
                             e.event_id,
                             e.instrument_id,
@@ -453,11 +457,11 @@ class Store:
                             e.ask_price,
                             e.ask_size,
                             e.quality_status.value,
-                            json.dumps(e.reasons),
+                            json.dumps(e.reasons) if e.reasons else "[]",
                             e.raw_id,
                         )
                         for e in canonical
-                    ],
+                    ),
                 )
                 ins = self.conn.total_changes - c_before
                 if ins < len(canonical):
