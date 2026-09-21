@@ -16,21 +16,44 @@ from typing import Any
 
 from models import CanonicalEvent, EventType, QualityStatus, Reason
 
+# ---------------------------------------------------------------------------
+# Data Quality & Market Integrity Constants (Spec §26)
+# ---------------------------------------------------------------------------
+DEFAULT_STALENESS_THRESHOLD_S: float = 0.05  # 50 ms staleness horizon
+DEFAULT_PRICE_ANOMALY_STDDEV: float = 6.0  # 6-sigma statistical corridor
+DEFAULT_PRICE_WINDOW: int = 50  # Rolling tick sample window
+DEFAULT_PRICE_MIN_SAMPLES: int = 20  # Minimum samples required before sigma test
+DEFAULT_PRICE_RESEED_AFTER: int = 8  # Consecutive consistent outliers before regime shift re-seed
+DEFAULT_PRICE_SIGMA_FLOOR_REL: float = 2e-4  # 2 bps relative variance floor
+DEFAULT_PRICE_RESEED_BAND_REL: float = 0.01  # 1% consistent cluster band for re-seeding
+DEFAULT_MAX_FUTURE_SKEW_S: float = 1.0  # Max permissible exchange timestamp lead vs receive time
+DEFAULT_SEQ_JUMP_LIMIT: int = 1 << 24  # Max realistic sequence gap before flagged as gap
+DEFAULT_DEDUP_CACHE_SIZE: int = 200_000  # Default unsequenced two-generation cache capacity
+SEQUENCE_BITMAP_BITS: int = 64  # Sliding bitmap width in bits
+SEQUENCE_BITMAP_MASK: int = 0xFFFFFFFFFFFFFFFF  # 64-bit mask for sequence window
+MIN_SAMPLES_FOR_VARIANCE: int = 3  # Minimum ticks required to evaluate running variance
+WARMUP_PRICE_DEV_RATIO: float = 0.10  # 10% deviation allowed during rolling window warm-up
+NSE_CIRCUIT_FILTER_RATIO: float = 0.10  # 10% daily price band circuit filter (NSE/India)
+XETR_VOLATILITY_INTERRUPTION_RATIO: float = 0.05  # 5% dynamic price corridor (Xetra/Germany)
+TSE_SPECIAL_QUOTE_RATIO: float = 0.08  # 8% special quote renewal limit (TSE/Japan)
+RECENTER_FOLD_WINDOW_MULTIPLIER: int = 64  # Periodic full-precision re-centering interval
+MAX_TRACKED_INSTRUMENTS_DEFAULT: int = 100_000  # Max active tracking slots before LRU eviction
+
 try:
     from config import QualityConfig
 except ImportError:
     @dataclass
     class QualityConfig:  # type: ignore[no-redef]
-        staleness_threshold_s: float = 0.05
-        price_anomaly_stddev: float = 6.0
-        price_window: int = 50
-        price_min_samples: int = 20
-        price_reseed_after: int = 8
-        price_sigma_floor_rel: float = 2e-4
-        price_reseed_band_rel: float = 0.01
-        max_future_skew_s: float = 1.0
-        seq_jump_limit: int = 1 << 24
-        dedup_cache_size: int = 200_000
+        staleness_threshold_s: float = DEFAULT_STALENESS_THRESHOLD_S
+        price_anomaly_stddev: float = DEFAULT_PRICE_ANOMALY_STDDEV
+        price_window: int = DEFAULT_PRICE_WINDOW
+        price_min_samples: int = DEFAULT_PRICE_MIN_SAMPLES
+        price_reseed_after: int = DEFAULT_PRICE_RESEED_AFTER
+        price_sigma_floor_rel: float = DEFAULT_PRICE_SIGMA_FLOOR_REL
+        price_reseed_band_rel: float = DEFAULT_PRICE_RESEED_BAND_REL
+        max_future_skew_s: float = DEFAULT_MAX_FUTURE_SKEW_S
+        seq_jump_limit: int = DEFAULT_SEQ_JUMP_LIMIT
+        dedup_cache_size: int = DEFAULT_DEDUP_CACHE_SIZE
         allow_negative: bool = False
         unseq_dup_status: str = "SUSPICIOUS"
 
@@ -136,7 +159,7 @@ class _SlotState:
             self.head = 0 if self.n >= window else self.n
 
         self.fold_count += 1
-        if self.fold_count >= window * 64:
+        if self.fold_count >= window * RECENTER_FOLD_WINDOW_MULTIPLIER:
             self.fold_count = 0
             s = sum(self.ring[: self.n])
             self.mean = s / self.n
@@ -148,7 +171,7 @@ class _UnseqDedup:
 
     __slots__ = ("active", "older", "count", "max_entries")
 
-    def __init__(self, max_entries: int = 50_000):
+    def __init__(self, max_entries: int = DEFAULT_DEDUP_CACHE_SIZE):
         self.active: dict[tuple, None] = {}
         self.older: dict[tuple, None] = {}
         self.count = 0
@@ -193,8 +216,8 @@ class QualityEngine:
 
         self._slots: dict[tuple[str, str], _SlotState] = {}
         self._cfg_cache: dict[str, QualityConfig] = {}
-        self._unseq_dedup = _UnseqDedup(getattr(self.cfg, "dedup_cache_size", 50_000))
-        self.max_tracked_instruments = 100_000
+        self._unseq_dedup = _UnseqDedup(getattr(self.cfg, "dedup_cache_size", DEFAULT_DEDUP_CACHE_SIZE))
+        self.max_tracked_instruments = MAX_TRACKED_INSTRUMENTS_DEFAULT
 
         self.counts = {"VALID": 0, "SUSPICIOUS": 0, "INVALID": 0}
         self.reason_counts: dict[str, int] = {}
@@ -353,15 +376,15 @@ class QualityEngine:
                         self._mark(event, QualityStatus.SUSPICIOUS, Reason.SEQUENCE_GAP)
                         self._bump(Reason.SEQUENCE_GAP)
                     sl.seen = (
-                        ((sl.seen << jump) | 1) & 0xFFFFFFFFFFFFFFFF
-                        if jump < 64
+                        ((sl.seen << jump) | 1) & SEQUENCE_BITMAP_MASK
+                        if jump < SEQUENCE_BITMAP_BITS
                         else 1
                     )
                     sl.last_seq = seq
                     sl.cand_plus1 = 0
             else:
                 d = sl.last_seq - seq
-                if d < 64:
+                if d < SEQUENCE_BITMAP_BITS:
                     if (sl.seen >> d) & 1:
                         self._mark(event, QualityStatus.INVALID, Reason.DUPLICATE)
                         self._bump(Reason.DUPLICATE)
@@ -441,7 +464,7 @@ class QualityEngine:
             px = float(event.price)  # type: ignore[arg-type]
             anomaly = False
             sd2 = 0.0
-            if sl.n >= 3:
+            if sl.n >= MIN_SAMPLES_FOR_VARIANCE:
                 mean = sl.mean
                 var = sl.m2 / sl.n if sl.n > 0 else 0.0
                 if var < 0.0:
@@ -454,20 +477,20 @@ class QualityEngine:
                         cfg.price_anomaly_stddev * cfg.price_anomaly_stddev * sd2
                     )
                 else:
-                    anomaly = abs(mean) > 0.0 and abs(dev) > 0.10 * abs(mean)
+                    anomaly = abs(mean) > 0.0 and abs(dev) > WARMUP_PRICE_DEV_RATIO * abs(mean)
 
             if anomaly:
                 self._mark(event, QualityStatus.SUSPICIOUS, Reason.PRICE_ANOMALY)
                 self._bump(Reason.PRICE_ANOMALY)
 
                 # Venue circuit filter and volatility corridor rules
-                if event.venue == "XNSE" and sl.mean > 0 and abs(dev) / sl.mean >= 0.10:
+                if event.venue == "XNSE" and sl.mean > 0 and abs(dev) / sl.mean >= NSE_CIRCUIT_FILTER_RATIO:
                     self._mark(event, QualityStatus.SUSPICIOUS, Reason.CIRCUIT_FILTER_BREACH)
                     self._bump(Reason.CIRCUIT_FILTER_BREACH)
-                elif event.venue == "XETR" and sl.mean > 0 and abs(dev) / sl.mean >= 0.05:
+                elif event.venue == "XETR" and sl.mean > 0 and abs(dev) / sl.mean >= XETR_VOLATILITY_INTERRUPTION_RATIO:
                     self._mark(event, QualityStatus.SUSPICIOUS, Reason.VOLATILITY_INTERRUPTION)
                     self._bump(Reason.VOLATILITY_INTERRUPTION)
-                elif event.venue in ("XTKS", "TSE") and sl.mean > 0 and abs(dev) / sl.mean >= 0.08:
+                elif event.venue in ("XTKS", "TSE") and sl.mean > 0 and abs(dev) / sl.mean >= TSE_SPECIAL_QUOTE_RATIO:
                     self._mark(event, QualityStatus.SUSPICIOUS, Reason.SPECIAL_QUOTE_INDICATION)
                     self._bump(Reason.SPECIAL_QUOTE_INDICATION)
 

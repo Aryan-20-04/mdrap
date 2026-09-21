@@ -23,18 +23,41 @@ except ImportError:
     _HAS_YAML = False
 
 
+# ---------------------------------------------------------------------------
+# Platform Configuration Defaults (Spec §26)
+# ---------------------------------------------------------------------------
+DEFAULT_STALENESS_THRESHOLD_S: float = 0.05
+DEFAULT_PRICE_ANOMALY_STDDEV: float = 6.0
+DEFAULT_PRICE_WINDOW: int = 50
+DEFAULT_PRICE_MIN_SAMPLES: int = 20
+DEFAULT_PRICE_RESEED_AFTER: int = 8
+DEFAULT_PRICE_SIGMA_FLOOR_REL: float = 2e-4
+DEFAULT_PRICE_RESEED_BAND_REL: float = 0.01
+DEFAULT_MAX_FUTURE_SKEW_S: float = 1.0
+DEFAULT_SEQ_JUMP_LIMIT: int = 1 << 24
+DEFAULT_DEDUP_CACHE_SIZE: int = 200_000
+
+DEFAULT_QUOTE_TTL_S: float = 2.0
+DEFAULT_SILENCE_THRESHOLD_S: float = 2.0
+DEFAULT_DEGRADATION_THRESHOLD: float = 0.90
+DEFAULT_RECOVERY_THRESHOLD: float = 0.93
+DEFAULT_STORAGE_BATCH_SIZE: int = 500
+DEFAULT_RATE_LIMIT_PER_SEC: float = 20_000.0
+DEFAULT_RATE_LIMIT_CAPACITY: float = 40_000.0
+
+
 @dataclass
 class QualityConfig:
-    staleness_threshold_s: float = 0.05
-    price_anomaly_stddev: float = 6.0
-    price_window: int = 50
-    price_min_samples: int = 20
-    price_reseed_after: int = 8
-    price_sigma_floor_rel: float = 2e-4
-    price_reseed_band_rel: float = 0.01
-    max_future_skew_s: float = 1.0
-    seq_jump_limit: int = 1 << 24
-    dedup_cache_size: int = 200_000
+    staleness_threshold_s: float = DEFAULT_STALENESS_THRESHOLD_S
+    price_anomaly_stddev: float = DEFAULT_PRICE_ANOMALY_STDDEV
+    price_window: int = DEFAULT_PRICE_WINDOW
+    price_min_samples: int = DEFAULT_PRICE_MIN_SAMPLES
+    price_reseed_after: int = DEFAULT_PRICE_RESEED_AFTER
+    price_sigma_floor_rel: float = DEFAULT_PRICE_SIGMA_FLOOR_REL
+    price_reseed_band_rel: float = DEFAULT_PRICE_RESEED_BAND_REL
+    max_future_skew_s: float = DEFAULT_MAX_FUTURE_SKEW_S
+    seq_jump_limit: int = DEFAULT_SEQ_JUMP_LIMIT
+    dedup_cache_size: int = DEFAULT_DEDUP_CACHE_SIZE
     allow_negative: bool = False
     unseq_dup_status: str = "SUSPICIOUS"
     asset_classes: Dict[str, Dict[str, float]] = field(default_factory=dict)
@@ -92,27 +115,27 @@ class QualityConfig:
 
 @dataclass
 class BBOConfig:
-    quote_ttl_s: float = 2.0
+    quote_ttl_s: float = DEFAULT_QUOTE_TTL_S
 
 
 @dataclass
 class WatchdogConfig:
-    silence_threshold_s: float = 2.0
-    degradation_threshold: float = 0.90
-    recovery_threshold: float = 0.93
+    silence_threshold_s: float = DEFAULT_SILENCE_THRESHOLD_S
+    degradation_threshold: float = DEFAULT_DEGRADATION_THRESHOLD
+    recovery_threshold: float = DEFAULT_RECOVERY_THRESHOLD
 
 
 @dataclass
 class StorageConfig:
-    batch_size: int = 500
+    batch_size: int = DEFAULT_STORAGE_BATCH_SIZE
     wal_mode: bool = True
     synchronous: str = "NORMAL"
 
 
 @dataclass
 class SecurityConfig:
-    rate_limit_per_sec: float = 20_000.0
-    rate_limit_capacity: float = 40_000.0
+    rate_limit_per_sec: float = DEFAULT_RATE_LIMIT_PER_SEC
+    rate_limit_capacity: float = DEFAULT_RATE_LIMIT_CAPACITY
     require_hmac: bool = False
     audit_hash_algorithm: str = "sha256"
 
