@@ -49,8 +49,17 @@ if TYPE_CHECKING:
     from watchdog import SourceWatchdog
     from security import SecurityManager
 
-# Maximum number of buffered events before triggering an automatic batch write
-BATCH_SIZE = 2000
+# ---------------------------------------------------------------------------
+# Pipeline Orchestration & Memory Tuning Constants (Spec §14 & §26)
+# ---------------------------------------------------------------------------
+DEFAULT_BATCH_SIZE: int = 2000
+BATCH_SIZE: int = DEFAULT_BATCH_SIZE  # Backward-compatible module alias
+DEFAULT_FLUSH_INTERVAL_S: float = 1.0
+MAX_QUARANTINE_PAYLOAD_BYTES: int = 65536  # 64 KiB safety collar against storage DoS
+DEFAULT_GC_GEN0_THRESHOLD: int = 50_000
+DEFAULT_GC_GEN1_THRESHOLD: int = 10
+DEFAULT_GC_GEN2_THRESHOLD: int = 10
+INV_NS_PER_SECOND: float = 1e-9  # Inverse nanoseconds multiplier for zero-division latency calculation
 
 # Precomputed immutable JSON strings: eliminates per-event serialization overhead
 _VALIDATIONS_RUN_JSON = json.dumps(
@@ -100,7 +109,11 @@ def tuned_gc():
     """Context manager for elevated gen-0 GC threshold during hot paths, restored on exit."""
     old = gc.get_threshold()
     try:
-        gc.set_threshold(50_000, 10, 10)
+        gc.set_threshold(
+            DEFAULT_GC_GEN0_THRESHOLD,
+            DEFAULT_GC_GEN1_THRESHOLD,
+            DEFAULT_GC_GEN2_THRESHOLD,
+        )
         yield
     finally:
         gc.set_threshold(*old)
@@ -109,13 +122,13 @@ def tuned_gc():
 def _safe_payload_json(payload: Any) -> str:
     """Truncate payloads > 64 KiB with sha256 metadata to prevent storage DoS."""
     s = json.dumps(payload, default=str)
-    if len(s) > 65536:
+    if len(s) > MAX_QUARANTINE_PAYLOAD_BYTES:
         h = hashlib.sha256(s.encode("utf-8")).hexdigest()
         return json.dumps({
             "truncated": True,
             "sha256": h,
             "orig_bytes": len(s),
-            "prefix": s[:65536],
+            "prefix": s[:MAX_QUARANTINE_PAYLOAD_BYTES],
         })
     return s
 
@@ -133,7 +146,7 @@ class Pipeline:
         bbo: BBOEngine | None = None,
         watchdog: SourceWatchdog | None = None,
         security: SecurityManager | None = None,
-        flush_interval_s: float = 1.0,
+        flush_interval_s: float = DEFAULT_FLUSH_INTERVAL_S,
     ):
         self.store = store
         if quality is not None:
@@ -334,7 +347,11 @@ class Pipeline:
                 )
             )
 
-        raw_id_json = json.dumps([event.raw_id])
+        raw_id_json = (
+            f"[{event.raw_id}]"
+            if isinstance(event.raw_id, int)
+            else json.dumps([event.raw_id])
+        )
         self._enqueue_lineage(
             (
                 event.event_id,
@@ -355,11 +372,11 @@ class Pipeline:
 
         t_end_ns = time.perf_counter_ns()
         e2e_latency = event.receive_timestamp - event.exchange_timestamp
-        proc_latency = (t_end_ns - t_start_ns) / 1_000_000_000.0
-        ingest_latency = (t_norm_ns - t_start_ns) / 1_000_000_000.0
-        quality_latency = (t_qual_ns - t_norm_ns) / 1_000_000_000.0
-        reconcile_latency = (t_rec_ns - t_qual_ns) / 1_000_000_000.0
-        enqueue_latency = (t_end_ns - t_rec_ns) / 1_000_000_000.0
+        proc_latency = (t_end_ns - t_start_ns) * INV_NS_PER_SECOND
+        ingest_latency = (t_norm_ns - t_start_ns) * INV_NS_PER_SECOND
+        quality_latency = (t_qual_ns - t_norm_ns) * INV_NS_PER_SECOND
+        reconcile_latency = (t_rec_ns - t_qual_ns) * INV_NS_PER_SECOND
+        enqueue_latency = (t_end_ns - t_rec_ns) * INV_NS_PER_SECOND
 
         self.metrics.record(
             e2e_latency,
@@ -468,9 +485,9 @@ class Pipeline:
                 for ev in valid_events:
                     self.quality.evaluate(ev)
             t_qual_end_ns = time.perf_counter_ns()
-            avg_qual_latency_s = (t_qual_end_ns - t_qual_start_ns) / (
-                len(valid_events) * 1_000_000_000.0
-            )
+            avg_qual_latency_s = (
+                (t_qual_end_ns - t_qual_start_ns) * INV_NS_PER_SECOND
+            ) / len(valid_events)
         else:
             avg_qual_latency_s = 0.0
 
@@ -514,7 +531,11 @@ class Pipeline:
                     )
                 )
 
-            raw_id_json = json.dumps([event.raw_id])
+            raw_id_json = (
+                f"[{event.raw_id}]"
+                if isinstance(event.raw_id, int)
+                else json.dumps([event.raw_id])
+            )
             self._enqueue_lineage(
                 (
                     event.event_id,
@@ -535,10 +556,10 @@ class Pipeline:
 
             t_end_ns = time.perf_counter_ns()
             e2e_latency = event.receive_timestamp - event.exchange_timestamp
-            proc_latency = (t_end_ns - t_start_ns) / 1_000_000_000.0
-            ingest_latency = (t_norm_ns - t_start_ns) / 1_000_000_000.0
-            reconcile_latency = (t_rec_end_ns - t_rec_start_ns) / 1_000_000_000.0
-            enqueue_latency = (t_end_ns - t_rec_end_ns) / 1_000_000_000.0
+            proc_latency = (t_end_ns - t_start_ns) * INV_NS_PER_SECOND
+            ingest_latency = (t_norm_ns - t_start_ns) * INV_NS_PER_SECOND
+            reconcile_latency = (t_rec_end_ns - t_rec_start_ns) * INV_NS_PER_SECOND
+            enqueue_latency = (t_end_ns - t_rec_end_ns) * INV_NS_PER_SECOND
 
             self.metrics.record(
                 e2e_latency,
