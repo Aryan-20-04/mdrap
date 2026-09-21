@@ -13,11 +13,11 @@ __pycache__/
 *.obj
 *.so
 *.dylib
+*.dll
 *.a
 *.lib
 *.exp
 _fastpath_native.*
-# Note: src/fastpath.dll is tracked as a precompiled baseline; ignore temporary builds
 build/
 dist/
 bin/
