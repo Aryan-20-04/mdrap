@@ -19,10 +19,33 @@ from typing import Iterator, List, Optional
 from models import RawEvent
 
 
+# ---------------------------------------------------------------------------
+# Simulator Default Configuration & Fault Injection Parameters (Spec §26)
+# ---------------------------------------------------------------------------
+DEFAULT_SIM_SEED: int = 42
+DEFAULT_SIM_NUM_EVENTS: int = 100_000
+DEFAULT_START_PRICE: float = 100.0
+
+START_PRICE_NSE: float = 2400.0
+START_PRICE_XETRA: float = 140.0
+START_PRICE_TSE: float = 3200.0
+START_PRICE_GLOBAL: float = 250.0
+
+DEFAULT_DUPLICATE_RATE: float = 0.002
+DEFAULT_MISSING_RATE: float = 0.001  # sequence numbers skipped (never emitted)
+DEFAULT_OUT_OF_ORDER_RATE: float = 0.0005  # events emitted with a timestamp behind the last one
+DEFAULT_MALFORMED_RATE: float = 0.0005  # payload missing/garbage fields
+DEFAULT_PRICE_ANOMALY_RATE: float = 0.0005  # deliberate extreme price spike
+DEFAULT_CROSSED_QUOTE_RATE: float = 0.0003  # bid > ask
+DEFAULT_QUOTE_RATIO: float = 0.5  # fraction of events that are QUOTE vs TRADE
+DEFAULT_MEAN_LATENCY_S: float = 0.0008  # simulated network delay, exchange->receive
+DEFAULT_LATENCY_JITTER_S: float = 0.0006
+
+
 @dataclass
 class SimulatorConfig:
-    seed: int = 42
-    num_events: int = 100_000
+    seed: int = DEFAULT_SIM_SEED
+    num_events: int = DEFAULT_SIM_NUM_EVENTS
     instruments: List[str] = field(
         default_factory=lambda: [
             "AAPL",
@@ -36,7 +59,7 @@ class SimulatorConfig:
         ]
     )
     sources: List[str] = field(default_factory=lambda: ["FEEDX", "FEEDY", "FEEDZ"])
-    start_price: float = 100.0
+    start_price: float = DEFAULT_START_PRICE
     market: str = "us"  # 'us', 'nse', 'xetra', 'tse', 'global'
 
     def __post_init__(self):
@@ -50,8 +73,10 @@ class SimulatorConfig:
                 "ICICIBANK.NS",
                 "TATAMOTORS.NS",
             ]
-            if self.start_price == 100.0:
-                self.start_price = 2400.0
+            if self.start_price == DEFAULT_START_PRICE:
+                self.start_price = START_PRICE_NSE
+            if self.start_price == DEFAULT_START_PRICE:
+                self.start_price = START_PRICE_NSE
         elif m in ("xetra", "germany", "de", "eurex"):
             self.instruments = [
                 "SAP.DE",
@@ -61,12 +86,12 @@ class SimulatorConfig:
                 "ALV.DE",
                 "MBG.DE",
             ]
-            if self.start_price == 100.0:
-                self.start_price = 140.0
+            if self.start_price == DEFAULT_START_PRICE:
+                self.start_price = START_PRICE_XETRA
         elif m in ("tse", "japan", "jp", "jpx"):
             self.instruments = ["7203.T", "6758.T", "9984.T", "8306.T", "6861.T"]
-            if self.start_price == 100.0:
-                self.start_price = 3200.0
+            if self.start_price == DEFAULT_START_PRICE:
+                self.start_price = START_PRICE_TSE
         elif m in ("global", "world", "all"):
             self.instruments = [
                 "AAPL",
@@ -78,21 +103,19 @@ class SimulatorConfig:
                 "7203.T",
                 "6758.T",
             ]
-            if self.start_price == 100.0:
-                self.start_price = 250.0
+            if self.start_price == DEFAULT_START_PRICE:
+                self.start_price = START_PRICE_GLOBAL
 
-    duplicate_rate: float = 0.002
-    missing_rate: float = 0.001  # sequence numbers skipped (never emitted)
-    out_of_order_rate: float = (
-        0.0005  # events emitted with a timestamp behind the last one
-    )
-    malformed_rate: float = 0.0005  # payload missing/garbage fields
-    price_anomaly_rate: float = 0.0005  # deliberate extreme price spike
-    crossed_quote_rate: float = 0.0003  # bid > ask
+    duplicate_rate: float = DEFAULT_DUPLICATE_RATE
+    missing_rate: float = DEFAULT_MISSING_RATE
+    out_of_order_rate: float = DEFAULT_OUT_OF_ORDER_RATE
+    malformed_rate: float = DEFAULT_MALFORMED_RATE
+    price_anomaly_rate: float = DEFAULT_PRICE_ANOMALY_RATE
+    crossed_quote_rate: float = DEFAULT_CROSSED_QUOTE_RATE
 
-    quote_ratio: float = 0.5  # fraction of events that are QUOTE vs TRADE
-    mean_latency_s: float = 0.0008  # simulated network delay, exchange->receive
-    latency_jitter_s: float = 0.0006
+    quote_ratio: float = DEFAULT_QUOTE_RATIO
+    mean_latency_s: float = DEFAULT_MEAN_LATENCY_S
+    latency_jitter_s: float = DEFAULT_LATENCY_JITTER_S
 
     # Ground-truth counters get attached to the config instance after a run
     # (see FeedSimulator.injected) so the benchmark harness can score
