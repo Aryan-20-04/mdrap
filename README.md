@@ -111,7 +111,7 @@ flowchart TD
 ### 2. Native C Hot-Path Accelerator (`fastpath.c`)
 - Pure C implementation compiled into native shared library (`_fastpath_native.dll`).
 - **Lazy 96-Byte Slot Allocation**: Contiguous memory indexing with bounded chunk pools and zero startup RSS bloat.
-- **Measured Latency Profile**: **24.4 ns/event** in sequenced batch C kernel; **~50 ns** single evaluation; **~16 µs** Python in-memory pipeline; **~0.8 ms** durable SQLite WAL commits.
+- **Measured Latency Profile**: **24.4–37.5 ns/event** in sequenced batch C kernel; **~50 ns** single evaluation; **~15.3–16 µs** Python in-memory pipeline; **~0.8 ms** durable SQLite WAL commits. See [Benchmark Methodology](docs/benchmark-methodology.md) for stage-by-stage measurement proofs and committed JSON reports.
 - Seamless, transparent boundary fallback to pure Python if instrument universe exceeds 8,192 symbols.
 
 ### 3. Direct High-Throughput Streaming Feed Handlers (`src/polygon_feed.py`, `src/databento_feed.py`, `src/feed_handler.py`)
