@@ -25,6 +25,30 @@ from typing import Any
 from models import CanonicalEvent, EventType, QualityStatus
 
 
+# ---------------------------------------------------------------------------
+# Institutional Constants & Market Microstructure Parameters (Spec §26)
+# ---------------------------------------------------------------------------
+BPS_FACTOR: float = 10_000.0  # 1 basis point = 0.01% = 1/10,000
+DEFAULT_TICK_SIZE: float = 0.01  # Standard equity minimum tick size ($0.01)
+DEFAULT_INITIAL_CAPITAL: float = 100_000.0  # Default paper trading capital ($100,000)
+DEFAULT_MAX_POSITION_SIZE: float = 5000.0  # Max absolute shares in any single instrument
+DEFAULT_MAX_ORDER_SIZE: float = 1000.0  # Max shares per individual order (fat-finger collar)
+DEFAULT_PRICE_COLLAR_BPS: float = 50.0  # 50 bps max deviation from mid (0.50%)
+DEFAULT_MAX_DRAWDOWN_PCT: float = 5.0  # Kill-switch if portfolio drawdown exceeds 5%
+DEFAULT_BOOK_DEPTH_LEVELS: int = 5  # Realistic multi-tier synthetic depth ladder rungs
+DEFAULT_BOOK_DEPTH_STEP_RATIO: float = 0.0005  # ~5 bps price spacing per synthetic ladder rung
+DEFAULT_BOOK_DEPTH_SIZE_MULTIPLIER: float = 0.35  # 35% depth volume increase per rung away from NBBO
+DEFAULT_WHALE_NOTIONAL_USD: float = 100_000.0  # Institutional block print threshold ($100k)
+DEFAULT_WHALE_QUANTITY: float = 500.0  # Institutional block share count threshold
+DEFAULT_QUEUE_MAXLEN: int = 10_000  # Execution telemetry buffer capacity
+DEFAULT_FALLBACK_PRICE: float = 100.0  # Baseline fallback price for unquoted book walking
+AS_MM_INVENTORY_SKEW_SCALE: float = 0.05  # Avellaneda-Stoikov inventory skew scaling factor
+AS_MM_TOXIC_SPREAD_MULTIPLIER: float = 3.0  # Spread widening factor under SUSPICIOUS toxic flow
+AS_MM_REBALANCE_INVENTORY_RATIO: float = 0.50  # 50% max inventory triggers asymmetric single-sided quote
+AS_MM_DERISK_INVENTORY_RATIO: float = 0.80  # 80% max inventory triggers urgent inventory de-risking
+AS_MM_DEFAULT_VOLATILITY: float = 0.001  # Baseline fallback volatility sigma (~10 bps)
+
+
 class OrderSide(str, enum.Enum):
     BUY = "BUY"
     SELL = "SELL"
@@ -102,7 +126,7 @@ class OrderBook:
         bid_size: float = 100.0,
         ask_size: float = 100.0,
         timestamp: float = 0.0,
-        depth_levels: int = 5,
+        depth_levels: int = DEFAULT_BOOK_DEPTH_LEVELS,
     ) -> None:
         """Update top-of-book and synthesize realistic multi-tier depth levels."""
         self.last_update = timestamp or time.time()
@@ -116,18 +140,18 @@ class OrderBook:
 
         # Reconstruct realistic depth rungs stepping away from NBBO
         if bid_price and bid_price > 0:
-            step = max(0.01, round(bid_price * 0.0005, 2))  # ~5 bps per rung
+            step = max(DEFAULT_TICK_SIZE, round(bid_price * DEFAULT_BOOK_DEPTH_STEP_RATIO, 2))  # ~5 bps per rung
             for lvl in range(1, depth_levels):
                 px = round(bid_price - (lvl * step), 2)
                 if px > 0:
-                    sz = round(bid_size * (1.0 + 0.35 * lvl), 1)
+                    sz = round(bid_size * (1.0 + DEFAULT_BOOK_DEPTH_SIZE_MULTIPLIER * lvl), 1)
                     self._bids[px] = sz
 
         if ask_price and ask_price > 0:
-            step = max(0.01, round(ask_price * 0.0005, 2))
+            step = max(DEFAULT_TICK_SIZE, round(ask_price * DEFAULT_BOOK_DEPTH_STEP_RATIO, 2))
             for lvl in range(1, depth_levels):
                 px = round(ask_price + (lvl * step), 2)
-                sz = round(ask_size * (1.0 + 0.35 * lvl), 1)
+                sz = round(ask_size * (1.0 + DEFAULT_BOOK_DEPTH_SIZE_MULTIPLIER * lvl), 1)
                 self._asks[px] = sz
 
     def update_level(self, side: OrderSide | str, price: float, size: float) -> None:
@@ -177,7 +201,7 @@ class OrderBook:
     def spread_bps(self) -> float:
         mid = self.mid_price
         if mid > 0:
-            return (self.spread / mid) * 10_000.0
+            return (self.spread / mid) * BPS_FACTOR
         return 0.0
 
     @property
@@ -200,7 +224,7 @@ class OrderBook:
         return 0.0
 
     def get_ladder(
-        self, depth: int = 5
+        self, depth: int = DEFAULT_BOOK_DEPTH_LEVELS
     ) -> tuple[list[tuple[float, float]], list[tuple[float, float]]]:
         """Returns top N bids (descending) and asks (ascending) as [(price, size), ...]."""
         sorted_bids = sorted(self._bids.items(), key=lambda x: x[0], reverse=True)[
@@ -229,7 +253,7 @@ class OrderBook:
         )
 
         if not levels:
-            top_px = self.mid_price or 100.0
+            top_px = self.mid_price or DEFAULT_FALLBACK_PRICE
             return top_px, 0.0, 0.0, 0.0, []
 
         best_px = levels[0][0]
@@ -249,11 +273,11 @@ class OrderBook:
             rungs_consumed.append({"price": px, "size": fill_sz, "available": sz})
 
         if remaining > 0:
-            penalty_step = max(0.01, best_px * 0.0005)
+            penalty_step = max(DEFAULT_TICK_SIZE, best_px * DEFAULT_BOOK_DEPTH_STEP_RATIO)
             deep_px = (
                 (levels[-1][0] + penalty_step)
                 if is_buy
-                else max(0.01, levels[-1][0] - penalty_step)
+                else max(DEFAULT_TICK_SIZE, levels[-1][0] - penalty_step)
             )
             total_notional += remaining * deep_px
             rungs_consumed.append(
@@ -265,19 +289,19 @@ class OrderBook:
         if is_buy:
             slippage_usd = max(0.0, (vwap_px - arrival_px) * quantity)
             slippage_bps = (
-                ((vwap_px - arrival_px) / arrival_px * 10_000.0)
+                ((vwap_px - arrival_px) / arrival_px * BPS_FACTOR)
                 if arrival_px > 0
                 else 0.0
             )
-            eff_spread_bps = ((vwap_px - mid) / mid * 10_000.0) if mid > 0 else 0.0
+            eff_spread_bps = ((vwap_px - mid) / mid * BPS_FACTOR) if mid > 0 else 0.0
         else:
             slippage_usd = max(0.0, (arrival_px - vwap_px) * quantity)
             slippage_bps = (
-                ((arrival_px - vwap_px) / arrival_px * 10_000.0)
+                ((arrival_px - vwap_px) / arrival_px * BPS_FACTOR)
                 if arrival_px > 0
                 else 0.0
             )
-            eff_spread_bps = ((mid - vwap_px) / mid * 10_000.0) if mid > 0 else 0.0
+            eff_spread_bps = ((mid - vwap_px) / mid * BPS_FACTOR) if mid > 0 else 0.0
 
         return (
             round(vwap_px, 4),
@@ -287,7 +311,7 @@ class OrderBook:
             rungs_consumed,
         )
 
-    def snapshot(self, depth: int = 5) -> OrderBookSnapshot:
+    def snapshot(self, depth: int = DEFAULT_BOOK_DEPTH_LEVELS) -> OrderBookSnapshot:
         """Captures a serializable snapshot of the order book state."""
         bids, asks = self.get_ladder(depth)
         best_bid_px, _ = self.best_bid
@@ -383,12 +407,12 @@ class Position:
 class RiskLimits:
     """Pre-trade risk controls protecting firm capital."""
 
-    max_position_size: float = 5000.0  # Max absolute shares in any single instrument
-    max_order_size: float = 1000.0  # Max shares per individual order (fat-finger guard)
+    max_position_size: float = DEFAULT_MAX_POSITION_SIZE  # Max absolute shares in any single instrument
+    max_order_size: float = DEFAULT_MAX_ORDER_SIZE  # Max shares per individual order (fat-finger guard)
     price_collar_bps: float = (
-        50.0  # Max allowed deviation from NBBO midpoint (50 bps = 0.50%)
+        DEFAULT_PRICE_COLLAR_BPS  # Max allowed deviation from NBBO midpoint (50 bps = 0.50%)
     )
-    max_drawdown_pct: float = 5.0  # Kill-switch if portfolio drawdown exceeds 5%
+    max_drawdown_pct: float = DEFAULT_MAX_DRAWDOWN_PCT  # Kill-switch if portfolio drawdown exceeds 5%
     allow_short: bool = True  # Whether short selling is enabled
 
 
@@ -399,7 +423,7 @@ class RiskManager:
     """
 
     def __init__(
-        self, limits: RiskLimits | None = None, initial_capital: float = 100_000.0
+        self, limits: RiskLimits | None = None, initial_capital: float = DEFAULT_INITIAL_CAPITAL
     ):
         self.limits = limits or RiskLimits()
         self.initial_capital = initial_capital
@@ -467,7 +491,7 @@ class RiskManager:
             and current_mid is not None
             and current_mid > 0
         ):
-            deviation_bps = abs(order.price - current_mid) / current_mid * 10_000.0
+            deviation_bps = abs(order.price - current_mid) / current_mid * BPS_FACTOR
             if deviation_bps > self.limits.price_collar_bps:
                 return (
                     False,
@@ -485,16 +509,16 @@ class PaperExecutor:
 
     def __init__(
         self,
-        initial_cash: float = 100_000.0,
+        initial_cash: float = DEFAULT_INITIAL_CAPITAL,
         risk_manager: RiskManager | None = None,
     ):
         self.initial_cash = initial_cash
         self.cash = initial_cash
         self.risk_manager = risk_manager or RiskManager(initial_capital=initial_cash)
         self.positions: dict[str, Position] = {}
-        self.orders: deque[Order] = deque(maxlen=10_000)
-        self.fills: deque[dict[str, Any]] = deque(maxlen=10_000)
-        self.equity_curve: deque[tuple[float, float]] = deque(maxlen=10_000)  # (timestamp, equity)
+        self.orders: deque[Order] = deque(maxlen=DEFAULT_QUEUE_MAXLEN)
+        self.fills: deque[dict[str, Any]] = deque(maxlen=DEFAULT_QUEUE_MAXLEN)
+        self.equity_curve: deque[tuple[float, float]] = deque(maxlen=DEFAULT_QUEUE_MAXLEN)  # (timestamp, equity)
         self._order_counter = 0
         self._total_trades = 0
         self._win_count = 0
@@ -552,14 +576,14 @@ class PaperExecutor:
                 arrival_px = mid
             current_px = mid
             order.arrival_price = arrival_px
-            order.order_book_snapshot = order_book.snapshot(depth=5)
+            order.order_book_snapshot = order_book.snapshot(depth=DEFAULT_BOOK_DEPTH_LEVELS)
         elif bbo is not None and "bid" in bbo and "ask" in bbo:
             mid = (bbo["bid"] + bbo["ask"]) / 2.0
             arrival_px = bbo["ask"] if side == OrderSide.BUY else bbo["bid"]
             current_px = mid
             order.arrival_price = arrival_px
         else:
-            mid = pos.avg_cost or 100.0
+            mid = pos.avg_cost or DEFAULT_FALLBACK_PRICE
             arrival_px = mid
             current_px = mid
             order.arrival_price = arrival_px
@@ -623,32 +647,32 @@ class PaperExecutor:
                 if side == OrderSide.BUY:
                     arrival_px = ask
                     impact = (
-                        max(0.0, (quantity - ask_sz) / 10_000.0) * 0.01
+                        max(0.0, (quantity - ask_sz) / BPS_FACTOR) * DEFAULT_TICK_SIZE
                         if quantity > ask_sz
                         else 0.0
                     )
                     fill_price = ask + impact
                     slippage_bps = (
-                        ((fill_price - arrival_px) / arrival_px) * 10_000.0
+                        ((fill_price - arrival_px) / arrival_px) * BPS_FACTOR
                         if arrival_px > 0
                         else 0.0
                     )
                 else:
                     arrival_px = bid
                     impact = (
-                        max(0.0, (quantity - bid_sz) / 10_000.0) * 0.01
+                        max(0.0, (quantity - bid_sz) / BPS_FACTOR) * DEFAULT_TICK_SIZE
                         if quantity > bid_sz
                         else 0.0
                     )
                     fill_price = bid - impact
                     slippage_bps = (
-                        ((arrival_px - fill_price) / arrival_px) * 10_000.0
+                        ((arrival_px - fill_price) / arrival_px) * BPS_FACTOR
                         if arrival_px > 0
                         else 0.0
                     )
                 slippage_usd = abs(fill_price - arrival_px) * quantity
                 eff_spread_bps = (
-                    (abs(fill_price - mid) / mid * 10_000.0) if mid > 0 else 0.0
+                    (abs(fill_price - mid) / mid * BPS_FACTOR) if mid > 0 else 0.0
                 )
             elif order_type == OrderType.LIMIT:
                 if price is not None:
@@ -661,7 +685,7 @@ class PaperExecutor:
                         self.orders.append(order)
                         return order
         else:
-            fill_price = price if price is not None else 100.0
+            fill_price = price if price is not None else DEFAULT_FALLBACK_PRICE
 
         if fill_price is not None:
             order.effective_spread_bps = eff_spread_bps
@@ -1190,7 +1214,7 @@ class SpreadCaptureMarketMaker(Strategy):
 
         spread = event.ask_price - event.bid_price
         mid = (event.bid_price + event.ask_price) / 2.0
-        spread_bps = (spread / mid) * 10_000.0
+        spread_bps = (spread / mid) * BPS_FACTOR
 
         pos = self.executor.get_position(inst)
 
@@ -1198,7 +1222,7 @@ class SpreadCaptureMarketMaker(Strategy):
         if spread_bps >= self.min_spread_bps:
             if pos.quantity <= 0:
                 # Quote buy limit just above bid
-                buy_px = round(event.bid_price + 0.01, 2)
+                buy_px = round(event.bid_price + DEFAULT_TICK_SIZE, 2)
                 self.buy(
                     inst,
                     self.quote_size,
@@ -1207,7 +1231,7 @@ class SpreadCaptureMarketMaker(Strategy):
                 )
             if pos.quantity >= 0:
                 # Quote sell limit just below ask
-                sell_px = round(event.ask_price - 0.01, 2)
+                sell_px = round(event.ask_price - DEFAULT_TICK_SIZE, 2)
                 self.sell(
                     inst,
                     self.quote_size,
@@ -1301,9 +1325,9 @@ class AvellanedaStoikovStrategy(Strategy):
                 var = sum((r - mean_ret) ** 2 for r in returns) / len(returns)
                 sigma = math.sqrt(max(1e-8, var))
             else:
-                sigma = 0.001
+                sigma = AS_MM_DEFAULT_VOLATILITY
         else:
-            sigma = 0.001
+            sigma = AS_MM_DEFAULT_VOLATILITY
         self._volatilities[inst] = sigma
 
         # Order Book Imbalance (OBI) & Micro-Price
@@ -1318,21 +1342,21 @@ class AvellanedaStoikovStrategy(Strategy):
         # 1. Avellaneda-Stoikov Reservation Price with Micro-Price & Inventory Skew
         # When long (q > 0), reservation price drops below mid to attract sell flow.
         # When short (q < 0), reservation price rises above mid to attract buy flow.
-        tick_size = 0.01
+        tick_size = DEFAULT_TICK_SIZE
         base_half = max(tick_size, spread / 2.0)
-        vol_scale = max(0.01, sigma * mid)
-        inventory_skew = q * self.gamma * (vol_scale * 0.05)
+        vol_scale = max(tick_size, sigma * mid)
+        inventory_skew = q * self.gamma * (vol_scale * AS_MM_INVENTORY_SKEW_SCALE)
         reservation_price = micro_price - inventory_skew
         self.reservation_prices[inst] = reservation_price
 
         # 2. Optimal Half-Spread (delta)
         half_spread = max(tick_size, spread / 2.0)
 
-        # Adverse Selection Guard: widen by 3x on SUSPICIOUS quality flag
+        # Adverse Selection Guard: widen on SUSPICIOUS quality flag
         is_suspicious = getattr(event, "quality_status", QualityStatus.VALID) == QualityStatus.SUSPICIOUS
         self.toxic_flow_detected[inst] = is_suspicious
         if is_suspicious:
-            half_spread *= 3.0
+            half_spread *= AS_MM_TOXIC_SPREAD_MULTIPLIER
 
         self.optimal_spreads[inst] = half_spread * 2.0
 
@@ -1353,14 +1377,14 @@ class AvellanedaStoikovStrategy(Strategy):
         # If long (q >= 50% max_inventory), only quote passive sell limit to rebalance
         # If short (q <= -50% max_inventory), only quote passive buy limit to rebalance
         # Otherwise post two-sided market
-        if q >= self.max_inventory * 0.5:
+        if q >= self.max_inventory * AS_MM_REBALANCE_INVENTORY_RATIO:
             self.sell(
                 inst,
                 self.quote_size,
                 price=ask_px,
                 reason=f"AS-MM Shed Long (q={q:.0f}, r={reservation_price:.2f})",
             )
-        elif q <= -self.max_inventory * 0.5:
+        elif q <= -self.max_inventory * AS_MM_REBALANCE_INVENTORY_RATIO:
             self.buy(
                 inst,
                 self.quote_size,
@@ -1372,13 +1396,13 @@ class AvellanedaStoikovStrategy(Strategy):
                 inst,
                 self.quote_size,
                 price=bid_px,
-                reason=f"AS-MM Bid (q={q:.0f}, r={reservation_price:.2f}, σ={sigma*1e4:.1f}bps)",
+                reason=f"AS-MM Bid (q={q:.0f}, r={reservation_price:.2f}, σ={sigma*BPS_FACTOR:.1f}bps)",
             )
             self.sell(
                 inst,
                 self.quote_size,
                 price=ask_px,
-                reason=f"AS-MM Ask (q={q:.0f}, r={reservation_price:.2f}, σ={sigma*1e4:.1f}bps)",
+                reason=f"AS-MM Ask (q={q:.0f}, r={reservation_price:.2f}, σ={sigma*BPS_FACTOR:.1f}bps)",
             )
 
     def on_tick(self, event: CanonicalEvent) -> None:
@@ -1396,7 +1420,7 @@ class AvellanedaStoikovStrategy(Strategy):
         pos.update_market_price(event.price)
 
         # Extreme Inventory De-risking
-        if abs(pos.quantity) >= self.max_inventory * 0.8:
+        if abs(pos.quantity) >= self.max_inventory * AS_MM_DERISK_INVENTORY_RATIO:
             if pos.quantity > 0:
                 self.sell(
                     inst,
@@ -1435,7 +1459,7 @@ class StrategyRunner:
                 # Check for whale print
                 if evt.price and evt.quantity:
                     notional = evt.price * evt.quantity
-                    if notional >= 100_000.0 or evt.quantity >= 500:
+                    if notional >= DEFAULT_WHALE_NOTIONAL_USD or evt.quantity >= DEFAULT_WHALE_QUANTITY:
                         whale_info = {
                             "instrument": evt.instrument_id,
                             "price": evt.price,
