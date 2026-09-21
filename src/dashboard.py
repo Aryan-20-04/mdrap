@@ -106,6 +106,9 @@ class Dashboard:
     ):
         self.pipeline = pipeline
         self.target_events = target_events
+        self.refresh_hz = refresh_hz
+        self._min_interval = 1.0 / max(1.0, float(refresh_hz))
+        self._last_refresh = 0.0
         self._live = Live(
             render(pipeline, target_events), refresh_per_second=refresh_hz, screen=False
         )
@@ -117,5 +120,8 @@ class Dashboard:
     def __exit__(self, *a):
         self._live.__exit__(*a)
 
-    def refresh(self):
-        self._live.update(render(self.pipeline, self.target_events))
+    def refresh(self, force: bool = False):
+        now = time.time()
+        if force or (now - self._last_refresh >= self._min_interval):
+            self._live.update(render(self.pipeline, self.target_events))
+            self._last_refresh = now

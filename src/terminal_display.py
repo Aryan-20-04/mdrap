@@ -936,6 +936,8 @@ class LiveTickerDashboard:
         ) as live:
             count = 0
             stream_iter = iter(event_stream)
+            render_interval_s = 1.0 / max(1, refresh_hz)
+            last_render = 0.0
             while True:
                 # 1. Non-blocking keypress check
                 key = poll_keypress()
@@ -1027,21 +1029,37 @@ class LiveTickerDashboard:
                 self.update_with_event(raw, ev, engine_ns)
                 count += 1
 
-                # Update terminal in place
-                if is_single and target_sym:
-                    live.update(
-                        self.render_single_ticker(
-                            target_sym,
-                            paused=paused,
-                            show_chart=show_chart,
-                            show_depth=show_depth,
+                # Update terminal in place (throttled to refresh_hz)
+                now = time.time()
+                if now - last_render >= render_interval_s:
+                    if is_single and target_sym:
+                        live.update(
+                            self.render_single_ticker(
+                                target_sym,
+                                paused=paused,
+                                show_chart=show_chart,
+                                show_depth=show_depth,
+                            )
                         )
-                    )
-                else:
-                    live.update(self.render_multi_ticker_table(symbols, paused=paused))
+                    else:
+                        live.update(self.render_multi_ticker_table(symbols, paused=paused))
+                    last_render = now
 
                 if limit and count >= limit:
                     break
+
+            # Final terminal update ensuring last state is rendered
+            if is_single and target_sym:
+                live.update(
+                    self.render_single_ticker(
+                        target_sym,
+                        paused=paused,
+                        show_chart=show_chart,
+                        show_depth=show_depth,
+                    )
+                )
+            else:
+                live.update(self.render_multi_ticker_table(symbols, paused=paused))
 
 
 # Convenience alias
