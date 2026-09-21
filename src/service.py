@@ -142,6 +142,7 @@ class MarketDataDaemon:
         self._server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._server_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self._server_sock.bind((self.host, self.port))
+        self.port = self._server_sock.getsockname()[1]
         self._server_sock.listen(64)
         self._server_sock.settimeout(0.2)
 
@@ -172,15 +173,26 @@ class MarketDataDaemon:
 
         if self._server_sock:
             try:
+                self._server_sock.shutdown(socket.SHUT_RDWR)
+            except Exception:
+                pass
+            try:
                 self._server_sock.close()
             except Exception:
                 pass
+
+        if self._server_thread and self._server_thread.is_alive():
+            self._server_thread.join(timeout=2.0)
 
         with self._sub_lock:
             for sess in list(self._sessions.values()):
                 sess.is_alive = False
                 try:
                     sess.queue.put_nowait(None)
+                except Exception:
+                    pass
+                try:
+                    sess.sock.shutdown(socket.SHUT_RDWR)
                 except Exception:
                     pass
                 try:
@@ -233,6 +245,8 @@ class MarketDataDaemon:
                     name="mdrap-client-reader",
                 ).start()
             except (socket.timeout, OSError):
+                if not self._running:
+                    break
                 continue
             except Exception:
                 break

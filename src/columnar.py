@@ -183,40 +183,84 @@ class ColumnarStore:
             escaped_path = abs_path.replace("'", "''")
             max_ts = self.max_timestamp() if incremental else 0.0
 
-            # Attach SQLite database
-            self.con.execute(f"ATTACH '{escaped_path}' AS sqldb (TYPE SQLITE);")
+            # Attempt zero-copy vectorized scan via DuckDB sqlite extension
             try:
+                self.con.execute(f"ATTACH '{escaped_path}' AS sqldb (TYPE SQLITE);")
+                try:
+                    before = self.count()
+                    if incremental and max_ts > 0.0:
+                        self.con.execute(
+                            """
+                            INSERT OR IGNORE INTO canonical_ticks
+                            SELECT 
+                                event_id, instrument_id, event_type,
+                                exchange_timestamp, receive_timestamp, processing_timestamp,
+                                source, sequence_number, price, quantity,
+                                bid_price, bid_size, ask_price, ask_size,
+                                quality_status, reasons, raw_id
+                            FROM sqldb.canonical_events
+                            WHERE exchange_timestamp >= ?;
+                        """,
+                            [max_ts],
+                        )
+                    else:
+                        self.con.execute("""
+                            INSERT OR IGNORE INTO canonical_ticks
+                            SELECT 
+                                event_id, instrument_id, event_type,
+                                exchange_timestamp, receive_timestamp, processing_timestamp,
+                                source, sequence_number, price, quantity,
+                                bid_price, bid_size, ask_price, ask_size,
+                                quality_status, reasons, raw_id
+                            FROM sqldb.canonical_events;
+                        """)
+                    after = self.count()
+                    synced = after - before
+                finally:
+                    self.con.execute("DETACH sqldb;")
+            except Exception:
+                # Offline / missing sqlite_scanner extension fallback: read via stdlib sqlite3
+                import sqlite3
                 before = self.count()
-                if incremental and max_ts > 0.0:
-                    self.con.execute(
-                        """
-                        INSERT OR IGNORE INTO canonical_ticks
-                        SELECT 
-                            event_id, instrument_id, event_type,
-                            exchange_timestamp, receive_timestamp, processing_timestamp,
-                            source, sequence_number, price, quantity,
-                            bid_price, bid_size, ask_price, ask_size,
-                            quality_status, reasons, raw_id
-                        FROM sqldb.canonical_events
-                        WHERE exchange_timestamp >= ?;
-                    """,
-                        [max_ts],
-                    )
-                else:
-                    self.con.execute("""
-                        INSERT OR IGNORE INTO canonical_ticks
-                        SELECT 
-                            event_id, instrument_id, event_type,
-                            exchange_timestamp, receive_timestamp, processing_timestamp,
-                            source, sequence_number, price, quantity,
-                            bid_price, bid_size, ask_price, ask_size,
-                            quality_status, reasons, raw_id
-                        FROM sqldb.canonical_events;
-                    """)
+                with sqlite3.connect(sqlite_path) as s_conn:
+                    s_cursor = s_conn.cursor()
+                    if incremental and max_ts > 0.0:
+                        s_cursor.execute(
+                            """
+                            SELECT 
+                                event_id, instrument_id, event_type,
+                                exchange_timestamp, receive_timestamp, processing_timestamp,
+                                source, sequence_number, price, quantity,
+                                bid_price, bid_size, ask_price, ask_size,
+                                quality_status, reasons, raw_id
+                            FROM canonical_events
+                            WHERE exchange_timestamp >= ?
+                            """,
+                            (max_ts,),
+                        )
+                    else:
+                        s_cursor.execute(
+                            """
+                            SELECT 
+                                event_id, instrument_id, event_type,
+                                exchange_timestamp, receive_timestamp, processing_timestamp,
+                                source, sequence_number, price, quantity,
+                                bid_price, bid_size, ask_price, ask_size,
+                                quality_status, reasons, raw_id
+                            FROM canonical_events
+                            """
+                        )
+                    rows = s_cursor.fetchall()
+                    if rows:
+                        self.con.executemany(
+                            """
+                            INSERT OR IGNORE INTO canonical_ticks
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            """,
+                            rows,
+                        )
                 after = self.count()
                 synced = after - before
-            finally:
-                self.con.execute("DETACH sqldb;")
 
             return synced
 

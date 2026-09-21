@@ -372,6 +372,28 @@ class SHMWriter:
             self.shm = None
 
 
+def _probe_active_epoch(name: str) -> int | None:
+    """Probe active named shared memory segment to verify current epoch without leaking descriptors."""
+    if not HAS_SHM:
+        return None
+    try:
+        try:
+            probe = SharedMemory(name=name, create=False, track=False)
+        except TypeError:
+            probe = SharedMemory(name=name, create=False)
+            try:
+                from multiprocessing import resource_tracker
+                resource_tracker.unregister(probe._name, "shared_memory")
+            except Exception:
+                pass
+        try:
+            return struct.unpack_from("<Q", probe.buf, 16)[0]
+        finally:
+            probe.close()
+    except Exception:
+        return None
+
+
 class SHMReader:
     """
     Sub-microsecond Shared Memory reader (SHM v3).
@@ -437,12 +459,21 @@ class SHMReader:
             return False
 
     def check_epoch_valid(self) -> bool:
-        """Verify that the writer epoch has not changed (i.e. daemon has not restarted)."""
+        """
+        Verify that the writer epoch has not changed (i.e. daemon has not restarted).
+        On POSIX, an unlinked segment remains mapped by old readers; probing the named
+        segment ensures detection when a new writer creates a replacement segment.
+        """
         if not self.shm:
             return False
         try:
             current_epoch = struct.unpack_from("<Q", self.shm.buf, 16)[0]
-            return current_epoch == self.epoch_id
+            if current_epoch != self.epoch_id:
+                return False
+            active_epoch = _probe_active_epoch(self.name)
+            if active_epoch is None or active_epoch != self.epoch_id:
+                return False
+            return True
         except Exception:
             return False
 

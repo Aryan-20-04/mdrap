@@ -16,10 +16,9 @@ def running_daemon():
     fd, db_path = tempfile.mkstemp(suffix=".db")
     os.close(fd)
 
-    port = 29876
     daemon = MarketDataDaemon(
         host="127.0.0.1",
-        port=port,
+        port=0,
         db_path=db_path,
         use_live=False,
         sim_speed_eps=10000.0,

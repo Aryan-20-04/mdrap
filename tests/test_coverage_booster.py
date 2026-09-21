@@ -147,6 +147,7 @@ def test_service_terminal_cockpit_frame():
     assert frame is not None
 
 
+@pytest.mark.network
 def test_cli_live_and_research(parser, tmp_path):
     _run_cmd(parser, ["edgar", "profile", "AAPL"])
     _run_cmd(parser, ["edgar", "filings", "AAPL", "-l", "3"])

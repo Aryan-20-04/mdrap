@@ -27,10 +27,9 @@ def temp_db():
 
 @pytest.fixture
 def auth_daemon(temp_db):
-    port = 29880
     daemon = MarketDataDaemon(
         host="127.0.0.1",
-        port=port,
+        port=0,
         db_path=temp_db,
         require_auth=True,
         sim_speed_eps=10000.0,
@@ -172,10 +171,9 @@ def test_rate_limiter_throttles_events(auth_daemon):
 
 def test_backward_compatibility_unauthenticated(temp_db):
     """Verify unauthenticated daemon maintains default unthrottled institutional access."""
-    port = 29881
     daemon = MarketDataDaemon(
         host="127.0.0.1",
-        port=port,
+        port=0,
         db_path=temp_db,
         require_auth=False,
         sim_speed_eps=10000.0,

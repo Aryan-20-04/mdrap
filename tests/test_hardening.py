@@ -15,6 +15,7 @@ import os
 import sys
 import time
 import socket
+import queue
 import tempfile
 import threading
 import pytest
@@ -57,7 +58,7 @@ def test_slow_consumer_queue_isolation():
 
     daemon = MarketDataDaemon(
         host="127.0.0.1",
-        port=19877,
+        port=0,
         db_path=db_path,
         use_live=False,
         sim_speed_eps=0.0,
@@ -74,9 +75,23 @@ def test_slow_consumer_queue_isolation():
 
         # Slow consumer (connects and subscribes, but never reads)
         s_slow = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            s_slow.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 1024)
+        except Exception:
+            pass
         s_slow.connect(("127.0.0.1", daemon.port))
         s_slow.sendall(b"SUBSCRIBE ALL\n")
         time.sleep(0.05)
+
+        # Ensure server session for slow consumer has constrained buffers / queue for deterministic drop on Linux
+        with daemon._sub_lock:
+            for s in daemon._sessions.values():
+                if s.sock != client_fast.sock:
+                    try:
+                        s.sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 1024)
+                    except Exception:
+                        pass
+                    s.queue = queue.Queue(maxsize=50)
 
         # Inject 1,200 events rapidly (exceeding queue maxsize=1000)
         for i in range(1200):
