@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mdrap"
-version = "2.0.2"
+version = "2.1.0"
 description = "Market Data Reliability & Acceleration Platform - Financial market infrastructure for converting noisy market feeds into validated canonical streams"
 readme = "README.md"
 requires-python = ">=3.10"
