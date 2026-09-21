@@ -89,6 +89,10 @@
 #define RING_CHUNK_RINGS 256u
 #define RING_CHUNK_MAX   (TOTAL_SLOTS / RING_CHUNK_RINGS)
 
+/* --- C-3: price corridor constants --- */
+#define MIN_SAMPLES_FOR_VARIANCE 3
+#define WARMUP_PRICE_DEV_RATIO 0.10
+
 #define FASTPATH_ABI_VERSION 5
 
 // Quality Status
@@ -679,7 +683,7 @@ static void evaluate_nolock(FastEngine *eng, const FastEvent *ev, FastResult *re
             const double px = ev->price;
             int anomaly = 0;
             double sd2 = 0.0;
-            if (sl->n >= 3) {
+            if (sl->n >= MIN_SAMPLES_FOR_VARIANCE) {
                 const double mean = sl->mean;
                 double var = sl->m2 * eng->inv_n[sl->n];
                 if (var < 0.0) var = 0.0;
@@ -689,7 +693,7 @@ static void evaluate_nolock(FastEngine *eng, const FastEvent *ev, FastResult *re
                 if (sl->n >= eng->price_min_samples)
                     anomaly = (dev * dev) > (eng->price_anomaly_stddev * eng->price_anomaly_stddev * sd2);  /* no sqrt */
                 else
-                    anomaly = fabs(mean) > 0.0 && fabs(dev) > 0.10 * fabs(mean);   /* warm-up: coarse jump test only */
+                    anomaly = fabs(mean) > 0.0 && fabs(dev) > WARMUP_PRICE_DEV_RATIO * fabs(mean);   /* warm-up: coarse jump test only */
             }
             if (anomaly) {
                 mark(res, STATUS_SUSPICIOUS, REASON_PRICE_ANOMALY);
