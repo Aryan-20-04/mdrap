@@ -236,6 +236,8 @@ def build_core(target_dir: Optional[str] = None, quiet: bool = False) -> bool:
         for inc in unique_incs:
             cmd.extend(["-I", inc])
         cmd.extend(["-o", out_bin, c_source])
+        if sys.platform != "win32":
+            cmd.append("-lm")
     elif compiler == "cl":
         cmd = ["cl.exe", "/O2"]
         for inc in unique_incs:
