@@ -27,6 +27,7 @@ Performance & Concurrency Pragmas:
 from __future__ import annotations
 
 from contextlib import contextmanager
+import hashlib
 import json
 import logging
 import os
@@ -186,9 +187,11 @@ CREATE TABLE IF NOT EXISTS audit_log (
 CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_log(timestamp);
 
 CREATE TABLE IF NOT EXISTS api_keys (
-    token TEXT PRIMARY KEY,
+    token_hash TEXT PRIMARY KEY,
+    key_prefix TEXT NOT NULL DEFAULT '',
     client_id TEXT NOT NULL,
-    tier TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'VIEWER',
+    tier TEXT NOT NULL DEFAULT 'STANDARD',
     rate_limit_eps REAL NOT NULL,
     can_access_l2 INTEGER NOT NULL,
     can_use_binary INTEGER NOT NULL,
@@ -313,6 +316,68 @@ class Store:
                 self.conn.execute("ALTER TABLE audit_log ADD COLUMN format_version INTEGER NOT NULL DEFAULT 2")
             except Exception:
                 pass
+
+            # Auto-migration for api_keys schema (from legacy 'token' column to 'token_hash' + 'role' + 'key_prefix')
+            try:
+                cur_cols = self.conn.execute("PRAGMA table_info(api_keys)").fetchall()
+                col_names = {c[1] for c in cur_cols}
+                if col_names and "token_hash" not in col_names:
+                    # Legacy table exists with 'token' column
+                    self.conn.execute("ALTER TABLE api_keys RENAME TO api_keys_legacy")
+                    self.conn.execute("""
+                        CREATE TABLE api_keys (
+                            token_hash TEXT PRIMARY KEY,
+                            key_prefix TEXT NOT NULL DEFAULT '',
+                            client_id TEXT NOT NULL,
+                            role TEXT NOT NULL DEFAULT 'VIEWER',
+                            tier TEXT NOT NULL DEFAULT 'STANDARD',
+                            rate_limit_eps REAL NOT NULL,
+                            can_access_l2 INTEGER NOT NULL,
+                            can_use_binary INTEGER NOT NULL,
+                            can_use_shm INTEGER NOT NULL,
+                            max_replay_events INTEGER NOT NULL,
+                            is_active INTEGER NOT NULL,
+                            created_at REAL NOT NULL,
+                            expires_at REAL
+                        )
+                    """)
+                    self.conn.execute("CREATE INDEX IF NOT EXISTS idx_api_keys_client ON api_keys(client_id)")
+                    cur_legacy = self.conn.execute("SELECT * FROM api_keys_legacy")
+                    legacy_col_names = [d[0] for d in cur_legacy.description]
+                    legacy_rows = cur_legacy.fetchall()
+                    for r in legacy_rows:
+                        row_dict = dict(zip(legacy_col_names, r))
+                        raw_tok = str(row_dict.get("token") or "")
+                        if not raw_tok:
+                            continue
+                        h = hashlib.sha256(raw_tok.encode("utf-8")).hexdigest()
+                        pfx = raw_tok[:12] + "..." if len(raw_tok) > 12 else raw_tok
+                        client_id = str(row_dict.get("client_id") or "Migrated_Client")
+                        role = str(row_dict.get("role") or "VIEWER")
+                        tier = str(row_dict.get("tier") or "STANDARD")
+                        rate = float(row_dict.get("rate_limit_eps") or 20000.0)
+                        l2 = int(row_dict.get("can_access_l2", 1))
+                        binary = int(row_dict.get("can_use_binary", 1))
+                        shm = int(row_dict.get("can_use_shm", 1))
+                        replay = int(row_dict.get("max_replay_events", 100000))
+                        active = int(row_dict.get("is_active", 1))
+                        created = float(row_dict.get("created_at") or time.time())
+                        expires = row_dict.get("expires_at")
+                        self.conn.execute(
+                            """INSERT OR REPLACE INTO api_keys
+                               (token_hash, key_prefix, client_id, role, tier, rate_limit_eps, can_access_l2, can_use_binary, can_use_shm, max_replay_events, is_active, created_at, expires_at)
+                               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                            (h, pfx, client_id, role, tier, rate, l2, binary, shm, replay, active, created, expires)
+                        )
+                    self.conn.execute("DROP TABLE api_keys_legacy")
+                elif col_names:
+                    if "role" not in col_names:
+                        self.conn.execute("ALTER TABLE api_keys ADD COLUMN role TEXT NOT NULL DEFAULT 'VIEWER'")
+                    if "key_prefix" not in col_names:
+                        self.conn.execute("ALTER TABLE api_keys ADD COLUMN key_prefix TEXT NOT NULL DEFAULT ''")
+            except Exception as e:
+                import logging
+                logging.getLogger("mdrap.storage").warning("Auto-migration notice: %s", e)
             self.conn.commit()
 
             if path != ":memory:":
@@ -1212,16 +1277,37 @@ class Store:
 
     @_synchronized
     def save_api_key(self, ent: Any) -> None:
-        """Save or update a client API key entitlement."""
+        """Save or update a client API key entitlement (stores token_hash, never raw token)."""
         tier_val = getattr(ent, "tier", "STANDARD")
         tier_str = tier_val.value if hasattr(tier_val, "value") else str(tier_val)
+        role_val = getattr(ent, "role", "VIEWER")
+        role_str = role_val.value if hasattr(role_val, "value") else str(role_val)
+
+        raw_token = getattr(ent, "token", "")
+        token_hash = getattr(ent, "token_hash", "")
+        if not token_hash and raw_token:
+            token_hash = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+            ent.token_hash = token_hash
+        if not token_hash:
+            raise ValueError("Cannot persist API key without token or token_hash")
+
+        key_prefix = getattr(ent, "key_prefix", "")
+        if not key_prefix and raw_token:
+            key_prefix = raw_token[:12] + "..." if len(raw_token) > 12 else raw_token
+            ent.key_prefix = key_prefix
+        elif not key_prefix:
+            key_prefix = token_hash[:10] + "..."
+            ent.key_prefix = key_prefix
+
         self.conn.execute(
             """INSERT OR REPLACE INTO api_keys
-               (token, client_id, tier, rate_limit_eps, can_access_l2, can_use_binary, can_use_shm, max_replay_events, is_active, created_at, expires_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               (token_hash, key_prefix, client_id, role, tier, rate_limit_eps, can_access_l2, can_use_binary, can_use_shm, max_replay_events, is_active, created_at, expires_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
-                ent.token,
+                token_hash,
+                key_prefix,
                 ent.client_id,
+                role_str,
                 tier_str,
                 float(ent.rate_limit_eps),
                 1 if getattr(ent, "can_access_l2", True) else 0,
@@ -1238,36 +1324,43 @@ class Store:
     @_synchronized
     def load_api_keys(self) -> list:
         """Load all registered API keys from the store."""
-        from security import ClientEntitlement, Tier
+        from security import ClientEntitlement, Role, Tier
 
         cur = self.conn.execute(
-            """SELECT token, client_id, tier, rate_limit_eps, can_access_l2, can_use_binary, can_use_shm, max_replay_events, is_active, created_at, expires_at
+            """SELECT token_hash, key_prefix, client_id, role, tier, rate_limit_eps, can_access_l2, can_use_binary, can_use_shm, max_replay_events, is_active, created_at, expires_at
                FROM api_keys"""
         )
         results = []
         for row in cur.fetchall():
+            role_raw = row[3]
+            role = Role[role_raw] if role_raw in Role.__members__ else Role.VIEWER
             results.append(
                 ClientEntitlement(
-                    token=row[0],
-                    client_id=row[1],
+                    token_hash=row[0],
+                    key_prefix=row[1],
+                    token=row[0],  # for backward compatibility where ent.token is used in tests/maps
+                    client_id=row[2],
+                    role=role,
                     tier=Tier.STANDARD,
-                    rate_limit_eps=float(row[3]),
-                    can_access_l2=bool(row[4]),
-                    can_use_binary=bool(row[5]),
-                    can_use_shm=bool(row[6]),
-                    max_replay_events=int(row[7]),
-                    is_active=bool(row[8]),
-                    created_at=float(row[9]),
-                    expires_at=float(row[10]) if row[10] is not None else None,
+                    rate_limit_eps=float(row[5]),
+                    can_access_l2=bool(row[6]),
+                    can_use_binary=bool(row[7]),
+                    can_use_shm=bool(row[8]),
+                    max_replay_events=int(row[9]),
+                    is_active=bool(row[10]),
+                    created_at=float(row[11]),
+                    expires_at=float(row[12]) if row[12] is not None else None,
                 )
             )
         return results
 
     @_synchronized
-    def revoke_api_key(self, token: str) -> bool:
-        """Mark an API key as inactive."""
+    def revoke_api_key(self, token_or_hash: str) -> bool:
+        """Mark an API key as inactive by token, token_hash, or key_prefix."""
+        tok_hash = hashlib.sha256(token_or_hash.encode("utf-8")).hexdigest()
         cur = self.conn.execute(
-            "UPDATE api_keys SET is_active = 0 WHERE token = ?", (token,)
+            "UPDATE api_keys SET is_active = 0 WHERE token_hash = ? OR token_hash = ? OR key_prefix = ?",
+            (tok_hash, token_or_hash, token_or_hash),
         )
         self.conn.commit()
         return cur.rowcount > 0

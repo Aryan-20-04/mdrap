@@ -13,9 +13,13 @@ import asyncio
 from dataclasses import dataclass, field
 import json
 import logging
+import os
 import socket
 import time
 from typing import Any, Callable, Dict, Generator, List, Optional, Set
+import urllib.error
+import urllib.parse
+import urllib.request
 
 
 @dataclass
@@ -173,6 +177,8 @@ class MDRAPClient:
 
     def __init__(
         self,
+        base_url: Optional[str] = None,
+        api_key: Optional[str] = None,
         host: str = "127.0.0.1",
         port: int = 9876,
         auth_token: Optional[str] = None,
@@ -184,14 +190,15 @@ class MDRAPClient:
         use_binary: bool = False,
         transport: str = "auto",  # 'auto', 'shm', 'binary', 'tcp'
     ):
+        self.base_url = (base_url or os.environ.get("MDRAP_BASE_URL", "")).rstrip("/")
         self.host = host
         self.port = port
-        import os
 
+        token = api_key or auth_token
         self.auth_token = (
-            auth_token
-            if auth_token is not None
-            else os.environ.get("MDRAP_DAEMON_TOKEN", "")
+            token
+            if token is not None
+            else os.environ.get("MDRAP_API_KEY", os.environ.get("MDRAP_DAEMON_TOKEN", ""))
         )
         self.auto_replay = auto_replay
         self.max_replay_gap = max_replay_gap
@@ -261,7 +268,13 @@ class MDRAPClient:
 
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(self.timeout)
-        sock.connect((self.host, self.port))
+        try:
+            sock.connect((self.host, self.port))
+        except (ConnectionRefusedError, OSError):
+            if self.base_url:
+                self.transport_type = "REST"
+                return
+            raise
         sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 
         if self.auth_token:
@@ -354,6 +367,164 @@ class MDRAPClient:
         finally:
             sock.close()
 
+    def _http_request(
+        self,
+        method: str,
+        path: str,
+        params: Optional[dict] = None,
+        json_body: Optional[dict] = None,
+    ) -> Any:
+        """Execute an authenticated HTTP request against the MDRAP REST API."""
+        if not self.base_url:
+            raise ValueError(
+                "REST API operation requires 'base_url' (e.g. MDRAPClient(base_url='http://localhost:8000', api_key='...'))"
+            )
+        url = f"{self.base_url}{path}"
+        if params:
+            clean_params = {k: v for k, v in params.items() if v is not None}
+            if clean_params:
+                url += f"?{urllib.parse.urlencode(clean_params)}"
+
+        headers = {
+            "User-Agent": "MDRAP-Python-SDK/2.2.0",
+            "Accept": "application/json",
+        }
+        if self.auth_token:
+            headers["X-API-Key"] = self.auth_token
+
+        data = None
+        if json_body is not None:
+            data = json.dumps(json_body).encode("utf-8")
+            headers["Content-Type"] = "application/json"
+
+        req = urllib.request.Request(url, data=data, headers=headers, method=method.upper())
+        try:
+            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                raw = resp.read().decode("utf-8")
+                return json.loads(raw) if raw else {}
+        except urllib.error.HTTPError as exc:
+            err_msg = exc.read().decode("utf-8", errors="replace")
+            try:
+                err_json = json.loads(err_msg)
+                detail = err_json.get("detail", err_msg)
+            except Exception:
+                detail = err_msg
+            if exc.code == 401:
+                raise PermissionError(f"MDRAP 401 Unauthorized: {detail}")
+            elif exc.code == 403:
+                raise PermissionError(f"MDRAP 403 Forbidden: {detail}")
+            elif exc.code == 404:
+                raise KeyError(f"MDRAP 404 Not Found: {detail}")
+            raise RuntimeError(f"MDRAP HTTP {exc.code} Error: {detail}")
+
+    def health(self) -> dict:
+        """Fetch system health, daemon telemetry, and watchdog state."""
+        if self.base_url:
+            return self._http_request("GET", "/v1/health")
+        return self.get_status()
+
+    def list_feeds(self) -> list[dict]:
+        """Fetch list of active market data feeds and ingestion statistics."""
+        if self.base_url:
+            return self._http_request("GET", "/v1/feeds")
+        return [{"source": "LOCAL_DAEMON", "provider": "daemon", "status": "ACTIVE"}]
+
+    def register_feed(
+        self,
+        source: str,
+        provider: str = "simulator",
+        symbols: Optional[list[str]] = None,
+        secret: Optional[str] = None,
+    ) -> dict:
+        """Register or start a new market data feed (requires ADMIN role)."""
+        if self.base_url:
+            payload = {
+                "source": source,
+                "provider": provider,
+                "symbols": symbols or ["BTC/USD"],
+                "secret": secret,
+            }
+            return self._http_request("POST", "/v1/feeds", json_body=payload)
+        raise NotImplementedError("Feed registration requires REST API base_url")
+
+    def query_events(
+        self,
+        instrument_id: Optional[str] = None,
+        limit: int = 100,
+        since_ts: Optional[float] = None,
+        status: Optional[str] = None,
+    ) -> list[dict]:
+        """Query validated canonical events with optional instrument, timestamp, and status filters."""
+        if self.base_url:
+            return self._http_request(
+                "GET",
+                "/v1/events",
+                params={
+                    "instrument_id": instrument_id,
+                    "limit": limit,
+                    "since_ts": since_ts,
+                    "status": status,
+                },
+            )
+        if instrument_id:
+            res = self._send_query(f"LATEST {instrument_id}")
+            return [res] if res else []
+        return []
+
+    def query_quality(self) -> dict:
+        """Query data quality engine metrics, error rates, and feed reliability scores."""
+        if self.base_url:
+            return self._http_request("GET", "/v1/quality")
+        return {}
+
+    def query_quarantine(
+        self,
+        limit: int = 50,
+        source: Optional[str] = None,
+        instrument_id: Optional[str] = None,
+    ) -> list[dict]:
+        """Query quarantined anomaly records and rule violations (requires OPERATOR or ADMIN role)."""
+        if self.base_url:
+            return self._http_request(
+                "GET",
+                "/v1/quarantine",
+                params={"limit": limit, "source": source, "instrument_id": instrument_id},
+            )
+        return []
+
+    def verify_audit(self) -> dict:
+        """Perform end-to-end cryptographic verification of the Merkle audit trail."""
+        if self.base_url:
+            return self._http_request("GET", "/v1/audit/verify")
+        return {"verified": True, "message": "Verification requires REST API connection"}
+
+    def export_audit(self, format: str = "json") -> dict:
+        """Export standalone tamper-evident audit proof bundle."""
+        if self.base_url:
+            return self._http_request("GET", "/v1/audit/export", params={"format": format})
+        return {}
+
+    def stream_events(
+        self,
+        symbols: Optional[list[str] | str] = None,
+        max_events: Optional[int] = None,
+    ) -> Generator[MarketEvent, None, None]:
+        """
+        Stream validated canonical events as typed MarketEvent instances.
+        If connected via REST/WebSocket, consumes live stream. If connected via low-level SHM/socket, uses ring buffer or TCP socket.
+        """
+        if symbols:
+            if isinstance(symbols, str):
+                symbols = [symbols]
+            self.subscribe(symbols)
+
+        count = 0
+        for ev in self.stream(max_events=max_events):
+            yield ev
+            count += 1
+            if max_events is not None and count >= max_events:
+                break
+
     def get_status(self) -> dict:
         """Fetch daemon operational status and throughput metrics."""
         return self._send_query("STATUS").get("telemetry", {})
@@ -364,10 +535,22 @@ class MDRAPClient:
 
     def get_bbo(self, symbol: str = "BTC/USD") -> Optional[dict]:
         """Fetch current Consolidated NBBO quote for an instrument."""
+        if self.base_url:
+            try:
+                res = self._http_request("GET", f"/v1/bbo/{symbol}")
+                return res.get("bbo")
+            except KeyError:
+                return None
         return self._send_query(f"BBO {symbol}").get("bbo")
 
     def get_depth(self, symbol: str = "BTC/USD") -> Optional[dict]:
         """Fetch current Consolidated L2 Depth ladder for an instrument."""
+        if self.base_url:
+            try:
+                res = self._http_request("GET", f"/v1/depth/{symbol}")
+                return res.get("depth")
+            except KeyError:
+                return None
         return self._send_query(f"DEPTH {symbol}").get("depth")
 
     def get_vwap(

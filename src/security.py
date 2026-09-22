@@ -32,6 +32,9 @@ class Role(str, enum.Enum):
     OPERATOR = "OPERATOR"  # Run ingestion, live streaming, inspect quarantine
     ADMIN = "ADMIN"  # Manual source block/unblock, secrets management, chaos drills, audit review
 
+    def __str__(self) -> str:
+        return self.value
+
 
 _ROLE_HIERARCHY = {
     Role.VIEWER: 1,
@@ -53,8 +56,10 @@ class Tier(str, enum.Enum):
 class ClientEntitlement:
     """Client entitlement, permissions, and rate limit definition."""
 
-    token: str
-    client_id: str
+    token: str = ""
+    client_id: str = ""
+    token_hash: str = ""
+    key_prefix: str = ""
     rate_limit_eps: float = 20_000.0
     tier: Tier | str = Tier.STANDARD
     role: Role = Role.VIEWER
@@ -66,9 +71,21 @@ class ClientEntitlement:
     expires_at: Optional[float] = None
     is_active: bool = True
 
+    def __post_init__(self):
+        if self.token and not self.token_hash:
+            self.token_hash = hashlib.sha256(self.token.encode("utf-8")).hexdigest()
+        if self.token and not self.key_prefix:
+            self.key_prefix = self.token[:12] + "..." if len(self.token) > 12 else self.token
+        elif self.token_hash and not self.key_prefix:
+            self.key_prefix = self.token_hash[:10] + "..."
+        if isinstance(self.role, str) and self.role in Role.__members__:
+            self.role = Role[self.role]
+
     def to_dict(self) -> dict:
         return {
             "token": self.token,
+            "token_hash": self.token_hash,
+            "key_prefix": self.key_prefix,
             "client_id": self.client_id,
             "tier": "STANDARD",
             "role": self.role.value if hasattr(self.role, "value") else str(self.role),
@@ -89,6 +106,8 @@ class ClientEntitlement:
         return cls(
             token=str(data.get("token", "")),
             client_id=str(data.get("client_id", "")),
+            token_hash=str(data.get("token_hash", "")),
+            key_prefix=str(data.get("key_prefix", "")),
             tier=Tier.STANDARD,
             role=role,
             rate_limit_eps=float(data.get("rate_limit_eps", 20000.0)),
@@ -387,12 +406,36 @@ class SecurityManager:
         if self.store and hasattr(self.store, "load_api_keys"):
             try:
                 for ent in self.store.load_api_keys():
-                    self._api_keys[ent.token] = ent
+                    if ent.token_hash:
+                        self._api_keys[ent.token_hash] = ent
+                    if ent.token:
+                        self._api_keys[ent.token] = ent
             except Exception as exc:
                 print(
                     f"[mdrap SECURITY WARNING] Failed to load API keys from store: {exc}",
                     file=sys.stderr,
                 )
+
+        # Bootstrap initial ADMIN key if database has no keys and not in demo mode
+        self.bootstrap_admin_token: Optional[str] = None
+        if not is_demo and self.store and hasattr(self.store, "load_api_keys") and len(self._api_keys) == 0:
+            env_admin = os.environ.get("MDRAP_INITIAL_ADMIN_KEY")
+            auto_bootstrap = os.environ.get("MDRAP_AUTO_BOOTSTRAP_ADMIN", "1").lower() in ("1", "true", "yes")
+            if env_admin or auto_bootstrap:
+                admin_tok = env_admin or f"mdrap_live_adm_{secrets.token_urlsafe(24)}"
+                self.bootstrap_admin_token = admin_tok
+                self.register_api_key(
+                    client_id="Initial_Administrator",
+                    role=Role.ADMIN,
+                    token=admin_tok,
+                )
+                if not env_admin:
+                    print(
+                        f"[mdrap SECURITY] Initial bootstrap ADMIN API key generated:\n"
+                        f"  >> {admin_tok} <<\n"
+                        f"Store this key securely. It cannot be recovered from storage!",
+                        file=sys.stderr,
+                    )
 
     def register_feed_secret(self, source: str, secret_key: str) -> None:
         """Register or rotate a pre-shared cryptographic key for a market data feed."""
@@ -592,7 +635,7 @@ class SecurityManager:
     def register_api_key(
         self,
         client_id: str,
-        tier: Any = None,
+        role: Role | str = Role.VIEWER,
         token: Optional[str] = None,
         rate_limit_eps: Optional[float] = None,
         can_access_l2: Optional[bool] = None,
@@ -600,15 +643,29 @@ class SecurityManager:
         can_use_shm: Optional[bool] = None,
         max_replay_events: Optional[int] = None,
         expires_at: Optional[float] = None,
+        tier: Any = None,
         **kwargs,
     ) -> ClientEntitlement:
-        """Generate and register a new client API key entitlement with full platform capability."""
+        """Generate and register a new client API key entitlement with cryptographic token hashing and RBAC."""
+        if isinstance(role, str):
+            role_clean = Role[role.upper()] if role.upper() in Role.__members__ else Role.VIEWER
+        elif isinstance(role, Role):
+            role_clean = role
+        else:
+            role_clean = Role.VIEWER
+
         if not token:
-            token = f"mdrap_key_{secrets.token_hex(12)}"
+            token = f"mdrap_live_{secrets.token_urlsafe(24)}"
+
+        tok_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+        key_prefix = token[:12] + "..." if len(token) > 12 else token
 
         ent = ClientEntitlement(
             token=token,
+            token_hash=tok_hash,
+            key_prefix=key_prefix,
             client_id=client_id,
+            role=role_clean,
             tier=Tier.STANDARD,
             rate_limit_eps=rate_limit_eps if rate_limit_eps is not None else 20000.0,
             can_access_l2=can_access_l2 if can_access_l2 is not None else True,
@@ -622,28 +679,40 @@ class SecurityManager:
         )
 
         self._api_keys[token] = ent
+        self._api_keys[tok_hash] = ent
         if self.store and hasattr(self.store, "save_api_key"):
             try:
                 self.store.save_api_key(ent)
             except Exception as exc:
                 self._api_keys.pop(token, None)
+                self._api_keys.pop(tok_hash, None)
                 raise RuntimeError(
                     f"Failed to persist API key to storage: {exc}"
                 ) from exc
         return ent
 
     def revoke_api_key(self, token: str) -> bool:
-        """Revoke an active API key immediately."""
+        """Revoke an active API key immediately by token, token_hash, or key_prefix."""
         ent = self._api_keys.get(token)
+        if not ent:
+            tok_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+            ent = self._api_keys.get(tok_hash)
+        if not ent:
+            # Check by key_prefix in registered keys
+            for v in list(self._api_keys.values()):
+                clean_pfx = v.key_prefix.rstrip(".")
+                if v.key_prefix == token or (clean_pfx and token.startswith(clean_pfx)):
+                    ent = v
+                    break
         if ent:
+            ent.is_active = False
             if self.store and hasattr(self.store, "revoke_api_key"):
                 try:
-                    self.store.revoke_api_key(token)
+                    self.store.revoke_api_key(ent.token_hash or token)
                 except Exception as exc:
                     raise RuntimeError(
                         f"Failed to persist API key revocation to storage: {exc}"
                     ) from exc
-            ent.is_active = False
             return True
         return False
 
@@ -651,6 +720,8 @@ class SecurityManager:
         self, token: str, active_only: bool = False
     ) -> Optional[ClientEntitlement]:
         """Lookup entitlement by token or sha256 hash."""
+        if not token:
+            return None
         ent = self._api_keys.get(token)
         if not ent:
             tok_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
@@ -665,15 +736,17 @@ class SecurityManager:
         return ent
 
     def list_api_keys(self) -> list[ClientEntitlement]:
-        """List all known client entitlements."""
-        return list(self._api_keys.values())
+        """List all known client entitlements (deduplicated)."""
+        unique = {ent.token_hash or ent.token: ent for ent in self._api_keys.values()}
+        return list(unique.values())
 
     def stats(self) -> dict:
+        unique = {ent.token_hash or ent.token: ent for ent in self._api_keys.values()}
         return {
             "verified_hmac_signatures": self._verified_count,
             "tampered_or_invalid_signatures": self._tampered_count,
             "rate_limited_events": self._rate_limited_count,
             "registered_feeds": list(self._secrets.keys()),
-            "api_keys_active": sum(1 for k in self._api_keys.values() if k.is_active),
-            "api_keys_total": len(self._api_keys),
+            "api_keys_active": sum(1 for k in unique.values() if k.is_active),
+            "api_keys_total": len(unique),
         }

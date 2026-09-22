@@ -1,16 +1,59 @@
 # Market Data Reliability & Acceleration Platform (MDRAP)
-### The reliability, normalization, and audit infrastructure between raw market data feeds and high-frequency trading systems
+### Enterprise Self-Hosted Reliability, Reconciliation & Audit Infrastructure for Real-Time Financial Market Data
 
 [![Version](https://img.shields.io/badge/version-2.2.0-blue.svg)](pyproject.toml)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue.svg)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-752%20passing%20(100%25)-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-780%20passing%20(100%25)-brightgreen.svg)](tests/)
 [![Hot Path Latency](https://img.shields.io/badge/hot--path-37.5%20ns%20batch%20%7C%2050.0%20ns%20single%20%7C%2044.8%20ns%20core-orange.svg)](docs/benchmark-methodology.md)
 [![Architecture](https://img.shields.io/badge/architecture-V1%20%7C%20V2%20%7C%20V4%20C--Fastpath%20%7C%20V5%20Native%20Core%20(T1)-purple.svg)](docs/architecture.md)
 [![Manual](https://img.shields.io/badge/manual-Operator%20%26%20User%20Guide-teal.svg)](docs/USER_GUIDE.md)
-[![Dependencies](https://img.shields.io/badge/dependencies-zero%20mandatory-success.svg)](requirements.txt)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
+> [!IMPORTANT]
+> **Commercial Self-Hosted Product Architecture & Market Data Licensing Notice**
+> MDRAP is an enterprise software platform designed to be deployed and operated **self-hosted on customer-owned infrastructure** (bare-metal, on-premise data centers, or private clouds).
+> **MDRAP DOES NOT PROVIDE, BROKER, OR RESELL MARKET DATA.**
+> Deploying organizations are solely responsible for obtaining and maintaining valid commercial data licenses from their market data vendors (e.g., Polygon.io, Databento, CME, Nasdaq, OPRA). See the [Data Licensing Guide](docs/data-licensing.md) for full compliance information.
+
 MDRAP ingests multiple live market data feeds, cross-reconciles them in real time, flags anomalies with explainable reason codes, and produces a cryptographically auditable record of every data quality decision. It sits **before** your trading engine, database, or research code.
+
+---
+
+## ⚡ Self-Hosted Quickstart
+
+### 1. Run via Docker Compose (Recommended)
+
+```bash
+# 1. Clone repository and initialize environment
+git clone https://github.com/Aryan-20-04/mdrap.git && cd mdrap
+cp .env.example .env
+
+# 2. Boot production container
+docker compose up -d --build
+
+# 3. Verify health
+curl http://localhost:8000/v1/health
+```
+
+The service exposes:
+- **FastAPI REST API**: `http://localhost:8000/v1`
+- **Interactive Swagger Documentation**: `http://localhost:8000/docs`
+- **Real-Time WebSocket Feed**: `ws://localhost:8000/v1/events/stream`
+- **TCP Wire Protocol**: `tcp://localhost:9001`
+- **Optional TLS Reverse Proxy (Caddy)**: `docker compose --profile tls up -d`
+
+### 2. Run via Python CLI
+
+```bash
+# Install dependencies
+pip install -e ".[all]"
+
+# Create initial Admin API key (hashed in database; raw token shown ONCE)
+python cli.py keys create --client-id TradingDesk_Admin --role ADMIN
+
+# Launch REST & WebSocket server
+python cli.py serve --host 0.0.0.0 --port 8000
+```
 
 | Feature | MDRAP | QuestDB | NautilusTrader | kdb+ |
 |---------|-------|---------|----------------|------|
@@ -337,14 +380,119 @@ mdrap sub BTC/USD --json | jq '{bid: .bbo.bid, ask: .bbo.ask}'
 
 ---
 
+## Commercial REST & WebSocket API
+
+MDRAP provides a production-grade **FastAPI HTTP/JSON REST and WebSocket interface** designed for self-hosted quantitative trading desks, risk engines, and surveillance systems.
+
+```bash
+# Start the API server on 0.0.0.0:8000
+python cli.py serve --host 0.0.0.0 --port 8000 --db ./mdrap.db
+```
+
+### Authentication & Role-Based Access Control (RBAC)
+
+All API endpoints (except `/v1/health`) require authentication via either:
+- HTTP Header: `X-API-Key: <token>`
+- HTTP Header: `Authorization: Bearer <token>`
+- WebSocket Query Param: `?token=<token>`
+
+API keys are stored as **cryptographic SHA-256 hashes (`token_hash`)** with masked prefixes (`key_prefix`). Raw tokens are displayed once upon generation and never persisted.
+
+| Role | Permitted Actions | Accessible Endpoints |
+|---|---|---|
+| `VIEWER` | Read-only market data, consensus, and health | `/v1/health`, `/v1/feeds`, `/v1/events`, `/v1/events/stream`, `/v1/quality`, `/v1/bbo/{symbol}`, `/v1/depth/{symbol}`, `/v1/audit`, `/v1/config` (redacted) |
+| `OPERATOR` | Quarantine operations, audit exports, cryptographic proofs | All `VIEWER` endpoints + `/v1/quarantine`, `/v1/audit/verify`, `/v1/audit/export` |
+| `ADMIN` | Full administrative control & security key management | All `OPERATOR` endpoints + `POST/DELETE /v1/feeds`, `GET/POST/DELETE /v1/keys` |
+
+### Core REST Endpoints
+
+| Method | Endpoint | RBAC Role | Description |
+|---|---|---|---|
+| `GET` | `/v1/health` | Public | Process health, uptime, memory, storage status, and active connections |
+| `GET` | `/v1/feeds` | `VIEWER` | List registered data feeds, status, latency stats, and message counts |
+| `POST` | `/v1/feeds` | `ADMIN` | Register a new market data feed or venue adapter |
+| `DELETE` | `/v1/feeds/{id}` | `ADMIN` | Deregister a market data feed |
+| `GET` | `/v1/events` | `VIEWER` | Query canonical events by symbol, venue, quality, or timestamp window |
+| `GET` | `/v1/quality` | `VIEWER` | Query quality evaluations, rule hit rates, and anomaly statistics |
+| `GET` | `/v1/quarantine` | `OPERATOR` | Inspect quarantined anomalies with explainable rule bitmasks |
+| `GET` | `/v1/audit` | `VIEWER` | Retrieve cryptographically chained audit log events |
+| `GET` | `/v1/audit/verify` | `OPERATOR` | Execute cryptographic SHA-256 Merkle chain verification |
+| `GET` | `/v1/audit/export` | `OPERATOR` | Export tamper-evident audit trail with boundary signatures |
+| `GET` | `/v1/bbo/{symbol}` | `VIEWER` | Fetch synthetic Consolidated Best Bid and Offer (NBBO) |
+| `GET` | `/v1/depth/{symbol}` | `VIEWER` | Fetch aggregated L2 consolidated order book depth and VWAP curve |
+| `GET` | `/v1/config` | `VIEWER` | Inspect active platform configuration (all secrets redacted) |
+| `POST` | `/v1/keys` | `ADMIN` | Generate a new API key with specific RBAC role (raw key returned once) |
+| `GET` | `/v1/keys` | `ADMIN` | List active API keys (showing masked prefixes and metadata) |
+| `DELETE` | `/v1/keys/{id}` | `ADMIN` | Immediately revoke an active API key |
+
+### Real-Time WebSocket Streaming (`/v1/events/stream`)
+
+Sub-millisecond real-time event distribution over WebSocket with heartbeat ping/pong and topic filtering:
+
+```python
+# Interactive command protocol:
+# Subscribe:   {"action": "subscribe", "symbols": ["AAPL", "NVDA"], "quality": ["VALID", "SUSPICIOUS"]}
+# Unsubscribe: {"action": "unsubscribe", "symbols": ["NVDA"]}
+# Ping:        {"action": "ping"} -> {"event": "pong", "timestamp_ns": ...}
+```
+
+---
+
+## Python Client SDK
+
+MDRAP includes an institutional Python client SDK (`src.client.MDRAPClient`) supporting REST queries, WebSocket streaming, and zero-latency local IPC:
+
+```python
+from src.client import MDRAPClient
+
+# Connect to self-hosted instance
+client = MDRAPClient(
+    base_url="http://localhost:8000",
+    api_key="mdrap_live_secret_key_..."
+)
+
+# 1. Check system health
+health = client.health()
+print(f"Status: {health['status']}, Storage: {health['storage']['canonical_events']} events")
+
+# 2. Query canonical events and order book depth
+events = client.query_events(symbol="AAPL", limit=100)
+depth = client.get_depth("AAPL")
+print(f"Spread: {depth['spread']:.4f}, Mid: {depth['mid']:.2f}")
+
+# 3. Cryptographic audit verification
+audit_check = client.verify_audit()
+print(f"Tamper-Evident Chain Valid: {audit_check['verified']}")
+
+# 4. Stream real-time canonical events via WebSocket
+for event in client.stream_events(symbols=["AAPL", "MSFT"]):
+    print(f"[{event['symbol']}] Price: {event['price']} | Quality: {event['quality_status']}")
+```
+
+---
+
+## Online Backups & Disaster Recovery
+
+MDRAP includes hot backup and point-in-time recovery tools that operate without pausing real-time ingestion:
+
+```bash
+# Execute hot online backup with SQLite page and SHA-256 Merkle chain verification
+python scripts/backup.py --db /data/mdrap.db --out /backups/ --compress
+
+# Validate and restore database (automatically creates safety snapshot of current DB)
+python scripts/restore.py --backup /backups/mdrap_backup_20260922_120000.db.gz --target /data/mdrap.db
+```
+
+---
+
 ## Verification & Testing
 
-MDRAP includes an institutional test suite of **752 automated unit, integration, quantitative, options, native C fastpath, fuzzing, FPGA parity, and resilience tests** (100% passing):
+MDRAP includes an institutional test suite of **780 automated unit, integration, quantitative, options, native C fastpath, fuzzing, FPGA parity, API security, and commercialization tests** (100% passing):
 
 ### 1. Full Production Test Suite (With FastPath & Native Binaries)
 ```bash
 pytest tests/ -q
-# Result: 752 passed, 60 deselected in ~128s (0 failures, 100% green)
+# Result: 780 passed, 60 deselected in ~103s (0 failures, 100% green)
 ```
 
 ### 2. Pure Python Fallback Verification (No C Libraries)
@@ -357,26 +505,38 @@ MDRAP_DISABLE_FASTPATH=1 pytest tests/ -q
 $env:MDRAP_DISABLE_FASTPATH="1"; pytest tests/ -q; Remove-Item Env:\MDRAP_DISABLE_FASTPATH
 ```
 
-### 3. Dedicated Subsystem Suites
+### 3. Commercialization & Security Test Suites
 ```bash
-# 5M-event differential consistency suite (0 discrepancies across Python and C engines)
-python benchmarks/run_differential_5m.py
+# API Authentication, RBAC, and Token Security
+pytest tests/test_api_auth.py tests/test_key_storage_hardening.py -v
 
-# Standalone native core benchmark (produces benchmarks/mdrap_core_bench.json)
-python benchmarks/bench_mdrap_core.py
+# 14 REST Endpoints & WebSocket Protocol
+pytest tests/test_api_endpoints.py tests/test_api_websocket.py -v
 
-# Multi-source lock-free contention benchmark (flat p99.9 tail latency proof)
-python benchmarks/bench_contention.py
+# Online Zero-Downtime Backup & Recovery
+pytest tests/test_backup_restore.py -v
 
-# Cycle-accurate Verilog FPGA parity verification
-pytest tests/test_fpga_parity.py -v
-
-# Shared memory fuzzing and boundary resilience suite
-pytest tests/test_shm_fuzz.py -v
-
-# Single source of truth X-macro synchronization check
-python tools/gen_reasons.py --check
+# Python SDK Commercial Integration
+pytest tests/test_sdk_commercial.py -v
 ```
+
+---
+
+## Enterprise Documentation Suite
+
+Comprehensive technical, architectural, and operational documentation is available in [`docs/`](docs/):
+
+- 🚀 [Quickstart Guide](docs/quickstart.md) — 5-minute containerized and CLI deployment
+- 🏗️ [Self-Hosted Deployment Architecture](docs/deployment.md) — Hardware sizing, WAL storage, and TLS termination
+- 🔒 [Security & Cryptographic Architecture](docs/security.md) — Token hashing, RBAC matrices, and Merkle audit trails
+- 🌐 [REST & WebSocket API Reference](docs/api.md) — Full 14-endpoint specification, payloads, and error codes
+- 🐍 [Python SDK Integration Guide](docs/sdk.md) — Programmatic ingestion, streaming, and query reference
+- 📜 [Market Data Licensing & Compliance](docs/data-licensing.md) — Customer-managed data licensing compliance rules
+- 💾 [Backup & Disaster Recovery Runbook](docs/backup-restore.md) — Online zero-downtime hot backups and atomic restoration
+- 🔧 [Operational Troubleshooting Runbook](docs/troubleshooting.md) — Triage matrix, health alerts, and diagnosis commands
+- 📖 [Operator & User Manual](docs/USER_GUIDE.md) — Quantitative shell, terminal UI, and historical replay
+- ⚡ [Scientific Benchmark Methodology](docs/benchmark-methodology.md) — Nanosecond timing and measurement standards
+- 📐 [Platform Architecture V1–V5](docs/architecture.md) — Deep architectural specification and evolution
 
 ---
 
@@ -386,6 +546,10 @@ python tools/gen_reasons.py --check
 mdrap/
 ├── cli.py                     # Unified CLI, interactive quant shell, and command dispatcher
 ├── build_fastpath.py          # Multi-compiler build script (GCC / Clang / MSVC)
+├── Dockerfile                 # Multi-stage production container build (C-accelerated)
+├── docker-compose.yml         # Container orchestration with optional Caddy TLS reverse proxy
+├── Caddyfile                  # Automatic TLS reverse proxy & WebSocket termination
+├── .env.example               # Self-hosted environment configuration template
 ├── mdrap.toml                 # Hierarchical layered configuration (spec v2, tomllib)
 ├── pyproject.toml             # Packaging specification & dependencies (v2.2.0)
 ├── setup.py                   # Automated C fastpath compilation hooks
@@ -393,6 +557,8 @@ mdrap/
 ├── LICENSE                    # MIT License
 │
 ├── src/                       # Core MDRAP Platform Engine
+│   ├── api.py                 # Production FastAPI REST (14 endpoints) & WebSocket stream engine
+│   ├── client.py              # Formalized Python SDK (REST, WebSocket, SHM, and raw TCP)
 │   ├── adapters/              # FeedAdapter Protocol & dynamic entry points
 │   │   ├── __init__.py        # FeedAdapter protocol & registry
 │   │   ├── binance_ws.py      # Binance WebSocket feed adapter
@@ -412,7 +578,7 @@ mdrap/
 │   ├── bbo.py                 # Synthetic Consolidated BBO (NBBO) multi-venue engine
 │   ├── strategy_sdk.py        # Avellaneda-Stoikov quantitative HFT market-making SDK
 │   ├── columnar.py            # DuckDB columnar engine, zero-copy SQLite scanner & Parquet exporter
-│   ├── security.py            # HMAC-SHA256 signing, RBAC, Token Bucket, signed Merkle audit
+│   ├── security.py            # SHA-256 token hashing, RBAC, Token Bucket, signed Merkle audit
 │   ├── storage.py             # Batched SQLite store (canonical, quarantine, lineage, audit)
 │   ├── watchdog.py            # Live source watchdog, silence detection & automated failover
 │   ├── research.py            # SEC EDGAR alternative data, Form 8-K taxonomy, Form 4 XML parser
@@ -428,12 +594,24 @@ mdrap/
 │   ├── tca.py                 # Institutional Best Execution & TCA Slippage Engine (SEC 606)
 │   └── flow_tracker.py        # Institutional order flow, Lee-Ready aggressor & CVD tracker
 │
+├── scripts/                   # Production Operational Tooling & Runbooks
+│   ├── backup.py              # Zero-downtime online hot SQLite backup & audit verification
+│   ├── restore.py             # Atomic database restoration with safety snapshot
+│   ├── backup.sh              # Scheduled cron wrapper with automated retention rotation
+│   └── restore.sh             # Linux shell recovery wrapper
+│
 ├── fpga/                      # T2 Specialist Hardware Learning Track (Synthesizable RTL)
 │   ├── mdrap_crossed_quote.v  # 64-bit carry-chain quote cross comparator
 │   ├── mdrap_sequence_gap.v   # Pipelined sequence gap and retrograde arrival detector
 │   └── tb_mdrap_rules.v       # Self-checking Verilog testbench
 │
-├── tests/                     # 752 Automated Unit & Integration Tests (100% Passing)
+├── tests/                     # 780 Automated Unit & Integration Tests (100% Passing)
+│   ├── test_api_auth.py       # API key authentication & RBAC boundary test suite
+│   ├── test_api_endpoints.py  # Comprehensive 14 REST endpoints functional test suite
+│   ├── test_api_websocket.py  # WebSocket real-time subscription & streaming test suite
+│   ├── test_backup_restore.py # Hot backup, compression & atomic restore test suite
+│   ├── test_key_storage_hardening.py # SHA-256 token hashing & schema migration test suite
+│   ├── test_sdk_commercial.py # Python SDK programmatic integration test suite
 │   ├── test_build_fastpath.py # Compiler and math library linker validation
 │   ├── test_engine_context.py # Multi-instance isolated engine context test
 │   ├── test_fpga_parity.py    # Cycle-accurate Verilog-to-C-to-Python parity test
@@ -443,12 +621,20 @@ mdrap/
 │   ├── test_shm.py            # SHM writer, reader, and sub-microsecond stream test
 │   ├── test_shm_decoupled.py  # Decoupled SHM reader fault isolation & restart recovery
 │   ├── test_shm_fuzz.py       # Shared memory fuzzing, corruption & boundary tests
-│   └── ...                    # Full coverage across all 70 modules
+│   └── ...                    # Full coverage across all 76 modules
 │
 ├── docs/                      # Platform Architecture & Specifications
+│   ├── quickstart.md          # 5-minute containerized & CLI quickstart
+│   ├── deployment.md          # Self-hosted production architecture & sizing
+│   ├── security.md            # Cryptographic posture, token hashing & RBAC
+│   ├── api.md                 # Complete 14-endpoint REST & WebSocket specification
+│   ├── sdk.md                 # Python SDK programmatic reference
+│   ├── data-licensing.md      # Customer-managed market data licensing rules
+│   ├── backup-restore.md      # Hot backup and disaster recovery runbook
+│   ├── troubleshooting.md     # Operations triage & diagnostic guide
 │   ├── USER_GUIDE.md          # Comprehensive Operator & User Manual
 │   ├── architecture.md        # Full platform architecture specification (V1–V5)
-│   ├── benchmark-methodology.md # Scientific measurement standards & latency hierarchy (v2.2.0)
+│   ├── benchmark-methodology.md # Scientific measurement standards & latency hierarchy
 │   ├── fpga-spike-findings.md # Hardware latency findings & FPGA learning track audit
 │   ├── T0_TO_T1_JOURNEY.md    # In-depth architectural journey from T0 to T1
 │   ├── data-model.md          # Canonical event schema & lineage data model
@@ -470,3 +656,4 @@ This project is licensed under the MIT License — see the [LICENSE](LICENSE) fi
 
 ### Market Data Licensing & Redistribution Disclaimer
 MDRAP is open-source financial-market infrastructure software designed to process, reconcile, and validate market data feeds that the user is legally authorized and licensed to receive. MDRAP does not provide, resell, or grant rights to redistribute proprietary exchange or vendor data (including CME, Nasdaq, NYSE, OPRA, Polygon.io, or Databento). Users are solely responsible for ensuring their ingestion, storage, processing, and downstream routing comply with their respective data vendor and exchange subscriber agreements.
+

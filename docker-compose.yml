@@ -1,0 +1,54 @@
+version: "3.8"
+
+services:
+  mdrap-core:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mdrap-core
+    restart: unless-stopped
+    ports:
+      - "8000:8000"   # REST & WebSocket API
+      - "9001:9001"   # Ultra-low-latency TCP wire protocol
+    environment:
+      - PYTHONUNBUFFERED=1
+      - MDRAP_HOST=0.0.0.0
+      - MDRAP_PORT=8000
+      - MDRAP_DB_PATH=/data/mdrap.db
+      - MDRAP_INITIAL_ADMIN_KEY=${MDRAP_INITIAL_ADMIN_KEY:-}
+      - MDRAP_CORS_ORIGINS=${MDRAP_CORS_ORIGINS:-*}
+      - POLYGON_API_KEY=${POLYGON_API_KEY:-}
+      - DATABENTO_API_KEY=${DATABENTO_API_KEY:-}
+      - COINBASE_API_KEY=${COINBASE_API_KEY:-}
+      - BINANCE_API_KEY=${BINANCE_API_KEY:-}
+    volumes:
+      - mdrap-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8000/v1/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # Optional TLS Termination & SSL Reverse Proxy via Caddy
+  # Activate by running: docker compose --profile tls up -d
+  caddy:
+    image: caddy:2.7-alpine
+    container_name: mdrap-caddy
+    restart: unless-stopped
+    profiles: ["tls"]
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - mdrap-core
+
+volumes:
+  mdrap-data:
+    name: mdrap-data
+  caddy-data:
+  caddy-config:

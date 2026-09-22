@@ -1,21 +1,21 @@
 {
-  "timestamp": 1790054566.812328,
+  "timestamp": 1790084937.34054,
   "events_per_source": 10000,
   "concurrency_sweep": [
     {
       "sources": 1,
       "locked": {
-        "throughput_eps": 1707825.255327725,
+        "throughput_eps": 2019467.667737029,
         "p50_us": 0.3,
-        "p95_us": 0.4,
+        "p95_us": 0.3,
         "p99_us": 0.4,
-        "p99_9_us": 0.6020000000004074,
-        "tail_ratio": 2.006666666668025
+        "p99_9_us": 0.5001000000000204,
+        "tail_ratio": 1.6670000000000682
       },
       "lockfree": {
-        "throughput_eps": 3707273.670958617,
+        "throughput_eps": 4054656.772682047,
         "p50_us": 0.1,
-        "p95_us": 0.2,
+        "p95_us": 0.1,
         "p99_us": 0.2,
         "p99_9_us": 0.2,
         "tail_ratio": 2.0
@@ -24,58 +24,58 @@
     {
       "sources": 2,
       "locked": {
-        "throughput_eps": 1970443.3497406996,
+        "throughput_eps": 1918428.4230824437,
         "p50_us": 0.3,
         "p95_us": 0.4,
-        "p99_us": 0.4,
-        "p99_9_us": 2.1088000000057945,
-        "tail_ratio": 7.029333333352649
+        "p99_us": 0.6,
+        "p99_9_us": 1.5012000000007901,
+        "tail_ratio": 5.004000000002634
       },
       "lockfree": {
-        "throughput_eps": 3291043.425272452,
+        "throughput_eps": 3683919.6900544986,
         "p50_us": 0.1,
         "p95_us": 0.2,
         "p99_us": 0.2,
-        "p99_9_us": 0.4,
-        "tail_ratio": 4.0
+        "p99_9_us": 0.2,
+        "tail_ratio": 2.0
       }
     },
     {
       "sources": 4,
       "locked": {
-        "throughput_eps": 1642481.1319906379,
+        "throughput_eps": 1762634.7863805722,
         "p50_us": 0.4,
-        "p95_us": 0.5,
-        "p99_us": 0.7,
-        "p99_9_us": 3.5005000000005566,
-        "tail_ratio": 8.751250000001392
+        "p95_us": 0.4,
+        "p99_us": 0.6,
+        "p99_9_us": 0.8,
+        "tail_ratio": 2.0
       },
       "lockfree": {
-        "throughput_eps": 3057122.3307812475,
+        "throughput_eps": 3962985.7133630407,
         "p50_us": 0.1,
         "p95_us": 0.2,
-        "p99_us": 0.3,
-        "p99_9_us": 1.6002000000002228,
-        "tail_ratio": 16.002000000002226
+        "p99_us": 0.2,
+        "p99_9_us": 0.2,
+        "tail_ratio": 2.0
       }
     },
     {
       "sources": 8,
       "locked": {
-        "throughput_eps": 1834811.8859108968,
+        "throughput_eps": 1855481.2074299774,
         "p50_us": 0.3,
         "p95_us": 0.4,
         "p99_us": 0.6,
-        "p99_9_us": 2.5,
-        "tail_ratio": 8.333333333333334
+        "p99_9_us": 2.400100000000202,
+        "tail_ratio": 8.000333333334007
       },
       "lockfree": {
-        "throughput_eps": 3888497.338775174,
+        "throughput_eps": 3323708.4277729313,
         "p50_us": 0.1,
         "p95_us": 0.2,
         "p99_us": 0.2,
-        "p99_9_us": 0.3,
-        "tail_ratio": 2.9999999999999996
+        "p99_9_us": 0.5,
+        "tail_ratio": 5.0
       }
     }
   ]

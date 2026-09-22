@@ -1,0 +1,26 @@
+# MDRAP Production Reverse Proxy & TLS Termination Caddyfile
+# Replace {$DOMAIN:localhost} with your registered domain name
+
+{$DOMAIN:localhost} {
+    # WebSocket & REST API proxy
+    reverse_proxy mdrap-core:8000 {
+        # Preserve headers for WebSocket upgrade
+        header_up Host {host}
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+    }
+
+    # Security headers
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+
+    log {
+        output stdout
+        format console
+    }
+}

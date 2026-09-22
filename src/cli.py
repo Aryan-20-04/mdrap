@@ -965,6 +965,41 @@ def cmd_security(args):
         store.close()
 
 
+def cmd_serve(args):
+    """Start high-performance REST API and WebSocket event streaming server."""
+    try:
+        import uvicorn
+    except ImportError:
+        print(
+            "[mdrap] Error: uvicorn is required to run the API server. Install it with: pip install '.[api]'",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    db_path = getattr(args, "db", "data/mdrap.db")
+    if db_path:
+        os.environ["MDRAP_DB_PATH"] = db_path
+
+    host = getattr(args, "host", "0.0.0.0")
+    port = getattr(args, "port", 8000)
+    reload = getattr(args, "reload", False)
+
+    console = Console()
+    console.print()
+    console.print(
+        Panel.fit(
+            f"[bold cyan]MDRAP Production REST & WebSocket Server[/bold cyan]\n\n"
+            f"Binding: [green]http://{host}:{port}[/green]\n"
+            f"API Docs: [blue]http://{host}:{port}/docs[/blue]\n"
+            f"WebSocket: [magenta]ws://{host}:{port}/v1/events/stream[/magenta]\n"
+            f"Database: [yellow]{db_path}[/yellow]",
+            title="MDRAP API Gateway",
+            border_style="cyan",
+        )
+    )
+    uvicorn.run("api:app", host=host, port=port, reload=reload)
+
+
 def cmd_keys(args):
     """Manage client API keys and authentication tokens."""
     from security import SecurityManager
@@ -978,52 +1013,59 @@ def cmd_keys(args):
     if action == "list":
         k_cols = [
             ("Client ID", "left", "cyan"),
-            ("API Token", "left", "dim"),
+            ("Role", "center", "yellow"),
+            ("Key Prefix", "left", "dim"),
             ("Rate Limit", "right", "green"),
-            ("Channels", "left", "white"),
             ("Wire Protocols", "left", "magenta"),
             ("Status", "center"),
         ]
         k_rows = []
         for key in sec.list_api_keys():
-            channels = "Full (L1 + L2 Depth + VWAP)"
             protos = "JSON, BINARY, SHM"
             st_str = "[green]ACTIVE[/green]" if key.is_active else "[red]REVOKED[/red]"
+            role_val = getattr(key.role, "value", str(key.role))
+            role_badge = f"[bold]{role_val}[/bold]"
+            prefix_display = getattr(key, "key_prefix", "") or (key.token[:12] if key.token else "mdrap_live_***")
             k_rows.append(
                 [
                     key.client_id,
-                    key.token,
+                    role_badge,
+                    prefix_display,
                     f"{key.rate_limit_eps:,.0f} eps",
-                    channels,
                     protos,
                     st_str,
                 ]
             )
         console.print(
-            _t("MDRAP Client API Keys & Access Tokens", k_cols, k_rows, show_lines=True)
+            _t("MDRAP Client API Keys & Access Tokens (Hashed Storage)", k_cols, k_rows, show_lines=True)
         )
 
     elif action == "create":
         client_id = getattr(args, "client_id", "Custom_Client")
         rate = getattr(args, "rate", None)
-        ent = sec.register_api_key(client_id=client_id, rate_limit_eps=rate)
+        role = getattr(args, "role", "VIEWER").upper()
+        ent = sec.register_api_key(client_id=client_id, rate_limit_eps=rate, role=role)
+        ent_role_val = getattr(ent.role, "value", str(ent.role))
         console.print(
             Panel.fit(
                 f"[bold green]API Key Generated Successfully![/bold green]\n\n"
                 f"Client ID: [bold cyan]{ent.client_id}[/bold cyan]\n"
-                f"API Token: [bold yellow]{ent.token}[/bold yellow]\n"
-                f"Rate Limit: [green]{ent.rate_limit_eps:,.0f} eps[/green]\n"
-                f"Access: [white]Full Platform Access (L1 Ticks, L2 Depth, VWAP, Binary Wire Protocol, Replay)[/white]",
+                f"Role: [bold yellow]{ent_role_val}[/bold yellow]\n"
+                f"API Token: [bold green]{ent.token}[/bold green]\n"
+                f"Key Prefix: [dim]{ent.key_prefix}[/dim]\n"
+                f"Rate Limit: [green]{ent.rate_limit_eps:,.0f} eps[/green]\n\n"
+                f"[bold red]WARNING:[/bold red] Copy and store this secret key securely now.\n"
+                f"It is hashed with SHA-256 in the database and [bold underline]cannot be displayed again[/bold underline].",
                 title="Client Authentication Key Created",
                 border_style="green",
             )
         )
 
     elif action == "revoke":
-        token = getattr(args, "token", "")
+        token = getattr(args, "token", "") or getattr(args, "prefix", "")
         if not token:
             console.print(
-                "[bold red]Error:[/bold red] API token must be specified for revocation (use --token <key>)."
+                "[bold red]Error:[/bold red] API token or prefix must be specified for revocation (use --token <key_or_prefix>)."
             )
             store.close()
             return
@@ -1033,7 +1075,7 @@ def cmd_keys(args):
                 f"[bold green]API Key revoked successfully:[/bold green] [dim]{token}[/dim]"
             )
         else:
-            console.print(f"[bold red]Error:[/bold red] API token not found: {token}")
+            console.print(f"[bold red]Error:[/bold red] API token/prefix not found: {token}")
 
     store.close()
 
@@ -6503,9 +6545,41 @@ def build_parser() -> argparse.ArgumentParser:
         help="Client identifier name (for create)",
     )
     p_keys.add_argument(
+        "--role",
+        default="VIEWER",
+        choices=["VIEWER", "OPERATOR", "ADMIN"],
+        help="Role assignment: VIEWER, OPERATOR, or ADMIN (for create)",
+    )
+    p_keys.add_argument(
         "--rate", type=float, default=None, help="Custom rate limit eps"
     )
     p_keys.add_argument("--token", default="", help="API key token (for revoke)")
+    p_keys.add_argument("--prefix", default="", help="API key prefix (for revoke)")
+
+    # API & WebSocket Production Server
+    p_serve = _sub(
+        "serve",
+        cmd_serve,
+        "Start production REST API and WebSocket event streaming server",
+        aliases=["api"],
+        db=True,
+    )
+    p_serve.add_argument(
+        "--host",
+        default=os.getenv("MDRAP_HOST", "0.0.0.0"),
+        help="Bind host (default: 0.0.0.0)",
+    )
+    p_serve.add_argument(
+        "--port",
+        type=int,
+        default=int(os.getenv("MDRAP_PORT", "8000")),
+        help="Bind port (default: 8000)",
+    )
+    p_serve.add_argument(
+        "--reload",
+        action="store_true",
+        help="Enable auto-reload for development",
+    )
 
     # Tamper-Evident Audit Trail (§19)
     p_audit = _sub(
@@ -7774,6 +7848,10 @@ MNEMONIC_MAP = {
     "cockpit": "top",
     "daemon": "daemon",
     "dmn": "daemon",
+    "serve": "serve",
+    "srv": "serve",
+    "api": "serve",
+    "server": "serve",
     # Reliability & Audit
     "stat": "status",
     "status": "status",
@@ -7941,6 +8019,8 @@ ALL_CANONICAL_COMMANDS = [
     "loadtest",
     "chaos",
     "security",
+    "keys",
+    "serve",
     "query",
     "archive",
     "replay",

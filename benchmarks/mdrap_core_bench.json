@@ -5,55 +5,55 @@
     "binary": "mdrap-core.exe",
     "runs": 5,
     "events_per_run": 1000000,
-    "timestamp": "2026-09-22 06:13:36Z"
+    "timestamp": "2026-09-22 13:48:49Z"
   },
   "throughput_eps": {
-    "min": 15781732.0,
-    "median": 16317473.0,
-    "max": 18410544.0,
-    "mean": 16741058.0
+    "min": 19701289.0,
+    "median": 20373611.0,
+    "max": 22917120.0,
+    "mean": 20800483.8
   },
   "latency_ns_per_tick": {
-    "min": 54.3,
-    "median": 61.3,
-    "max": 63.4,
-    "mean": 59.9
+    "min": 43.6,
+    "median": 49.1,
+    "max": 50.8,
+    "mean": 48.22
   },
   "runs_detail": [
     {
       "run": 1,
       "events": 1000000,
-      "elapsed_seconds": 0.0543,
-      "throughput_eps": 18410544.0,
-      "latency_ns_per_tick": 54.3
+      "elapsed_seconds": 0.0508,
+      "throughput_eps": 19701289.0,
+      "latency_ns_per_tick": 50.8
     },
     {
       "run": 2,
       "events": 1000000,
-      "elapsed_seconds": 0.0613,
-      "throughput_eps": 16317473.0,
-      "latency_ns_per_tick": 61.3
+      "elapsed_seconds": 0.0436,
+      "throughput_eps": 22917120.0,
+      "latency_ns_per_tick": 43.6
     },
     {
       "run": 3,
       "events": 1000000,
-      "elapsed_seconds": 0.0618,
-      "throughput_eps": 16171888.0,
-      "latency_ns_per_tick": 61.8
+      "elapsed_seconds": 0.0491,
+      "throughput_eps": 20373611.0,
+      "latency_ns_per_tick": 49.1
     },
     {
       "run": 4,
       "events": 1000000,
-      "elapsed_seconds": 0.0587,
-      "throughput_eps": 17023653.0,
-      "latency_ns_per_tick": 58.7
+      "elapsed_seconds": 0.05,
+      "throughput_eps": 20018577.0,
+      "latency_ns_per_tick": 50.0
     },
     {
       "run": 5,
       "events": 1000000,
-      "elapsed_seconds": 0.0634,
-      "throughput_eps": 15781732.0,
-      "latency_ns_per_tick": 63.4
+      "elapsed_seconds": 0.0476,
+      "throughput_eps": 20991822.0,
+      "latency_ns_per_tick": 47.6
     }
   ]
 }
