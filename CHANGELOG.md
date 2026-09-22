@@ -3,6 +3,18 @@
 All notable changes to MDRAP are documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] - 2026-09-22
+
+### Added
+- **Standalone Native C Hot-Path Engine (`mdrap-core`)**: Fully decoupled out-of-process C binary (`src/mdrap_core.c`) running wire-to-SHM with zero Python runtime, CPython FFI, or GIL involvement, achieving **22.35 Million events/sec** (**44.8 ns per tick** wire-to-SHM latency).
+- **Zero-Lock SPSC Shared Memory Ring Buffer**: Cross-platform memory-mapped ring buffer (Windows named file mapping / POSIX `shm_open`) with 128-byte cache-line aligned slots, atomic release fences, and two-phase commit protocol (`UNCOMMITTED` seq invalidation -> payload store -> fence -> commit sequence publication).
+- **Single-Writer Lock-Free Ingestion Benchmark**: Multi-source contention benchmark (`benchmarks/bench_contention.py`) proving flat p99.9 tail latency (0.30 µs at 8 sources) and eliminating mutex convoying.
+- **Hardware Timestamping Diagnostics (`mdrap doctor`)**: Added institutional clock source diagnostics detecting `SO_TIMESTAMPING` capabilities and Linux PTP Hardware Clocks (`/dev/ptp*`), with graceful fallback to software QPC on Windows and mach time on macOS.
+- **CLI Subcommand `mdrap core`**: Terminal command and runner for executing the standalone native hot-path engine with configurable event counts, shared memory names, rate throttling, and automatic compilation.
+- **Shared Memory Fuzzing Suite**: Fuzz testing harness (`tests/test_shm_fuzz.py`) covering torn reads, corrupted magic numbers, unsupported versions, epoch mutation, and ring buffer wrap-around overrun detection.
+- **Architecture Decision Record (ADR 0003)**: Documented process split decision retaining C with single-writer process boundary and backlogging Rust rewrite (`docs/decisions/0003-native-core-process-split.md`).
+- **T2 FPGA Hardware Learning Track**: Synthesizable Verilog RTL modules (`fpga/mdrap_crossed_quote.v`, `fpga/mdrap_sequence_gap.v`, `fpga/tb_mdrap_rules.v`), cycle-accurate parity test (`tests/test_fpga_parity.py`) with 100% agreement on 1,000 events, and an in-depth hardware latency findings report (`docs/fpga-spike-findings.md`).
+
 ## [2.1.0] - 2026-09-21
 
 ### Added

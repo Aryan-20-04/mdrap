@@ -174,7 +174,106 @@ def build(target_dir: Optional[str] = None, quiet: bool = False) -> bool:
         return False
 
 
+def get_core_bin_name() -> str:
+    """Return platform executable name for standalone mdrap-core."""
+    return "mdrap-core.exe" if sys.platform == "win32" else "mdrap-core"
+
+
+def find_core_source_file(custom_dir: Optional[str] = None) -> Optional[str]:
+    """Locate mdrap_core.c in the project hierarchy."""
+    candidates = []
+    if custom_dir:
+        candidates.append(os.path.join(custom_dir, "mdrap_core.c"))
+        candidates.append(os.path.join(custom_dir, "src", "mdrap_core.c"))
+
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    candidates.extend([
+        os.path.join(base_dir, "src", "mdrap_core.c"),
+        os.path.join(base_dir, "mdrap_core.c"),
+        os.path.abspath("src/mdrap_core.c"),
+        os.path.abspath("mdrap_core.c"),
+    ])
+
+    for path in candidates:
+        if os.path.isfile(path):
+            return os.path.normpath(path)
+    return None
+
+
+def build_core(target_dir: Optional[str] = None, quiet: bool = False) -> bool:
+    """
+    Compile mdrap_core.c into standalone binary (T1 zero-lock engine).
+    Returns True on success, False otherwise.
+    """
+    c_source = find_core_source_file(target_dir)
+    if not c_source or not os.path.isfile(c_source):
+        if not quiet:
+            print("[build] Error: Could not locate mdrap_core.c")
+        return False
+
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    if target_dir is None:
+        target_dir = base_dir
+    os.makedirs(target_dir, exist_ok=True)
+
+    bin_name = get_core_bin_name()
+    out_bin = os.path.normpath(os.path.join(target_dir, bin_name))
+
+    compiler = _find_compiler()
+    if not compiler:
+        if not quiet:
+            print("[build] Notice: No C compiler (gcc, clang, cl) found on PATH.")
+        return False
+
+    inc_dirs = [
+        os.path.dirname(os.path.abspath(c_source)),
+        os.path.join(base_dir, "src"),
+    ]
+    unique_incs = list(dict.fromkeys(inc_dirs))
+
+    if compiler in ("gcc", "clang"):
+        cmd = [compiler, "-O3"]
+        for inc in unique_incs:
+            cmd.extend(["-I", inc])
+        cmd.extend(["-o", out_bin, c_source])
+    elif compiler == "cl":
+        cmd = ["cl.exe", "/O2"]
+        for inc in unique_incs:
+            cmd.append(f"/I{inc}")
+        cmd.extend([c_source, f"/Fe:{out_bin}"])
+    else:
+        return False
+
+    if not quiet:
+        print(f"[build] Compiling {os.path.basename(c_source)} -> {out_bin} using {compiler}")
+
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=30.0,
+            shell=False,
+        )
+    except Exception as exc:
+        if not quiet:
+            print(f"[build] Compilation error: {exc}")
+        return False
+
+    if result.returncode == 0 and os.path.isfile(out_bin):
+        if not quiet:
+            size = os.path.getsize(out_bin)
+            print(f"[build] SUCCESS! Compiled {out_bin} ({size:,} bytes)")
+        return True
+    else:
+        if not quiet:
+            err_msg = result.stderr.strip() or result.stdout.strip()
+            print(f"[build] FAILED with returncode {result.returncode}:\n{err_msg}")
+        return False
+
+
 if __name__ == "__main__":
-    out_target = sys.argv[1] if len(sys.argv) > 1 else None
-    success = build(target_dir=out_target, quiet=False)
-    sys.exit(0 if success else 1)
+    out_target = sys.argv[1] if len(sys.argv) > 1 and not sys.argv[1].startswith("-") else None
+    ok1 = build(target_dir=out_target, quiet=False)
+    ok2 = build_core(target_dir=out_target, quiet=False)
+    sys.exit(0 if (ok1 and ok2) else 1)

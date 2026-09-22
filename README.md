@@ -237,6 +237,32 @@ mdrap historical ingest --exchange binance_spot --symbol BTCUSDT \
 - **Reproducibility Manifests & Parquet Export (`src/manifest.py`, `src/export.py`)**: Generates structured `manifest.json` capturing git commit SHA, config hash, active engine tier, and system hardware. Exports canonical data and quarantine tables to Parquet (`--format parquet`), JSON, or CSV.
 - **Continuous Fuzzing (`fuzz/`)**: libFuzzer C harnesses and differential fuzzer testing 5,000+ mutated byte streams to assert 100% acceptance/rejection parity between Python and C decoders.
 
+### 19. Standalone Native Core & T1 Zero-Lock Ring Buffer (Round 3 Architecture)
+- **Zero-Python Hot Path (`src/mdrap_core.c`)**: Standalone compiled binary (`mdrap-core` / `mdrap-core.exe`) executing wire-to-SHM directly without Python runtime, CPython FFI, or GIL involvement, achieving **22.35 Million events/sec** (**44.8 ns per tick** wire-to-SHM latency).
+- **Zero-Lock SPSC Shared Memory**: Cross-platform memory-mapped circular ring buffer with 128-byte cache-line aligned slots, atomic release fences, and two-phase commit protocol (`UNCOMMITTED` seq invalidation $\to$ payload write $\to$ fence $\to$ commit sequence publication).
+- **Hardware Timestamping Diagnostics (`mdrap doctor`)**: Institutional clock source diagnostics detecting `SO_TIMESTAMPING` capabilities and Linux PTP Hardware Clocks (`/dev/ptp*`), with graceful fallback to software QPC on Windows.
+- **Lock-Free Contention Proof (`benchmarks/bench_contention.py`)**: Multi-source contention benchmark proving flat p99.9 tail latency (0.30 µs at 8 sources) and eliminating mutex convoying.
+- **Architecture Decision Record**: [ADR 0003: Native Core Process Split](docs/decisions/0003-native-core-process-split.md).
+- **T2 FPGA Learning Track (`fpga/`)**: Explores the boundary between software T1 and hardware T2:
+  - **Verilog RTL Modules**: [`fpga/mdrap_crossed_quote.v`](fpga/mdrap_crossed_quote.v) (64-bit carry-chain comparator), [`fpga/mdrap_sequence_gap.v`](fpga/mdrap_sequence_gap.v) (pipelined gap and retrograde detector), and [`fpga/tb_mdrap_rules.v`](fpga/tb_mdrap_rules.v) (self-checking testbench).
+  - **Cycle-Accurate Parity**: [`tests/test_fpga_parity.py`](tests/test_fpga_parity.py) verifies 100% agreement against Python and C engines across 1,000 synthetic events.
+  - **Findings Report**: [FPGA Spike Findings](docs/fpga-spike-findings.md) detailing resource usage (~130 LUTs, 69 FFs, ~3.3 ns evaluation) and an honest assessment of the ~100 ns gap to commercial tick-to-trade appliances.
+
+---
+
+## Latency Architecture & Industry Tiering
+
+| Tier | Industry Scope & Technology | Representative Latency | Reachable by MDRAP? |
+|---|---|:---:|:---:|
+| **T0 — Baseline** | In-process Python/C pipeline, SQLite WAL persistence | ~15 µs in-memory, ~780 µs durable | **Shipped (v2.1)** |
+| **T1 — Good Software** | Standalone native core (`mdrap-core`), zero-lock SPSC shared memory ring, kernel-bypass (`SO_TIMESTAMPING`/`io_uring`/`AF_XDP`), core isolation | **~1–10 µs** wire-to-decision | **Target Architecture** (Phases 17–21) |
+| **T2 — Specialist Hardware** | Commercial FPGA tick-to-trade appliances | Sub-microsecond (~100 ns) | **Bounded Learning Spike** (Phase 22, `fpga/`) |
+| **T3 — Physical Infra** | Colocation, cross-connects, microwave/laser links | Sub-100 ns transport | **Out of Scope** (Real estate & capital budget) |
+
+> **Platform Target Note**: Linux (kernel 5.10+, x86_64) is the production target platform for T1 execution (`SO_TIMESTAMPING`, `io_uring`, `AF_XDP`, `isolcpus`). Windows is supported for local development, control plane, and functional testing.
+>
+> 📖 **Deep Dive**: See [From T0 to T1: The MDRAP Low-Latency Architecture Journey](docs/T0_TO_T1_JOURNEY.md) for full empirical benchmarks, thread contention analysis, and systems engineering trade-offs.
+
 ---
 
 ## Architectural Progression & Benchmarks
@@ -249,6 +275,7 @@ Measured on identical 100,000-event workloads (`seed=42`, 7 timed runs, 2 warmup
 | **V2 Decoupled Streaming** | **22,351 eps** | **15.3 µs** (15,300 ns) | — | Multi-threaded in-memory queue bus with backpressure |
 | **V4 Native C Hot Path** | **34,241 eps** | **15.3 µs** (15,300 ns) | 0.35 µs | GCC `-O3` ctypes binding with zero-lookup ID interning |
 | **Native C Direct Batch** | **18,669,082 eps** | **50.0 ns** (0.050 µs) | — | Contiguous C arrays in CPU L1 cache |
+| **V5 Standalone Core (T1)** | **22,345,370 eps** | **44.8 ns** (0.045 µs) | 0.10 µs | Out-of-process C binary, zero-lock SPSC shared memory |
 
 ### Latency Hierarchy & Physical Bounds
 

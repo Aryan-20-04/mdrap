@@ -1190,3 +1190,48 @@ def check_spread(event: CanonicalEvent) -> bool:
     return False
 ```
 See `examples/custom_venue/` for a complete runnable walkthrough.
+
+---
+
+## 9. HFT-Tier Latency Architecture & Standalone Core (Round 3)
+
+### Standalone Native Core (`mdrap core`)
+Execute the decoupled native C hot-path engine (`mdrap-core`) wire-to-SHM with zero Python runtime or GIL overhead:
+```bash
+# Run 100k events through native core into shared memory
+mdrap core --events 100000
+
+# Specify custom SHM segment name and rate throttling
+mdrap core --events 50000 --shm mdrap_feed --rate 10000 --symbol BTC/USD
+
+# Force compilation of binary before running
+mdrap core --build --events 10000
+```
+
+### Hardware Timestamping & Diagnostic Doctor (`mdrap doctor`)
+Inspect environment, compiler availability, active engine tier, binary presence, and clock source precision:
+```bash
+mdrap doctor
+```
+On Linux, `mdrap doctor` detects `SO_TIMESTAMPING` support and Linux PTP Hardware Clock devices (`/dev/ptp*`). On Windows, it reports software QPC (`QueryPerformanceCounter`, ~100ns precision).
+
+### Multi-Source Contention Benchmarking
+Benchmark lock-free single-writer SPSC ingestion against traditional mutex-locked multi-source ingestion across 1, 2, 4, and 8 concurrent sources:
+```bash
+python benchmarks/bench_contention.py
+```
+Outputs throughput (eps) and tail latency percentiles (p50, p95, p99, p99.9), saving statistical results to `benchmarks/contention_results.json`.
+
+### Tier 2 FPGA Hardware Learning Track (`fpga/`)
+For researchers exploring hardware-accelerated tick-to-trade appliances, MDRAP includes synthesizable Verilog-2001 modules implementing combinatorial quality rules in pure gate logic:
+- **`fpga/mdrap_crossed_quote.v`**: 64-bit carry-chain comparator evaluating $Bid \ge Ask$ in 1 clock cycle (~3.3 ns @ 300 MHz).
+- **`fpga/mdrap_sequence_gap.v`**: Monotonic gap and retrograde arrival validator in 1 clock cycle (~3.3 ns).
+- **`fpga/tb_mdrap_rules.v`**: Self-checking Verilog testbench.
+
+To verify cycle-accurate bit-exact parity against Python and C software engines:
+```bash
+pytest tests/test_fpga_parity.py -v
+```
+See [FPGA Spike Findings](fpga-spike-findings.md) for timing closure, resource utilization, and the gap analysis to commercial hardware appliances.
+
+

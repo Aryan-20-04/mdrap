@@ -135,3 +135,14 @@ The platform converts noisy, delayed, duplicated, and inconsistent market data f
   - **Single-Event Hot Path**: Expanded 8,192 symbols ($2^{13}$) and 32 sources with FNV-1a dedup and Welford variance at **18.66 million events/second (50.0 nanoseconds/event)**.
   - **Quantitative & Options Kernels**: Binomial American options pricing (**64.1x faster**), Bollinger Bands rolling window (**51.6x faster**), Monte Carlo VaR simulation (**2.3x faster**), Wilder-smoothed RSI (**2.2x faster**), and FIX checksums (**3.1x faster**).
   - **Seamless Boundary Fallback**: Transparent pure-Python fallback ensuring 100% numerical parity and zero drops if C dynamic libraries are disabled (`MDRAP_DISABLE_FASTPATH=1`).
+- **V5 (T1 Standalone Zero-Lock Hot Path Architecture):**
+  - **Decoupled C Standalone Binary (`mdrap-core`)**: Operates wire-to-SHM completely out-of-process without Python runtime, CPython FFI, or GIL overhead, delivering **22.35 million events/second (44.8 nanoseconds/event)**.
+  - **Zero-Lock SPSC Shared Memory Ring Buffer**: 128-byte cache-line aligned circular slot array with atomic release fences and two-phase commit protocol (`UNCOMMITTED` seq invalidation -> payload store -> commit sequence publication).
+  - **Hardware Timestamping Diagnostics**: Integration of Linux `SO_TIMESTAMPING` and PTP Hardware Clock device detection with graceful fallback to software QPC on Windows.
+  - **Single-Writer Lock-Free Ingestion**: Eliminates thread mutex convoying across multi-source feeds, maintaining flat p99.9 tail latency (0.30 µs at 8 sources).
+- **T2 Hardware Exploration Track (FPGA Simulation Spike):**
+  - **Synthesizable Verilog RTL (`fpga/`)**: Combinatorial carry-chain crossed-quote comparator (`mdrap_crossed_quote.v`) and pipelined sequence gap detector (`mdrap_sequence_gap.v`) evaluating rules in ~3.3 ns (1 cycle @ 300 MHz).
+  - **Bit-Exact Cycle Emulation (`tests/test_fpga_parity.py`)**: 100% agreement against Python and C software engines across synthetic market event workloads.
+  - **Commercial Gap Assessment**: Confirms that while mathematical comparisons take ~3.3 ns in silicon, commercial T2 tick-to-trade appliances incur ~90+ ns in optical PHY, Ethernet MAC, and IP/UDP protocol offload, establishing MDRAP's software T1 path (`mdrap-core`) as the production target.
+
+

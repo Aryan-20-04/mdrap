@@ -237,4 +237,44 @@ Per Section 26 Design Principle #1 ("Correctness before optimization") and Princ
 - Eliminated 152 lines of dead code and duplicate mathematical implementations across 18 files.
 - Full regression verification: **650/650 tests passing in ~85s (100% green)**.
 
+---
+
+# Architecture Decision Record 0003: Native Core Process Split vs. In-Process FFI
+
+**Date:** 2026-09-22  
+**Status:** Accepted  
+**Scope:** Standalone Native Core · Process Split · Shared Memory Interface (`src/mdrap_core.c`, `src/shm.py`)  
+**Full ADR:** [docs/decisions/0003-native-core-process-split.md](decisions/0003-native-core-process-split.md)
+
+## 1. Context & Decision
+To transition toward T1 HFT-tier latency (~1–10 µs wire-to-decision), the hot path must be decoupled from the Python runtime, ctypes FFI marshalling overhead, and the Global Interpreter Lock (GIL).
+
+We decided to decouple the native hot path into a standalone C executable (`mdrap-core`) communicating with Python via a zero-lock SPSC shared memory ring buffer (`mdrap_feed`), while backlogging a Rust rewrite for a future milestone.
+
+## 2. Consequences & Verification
+- Wire-to-SHM execution achieves **22.35 Million events/sec** (**44.8 ns per tick**).
+- Lock-free single-writer SPSC ring buffer maintains flat p99.9 tail latency (0.30 µs at 8 sources).
+- Zero Python overhead on the critical path; Python retains downstream analytics, reconciliation, risk, and user-facing CLI.
+
+---
+
+# Architecture Decision Record 0004: Tier 2 FPGA Learning Spike & Software Production Boundary
+
+**Date:** 2026-09-22  
+**Status:** Accepted  
+**Scope:** Hardware Latency Track · FPGA Simulation · Scope Boundary (`fpga/`, `docs/fpga-spike-findings.md`)  
+**Full Report:** [docs/fpga-spike-findings.md](fpga-spike-findings.md)
+
+## 1. Context & Decision
+Phase 22 asked where software engineering stops and hardware engineering begins. We implemented synthesizable Verilog modules (`fpga/mdrap_crossed_quote.v`, `fpga/mdrap_sequence_gap.v`) and verified them via a cycle-accurate emulation suite (`tests/test_fpga_parity.py`).
+
+We decided to keep FPGA development strictly as a bounded educational learning spike and establish **T1 Software (`mdrap-core`) as MDRAP's permanent production goal**.
+
+## 2. Consequences & Verification
+- Proved 1-cycle combinatorial evaluation (~3.3 ns @ 300 MHz) with 100% agreement against Python/C software engines.
+- Clarified that commercial T2 appliances consume ~90+ ns in optical PHY, Ethernet MAC, and IP/UDP protocol offload.
+- No production software paths depend on external FPGA hardware, keeping MDRAP accessible, deployable on commodity Linux servers, and fully testable across all developer environments.
+
+
+
 

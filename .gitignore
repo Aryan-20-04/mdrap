@@ -17,6 +17,9 @@ __pycache__/
 *.a
 *.lib
 *.exp
+*.exe
+mdrap-core
+mdrap-core.exe
 _fastpath_native.*
 build/
 dist/

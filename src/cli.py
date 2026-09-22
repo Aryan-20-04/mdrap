@@ -5971,10 +5971,50 @@ def cmd_config(args):
     console.print(f"[dim]Config file: {cfg_path or 'defaults (in-memory)'} | SHA-256: {cfg_hash[:16]}...[/dim]\n")
 
 
+def cmd_core(args):
+    """Run standalone native C hot-path engine (T1 zero-lock tier)."""
+    import subprocess
+    import shutil
+    from build_fastpath import get_core_bin_name, build_core
+
+    console = Console()
+    bin_name = get_core_bin_name()
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    core_path = os.path.join(base_dir, bin_name)
+
+    if not os.path.isfile(core_path) or getattr(args, "build", False):
+        console.print(f"[cyan]Compiling {bin_name}...[/cyan]")
+        if not build_core(target_dir=base_dir, quiet=False):
+            console.print(f"[bold red]Failed to compile {bin_name}. Check C compiler on PATH.[/bold red]")
+            return 1
+
+    cmd = [
+        core_path,
+        "--events", str(getattr(args, "events", 100000)),
+        "--shm", str(getattr(args, "shm", "mdrap_feed")),
+        "--symbol", str(getattr(args, "symbol", "BTC/USD")),
+        "--source", str(getattr(args, "source", "FEEDX")),
+    ]
+    if getattr(args, "rate", 0):
+        cmd.extend(["--rate", str(args.rate)])
+    if getattr(args, "quiet", False):
+        cmd.append("--quiet")
+
+    try:
+        res = subprocess.run(cmd)
+        return res.returncode
+    except KeyboardInterrupt:
+        return 0
+    except Exception as exc:
+        console.print(f"[bold red]Error launching {bin_name}: {exc}[/bold red]")
+        return 1
+
+
 def cmd_doctor(args):
     """Diagnose platform health, compiler availability, engine tier, WAL status, and benchmark smoke."""
     import platform
     import shutil
+    import socket
     import sqlite3
     from config_loader import find_config_path, compute_config_hash
     from fastpath import HAS_FASTPATH, _NATIVE_LIB
@@ -6005,7 +6045,44 @@ def cmd_doctor(args):
         tier_desc = "Pure Python QualityEngine"
     t.add_row("Active Engine Tier", tier_desc, tier_status)
 
-    # 4. Config File
+    # 4. Native Core Binary (T1 Hot-Path Engine)
+    from build_fastpath import get_core_bin_name
+    core_bin = get_core_bin_name()
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    core_path = os.path.join(base_dir, core_bin)
+    if os.path.isfile(core_path):
+        core_status = "[bold green]● READY[/bold green]"
+        core_desc = f"{core_bin} present ({os.path.getsize(core_path):,} bytes)"
+    else:
+        core_status = "[yellow]▲ UNCOMPILED[/yellow]"
+        core_desc = f"{core_bin} not built (run `mdrap core --build` or `python build_fastpath.py`)"
+    t.add_row("Native Core Binary (T1)", core_desc, core_status)
+
+    # 5. Hardware Timestamping Support (T1 Tier)
+    if sys.platform.startswith("linux"):
+        has_so_ts = hasattr(socket, "SO_TIMESTAMPING") or hasattr(socket, "SCM_TIMESTAMPING")
+        ptp_devs = [f"/dev/{f}" for f in os.listdir("/dev") if f.startswith("ptp")] if os.path.exists("/dev") else []
+        if ptp_devs:
+            ts_desc = f"Linux PHC / PTP Hardware Clock ({', '.join(ptp_devs)})"
+            ts_status = "[bold green]● PASS[/bold green] (Hardware PTP Active)"
+        elif has_so_ts:
+            ts_desc = "SO_TIMESTAMPING supported (NIC hardware timestamping available)"
+            ts_status = "[bold green]● PASS[/bold green] (Kernel SO_TIMESTAMPING)"
+        else:
+            ts_desc = "Linux CLOCK_REALTIME / CLOCK_MONOTONIC_RAW (Software fallback)"
+            ts_status = "[yellow]▲ FALLBACK[/yellow] (Software Timestamps)"
+    elif sys.platform == "win32":
+        ts_desc = "Windows QPC (QueryPerformanceCounter, ~100ns precision)"
+        ts_status = "[yellow]▲ FALLBACK[/yellow] (Software QPC; Linux + PHC required for NIC HW TS)"
+    elif sys.platform == "darwin":
+        ts_desc = "macOS mach_absolute_time (~41ns precision)"
+        ts_status = "[yellow]▲ FALLBACK[/yellow] (Software Mach Time)"
+    else:
+        ts_desc = f"{sys.platform} clock_gettime (Software fallback)"
+        ts_status = "[yellow]▲ FALLBACK[/yellow] (Software Timestamps)"
+    t.add_row("Hardware Timestamping (T1)", ts_desc, ts_status)
+
+    # 6. Config File
     cfg_path = find_config_path()
     cfg_str = str(cfg_path) if cfg_path else "Using built-in defaults"
     cfg_hash = compute_config_hash()
@@ -7559,6 +7636,16 @@ def build_parser() -> argparse.ArgumentParser:
     # Phase 14: Demo
     _sub("demo", cmd_demo, "Execute bundled 50k-event run and open live desk navigator", ["dm"], db=True)
 
+    # Phase 17: Standalone Native Core (T1 Hot Path)
+    p_core = _sub("core", cmd_core, "Run standalone native C hot-path engine (T1 zero-lock tier)", ["t1", "fast-core"])
+    p_core.add_argument("--events", "-e", type=int, default=100000, help="Number of simulated ticks (default: 100000)")
+    p_core.add_argument("--shm", default="mdrap_feed", help="Shared memory segment name (default: mdrap_feed)")
+    p_core.add_argument("--rate", "-r", type=int, default=0, help="Rate throttle in events/sec (0 = unconstrained)")
+    p_core.add_argument("--symbol", default="BTC/USD", help="Target symbol ticker (default: BTC/USD)")
+    p_core.add_argument("--source", default="FEEDX", help="Source identifier (default: FEEDX)")
+    p_core.add_argument("--build", action="store_true", help="Recompile mdrap-core binary before executing")
+    p_core.add_argument("--quiet", "-q", action="store_true", help="Suppress output")
+
     # Shell Autocompletion Generator
     p_comp = _sub(
         "completion",
@@ -7908,6 +7995,7 @@ ALL_CANONICAL_COMMANDS = [
     "markets",
     "desk",
     "config",
+    "core",
     "doctor",
     "demo",
     "completion",
