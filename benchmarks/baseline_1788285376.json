@@ -1,0 +1,123 @@
+{
+  "label": "baseline",
+  "timestamp": 1788285376.2346828,
+  "code_version": "unversioned",
+  "environment": {
+    "python_version": "3.13.1",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "cpu_count": 12
+  },
+  "config": {
+    "seed": 42,
+    "num_events": 100000,
+    "instruments": [
+      "AAPL",
+      "MSFT",
+      "GOOGL",
+      "AMZN",
+      "NVDA",
+      "TSLA",
+      "META",
+      "JPM"
+    ],
+    "sources": [
+      "FEEDX",
+      "FEEDY",
+      "FEEDZ"
+    ],
+    "start_price": 100.0,
+    "duplicate_rate": 0.002,
+    "missing_rate": 0.001,
+    "out_of_order_rate": 0.0005,
+    "malformed_rate": 0.0005,
+    "price_anomaly_rate": 0.0005,
+    "crossed_quote_rate": 0.0003,
+    "quote_ratio": 0.5,
+    "mean_latency_s": 0.0008,
+    "latency_jitter_s": 0.0006
+  },
+  "warmup_events": 5000,
+  "dataset_seed": 42,
+  "performance": {
+    "processed": 95000,
+    "dropped": 0,
+    "elapsed_s": 15.5224,
+    "throughput_eps": 6120.2,
+    "quality_counts": {
+      "VALID": 94541,
+      "SUSPICIOUS": 214,
+      "INVALID": 245
+    },
+    "e2e_latency_us": {
+      "p50": 795.6,
+      "p95": 1785.0,
+      "p99": 2186.9,
+      "p999": 2637.2,
+      "max": 3227.9
+    },
+    "processing_latency_us": {
+      "p50": 35.8,
+      "p95": 54.4,
+      "p99": 99.5,
+      "max": 13511.4
+    },
+    "max_rss_mb": null
+  },
+  "quality": {
+    "detection_by_fault_type": {
+      "duplicate": {
+        "injected": 192,
+        "detected": 192,
+        "detection_rate": 1.0
+      },
+      "out_of_order": {
+        "injected": 57,
+        "detected": 57,
+        "detection_rate": 1.0
+      },
+      "malformed": {
+        "injected": 34,
+        "detected": 34,
+        "detection_rate": 1.0
+      },
+      "price_anomaly": {
+        "injected": 33,
+        "detected": 32,
+        "detection_rate": 0.9697
+      },
+      "crossed_quote": {
+        "injected": 19,
+        "detected": 19,
+        "detection_rate": 1.0
+      },
+      "missing_sequence_gap_proxy": {
+        "injected_missing_events": 96,
+        "sequence_gap_flags_raised": 134,
+        "note": "approximate: consecutive misses can collapse into one gap flag"
+      }
+    },
+    "false_positive_rate_on_clean_events": 0.001574,
+    "false_positive_breakdown": {
+      "SCHEMA_VIOLATION": 0,
+      "DUPLICATE": 0,
+      "SEQUENCE_GAP": 125,
+      "OUT_OF_ORDER": 0,
+      "STALE": 0,
+      "PRICE_ANOMALY": 0,
+      "CROSSED_QUOTE": 0,
+      "CROSS_FEED_DISAGREEMENT": 24,
+      "MALFORMED": 0
+    },
+    "clean_events_evaluated": 94665
+  },
+  "storage_counts": {
+    "INVALID": 224,
+    "SUSPICIOUS": 237,
+    "VALID": 99501
+  },
+  "source_reliability": {
+    "FEEDZ": 0.9863,
+    "FEEDX": 0.9846,
+    "FEEDY": 0.9868
+  }
+}

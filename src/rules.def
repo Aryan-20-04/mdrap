@@ -1,0 +1,31 @@
+/* src/rules.def - MDRAP Canonical Quality Rule Definitions (X-Macro)
+ *
+ * Range Allocations:
+ *   Bits  0 - 15 : Core platform quality rules
+ *   Bits 16 - 31 : Reserved for future core platform rules
+ *   Bits 32 - 63 : Reserved for user-defined / custom venue rules
+ *
+ * Format:
+ *   RULE_DEF(name, bit, description)
+ */
+
+#ifndef RULE_DEF
+#define RULE_DEF(name, bit, desc)
+#endif
+
+/* Core Quality Rules (Bits 0 - 15) */
+RULE_DEF(SCHEMA_VIOLATION, 0, "Schema validation failure or non-finite values")
+RULE_DEF(DUPLICATE, 1, "Duplicate sequence or event ID already observed")
+RULE_DEF(SEQUENCE_GAP, 2, "Missing sequence numbers indicating packet drop")
+RULE_DEF(OUT_OF_ORDER, 3, "Decreasing or non-monotonic sequence or timestamp")
+RULE_DEF(STALE, 4, "Timestamp exceeds maximum allowed staleness threshold")
+RULE_DEF(PRICE_ANOMALY, 5, "Price movement exceeds statistical volatility threshold")
+RULE_DEF(CROSSED_QUOTE, 6, "Bid price greater than or equal to ask price")
+RULE_DEF(CROSS_FEED_DISAGREEMENT, 7, "Consensus divergence between redundant feeds")
+RULE_DEF(MALFORMED, 8, "Malformed message payload or invalid field format")
+RULE_DEF(CIRCUIT_FILTER_BREACH, 9, "NSE/BSE daily price band limit breach (+/- 10%)")
+RULE_DEF(VOLATILITY_INTERRUPTION, 10, "Deutsche Boerse dynamic price corridor halt (+/- 5%)")
+RULE_DEF(SPECIAL_QUOTE_INDICATION, 11, "Tokyo Stock Exchange Tokuhai quote indication (+/- 8%)")
+RULE_DEF(TS_IMPLAUSIBLE, 12, "exchange timestamp implausibly ahead of receive time")
+RULE_DEF(RATE_LIMITED, 13, "Ingress rate limit exceeded for source")
+RULE_DEF(SECURITY_REJECT, 14, "Security gate rejection (sanitizer, HMAC, or auth failure)")

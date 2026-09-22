@@ -1,0 +1,124 @@
+{
+  "label": "loadtest_100000",
+  "timestamp": 1788197274.8838997,
+  "code_version": "f38402e",
+  "environment": {
+    "python_version": "3.12.3",
+    "platform": "Linux-6.18.44-fc-v22-x86_64-with-glibc2.39",
+    "cpu_count": 1,
+    "mem_total_kb": 4093820
+  },
+  "config": {
+    "seed": 42,
+    "num_events": 100000,
+    "instruments": [
+      "AAPL",
+      "MSFT",
+      "GOOGL",
+      "AMZN",
+      "NVDA",
+      "TSLA",
+      "META",
+      "JPM"
+    ],
+    "sources": [
+      "FEEDX",
+      "FEEDY",
+      "FEEDZ"
+    ],
+    "start_price": 100.0,
+    "duplicate_rate": 0.002,
+    "missing_rate": 0.001,
+    "out_of_order_rate": 0.0005,
+    "malformed_rate": 0.0005,
+    "price_anomaly_rate": 0.0005,
+    "crossed_quote_rate": 0.0003,
+    "quote_ratio": 0.5,
+    "mean_latency_s": 0.0008,
+    "latency_jitter_s": 0.0006
+  },
+  "warmup_events": 1000,
+  "dataset_seed": 42,
+  "performance": {
+    "processed": 99000,
+    "dropped": 0,
+    "elapsed_s": 5.7745,
+    "throughput_eps": 17144.2,
+    "quality_counts": {
+      "VALID": 98519,
+      "SUSPICIOUS": 224,
+      "INVALID": 257
+    },
+    "e2e_latency_us": {
+      "p50": 795.4,
+      "p95": 1785.3,
+      "p99": 2186.6,
+      "p999": 2638.4,
+      "max": 3227.9
+    },
+    "processing_latency_us": {
+      "p50": 11.0,
+      "p95": 17.6,
+      "p99": 29.3,
+      "max": 4256.0
+    },
+    "max_rss_mb": 127.4
+  },
+  "quality": {
+    "detection_by_fault_type": {
+      "duplicate": {
+        "injected": 202,
+        "detected": 202,
+        "detection_rate": 1.0
+      },
+      "out_of_order": {
+        "injected": 60,
+        "detected": 60,
+        "detection_rate": 1.0
+      },
+      "malformed": {
+        "injected": 36,
+        "detected": 36,
+        "detection_rate": 1.0
+      },
+      "price_anomaly": {
+        "injected": 33,
+        "detected": 32,
+        "detection_rate": 0.9697
+      },
+      "crossed_quote": {
+        "injected": 19,
+        "detected": 19,
+        "detection_rate": 1.0
+      },
+      "missing_sequence_gap_proxy": {
+        "injected_missing_events": 96,
+        "sequence_gap_flags_raised": 134,
+        "note": "approximate: consecutive misses can collapse into one gap flag"
+      }
+    },
+    "false_positive_rate_on_clean_events": 0.001591,
+    "false_positive_breakdown": {
+      "SCHEMA_VIOLATION": 0,
+      "DUPLICATE": 0,
+      "SEQUENCE_GAP": 132,
+      "OUT_OF_ORDER": 0,
+      "STALE": 0,
+      "PRICE_ANOMALY": 0,
+      "CROSSED_QUOTE": 0,
+      "CROSS_FEED_DISAGREEMENT": 25,
+      "MALFORMED": 0
+    },
+    "clean_events_evaluated": 98650
+  },
+  "storage_counts": {
+    "INVALID": 224,
+    "SUSPICIOUS": 237,
+    "VALID": 99501
+  },
+  "source_reliability": {
+    "FEEDZ": 0.9863,
+    "FEEDX": 0.9846,
+    "FEEDY": 0.9868
+  }
+}

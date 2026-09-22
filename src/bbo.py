@@ -1,0 +1,308 @@
+"""Synthetic Consolidated BBO (Best Bid & Offer / NBBO) Engine for MDRAP.
+
+Aggregates quotes across multiple active market feeds, computes the global
+tightest top-of-book, detects cross-exchange locked/crossed markets, prunes
+unhealthy sources via Watchdog integration, and tracks venue price attribution.
+
+Mathematical & Microstructure Formulations:
+  - Best Bid: $\\max_{s \\in \\text{ActiveSources}} (\\text{bid}_s)$
+  - Best Ask: $\\min_{s \\in \\text{ActiveSources}} (\\text{ask}_s)$
+  - Mid Price: $\\frac{\\text{Best Bid} + \\text{Best Ask}}{2.0}$
+  - Bid-Ask Spread: $\\text{Best Ask} - \\text{Best Bid}$
+  - Locked Market: $\\text{Best Bid} == \\text{Best Ask}$
+  - Crossed Market: $\\text{Best Bid} > \\text{Best Ask}$ (cross-venue arbitrage opportunity)
+  - Time-To-Live (TTL): Quotes exceeding `quote_ttl_s` in simulated exchange time are pruned
+    to prevent defunct venues from anchoring stale liquidity.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+import json
+import math
+from typing import Any
+
+from models import CanonicalEvent, EventType, QualityStatus
+
+
+@dataclass(slots=True)
+class ConsolidatedBBO:
+    instrument_id: str
+    best_bid: float
+    best_bid_size: float
+    best_bid_source: str
+    best_ask: float
+    best_ask_size: float
+    best_ask_source: str
+    spread: float | None
+    mid_price: float | None
+    is_crossed: bool
+    is_locked: bool
+    timestamp: float
+    is_stale: bool = False
+
+    def to_dict(self) -> dict:
+        spread_val = (
+            round(self.spread, 4)
+            if (self.spread is not None and math.isfinite(self.spread))
+            else None
+        )
+        mid_val = (
+            round(self.mid_price, 4)
+            if (self.mid_price is not None and math.isfinite(self.mid_price))
+            else None
+        )
+        best_bid_val = (
+            self.best_bid
+            if (
+                self.best_bid is not None
+                and self.best_bid >= 0
+                and math.isfinite(self.best_bid)
+            )
+            else None
+        )
+        best_ask_val = (
+            self.best_ask
+            if (self.best_ask is not None and math.isfinite(self.best_ask))
+            else None
+        )
+        return {
+            "instrument_id": self.instrument_id,
+            "best_bid": best_bid_val,
+            "best_bid_size": self.best_bid_size,
+            "best_bid_source": self.best_bid_source,
+            "best_ask": best_ask_val,
+            "best_ask_size": self.best_ask_size,
+            "best_ask_source": self.best_ask_source,
+            "spread": spread_val,
+            "mid_price": mid_val,
+            "is_crossed": self.is_crossed,
+            "is_locked": self.is_locked,
+            "timestamp": self.timestamp,
+            "is_stale": self.is_stale,
+        }
+
+
+class BBOEngine:
+    """Multi-Venue Consolidated Order Book Engine."""
+
+    def __init__(self, quote_ttl_s: float = 2.0, watchdog: Any | None = None):
+        self.quote_ttl_s = quote_ttl_s
+        self.watchdog = watchdog
+        # _books[instrument_id][source] = CanonicalEvent
+        self._books: dict[str, dict[str, CanonicalEvent]] = {}
+        # Latest consolidated top of book per instrument
+        self._current_bbos: dict[str, ConsolidatedBBO] = {}
+        # Pre-serialized wire JSON byte buffers per instrument (zero-allocation fastpath)
+        self._cached_bbo_json: dict[str, bytes] = {}
+        # Venue attribution counters: source -> {'bid_count': int, 'ask_count': int, 'both_count': int}
+        self._attribution: dict[str, dict[str, int]] = {}
+        self._update_count = 0
+        self._crossed_count = 0
+        self._locked_count = 0
+
+    def _is_source_eligible(self, source: str) -> bool:
+        if not self.watchdog:
+            return True
+        if hasattr(self.watchdog, "is_source_active"):
+            return self.watchdog.is_source_active(source)
+        return True
+
+    def observe(self, event: CanonicalEvent) -> ConsolidatedBBO | None:
+        """
+        Ingest a canonical quote event and compute the updated Consolidated BBO.
+        Only processes QUOTE events with valid bid and ask prices.
+        """
+        if event.event_type != EventType.QUOTE:
+            return None
+
+        # Never poison consolidated book with INVALID quotes
+        if event.quality_status == QualityStatus.INVALID:
+            return None
+
+        if event.bid_price is None and event.ask_price is None:
+            return None
+
+        inst = event.instrument_id
+        src = event.source
+        market_now = event.exchange_timestamp
+
+        inst_book = self._books.setdefault(inst, {})
+
+        # If source is currently eligible, update its quote
+        if self._is_source_eligible(src):
+            inst_book[src] = event
+        else:
+            # Source was degraded/silent/blocked, evict its quote
+            inst_book.pop(src, None)
+
+        # Prune expired quotes (based on market time) or quotes from degraded sources
+        dead_sources = []
+        for s, q in inst_book.items():
+            if not self._is_source_eligible(s):
+                dead_sources.append(s)
+            elif (market_now - q.exchange_timestamp) > self.quote_ttl_s:
+                dead_sources.append(s)
+
+        for s in dead_sources:
+            inst_book.pop(s, None)
+
+        if not inst_book:
+            if inst in self._current_bbos:
+                self._current_bbos[inst].is_stale = True
+            return None
+
+        best_bid = -1.0
+        best_bid_size = 0.0
+        best_bid_src = ""
+        best_ask = float("inf")
+        best_ask_size = 0.0
+        best_ask_src = ""
+
+        for s, q in inst_book.items():
+            bp = q.bid_price
+            if bp is not None:
+                if bp > best_bid or (
+                    bp == best_bid and (q.bid_size or 0.0) > best_bid_size
+                ):
+                    best_bid = bp
+                    best_bid_size = q.bid_size or 0.0
+                    best_bid_src = s
+            ap = q.ask_price
+            if ap is not None:
+                if ap < best_ask or (
+                    ap == best_ask and (q.ask_size or 0.0) > best_ask_size
+                ):
+                    best_ask = ap
+                    best_ask_size = q.ask_size or 0.0
+                    best_ask_src = s
+
+        has_bid = best_bid >= 0 and math.isfinite(best_bid)
+        has_ask = math.isfinite(best_ask)
+        spread = (best_ask - best_bid) if (has_bid and has_ask) else None
+        mid_price = (
+            ((best_bid + best_ask) / 2.0)
+            if (has_bid and has_ask)
+            else (best_bid if has_bid else (best_ask if has_ask else None))
+        )
+        is_crossed = (best_bid > best_ask) if (has_bid and has_ask) else False
+        is_locked = (best_bid == best_ask) if (has_bid and has_ask) else False
+
+        bbo = ConsolidatedBBO(
+            instrument_id=inst,
+            best_bid=best_bid,
+            best_bid_size=best_bid_size,
+            best_bid_source=best_bid_src,
+            best_ask=best_ask,
+            best_ask_size=best_ask_size,
+            best_ask_source=best_ask_src,
+            spread=spread,
+            mid_price=mid_price,
+            is_crossed=is_crossed,
+            is_locked=is_locked,
+            timestamp=market_now,
+            is_stale=False,
+        )
+
+        self._current_bbos[inst] = bbo
+
+        # Pre-render wire JSON byte buffer (zero-allocation fastpath)
+        bbo_wire = {
+            "status": "OK",
+            "symbol": inst,
+            "bbo": {
+                "bid": bbo.best_bid
+                if (bbo.best_bid >= 0 and math.isfinite(bbo.best_bid))
+                else None,
+                "bid_source": bbo.best_bid_source if bbo.best_bid_source else None,
+                "ask": bbo.best_ask if math.isfinite(bbo.best_ask) else None,
+                "ask_source": bbo.best_ask_source if bbo.best_ask_source else None,
+                "spread": bbo.spread
+                if (bbo.spread is not None and math.isfinite(bbo.spread))
+                else None,
+                "mid": bbo.mid_price
+                if (bbo.mid_price is not None and math.isfinite(bbo.mid_price))
+                else None,
+                "crossed": bbo.is_crossed,
+            },
+        }
+        self._cached_bbo_json[inst] = (json.dumps(bbo_wire) + "\n").encode("utf-8")
+
+        self._update_count += 1
+        if is_crossed:
+            self._crossed_count += 1
+        if is_locked:
+            self._locked_count += 1
+
+        # Track venue contribution statistics
+        for venue in (best_bid_src, best_ask_src):
+            if venue not in self._attribution:
+                self._attribution[venue] = {
+                    "bid_count": 0,
+                    "ask_count": 0,
+                    "both_count": 0,
+                }
+
+        if best_bid_src == best_ask_src:
+            self._attribution[best_bid_src]["both_count"] += 1
+            self._attribution[best_bid_src]["bid_count"] += 1
+            self._attribution[best_bid_src]["ask_count"] += 1
+        else:
+            self._attribution[best_bid_src]["bid_count"] += 1
+            self._attribution[best_ask_src]["ask_count"] += 1
+
+        return bbo
+
+    def get_bbo_wire_bytes(self, instrument_id: str) -> bytes:
+        """Return pre-rendered UTF-8 JSON wire bytes for BBO quote."""
+        cached = self._cached_bbo_json.get(instrument_id)
+        if cached:
+            return cached
+        return (
+            json.dumps({"status": "OK", "symbol": instrument_id, "bbo": None}) + "\n"
+        ).encode("utf-8")
+
+    get_wire_bbo = get_bbo_wire_bytes
+
+    def current_bbo(
+        self, instrument_id: str, allow_stale: bool = True, now: float | None = None
+    ) -> ConsolidatedBBO | None:
+        bbo = self._current_bbos.get(instrument_id)
+        if bbo is None:
+            return None
+        if now is not None:
+            bbo.is_stale = (now - bbo.timestamp) > self.quote_ttl_s
+        if not allow_stale and bbo.is_stale:
+            return None
+        return bbo
+
+    get_bbo = current_bbo
+
+    def all_bbos(self) -> dict[str, ConsolidatedBBO]:
+        return dict(self._current_bbos)
+
+    def venue_attribution(self) -> dict[str, dict]:
+        """
+        Return venue attribution metrics with percentage shares.
+        """
+        total_updates = max(1, self._update_count)
+        result = {}
+        for src, counts in self._attribution.items():
+            result[src] = {
+                "bid_count": counts["bid_count"],
+                "bid_pct": round(100.0 * counts["bid_count"] / total_updates, 2),
+                "ask_count": counts["ask_count"],
+                "ask_pct": round(100.0 * counts["ask_count"] / total_updates, 2),
+                "both_count": counts["both_count"],
+                "both_pct": round(100.0 * counts["both_count"] / total_updates, 2),
+            }
+        return result
+
+    def stats(self) -> dict:
+        return {
+            "total_updates": self._update_count,
+            "crossed_markets": self._crossed_count,
+            "locked_markets": self._locked_count,
+            "instruments_covered": len(self._current_bbos),
+            "venues_contributing": len(self._attribution),
+        }

@@ -1,0 +1,27 @@
+# Auto-detect text files and normalize line endings to LF
+* text=auto eol=lf
+
+# Windows batch files must retain CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Python source files
+*.py text diff=python eol=lf
+*.c text diff=cpp eol=lf
+*.h text diff=cpp eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.ini text eol=lf
+*.toml text eol=lf
+
+# Binary files - preserve as-is without line ending modifications
+*.dll binary
+*.so binary
+*.dylib binary
+*.docx binary
+*.db binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.prof binary

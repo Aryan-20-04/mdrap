@@ -1,0 +1,106 @@
+# Changelog
+
+All notable changes to MDRAP are documented in this file.
+This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [2.2.0] - 2026-09-22
+
+### Added
+- **Standalone Native C Hot-Path Engine (`mdrap-core`)**: Fully decoupled out-of-process C binary (`src/mdrap_core.c`) running wire-to-SHM with zero Python runtime, CPython FFI, or GIL involvement, achieving **22.35 Million events/sec** (**44.8 ns per tick** wire-to-SHM latency).
+- **Zero-Lock SPSC Shared Memory Ring Buffer**: Cross-platform memory-mapped ring buffer (Windows named file mapping / POSIX `shm_open`) with 128-byte cache-line aligned slots, atomic release fences, and two-phase commit protocol (`UNCOMMITTED` seq invalidation -> payload store -> fence -> commit sequence publication).
+- **Single-Writer Lock-Free Ingestion Benchmark**: Multi-source contention benchmark (`benchmarks/bench_contention.py`) proving flat p99.9 tail latency (0.30 µs at 8 sources) and eliminating mutex convoying.
+- **Hardware Timestamping Diagnostics (`mdrap doctor`)**: Added institutional clock source diagnostics detecting `SO_TIMESTAMPING` capabilities and Linux PTP Hardware Clocks (`/dev/ptp*`), with graceful fallback to software QPC on Windows and mach time on macOS.
+- **CLI Subcommand `mdrap core`**: Terminal command and runner for executing the standalone native hot-path engine with configurable event counts, shared memory names, rate throttling, and automatic compilation.
+- **Shared Memory Fuzzing Suite**: Fuzz testing harness (`tests/test_shm_fuzz.py`) covering torn reads, corrupted magic numbers, unsupported versions, epoch mutation, and ring buffer wrap-around overrun detection.
+- **Architecture Decision Record (ADR 0003)**: Documented process split decision retaining C with single-writer process boundary and backlogging Rust rewrite (`docs/decisions/0003-native-core-process-split.md`).
+- **T2 FPGA Hardware Learning Track**: Synthesizable Verilog RTL modules (`fpga/mdrap_crossed_quote.v`, `fpga/mdrap_sequence_gap.v`, `fpga/tb_mdrap_rules.v`), cycle-accurate parity test (`tests/test_fpga_parity.py`) with 100% agreement on 1,000 events, and an in-depth hardware latency findings report (`docs/fpga-spike-findings.md`).
+
+## [2.1.0] - 2026-09-21
+
+### Added
+- **Avellaneda-Stoikov Quantitative HFT Market Maker**: High-frequency market-making strategy (`src/strategy_sdk.py`) with inventory skewing, toxic order-flow spread widening, tick grid quantization, and integrated `FastQualityEngine` quality shield.
+- **Micro-Throughput Vectorized SBE Engine**: SIMD-capable C validation kernel achieving **15.54 Million events/sec** (**64.4 ns per event**, 15.5x over the 1 MEPS goal).
+- **Golden Parity Suite**: 350-vector golden test suite (`tests/test_golden_parity.py`) guaranteeing 100% Python-to-C verdict and reason code agreement.
+- **Covering Time-Series & Retention Indexes**: Added `idx_canonical_exch_ts` on `canonical_events(exchange_timestamp DESC)` for instant time-series query scans and `idx_quarantine_recv_ts` on `quarantine(receive_timestamp)` for retention chunking.
+
+### Optimized
+- **Hot-Path Memory Allocations & Generator Streaming**: Streamed canonical events via generator expressions in `write_canonical_batch` and `write_batches_atomic`, eliminating multi-megabyte intermediate list allocations.
+- **Zero-Allocation Field Validation & Enum Caching**: Replaced list comprehensions with short-circuit loops in `gateway.normalize` and cached static `EventType` enum instances.
+- **Decoupled SHM String Caching**: Bounded ASCII encoding and decoding caches in `src/shm.py` eliminating string allocations on IPC ticks.
+- **Throttled Live Terminal Visualizer**: Limited `LiveTickerDashboard` terminal re-renders to 15 Hz while processing events at maximum wire speed, eliminating up to 50,000 table/panel allocations per second.
+- **Magic Number Elimination**: Extracted all inline literals into documented institutional constants across strategy, quality, pipeline, storage, reconciliation, and native C kernels.
+
+## [2.0.2] - 2026-09-18
+
+### Optimized
+- **Telemetry Latency Sampling & O(1) Memory Footprint**: Implemented `CompactSampleBuffer` using single-precision 32-bit float arrays (`array.array('f')`) and systematic downsampling capped at 50,000 samples. Strictly bounds telemetry memory to < 200 KB regardless of event volume (slashing memory by 290x on 100k events and eliminating OOM on 1B events).
+- **SQLite Storage Memory Overhead**: Tuned default SQLite pragmas to 64 MB mmap (down from 256 MB) and 16 MB page cache (down from 64 MB) across read/write connections, reclaiming ~430 MB of virtual working set with equal or faster throughput. Added `MDRAP_SQLITE_MMAP_MB` and `MDRAP_SQLITE_CACHE_MB` environment variable overrides.
+- **Paper Trading EMS Memory Bounding**: Converted `PaperExecutor` order, fill, and equity records to bounded rolling deques (`maxlen=10_000`) and introduced running scalar accumulators (`_total_trades`, `_win_count`, `_slippage_bps_sum`, `_total_slippage_usd`) to allow long-running and multi-million event strategy executions in constant memory.
+- **Quality Deduplication Cache Hashing**: Converted `QualityEngine` dedup keys from 6-element Python tuples to 64-bit integer hashes and tuned default LRU window to 50,000 entries, cutting dedup heap footprint from 37 MB down to ~6 MB.
+
+### Fixed
+- **Strategy Universe Simulation**: Ensured simulator generates targeted symbols when running single or custom multi-instrument universes.
+- **Export Directory Auto-Creation**: Automatically creates parent directories when exporting strategy or table reports to nested paths.
+- **CLI Visual Ergonomics & Accessibility**: Added colorblind indicators (`● VALID`, `▲ SUSPICIOUS`, `✕ INVALID`), rounded border aesthetics, `NO_COLOR` standard compliance, and scoped error command palettes.
+
+## [2.0.1] - 2026-09-18
+
+### Fixed
+- **Desk Navigator Parameter Error**: Updated `MDRAPNavigator.__init__` to accept `db_path` parameter and guarded `mdrap demo` to cleanly handle headless/non-TTY execution without failing raw input mode.
+
+## [2.0.0] - 2026-09-18
+
+### Added
+- **Single Source of Truth Quality Engine**: `src/rules.def` X-macro shared between C hot-path and Python with `CORE_REASON_MASK` enforcement and CI sync verification (`tools/gen_reasons.py`).
+- **Micro-FFI Struct-by-Pointer Acceleration**: High-performance batch ctypes boundary crossing achieving 452 ns per-event boundary latency (4.58x faster than baseline) with direct pointer array buffer mapping.
+- **Continuous Fuzzing & Differential Verification**: libFuzzer SBE and batch harnesses (`fuzz/fuzz_sbe.c`, `fuzz/fuzz_batch.c`), differential property fuzzing (`fuzz/fuzz_differential.py`) guaranteeing 100% rejection/acceptance parity between Python and C.
+- **Layered TOML Configuration**: `mdrap.toml` schema and stdlib `tomllib` config loader with hierarchical inheritance (`defaults -> venue -> instrument_class -> instrument`) and origin tracking (`mdrap config show`).
+- **Extensibility Framework**: Standardized `FeedAdapter` protocol (`src/adapters/__init__.py`), rapid venue adapter template (`src/adapters/template.py`), and zero-overhead custom rule decorator `@register_rule(bit=32..63)`.
+- **Institutional Diagnosability & Demo**: `mdrap doctor` environment and integrity self-checks, `mdrap demo` 50k live desk run, and non-silent native fallback telemetry.
+- **Reproducibility & Compliance Export**: Run reproducibility manifests (`manifest.json`), Parquet/JSON/CSV export with SQL injection prevention (`mdrap export`), and strict typing stubs (`py.typed`, `src/fastpath.pyi`).
+- **Multi-Python CI Matrix**: Automated GitHub Actions testing across Python 3.11, 3.12, 3.13, and 3.13 free-threaded (`3.13t`).
+
+## [1.2.2] - 2026-09-17
+
+### Added
+- **Storage Retention & Compaction**: `mdrap retention` (`compact`, `prune`) with `--days` and `--quarantine-days` (default 90 days for compliance evidentiary completeness) and WAL checkpoint truncation / VACUUM disk reclamation.
+- **Scheduled Retention**: `Scheduler.schedule_retention()` to automate database maintenance on recurring cron schedules.
+- **Agent-Friendly JSON Support**: `--json` flag support across all data-producing commands (`status`, `bbo`, `analytics`, `watchdog`, `version`, etc.) for zero-scraping AI agent consumption.
+- **OpenFIGI Support**: Added Financial Instrument Global Identifier (`figi`) field to `SymbolInfo` and 12-character global resolution in `resolve_symbol()`.
+- **Clock Source Traceability**: Added `clock_source` field to `CanonicalEvent` for MiFID II RTS 25 compliance.
+- **Supply Chain & Security**: `SECURITY.md` vulnerability disclosure policy, upper-bound dependency bounds in `requirements.txt`, and market data licensing disclaimer in `README.md`.
+- **Binary Wheels Matrix**: GitHub Actions workflow (`wheels.yml`) using `cibuildwheel` across Linux, macOS, and Windows.
+
+### Fixed
+- **Linux Native Library Import Collision**: Renamed compiled C library to `_fastpath_native.*` to prevent `fastpath.so` from hijacking Python's `import fastpath`.
+- **CLI Global Flag Mangling**: Fixed bug where global flags like `--json` were misidentified as stock tickers.
+- **Non-Windows CI Test Guard**: Fixed unconditional `msvcrt` import in `test_navigator_coverage.py` on Linux/macOS.
+- **Unbounded Symbol Cache**: Added LRU cache eviction (`max_instruments=2000`) in `ConsolidatedDepthEngine` to prevent daemon memory leaks.
+- **Fast Local Test Loop**: Tagged stress/throughput tests with `@pytest.mark.slow`, reducing local test runs from 116s to ~70s.
+
+## [1.2.1] - 2026-09-15
+
+### Added
+- **Pipeline Micro-Batching**: Micro-batching support for C boundary crossing to minimize FFI overhead.
+- **Read Connection Decoupling**: Secondary read-only SQLite connection to eliminate reader/writer lock contention.
+- **Symbology As-Of-Date Awareness**: Point-in-time ticker resolution to prevent lookahead bias in historical analysis.
+- **Instrument-Sharded Stress Testing**: Parallelized stress testing partitioned across instruments.
+
+## [1.2.0] - 2026-09-12
+
+### Added
+- **Modal Navigator Desk**: Interactive full-screen terminal workspace (`mdrap desk`).
+- **Strict Sync & Security Hardening**: DuckDB divergence detection, SSRF protection, and error quarantine.
+
+### Changed
+- **85% Test Coverage**: Achieved 85% automated test coverage across core ingestion and validation modules.
+
+## [1.1.0] - 2026-08-28
+
+### Added
+- Native C fastpath acceleration, global venue symbology, and maritime vessel tracking.
+
+## [1.0.0] - 2026-08-15
+
+### Added
+- Initial stable release with deterministic market data validation, SQLite storage, and CLI tools.

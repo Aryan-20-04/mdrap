@@ -1,0 +1,200 @@
+{
+  "total_devices": 12,
+  "normal_count": 6,
+  "fast_count": 5,
+  "monitor_count": 1,
+  "duration_s": 5.29,
+  "total_ops": 1875,
+  "ops_per_sec": 354.4,
+  "total_errors": 0,
+  "daemon_broadcast_eps": 650.1,
+  "daemon_active_clients": 0,
+  "overall_latency": {
+    "p50_ms": 8.973,
+    "p90_ms": 16.464,
+    "p95_ms": 20.032,
+    "p99_ms": 296.502,
+    "max_ms": 1014.168,
+    "avg_ms": 15.734
+  },
+  "normal_user_latency": {
+    "p50_ms": 11.901,
+    "p95_ms": 25.035,
+    "p99_ms": 791.161,
+    "ops": 171
+  },
+  "fast_bot_latency": {
+    "p50_ms": 8.576,
+    "p95_ms": 18.729,
+    "p99_ms": 27.519,
+    "ops": 1681
+  },
+  "monitor_latency": {
+    "p50_ms": 292.483,
+    "p95_ms": 317.437,
+    "p99_ms": 344.009,
+    "ops": 23
+  },
+  "operation_breakdown": {
+    "VENUE_HEALTH": 32,
+    "BBO_QUOTE": 67,
+    "STATUS": 17,
+    "CANDLESTICK_OHLCV": 37,
+    "SPREAD_ANALYTICS": 13,
+    "PROMETHEUS_HEALTH": 13,
+    "STREAM_TICK_DRAIN": 336,
+    "L2_DEPTH_LADDER": 459,
+    "VWAP_CURVE": 423,
+    "DUCKDB_SIMD_VWAP": 208,
+    "TICK_GAP_REPLAY": 255,
+    "PROMETHEUS_SCRAPE": 15
+  },
+  "operation_p95_ms": {
+    "VENUE_HEALTH": 21.731,
+    "BBO_QUOTE": 21.176,
+    "STATUS": 22.851,
+    "CANDLESTICK_OHLCV": 735.393,
+    "SPREAD_ANALYTICS": 791.161,
+    "PROMETHEUS_HEALTH": 259.846,
+    "STREAM_TICK_DRAIN": 0.98,
+    "L2_DEPTH_LADDER": 21.325,
+    "VWAP_CURVE": 18.918,
+    "DUCKDB_SIMD_VWAP": 11.221,
+    "TICK_GAP_REPLAY": 19.19,
+    "PROMETHEUS_SCRAPE": 344.009
+  },
+  "device_results": [
+    {
+      "device_id": "desk-user-01",
+      "archetype": "NORMAL_USER",
+      "total_ops": 33,
+      "ops_per_sec": 6.5,
+      "p50_ms": 12.439,
+      "p95_ms": 25.436,
+      "p99_ms": 25.957,
+      "max_ms": 25.957,
+      "errors": 0
+    },
+    {
+      "device_id": "desk-user-02",
+      "archetype": "NORMAL_USER",
+      "total_ops": 26,
+      "ops_per_sec": 5.1,
+      "p50_ms": 12.81,
+      "p95_ms": 22.851,
+      "p99_ms": 629.811,
+      "max_ms": 629.811,
+      "errors": 0
+    },
+    {
+      "device_id": "desk-user-03",
+      "archetype": "NORMAL_USER",
+      "total_ops": 32,
+      "ops_per_sec": 6.4,
+      "p50_ms": 11.135,
+      "p95_ms": 20.124,
+      "p99_ms": 231.626,
+      "max_ms": 231.626,
+      "errors": 0
+    },
+    {
+      "device_id": "desk-user-04",
+      "archetype": "NORMAL_USER",
+      "total_ops": 27,
+      "ops_per_sec": 5.4,
+      "p50_ms": 13.163,
+      "p95_ms": 21.176,
+      "p99_ms": 968.232,
+      "max_ms": 968.232,
+      "errors": 0
+    },
+    {
+      "device_id": "desk-user-05",
+      "archetype": "NORMAL_USER",
+      "total_ops": 26,
+      "ops_per_sec": 5.2,
+      "p50_ms": 12.59,
+      "p95_ms": 259.846,
+      "p99_ms": 735.393,
+      "max_ms": 735.393,
+      "errors": 0
+    },
+    {
+      "device_id": "desk-user-06",
+      "archetype": "NORMAL_USER",
+      "total_ops": 27,
+      "ops_per_sec": 5.4,
+      "p50_ms": 11.534,
+      "p95_ms": 19.793,
+      "p99_ms": 791.161,
+      "max_ms": 791.161,
+      "errors": 0
+    },
+    {
+      "device_id": "hft-bot-01",
+      "archetype": "FAST_PACED_BOT",
+      "total_ops": 337,
+      "ops_per_sec": 67.6,
+      "p50_ms": 8.677,
+      "p95_ms": 18.918,
+      "p99_ms": 29.598,
+      "max_ms": 871.631,
+      "errors": 0
+    },
+    {
+      "device_id": "hft-bot-02",
+      "archetype": "FAST_PACED_BOT",
+      "total_ops": 333,
+      "ops_per_sec": 66.9,
+      "p50_ms": 8.701,
+      "p95_ms": 18.646,
+      "p99_ms": 22.521,
+      "max_ms": 1007.553,
+      "errors": 0
+    },
+    {
+      "device_id": "hft-bot-03",
+      "archetype": "FAST_PACED_BOT",
+      "total_ops": 336,
+      "ops_per_sec": 67.3,
+      "p50_ms": 8.652,
+      "p95_ms": 19.489,
+      "p99_ms": 29.333,
+      "max_ms": 943.889,
+      "errors": 0
+    },
+    {
+      "device_id": "hft-bot-04",
+      "archetype": "FAST_PACED_BOT",
+      "total_ops": 336,
+      "ops_per_sec": 67.3,
+      "p50_ms": 8.557,
+      "p95_ms": 19.012,
+      "p99_ms": 23.654,
+      "max_ms": 1014.168,
+      "errors": 0
+    },
+    {
+      "device_id": "hft-bot-05",
+      "archetype": "FAST_PACED_BOT",
+      "total_ops": 339,
+      "ops_per_sec": 68.0,
+      "p50_ms": 8.398,
+      "p95_ms": 18.654,
+      "p99_ms": 24.346,
+      "max_ms": 939.945,
+      "errors": 0
+    },
+    {
+      "device_id": "sre-mon-01",
+      "archetype": "DEVOPS_MONITOR",
+      "total_ops": 23,
+      "ops_per_sec": 4.4,
+      "p50_ms": 292.483,
+      "p95_ms": 317.437,
+      "p99_ms": 344.009,
+      "max_ms": 344.009,
+      "errors": 0
+    }
+  ]
+}

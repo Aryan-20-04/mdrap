@@ -1,0 +1,75 @@
+# MDRAP Platform Configuration Specification
+# Version: 1.0.0
+# Reference: Market Data Reliability & Acceleration Platform Spec §6, §7, §14, §19
+
+# 1. Data Quality Engine Thresholds (Spec §7)
+quality:
+  # General default thresholds
+  staleness_threshold_s: 0.05       # Flag as SUSPICIOUS if receive_ts - exchange_ts > threshold (50ms)
+  price_anomaly_stddev: 6.0         # Flag price jump beyond k * rolling stddev
+  price_window: 50                  # Rolling window size for Welford mean/variance baseline
+  dedup_cache_size: 200000          # Sliding-window LRU duplicate detection buffer size
+
+  # Asset-specific threshold overrides
+  asset_classes:
+    crypto:
+      # Public internet WebSocket/REST crypto feeds experience greater network jitter
+      staleness_threshold_s: 2.00   # 2.0s network tolerance for public exchange REST endpoints
+    equities:
+      # Traditional equities trade in tighter micro-regimes
+      staleness_threshold_s: 0.25   # 250ms tolerance
+
+# 2. Synthetic Consolidated BBO (NBBO) Engine (Spec §9)
+bbo:
+  quote_ttl_s: 2.0                  # Prune quotes older than 2.0s from consolidated book
+
+# 3. Live Watchdog & Failover (Spec §6.13)
+watchdog:
+  silence_threshold_s: 2.0          # Mark source SILENT if no ticks for 2.0 seconds
+  degradation_threshold: 0.90       # Mark source DEGRADED if reliability score < 0.90
+  recovery_threshold: 0.93          # Re-admit source to HEALTHY when score >= 0.93 (hysteresis)
+
+# 4. Storage & Persistence Engine (Spec §12, §14)
+storage:
+  batch_size: 500                   # Executemany batch commit size
+  wal_mode: true                    # Enable Write-Ahead Logging in SQLite
+  synchronous: "NORMAL"             # SQLite PRAGMA synchronous (NORMAL / OFF / FULL)
+
+# 5. Security, Cryptography & Rate Limiting (Spec §19)
+security:
+  rate_limit_per_sec: 20000.0       # Token bucket leak rate per source
+  rate_limit_capacity: 40000.0      # Maximum token bucket burst capacity
+  require_hmac: false               # Set true to reject unauthenticated feed payloads
+  audit_hash_algorithm: "sha256"    # Cryptographic algorithm for Merkle audit chain
+
+# 6. IPC Daemon & Network Server (Spec §18)
+daemon:
+  host: "127.0.0.1"                 # Loopback-only binding for local IPC security
+  port: 9876                        # Default streaming socket port
+  require_auth: false               # Enable pre-shared bearer token authentication
+  auth_token: ""                    # Token string (or read from MDRAP_DAEMON_TOKEN env var)
+
+# 7. High-Throughput Streaming Feeds (Spec §6, §14)
+feeds:
+  default_provider: "crypto"        # crypto, polygon, databento, simulator
+  mock_mode: false                  # Set true to use high-fidelity wire-format mock generators
+  max_queue_size: 50000             # Bounded in-memory event buffer size
+  polygon:
+    stocks_endpoint: "wss://socket.polygon.io/stocks"
+    crypto_endpoint: "wss://socket.polygon.io/crypto"
+    default_symbols: ["AAPL", "MSFT", "NVDA", "TSLA"]
+  databento:
+    gateway_host: "live.databento.com"
+    gateway_port: 13000
+    dataset: "GLBX.MDP3"
+    schema: "mbp-1"
+    default_symbols: ["ES.c.0", "NQ.c.0", "AAPL"]
+
+# 8. Columnar Time-Series Storage & Vectorized Analytics (DuckDB & Parquet) (Spec §14)
+columnar:
+  enabled: true
+  db_path: "data/mdrap.duckdb"
+  parquet_dir: "data/parquet"
+  threads: 4
+  memory_limit: "2GB"
+

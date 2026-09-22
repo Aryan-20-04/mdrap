@@ -1,0 +1,119 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mdrap"
+version = "2.2.0"
+description = "Market Data Reliability & Acceleration Platform - Financial market infrastructure for converting noisy market feeds into validated canonical streams"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+    { name = "MDRAP Team" }
+]
+keywords = [
+    "market-data",
+    "hft",
+    "trading",
+    "bbo",
+    "nbbo",
+    "cryptocurrency",
+    "finance",
+    "latency",
+    "data-quality",
+    "infrastructure"
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Financial and Insurance Industry",
+    "Topic :: Office/Business :: Financial :: Investment",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: C",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    # MDRAP is 100% runnable on pure Python standard library.
+    # Optional styling library:
+    "rich>=13.0.0",
+]
+
+[project.optional-dependencies]
+chd = [
+    "pyarrow>=14.0.0",
+    "zstandard>=0.21.0",
+]
+export = [
+    "openpyxl>=3.1.0",
+]
+columnar = [
+    "duckdb>=1.0.0",
+    "pyarrow>=14.0.0",
+]
+stream = [
+    "websockets>=12.0",
+]
+config = [
+    "pyyaml>=6.0",
+]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-timeout>=2.3.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=5.0.0",
+]
+all = [
+    "duckdb>=1.0.0",
+    "pyarrow>=14.0.0",
+    "zstandard>=0.21.0",
+    "rich>=13.0.0",
+    "openpyxl>=3.1.0",
+    "websockets>=12.0",
+    "pyyaml>=6.0",
+    "pytest>=8.0.0",
+    "pytest-timeout>=2.3.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=5.0.0",
+]
+
+[project.scripts]
+mdrap = "cli:main"
+
+[tool.setuptools]
+py-modules = [
+    "alerts", "analytics", "archive", "backtest", "bardb", "bbo", "benchmark",
+    "chaos", "chd", "chd_history", "cli", "client", "columnar", "config", "config_loader", "corporate_actions",
+    "dashboard", "databento_feed", "depth", "export", "exporter", "fastpath", "features",
+    "feed_handler", "fix_engine", "flow_tracker", "fx", "gateway", "gateway_tcp", "itch",
+    "live", "manifest", "mbo", "metrics", "models", "multicast_arbitrator", "navigator", "news", "options", "pipeline",
+    "polygon_feed", "portfolio", "protocol", "quality", "reconciliation",
+    "research", "risk", "rules", "sbe", "scheduler", "security", "service",
+    "shm", "simulator", "storage", "strategy_sdk", "stresstest", "symbology", "tca", "term",
+    "terminal_display", "trading_cli", "venues", "vessel", "watchdog", "workload_simulator", "ws_feed"
+]
+package-dir = {"" = "src"}
+
+[tool.setuptools.package-data]
+"*" = [
+    "fastpath.c",
+    "rules.def",
+    "py.typed",
+    "*.pyi",
+    "_fastpath_native.dll",
+    "_fastpath_native.so",
+    "_fastpath_native.dylib",
+    "_fastpath_native.pyd",
+    "fastpath.dll",
+    "fastpath.dylib",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]

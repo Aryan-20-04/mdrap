@@ -1,0 +1,59 @@
+{
+  "metadata": {
+    "platform": "win32",
+    "python_version": "3.13.1",
+    "binary": "mdrap-core.exe",
+    "runs": 5,
+    "events_per_run": 1000000,
+    "timestamp": "2026-09-22 06:13:36Z"
+  },
+  "throughput_eps": {
+    "min": 15781732.0,
+    "median": 16317473.0,
+    "max": 18410544.0,
+    "mean": 16741058.0
+  },
+  "latency_ns_per_tick": {
+    "min": 54.3,
+    "median": 61.3,
+    "max": 63.4,
+    "mean": 59.9
+  },
+  "runs_detail": [
+    {
+      "run": 1,
+      "events": 1000000,
+      "elapsed_seconds": 0.0543,
+      "throughput_eps": 18410544.0,
+      "latency_ns_per_tick": 54.3
+    },
+    {
+      "run": 2,
+      "events": 1000000,
+      "elapsed_seconds": 0.0613,
+      "throughput_eps": 16317473.0,
+      "latency_ns_per_tick": 61.3
+    },
+    {
+      "run": 3,
+      "events": 1000000,
+      "elapsed_seconds": 0.0618,
+      "throughput_eps": 16171888.0,
+      "latency_ns_per_tick": 61.8
+    },
+    {
+      "run": 4,
+      "events": 1000000,
+      "elapsed_seconds": 0.0587,
+      "throughput_eps": 17023653.0,
+      "latency_ns_per_tick": 58.7
+    },
+    {
+      "run": 5,
+      "events": 1000000,
+      "elapsed_seconds": 0.0634,
+      "throughput_eps": 15781732.0,
+      "latency_ns_per_tick": 63.4
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "symbols": {
+    "0": "AAPL",
+    "1": "MSFT",
+    "2": "GOOGL",
+    "3": "AMZN",
+    "4": "NVDA",
+    "5": "TSLA",
+    "6": "META"
+  },
+  "venues": {
+    "1": "NASDAQ",
+    "2": "CME",
+    "3": "BINANCE",
+    "4": "COINBASE"
+  },
+  "sources": {
+    "1": "FEEDX",
+    "2": "FEEDY",
+    "3": "FEEDZ"
+  }
+}

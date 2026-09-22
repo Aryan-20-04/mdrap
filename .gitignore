@@ -1,0 +1,140 @@
+# ==============================================================================
+# MDRAP (Market Data Reliability & Acceleration Platform) - .gitignore
+# ==============================================================================
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+
+# C / Native Build Artifacts & Intermediate Objects
+*.o
+*.obj
+*.so
+*.dylib
+*.dll
+*.a
+*.lib
+*.exp
+*.exe
+mdrap-core
+mdrap-core.exe
+_fastpath_native.*
+build/
+dist/
+bin/
+obj/
+*.egg-info/
+
+# Python Virtual Environments
+.venv/
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# Environment Variables & Local Secrets
+.env
+.env.local
+.env.*.local
+*.secret
+*.pem
+*.key
+
+# Testing & Coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+nosetests.xml
+coverage.xml
+coverage.json
+*.cover
+.hypothesis/
+.ruff_cache/
+.mypy_cache/
+.pytype/
+
+# Profiling & Diagnostics
+*.prof
+*.pstats
+benchmarks/baseline_*.json
+benchmarks/loadtest_*.json
+benchmarks/profile_latency_*.json
+
+# SQLite Databases & Ephemeral Market Data
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
+data/*.db
+data/*.db-wal
+data/*.db-shm
+data/*.db-journal
+data/raw_archive/
+data/deadletter/
+!data/.gitkeep
+
+# DuckDB & Columnar Parquet Data
+data/*.duckdb
+data/*.duckdb.wal
+data/parquet/*
+!data/parquet/.gitkeep
+*.duckdb
+*.parquet
+
+# Generated Reports & Financial Exports
+data/reports/*
+!data/reports/.gitkeep
+*.xlsx
+*.csv
+
+# Operating System Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+ehthumbs_vista.db
+Thumbs.db
+[Dd]esktop.ini
+
+# IDE & Editor Configurations
+.vscode/
+.idea/
+*.sublime-workspace
+*.sublime-project
+*.swp
+*.swo
+*~
+
+# Temporary & Scratch Files
+scratch/
+tmp/
+*.tmp
+*.log
+*.bak
+
+# Packaging & Distribution
+dist/
+build/
+bin/
+obj/
+.eggs/
+*.egg
+develop-eggs/
+pip-wheel-metadata/
+*.egg-info/
+src/*.egg-info/
+*.whl
+*.tar.gz
+
+# CHD historical caches and published research runs
+data/chd-cache/
+data/chd-runs/
+
+# SEC EDGAR cache
+data/edgar_cache/

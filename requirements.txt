@@ -1,0 +1,29 @@
+# ==============================================================================
+# MDRAP (Market Data Reliability & Acceleration Platform)
+#
+# Core Design Principle (Spec §26): Zero Mandatory Runtime Dependencies.
+# MDRAP's core engine, normalization gateway, 7-rule quality validator,
+# cross-reconciler, and WAL storage are 100% runnable on pure Python stdlib.
+# ==============================================================================
+
+# --- UI & Terminal Visualization (Optional) ---
+rich>=13.0.0,<14.0.0            # High-performance terminal cockpit, live ticker, & ANSI charts (graceful fallback if absent)
+
+# --- Financial Modeling & Analytics Exporter (Optional) ---
+openpyxl>=3.1.0,<4.0.0         # 5-Tab Institutional Microsoft Excel (.xlsx) financial model exporter (falls back to CSV)
+
+# --- Live Streaming Ingestion (Optional) ---
+websockets>=12.0,<15.0        # Real-time WebSocket streaming feed handlers for Binance/Coinbase public feeds
+
+# --- Configuration Management (Optional) ---
+pyyaml>=6.0,<7.0             # Parses external config.yaml (graceful stdlib fallback parser included)
+
+# --- Columnar Time-Series Storage & Analytics (Phase 3, Optional) ---
+duckdb>=1.0.0,<2.0.0           # Vectorized columnar embedded OLAP database for billion-tick time-series queries
+pyarrow>=15.0.0,<20.0.0         # Apache Parquet columnar file serialization and zero-copy memory transport
+
+# --- Automated Testing & Quality Assurance (Dev) ---
+pytest>=8.0.0,<9.0.0           # Production test suite runner (700+ automated unit & integration tests, 85% coverage)
+pytest-timeout>=2.3.0,<3.0.0   # Enforces execution deadlines on streaming, chaos, and IPC tests
+pytest-cov>=5.0.0,<7.0.0       # Automated code coverage and branch evaluation
+

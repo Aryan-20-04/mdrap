@@ -1,0 +1,27 @@
+include README.md
+include LICENSE
+include requirements.txt
+include pyproject.toml
+include setup.py
+include build_fastpath.py
+include config.yaml
+include pytest.ini
+include mdrap
+include mdrap.bat
+
+include mdrap.toml
+
+recursive-include src *.py *.c *.h *.dll *.so *.dylib *.def *.pyi py.typed
+recursive-include docs *.md
+recursive-include tests *.py
+recursive-include examples *.py *.ipynb
+recursive-include personas *.py
+recursive-include fuzz *.c *.py *.h
+
+global-exclude *.py[cod] __pycache__ *.o *.obj
+global-exclude *.prof *.pstats *.coverage *.tmp *.db *.duckdb *.parquet
+prune dist
+prune build
+prune scratch
+prune .pytest_cache
+

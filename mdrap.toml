@@ -1,0 +1,32 @@
+# MDRAP Hierarchical Configuration (mdrap.toml)
+# Layered resolution order: defaults -> venue -> instrument_class -> instrument
+
+[defaults]
+staleness_threshold_s = 0.05
+price_anomaly_stddev = 6.0
+price_window = 50
+dedup_cache_size = 200000
+circuit_filter_pct = 0.10
+
+[venue.binance]
+staleness_threshold_s = 2.0
+price_anomaly_stddev = 5.0
+
+[venue.binance.instrument_class.crypto]
+staleness_threshold_s = 1.5
+
+[venue.binance.instrument.BTCUSDT]
+staleness_threshold_s = 0.5
+price_anomaly_stddev = 4.0
+
+[venue.XNSE]
+staleness_threshold_s = 0.10
+circuit_filter_pct = 0.10
+
+[venue.XETR]
+staleness_threshold_s = 0.05
+circuit_filter_pct = 0.05
+
+[venue.XTKS]
+staleness_threshold_s = 0.08
+circuit_filter_pct = 0.08
