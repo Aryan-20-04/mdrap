@@ -93,7 +93,7 @@ mdrap = "cli:main"
 
 [tool.setuptools]
 py-modules = [
-    "alerts", "analytics", "api", "archive", "backtest", "bardb", "bbo", "benchmark",
+    "alerts", "analytics", "api", "archive", "audit_format", "backtest", "bardb", "bbo", "benchmark",
     "chaos", "chd", "chd_history", "cli", "client", "columnar", "config", "config_loader", "corporate_actions",
     "dashboard", "databento_feed", "depth", "export", "exporter", "fastpath", "features",
     "feed_handler", "fix_engine", "flow_tracker", "fx", "gateway", "gateway_tcp", "itch",
