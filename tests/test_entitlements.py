@@ -8,7 +8,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from client import MarketEvent, MDRAPClient
-from security import ClientEntitlement, SecurityManager, Tier, TokenBucketRateLimiter
+from security import ClientEntitlement, Role, SecurityManager, Tier, TokenBucketRateLimiter
 from service import MarketDataDaemon
 from storage import Store
 
@@ -44,16 +44,15 @@ def auth_daemon(temp_db):
 def test_entitlement_key_defaults():
     sec = SecurityManager()
     ent = sec.register_api_key(client_id="Test_User")
-    assert ent.rate_limit_eps == 20000.0
-    assert ent.can_access_l2 is True
-    assert ent.can_use_binary is True
-    assert ent.can_use_shm is True
-    assert ent.max_replay_events == 100_000
+    assert ent.client_id == "Test_User"
+    assert ent.role == Role.VIEWER
+    assert ent.is_active is True
+    assert ent.token.startswith("mdrap_live_")
 
 
 def test_security_manager_key_lifecycle_and_revocation():
     sec = SecurityManager()
-    key = sec.register_api_key(client_id="Hedge_Fund_Alpha", tier=Tier.PRO)
+    key = sec.register_api_key(client_id="Hedge_Fund_Alpha")
     token = key.token
 
     found = sec.get_entitlement(token)
@@ -70,7 +69,7 @@ def test_security_manager_key_lifecycle_and_revocation():
 def test_sqlite_api_key_persistence(temp_db):
     store1 = Store(temp_db)
     sec1 = SecurityManager(store=store1)
-    ent = sec1.register_api_key(client_id="Persistent_Client", tier=Tier.PRO)
+    ent = sec1.register_api_key(client_id="Persistent_Client")
     token = ent.token
     store1.close()
 
@@ -81,7 +80,8 @@ def test_sqlite_api_key_persistence(temp_db):
 
     assert loaded is not None
     assert loaded.client_id == "Persistent_Client"
-    assert loaded.can_access_l2 is True
+    assert loaded.is_active is True
+    assert loaded.role == Role.VIEWER
     store2.close()
 
 

@@ -263,7 +263,7 @@ def test_env_secrets_resolution():
         sec = SecurityManager()
         assert sec._secrets["BINANCE"] == b"custom_binance_secret_xyz"
         assert "custom_pro_token_abc" in sec._api_keys
-        assert sec._api_keys["custom_pro_token_abc"].can_access_l2 is True
+        assert sec._api_keys["custom_pro_token_abc"].is_active is True
     finally:
         os.environ.pop("MDRAP_SECRET_BINANCE", None)
         os.environ.pop("MDRAP_API_KEY_PRO", None)

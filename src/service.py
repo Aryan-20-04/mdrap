@@ -376,10 +376,6 @@ class MarketDataDaemon:
                     sess = self._sessions.get(client_sock)
                     if sess:
                         sess.entitlement = ent
-                        if ent.rate_limit_eps > 0:
-                            sess.rate_limiter = TokenBucketRateLimiter(
-                                rate=ent.rate_limit_eps, capacity=ent.rate_limit_eps * 2
-                            )
                     self._authenticated_clients.add(client_sock)
                 resp = (
                     json.dumps(
@@ -387,10 +383,7 @@ class MarketDataDaemon:
                             "status": "OK",
                             "action": "AUTH",
                             "client_id": ent.client_id,
-                            "tier": "STANDARD",
-                            "rate_limit_eps": ent.rate_limit_eps,
-                            "can_l2": True,
-                            "can_binary": True,
+                            "role": ent.role.value if hasattr(ent.role, "value") else str(ent.role),
                         }
                     )
                     + "\n"
@@ -406,9 +399,7 @@ class MarketDataDaemon:
                         {
                             "status": "OK",
                             "action": "AUTH",
-                            "tier": "STANDARD",
-                            "can_l2": True,
-                            "can_binary": True,
+                            "role": "VIEWER",
                         }
                     )
                     + "\n"
@@ -899,14 +890,14 @@ class MarketDataDaemon:
             total_rate_limited = self._total_rate_limited + sum(
                 s.rate_limited_ticks for s in self._sessions.values()
             )
-            tier_breakdown: Dict[str, int] = {}
+            role_breakdown: Dict[str, int] = {}
             for s in self._sessions.values():
-                t = (
-                    s.entitlement.tier.value
-                    if (s.entitlement and hasattr(s.entitlement.tier, "value"))
+                role_val = (
+                    s.entitlement.role.value
+                    if (s.entitlement and hasattr(s.entitlement, "role") and hasattr(s.entitlement.role, "value"))
                     else "DEFAULT"
                 )
-                tier_breakdown[t] = tier_breakdown.get(t, 0) + 1
+                role_breakdown[role_val] = role_breakdown.get(role_val, 0) + 1
         return {
             "uptime_s": round(uptime, 2),
             "total_broadcast": self._total_broadcast,
@@ -917,7 +908,8 @@ class MarketDataDaemon:
             "active_clients": client_count,
             "dropped_ticks": total_dropped,
             "rate_limited_ticks": total_rate_limited,
-            "client_tiers": tier_breakdown,
+            "client_roles": role_breakdown,
+            "client_tiers": role_breakdown,
             "host": self.host,
             "port": self.port,
             "shm_enabled": bool(self.shm_writer),

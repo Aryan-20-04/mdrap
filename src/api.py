@@ -100,7 +100,6 @@ class FeedItem(BaseModel):
 class CreateKeyRequest(BaseModel):
     client_id: str = Field(..., description="Descriptive name or client identifier")
     role: str = Field("VIEWER", description="Role: VIEWER, OPERATOR, or ADMIN")
-    rate_limit_eps: float = Field(20000.0, description="Rate limit events per second")
     expires_at: Optional[float] = Field(None, description="Optional unix timestamp expiration")
 
 
@@ -594,7 +593,6 @@ def create_app(
             client_id=req.client_id,
             role=role,
             token=raw_token,
-            rate_limit_eps=req.rate_limit_eps,
             expires_at=req.expires_at,
         )
         st.security_manager.log_audit(
@@ -640,9 +638,9 @@ def create_app(
         st: AppState = request.app.state.mdrap
         revoked = st.security_manager.revoke_api_key(key_id)
         if not revoked:
-            # Try finding by prefix
+            # Try finding by exact prefix or token_hash
             for k in st.security_manager.list_api_keys():
-                if k.key_prefix.startswith(key_id) or key_id in k.key_prefix:
+                if k.key_prefix == key_id or (k.token_hash and k.token_hash.startswith(key_id)):
                     st.security_manager.revoke_api_key(k.token_hash)
                     revoked = True
                     break

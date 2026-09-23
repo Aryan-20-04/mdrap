@@ -43,9 +43,8 @@ _ROLE_HIERARCHY = {
 }
 
 
+# Deprecated stub kept for import compatibility only; Tier concept is dropped
 class Tier(str, enum.Enum):
-    """Client entitlement tier (unified platform capabilities)."""
-
     STANDARD = "STANDARD"
     FREE = "STANDARD"
     PRO = "STANDARD"
@@ -54,19 +53,16 @@ class Tier(str, enum.Enum):
 
 @dataclass
 class ClientEntitlement:
-    """Client entitlement, permissions, and rate limit definition."""
+    """Client entitlement and RBAC definition.
+
+    Licensed = active key exists. Unlicensed = no key or revoked key.
+    """
 
     token: str = ""
     client_id: str = ""
     token_hash: str = ""
     key_prefix: str = ""
-    rate_limit_eps: float = 20_000.0
-    tier: Tier | str = Tier.STANDARD
     role: Role = Role.VIEWER
-    can_access_l2: bool = True
-    can_use_binary: bool = True
-    can_use_shm: bool = True
-    max_replay_events: int = 100_000
     created_at: float = field(default_factory=time.time)
     expires_at: Optional[float] = None
     is_active: bool = True
@@ -75,9 +71,9 @@ class ClientEntitlement:
         if self.token and not self.token_hash:
             self.token_hash = hashlib.sha256(self.token.encode("utf-8")).hexdigest()
         if self.token and not self.key_prefix:
-            self.key_prefix = self.token[:12] + "..." if len(self.token) > 12 else self.token
+            self.key_prefix = self.token[:16] + "..." if len(self.token) > 16 else self.token
         elif self.token_hash and not self.key_prefix:
-            self.key_prefix = self.token_hash[:10] + "..."
+            self.key_prefix = self.token_hash[:12] + "..."
         if isinstance(self.role, str) and self.role in Role.__members__:
             self.role = Role[self.role]
 
@@ -87,13 +83,7 @@ class ClientEntitlement:
             "token_hash": self.token_hash,
             "key_prefix": self.key_prefix,
             "client_id": self.client_id,
-            "tier": "STANDARD",
             "role": self.role.value if hasattr(self.role, "value") else str(self.role),
-            "rate_limit_eps": self.rate_limit_eps,
-            "can_access_l2": self.can_access_l2,
-            "can_use_binary": self.can_use_binary,
-            "can_use_shm": self.can_use_shm,
-            "max_replay_events": self.max_replay_events,
             "created_at": self.created_at,
             "expires_at": self.expires_at,
             "is_active": self.is_active,
@@ -108,13 +98,7 @@ class ClientEntitlement:
             client_id=str(data.get("client_id", "")),
             token_hash=str(data.get("token_hash", "")),
             key_prefix=str(data.get("key_prefix", "")),
-            tier=Tier.STANDARD,
             role=role,
-            rate_limit_eps=float(data.get("rate_limit_eps", 20000.0)),
-            can_access_l2=bool(data.get("can_access_l2", True)),
-            can_use_binary=bool(data.get("can_use_binary", True)),
-            can_use_shm=bool(data.get("can_use_shm", True)),
-            max_replay_events=int(data.get("max_replay_events", 100_000)),
             created_at=float(data.get("created_at", time.time())),
             expires_at=float(data["expires_at"])
             if data.get("expires_at") is not None
@@ -274,19 +258,19 @@ _DEMO_SECRETS = {
 _DEMO_KEYS = {
     "mdrap_demo_key": {
         "client_id": "Demo_Client",
-        "rate_limit_eps": 50000.0,
+        "role": Role.ADMIN,
     },
     "mdrap_demo_free_key": {
         "client_id": "Demo_Client",
-        "rate_limit_eps": 50000.0,
+        "role": Role.VIEWER,
     },
     "mdrap_demo_pro_key": {
         "client_id": "Demo_Pro_Quant",
-        "rate_limit_eps": 50000.0,
+        "role": Role.OPERATOR,
     },
     "mdrap_demo_inst_key": {
         "client_id": "Demo_Institutional_HFT",
-        "rate_limit_eps": 50000.0,
+        "role": Role.ADMIN,
     },
 }
 
@@ -382,26 +366,17 @@ class SecurityManager:
                 self._api_keys[tok] = ClientEntitlement(
                     token=tok,
                     client_id=cfg["client_id"],
-                    tier=Tier.STANDARD,
-                    rate_limit_eps=cfg["rate_limit_eps"],
-                    can_access_l2=True,
-                    can_use_binary=True,
-                    can_use_shm=True,
-                    max_replay_events=100_000,
+                    role=cfg.get("role", Role.VIEWER),
                 )
         # Load API key overrides from environment (e.g. MDRAP_API_KEY_PRO=custom_token)
         for k, v in os.environ.items():
             if k.startswith("MDRAP_API_KEY_"):
                 suffix = k[len("MDRAP_API_KEY_") :].upper()
+                role_val = Role[suffix] if suffix in Role.__members__ else Role.VIEWER
                 self._api_keys[v] = ClientEntitlement(
                     token=v,
                     client_id=f"Env_Client_{suffix}",
-                    tier=Tier.STANDARD,
-                    rate_limit_eps=50000.0,
-                    can_access_l2=True,
-                    can_use_binary=True,
-                    can_use_shm=True,
-                    max_replay_events=100_000,
+                    role=role_val,
                 )
         if self.store and hasattr(self.store, "load_api_keys"):
             try:
@@ -637,13 +612,7 @@ class SecurityManager:
         client_id: str,
         role: Role | str = Role.VIEWER,
         token: Optional[str] = None,
-        rate_limit_eps: Optional[float] = None,
-        can_access_l2: Optional[bool] = None,
-        can_use_binary: Optional[bool] = None,
-        can_use_shm: Optional[bool] = None,
-        max_replay_events: Optional[int] = None,
         expires_at: Optional[float] = None,
-        tier: Any = None,
         **kwargs,
     ) -> ClientEntitlement:
         """Generate and register a new client API key entitlement with cryptographic token hashing and RBAC."""
@@ -658,7 +627,7 @@ class SecurityManager:
             token = f"mdrap_live_{secrets.token_urlsafe(24)}"
 
         tok_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
-        key_prefix = token[:12] + "..." if len(token) > 12 else token
+        key_prefix = token[:16] + "..." if len(token) > 16 else token
 
         ent = ClientEntitlement(
             token=token,
@@ -666,14 +635,6 @@ class SecurityManager:
             key_prefix=key_prefix,
             client_id=client_id,
             role=role_clean,
-            tier=Tier.STANDARD,
-            rate_limit_eps=rate_limit_eps if rate_limit_eps is not None else 20000.0,
-            can_access_l2=can_access_l2 if can_access_l2 is not None else True,
-            can_use_binary=can_use_binary if can_use_binary is not None else True,
-            can_use_shm=can_use_shm if can_use_shm is not None else True,
-            max_replay_events=max_replay_events
-            if max_replay_events is not None
-            else 100_000,
             expires_at=expires_at,
             is_active=True,
         )
@@ -700,8 +661,7 @@ class SecurityManager:
         if not ent:
             # Check by key_prefix in registered keys
             for v in list(self._api_keys.values()):
-                clean_pfx = v.key_prefix.rstrip(".")
-                if v.key_prefix == token or (clean_pfx and token.startswith(clean_pfx)):
+                if v.key_prefix == token:
                     ent = v
                     break
         if ent:

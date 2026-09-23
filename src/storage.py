@@ -191,13 +191,7 @@ CREATE TABLE IF NOT EXISTS api_keys (
     key_prefix TEXT NOT NULL DEFAULT '',
     client_id TEXT NOT NULL,
     role TEXT NOT NULL DEFAULT 'VIEWER',
-    tier TEXT NOT NULL DEFAULT 'STANDARD',
-    rate_limit_eps REAL NOT NULL,
-    can_access_l2 INTEGER NOT NULL,
-    can_use_binary INTEGER NOT NULL,
-    can_use_shm INTEGER NOT NULL,
-    max_replay_events INTEGER NOT NULL,
-    is_active INTEGER NOT NULL,
+    is_active INTEGER NOT NULL DEFAULT 1,
     created_at REAL NOT NULL,
     expires_at REAL
 );
@@ -321,8 +315,8 @@ class Store:
             try:
                 cur_cols = self.conn.execute("PRAGMA table_info(api_keys)").fetchall()
                 col_names = {c[1] for c in cur_cols}
-                if col_names and "token_hash" not in col_names:
-                    # Legacy table exists with 'token' column
+                if col_names and ("token_hash" not in col_names or "rate_limit_eps" in col_names or "tier" in col_names):
+                    # Legacy table exists with older columns
                     self.conn.execute("ALTER TABLE api_keys RENAME TO api_keys_legacy")
                     self.conn.execute("""
                         CREATE TABLE api_keys (
@@ -330,13 +324,7 @@ class Store:
                             key_prefix TEXT NOT NULL DEFAULT '',
                             client_id TEXT NOT NULL,
                             role TEXT NOT NULL DEFAULT 'VIEWER',
-                            tier TEXT NOT NULL DEFAULT 'STANDARD',
-                            rate_limit_eps REAL NOT NULL,
-                            can_access_l2 INTEGER NOT NULL,
-                            can_use_binary INTEGER NOT NULL,
-                            can_use_shm INTEGER NOT NULL,
-                            max_replay_events INTEGER NOT NULL,
-                            is_active INTEGER NOT NULL,
+                            is_active INTEGER NOT NULL DEFAULT 1,
                             created_at REAL NOT NULL,
                             expires_at REAL
                         )
@@ -348,26 +336,26 @@ class Store:
                     for r in legacy_rows:
                         row_dict = dict(zip(legacy_col_names, r))
                         raw_tok = str(row_dict.get("token") or "")
-                        if not raw_tok:
+                        tok_hash = str(row_dict.get("token_hash") or "")
+                        if not tok_hash and raw_tok:
+                            tok_hash = hashlib.sha256(raw_tok.encode("utf-8")).hexdigest()
+                        if not tok_hash:
                             continue
-                        h = hashlib.sha256(raw_tok.encode("utf-8")).hexdigest()
-                        pfx = raw_tok[:12] + "..." if len(raw_tok) > 12 else raw_tok
+                        pfx = str(row_dict.get("key_prefix") or "")
+                        if not pfx and raw_tok:
+                            pfx = raw_tok[:12] + "..." if len(raw_tok) > 12 else raw_tok
+                        elif not pfx:
+                            pfx = tok_hash[:10] + "..."
                         client_id = str(row_dict.get("client_id") or "Migrated_Client")
                         role = str(row_dict.get("role") or "VIEWER")
-                        tier = str(row_dict.get("tier") or "STANDARD")
-                        rate = float(row_dict.get("rate_limit_eps") or 20000.0)
-                        l2 = int(row_dict.get("can_access_l2", 1))
-                        binary = int(row_dict.get("can_use_binary", 1))
-                        shm = int(row_dict.get("can_use_shm", 1))
-                        replay = int(row_dict.get("max_replay_events", 100000))
                         active = int(row_dict.get("is_active", 1))
                         created = float(row_dict.get("created_at") or time.time())
                         expires = row_dict.get("expires_at")
                         self.conn.execute(
                             """INSERT OR REPLACE INTO api_keys
-                               (token_hash, key_prefix, client_id, role, tier, rate_limit_eps, can_access_l2, can_use_binary, can_use_shm, max_replay_events, is_active, created_at, expires_at)
-                               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                            (h, pfx, client_id, role, tier, rate, l2, binary, shm, replay, active, created, expires)
+                               (token_hash, key_prefix, client_id, role, is_active, created_at, expires_at)
+                               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                            (tok_hash, pfx, client_id, role, active, created, expires)
                         )
                     self.conn.execute("DROP TABLE api_keys_legacy")
                 elif col_names:
@@ -1277,9 +1265,7 @@ class Store:
 
     @_synchronized
     def save_api_key(self, ent: Any) -> None:
-        """Save or update a client API key entitlement (stores token_hash, never raw token)."""
-        tier_val = getattr(ent, "tier", "STANDARD")
-        tier_str = tier_val.value if hasattr(tier_val, "value") else str(tier_val)
+        """Save or update a client API key (stores token_hash, never raw token)."""
         role_val = getattr(ent, "role", "VIEWER")
         role_str = role_val.value if hasattr(role_val, "value") else str(role_val)
 
@@ -1293,41 +1279,52 @@ class Store:
 
         key_prefix = getattr(ent, "key_prefix", "")
         if not key_prefix and raw_token:
-            key_prefix = raw_token[:12] + "..." if len(raw_token) > 12 else raw_token
+            key_prefix = raw_token[:16] + "..." if len(raw_token) > 16 else raw_token
             ent.key_prefix = key_prefix
         elif not key_prefix:
-            key_prefix = token_hash[:10] + "..."
+            key_prefix = token_hash[:12] + "..."
             ent.key_prefix = key_prefix
 
-        self.conn.execute(
-            """INSERT OR REPLACE INTO api_keys
-               (token_hash, key_prefix, client_id, role, tier, rate_limit_eps, can_access_l2, can_use_binary, can_use_shm, max_replay_events, is_active, created_at, expires_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                token_hash,
-                key_prefix,
-                ent.client_id,
-                role_str,
-                tier_str,
-                float(ent.rate_limit_eps),
-                1 if getattr(ent, "can_access_l2", True) else 0,
-                1 if getattr(ent, "can_use_binary", True) else 0,
-                1 if getattr(ent, "can_use_shm", True) else 0,
-                int(getattr(ent, "max_replay_events", 100_000)),
-                1 if ent.is_active else 0,
-                float(ent.created_at),
-                float(ent.expires_at) if ent.expires_at is not None else None,
-            ),
-        )
+        cur_cols = {c[1] for c in self.conn.execute("PRAGMA table_info(api_keys)").fetchall()}
+        if "rate_limit_eps" in cur_cols:
+            self.conn.execute(
+                """INSERT OR REPLACE INTO api_keys
+                   (token_hash, key_prefix, client_id, role, rate_limit_eps, tier, can_access_l2, can_use_binary, can_use_shm, max_replay_events, is_active, created_at, expires_at)
+                   VALUES (?, ?, ?, ?, 20000.0, 'STANDARD', 1, 1, 1, 100000, ?, ?, ?)""",
+                (
+                    token_hash,
+                    key_prefix,
+                    ent.client_id,
+                    role_str,
+                    1 if ent.is_active else 0,
+                    float(ent.created_at),
+                    float(ent.expires_at) if ent.expires_at is not None else None,
+                ),
+            )
+        else:
+            self.conn.execute(
+                """INSERT OR REPLACE INTO api_keys
+                   (token_hash, key_prefix, client_id, role, is_active, created_at, expires_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    token_hash,
+                    key_prefix,
+                    ent.client_id,
+                    role_str,
+                    1 if ent.is_active else 0,
+                    float(ent.created_at),
+                    float(ent.expires_at) if ent.expires_at is not None else None,
+                ),
+            )
         self.conn.commit()
 
     @_synchronized
     def load_api_keys(self) -> list:
         """Load all registered API keys from the store."""
-        from security import ClientEntitlement, Role, Tier
+        from security import ClientEntitlement, Role
 
         cur = self.conn.execute(
-            """SELECT token_hash, key_prefix, client_id, role, tier, rate_limit_eps, can_access_l2, can_use_binary, can_use_shm, max_replay_events, is_active, created_at, expires_at
+            """SELECT token_hash, key_prefix, client_id, role, is_active, created_at, expires_at
                FROM api_keys"""
         )
         results = []
@@ -1341,15 +1338,9 @@ class Store:
                     token=row[0],  # for backward compatibility where ent.token is used in tests/maps
                     client_id=row[2],
                     role=role,
-                    tier=Tier.STANDARD,
-                    rate_limit_eps=float(row[5]),
-                    can_access_l2=bool(row[6]),
-                    can_use_binary=bool(row[7]),
-                    can_use_shm=bool(row[8]),
-                    max_replay_events=int(row[9]),
-                    is_active=bool(row[10]),
-                    created_at=float(row[11]),
-                    expires_at=float(row[12]) if row[12] is not None else None,
+                    is_active=bool(row[4]),
+                    created_at=float(row[5]),
+                    expires_at=float(row[6]) if row[6] is not None else None,
                 )
             )
         return results

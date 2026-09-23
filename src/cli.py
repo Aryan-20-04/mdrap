@@ -1015,13 +1015,10 @@ def cmd_keys(args):
             ("Client ID", "left", "cyan"),
             ("Role", "center", "yellow"),
             ("Key Prefix", "left", "dim"),
-            ("Rate Limit", "right", "green"),
-            ("Wire Protocols", "left", "magenta"),
             ("Status", "center"),
         ]
         k_rows = []
         for key in sec.list_api_keys():
-            protos = "JSON, BINARY, SHM"
             st_str = "[green]ACTIVE[/green]" if key.is_active else "[red]REVOKED[/red]"
             role_val = getattr(key.role, "value", str(key.role))
             role_badge = f"[bold]{role_val}[/bold]"
@@ -1031,8 +1028,6 @@ def cmd_keys(args):
                     key.client_id,
                     role_badge,
                     prefix_display,
-                    f"{key.rate_limit_eps:,.0f} eps",
-                    protos,
                     st_str,
                 ]
             )
@@ -1042,9 +1037,8 @@ def cmd_keys(args):
 
     elif action == "create":
         client_id = getattr(args, "client_id", "Custom_Client")
-        rate = getattr(args, "rate", None)
         role = getattr(args, "role", "VIEWER").upper()
-        ent = sec.register_api_key(client_id=client_id, rate_limit_eps=rate, role=role)
+        ent = sec.register_api_key(client_id=client_id, role=role)
         ent_role_val = getattr(ent.role, "value", str(ent.role))
         console.print(
             Panel.fit(
@@ -1053,7 +1047,7 @@ def cmd_keys(args):
                 f"Role: [bold yellow]{ent_role_val}[/bold yellow]\n"
                 f"API Token: [bold green]{ent.token}[/bold green]\n"
                 f"Key Prefix: [dim]{ent.key_prefix}[/dim]\n"
-                f"Rate Limit: [green]{ent.rate_limit_eps:,.0f} eps[/green]\n\n"
+                f"Status: [green]ACTIVE[/green]\n\n"
                 f"[bold red]WARNING:[/bold red] Copy and store this secret key securely now.\n"
                 f"It is hashed with SHA-256 in the database and [bold underline]cannot be displayed again[/bold underline].",
                 title="Client Authentication Key Created",

@@ -247,7 +247,6 @@ def test_keys_crud_lifecycle(api_env):
     create_payload = {
         "client_id": "EnterpriseClient_XYZ",
         "role": "OPERATOR",
-        "rate_limit_eps": 50000.0,
     }
     r_create = client.post("/v1/keys", json=create_payload, headers=adm_headers)
     assert r_create.status_code == 200
