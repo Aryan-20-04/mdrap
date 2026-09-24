@@ -12,136 +12,138 @@ The 72 Python modules in `src/` are structured across 12 distinct functional lay
 
 | Module | Purpose | Key Exports | Stability |
 |---|---|---|---|
-| [`models.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/models.py) | Canonical data types | `RawEvent`, `CanonicalEvent`, `EventType`, `QualityStatus`, `Reason`, `AssetClass` | `stable` |
-| [`gateway.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/gateway.py) | Ingestion and normalization | `ingest()`, `normalize()`, `SchemaError` | `stable` |
-| [`quality.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/quality.py) | Data quality evaluation engine | `QualityEngine`, `QualityConfig` | `stable` |
-| [`reconciliation.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/reconciliation.py) | Cross-feed reconciliation | `Reconciler`, `ReliabilityTracker` | `stable` |
-| [`pipeline.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/pipeline.py) | Pipeline orchestration | `Pipeline`, `tuned_gc` | `stable` |
-| [`metrics.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/metrics.py) | Runtime metrics | `RunMetrics`, `CompactSampleBuffer`, `percentile` | `stable` |
-| [`config.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/config.py) | Configuration dataclasses | `PlatformConfig`, `QualityConfig`, `PipelineConfig`, `StorageConfig` | `stable` |
-| [`config_loader.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/config_loader.py) | YAML config loading | `load_yaml_config` | `stable` |
-| [`rules.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/rules.py) | User-defined quality rules | `@register_rule`, `evaluate_user_rules` | `stable` |
-| [`rules.def`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/rules.def) | C X-Macro quality rule definitions | Preprocessor table of validation rules | `stable` |
-| [`protocols.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/protocols.py) | Extension Protocol interfaces | `StorageBackend`, `AuthProvider`, `QualityEvaluator`, `OutputSink` | `stable` |
+| [`models.py`](../src/models.py) | Canonical data types | `RawEvent`, `CanonicalEvent`, `EventType`, `QualityStatus`, `Reason`, `AssetClass` | `stable` |
+| [`gateway.py`](../src/gateway.py) | Ingestion and normalization | `ingest()`, `normalize()`, `SchemaError` | `stable` |
+| [`quality.py`](../src/quality.py) | Data quality evaluation engine | `QualityEngine`, `QualityConfig` | `stable` |
+| [`reconciliation.py`](../src/reconciliation.py) | Cross-feed reconciliation | `Reconciler`, `ReliabilityTracker` | `stable` |
+| [`pipeline.py`](../src/pipeline.py) | Pipeline orchestration | `Pipeline`, `tuned_gc` | `stable` |
+| [`metrics.py`](../src/metrics.py) | Runtime metrics | `RunMetrics`, `CompactSampleBuffer`, `percentile` | `stable` |
+| [`config.py`](../src/config.py) | Configuration dataclasses | `PlatformConfig`, `QualityConfig`, `PipelineConfig`, `StorageConfig` | `stable` |
+| [`config_loader.py`](../src/config_loader.py) | YAML config loading | `load_yaml_config` | `stable` |
+| [`rules.py`](../src/rules.py) | User-defined quality rules | `@register_rule`, `evaluate_user_rules` | `stable` |
+| [`rules.def`](../src/rules.def) | C X-Macro quality rule definitions | Preprocessor table of validation rules | `stable` |
+| [`protocols.py`](../src/protocols.py) | Extension Protocol interfaces | `StorageBackend`, `AuthProvider`, `QualityEvaluator`, `OutputSink` | `stable` |
 
 ### Storage (stable)
 
 | Module | Purpose | Key Exports | Stability |
 |---|---|---|---|
-| [`storage.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/storage.py) | SQLite persistence engine | `Store` | `stable` |
-| [`columnar.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/columnar.py) | DuckDB analytical queries | `ColumnarStore` | `beta` |
-| [`archive.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/archive.py) | Raw event archival | `RawArchive`, `replay` | `stable` |
-| [`bardb.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/bardb.py) | Bar/candle database | `BarDatabase` | `beta` |
-| [`chd.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/chd.py) | CHD machine | `CHDMachine` | `beta` |
-| [`chd_history.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/chd_history.py) | CHD history engine | `CHDHistoryEngine` | `beta` |
+| [`storage.py`](../src/storage.py) | SQLite persistence engine | `Store` | `stable` |
+| [`columnar.py`](../src/columnar.py) | DuckDB analytical queries | `ColumnarStore` | `beta` |
+| [`archive.py`](../src/archive.py) | Raw event archival | `RawArchive`, `replay` | `stable` |
+| [`bardb.py`](../src/bardb.py) | Bar/candle database | `BarDatabase` | `beta` |
+| [`chd.py`](../src/chd.py) | CHD machine | `CHDMachine` | `beta` |
+| [`chd_history.py`](../src/chd_history.py) | CHD history engine | `CHDHistoryEngine` | `beta` |
 
 ### Ingestion & Feed Handling (stable)
 
 | Module | Purpose | Key Exports | Stability |
 |---|---|---|---|
-| [`adapters/__init__.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/adapters/__init__.py) | FeedAdapter Protocol + entry_point discovery | `FeedAdapter`, discovery functions | `stable` |
-| [`adapters/template.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/adapters/template.py) | Template adapter implementation | Example adapter implementation | `stable` |
-| [`feed_handler.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/feed_handler.py) | Streaming feed supervisor | `StreamingFeedSupervisor` | `stable` |
-| [`simulator.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/simulator.py) | Synthetic feed simulator | `FeedSimulator`, `SimulatorConfig` | `stable` |
-| [`ws_feed.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/ws_feed.py) | WebSocket feed manager for crypto venues | `WebSocketFeedManager` | `beta` |
-| [`polygon_feed.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/polygon_feed.py) | Polygon.io feed manager | `PolygonFeedManager` | `beta` |
-| [`databento_feed.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/databento_feed.py) | Databento feed manager | `DatabentoFeedManager` | `beta` |
-| [`live.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/live.py) | Live market data connector | `LiveConnector` | `beta` |
+| [`adapters/__init__.py`](../src/adapters/__init__.py) | FeedAdapter Protocol + entry_point discovery | `FeedAdapter`, discovery functions | `stable` |
+| [`adapters/template.py`](../src/adapters/template.py) | Template adapter implementation | Example adapter implementation | `stable` |
+| [`feed_handler.py`](../src/feed_handler.py) | Streaming feed supervisor | `StreamingFeedSupervisor` | `stable` |
+| [`simulator.py`](../src/simulator.py) | Synthetic feed simulator | `FeedSimulator`, `SimulatorConfig` | `stable` |
+| [`ws_feed.py`](../src/ws_feed.py) | WebSocket feed manager for crypto venues | `WebSocketFeedManager` | `beta` |
+| [`polygon_feed.py`](../src/polygon_feed.py) | Polygon.io feed manager | `PolygonFeedManager` | `beta` |
+| [`databento_feed.py`](../src/databento_feed.py) | Databento feed manager | `DatabentoFeedManager` | `beta` |
+| [`live.py`](../src/live.py) | Live market data connector | `LiveConnector` | `beta` |
 
 ### Security & Audit (stable)
 
 | Module | Purpose | Key Exports | Stability |
 |---|---|---|---|
-| [`security.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/security.py) | RBAC, HMAC auth, API key management | `SecurityManager`, `Role`, `ClientEntitlement` | `stable` |
-| [`audit_format.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/audit_format.py) | Merkle-chain audit hash computation | `compute_audit_hash` | `stable` |
+| [`security.py`](../src/security.py) | RBAC, HMAC auth, API key management | `SecurityManager`, `Role`, `ClientEntitlement` | `stable` |
+| [`audit_format.py`](../src/audit_format.py) | Merkle-chain audit hash computation | `compute_audit_hash` | `stable` |
 
 ### Delivery & Output (stable)
 
 | Module | Purpose | Key Exports | Stability |
 |---|---|---|---|
-| [`shm.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/shm.py) | Shared memory ring buffer SPMC | `SHMWriter`, `SHMReader` | `stable` |
-| [`protocol.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/protocol.py) | Binary wire protocol | `pack_tick_frame`, `unpack_tick_frame` | `stable` |
-| [`service.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/service.py) | TCP streaming daemon | `MarketDataDaemon` | `stable` |
-| [`gateway_tcp.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/gateway_tcp.py) | TCP gateway server | `TCPGatewayServer` | `beta` |
+| [`shm.py`](../src/shm.py) | Shared memory ring buffer SPMC | `SHMWriter`, `SHMReader` | `stable` |
+| [`protocol.py`](../src/protocol.py) | Binary wire protocol | `pack_tick_frame`, `unpack_tick_frame` | `stable` |
+| [`service.py`](../src/service.py) | TCP streaming daemon | `MarketDataDaemon` | `stable` |
+| [`gateway_tcp.py`](../src/gateway_tcp.py) | TCP gateway server | `TCPGatewayServer` | `beta` |
 
 ### API (beta)
 
 | Module | Purpose | Key Exports | Stability |
 |---|---|---|---|
-| [`api.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/api.py) | FastAPI REST + WebSocket server | `create_app`, `AppState` | `beta` |
+| [`api.py`](../src/api.py) | FastAPI REST + WebSocket server | `create_app`, `AppState` | `beta` |
 
 ### Analytics & Quantitative (beta)
 
 | Module | Purpose | Key Exports | Stability |
 |---|---|---|---|
-| [`analytics.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/analytics.py) | OHLCV, spread, volatility aggregation | `MarketAnalytics` | `beta` |
-| [`bbo.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/bbo.py) | Best Bid/Offer engine | `BBOEngine`, `ConsolidatedBBO` | `stable` |
-| [`depth.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/depth.py) | L2 order book consolidation | `ConsolidatedDepthEngine` | `beta` |
-| [`features.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/features.py) | Technical indicators | `sma`, `ema`, `rsi`, `macd`, `bollinger_bands`, `atr` | `beta` |
-| [`options.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/options.py) | BSM options pricing | `bsm_price`, `bsm_greeks`, `implied_volatility` | `beta` |
-| [`risk.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/risk.py) | Risk analytics | `PortfolioRiskEngine`, `ReturnSeries`, `DrawdownCircuitBreaker` | `beta` |
-| [`flow_tracker.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/flow_tracker.py) | Order flow analysis | `OrderFlowTracker`, `LeeReadyClassifier` | `beta` |
-| [`backtest.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/backtest.py) | Backtesting engine | `BacktestEngine` | `beta` |
-| [`tca.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/tca.py) | Transaction cost analysis | `TCAEngine`, `TCAMetrics`, `ExecutionRecord` | `experimental` |
-| [`portfolio.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/portfolio.py) | Portfolio tracking | `PortfolioTracker` | `beta` |
+| [`analytics.py`](../src/analytics.py) | OHLCV, spread, volatility aggregation | `MarketAnalytics` | `beta` |
+| [`bbo.py`](../src/bbo.py) | Best Bid/Offer engine | `BBOEngine`, `ConsolidatedBBO` | `stable` |
+| [`depth.py`](../src/depth.py) | L2 order book consolidation | `ConsolidatedDepthEngine` | `beta` |
+| [`features.py`](../src/features.py) | Technical indicators | `sma`, `ema`, `rsi`, `macd`, `bollinger_bands`, `atr` | `beta` |
+| [`options.py`](../src/options.py) | BSM options pricing | `bsm_price`, `bsm_greeks`, `implied_volatility` | `beta` |
+| [`risk.py`](../src/risk.py) | Risk analytics | `PortfolioRiskEngine`, `ReturnSeries`, `DrawdownCircuitBreaker` | `beta` |
+| [`flow_tracker.py`](../src/flow_tracker.py) | Order flow analysis | `OrderFlowTracker`, `LeeReadyClassifier` | `beta` |
+| [`backtest.py`](../src/backtest.py) | Backtesting engine | `BacktestEngine` | `beta` |
+| [`tca.py`](../src/tca.py) | Transaction cost analysis | `TCAEngine`, `TCAMetrics`, `ExecutionRecord` | `experimental` ⚠️ |
+| [`portfolio.py`](../src/portfolio.py) | Portfolio tracking | `PortfolioTracker` | `beta` |
+
+> ⚠️ **`tca.py` compliance notice:** this module implements metrics shaped around SEC Rule 605/606 and MiFID II RTS 27/28 concepts (execution quality, price improvement, venue routing statistics). It has **not been reviewed by a securities compliance professional or counsel**. If you're building a real best-execution or regulatory reporting product on top of it, get that review before relying on its output for any compliance, audit, or regulatory-filing purpose — treat it as a starting implementation of the *shape* of these metrics, not a validated compliance engine.
 
 ### Research & Alternative Data (experimental)
 
 | Module | Purpose | Key Exports | Stability |
 |---|---|---|---|
-| [`research.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/research.py) | Company research engine | `EdgarClient`, `CompanyProfile`, `FilingRecord` | `experimental` |
-| [`news.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/news.py) | Financial news and sentiment | `NewsFeed`, `FinancialSentimentAnalyzer` | `experimental` |
-| [`corporate_actions.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/corporate_actions.py) | Corporate actions engine | `CorporateActionsEngine` | `experimental` |
-| [`vessel.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/vessel.py) | AIS vessel tracking | `VesselTracker`, `Vessel`, `Chokepoint` | `experimental` |
+| [`research.py`](../src/research.py) | Company research engine | `EdgarClient`, `CompanyProfile`, `FilingRecord` | `experimental` |
+| [`news.py`](../src/news.py) | Financial news and sentiment | `NewsFeed`, `FinancialSentimentAnalyzer` | `experimental` |
+| [`corporate_actions.py`](../src/corporate_actions.py) | Corporate actions engine | `CorporateActionsEngine` | `experimental` |
+| [`vessel.py`](../src/vessel.py) | AIS vessel tracking | `VesselTracker`, `Vessel`, `Chokepoint` | `experimental` |
 
 ### Infrastructure & Native Acceleration (stable)
 
 | Module | Purpose | Key Exports | Stability |
 |---|---|---|---|
-| [`fastpath.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/fastpath.py) | C FFI acceleration layer | `FastQualityEngine`, `NativeReplayBuffer`, `is_available` | `stable` |
-| [`fastpath.c`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/fastpath.c) | C source for native acceleration | Fast validation, ring buffer, and Welford variance routines | `stable` |
-| [`fastpath.pyi`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/fastpath.pyi) | Type stubs | Type annotations for native C module | `stable` |
+| [`fastpath.py`](../src/fastpath.py) | C FFI acceleration layer | `FastQualityEngine`, `NativeReplayBuffer`, `is_available` | `stable` |
+| [`fastpath.c`](../src/fastpath.c) | C source for native acceleration | Fast validation, ring buffer, and Welford variance routines | `stable` |
+| [`fastpath.pyi`](../src/fastpath.pyi) | Type stubs | Type annotations for native C module | `stable` |
 
 ### CLI & Terminal UI (beta)
 
 | Module | Purpose | Key Exports | Stability |
 |---|---|---|---|
-| [`cli.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/cli.py) | Main CLI entry point | `main` | `beta` |
-| [`trading_cli.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/trading_cli.py) | Trading CLI | `add_trading_parsers`, `cmd_backtest`, `cmd_risk` | `experimental` |
-| [`navigator.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/navigator.py) | TUI navigator | `MDRAPNavigator` | `beta` |
-| [`terminal_display.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/terminal_display.py) | Rich terminal rendering | ANSI/Rich renderers, tables, live tickers | `beta` |
-| [`dashboard.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/dashboard.py) | Dashboard view | Summary cockpit and telemetry widgets | `beta` |
-| [`term.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/term.py) | Console abstraction | Terminal screen, formatting, and cursor utilities | `stable` |
+| [`cli.py`](../src/cli.py) | Main CLI entry point | `main` | `beta` |
+| [`trading_cli.py`](../src/trading_cli.py) | Trading CLI | `add_trading_parsers`, `cmd_backtest`, `cmd_risk` | `experimental` |
+| [`navigator.py`](../src/navigator.py) | TUI navigator | `MDRAPNavigator` | `beta` |
+| [`terminal_display.py`](../src/terminal_display.py) | Rich terminal rendering | ANSI/Rich renderers, tables, live tickers | `beta` |
+| [`dashboard.py`](../src/dashboard.py) | Dashboard view | Summary cockpit and telemetry widgets | `beta` |
+| [`term.py`](../src/term.py) | Console abstraction | Terminal screen, formatting, and cursor utilities | `stable` |
 
 ### SDK & Client Libraries (beta)
 
 | Module | Purpose | Key Exports | Stability |
 |---|---|---|---|
-| [`client.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/client.py) | Python SDK client | `MDRAPClient` | `beta` |
-| [`strategy_sdk.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/strategy_sdk.py) | Strategy development SDK | Quantitative strategy base classes and runner interfaces | `experimental` |
+| [`client.py`](../src/client.py) | Python SDK client | `MDRAPClient` | `beta` |
+| [`strategy_sdk.py`](../src/strategy_sdk.py) | Strategy development SDK | Quantitative strategy base classes and runner interfaces | `experimental` |
 
 ### Supporting Infrastructure (various)
 
 | Module | Purpose | Key Exports | Stability |
 |---|---|---|---|
-| [`symbology.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/symbology.py) | Symbol resolution | `resolve_symbol` | `stable` |
-| [`venues.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/venues.py) | Global venue definitions | Global venue definitions and metadata registry | `stable` |
-| [`fx.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/fx.py) | FX currency conversion | `FXConverter` | `beta` |
-| [`scheduler.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/scheduler.py) | Task scheduler | `Scheduler`, `ScheduledJob`, `CronParser` | `beta` |
-| [`watchdog.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/watchdog.py) | Source health watchdog | `SourceWatchdog` | `stable` |
-| [`alerts.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/alerts.py) | Alert engine | `AlertEngine` | `beta` |
-| [`benchmark.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/benchmark.py) | Pipeline benchmarking | `run_benchmark` | `stable` |
-| [`export.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/export.py) | CSV/JSON export utilities | Export utilities for ticks, bars, and anomalies | `stable` |
-| [`exporter.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/exporter.py) | Market data exporter | `MarketDataExporter` | `beta` |
-| [`manifest.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/manifest.py) | Build manifest generation | Build manifest generator and commit hash utilities | `stable` |
-| [`chaos.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/chaos.py) | Chaos/fault injection | `ChaosEngine`, `ChaosInjector` | `beta` |
-| [`stresstest.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/stresstest.py) | Stress testing | `stress_end_to_end`, `stress_gateway`, `stress_quality_engine` | `beta` |
-| [`workload_simulator.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/workload_simulator.py) | Concurrent workload simulator | `ConcurrentWorkloadSimulator`, `UserArchetype`, `DeviceConfig` | `beta` |
-| [`multicast_arbitrator.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/multicast_arbitrator.py) | A/B multicast feed arbitration | `ABFeedArbitrator` | `beta` |
-| [`sbe.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/sbe.py) | SBE codec | Simple Binary Encoding (SBE) encoders and decoders | `experimental` |
-| [`itch.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/itch.py) | ITCH 5.0 parser | `ITCHParser`, `ITCHOrderBookTracker` | `beta` |
-| [`fix_engine.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/fix_engine.py) | FIX protocol engine | `FIXSession`, `FIXEngineServer` | `experimental` |
-| [`mbo.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/mbo.py) | Market-by-Order book | `OrderBookMBO` | `beta` |
+| [`symbology.py`](../src/symbology.py) | Symbol resolution | `resolve_symbol` | `stable` |
+| [`venues.py`](../src/venues.py) | Global venue definitions | Global venue definitions and metadata registry | `stable` |
+| [`fx.py`](../src/fx.py) | FX currency conversion | `FXConverter` | `beta` |
+| [`scheduler.py`](../src/scheduler.py) | Task scheduler | `Scheduler`, `ScheduledJob`, `CronParser` | `beta` |
+| [`watchdog.py`](../src/watchdog.py) | Source health watchdog | `SourceWatchdog` | `stable` |
+| [`alerts.py`](../src/alerts.py) | Alert engine | `AlertEngine` | `beta` |
+| [`benchmark.py`](../src/benchmark.py) | Pipeline benchmarking | `run_benchmark` | `stable` |
+| [`export.py`](../src/export.py) | CSV/JSON export utilities | Export utilities for ticks, bars, and anomalies | `stable` |
+| [`exporter.py`](../src/exporter.py) | Market data exporter | `MarketDataExporter` | `beta` |
+| [`manifest.py`](../src/manifest.py) | Build manifest generation | Build manifest generator and commit hash utilities | `stable` |
+| [`chaos.py`](../src/chaos.py) | Chaos/fault injection | `ChaosEngine`, `ChaosInjector` | `beta` |
+| [`stresstest.py`](../src/stresstest.py) | Stress testing | `stress_end_to_end`, `stress_gateway`, `stress_quality_engine` | `beta` |
+| [`workload_simulator.py`](../src/workload_simulator.py) | Concurrent workload simulator | `ConcurrentWorkloadSimulator`, `UserArchetype`, `DeviceConfig` | `beta` |
+| [`multicast_arbitrator.py`](../src/multicast_arbitrator.py) | A/B multicast feed arbitration | `ABFeedArbitrator` | `beta` |
+| [`sbe.py`](../src/sbe.py) | SBE codec | Simple Binary Encoding (SBE) encoders and decoders | `experimental` |
+| [`itch.py`](../src/itch.py) | ITCH 5.0 parser | `ITCHParser`, `ITCHOrderBookTracker` | `beta` |
+| [`fix_engine.py`](../src/fix_engine.py) | FIX protocol engine | `FIXSession`, `FIXEngineServer` | `experimental` |
+| [`mbo.py`](../src/mbo.py) | Market-by-Order book | `OrderBookMBO` | `beta` |
 
 ---
 
@@ -151,11 +153,11 @@ MDRAP provides 5 primary extension points that allow external packages or user c
 
 | Extension Point | Protocol | Entry Point Group | Registration | Documentation |
 |---|---|---|---|---|
-| Feed Adapters | `FeedAdapter` | `mdrap.adapters` | `entry_points` | [docs/extending/feed-adapter.md](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/docs/extending/feed-adapter.md) |
-| Quality Rules | — (decorator) | `mdrap.quality_rules` | `@register_rule(bit=N)` | [docs/extending/quality-rules.md](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/docs/extending/quality-rules.md) |
-| Storage Backends | `StorageBackend` | `mdrap.storage_backends` | `entry_points` | [docs/extending/storage-backend.md](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/docs/extending/storage-backend.md) |
-| Auth Providers | `AuthProvider` | `mdrap.auth_providers` | `entry_points` | [docs/extending/auth-provider.md](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/docs/extending/auth-provider.md) |
-| Output Sinks | `OutputSink` | `mdrap.output_sinks` | `entry_points` | [docs/extending/output-sink.md](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/docs/extending/output-sink.md) |
+| Feed Adapters | `FeedAdapter` | `mdrap.adapters` | `entry_points` | [docs/extending/feed-adapter.md](./extending/feed-adapter.md) |
+| Quality Rules | — (decorator) | `mdrap.quality_rules` | `@register_rule(bit=N)` | [docs/extending/quality-rules.md](./extending/quality-rules.md) |
+| Storage Backends | `StorageBackend` | `mdrap.storage_backends` | `entry_points` | [docs/extending/storage-backend.md](./extending/storage-backend.md) |
+| Auth Providers | `AuthProvider` | `mdrap.auth_providers` | `entry_points` | [docs/extending/auth-provider.md](./extending/auth-provider.md) |
+| Output Sinks | `OutputSink` | `mdrap.output_sinks` | `entry_points` | [docs/extending/output-sink.md](./extending/output-sink.md) |
 
 ---
 
