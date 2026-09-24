@@ -29,6 +29,8 @@ from typing import Any
 
 from models import CanonicalEvent, EventType
 
+__stability__ = "beta"
+
 INTERVALS: dict[str, float] = {
     "1s": 1.0,
     "5s": 5.0,

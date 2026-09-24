@@ -9,6 +9,8 @@ from rich.table import Table as _RichTable
 from rich.panel import Panel
 from io import StringIO
 
+__stability__ = "stable"
+
 _TAG_RE = re.compile(r"\[/?[a-zA-Z0-9_# =,-]+\]")
 
 

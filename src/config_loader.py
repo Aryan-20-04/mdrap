@@ -20,6 +20,8 @@ else:
 
 from quality import QualityConfig
 
+__stability__ = "stable"
+
 DEFAULT_CONFIG: dict[str, Any] = {
     "defaults": {
         "staleness_threshold_s": 0.05,

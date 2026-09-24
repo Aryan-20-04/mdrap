@@ -637,14 +637,14 @@ mdrap security
 ---
 
 #### `mdrap keys`
-Manages client API keys and entitlement tiers (`FREE`, `PRO`, `INSTITUTIONAL`).
+Manages client API keys with RBAC role assignment (`VIEWER`, `OPERATOR`, `ADMIN`).
 
 ```bash
 # List all active client API keys
 mdrap keys list
 
-# Create new INSTITUTIONAL tier key with 50,000 eps rate limit
-mdrap keys create --client-id "AlphaQuant_LLC" --tier INSTITUTIONAL --rate 50000
+# Create new API key with ADMIN role
+mdrap keys create --client-id "AlphaQuant_LLC" --role ADMIN
 
 # Revoke an API key
 mdrap keys revoke --token "MDRAP-KEY-xxxx"

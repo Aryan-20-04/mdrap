@@ -13,6 +13,8 @@ import time
 from models import CanonicalEvent
 from reconciliation import ReliabilityTracker
 
+__stability__ = "stable"
+
 
 @dataclass
 class WatchdogAlert:

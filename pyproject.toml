@@ -91,6 +91,17 @@ all = [
 [project.scripts]
 mdrap = "cli:main"
 
+# MDRAP Extension Entry Points
+# Third-party packages can register extensions by declaring entries in these groups:
+#   - mdrap.adapters: Feed adapters implementing the FeedAdapter protocol
+#   - mdrap.quality_rules: Initializers that register custom quality rules
+#   - mdrap.storage_backends: Storage engines implementing the StorageBackend protocol
+#   - mdrap.auth_providers: Auth/entitlement providers implementing AuthProvider
+#   - mdrap.output_sinks: Event delivery sinks implementing OutputSink
+
+[project.entry-points."mdrap.adapters"]
+template = "adapters.template:TemplateAdapter"
+
 [tool.setuptools]
 py-modules = [
     "alerts", "analytics", "api", "archive", "audit_format", "backtest", "bardb", "bbo", "benchmark",
@@ -98,7 +109,7 @@ py-modules = [
     "dashboard", "databento_feed", "depth", "export", "exporter", "fastpath", "features",
     "feed_handler", "fix_engine", "flow_tracker", "fx", "gateway", "gateway_tcp", "itch",
     "live", "manifest", "mbo", "metrics", "models", "multicast_arbitrator", "navigator", "news", "options", "pipeline",
-    "polygon_feed", "portfolio", "protocol", "quality", "reconciliation",
+    "polygon_feed", "portfolio", "protocol", "protocols", "quality", "reconciliation",
     "research", "risk", "rules", "sbe", "scheduler", "security", "service",
     "shm", "simulator", "storage", "strategy_sdk", "stresstest", "symbology", "tca", "term",
     "terminal_display", "trading_cli", "venues", "vessel", "watchdog", "workload_simulator", "ws_feed"

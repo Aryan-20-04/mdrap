@@ -40,7 +40,7 @@ def test_security_register_api_key_db_failure_raises():
     sec = SecurityManager(store=mock_store)
 
     with pytest.raises(RuntimeError, match="Failed to persist API key to storage"):
-        sec.register_api_key(client_id="client_bad", tier="ENTERPRISE")
+        sec.register_api_key(client_id="client_bad")
 
     # In-memory cache must be clean -- key should NOT exist
     assert not any(e.client_id == "client_bad" for e in sec._api_keys.values())

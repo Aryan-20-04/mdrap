@@ -24,6 +24,8 @@ from typing import Any
 
 from models import RawEvent
 
+__stability__ = "beta"
+
 _seq_counter = itertools.count(1)
 _raw_counter = itertools.count(1)
 

@@ -26,6 +26,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional, Tuple
 
+__stability__ = "stable"
+
 
 class Role(str, enum.Enum):
     VIEWER = "VIEWER"  # Read BBO, candles, spreads, analytics, platform status
@@ -41,14 +43,6 @@ _ROLE_HIERARCHY = {
     Role.OPERATOR: 2,
     Role.ADMIN: 3,
 }
-
-
-# Deprecated stub kept for import compatibility only; Tier concept is dropped
-class Tier(str, enum.Enum):
-    STANDARD = "STANDARD"
-    FREE = "STANDARD"
-    PRO = "STANDARD"
-    INSTITUTIONAL = "STANDARD"
 
 
 @dataclass
@@ -368,7 +362,7 @@ class SecurityManager:
                     client_id=cfg["client_id"],
                     role=cfg.get("role", Role.VIEWER),
                 )
-        # Load API key overrides from environment (e.g. MDRAP_API_KEY_PRO=custom_token)
+        # Load API key overrides from environment (e.g. MDRAP_API_KEY_ADMIN=custom_token)
         for k, v in os.environ.items():
             if k.startswith("MDRAP_API_KEY_"):
                 suffix = k[len("MDRAP_API_KEY_") :].upper()

@@ -29,6 +29,8 @@ try:
 except ImportError:
     HAS_SHM = False
 
+__stability__ = "stable"
+
 # ---------------------------------------------------------------------------
 # Memory Layout & Cache-Line Alignment Constants (SHM v3)
 # ---------------------------------------------------------------------------

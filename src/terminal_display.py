@@ -34,6 +34,8 @@ from bbo import BBOEngine
 from depth import ConsolidatedDepthEngine
 from models import CanonicalEvent, EventType, RawEvent
 
+__stability__ = "beta"
+
 
 # ---------------------------------------------------------------------------
 # Cross-Platform Non-Blocking Keyboard Input (Windows msvcrt / POSIX select)

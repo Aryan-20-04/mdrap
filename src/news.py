@@ -11,6 +11,8 @@ import re
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 
+__stability__ = "beta"
+
 
 class SentimentScore(str, enum.Enum):
     VERY_BEARISH = "VERY_BEARISH"

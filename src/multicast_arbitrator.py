@@ -30,6 +30,8 @@ import random
 import time
 from typing import Callable
 
+__stability__ = "beta"
+
 logger = logging.getLogger(__name__)
 
 

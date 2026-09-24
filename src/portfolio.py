@@ -14,6 +14,8 @@ from typing import Any
 from fx import convert_currency
 from symbology import resolve_symbol
 
+__stability__ = "beta"
+
 
 class _WatchlistSearchResult(str):
     @property

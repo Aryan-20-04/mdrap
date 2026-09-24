@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from typing import Dict, Optional
 
+__stability__ = "beta"
+
 
 class FXMatrix:
     """

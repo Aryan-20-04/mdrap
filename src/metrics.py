@@ -18,6 +18,8 @@ try:
 except ImportError:  # pragma: no cover
     resource = None
 
+__stability__ = "stable"
+
 # Bound on the "recent" window used for *live* dashboard percentiles.
 # Sorting this is O(bound log bound) on every refresh instead of
 # O(total_events log total_events) -- see RunMetrics docstring.

@@ -21,6 +21,8 @@ from typing import Any
 from models import CanonicalEvent, EventType, QualityStatus, Reason
 from quality import QualityConfig, QualityEngine
 
+__stability__ = "stable"
+
 # ---------------------------------------------------------------------------
 # Native C Kernel ABI Geometry Constants (Matching fastpath.c)
 # ---------------------------------------------------------------------------

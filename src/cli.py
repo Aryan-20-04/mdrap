@@ -57,6 +57,8 @@ from term import (  # noqa: E402
     render_gemini_box_bottom,
 )
 
+__stability__ = "beta"
+
 
 def _config_from_args(args) -> SimulatorConfig:
     cfg = SimulatorConfig()

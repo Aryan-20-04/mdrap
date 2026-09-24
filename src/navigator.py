@@ -40,6 +40,8 @@ else:
     import termios
     import tty
 
+__stability__ = "beta"
+
 
 # ---------------------------------------------------------------------------
 # Key Constants & Non-Blocking Key Reader

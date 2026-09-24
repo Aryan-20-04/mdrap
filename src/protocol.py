@@ -11,6 +11,8 @@ from __future__ import annotations
 import struct
 from typing import List, Optional
 
+__stability__ = "stable"
+
 MAGIC = b"MD"
 VERSION = 1
 

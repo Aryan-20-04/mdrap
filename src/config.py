@@ -22,6 +22,8 @@ try:
 except ImportError:
     _HAS_YAML = False
 
+__stability__ = "stable"
+
 
 # ---------------------------------------------------------------------------
 # Platform Configuration Defaults (Spec §26)

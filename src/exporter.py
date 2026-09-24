@@ -23,6 +23,8 @@ from pipeline import Pipeline
 from simulator import FeedSimulator, SimulatorConfig
 from storage import Store
 
+__stability__ = "beta"
+
 
 class MarketDataExporter:
     """

@@ -17,6 +17,8 @@ try:
 except ImportError:
     fastpath = None
 
+__stability__ = "beta"
+
 
 class OptionType(str, enum.Enum):
     CALL = "CALL"

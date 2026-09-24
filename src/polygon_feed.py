@@ -45,6 +45,8 @@ except ImportError:
     HAS_WEBSOCKETS = False
     websockets = None  # type: ignore
 
+__stability__ = "beta"
+
 POLYGON_WS_STOCKS = "wss://socket.polygon.io/stocks"
 POLYGON_WS_CRYPTO = "wss://socket.polygon.io/crypto"
 POLYGON_WS_FOREX = "wss://socket.polygon.io/forex"

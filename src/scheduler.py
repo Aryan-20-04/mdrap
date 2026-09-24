@@ -11,6 +11,8 @@ import itertools
 from dataclasses import dataclass
 from typing import Callable, Any
 
+__stability__ = "beta"
+
 
 @dataclass
 class ScheduledJob:

@@ -48,6 +48,9 @@ if TYPE_CHECKING:
     from bbo import BBOEngine
     from watchdog import SourceWatchdog
     from security import SecurityManager
+    from protocols import StorageBackend, QualityEvaluator
+
+__stability__ = "stable"
 
 # ---------------------------------------------------------------------------
 # Pipeline Orchestration & Memory Tuning Constants (Spec §14 & §26)
@@ -138,8 +141,8 @@ class Pipeline:
 
     def __init__(
         self,
-        store: Store,
-        quality: QualityEngine | None = None,
+        store: Store | StorageBackend,
+        quality: QualityEngine | QualityEvaluator | None = None,
         reliability: ReliabilityTracker | None = None,
         archive: RawArchive | None = None,
         analytics: MarketAnalytics | None = None,

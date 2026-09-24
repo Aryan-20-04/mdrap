@@ -1,4 +1,4 @@
-﻿"""MDRAP Feed Adapter Protocol & Dynamic Discovery.
+"""MDRAP Feed Adapter Protocol & Dynamic Discovery.
 
 Provides the FeedAdapter Protocol for exchange feed ingestion and dynamic
 discovery via standard library `importlib.metadata.entry_points(group="mdrap.adapters")`.
@@ -11,6 +11,8 @@ from typing import Iterator, Protocol, runtime_checkable
 from models import RawEvent
 
 __all__ = ["FeedAdapter", "discover_adapters"]
+
+__stability__ = "stable"
 
 
 @runtime_checkable

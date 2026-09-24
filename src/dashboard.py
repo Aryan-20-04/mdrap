@@ -17,6 +17,8 @@ from term import Table, Panel, format_status
 from metrics import LIVE_WINDOW, percentile
 from pipeline import Pipeline
 
+__stability__ = "beta"
+
 
 def _quality_table(pipeline: Pipeline) -> Table:
     t = Table(title="Quality Classification", expand=True)

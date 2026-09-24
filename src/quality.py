@@ -16,6 +16,8 @@ from typing import Any
 
 from models import CanonicalEvent, EventType, QualityStatus, Reason
 
+__stability__ = "stable"
+
 # ---------------------------------------------------------------------------
 # Data Quality & Market Integrity Constants (Spec §26)
 # ---------------------------------------------------------------------------

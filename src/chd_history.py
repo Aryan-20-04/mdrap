@@ -22,6 +22,8 @@ from chd import (
 )
 from models import RawEvent
 
+__stability__ = "beta"
+
 
 def _json_safe(val):
     """Ensure values extracted from PyArrow or native rows are JSON-serializable for RawArchive."""

@@ -10,6 +10,8 @@ import hashlib
 import json
 from typing import Any
 
+__stability__ = "stable"
+
 
 def audit_bytes_v1(
     prev_hash: str, ts: float, actor: str, role: str, action: str, details: str

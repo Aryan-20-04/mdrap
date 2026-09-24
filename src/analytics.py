@@ -4,6 +4,8 @@ import math
 
 from models import CanonicalEvent, EventType, QualityStatus
 
+__stability__ = "beta"
+
 
 class OHLCVAggregator:
     """

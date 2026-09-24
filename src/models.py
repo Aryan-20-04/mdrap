@@ -20,6 +20,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 
+__stability__ = "stable"
+
 
 class EventType(str, Enum):
     """Enumeration of market data event categories."""

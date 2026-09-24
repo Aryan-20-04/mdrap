@@ -17,6 +17,8 @@ import math
 import time
 from typing import Any
 
+__stability__ = "beta"
+
 
 class AggressorSide(str, Enum):
     BUY = "BUY"  # Buyer initiated (lifted ask / traded above mid)

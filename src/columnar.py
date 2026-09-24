@@ -25,6 +25,8 @@ except ImportError:
 
 from models import CanonicalEvent
 
+__stability__ = "beta"
+
 
 COLUMNAR_SCHEMA = """
 CREATE TABLE IF NOT EXISTS canonical_ticks (

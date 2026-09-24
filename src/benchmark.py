@@ -25,6 +25,8 @@ from pipeline import Pipeline
 from simulator import FeedSimulator, SimulatorConfig
 from storage import Store
 
+__stability__ = "stable"
+
 # Which injected fault label should map to which quality outcome, so
 # detection can be scored automatically. "missing" is handled
 # separately since a missing event never gets emitted (see report()).

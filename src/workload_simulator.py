@@ -28,6 +28,8 @@ from columnar import ColumnarStore
 from service import MarketDataDaemon, StreamClient
 from term import Console, Panel, Table
 
+__stability__ = "beta"
+
 
 class UserArchetype(str, Enum):
     NORMAL_USER = "NORMAL_USER"

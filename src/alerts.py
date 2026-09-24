@@ -12,6 +12,8 @@ import itertools
 from dataclasses import dataclass
 from typing import Callable
 
+__stability__ = "beta"
+
 
 class AlertType(str, enum.Enum):
     PRICE_ABOVE = "PRICE_ABOVE"

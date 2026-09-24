@@ -28,6 +28,8 @@ from typing import Dict, Generator, List, Optional, Tuple
 
 from models import RawEvent
 
+__stability__ = "beta"
+
 logger = logging.getLogger("mdrap.databento_feed")
 
 _seq_counter = itertools.count(1)

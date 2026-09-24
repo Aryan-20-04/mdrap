@@ -32,6 +32,8 @@ try:
 except (ImportError, Exception):
     _HAS_FASTPATH = False
 
+__stability__ = "experimental"
+
 CONTROL_CHAR_REGEX = re.compile(r"[\x00-\x1f\x7f]")
 
 

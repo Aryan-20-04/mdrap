@@ -13,7 +13,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from client import MDRAPClient
 from depth import ConsolidatedDepthEngine, ConsolidatedLadder, DepthLevel, VWAPCurve, VWAPSlice
 from models import RawEvent
-from security import SecurityManager, Tier
+from security import SecurityManager
 from service import MarketDataDaemon
 from storage import Store
 

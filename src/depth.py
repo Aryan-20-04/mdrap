@@ -16,6 +16,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from models import CanonicalEvent, EventType, QualityStatus, RawEvent
 
+__stability__ = "beta"
+
 
 @dataclass(slots=True)
 class DepthLevel:

@@ -21,6 +21,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+__stability__ = "beta"
+
 
 @dataclass
 class MarketEvent:

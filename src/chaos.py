@@ -21,6 +21,8 @@ from simulator import FeedSimulator, SimulatorConfig
 from storage import Store
 from watchdog import SourceState, SourceWatchdog
 
+__stability__ = "beta"
+
 
 @dataclass
 class ChaosDrillResult:

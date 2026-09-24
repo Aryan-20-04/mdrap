@@ -29,6 +29,8 @@ from models import RawEvent
 from polygon_feed import PolygonFeedManager
 from ws_feed import WebSocketFeedManager
 
+__stability__ = "beta"
+
 logger = logging.getLogger("mdrap.feed_handler")
 
 

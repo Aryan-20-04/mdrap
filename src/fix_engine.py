@@ -14,6 +14,8 @@ try:
 except ImportError:
     fastpath = None
 
+__stability__ = "experimental"
+
 SOH = "\x01"
 
 

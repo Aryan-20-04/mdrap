@@ -14,6 +14,8 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
+__stability__ = "experimental"
+
 
 class ActionType(str, enum.Enum):
     SPLIT = "SPLIT"

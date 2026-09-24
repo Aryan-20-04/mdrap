@@ -13,6 +13,8 @@ from typing import Iterator, Optional, Any
 
 from models import RawEvent
 
+__stability__ = "stable"
+
 
 class RawArchive:
     def __init__(self, base_dir: str = "data/raw_archive", buffer_size: int = 500):

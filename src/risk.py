@@ -17,6 +17,8 @@ try:
 except ImportError:
     fastpath = None
 
+__stability__ = "beta"
+
 
 class ReturnSeries:
     """Tracks a time series of portfolio values and computes returns."""

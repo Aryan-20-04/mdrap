@@ -24,6 +24,8 @@ from typing import Any
 
 from models import CanonicalEvent, EventType, QualityStatus
 
+__stability__ = "experimental"
+
 
 # ---------------------------------------------------------------------------
 # Institutional Constants & Market Microstructure Parameters (Spec §26)

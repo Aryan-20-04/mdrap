@@ -27,6 +27,8 @@ import time
 
 from models import CanonicalEvent, EventType, RawEvent
 
+__stability__ = "stable"
+
 # Fast lock-free monotonic counter for hot-path ID generation
 _gateway_id_counter = itertools.count(1)
 

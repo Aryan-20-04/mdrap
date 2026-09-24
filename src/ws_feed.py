@@ -33,6 +33,8 @@ import uuid
 from live import resolve_venue_symbols
 from models import RawEvent
 
+__stability__ = "beta"
+
 logger = logging.getLogger("mdrap.ws_feed")
 
 RUN_ID = uuid.uuid4().hex[:12]

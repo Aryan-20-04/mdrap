@@ -62,6 +62,8 @@ from security import (
 from storage import Store
 from watchdog import SourceWatchdog
 
+__stability__ = "beta"
+
 logger = logging.getLogger("mdrap.api")
 
 
@@ -236,11 +238,16 @@ def create_app(
     app.state.mdrap = app_state
 
     # CORS configuration (secure defaults)
-    allowed_origins = os.environ.get("MDRAP_CORS_ORIGINS", "*").split(",")
+    # Note: allow_credentials=True with allow_origins=["*"] is invalid per the
+    # CORS specification. When wildcard origins are used, credentials are disabled.
+    # Set MDRAP_CORS_ORIGINS to explicit domains to enable credentialed requests.
+    cors_env = os.environ.get("MDRAP_CORS_ORIGINS", "").strip()
+    allowed_origins = [o.strip() for o in cors_env.split(",") if o.strip()]
+    is_wildcard = not allowed_origins or allowed_origins == ["*"]
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=allowed_origins,
-        allow_credentials=True,
+        allow_origins=["*"] if is_wildcard else allowed_origins,
+        allow_credentials=not is_wildcard,
         allow_methods=["*"],
         allow_headers=["*"],
     )

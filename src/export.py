@@ -12,6 +12,8 @@ import sqlite3
 import sys
 from typing import Any
 
+__stability__ = "stable"
+
 
 def export_data(
     db_path: str,

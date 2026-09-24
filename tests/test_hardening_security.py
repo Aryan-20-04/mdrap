@@ -7,7 +7,6 @@ from security import (
     Role,
     SecurityManager,
     ClientEntitlement,
-    Tier,
 )
 from storage import Store
 

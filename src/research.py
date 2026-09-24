@@ -28,6 +28,8 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 import xml.etree.ElementTree as ET
 
+__stability__ = "experimental"
+
 TICKER_REGEX = re.compile(r"^[A-Za-z0-9.\-_]{1,10}$")
 SEC_TICKERS_URL = "https://www.sec.gov/files/company_tickers.json"
 SEC_SUBMISSIONS_URL = "https://data.sec.gov/submissions/CIK{cik}.json"

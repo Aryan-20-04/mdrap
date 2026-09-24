@@ -31,6 +31,8 @@ from simulator import FeedSimulator, SimulatorConfig
 from storage import Store
 from watchdog import SourceWatchdog
 
+__stability__ = "stable"
+
 
 @dataclass
 class _ClientSession:

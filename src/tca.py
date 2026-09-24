@@ -20,6 +20,8 @@ from typing import Any
 
 from bbo import BBOEngine, ConsolidatedBBO
 
+__stability__ = "experimental"
+
 
 @dataclass(slots=True)
 class ExecutionRecord:

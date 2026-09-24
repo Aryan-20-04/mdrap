@@ -17,6 +17,8 @@ from dataclasses import dataclass
 from enum import Enum
 import time
 
+__stability__ = "beta"
+
 
 class OrderSide(str, Enum):
     BUY = "BUY"

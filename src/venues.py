@@ -13,6 +13,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Dict, Optional, Tuple
 
+__stability__ = "stable"
+
 
 class MarketPhase(str, Enum):
     PRE_OPEN = "PRE_OPEN"  # Call auction / order collection

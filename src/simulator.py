@@ -18,6 +18,8 @@ from typing import Iterator, List, Optional
 
 from models import RawEvent
 
+__stability__ = "stable"
+
 
 # ---------------------------------------------------------------------------
 # Simulator Default Configuration & Fault Injection Parameters (Spec §26)

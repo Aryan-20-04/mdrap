@@ -29,6 +29,8 @@ from storage import Store
 
 from metrics import get_rss_mb
 
+__stability__ = "beta"
+
 
 def compute_latencies_us(durations_ns: list[int]) -> dict:
     """Compute exact hardware nanosecond latencies converted to microseconds."""

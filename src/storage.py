@@ -38,6 +38,8 @@ from typing import Any
 
 from models import CanonicalEvent
 
+__stability__ = "stable"
+
 logger = logging.getLogger("mdrap.storage")
 
 SCHEMA = """

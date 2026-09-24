@@ -35,6 +35,8 @@ from typing import Any
 
 from models import CanonicalEvent, EventType, QualityStatus
 
+__stability__ = "beta"
+
 # ---------------------------------------------------------------------------
 # ITCH 5.0 Constants & Message Type Identifiers
 # ---------------------------------------------------------------------------

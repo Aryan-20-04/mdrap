@@ -14,6 +14,8 @@ try:
 except ImportError:
     fastpath = None
 
+__stability__ = "beta"
+
 
 def sma(prices: list[float], period: int) -> list[float]:
     """Simple Moving Average (O(N) running sum)"""

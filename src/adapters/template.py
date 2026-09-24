@@ -6,6 +6,8 @@ from typing import Iterator
 
 from models import RawEvent
 
+__stability__ = "stable"
+
 
 class TemplateCustomVenueAdapter:
     """Minimal example of a custom exchange feed adapter implementing FeedAdapter."""

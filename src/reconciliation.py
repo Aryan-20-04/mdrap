@@ -27,6 +27,8 @@ from dataclasses import dataclass
 
 from models import CanonicalEvent, QualityStatus, Reason
 
+__stability__ = "stable"
+
 
 # ---------------------------------------------------------------------------
 # Feed Reliability Scoring Weights & Windows (Spec §12 & §26)

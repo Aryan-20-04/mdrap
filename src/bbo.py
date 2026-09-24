@@ -24,6 +24,8 @@ from typing import Any
 
 from models import CanonicalEvent, EventType, QualityStatus
 
+__stability__ = "stable"
+
 
 @dataclass(slots=True)
 class ConsolidatedBBO:

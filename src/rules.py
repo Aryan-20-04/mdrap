@@ -1,9 +1,15 @@
-﻿"""MDRAP User Rule Registry and Decorator.
+"""MDRAP User Rule Registry and Decorator.
 
 Supports user-defined quality rules allocated to bitmask range 32..63.
 Evaluated in Python post-native pass with zero overhead when no rules are registered.
+
+Rules can be registered via:
+    1. ``@register_rule(bit=N)`` decorator (in-process)
+    2. ``importlib.metadata.entry_points(group="mdrap.quality_rules")`` (third-party packages)
 """
 from __future__ import annotations
+
+import sys
 
 from dataclasses import dataclass
 from typing import Callable, Any
@@ -101,3 +107,41 @@ def evaluate_user_rules(event: CanonicalEvent) -> CanonicalEvent:
                 event.reasons.append("USER_RULE_ERROR")
 
     return event
+
+
+def discover_quality_rules() -> int:
+    """Discover and register third-party quality rules from entry points.
+
+    Third-party packages register rules under the ``mdrap.quality_rules``
+    entry point group. Each entry point should resolve to a callable that,
+    when called with no arguments, registers its rules via ``@register_rule``.
+
+    Returns:
+        Number of entry point modules successfully loaded.
+    """
+    loaded = 0
+    try:
+        if sys.version_info >= (3, 10):
+            from importlib.metadata import entry_points
+
+            eps = entry_points(group="mdrap.quality_rules")
+        else:
+            import importlib_metadata  # type: ignore[import-untyped]
+
+            eps = importlib_metadata.entry_points().get("mdrap.quality_rules", [])
+
+        for ep in eps:
+            try:
+                initializer = ep.load()
+                if callable(initializer):
+                    initializer()
+                loaded += 1
+            except Exception:
+                pass
+    except Exception:
+        pass
+    return loaded
+
+
+__stability__ = "stable"
+

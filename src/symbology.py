@@ -11,6 +11,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Dict
 
+__stability__ = "stable"
+
 
 @dataclass(slots=True, frozen=True)
 class SymbolInfo:

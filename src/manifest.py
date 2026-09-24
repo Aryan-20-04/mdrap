@@ -1,4 +1,4 @@
-﻿"""MDRAP Run Manifest Generator.
+"""MDRAP Run Manifest Generator.
 
 Captures complete deterministic environment, configuration, hardware, and execution
 metadata for auditability and experiment reproducibility.
@@ -15,6 +15,8 @@ from typing import Any
 
 from config_loader import compute_config_hash
 from fastpath import HAS_FASTPATH
+
+__stability__ = "stable"
 
 
 def get_git_revision() -> str:

@@ -26,6 +26,8 @@ import time
 from models import CanonicalEvent, EventType, QualityStatus
 from strategy_sdk import PaperExecutor, Strategy, StrategyRunner
 
+__stability__ = "beta"
+
 
 @dataclass
 class BacktestResult:

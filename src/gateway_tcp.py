@@ -16,6 +16,8 @@ import asyncio
 import json
 import logging
 
+__stability__ = "beta"
+
 logger = logging.getLogger("mdrap.gateway")
 
 
