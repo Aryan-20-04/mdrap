@@ -7,7 +7,7 @@
 # ==============================================================================
 
 # --- UI & Terminal Visualization (Optional) ---
-rich>=13.0.0,<14.0.0            # High-performance terminal cockpit, live ticker, & ANSI charts (graceful fallback if absent)
+rich>=13.0.0,<16.0.0            # High-performance terminal cockpit, live ticker, & ANSI charts (graceful fallback if absent)
 
 # --- Financial Modeling & Analytics Exporter (Optional) ---
 openpyxl>=3.1.0,<4.0.0         # 5-Tab Institutional Microsoft Excel (.xlsx) financial model exporter (falls back to CSV)
