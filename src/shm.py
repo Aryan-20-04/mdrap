@@ -17,6 +17,7 @@ Key Architectural Guarantees:
 from __future__ import annotations
 
 from collections.abc import Generator
+import os
 import secrets
 import struct
 import time
@@ -57,9 +58,12 @@ SHM3_PRESENT_ASZ = 0x20
 HEADER_LINE1_STRUCT = struct.Struct("<4sHHIIQQ32s")
 
 # Cache Line 2 (64 bytes) - Heartbeat & Diagnostics Line:
-# heartbeat_ts(d=8), dropped_ticks(Q=8), pad48(48s)
-# 8 + 8 + 48 = 64 bytes
-HEADER_LINE2_STRUCT = struct.Struct("<dQ48s")
+# heartbeat_ts(d=8) @ 64, dropped_ticks(Q=8) @ 72, flags(I=4) @ 80, pad44(44s) @ 84
+# 8 + 8 + 4 + 44 = 64 bytes
+HEADER_LINE2_STRUCT = struct.Struct("<dQI44s")
+FLAGS_OFFSET = 80
+SHM_FLAG_WATERMARK_WARNING = 0x01
+DEFAULT_SHM_WATERMARK_PCT = float(os.environ.get("MDRAP_SHM_WATERMARK_PCT", "0.80"))
 
 # Slot (128 bytes, 2 cache lines):
 # commit_seq(Q=8)
@@ -116,6 +120,8 @@ class SHMOverrunStats:
     skipped_ticks: int = 0
     last_lap_seq: int = 0
     last_lap_ts: float = 0.0
+    watermark_warnings: int = 0
+    watermark_events: int = 0
 
 
 class SHMWriter:
@@ -178,14 +184,47 @@ class SHMWriter:
         )
 
         # Initialize Cache Line 2 (Heartbeat Line)
-        pad48 = b"\x00" * 48
+        pad44 = b"\x00" * 44
         now = time.time()
-        HEADER_LINE2_STRUCT.pack_into(self.shm.buf, 64, now, 0, pad48)
+        HEADER_LINE2_STRUCT.pack_into(self.shm.buf, 64, now, 0, 0, pad44)
         self._last_heartbeat = now
+        self.watermark_pct = DEFAULT_SHM_WATERMARK_PCT
+        self.watermark_slots = int(self.slot_count * self.watermark_pct)
+        self._last_known_read_seq = 0
 
     @property
     def _write_seq(self) -> int:
         return max(0, self._head_seq - 1)
+
+    def set_watermark_flag(self, active: bool = True) -> None:
+        """Set or clear the watermark warning bitflag in Cache Line 2."""
+        if not self.shm:
+            return
+        flags = struct.unpack_from("<I", self.shm.buf, FLAGS_OFFSET)[0]
+        if active:
+            flags |= SHM_FLAG_WATERMARK_WARNING
+        else:
+            flags &= ~SHM_FLAG_WATERMARK_WARNING
+        struct.pack_into("<I", self.shm.buf, FLAGS_OFFSET, flags)
+
+    def is_watermark_warning_set(self) -> bool:
+        """Check if the watermark warning bitflag is set in Cache Line 2."""
+        if not self.shm:
+            return False
+        try:
+            flags = struct.unpack_from("<I", self.shm.buf, FLAGS_OFFSET)[0]
+            return bool(flags & SHM_FLAG_WATERMARK_WARNING)
+        except Exception:
+            return False
+
+    def update_reader_seq(self, read_seq: int) -> None:
+        """Update slowest known reader sequence to evaluate ring buffer occupancy."""
+        self._last_known_read_seq = max(self._last_known_read_seq, read_seq)
+        occupancy = self._write_seq - self._last_known_read_seq
+        if occupancy >= self.watermark_slots:
+            self.set_watermark_flag(True)
+        elif occupancy < int(self.slot_count * (self.watermark_pct * 0.8)):
+            self.set_watermark_flag(False)
 
     def update_heartbeat(self, dropped_ticks: int | None = None) -> None:
         """Update the publisher heartbeat timestamp in Cache Line 2."""
@@ -449,7 +488,29 @@ class SHMReader:
         self.slot_count = slot_cnt
         self.mask = slot_cnt - 1
         self.epoch_id = epoch_id
+        self.watermark_pct = DEFAULT_SHM_WATERMARK_PCT
+        self.watermark_slots = int(self.slot_count * self.watermark_pct)
         self.overrun_stats = SHMOverrunStats()
+
+    def is_watermark_warning_set(self) -> bool:
+        """Check if the watermark warning bitflag is set in Cache Line 2."""
+        if not self.shm:
+            return False
+        try:
+            flags = struct.unpack_from("<I", self.shm.buf, FLAGS_OFFSET)[0]
+            return bool(flags & SHM_FLAG_WATERMARK_WARNING)
+        except Exception:
+            return False
+
+    def check_watermark(self, current_seq: int | None = None) -> bool:
+        """Check if writer watermark flag is raised or current reader seq has crossed watermark threshold."""
+        if self.is_watermark_warning_set():
+            return True
+        if current_seq is not None and self.shm:
+            head = struct.unpack_from("<Q", self.shm.buf, 24)[0]
+            if (head - current_seq) >= self.watermark_slots:
+                return True
+        return False
 
     def is_writer_alive(self, max_stale_s: float = 4.0) -> bool:
         """Check if publisher heartbeat timestamp is recent."""
@@ -499,8 +560,13 @@ class SHMReader:
         if head == 0 or seq >= head:
             return None  # Future sequence or nothing published
 
+        lag = head - seq
+        if lag >= self.watermark_slots or self.is_watermark_warning_set():
+            self.overrun_stats.watermark_warnings += 1
+            self.overrun_stats.watermark_events += 1
+
         # Overrun detection: publisher has lapped the reader
-        if head - seq > self.slot_count:
+        if lag > self.slot_count:
             self.overrun_stats.total_laps += 1
             self.overrun_stats.last_lap_seq = seq
             self.overrun_stats.last_lap_ts = time.time()

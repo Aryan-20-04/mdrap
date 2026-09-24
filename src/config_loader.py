@@ -134,4 +134,6 @@ def to_quality_config(resolved: dict[str, Any]) -> QualityConfig:
         price_anomaly_stddev=float(resolved.get("price_anomaly_stddev", 6.0)),
         price_window=int(resolved.get("price_window", 50)),
         dedup_cache_size=int(resolved.get("dedup_cache_size", 200000)),
+        reorder_window_s=float(resolved.get("reorder_window_s", 0.0)),
+        reorder_max_slots=int(resolved.get("reorder_max_slots", 32)),
     )

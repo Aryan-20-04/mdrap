@@ -36,3 +36,23 @@ Price anomaly detection uses replace-update Welford online variance algorithm wi
 - **Warm-up boundary**: During the first 20 samples (`price_min_samples = 20`), a coarse $\pm 10\%$ sanity check applies instead of the $\sigma$ test to prevent false positives from tick quantization.
 - **Relative $\sigma$-floor**: $\sigma_{\text{eff}} = \max(\sigma, 2\times 10^{-4} \cdot |\text{mean}|)$ protects against false positives in low-volatility tight spreads.
 - **Regime shift auto-recovery**: If 8 consecutive events (`price_reseed_after = 8`) occur at a new consistent price level, the baseline automatically re-seeds to the new price, allowing subsequent ticks to return to `VALID`.
+
+---
+
+## 4. In-Flight Reorder / Jitter Buffer (Spec §6.4 & §15 Resilience)
+
+Network packet jitter (e.g. UDP NIC multi-queue reordering or cross-exchange packet race conditions) can cause small sequence retrogrades or jumps that resolve within tens or hundreds of microseconds. Unconditional immediate quarantine of these packets produces false `OUT_OF_ORDER` alarms and discards legitimate trades.
+
+To prevent premature quarantine, `QualityEngine` implements an in-flight reorder buffer per `(source, instrument)` slot:
+- **Configuration**:
+  - `reorder_window_s` (float seconds, default `0.0` disabled, e.g. `0.005` for a 5ms delay window).
+  - `reorder_max_slots` (int, default `32` slots max hold).
+- **Hold & Repair Mechanism**:
+  1. When a sequence jump occurs (`seq > last_seq + 1`) and `reorder_window_s > 0`, the forward event is placed into `sl.pending` and evaluation returns `None` (held in flight).
+  2. When the missing packet(s) arrive, the sequence continuity is restored: the engine pops all contiguous pending events from `sl.pending`, completes their evaluation, marks them `VALID`, and queues them to `sl.ready` (`reorder_repaired_total += 1`).
+  3. The pipeline drains `sl.ready` directly into the canonical stream in monotonic sequence order.
+- **Expiration & Deterministic Quarantine**:
+  - `drain_expired(now_monotonic, force=False)` checks pending events against `reorder_window_s`.
+  - If the hold window expires before the missing sequence packet arrives, the pending event is drained as `SEQUENCE_GAP` (`reorder_expired_total += 1`) and sent to quarantine.
+  - Zero data loss: events are never dropped or forgotten; genuine missing packets are cleanly quarantined with full lineage.
+

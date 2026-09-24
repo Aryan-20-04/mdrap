@@ -88,3 +88,39 @@ mdrap audit --export-proof audit_proof.json
 # 2. Independently verify the exported proof:
 mdrap audit --verify-proof audit_proof.json
 ```
+
+---
+
+## 5. Format Version 3 — Batched Tamper-Evident Quarantine Merkle Log
+
+In addition to linear administrative audit logs, MDRAP implements high-volume, tamper-evident batch Merkle tree hashing for quarantined market data rows (`src/storage.py`).
+
+### 5.1 Architecture & Design Rational
+Quarantine bursts during market anomalies can involve thousands of discarded or malformed ticks per second. Computing a linear hash chain on the hot ingest loop would introduce serialization bottlenecks. 
+
+MDRAP executes Merkle tree computations on the decoupled async persistence worker off the critical path:
+1. **Leaf Hashing**: For each row in a flushed quarantine batch, a leaf hash is derived via SHA-256 over its canonical serialized payload:
+   $$\text{leaf}_i = \text{SHA-256}(\text{payload}_i)$$
+2. **Pairwise Merkle Tree**: Leaves are paired and hashed recursively up to a single 256-bit batch Merkle root:
+   $$\text{parent} = \text{SHA-256}(\text{child}_L \parallel \text{child}_R)$$
+   If an odd number of nodes exists at any level, the last node is duplicated.
+3. **Chained Batch Ledger (`quarantine_merkle_log`)**:
+   ```sql
+   CREATE TABLE quarantine_merkle_log (
+       batch_id INTEGER PRIMARY KEY AUTOINCREMENT,
+       prev_root TEXT NOT NULL,
+       merkle_root TEXT NOT NULL,
+       batch_size INTEGER NOT NULL,
+       created_at REAL NOT NULL
+   );
+   ```
+4. **Audit Integration**: Every batch links into the root `audit_log` with `action="QUARANTINE_MERKLE_BATCH"`, `format_version=3`, and `details="n=<batch_size>,root=<merkle_root>"`.
+
+### 5.2 Verification
+Integrity is verified mathematically via `store.verify_quarantine_merkle_integrity()`:
+```python
+is_valid, count, errors = store.verify_quarantine_merkle_integrity()
+assert is_valid, f"Quarantine Merkle log integrity broken: {errors}"
+```
+This guarantees that no historical quarantine records can be modified, scrubbed, or fabricated without breaking the cryptographic root chain.
+

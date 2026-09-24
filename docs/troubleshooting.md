@@ -87,3 +87,23 @@ curl http://localhost:8000/v1/health
     ```bash
     python scripts/restore.py --backup backups/mdrap_backup_latest.db --db data/mdrap.db --force
     ```
+
+### Issue 7: SHM Ring Buffer Watermark Alert / Consumer Lag
+- **Cause**: Shared memory reader is consuming ticks slower than the publisher rate; buffer occupancy crossed the 80% watermark threshold.
+- **Resolution**:
+  - Check reader processing loop: ensure no I/O, disk writes, or blocking calls occur inside the hot streaming loop.
+  - Pin the reader process to an isolated CPU core.
+  - Increase ring buffer capacity by configuring a larger power-of-two `slot_count` (e.g. 65,536 slots).
+  - Tune watermark warning threshold via `MDRAP_SHM_WATERMARK_PCT` (default `0.80`).
+
+### Issue 8: High Out-of-Order / Sequence-Gap Quarantines Due to Network Jitter
+- **Cause**: Microsecond UDP packet arrival jitter or multi-queue NIC race conditions delivering packets slightly out of sequence.
+- **Resolution**:
+  - Configure the in-flight reorder buffer in `config.yaml` or via CLI:
+    ```yaml
+    quality:
+      reorder_window_s: 0.005   # 5ms sliding delay window
+      reorder_max_slots: 32     # hold up to 32 slots in flight
+    ```
+  - Contiguous inverted packets will self-repair in-memory and be marked `VALID` instead of being prematurely quarantined.
+

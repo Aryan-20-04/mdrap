@@ -1,11 +1,11 @@
 # Market Data Reliability & Acceleration Platform (MDRAP)
 ### Enterprise Self-Hosted Reliability, Reconciliation & Audit Infrastructure for Real-Time Financial Market Data
 
-[![Version](https://img.shields.io/badge/version-2.2.0-blue.svg)](pyproject.toml)
+[![Version](https://img.shields.io/badge/version-2.3.0-blue.svg)](pyproject.toml)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue.svg)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-780%20passing%20(100%25)-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-815%20passing%20(100%25)-brightgreen.svg)](tests/)
 [![Hot Path Latency](https://img.shields.io/badge/hot--path-37.5%20ns%20batch%20%7C%2050.0%20ns%20single%20%7C%2044.8%20ns%20core-orange.svg)](docs/benchmark-methodology.md)
-[![Architecture](https://img.shields.io/badge/architecture-V1%20%7C%20V2%20%7C%20V4%20C--Fastpath%20%7C%20V5%20Native%20Core%20(T1)-purple.svg)](docs/architecture.md)
+[![Architecture](https://img.shields.io/badge/architecture-V1%20%7C%20V2%20%7C%20V4%20C--Fastpath%20%7C%20V5%20Core%20%7C%20V6%20Resilience-purple.svg)](docs/architecture.md)
 [![Manual](https://img.shields.io/badge/manual-Operator%20%26%20User%20Guide-teal.svg)](docs/USER_GUIDE.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
@@ -38,6 +38,7 @@ curl http://localhost:8000/v1/health
 The service exposes:
 - **FastAPI REST API**: `http://localhost:8000/v1`
 - **Interactive Swagger Documentation**: `http://localhost:8000/docs`
+- **Prometheus Metrics**: `http://localhost:8000/metrics`
 - **Real-Time WebSocket Feed**: `ws://localhost:8000/v1/events/stream`
 - **TCP Wire Protocol**: `tcp://localhost:9001`
 - **Optional TLS Reverse Proxy (Caddy)**: `docker compose --profile tls up -d`
@@ -60,9 +61,12 @@ python cli.py serve --host 0.0.0.0 --port 8000
 | Cross-source reconciliation | ✅ Built-in dynamic consensus | ❌ | ❌ | ❌ |
 | Statistical quality scoring | ✅ 7-rule engine + X-Macro rules | ❌ | ❌ | Manual |
 | Explainable reason codes | ✅ Per-event bitmask & JSON | ❌ | ❌ | ❌ |
-| Cryptographic audit trail | ✅ Tamper-evident Merkle hash chain | ❌ | ❌ | ❌ |
+| In-flight jitter buffer | ✅ Sliding self-repair delay window | ❌ | ❌ | ❌ |
+| Decoupled async persistence | ✅ Non-blocking SPSC writer queue | ❌ | ❌ | Manual |
+| Cryptographic audit trail | ✅ Batched Merkle trees + hash chain | ❌ | ❌ | ❌ |
 | Standalone C Hot-Path (`mdrap-core`) | ✅ 44.8–61.3 ns / 16.3M–22.3M eps | ❌ | ❌ (C++ core) | ✅ (q kernel) |
-| Zero-lock SPSC shared memory | ✅ 128B cache-line aligned seqlock | ❌ | ❌ | Custom |
+| Zero-lock SPSC shared memory | ✅ 128B seqlock + watermark bitflag | ❌ | ❌ | Custom |
+| Distributed output streaming | ✅ Kafka / Redpanda durable sink | ❌ | Custom | Custom |
 | Tick-level persistence | SQLite WAL + DuckDB Parquet | ✅ Purpose-built | ✅ Parquet catalog | ✅ Purpose-built |
 | Strategy execution & MM | Avellaneda-Stoikov HFT SDK | ❌ | ✅ Purpose-built | Via q |
 | `pip install` + CLI | ✅ Zero-dependency pure stdlib | ❌ (Java) | ✅ | ❌ (Commercial) |
@@ -221,6 +225,14 @@ flowchart TD
   - **Cycle-Accurate Parity**: [`tests/test_fpga_parity.py`](tests/test_fpga_parity.py) verifies 100% agreement against Python and C engines across 1,000 synthetic events.
   - **Findings Report**: [FPGA Spike Findings](docs/fpga-spike-findings.md) detailing resource usage (~130 LUTs, 69 FFs, ~3.3 ns evaluation) and an architectural assessment of the ~100 ns gap to commercial tick-to-trade appliances.
 
+### 13. High-Throughput Resilience & Chaos Recovery Architecture (V6)
+- **Decoupled Async Persistence Engine (`src/pipeline.py`)**: Dedicated SPSC writer thread draining a bounded batch queue (`maxsize=128`) to SQLite WAL transactions, eliminating disk sync jitter from the hot loop. Reduces $p99.9$ tail latency from $2.2\text{ ms} \to 314.7\,\mu\text{s}$ while preserving atomic dead-letter JSONL fallback.
+- **In-Flight Reorder / Jitter Buffer (`src/quality.py`)**: Per-slot sliding delay window (`reorder_window_s`, `reorder_max_slots`) buffers packet inversions in-flight, repairing sequences in-memory upon arrival of missing packets and preventing premature false `OUT_OF_ORDER` quarantines.
+- **Adaptive Hybrid Silence Watchdog (`src/watchdog.py`)**: Dual-trigger monitoring combining fixed wall-clock threshold ($2.0\text{ s}$) with peer-aware EWMA inter-tick pacing ($10\times$ multiplier) for sub-5ms failover during active trading sessions, with protection for quiet markets.
+- **Batched Tamper-Evident Merkle Quarantine Log (`src/storage.py`)**: Pairwise SHA-256 Merkle root computation over quarantine batches off the hot path, recording chained batch roots into Format Version 3 audit records.
+- **Zero-Copy SHM Backpressure Watermark (`src/shm.py`)**: Header Cache Line 2 bitflag (`SHM_FLAG_WATERMARK_WARNING = 0x01`) alerts consumers and watchdog telemetry when ring buffer occupancy or reader lag crosses 80%.
+- **Durable Kafka / Redpanda Sink & External Alert Worker (`src/kafka_sink.py`, `src/alert_sinks.py`)**: High-throughput distributed output streaming and asynchronous alert delivery to Webhook, Slack, and PagerDuty endpoints.
+
 ---
 
 ## Latency Architecture & Industry Tiering
@@ -253,11 +265,14 @@ All latency and throughput figures trace directly to committed JSON benchmark re
 | **Tier 2D** | V1 In-Memory Baseline (Pure Py) | **28,562 eps** | **21.00 µs** (0.021 ms) | 38.20 µs | 58.90 µs | `benchmarks/baseline_v1_*.json` (`cli.py compare -e 100000`) |
 | **Tier 3A** | SHM Broadcast Ring Publish | **208,479 eps** | **4.10 µs** (0.004 ms) | 5.30 µs | 8.10 µs | `benchmarks/stage_breakdown.json` |
 | **Tier 3B** | SQLite WAL Batched Flush (Sync) | **330,136 eps** | **2.27 µs** (in-memory) | 4.15 µs | 8.88 µs | `benchmarks/stage_breakdown.json` (also tracked in live `Metrics.stages_us`) |
-| **Tier 4** | End-to-End Durable Ingest-to-Disk | **23,600 eps** | **783.6 µs** (0.78 ms) | 1,240 µs | 2,850 µs | Full pipeline with SQLite WAL batched commits |
+| **Tier 4A** | Decoupled Async Persistence (Stress Burst) | **27,145 eps** | **22.8 µs** (0.023 ms) | **34.9 µs** | **251.3 µs** | `benchmarks/bench_stress_and_resilience.py` (p99.9: **314.7 µs** vs 2.2 ms sync cliff) |
+| **Tier 4B** | Reconnect & Failover Under Stress | **13,457 eps** | **35.8 µs** | **50.1 µs** | **146.6 µs** | `benchmarks/bench_stress_and_resilience.py` (0.05 ms failover, zero data loss) |
+| **Tier 4C** | End-to-End Durable Ingest-to-Disk (Sync Baseline) | **23,600 eps** | **783.6 µs** (0.78 ms) | 1,240 µs | 2,850 µs | Full pipeline with SQLite WAL batched commits |
 
 ### Latency Hierarchy & Physical Bounds
 - **Native C Batch (37.5 ns) vs Pipeline (15.3 µs)**: The **37.5 ns** figure measures the C accelerator alone operating on pre-batched contiguous arrays in CPU L1 cache. The **15.3 µs** figure is the same accelerator measured end-to-end inside the full Python pipeline compute loop (normalization + 7-rule scoring + cross-feed reconciliation + NBBO tracking).
 - **Standalone Core (44.8–61.3 ns)**: The out-of-process standalone binary (`mdrap-core`) bypasses the Python interpreter completely, achieving wire-to-SHM execution at hardware speeds.
+- **Decoupled Persistence ($p99.9 = 314.7\,\mu\text{s}$)**: Bounded async queuing isolates the hot loop from SQLite synchronous fsync pauses ($2.2\text{ ms}$ baseline), delivering $7\times$ lower tail latency under $10\times$ volume surges.
 - **Physics of the "~5 Nanosecond" Myth**: At 4.0 GHz, one CPU clock cycle is 0.25 nanoseconds; **5 nanoseconds is exactly 20 CPU cycles**. Software running on general-purpose OS kernels cannot receive network packets, parse payloads, and evaluate state in 5 nanoseconds (PCIe bus transfer from NIC to RAM alone takes 100–250 ns). Sub-20 ns latencies are only physically possible in dedicated hardware FPGA gate logic.
 
 ---
@@ -578,9 +593,13 @@ mdrap/
 │   ├── bbo.py                 # Synthetic Consolidated BBO (NBBO) multi-venue engine
 │   ├── strategy_sdk.py        # Avellaneda-Stoikov quantitative HFT market-making SDK
 │   ├── columnar.py            # DuckDB columnar engine, zero-copy SQLite scanner & Parquet exporter
+│   ├── protocols.py           # Protocol interfaces for Extension Points (Sinks, Adapters, Backends)
+│   ├── kafka_sink.py          # Durable Kafka & Redpanda output sink with partition routing
+│   ├── alert_sinks.py         # Asynchronous alert delivery worker (Webhook, Slack, PagerDuty)
+│   ├── prometheus.py          # Prometheus exposition metrics exporter with proxy hardening
 │   ├── security.py            # SHA-256 token hashing, RBAC, Token Bucket, signed Merkle audit
-│   ├── storage.py             # Batched SQLite store (canonical, quarantine, lineage, audit)
-│   ├── watchdog.py            # Live source watchdog, silence detection & automated failover
+│   ├── storage.py             # Batched SQLite store (canonical, quarantine, lineage, Merkle log)
+│   ├── watchdog.py            # Adaptive hybrid watchdog (EWMA inter-tick pacing, SHM watermark alert)
 │   ├── research.py            # SEC EDGAR alternative data, Form 8-K taxonomy, Form 4 XML parser
 │   ├── vessel.py              # Maritime vessel intelligence, commercial owner tags, geofencing
 │   ├── navigator.py           # Modal keyboard trading desk & armed execution tickets
@@ -605,13 +624,16 @@ mdrap/
 │   ├── mdrap_sequence_gap.v   # Pipelined sequence gap and retrograde arrival detector
 │   └── tb_mdrap_rules.v       # Self-checking Verilog testbench
 │
-├── tests/                     # 780 Automated Unit & Integration Tests (100% Passing)
+├── tests/                     # 815 Automated Unit & Integration Tests (100% Passing)
 │   ├── test_api_auth.py       # API key authentication & RBAC boundary test suite
 │   ├── test_api_endpoints.py  # Comprehensive 14 REST endpoints functional test suite
 │   ├── test_api_websocket.py  # WebSocket real-time subscription & streaming test suite
 │   ├── test_backup_restore.py # Hot backup, compression & atomic restore test suite
 │   ├── test_key_storage_hardening.py # SHA-256 token hashing & schema migration test suite
 │   ├── test_sdk_commercial.py # Python SDK programmatic integration test suite
+│   ├── test_reorder_buffer.py # In-flight jitter buffer & sequence self-repair test suite
+│   ├── test_quarantine_merkle.py # Batched Merkle tree quarantine log & verification tests
+│   ├── test_shm_watermark.py  # SHM Cache Line 2 backpressure watermark flag & reader telemetry
 │   ├── test_build_fastpath.py # Compiler and math library linker validation
 │   ├── test_engine_context.py # Multi-instance isolated engine context test
 │   ├── test_fpga_parity.py    # Cycle-accurate Verilog-to-C-to-Python parity test
@@ -621,7 +643,7 @@ mdrap/
 │   ├── test_shm.py            # SHM writer, reader, and sub-microsecond stream test
 │   ├── test_shm_decoupled.py  # Decoupled SHM reader fault isolation & restart recovery
 │   ├── test_shm_fuzz.py       # Shared memory fuzzing, corruption & boundary tests
-│   └── ...                    # Full coverage across all 76 modules
+│   └── ...                    # Full coverage across all 75 modules
 │
 ├── docs/                      # Platform Architecture & Specifications
 │   ├── quickstart.md          # 5-minute containerized & CLI quickstart
@@ -633,14 +655,16 @@ mdrap/
 │   ├── backup-restore.md      # Hot backup and disaster recovery runbook
 │   ├── troubleshooting.md     # Operations triage & diagnostic guide
 │   ├── USER_GUIDE.md          # Comprehensive Operator & User Manual
-│   ├── architecture.md        # Full platform architecture specification (V1–V5)
+│   ├── architecture.md        # Full platform architecture specification (V1–V6)
 │   ├── benchmark-methodology.md # Scientific measurement standards & latency hierarchy
+│   ├── audit-log-format.md    # Format Version 1 (Linear) and Version 3 (Batched Merkle) specs
 │   ├── fpga-spike-findings.md # Hardware latency findings & FPGA learning track audit
 │   ├── T0_TO_T1_JOURNEY.md    # In-depth architectural journey from T0 to T1
 │   ├── data-model.md          # Canonical event schema & lineage data model
-│   └── decisions/             # Architecture Decision Records (ADRs 0001–0003)
+│   └── decisions/             # Architecture Decision Records (ADRs 0001–0005)
 │
 └── benchmarks/                # Immutable benchmark runs, JSON reports, and traces
+    ├── bench_stress_and_resilience.py # Burst 10x stress, packet jitter & zero-loss audit
     ├── bench_contention.py    # Lock-free multi-source ingestion contention benchmark
     ├── bench_mdrap_core.py    # Standalone native core benchmark runner
     ├── mdrap_core_bench.json  # Committed benchmark report for mdrap-core

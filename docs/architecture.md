@@ -72,11 +72,12 @@ The platform converts noisy, delayed, duplicated, and inconsistent market data f
 - **Corrupt-Frame Quarantine Path**: Ingest feeds (`src/ws_feed.py`, `src/polygon_feed.py`) never silently drop malformed, truncated, or unparseable wire frames. Corrupt payloads are wrapped into `RawEvent(is_malformed=True)` and dispatched through `normalize()`, generating an `INVALID` event quarantined under `SCHEMA_VIOLATION` (Principle #3).
 - **Write-Ahead Raw Archive (`src/archive.py`)**: Date- and source-partitioned JSONL logging preserves raw payloads before ingestion.
 
-### 2.2 Quality Engine & Native C Fastpath (`src/quality.py`, `src/fastpath.c`, `src/fastpath.py`)
+### 2.2 Quality Engine, Jitter Buffer & Native C Fastpath (`src/quality.py`, `src/fastpath.c`, `src/fastpath.py`)
 - Stateful per-`(source, instrument)` evaluation.
 - Classifies into three non-downgradable levels: `VALID` < `SUSPICIOUS` < `INVALID`.
 - Uses Welford's algorithm (`_RollingStats`) for numerically stable rolling mean and standard deviation.
 - Deduplication uses an insertion-ordered LRU dictionary.
+- **In-Flight Reorder / Jitter Buffer**: Per-slot sliding delay window (`reorder_window_s`, `reorder_max_slots`) holds forward sequence jumps in-memory. When intermediate missing packets arrive, contiguous events are repaired and dispatched as `VALID`, preventing false-positive `OUT_OF_ORDER` quarantines. Timed-out entries are drained deterministically as `SEQUENCE_GAP`.
 - **Native C Accelerator**:
   - Expanded to 8,192 symbols ($2^{13}$) and 32 sources with lazy 96-byte slot allocations.
   - Bitshift slot index: `(source_id << 13) | instrument_id`.
@@ -89,7 +90,7 @@ The platform converts noisy, delayed, duplicated, and inconsistent market data f
 - Computes real-time **Volume Weighted Average Price (VWAP)** execution schedules, slippage curves, and market impact estimates for arbitrary order sizes.
 - Calculates dynamic bid/ask liquidity imbalances.
 
-### 2.4 Cross-Feed Reconciler & Watchdog (`src/reconciliation.py`, `src/watchdog.py`, `src/bbo.py`)
+### 2.4 Cross-Feed Reconciler & Adaptive Watchdog (`src/reconciliation.py`, `src/watchdog.py`, `src/bbo.py`)
 - Maintains per-instrument alignment across multiple feeds.
 - Computes real-time source reliability scores based on weighted performance:
   - Accuracy / Agreement: 40%
@@ -97,16 +98,25 @@ The platform converts noisy, delayed, duplicated, and inconsistent market data f
   - Deduplication cleanliness: 20%
   - Latency / Freshness: 15%
 - Generates Synthetic Consolidated NBBO with venue attribution and locked/crossed book status.
-- Source Watchdog monitors feed silence and degradation, triggering automatic circuit breaker failovers.
+- **Adaptive Hybrid Silence Watchdog (`src/watchdog.py`)**:
+  - Dual-mode trigger: fixed wall-clock threshold ($2.0\text{ s}$) combined with peer-aware EWMA inter-tick pace ($10\times$ multiplier).
+  - Triggers sub-5ms failover during active trading sessions when a source stalls while sibling feeds stream normally.
+  - Quiet-market protection: sibling feeds waking from an overnight or weekend pause do not trigger false failovers.
+  - Ingests SHM backpressure watermark warnings to monitor ring buffer consumer saturation.
 
-### 2.5 Storage, Quarantine & Merkle Audit (`src/storage.py`, `src/security.py`)
+### 2.5 Storage, Quarantine & Merkle Audit (`src/storage.py`, `src/pipeline.py`, `src/security.py`)
 - Segregates data streams into distinct tables:
   - `canonical_events`: Only `VALID` and `SUSPICIOUS` market events.
   - `quarantine`: `INVALID` events with raw payload and failure reason. Never drops data.
   - `lineage`: Step-by-step traceability linking canonical events to raw IDs and decision rules.
   - `source_health`: Historical log of source reliability scores.
   - `audit_log`: Cryptographically chained SHA-256 Merkle log with standalone export & verification.
-- Context-manager enabled with batched `executemany` commits to maximize SQLite WAL throughput.
+  - `quarantine_merkle_log`: Tamper-evident pairwise SHA-256 Merkle root log over batched quarantine events (Format Version 3).
+- **Decoupled Async Persistence Engine (`src/pipeline.py`)**:
+  - Hot tick loop enqueues event batches into a bounded queue (`queue.Queue(maxsize=128)`).
+  - Dedicated background writer thread (`_writer_loop`) drains batches to SQLite atomic transactions (`write_batches_atomic`) without stalling the hot ingest loop.
+  - Reduces burst tail latency ($p99.9$) from $2.2\text{ ms} \to 314.7\,\mu\text{s}$.
+  - Durable fsync'd JSONL dead-letter spillover (`_spill_dead_letter`) guarantees zero data loss on database errors or process shutdown.
 
 ### 2.6 Analytical Storage Engine (`src/analytics.py`)
 - Tick-level aggregation into completed and current **5-second OHLCV candles**.
@@ -119,13 +129,16 @@ The platform converts noisy, delayed, duplicated, and inconsistent market data f
 - **Visual Candlestick Charts**: 3-character columns (` █ `, ` │ `, ` ┼ `) with outlier-resilient 10th–90th percentile scaling and synchronized volume histograms.
 - **5-Tab Financial Model Exporter**: Translates market microstructure data into styled Microsoft Excel workbooks (`.xlsx`) or automated CSV report packages.
 
-### 2.8 IPC, Shared Memory & Streaming Daemon (`src/service.py`, `src/shm.py`, `src/protocol.py`)
+### 2.8 IPC, Shared Memory, Kafka & Alert Delivery (`src/service.py`, `src/shm.py`, `src/kafka_sink.py`, `src/alert_sinks.py`, `src/prometheus.py`)
 - Headless daemon running on a non-blocking streaming socket.
-- Binary Shared Memory transport using lock-free ring buffers for sub-microsecond algorithmic bot feeds.
+- **Binary Shared Memory Transport (SHM v3)**: Lock-free 128B ring buffer with two-phase seqlock commit. Cache Line 2 carries `SHM_FLAG_WATERMARK_WARNING = 0x01` at offset 80, signaling backpressure when reader lag or buffer occupancy crosses 80%.
+- **Durable Kafka / Redpanda Sink (`src/kafka_sink.py`)**: High-throughput distributed streaming sink with per-instrument partition routing and thread-safe batch delivery.
+- **External Alert Delivery Sinks (`src/alert_sinks.py`)**: Asynchronous worker dispatching operational and watchdog alerts to Webhook, Slack, and PagerDuty endpoints.
+- **Prometheus Exporter (`src/prometheus.py`)**: Production-grade metric exporter with reverse-proxy IP spoofing protection.
 
 ---
 
-## 3. Evolutionary Roadmap (Versions 1 - 4)
+## 3. Evolutionary Roadmap (Versions 1 - 6)
 
 - **V1 (Synchronous Baseline):** Single-process, synchronous Python pipeline. SQLite storage with batched writes. Establishes the ground-truth benchmark and profiling baseline (~29,400 eps).
 - **V2 (Decoupled Streaming Architecture):** Decoupled ingestion, stream processing, and storage sink workers via bounded in-memory queue broker with high-watermark backpressure signaling (~22,300 eps).
@@ -140,6 +153,12 @@ The platform converts noisy, delayed, duplicated, and inconsistent market data f
   - **Zero-Lock SPSC Shared Memory Ring Buffer**: 128-byte cache-line aligned circular slot array with atomic release fences and two-phase commit protocol (`UNCOMMITTED` seq invalidation -> payload store -> commit sequence publication).
   - **Hardware Timestamping Diagnostics**: Integration of Linux `SO_TIMESTAMPING` and PTP Hardware Clock device detection with graceful fallback to software QPC on Windows.
   - **Single-Writer Lock-Free Ingestion**: Eliminates thread mutex convoying across multi-source feeds, maintaining flat p99.9 tail latency (0.30 µs at 8 sources).
+- **V6 (Stress Resilience & Decoupled High-Throughput Persistence):**
+  - **Decoupled Async Persistence Worker**: SPSC background queue worker isolates disk sync from the tick loop, cutting $p99.9$ burst latency by $7\times$ to $314.7\,\mu\text{s}$ while preserving dead-letter JSONL fallback.
+  - **In-Flight Reorder / Jitter Buffer**: Sliding delay window prevents false-positive quarantine of inverted network packets, self-repairing sequences in-memory.
+  - **Adaptive Hybrid Silence Watchdog**: EWMA inter-tick gap tracking enables sub-5ms failover during active trading sessions with quiet-market lull protection.
+  - **Batched Tamper-Evident Merkle Quarantine Log**: Pairwise SHA-256 tree root computation over quarantine batches (Format Version 3) off the hot path.
+  - **SHM Backpressure Watermark**: Cache Line 2 header padding bitflag signals 80% ring buffer occupancy to consumers and watchdog telemetry.
 - **T2 Hardware Exploration Track (FPGA Simulation Spike):**
   - **Synthesizable Verilog RTL (`fpga/`)**: Combinatorial carry-chain crossed-quote comparator (`mdrap_crossed_quote.v`) and pipelined sequence gap detector (`mdrap_sequence_gap.v`) evaluating rules in ~3.3 ns (1 cycle @ 300 MHz).
   - **Bit-Exact Cycle Emulation (`tests/test_fpga_parity.py`)**: 100% agreement against Python and C software engines across synthetic market event workloads.

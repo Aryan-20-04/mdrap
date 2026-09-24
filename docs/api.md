@@ -67,6 +67,24 @@ Authorization: Bearer mdrap_live_<token>
   }
   ```
 
+#### `GET /metrics`
+- **Required Role**: Loopback bypass (`127.0.0.1`, `::1`, `localhost`) by default; requires active API key when `MDRAP_METRICS_AUTH=1` for external callers.
+- **Description**: Exposes Prometheus-compatible text exposition format (`version=0.0.4`) containing platform health gauges, ingest/quarantine counters, latency histograms, and buffer occupancy watermarks.
+- **Security & Reverse Proxy Hardening**:
+  - Direct TCP peer host is validated. Untrusted client headers like `X-Forwarded-For` are ignored by default.
+  - To enable reverse-proxy IP resolution (e.g. behind AWS ALB, NGINX, or Caddy), configure trusted upstream proxies via `MDRAP_TRUSTED_PROXY_IPS="10.0.0.1,10.0.0.2"`. Only requests arriving from these explicit IP addresses will have their `X-Forwarded-For` header inspected.
+- **Sample Output**:
+  ```text
+  # HELP mdrap_events_processed_total Total market events ingested and processed
+  # TYPE mdrap_events_processed_total counter
+  mdrap_events_processed_total{status="VALID"} 1420580
+  mdrap_events_processed_total{status="SUSPICIOUS"} 284
+  mdrap_events_processed_total{status="INVALID"} 15
+  # HELP mdrap_shm_buffer_watermark_warning Current SHM ring buffer watermark warning flag state
+  # TYPE mdrap_shm_buffer_watermark_warning gauge
+  mdrap_shm_buffer_watermark_warning 0
+  ```
+
 ---
 
 ### 2.2 Feed Management

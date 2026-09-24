@@ -30,10 +30,15 @@ from contextlib import contextmanager
 import gc
 import hashlib
 import json
+import logging
 import os
+import queue
 import subprocess
+import threading
 import time
 from typing import Any, TYPE_CHECKING
+
+logger = logging.getLogger(__name__)
 
 from gateway import SchemaError, ingest, normalize
 from metrics import RunMetrics
@@ -150,6 +155,7 @@ class Pipeline:
         watchdog: SourceWatchdog | None = None,
         security: SecurityManager | None = None,
         flush_interval_s: float = DEFAULT_FLUSH_INTERVAL_S,
+        async_writer: bool | None = None,
     ):
         self.store = store
         if quality is not None:
@@ -178,6 +184,52 @@ class Pipeline:
         self._canonical_batch: list[CanonicalEvent] = []
         self._quarantine_batch: list[tuple] = []
         self._lineage_batch: list[tuple] = []
+        self._pending_raw_payloads: dict[str, Any] = {}
+
+        self._async_writer_enabled = (
+            async_writer
+            if async_writer is not None
+            else os.environ.get("MDRAP_ASYNC_WRITER", "1").lower()
+            in ("1", "true", "yes")
+        )
+        self._last_writer_exc: Exception | None = None
+        if self._async_writer_enabled:
+            self._write_queue: queue.Queue = queue.Queue(maxsize=128)
+            self._writer_stop = threading.Event()
+            self._writer_thread = threading.Thread(
+                target=self._writer_loop, daemon=True, name="mdrap-writer"
+            )
+            self._writer_thread.start()
+
+    def _writer_loop(self):
+        """Dedicated background writer loop executing atomic batches off the tick loop."""
+        while not self._writer_stop.is_set():
+            try:
+                item = self._write_queue.get(timeout=0.1)
+            except queue.Empty:
+                continue
+            if item is None:
+                self._write_queue.task_done()
+                break
+            canon, quar, lin, health = item
+            t_flush_start = time.perf_counter()
+            try:
+                if hasattr(self.store, "write_batches_atomic"):
+                    self.store.write_batches_atomic(canon, quar, lin, health)
+                else:
+                    self.store.write_canonical_batch(canon)
+                    self.store.write_quarantine_batch(quar)
+                    self.store.write_lineage_batch(lin)
+                    self.store.upsert_source_health(health)
+                    self.store.commit()
+                if self.metrics:
+                    self.metrics.record_flush(time.perf_counter() - t_flush_start)
+            except Exception as exc:
+                self._last_writer_exc = exc
+                self._spill_dead_letter(canon, quar, lin)
+                logger.error("Async storage writer error, spilled to dead letter: %s", exc)
+            finally:
+                self._write_queue.task_done()
 
     def _enqueue_canonical(self, event: CanonicalEvent) -> None:
         self._canonical_batch.append(event)
@@ -311,10 +363,44 @@ class Pipeline:
             )
 
         t_norm_ns = time.perf_counter_ns()
+        self._pending_raw_payloads[str(event.raw_id)] = raw.payload
 
         event = self.quality.evaluate(event)
-        event.processing_timestamp = time.time()
         t_qual_ns = time.perf_counter_ns()
+
+        res_event = None
+        if event is not None:
+            res_event = self._dispatch_evaluated(
+                event,
+                raw_payload=raw.payload,
+                t_start_ns=t_start_ns,
+                t_norm_ns=t_norm_ns,
+                t_qual_ns=t_qual_ns,
+            )
+
+        if hasattr(self.quality, "drain_expired"):
+            for d_ev in self.quality.drain_expired():
+                self._dispatch_evaluated(d_ev)
+
+        self._maybe_flush()
+        return res_event
+
+    def _dispatch_evaluated(
+        self,
+        event: CanonicalEvent,
+        raw_payload: Any = None,
+        t_start_ns: int = 0,
+        t_norm_ns: int = 0,
+        t_qual_ns: int = 0,
+    ) -> CanonicalEvent:
+        """Route evaluated canonical event through reconciler, sinks, and storage batches."""
+        if raw_payload is None:
+            raw_payload = self._pending_raw_payloads.pop(str(event.raw_id), {})
+        else:
+            self._pending_raw_payloads.pop(str(event.raw_id), None)
+
+        event.processing_timestamp = time.time()
+        t_rec_start_ns = time.perf_counter_ns()
 
         decision = self.reconciler.reconcile(event)
         self.reliability.observe(event)
@@ -331,7 +417,7 @@ class Pipeline:
         if self.watchdog:
             self.watchdog.observe(event)
 
-        t_rec_ns = time.perf_counter_ns()
+        t_rec_end_ns = time.perf_counter_ns()
 
         if event.quality_status != QualityStatus.INVALID:
             self._enqueue_canonical(event)
@@ -345,7 +431,7 @@ class Pipeline:
                     event.source,
                     event.quality_status.value,
                     reasons_json,
-                    _safe_payload_json(raw.payload),
+                    _safe_payload_json(raw_payload),
                     event.receive_timestamp,
                 )
             )
@@ -374,26 +460,26 @@ class Pipeline:
         )
 
         t_end_ns = time.perf_counter_ns()
-        e2e_latency = event.receive_timestamp - event.exchange_timestamp
-        proc_latency = (t_end_ns - t_start_ns) * INV_NS_PER_SECOND
-        ingest_latency = (t_norm_ns - t_start_ns) * INV_NS_PER_SECOND
-        quality_latency = (t_qual_ns - t_norm_ns) * INV_NS_PER_SECOND
-        reconcile_latency = (t_rec_ns - t_qual_ns) * INV_NS_PER_SECOND
-        enqueue_latency = (t_end_ns - t_rec_ns) * INV_NS_PER_SECOND
+        if t_start_ns > 0 and self.metrics:
+            e2e_latency = event.receive_timestamp - event.exchange_timestamp
+            proc_latency = (t_end_ns - t_start_ns) * INV_NS_PER_SECOND
+            ingest_latency = (t_norm_ns - t_start_ns) * INV_NS_PER_SECOND
+            quality_latency = (t_qual_ns - t_norm_ns) * INV_NS_PER_SECOND
+            reconcile_latency = (t_rec_end_ns - t_rec_start_ns) * INV_NS_PER_SECOND
+            enqueue_latency = (t_end_ns - t_rec_end_ns) * INV_NS_PER_SECOND
 
-        self.metrics.record(
-            e2e_latency,
-            proc_latency,
-            event.quality_status.value,
-            source=event.source,
-            instrument_id=event.instrument_id,
-            ingest_latency_s=ingest_latency,
-            quality_latency_s=quality_latency,
-            reconcile_latency_s=reconcile_latency,
-            enqueue_latency_s=enqueue_latency,
-        )
+            self.metrics.record(
+                e2e_latency,
+                proc_latency,
+                event.quality_status.value,
+                source=event.source,
+                instrument_id=event.instrument_id,
+                ingest_latency_s=ingest_latency,
+                quality_latency_s=quality_latency,
+                reconcile_latency_s=reconcile_latency,
+                enqueue_latency_s=enqueue_latency,
+            )
 
-        self._maybe_flush()
         return event
 
     def process_batch(
@@ -499,86 +585,39 @@ class Pipeline:
             t_start_ns = start_times_ns[valid_idx]
             t_norm_ns = norm_times_ns[valid_idx]
             raw = raw_events[valid_idx]
-
-            event.processing_timestamp = time.time()
-
-            t_rec_start_ns = time.perf_counter_ns()
-            decision = self.reconciler.reconcile(event)
-            self.reliability.observe(event)
-
-            if self.analytics:
-                self.analytics.observe(event)
-            if self.bbo:
-                self.bbo.observe(event)
-            if self.watchdog:
-                self.watchdog.observe(event)
-            t_rec_end_ns = time.perf_counter_ns()
-
-            if event.quality_status != QualityStatus.INVALID:
-                self._enqueue_canonical(event)
-
-            if event.quality_status in (
-                QualityStatus.SUSPICIOUS,
-                QualityStatus.INVALID,
-            ):
-                reasons_json = json.dumps(event.reasons) if event.reasons else "[]"
-                self._enqueue_quarantine(
-                    (
-                        event.event_id,
-                        event.instrument_id,
-                        event.source,
-                        event.quality_status.value,
-                        reasons_json,
-                        _safe_payload_json(raw.payload),
-                        event.receive_timestamp,
-                    )
-                )
-
-            raw_id_json = (
-                f"[{event.raw_id}]"
-                if isinstance(event.raw_id, int)
-                else json.dumps([event.raw_id])
-            )
-            self._enqueue_lineage(
-                (
-                    event.event_id,
-                    event.instrument_id,
-                    raw_id_json,
-                    event.raw_id,
-                    _TRANSFORMATIONS_JSON[bool(decision)],
-                    _VALIDATIONS_RUN_JSON,
-                    int(bool(decision and decision.disagreement)),
-                    decision.reason
-                    if decision
-                    else "single-source / no reconciliation needed",
-                    decision.chosen_source if decision else event.source,
-                    self.code_version,
-                    event.processing_timestamp,
-                )
+            results[valid_idx] = self._dispatch_evaluated(
+                event,
+                raw_payload=raw.payload,
+                t_start_ns=t_start_ns,
+                t_norm_ns=t_norm_ns,
+                t_qual_ns=t_qual_end_ns,
             )
 
-            t_end_ns = time.perf_counter_ns()
-            e2e_latency = event.receive_timestamp - event.exchange_timestamp
-            proc_latency = (t_end_ns - t_start_ns) * INV_NS_PER_SECOND
-            ingest_latency = (t_norm_ns - t_start_ns) * INV_NS_PER_SECOND
-            reconcile_latency = (t_rec_end_ns - t_rec_start_ns) * INV_NS_PER_SECOND
-            enqueue_latency = (t_end_ns - t_rec_end_ns) * INV_NS_PER_SECOND
-
-            self.metrics.record(
-                e2e_latency,
-                proc_latency,
-                event.quality_status.value,
-                source=event.source,
-                instrument_id=event.instrument_id,
-                ingest_latency_s=ingest_latency,
-                quality_latency_s=avg_qual_latency_s,
-                reconcile_latency_s=reconcile_latency,
-                enqueue_latency_s=enqueue_latency,
-            )
-            results[valid_idx] = event
+        if hasattr(self.quality, "drain_expired"):
+            for d_ev in self.quality.drain_expired():
+                results.append(self._dispatch_evaluated(d_ev))
 
         self._maybe_flush()
         return [ev for ev in results if ev is not None]
+
+    def _collect_health_rows(self) -> list[tuple]:
+        health_rows = []
+        now = time.time()
+        for src, st in self.reliability.stats.items():
+            health_rows.append(
+                (
+                    src,
+                    st.total,
+                    st.invalid,
+                    st.suspicious,
+                    st.duplicate,
+                    st.gap,
+                    round(st.ewma_latency_s, 6),
+                    st.score,
+                    now,
+                )
+            )
+        return health_rows
 
     def _maybe_flush(self):
         batch_full = (
@@ -587,13 +626,13 @@ class Pipeline:
             or len(self._lineage_batch) >= BATCH_SIZE
         )
         if batch_full:
-            self.flush()
+            self.flush(wait=False)
             return
 
         if self._canonical_batch or self._quarantine_batch or self._lineage_batch:
             now = time.time()
             if now - self._last_flush_ts >= self.flush_interval_s:
-                self.flush()
+                self.flush(wait=True)
 
     def _spill_dead_letter(self, canon: list, quar: list, lin: list) -> None:
         """Spill unwritten batches to fsync'd JSONL under data/deadletter/ on storage failure."""
@@ -610,30 +649,32 @@ class Pipeline:
             f.flush()
             os.fsync(f.fileno())
 
-    def flush(self):
-        if not (self._canonical_batch or self._quarantine_batch or self._lineage_batch):
-            return
-        self._last_flush_ts = time.time()
-        canon, quar, lin = self._canonical_batch, self._quarantine_batch, self._lineage_batch
-        self._canonical_batch, self._quarantine_batch, self._lineage_batch = [], [], []
+    def flush(self, wait: bool = True):
+        if self._canonical_batch or self._quarantine_batch or self._lineage_batch:
+            self._last_flush_ts = time.time()
+            canon, quar, lin = self._canonical_batch, self._quarantine_batch, self._lineage_batch
+            self._canonical_batch, self._quarantine_batch, self._lineage_batch = [], [], []
+            health_rows = self._collect_health_rows()
+
+            if self._async_writer_enabled:
+                try:
+                    self._write_queue.put((canon, quar, lin, health_rows), timeout=1.0)
+                except queue.Full:
+                    self._spill_dead_letter(canon, quar, lin)
+                    logger.warning("Async storage queue full: spilled batch to dead letter")
+            else:
+                self._sync_flush(canon, quar, lin, health_rows)
+
+        if wait and self._async_writer_enabled and hasattr(self, "_write_queue"):
+            self._write_queue.join()
+            if self._last_writer_exc is not None:
+                exc = self._last_writer_exc
+                self._last_writer_exc = None
+                raise exc
+
+    def _sync_flush(self, canon: list, quar: list, lin: list, health_rows: list):
         t_flush_start = time.perf_counter()
         try:
-            health_rows = []
-            now = time.time()
-            for src, st in self.reliability.stats.items():
-                health_rows.append(
-                    (
-                        src,
-                        st.total,
-                        st.invalid,
-                        st.suspicious,
-                        st.duplicate,
-                        st.gap,
-                        round(st.ewma_latency_s, 6),
-                        st.score,
-                        now,
-                    )
-                )
             if hasattr(self.store, "write_batches_atomic"):
                 self.store.write_batches_atomic(canon, quar, lin, health_rows)
             else:
@@ -649,8 +690,28 @@ class Pipeline:
             raise
 
     def finish(self):
-        self.flush()
+        if hasattr(self.quality, "drain_expired"):
+            for d_ev in self.quality.drain_expired(force=True):
+                self._dispatch_evaluated(d_ev)
+        self.flush(wait=True)
+        if (
+            self._async_writer_enabled
+            and hasattr(self, "_writer_thread")
+            and self._writer_thread.is_alive()
+        ):
+            self._writer_stop.set()
+            try:
+                self._write_queue.put(None, timeout=1.0)
+            except Exception:
+                pass
+            self._writer_thread.join(timeout=10.0)
         if self.bbo:
             self.store.write_bbo_batch(list(self.bbo.all_bbos().values()))
             self.store.commit()
         self.metrics.finish()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.finish()

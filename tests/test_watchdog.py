@@ -146,3 +146,66 @@ def test_active_sources():
     assert 'FEEDA' in active
     assert 'FEEDB' not in active  # degraded
     assert 'FEEDC' not in active  # blocked
+
+
+def test_adaptive_silence_fast_failover():
+    """Verify sub-threshold silence triggers when peer feeds remain active."""
+    tracker = ReliabilityTracker()
+    watchdog = SourceWatchdog(
+        reliability=tracker,
+        silence_threshold_s=2.0,
+        min_ticks_for_adaptive=20,
+        adaptive_multiplier=10.0,
+    )
+
+    t = 1000.0
+    # Warm up FEEDA and FEEDB with 25 ticks spaced 1ms apart
+    for i in range(25):
+        t += 0.001
+        watchdog.observe(_make_event(f'a_{i}', 'FEEDA', t))
+        watchdog.observe(_make_event(f'b_{i}', 'FEEDB', t))
+
+    # Both should be HEALTHY
+    assert watchdog.source_states()['FEEDA'] == 'HEALTHY'
+    assert watchdog.source_states()['FEEDB'] == 'HEALTHY'
+
+    # FEEDA stops sending, FEEDB continues for 30ms (30x inter-tick interval, but << 2.0s silence threshold)
+    alerts = []
+    for i in range(30):
+        t += 0.001
+        res = watchdog.observe(_make_event(f'b_post_{i}', 'FEEDB', t))
+        alerts.extend(res)
+
+    # FEEDA should have triggered SILENCE adaptively!
+    assert watchdog.source_states()['FEEDA'] == 'SILENT'
+    assert watchdog.adaptive_silence_count >= 1
+    silence_alerts = [a for a in alerts if a.source == 'FEEDA' and a.alert_type == 'SILENCE']
+    assert len(silence_alerts) == 1
+    assert "adaptive silence" in silence_alerts[0].details
+
+
+def test_adaptive_silence_quiet_period_fallback():
+    """When all feeds are quiet together, do not trigger early; wait for fixed threshold."""
+    tracker = ReliabilityTracker()
+    watchdog = SourceWatchdog(
+        reliability=tracker,
+        silence_threshold_s=2.0,
+        min_ticks_for_adaptive=20,
+        adaptive_multiplier=10.0,
+    )
+
+    t = 1000.0
+    for i in range(25):
+        t += 0.001
+        watchdog.observe(_make_event(f'a_{i}', 'FEEDA', t))
+        watchdog.observe(_make_event(f'b_{i}', 'FEEDB', t))
+
+    # Jump time forward by 100ms for FEEDA (both feeds stopped during this period)
+    # Neither peer is active, so FEEDA should NOT trigger adaptive silence
+    t += 0.100
+    alerts = watchdog.observe(_make_event('a_post', 'FEEDA', t))
+    # FEEDA is the one arriving, so it's not silent
+    assert watchdog.source_states()['FEEDA'] == 'HEALTHY'
+    # FEEDB hasn't arrived, but FEEDA wasn't active in the last 100ms either, so FEEDB isn't adaptively marked
+    assert watchdog.source_states()['FEEDB'] == 'HEALTHY'
+

@@ -48,6 +48,10 @@ DEFAULT_RATE_LIMIT_PER_SEC: float = 20_000.0
 DEFAULT_RATE_LIMIT_CAPACITY: float = 40_000.0
 
 
+DEFAULT_REORDER_WINDOW_S: float = float(os.environ.get("MDRAP_REORDER_WINDOW_S", "0.0"))
+DEFAULT_REORDER_MAX_SLOTS: int = int(os.environ.get("MDRAP_REORDER_SLOTS", "32"))
+
+
 @dataclass
 class QualityConfig:
     staleness_threshold_s: float = DEFAULT_STALENESS_THRESHOLD_S
@@ -62,6 +66,8 @@ class QualityConfig:
     dedup_cache_size: int = DEFAULT_DEDUP_CACHE_SIZE
     allow_negative: bool = False
     unseq_dup_status: str = "SUSPICIOUS"
+    reorder_window_s: float = DEFAULT_REORDER_WINDOW_S
+    reorder_max_slots: int = DEFAULT_REORDER_MAX_SLOTS
     asset_classes: Dict[str, Dict[str, float]] = field(default_factory=dict)
 
     def for_instrument(self, instrument_id: str) -> "QualityConfig":
@@ -111,6 +117,8 @@ class QualityConfig:
             ),
             allow_negative=bool(overrides.get("allow_negative", self.allow_negative)),
             unseq_dup_status=str(overrides.get("unseq_dup_status", self.unseq_dup_status)),
+            reorder_window_s=float(overrides.get("reorder_window_s", self.reorder_window_s)),
+            reorder_max_slots=int(overrides.get("reorder_max_slots", self.reorder_max_slots)),
             asset_classes=self.asset_classes,
         )
 
@@ -268,6 +276,8 @@ def load_config(config_path: Optional[str] = None) -> PlatformConfig:
         price_anomaly_stddev=float(q_data.get("price_anomaly_stddev", 6.0)),
         price_window=int(q_data.get("price_window", 50)),
         dedup_cache_size=int(q_data.get("dedup_cache_size", 200_000)),
+        reorder_window_s=float(q_data.get("reorder_window_s", DEFAULT_REORDER_WINDOW_S)),
+        reorder_max_slots=int(q_data.get("reorder_max_slots", DEFAULT_REORDER_MAX_SLOTS)),
         asset_classes=q_data.get("asset_classes", {}),
     )
 

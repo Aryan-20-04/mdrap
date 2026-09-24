@@ -34,6 +34,7 @@ docker compose up -d --build
 The container boots:
 - **FastAPI REST & WebSocket Service**: Listening on port `8000`
 - **Interactive Documentation (Swagger UI)**: Available at `http://localhost:8000/docs`
+- **Prometheus Metrics Exporter**: Available at `http://localhost:8000/metrics`
 - **TCP Low-Latency Stream Gateway**: Listening on port `9001`
 - **Persistent SQLite Database**: Mounted to Docker volume `mdrap-data` at `/data/mdrap.db`
 

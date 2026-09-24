@@ -87,14 +87,15 @@ MDRAP operates as a high-throughput financial data pipeline enforcing strict **d
                  (SIMD OHLCV, Vectorized VWAP, Parquet Export)
 ```
 
-### The 3 Measurable Latency Tiers
+### The 4 Measurable Latency Tiers
 MDRAP operates under physical hardware boundaries:
 
 | Tier | Scope / Boundary | Latency (p50) | Max Throughput | Typical Use Case |
 |---|---|:---:|:---:|---|
 | **Tier 1: Core C L1 Algorithm** | Isolated Native C rolling math (`fastpath.c`) | **50.0 ns** | **18,669,082 eps** | Rolling price variance & duplicate checks in CPU L1 |
 | **Tier 2: In-Memory Pipeline** | End-to-end stream: gateway + 7 quality rules + BBO | **15.7 µs** | **~63,000 eps** | Real-time inter-process algorithmic bot feeds |
-| **Tier 3: Durable Ingest-to-Disk**| Full pipeline with SQLite WAL batched persistence | **783.6 µs** | **18,000–29,000 eps** | Persistent storage & regulatory audit compliance |
+| **Tier 3: Decoupled Async Persistence**| Pipeline + async worker queue (SPSC thread) | **22.8 µs** | **~27,145 eps** | High-burst production ingest with flat p99.9 (314.7 µs) |
+| **Tier 4: Durable Ingest-to-Disk (Sync)**| Full pipeline with synchronous SQLite WAL flush | **783.6 µs** | **18,000–29,000 eps** | Persistent storage & regulatory audit compliance |
 
 ---
 
@@ -622,6 +623,22 @@ mdrap chaos all
 # Simulate abrupt source outage on FEEDX
 mdrap chaos kill --kill-source FEEDX --kill-start 1000 --kill-duration 500
 ```
+
+---
+
+#### Stress & Resilience Empirical Benchmark (`bench_stress_and_resilience.py`)
+Executes the empirical resilience verification suite testing micro-burst 10x traffic spikes, packet jitter shuffling, peer failover latency, and the quarantine-never-drop invariant:
+
+```bash
+python benchmarks/bench_stress_and_resilience.py
+```
+
+**Key Resilience Environment Controls & Configurations**:
+- `MDRAP_ASYNC_WRITER`: Set to `"1"` (default) to enable the decoupled SPSC persistence worker, eliminating the $2.2\text{ ms}$ SQLite disk sync cliff from the hot tick loop. Set to `"0"` for strictly synchronous inline commits.
+- `reorder_window_s`: Per-slot in-flight sliding delay window (default: `0.0s`, e.g. `0.005s` for 5ms) to hold sequence jumps in-memory. Missing packets that arrive within the window are repaired into `VALID` canonical events rather than prematurely quarantined.
+- `reorder_max_slots`: Maximum slots held in-flight (default: `32`).
+- `MDRAP_SHM_WATERMARK_PCT`: Shared memory ring buffer occupancy threshold (default: `0.80` / 80%). Raises bitflag in Cache Line 2 (`SHM_FLAG_WATERMARK_WARNING = 0x01`) and triggers watchdog warnings when consumers fall behind.
+- `min_ticks_for_adaptive` / `adaptive_multiplier`: Configures the adaptive hybrid watchdog's EWMA inter-tick pacing for sub-5ms failover during active trading sessions.
 
 ---
 

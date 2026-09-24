@@ -10,6 +10,7 @@ Reason codes, strictly adhering to the architectural principle:
 from __future__ import annotations
 
 import math
+import time
 from collections import deque
 from dataclasses import dataclass, field
 from typing import Any
@@ -121,6 +122,8 @@ class _SlotState:
         "anom_count",
         "anom_last",
         "fold_count",
+        "pending",
+        "ready",
     )
 
     def __init__(self, window: int):
@@ -138,6 +141,8 @@ class _SlotState:
         self.anom_count = 0
         self.anom_last = 0.0
         self.fold_count = 0
+        self.pending: dict[int, tuple[float, CanonicalEvent, bool, bool, bool, bool]] = {}
+        self.ready: list[CanonicalEvent] = []
 
     def fold_price(self, x: float, window: int) -> None:
         if self.n >= window:
@@ -223,6 +228,8 @@ class QualityEngine:
 
         self.counts = {"VALID": 0, "SUSPICIOUS": 0, "INVALID": 0}
         self.reason_counts: dict[str, int] = {}
+        self.reorder_repaired_total: int = 0
+        self.reorder_expired_total: int = 0
 
         try:
             from rules import _USER_RULES, evaluate_user_rules
@@ -240,6 +247,8 @@ class QualityEngine:
         self._unseq_dedup.clear()
         self.counts = {"VALID": 0, "SUSPICIOUS": 0, "INVALID": 0}
         self.reason_counts.clear()
+        self.reorder_repaired_total = 0
+        self.reorder_expired_total = 0
 
     def reset_source(self, source: str) -> None:
         """Reset sequence and deduplication tracking for a specific source."""
@@ -359,7 +368,21 @@ class QualityEngine:
                 sl.has_seq = True
             elif seq > sl.last_seq:
                 jump = seq - sl.last_seq
-                if jump > cfg.seq_jump_limit:
+                if (
+                    cfg.reorder_window_s > 0
+                    and 1 < jump <= cfg.reorder_max_slots
+                    and len(sl.pending) < cfg.reorder_max_slots
+                ):
+                    sl.pending[seq] = (
+                        time.monotonic(),
+                        event,
+                        bad,
+                        has_bid,
+                        has_ask,
+                        has_price,
+                    )
+                    return None
+                elif jump > cfg.seq_jump_limit:
                     self._mark(event, QualityStatus.SUSPICIOUS, Reason.SEQUENCE_GAP)
                     self._bump(Reason.SEQUENCE_GAP)
                     cand = sl.cand_plus1 - 1
@@ -423,6 +446,34 @@ class QualityEngine:
                 )
                 self._mark(event, dup_st, Reason.DUPLICATE)
                 self._bump(Reason.DUPLICATE)
+
+        event = self._finish_evaluation(event, sl, cfg, bad, has_bid, has_ask, has_price)
+
+        # Check if contiguous pending events are now unlocked
+        if cfg.reorder_window_s > 0 and sl.pending:
+            while (sl.last_seq + 1) in sl.pending:
+                next_seq = sl.last_seq + 1
+                _, p_ev, p_bad, p_hbid, p_hask, p_hpx = sl.pending.pop(next_seq)
+                sl.last_seq = next_seq
+                sl.seen = ((sl.seen << 1) | 1) & SEQUENCE_BITMAP_MASK
+                self.reorder_repaired_total += 1
+                p_ev = self._finish_evaluation(p_ev, sl, cfg, p_bad, p_hbid, p_hask, p_hpx)
+                sl.ready.append(p_ev)
+
+        return event
+
+    def _finish_evaluation(
+        self,
+        event: CanonicalEvent,
+        sl: _SlotState,
+        cfg: QualityConfig,
+        bad: bool,
+        has_bid: bool,
+        has_ask: bool,
+        has_price: bool,
+    ) -> CanonicalEvent:
+        ex_fin = math.isfinite(event.exchange_timestamp)
+        rc_fin = math.isfinite(event.receive_timestamp)
 
         # Stage 3: Exchange Timestamp Monotonicity & Watermark Protection
         if ex_fin and rc_fin:
@@ -530,6 +581,63 @@ class QualityEngine:
 
         self.counts[event.quality_status.value] += 1
         return event
+
+    def drain_expired(
+        self, now_monotonic: float | None = None, force: bool = False
+    ) -> list[CanonicalEvent]:
+        """Release held events from reorder buffer whose window expired or whose gap was filled."""
+        now = now_monotonic if now_monotonic is not None else time.monotonic()
+        released: list[CanonicalEvent] = []
+
+        for (src, inst), sl in self._slots.items():
+            cfg = self._cfg_cache.get(inst)
+            if cfg is None:
+                cfg = self.cfg.for_instrument(inst)
+                self._cfg_cache[inst] = cfg
+
+            if sl.ready:
+                released.extend(sl.ready)
+                sl.ready.clear()
+
+            if not sl.pending:
+                continue
+
+            expired_seqs = []
+            for p_seq, (arr_ts, _, _, _, _, _) in sorted(sl.pending.items()):
+                if force or (now - arr_ts) >= cfg.reorder_window_s:
+                    expired_seqs.append(p_seq)
+
+            for p_seq in expired_seqs:
+                if p_seq not in sl.pending:
+                    continue
+                _, p_ev, p_bad, p_hbid, p_hask, p_hpx = sl.pending.pop(p_seq)
+                self._mark(p_ev, QualityStatus.SUSPICIOUS, Reason.SEQUENCE_GAP)
+                self._bump(Reason.SEQUENCE_GAP)
+                self.reorder_expired_total += 1
+
+                jump = p_seq - sl.last_seq
+                if jump > 0:
+                    sl.seen = (
+                        ((sl.seen << jump) | 1) & SEQUENCE_BITMAP_MASK
+                        if jump < SEQUENCE_BITMAP_BITS
+                        else 1
+                    )
+                    sl.last_seq = p_seq
+                    sl.cand_plus1 = 0
+
+                p_ev = self._finish_evaluation(p_ev, sl, cfg, p_bad, p_hbid, p_hask, p_hpx)
+                released.append(p_ev)
+
+                while (sl.last_seq + 1) in sl.pending:
+                    next_seq = sl.last_seq + 1
+                    _, r_ev, r_bad, r_hbid, r_hask, r_hpx = sl.pending.pop(next_seq)
+                    sl.last_seq = next_seq
+                    sl.seen = ((sl.seen << 1) | 1) & SEQUENCE_BITMAP_MASK
+                    self.reorder_repaired_total += 1
+                    r_ev = self._finish_evaluation(r_ev, sl, cfg, r_bad, r_hbid, r_hask, r_hpx)
+                    released.append(r_ev)
+
+        return released
 
 
 # Phase 5: Explicit Two-Tier Architecture Aliases

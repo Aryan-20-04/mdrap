@@ -210,6 +210,17 @@ CREATE TABLE IF NOT EXISTS vwap_curves (
     created_at REAL NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_vwap_curves_sym ON vwap_curves(instrument_id, timestamp);
+
+CREATE TABLE IF NOT EXISTS quarantine_merkle_log (
+    entry_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp REAL NOT NULL,
+    entry_hash TEXT NOT NULL,
+    prev_root TEXT NOT NULL,
+    batch_root TEXT NOT NULL,
+    batch_size INTEGER NOT NULL,
+    format_version INTEGER NOT NULL DEFAULT 3
+);
+CREATE INDEX IF NOT EXISTS idx_quarantine_merkle_ts ON quarantine_merkle_log(timestamp);
 """
 
 
@@ -225,6 +236,23 @@ DEFAULT_SQLITE_MMAP_MB: int = 64            # 64 MB mmap
 DEFAULT_SQLITE_CACHE_MB: int = 16           # 16 MB dedicated cache
 BYTES_PER_MB: int = 1024 * 1024
 PAGE_CACHE_KIB_PER_MB: int = 1000
+
+
+def _compute_merkle_root(leaf_hashes: list[bytes]) -> str:
+    """Pairwise SHA-256 Merkle root computation over leaf byte hashes."""
+    if not leaf_hashes:
+        return hashlib.sha256(b"EMPTY_BATCH").hexdigest()
+    current = list(leaf_hashes)
+    while len(current) > 1:
+        next_level = []
+        for i in range(0, len(current), 2):
+            if i + 1 < len(current):
+                pair = current[i] + current[i + 1]
+            else:
+                pair = current[i] + current[i]  # duplicate last odd leaf
+            next_level.append(hashlib.sha256(pair).digest())
+        current = next_level
+    return current[0].hex()
 
 
 def _synchronized(method):
@@ -458,6 +486,7 @@ class Store:
         inserted = self.conn.total_changes - c_before
         if inserted < len(rows):
             self.conflicts += len(rows) - inserted
+        self._append_quarantine_merkle_batch_in_tx(rows)
 
     @_synchronized
     def write_lineage_batch(self, rows: list[tuple]):
@@ -532,6 +561,7 @@ class Store:
                        ON CONFLICT(event_id) DO NOTHING""",
                     quarantine,
                 )
+                self._append_quarantine_merkle_batch_in_tx(quarantine)
             if lineage:
                 self.conn.executemany(
                     """INSERT INTO lineage VALUES
@@ -1107,6 +1137,82 @@ class Store:
                 (ts, actor, role, action, details, prev_hash, entry_hash, format_version),
             )
         return entry_hash
+
+    def _append_quarantine_merkle_batch_in_tx(
+        self, quarantine_rows: list[tuple], timestamp: float | None = None
+    ) -> str | None:
+        """Internal helper to insert a Merkle root for a quarantine batch within an existing transaction."""
+        if not quarantine_rows:
+            return None
+        from audit_format import compute_audit_hash
+        ts = timestamp if timestamp is not None else time.time()
+        leaves = [
+            hashlib.sha256(json.dumps(row, default=str, sort_keys=True).encode("utf-8")).digest()
+            for row in quarantine_rows
+        ]
+        batch_root = _compute_merkle_root(leaves)
+        cur = self.conn.execute(
+            "SELECT entry_hash FROM quarantine_merkle_log ORDER BY entry_id DESC LIMIT 1"
+        )
+        row = cur.fetchone()
+        prev_root = (
+            row[0]
+            if row
+            else "GENESIS_0000000000000000000000000000000000000000000000000000000000000000"
+        )
+        details = f"n={len(quarantine_rows)},root={batch_root}"
+        entry_hash = compute_audit_hash(
+            prev_root, ts, "system", "pipeline", "QUARANTINE_BATCH", details, format_version=3
+        )
+        self.conn.execute(
+            """INSERT INTO quarantine_merkle_log
+               (timestamp, entry_hash, prev_root, batch_root, batch_size, format_version)
+               VALUES (?, ?, ?, ?, ?, 3)""",
+            (ts, entry_hash, prev_root, batch_root, len(quarantine_rows)),
+        )
+        return entry_hash
+
+    @_synchronized
+    def append_quarantine_merkle_batch(
+        self, quarantine_rows: list[tuple], timestamp: float | None = None
+    ) -> str | None:
+        """Append a batched Merkle root record for quarantined records."""
+        with self.transaction():
+            return self._append_quarantine_merkle_batch_in_tx(quarantine_rows, timestamp)
+
+    @_synchronized
+    def verify_quarantine_merkle_integrity(self) -> tuple[bool, str, int]:
+        """Verify the cryptographic hash-chain and batch Merkle roots of the quarantine log."""
+        from audit_format import compute_audit_hash
+        cur = self.conn.execute(
+            "SELECT entry_id, timestamp, entry_hash, prev_root, batch_root, batch_size, format_version "
+            "FROM quarantine_merkle_log ORDER BY entry_id ASC"
+        )
+        rows = cur.fetchall()
+        if not rows:
+            return True, "Quarantine Merkle log is empty (valid)", 0
+
+        expected_prev = "GENESIS_0000000000000000000000000000000000000000000000000000000000000000"
+        for entry_id, ts, entry_hash, prev_root, batch_root, batch_size, f_ver in rows:
+            if prev_root != expected_prev:
+                return (
+                    False,
+                    f"Broken Merkle chain link at entry #{entry_id}: expected prev_root '{expected_prev[:12]}...', got '{prev_root[:12]}...'",
+                    entry_id,
+                )
+            details = f"n={batch_size},root={batch_root}"
+            recomputed = compute_audit_hash(
+                prev_root, ts, "system", "pipeline", "QUARANTINE_BATCH", details, format_version=f_ver or 3
+            )
+            if recomputed != entry_hash:
+                return (
+                    False,
+                    f"Tampered quarantine Merkle entry #{entry_id}: hash mismatch",
+                    entry_id,
+                )
+            expected_prev = entry_hash
+
+        return True, f"Quarantine Merkle log verified ({len(rows)} batches intact)", len(rows)
 
     @_synchronized
     def verify_audit_integrity(
