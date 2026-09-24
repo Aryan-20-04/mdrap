@@ -1,5 +1,5 @@
 # Market Data Reliability & Acceleration Platform (MDRAP)
-### Enterprise Self-Hosted Reliability, Reconciliation & Audit Infrastructure for Real-Time Financial Market Data
+### Open-Source Self-Hosted Reliability, Reconciliation & Audit Infrastructure for Real-Time Financial Market Data
 
 [![Version](https://img.shields.io/badge/version-2.3.0-blue.svg)](pyproject.toml)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue.svg)](https://www.python.org/)
@@ -10,10 +10,10 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 > [!IMPORTANT]
-> **Commercial Self-Hosted Product Architecture & Market Data Licensing Notice**
-> MDRAP is an enterprise software platform designed to be deployed and operated **self-hosted on customer-owned infrastructure** (bare-metal, on-premise data centers, or private clouds).
+> **Open-Source Infrastructure & Market Data Licensing Notice**
+> MDRAP is a free, open-source software platform designed to be deployed and operated **self-hosted on user-owned infrastructure** (bare-metal, on-premise data centers, or cloud instances).
 > **MDRAP DOES NOT PROVIDE, BROKER, OR RESELL MARKET DATA.**
-> Deploying organizations are solely responsible for obtaining and maintaining valid commercial data licenses from their market data vendors (e.g., Polygon.io, Databento, CME, Nasdaq, OPRA). See the [Data Licensing Guide](docs/data-licensing.md) for full compliance information.
+> Deploying users and organizations are solely responsible for obtaining and maintaining valid data licenses from their market data vendors (e.g., Polygon.io, Databento, CME, Nasdaq, OPRA). See the [Data Licensing Guide](docs/data-licensing.md) for full compliance information.
 
 MDRAP ingests multiple live market data feeds, cross-reconciles them in real time, flags anomalies with explainable reason codes, and produces a cryptographically auditable record of every data quality decision. It sits **before** your trading engine, database, or research code.
 
@@ -395,7 +395,7 @@ mdrap sub BTC/USD --json | jq '{bid: .bbo.bid, ask: .bbo.ask}'
 
 ---
 
-## Commercial REST & WebSocket API
+## High-Performance REST & WebSocket API
 
 MDRAP provides a production-grade **FastAPI HTTP/JSON REST and WebSocket interface** designed for self-hosted quantitative trading desks, risk engines, and surveillance systems.
 
@@ -406,12 +406,16 @@ python cli.py serve --host 0.0.0.0 --port 8000 --db ./mdrap.db
 
 ### Authentication & Role-Based Access Control (RBAC)
 
-All API endpoints (except `/v1/health`) require authentication via either:
-- HTTP Header: `X-API-Key: <token>`
+All API endpoints (except `/v1/health`, `/v1/liveness`, `/v1/readiness`) require authentication via either:
 - HTTP Header: `Authorization: Bearer <token>`
-- WebSocket Query Param: `?token=<token>`
+- HTTP Header: `X-API-Key: <token>`
+- WebSocket Handshake Header: `Authorization: Bearer <token>` (or `X-API-Key: <token>`)
+- WebSocket First-Frame Message: `{"action": "authenticate", "token": "<token>"}`
 
-API keys are stored as **cryptographic SHA-256 hashes (`token_hash`)** with masked prefixes (`key_prefix`). Raw tokens are displayed once upon generation and never persisted.
+> [!NOTE]
+> Passing API tokens via `?token=` query parameters is strictly rejected across both REST and WebSocket endpoints (`WS 1008 Policy Violation` / `401 Unauthorized`) to prevent credential leakage in HTTP access logs, load balancer telemetry, and proxy histories.
+
+API keys are stored as **cryptographic SHA-256 hashes (`token_hash`)** with masked prefixes (`key_prefix`). Raw tokens are displayed once upon generation and never persisted or kept in memory.
 
 | Role | Permitted Actions | Accessible Endpoints |
 |---|---|---|
@@ -502,12 +506,12 @@ python scripts/restore.py --backup /backups/mdrap_backup_20260922_120000.db.gz -
 
 ## Verification & Testing
 
-MDRAP includes an institutional test suite of **780 automated unit, integration, quantitative, options, native C fastpath, fuzzing, FPGA parity, API security, and commercialization tests** (100% passing):
+MDRAP includes an institutional test suite of **815 automated unit, integration, quantitative, options, native C fastpath, fuzzing, FPGA parity, API security, and client integration tests** (100% passing):
 
 ### 1. Full Production Test Suite (With FastPath & Native Binaries)
 ```bash
 pytest tests/ -q
-# Result: 780 passed, 60 deselected in ~103s (0 failures, 100% green)
+# Result: 815 passed in ~105s (0 failures, 100% green)
 ```
 
 ### 2. Pure Python Fallback Verification (No C Libraries)
@@ -520,10 +524,10 @@ MDRAP_DISABLE_FASTPATH=1 pytest tests/ -q
 $env:MDRAP_DISABLE_FASTPATH="1"; pytest tests/ -q; Remove-Item Env:\MDRAP_DISABLE_FASTPATH
 ```
 
-### 3. Commercialization & Security Test Suites
+### 3. Client Integration & Security Test Suites
 ```bash
 # API Authentication, RBAC, and Token Security
-pytest tests/test_api_auth.py tests/test_key_storage_hardening.py -v
+pytest tests/test_api_auth.py tests/test_key_storage_hardening.py tests/test_security_hardening_review.py -v
 
 # 14 REST Endpoints & WebSocket Protocol
 pytest tests/test_api_endpoints.py tests/test_api_websocket.py -v
@@ -531,13 +535,13 @@ pytest tests/test_api_endpoints.py tests/test_api_websocket.py -v
 # Online Zero-Downtime Backup & Recovery
 pytest tests/test_backup_restore.py -v
 
-# Python SDK Commercial Integration
+# Python SDK Programmatic Integration
 pytest tests/test_sdk_commercial.py -v
 ```
 
 ---
 
-## Enterprise Documentation Suite
+## Documentation Suite
 
 Comprehensive technical, architectural, and operational documentation is available in [`docs/`](docs/):
 
@@ -566,7 +570,7 @@ mdrap/
 ├── Caddyfile                  # Automatic TLS reverse proxy & WebSocket termination
 ├── .env.example               # Self-hosted environment configuration template
 ├── mdrap.toml                 # Hierarchical layered configuration (spec v2, tomllib)
-├── pyproject.toml             # Packaging specification & dependencies (v2.2.0)
+├── pyproject.toml             # Packaging specification & dependencies (v2.3.0)
 ├── setup.py                   # Automated C fastpath compilation hooks
 ├── requirements.txt           # Optional runtime & dev dependencies (pure stdlib default)
 ├── LICENSE                    # MIT License

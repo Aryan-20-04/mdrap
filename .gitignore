@@ -138,6 +138,7 @@ data/chd-runs/
 
 # SEC EDGAR cache
 data/edgar_cache/
+data/test_export.csv/
 
 # Agent & Session Metadata
 .system_generated/

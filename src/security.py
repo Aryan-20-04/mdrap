@@ -313,6 +313,60 @@ def _load_or_create_local_secrets() -> Dict[str, str]:
     return generated
 
 
+class HashedKeyStore(dict):
+    """Dictionary mapping SHA-256 token hashes to ClientEntitlements.
+
+    Prevents raw credential retention in memory while supporting transparent
+    constant-time lookups via either raw tokens or SHA-256 hashes.
+    """
+
+    def __contains__(self, key: object) -> bool:
+        if super().__contains__(key):
+            return True
+        if isinstance(key, str):
+            h = hashlib.sha256(key.encode("utf-8")).hexdigest()
+            return super().__contains__(h)
+        return False
+
+    def __getitem__(self, key: str) -> ClientEntitlement:
+        if super().__contains__(key):
+            return super().__getitem__(key)
+        if isinstance(key, str):
+            h = hashlib.sha256(key.encode("utf-8")).hexdigest()
+            if super().__contains__(h):
+                return super().__getitem__(h)
+        return super().__getitem__(key)
+
+    def get(self, key: str, default: Any = None) -> Any:
+        if super().__contains__(key):
+            return super().get(key, default)
+        if isinstance(key, str):
+            h = hashlib.sha256(key.encode("utf-8")).hexdigest()
+            if super().__contains__(h):
+                return super().get(h, default)
+        return default
+
+    def pop(self, key: str, default: Any = None) -> Any:
+        if super().__contains__(key):
+            return super().pop(key, default)
+        if isinstance(key, str):
+            h = hashlib.sha256(key.encode("utf-8")).hexdigest()
+            if super().__contains__(h):
+                return super().pop(h, default)
+        return default
+
+    def get_by_token_or_hash(self, key: str) -> Optional[ClientEntitlement]:
+        if not key:
+            return None
+        # Check if key is raw token -> hash lookup
+        h = hashlib.sha256(key.encode("utf-8")).hexdigest()
+        ent = super().get(h)
+        if ent is not None:
+            return ent
+        # Check if key was already a hash
+        return super().get(key)
+
+
 class SecurityManager:
     """
     Central security and cryptographic coordinator for MDRAP.
@@ -375,12 +429,14 @@ class SecurityManager:
         self._tampered_count = 0
         self._rate_limited_count = 0
 
-        self._api_keys: Dict[str, ClientEntitlement] = {}
+        self._api_keys: HashedKeyStore = HashedKeyStore()
         if is_demo:
             for tok, cfg in _DEMO_KEYS.items():
-                self._api_keys[tok] = ClientEntitlement(
-                    token=tok,
+                th = hashlib.sha256(tok.encode("utf-8")).hexdigest()
+                self._api_keys[th] = ClientEntitlement(
+                    token_hash=th,
                     client_id=cfg["client_id"],
+                    key_prefix=tok[:12] + "...",
                     role=cfg.get("role", Role.VIEWER),
                 )
         # Load API key overrides from environment (e.g. MDRAP_API_KEY_ADMIN=custom_token)
@@ -388,25 +444,27 @@ class SecurityManager:
             if k.startswith("MDRAP_API_KEY_"):
                 suffix = k[len("MDRAP_API_KEY_") :].upper()
                 role_val = Role[suffix] if suffix in Role.__members__ else Role.VIEWER
-                self._api_keys[v] = ClientEntitlement(
-                    token=v,
+                th = hashlib.sha256(v.encode("utf-8")).hexdigest()
+                self._api_keys[th] = ClientEntitlement(
+                    token_hash=th,
                     client_id=f"Env_Client_{suffix}",
+                    key_prefix=v[:12] + "...",
                     role=role_val,
                 )
         if self.store and hasattr(self.store, "load_api_keys"):
             try:
                 for ent in self.store.load_api_keys():
                     if ent.token_hash:
+                        # Clear plaintext secret from heap memory
+                        ent.token = ""
                         self._api_keys[ent.token_hash] = ent
-                    if ent.token:
-                        self._api_keys[ent.token] = ent
             except Exception as exc:
                 print(
                     f"[mdrap SECURITY WARNING] Failed to load API keys from store: {exc}",
                     file=sys.stderr,
                 )
 
-        # Bootstrap initial ADMIN key if database has no keys and not in demo mode
+        # Bootstrap initial ADMIN key ONLY if explicitly configured (secure default: 0)
         self.bootstrap_admin_token: Optional[str] = None
         if (
             not is_demo
@@ -416,7 +474,7 @@ class SecurityManager:
         ):
             env_admin = os.environ.get("MDRAP_INITIAL_ADMIN_KEY")
             auto_bootstrap = os.environ.get(
-                "MDRAP_AUTO_BOOTSTRAP_ADMIN", "1"
+                "MDRAP_AUTO_BOOTSTRAP_ADMIN", "0"
             ).lower() in ("1", "true", "yes")
             if env_admin or auto_bootstrap:
                 admin_tok = env_admin or f"mdrap_live_adm_{secrets.token_urlsafe(24)}"
@@ -677,13 +735,12 @@ class SecurityManager:
             is_active=True,
         )
 
-        self._api_keys[token] = ent
+        # Store ONLY token_hash in memory
         self._api_keys[tok_hash] = ent
         if self.store and hasattr(self.store, "save_api_key"):
             try:
                 self.store.save_api_key(ent)
             except Exception as exc:
-                self._api_keys.pop(token, None)
                 self._api_keys.pop(tok_hash, None)
                 raise RuntimeError(
                     f"Failed to persist API key to storage: {exc}"
@@ -692,10 +749,7 @@ class SecurityManager:
 
     def revoke_api_key(self, token: str) -> bool:
         """Revoke an active API key immediately by token, token_hash, or key_prefix."""
-        ent = self._api_keys.get(token)
-        if not ent:
-            tok_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
-            ent = self._api_keys.get(tok_hash)
+        ent = self._api_keys.get_by_token_or_hash(token)
         if not ent:
             # Check by key_prefix in registered keys (match active first)
             for v in list(self._api_keys.values()):
@@ -725,10 +779,7 @@ class SecurityManager:
         """Lookup entitlement by token or sha256 hash."""
         if not token:
             return None
-        ent = self._api_keys.get(token)
-        if not ent:
-            tok_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
-            ent = self._api_keys.get(tok_hash)
+        ent = self._api_keys.get_by_token_or_hash(token)
         if not ent:
             return None
         if active_only:

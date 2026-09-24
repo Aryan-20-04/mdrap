@@ -40,5 +40,14 @@ jobs:
       - name: Verify Environment Diagnostics
         run: python cli.py doctor
 
+      - name: Verify Documentation Suite
+        run: pytest tests/test_docs_verification.py -v -q
+
       - name: Micro-Benchmark Smoke Check
         run: python benchmarks/micro_ffi.py --iterations 100000 --runs 2
+
+      - name: Check Performance Regression Guard
+        run: python benchmarks/check_regression.py
+
+      - name: Run Authoritative 14-Stage Release Gate
+        run: python scripts/release_gate.py

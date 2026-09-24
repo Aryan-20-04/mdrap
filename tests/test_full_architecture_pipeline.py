@@ -72,7 +72,9 @@ def test_full_system_end_to_end_pipeline(tmp_path):
     assert len(events_res.json()) > 0
 
     # 5. WebSocket Streaming Handshake
-    with client.websocket_connect(f"/v1/events/stream?token={admin_ent.token}") as ws:
+    with client.websocket_connect(
+        "/v1/events/stream", headers={"Authorization": f"Bearer {admin_ent.token}"}
+    ) as ws:
         ack = ws.receive_json()
         assert ack["type"] == "ACK"
         ws.send_json({"action": "SUB", "symbols": ["AAPL"]})

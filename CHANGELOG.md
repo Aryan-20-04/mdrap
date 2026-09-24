@@ -28,10 +28,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Adapter Subclass Compatibility**: Enabled structural subtyping in `FeedAdapter` protocol via custom `__subclasshook__`, allowing backward compatibility with legacy `open`/`close`/`__iter__` streams while supporting modern `connect`/`receive` adapters.
 
 ### Security
-- **Strict Bearer Authorization**: Replaced deprecated query-string URL token authentication with mandatory `Authorization: Bearer <token>` headers on all authenticated REST routes.
-- **Explicit CORS Origin Policy**: Restrained CORS wildcards to explicitly configured trusted origins.
-- **Metrics Endpoint Authentication**: Secured Prometheus metrics export behind operator/admin authentication to prevent unauthorized internal telemetry harvesting.
-- **API Key Lifecycle Management**: Implemented cryptographic high-entropy keys, constant-time SHA-256 verification, and immediate revocation enforcement.
+- **Strict Bearer & First-Frame Authorization**: Replaced deprecated query-string URL token authentication with mandatory handshake headers (`Authorization: Bearer <token>` or `X-API-Key: <token>`) and first-frame JSON message authentication (`{"action": "authenticate", "token": "..."}`) on WebSocket streaming and all REST routes. Query-string parameter `?token=` is now strictly rejected with `1008 Policy Violation` (WebSocket) and `401 Unauthorized` (REST) to prevent credential leakage in proxy/access logs.
+- **Explicit CORS Origin Policy**: Restrained CORS default to empty (disabled), requiring explicit comma-separated trusted origins or explicit `*` override in `MDRAP_CORS_ORIGINS` for development.
+- **Metrics Endpoint Authentication**: Secured Prometheus metrics export behind operator/admin authentication by default (`MDRAP_METRICS_AUTH=1`) with trusted reverse proxy support via `MDRAP_TRUSTED_PROXY_IPS`.
+- **API Key In-Memory Hashing**: Purged raw plaintext API keys from process memory (`ClientEntitlement.token` cleared, `HashedKeyStore` storing only SHA-256 digests), and disabled automatic admin bootstrap by default (`MDRAP_AUTO_BOOTSTRAP_ADMIN=0`).
 - **Supply Chain CVE Hardening**: Enforced safe dependency floors (`pyarrow>=20.0.0` for PYSEC-2026-113, `pytest>=8.4.2` for PYSEC-2026-1845).
 
 ### Performance
@@ -39,7 +39,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Flat Memory Footprint**: Verified constant memory usage across 10,000 to 50,000 event continuous runs (31 MB to 106 MB RSS) with no garbage collector degradation.
 
 ### Breaking Changes
-- **Deprecated URL Tokens**: Passing API tokens via `?token=` query parameters in REST requests is now rejected with `401 Unauthorized`. Clients must supply tokens via standard `Authorization: Bearer` headers.
+- **Deprecated URL Tokens**: Passing API tokens via `?token=` query parameters in REST or WebSocket requests is now rejected (`401 Unauthorized` / `WS 1008 Policy Violation`). Clients must supply tokens via handshake headers or first-frame authentication.
+- **Secure Defaults**: Prometheus metrics endpoint (`/metrics`) now requires authentication by default (`MDRAP_METRICS_AUTH=1`). CORS is disabled by default unless explicitly configured in `MDRAP_CORS_ORIGINS`. Automatic admin key creation is disabled by default (`MDRAP_AUTO_BOOTSTRAP_ADMIN=0`).
 - **Health Probes**: Infrastructure orchestrators (Kubernetes, Docker) should migrate probes from `/health` to `/liveness` and `/readiness`.
 
 ### Benchmark Comparison (v2.2.0 vs v2.3.0)

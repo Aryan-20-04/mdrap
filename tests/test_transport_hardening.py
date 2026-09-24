@@ -114,7 +114,9 @@ def test_websocket_transport_protocol(tmp_path):
     client = TestClient(app)
 
     # 1. Connect and verify ACK
-    with client.websocket_connect(f"/v1/events/stream?token={ent.token}") as ws:
+    with client.websocket_connect(
+        "/v1/events/stream", headers={"Authorization": f"Bearer {ent.token}"}
+    ) as ws:
         ack = ws.receive_json()
         assert ack["type"] == "ACK"
 

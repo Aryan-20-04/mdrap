@@ -246,10 +246,10 @@ def create_app(
                 pass
 
     app = FastAPI(
-        title="MDRAP Core Commercial API",
-        version="2.2.0",
+        title="MDRAP Core Market Data Platform",
+        version="2.3.0",
         description=(
-            "Production REST and WebSocket API for the Market Data Reliability & Acceleration Platform. "
+            "Open-source REST and WebSocket API for the Market Data Reliability & Acceleration Platform. "
             "Delivers self-hosted market data quality validation, cross-feed reconciliation, "
             "and tamper-evident cryptographic audit verification."
         ),
@@ -259,20 +259,28 @@ def create_app(
     # Attach state
     app.state.mdrap = app_state
 
-    # CORS configuration (secure defaults)
-    # Note: allow_credentials=True with allow_origins=["*"] is invalid per the
-    # CORS specification. When wildcard origins are used, credentials are disabled.
-    # Set MDRAP_CORS_ORIGINS to explicit domains to enable credentialed requests.
+    # CORS configuration (secure default: no wildcard, explicit origins only)
+    # By default, MDRAP_CORS_ORIGINS is empty (no external CORS allowed).
+    # Local development can explicitly set MDRAP_CORS_ORIGINS=* if desired.
     cors_env = os.environ.get("MDRAP_CORS_ORIGINS", "").strip()
-    allowed_origins = [o.strip() for o in cors_env.split(",") if o.strip()]
-    is_wildcard = not allowed_origins or allowed_origins == ["*"]
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"] if is_wildcard else allowed_origins,
-        allow_credentials=not is_wildcard,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+    if cors_env == "*":
+        allowed_origins = ["*"]
+        allow_creds = False
+    elif cors_env:
+        allowed_origins = [o.strip() for o in cors_env.split(",") if o.strip()]
+        allow_creds = True
+    else:
+        allowed_origins = []
+        allow_creds = False
+
+    if allowed_origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=allowed_origins,
+            allow_credentials=allow_creds,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
 
     # -----------------------------------------------------------------------
     # Authentication & RBAC Dependencies
@@ -758,13 +766,24 @@ def create_app(
         st: AppState = websocket.app.state.mdrap
 
         # 1. Authenticate WebSocket Connection
-        token = websocket.query_params.get("token")
+        # Deprecated query parameter ?token= is STRICTLY PROHIBITED to prevent credential leakage in logs.
+        # Permitted authentication channels:
+        #   A) HTTP handshake header: 'Authorization: Bearer <token>' or 'X-API-Key: <token>'
+        #   B) First-frame authentication JSON message: {"action": "authenticate", "token": "..."}
         client_ent = None
 
-        if token:
+        # Check HTTP handshake headers
+        auth_hdr = websocket.headers.get("authorization") or websocket.headers.get(
+            "Authorization"
+        )
+        if auth_hdr and auth_hdr.lower().startswith("bearer "):
+            token = auth_hdr[7:].strip()
+            client_ent = st.security_manager.get_entitlement(token, active_only=True)
+        elif "x-api-key" in websocket.headers:
+            token = websocket.headers["x-api-key"].strip()
             client_ent = st.security_manager.get_entitlement(token, active_only=True)
 
-        # Allow initial handshake auth message if query param not provided
+        # If not authenticated via handshake headers, expect first-frame auth message
         if not client_ent:
             try:
                 init_msg = await asyncio.wait_for(websocket.receive_text(), timeout=5.0)
@@ -785,7 +804,15 @@ def create_app(
 
         if not client_ent:
             await websocket.send_json(
-                {"type": "ERROR", "error": "Unauthorized: Missing or invalid API key"}
+                {
+                    "type": "ERROR",
+                    "error": (
+                        "Unauthorized: Missing or invalid API key. Supply 'Authorization: Bearer <token>' "
+                        "in handshake headers or send a first-frame JSON message: "
+                        '{"action": "authenticate", "token": "..."}. '
+                        "Query-parameter ?token= is not supported."
+                    ),
+                }
             )
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
             return
@@ -882,9 +909,10 @@ def create_app(
 
     @app.get("/metrics", tags=["Metrics"])
     def get_prometheus_metrics(request: Request):
-        metrics_auth_required = os.environ.get("MDRAP_METRICS_AUTH", "0").lower() in (
+        metrics_auth_required = os.environ.get("MDRAP_METRICS_AUTH", "1").lower() in (
             "1",
             "true",
+            "yes",
         )
 
         # Trust the real TCP peer, never an untrusted client-supplied header,

@@ -4,7 +4,7 @@ Covers:
 1. /metrics authorization bypass prevention via spoofed X-Forwarded-For headers.
 2. Trusted proxy evaluation via MDRAP_TRUSTED_PROXY_IPS.
 3. Denial of query string ?token= on REST endpoints to avoid access log leakage.
-4. Retention of query string token support on WebSocket handshake.
+4. Rejection of query string ?token= on WebSocket handshake in favor of Authorization header or first-frame auth.
 5. Strict alignment of key_prefix exposure to 12 characters (docs/security.md spec).
 """
 
@@ -144,26 +144,34 @@ def test_rest_endpoints_reject_query_string_token(auth_app_and_keys):
     assert r_post_query.status_code == 401
 
 
-def test_websocket_accepts_query_token(auth_app_and_keys):
-    """WebSocket handshake continues to support ?token= where custom headers are unsupported."""
+def test_websocket_rejects_query_token_and_requires_bearer_or_frame(auth_app_and_keys):
+    """WebSocket handshake rejects ?token= completely and requires Authorization header or first-frame auth."""
+    from starlette.websockets import WebSocketDisconnect
+
     app, admin_ent, viewer_ent, store = auth_app_and_keys
     client = TestClient(app)
 
-    # Valid token in query string -> Handshake accepted
+    # 1. Query parameter ?token= must be REJECTED with error frame and WS 1008
     with client.websocket_connect(f"/v1/events/stream?token={viewer_ent.token}") as ws:
-        init_frame = ws.receive_json()
-        assert init_frame["type"] in ("ACK", "SUBSCRIPTION_STATUS")
-
-    from starlette.websockets import WebSocketDisconnect
-
-    # Invalid token in query string -> Receives error frame and disconnects with 1008
-    with client.websocket_connect("/v1/events/stream?token=invalid_secret_token") as ws:
         err = ws.receive_json()
         assert err["type"] == "ERROR"
-        assert "Unauthorized" in err["error"]
+        assert "Query-parameter ?token= is not supported" in err["error"]
         with pytest.raises(WebSocketDisconnect) as exc:
             ws.receive_json()
         assert exc.value.code == 1008
+
+    # 2. Authorization: Bearer handshake header -> Accepted
+    with client.websocket_connect(
+        "/v1/events/stream", headers={"Authorization": f"Bearer {viewer_ent.token}"}
+    ) as ws:
+        init_frame = ws.receive_json()
+        assert init_frame["type"] in ("ACK", "SUBSCRIPTION_STATUS")
+
+    # 3. First-frame JSON authentication -> Accepted
+    with client.websocket_connect("/v1/events/stream") as ws:
+        ws.send_json({"action": "authenticate", "token": viewer_ent.token})
+        init_frame = ws.receive_json()
+        assert init_frame["type"] in ("ACK", "SUBSCRIPTION_STATUS")
 
 
 def test_key_prefix_length_aligned_to_documented_spec(tmp_path):

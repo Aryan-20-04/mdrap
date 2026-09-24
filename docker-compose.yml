@@ -7,16 +7,21 @@ services:
       dockerfile: Dockerfile
     container_name: mdrap-core
     restart: unless-stopped
+    # Local dev binds to loopback (127.0.0.1) by default. For hardened production,
+    # run: docker compose --profile production up -d (Caddy terminates TLS on 80/443).
     ports:
-      - "8000:8000"   # REST & WebSocket API
-      - "9001:9001"   # Ultra-low-latency TCP wire protocol
+      - "127.0.0.1:8000:8000"   # REST & WebSocket API (Local loopback bind)
+      - "127.0.0.1:9001:9001"   # Ultra-low-latency TCP wire protocol (Local loopback bind)
+    security_opt:
+      - no-new-privileges:true
     environment:
       - PYTHONUNBUFFERED=1
       - MDRAP_HOST=0.0.0.0
       - MDRAP_PORT=8000
       - MDRAP_DB_PATH=/data/mdrap.db
       - MDRAP_INITIAL_ADMIN_KEY=${MDRAP_INITIAL_ADMIN_KEY:-}
-      - MDRAP_CORS_ORIGINS=${MDRAP_CORS_ORIGINS:-*}
+      - MDRAP_CORS_ORIGINS=${MDRAP_CORS_ORIGINS:-}
+      - MDRAP_METRICS_AUTH=${MDRAP_METRICS_AUTH:-1}
       - POLYGON_API_KEY=${POLYGON_API_KEY:-}
       - DATABENTO_API_KEY=${DATABENTO_API_KEY:-}
       - COINBASE_API_KEY=${COINBASE_API_KEY:-}
@@ -30,16 +35,18 @@ services:
       retries: 3
       start_period: 10s
 
-  # Optional TLS Termination & SSL Reverse Proxy via Caddy
-  # Activate by running: docker compose --profile tls up -d
+  # Hardened TLS Termination & Reverse Proxy via Caddy
+  # Run: docker compose --profile production up -d
   caddy:
     image: caddy:2.7-alpine
     container_name: mdrap-caddy
     restart: unless-stopped
-    profiles: ["tls"]
+    profiles: ["production", "tls"]
     ports:
       - "80:80"
       - "443:443"
+    security_opt:
+      - no-new-privileges:true
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
