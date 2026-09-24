@@ -267,14 +267,32 @@ class RunMetrics:
         return self.processed / el if el > 0 else 0.0
 
     def summary(self) -> dict:
-        lat = self._latencies_us.sorted() if isinstance(self._latencies_us, CompactSampleBuffer) else sorted(self._latencies_us)
-        proc = self._proc_latencies_us.sorted() if isinstance(self._proc_latencies_us, CompactSampleBuffer) else sorted(self._proc_latencies_us)
+        lat = (
+            self._latencies_us.sorted()
+            if isinstance(self._latencies_us, CompactSampleBuffer)
+            else sorted(self._latencies_us)
+        )
+        proc = (
+            self._proc_latencies_us.sorted()
+            if isinstance(self._proc_latencies_us, CompactSampleBuffer)
+            else sorted(self._proc_latencies_us)
+        )
         rss_mb = get_rss_mb()
 
         e2e_p50 = percentile(lat, 0.50)
         proc_p50 = percentile(proc, 0.50)
-        max_e2e = round(self._latencies_us.max_val if isinstance(self._latencies_us, CompactSampleBuffer) else (lat[-1] if lat else 0.0), 1)
-        max_proc = round(self._proc_latencies_us.max_val if isinstance(self._proc_latencies_us, CompactSampleBuffer) else (proc[-1] if proc else 0.0), 1)
+        max_e2e = round(
+            self._latencies_us.max_val
+            if isinstance(self._latencies_us, CompactSampleBuffer)
+            else (lat[-1] if lat else 0.0),
+            1,
+        )
+        max_proc = round(
+            self._proc_latencies_us.max_val
+            if isinstance(self._proc_latencies_us, CompactSampleBuffer)
+            else (proc[-1] if proc else 0.0),
+            1,
+        )
 
         result = {
             "processed": self.processed,
@@ -357,8 +375,17 @@ class RunMetrics:
 
         # Query latency breakdown
         if self._query_latencies_us:
-            q_sorted = self._query_latencies_us.sorted() if isinstance(self._query_latencies_us, CompactSampleBuffer) else sorted(self._query_latencies_us)
-            max_q = round(self._query_latencies_us.max_val if isinstance(self._query_latencies_us, CompactSampleBuffer) else (q_sorted[-1] if q_sorted else 0.0), 2)
+            q_sorted = (
+                self._query_latencies_us.sorted()
+                if isinstance(self._query_latencies_us, CompactSampleBuffer)
+                else sorted(self._query_latencies_us)
+            )
+            max_q = round(
+                self._query_latencies_us.max_val
+                if isinstance(self._query_latencies_us, CompactSampleBuffer)
+                else (q_sorted[-1] if q_sorted else 0.0),
+                2,
+            )
             result["query_latency_us"] = {
                 "count": len(self._query_latencies_us),
                 "p50": round(percentile(q_sorted, 0.50), 2),
@@ -368,7 +395,11 @@ class RunMetrics:
             }
 
         if self._queue_depths:
-            q_sorted = self._queue_depths.sorted() if isinstance(self._queue_depths, CompactSampleBuffer) else sorted(self._queue_depths)
+            q_sorted = (
+                self._queue_depths.sorted()
+                if isinstance(self._queue_depths, CompactSampleBuffer)
+                else sorted(self._queue_depths)
+            )
             result["streaming"] = {
                 "max_queue_depth": self.max_queue_depth,
                 "p50_queue_depth": round(percentile(q_sorted, 0.50), 1),
@@ -376,8 +407,17 @@ class RunMetrics:
                 "backpressure_stalls": self.backpressure_stalls,
             }
             if self._storage_lags_us:
-                sl_sorted = self._storage_lags_us.sorted() if isinstance(self._storage_lags_us, CompactSampleBuffer) else sorted(self._storage_lags_us)
-                max_sl = round(self._storage_lags_us.max_val if isinstance(self._storage_lags_us, CompactSampleBuffer) else (sl_sorted[-1] if sl_sorted else 0.0), 1)
+                sl_sorted = (
+                    self._storage_lags_us.sorted()
+                    if isinstance(self._storage_lags_us, CompactSampleBuffer)
+                    else sorted(self._storage_lags_us)
+                )
+                max_sl = round(
+                    self._storage_lags_us.max_val
+                    if isinstance(self._storage_lags_us, CompactSampleBuffer)
+                    else (sl_sorted[-1] if sl_sorted else 0.0),
+                    1,
+                )
                 result["streaming"]["storage_lag_us"] = {
                     "p50": round(percentile(sl_sorted, 0.50), 1),
                     "p95": round(percentile(sl_sorted, 0.95), 1),

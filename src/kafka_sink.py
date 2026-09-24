@@ -24,11 +24,10 @@ import logging
 import os
 import threading
 import time
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Protocol, Tuple
 
-from models import CanonicalEvent, EventType, QualityStatus
-from protocols import OutputSink
+from models import CanonicalEvent, QualityStatus
 
 logger = logging.getLogger(__name__)
 
@@ -112,14 +111,11 @@ class KafkaProducerClient(Protocol):
         key: bytes | None = None,
         headers: list[tuple[str, bytes]] | None = None,
         on_delivery: Callable[[Exception | None, Any], None] | None = None,
-    ) -> None:
-        ...
+    ) -> None: ...
 
-    def flush(self, timeout: float = 5.0) -> int:
-        ...
+    def flush(self, timeout: float = 5.0) -> int: ...
 
-    def close(self) -> None:
-        ...
+    def close(self) -> None: ...
 
 
 class InMemoryKafkaProducer:
@@ -265,7 +261,9 @@ class DurableKafkaSink:
 
         # 1. Tail Canonical Events
         if hasattr(self.store, "query_canonical_after_rowid"):
-            rows = self.store.query_canonical_after_rowid(self.last_canonical_rowid, limit=limit)
+            rows = self.store.query_canonical_after_rowid(
+                self.last_canonical_rowid, limit=limit
+            )
             for r in rows:
                 rowid = r[0]
                 payload = {
@@ -304,12 +302,16 @@ class DurableKafkaSink:
                 except Exception as exc:
                     self.dropped_count += 1
                     self.last_error = str(exc)
-                    logger.error("Failed producing canonical event rowid=%d: %s", rowid, exc)
+                    logger.error(
+                        "Failed producing canonical event rowid=%d: %s", rowid, exc
+                    )
                     break
 
         # 2. Tail Quarantine Records (Separate topic to avoid false-positive mixup)
         if hasattr(self.store, "query_quarantine_after_rowid"):
-            q_rows = self.store.query_quarantine_after_rowid(self.last_quarantine_rowid, limit=limit)
+            q_rows = self.store.query_quarantine_after_rowid(
+                self.last_quarantine_rowid, limit=limit
+            )
             for qr in q_rows:
                 q_rowid = qr[0]
                 q_payload = {
@@ -336,7 +338,9 @@ class DurableKafkaSink:
                 except Exception as exc:
                     self.dropped_count += 1
                     self.last_error = str(exc)
-                    logger.error("Failed producing quarantine record rowid=%d: %s", q_rowid, exc)
+                    logger.error(
+                        "Failed producing quarantine record rowid=%d: %s", q_rowid, exc
+                    )
                     break
 
         if produced_this_cycle > 0:

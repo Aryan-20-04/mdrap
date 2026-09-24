@@ -26,6 +26,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional, Tuple
 
+from audit_format import audit_bytes_v1, audit_bytes_v2, compute_audit_hash
+
 __stability__ = "stable"
 
 
@@ -65,7 +67,9 @@ class ClientEntitlement:
         if self.token and not self.token_hash:
             self.token_hash = hashlib.sha256(self.token.encode("utf-8")).hexdigest()
         if self.token and not self.key_prefix:
-            self.key_prefix = self.token[:12] + "..." if len(self.token) > 12 else self.token
+            self.key_prefix = (
+                self.token[:12] + "..." if len(self.token) > 12 else self.token
+            )
         elif self.token_hash and not self.key_prefix:
             self.key_prefix = self.token_hash[:12] + "..."
         if isinstance(self.role, str) and self.role in Role.__members__:
@@ -223,21 +227,31 @@ class InputSanitizer:
                 if not isinstance(levels, (list, tuple)) or len(levels) > 50:
                     return False, f"{book_side} depth must be list of length <= 50"
                 for lvl in levels:
-                    if not isinstance(lvl, (list, tuple)) or len(lvl) < 2 or not _finite(lvl[0]) or not _finite(lvl[1]):
+                    if (
+                        not isinstance(lvl, (list, tuple))
+                        or len(lvl) < 2
+                        or not _finite(lvl[0])
+                        or not _finite(lvl[1])
+                    ):
                         return False, f"Invalid {book_side} level price/size"
 
         return True, None
 
 
-from audit_format import audit_bytes_v1, audit_bytes_v2, compute_audit_hash
-
-
 def format_audit_payload(
-    prev_hash: str, ts: float, actor: str, role: str, action: str, details: str, format_version: int = 2
+    prev_hash: str,
+    ts: float,
+    actor: str,
+    role: str,
+    action: str,
+    details: str,
+    format_version: int = 2,
 ) -> str:
     """Format audit entry fields using canonical format (default v2 JSON array)."""
     if format_version == 1:
-        return audit_bytes_v1(prev_hash, ts, actor, role, action, details).decode("utf-8")
+        return audit_bytes_v1(prev_hash, ts, actor, role, action, details).decode(
+            "utf-8"
+        )
     return audit_bytes_v2(prev_hash, ts, actor, role, action, details).decode("utf-8")
 
 
@@ -270,7 +284,11 @@ _DEMO_KEYS = {
 
 
 def _load_or_create_local_secrets() -> Dict[str, str]:
-    home = os.environ.get("USERPROFILE") or os.environ.get("HOME") or os.path.expanduser("~")
+    home = (
+        os.environ.get("USERPROFILE")
+        or os.environ.get("HOME")
+        or os.path.expanduser("~")
+    )
     sec_dir = os.path.join(home, ".mdrap")
     sec_file = os.path.join(sec_dir, "secrets.json")
     if os.path.isfile(sec_file):
@@ -280,7 +298,9 @@ def _load_or_create_local_secrets() -> Dict[str, str]:
         except Exception:
             pass
     default_feeds = ["FEEDX", "FEEDY", "FEEDZ", "BINANCE", "COINBASE"]
-    generated = {src: f"mdrap_{src.lower()}_{secrets.token_hex(16)}" for src in default_feeds}
+    generated = {
+        src: f"mdrap_{src.lower()}_{secrets.token_hex(16)}" for src in default_feeds
+    }
     try:
         os.makedirs(sec_dir, exist_ok=True)
         flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
@@ -334,7 +354,8 @@ class SecurityManager:
             }
         elif not mandate_env:
             self._secrets = {
-                src: key.encode("utf-8") for src, key in _load_or_create_local_secrets().items()
+                src: key.encode("utf-8")
+                for src, key in _load_or_create_local_secrets().items()
             }
 
         # Pluggable secrets: load environment overrides (e.g. MDRAP_SECRET_FEEDX=...)
@@ -387,9 +408,16 @@ class SecurityManager:
 
         # Bootstrap initial ADMIN key if database has no keys and not in demo mode
         self.bootstrap_admin_token: Optional[str] = None
-        if not is_demo and self.store and hasattr(self.store, "load_api_keys") and len(self._api_keys) == 0:
+        if (
+            not is_demo
+            and self.store
+            and hasattr(self.store, "load_api_keys")
+            and len(self._api_keys) == 0
+        ):
             env_admin = os.environ.get("MDRAP_INITIAL_ADMIN_KEY")
-            auto_bootstrap = os.environ.get("MDRAP_AUTO_BOOTSTRAP_ADMIN", "1").lower() in ("1", "true", "yes")
+            auto_bootstrap = os.environ.get(
+                "MDRAP_AUTO_BOOTSTRAP_ADMIN", "1"
+            ).lower() in ("1", "true", "yes")
             if env_admin or auto_bootstrap:
                 admin_tok = env_admin or f"mdrap_live_adm_{secrets.token_urlsafe(24)}"
                 self.bootstrap_admin_token = admin_tok
@@ -470,11 +498,15 @@ class SecurityManager:
         """
         src = source.upper()
         if not isinstance(signature, str) or not (1 <= len(signature) <= 128):
-            return self._fail("HMAC_BAD_TYPE", src, "Signature is not a valid-length string")
+            return self._fail(
+                "HMAC_BAD_TYPE", src, "Signature is not a valid-length string"
+            )
         try:
             sig_bytes = bytes.fromhex(signature)
         except ValueError:
-            return self._fail("HMAC_BAD_ENCODING", src, "Signature is not valid hexadecimal")
+            return self._fail(
+                "HMAC_BAD_ENCODING", src, "Signature is not valid hexadecimal"
+            )
 
         secret = self._secrets.get(src)
         if not secret:
@@ -487,7 +519,9 @@ class SecurityManager:
         if is_valid:
             self._verified_count += 1
             return True
-        return self._fail("HMAC_SIGNATURE_INVALID", src, "Payload HMAC signature mismatch")
+        return self._fail(
+            "HMAC_SIGNATURE_INVALID", src, "Payload HMAC signature mismatch"
+        )
 
     def authorize(
         self, actor_or_token: Any, required_role: Role, action_name: str = ""
@@ -611,14 +645,24 @@ class SecurityManager:
     ) -> ClientEntitlement:
         """Generate and register a new client API key entitlement with cryptographic token hashing and RBAC."""
         if isinstance(role, str):
-            role_clean = Role[role.upper()] if role.upper() in Role.__members__ else Role.VIEWER
+            role_clean = (
+                Role[role.upper()] if role.upper() in Role.__members__ else Role.VIEWER
+            )
         elif isinstance(role, Role):
             role_clean = role
         else:
             role_clean = Role.VIEWER
 
         if not token:
-            token = f"mdrap_live_{secrets.token_urlsafe(24)}"
+            existing_prefixes = {
+                k.key_prefix for k in self._api_keys.values() if k.is_active
+            }
+            while True:
+                candidate = f"mdrap_live_{secrets.token_urlsafe(24)}"
+                cand_pfx = candidate[:12] + "..." if len(candidate) > 12 else candidate
+                if cand_pfx not in existing_prefixes or len(existing_prefixes) >= 60:
+                    token = candidate
+                    break
 
         tok_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
         key_prefix = token[:12] + "..." if len(token) > 12 else token
@@ -653,11 +697,16 @@ class SecurityManager:
             tok_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
             ent = self._api_keys.get(tok_hash)
         if not ent:
-            # Check by key_prefix in registered keys
+            # Check by key_prefix in registered keys (match active first)
             for v in list(self._api_keys.values()):
-                if v.key_prefix == token:
+                if v.key_prefix == token and v.is_active:
                     ent = v
                     break
+            if not ent:
+                for v in list(self._api_keys.values()):
+                    if v.key_prefix == token:
+                        ent = v
+                        break
         if ent:
             ent.is_active = False
             if self.store and hasattr(self.store, "revoke_api_key"):

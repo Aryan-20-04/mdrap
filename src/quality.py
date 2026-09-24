@@ -12,8 +12,7 @@ from __future__ import annotations
 import math
 import time
 from collections import deque
-from dataclasses import dataclass, field
-from typing import Any
+from dataclasses import dataclass
 
 from models import CanonicalEvent, EventType, QualityStatus, Reason
 
@@ -26,25 +25,44 @@ DEFAULT_STALENESS_THRESHOLD_S: float = 0.05  # 50 ms staleness horizon
 DEFAULT_PRICE_ANOMALY_STDDEV: float = 6.0  # 6-sigma statistical corridor
 DEFAULT_PRICE_WINDOW: int = 50  # Rolling tick sample window
 DEFAULT_PRICE_MIN_SAMPLES: int = 20  # Minimum samples required before sigma test
-DEFAULT_PRICE_RESEED_AFTER: int = 8  # Consecutive consistent outliers before regime shift re-seed
+DEFAULT_PRICE_RESEED_AFTER: int = (
+    8  # Consecutive consistent outliers before regime shift re-seed
+)
 DEFAULT_PRICE_SIGMA_FLOOR_REL: float = 2e-4  # 2 bps relative variance floor
 DEFAULT_PRICE_RESEED_BAND_REL: float = 0.01  # 1% consistent cluster band for re-seeding
-DEFAULT_MAX_FUTURE_SKEW_S: float = 1.0  # Max permissible exchange timestamp lead vs receive time
-DEFAULT_SEQ_JUMP_LIMIT: int = 1 << 24  # Max realistic sequence gap before flagged as gap
-DEFAULT_DEDUP_CACHE_SIZE: int = 200_000  # Default unsequenced two-generation cache capacity
+DEFAULT_MAX_FUTURE_SKEW_S: float = (
+    1.0  # Max permissible exchange timestamp lead vs receive time
+)
+DEFAULT_SEQ_JUMP_LIMIT: int = (
+    1 << 24
+)  # Max realistic sequence gap before flagged as gap
+DEFAULT_DEDUP_CACHE_SIZE: int = (
+    200_000  # Default unsequenced two-generation cache capacity
+)
 SEQUENCE_BITMAP_BITS: int = 64  # Sliding bitmap width in bits
 SEQUENCE_BITMAP_MASK: int = 0xFFFFFFFFFFFFFFFF  # 64-bit mask for sequence window
 MIN_SAMPLES_FOR_VARIANCE: int = 3  # Minimum ticks required to evaluate running variance
-WARMUP_PRICE_DEV_RATIO: float = 0.10  # 10% deviation allowed during rolling window warm-up
-NSE_CIRCUIT_FILTER_RATIO: float = 0.10  # 10% daily price band circuit filter (NSE/India)
-XETR_VOLATILITY_INTERRUPTION_RATIO: float = 0.05  # 5% dynamic price corridor (Xetra/Germany)
+WARMUP_PRICE_DEV_RATIO: float = (
+    0.10  # 10% deviation allowed during rolling window warm-up
+)
+NSE_CIRCUIT_FILTER_RATIO: float = (
+    0.10  # 10% daily price band circuit filter (NSE/India)
+)
+XETR_VOLATILITY_INTERRUPTION_RATIO: float = (
+    0.05  # 5% dynamic price corridor (Xetra/Germany)
+)
 TSE_SPECIAL_QUOTE_RATIO: float = 0.08  # 8% special quote renewal limit (TSE/Japan)
-RECENTER_FOLD_WINDOW_MULTIPLIER: int = 64  # Periodic full-precision re-centering interval
-MAX_TRACKED_INSTRUMENTS_DEFAULT: int = 100_000  # Max active tracking slots before LRU eviction
+RECENTER_FOLD_WINDOW_MULTIPLIER: int = (
+    64  # Periodic full-precision re-centering interval
+)
+MAX_TRACKED_INSTRUMENTS_DEFAULT: int = (
+    100_000  # Max active tracking slots before LRU eviction
+)
 
 try:
     from config import QualityConfig
 except ImportError:
+
     @dataclass
     class QualityConfig:  # type: ignore[no-redef]
         staleness_threshold_s: float = DEFAULT_STALENESS_THRESHOLD_S
@@ -141,7 +159,9 @@ class _SlotState:
         self.anom_count = 0
         self.anom_last = 0.0
         self.fold_count = 0
-        self.pending: dict[int, tuple[float, CanonicalEvent, bool, bool, bool, bool]] = {}
+        self.pending: dict[
+            int, tuple[float, CanonicalEvent, bool, bool, bool, bool]
+        ] = {}
         self.ready: list[CanonicalEvent] = []
 
     def fold_price(self, x: float, window: int) -> None:
@@ -223,7 +243,9 @@ class QualityEngine:
 
         self._slots: dict[tuple[str, str], _SlotState] = {}
         self._cfg_cache: dict[str, QualityConfig] = {}
-        self._unseq_dedup = _UnseqDedup(getattr(self.cfg, "dedup_cache_size", DEFAULT_DEDUP_CACHE_SIZE))
+        self._unseq_dedup = _UnseqDedup(
+            getattr(self.cfg, "dedup_cache_size", DEFAULT_DEDUP_CACHE_SIZE)
+        )
         self.max_tracked_instruments = MAX_TRACKED_INSTRUMENTS_DEFAULT
 
         self.counts = {"VALID": 0, "SUSPICIOUS": 0, "INVALID": 0}
@@ -305,14 +327,8 @@ class QualityEngine:
         sl = self._get_slot(key, cfg.price_window)
 
         # Stage 1: Structural Validation
-        is_quote = (
-            event.event_type == EventType.QUOTE
-            or event.event_type == "QUOTE"
-        )
-        is_trade = (
-            event.event_type == EventType.TRADE
-            or event.event_type == "TRADE"
-        )
+        is_quote = event.event_type == EventType.QUOTE or event.event_type == "QUOTE"
+        is_trade = event.event_type == EventType.TRADE or event.event_type == "TRADE"
 
         bad = False
         if not is_trade and not is_quote:
@@ -441,13 +457,16 @@ class QualityEngine:
                 dup_st_name = getattr(cfg, "unseq_dup_status", "SUSPICIOUS")
                 dup_st = (
                     QualityStatus[dup_st_name]
-                    if isinstance(dup_st_name, str) and dup_st_name in QualityStatus.__members__
+                    if isinstance(dup_st_name, str)
+                    and dup_st_name in QualityStatus.__members__
                     else QualityStatus.SUSPICIOUS
                 )
                 self._mark(event, dup_st, Reason.DUPLICATE)
                 self._bump(Reason.DUPLICATE)
 
-        event = self._finish_evaluation(event, sl, cfg, bad, has_bid, has_ask, has_price)
+        event = self._finish_evaluation(
+            event, sl, cfg, bad, has_bid, has_ask, has_price
+        )
 
         # Check if contiguous pending events are now unlocked
         if cfg.reorder_window_s > 0 and sl.pending:
@@ -457,7 +476,9 @@ class QualityEngine:
                 sl.last_seq = next_seq
                 sl.seen = ((sl.seen << 1) | 1) & SEQUENCE_BITMAP_MASK
                 self.reorder_repaired_total += 1
-                p_ev = self._finish_evaluation(p_ev, sl, cfg, p_bad, p_hbid, p_hask, p_hpx)
+                p_ev = self._finish_evaluation(
+                    p_ev, sl, cfg, p_bad, p_hbid, p_hask, p_hpx
+                )
                 sl.ready.append(p_ev)
 
         return event
@@ -504,16 +525,17 @@ class QualityEngine:
 
         # Stage 4: Quote Consistency (Crossed Book Detection)
         if (
-            not bad
-            and has_bid
-            and has_ask
-            and event.bid_price > event.ask_price  # type: ignore[operator]
+            not bad and has_bid and has_ask and event.bid_price > event.ask_price  # type: ignore[operator]
         ):
             self._mark(event, QualityStatus.INVALID, Reason.CROSSED_QUOTE)
             self._bump(Reason.CROSSED_QUOTE)
 
         # Stage 5: Statistical Price Corridor Evaluation (LAST: Clean events only)
-        if event.quality_status != QualityStatus.INVALID and has_price and math.isfinite(event.price):
+        if (
+            event.quality_status != QualityStatus.INVALID
+            and has_price
+            and math.isfinite(event.price)
+        ):
             px = float(event.price)  # type: ignore[arg-type]
             anomaly = False
             sd2 = 0.0
@@ -530,21 +552,41 @@ class QualityEngine:
                         cfg.price_anomaly_stddev * cfg.price_anomaly_stddev * sd2
                     )
                 else:
-                    anomaly = abs(mean) > 0.0 and abs(dev) > WARMUP_PRICE_DEV_RATIO * abs(mean)
+                    anomaly = abs(mean) > 0.0 and abs(
+                        dev
+                    ) > WARMUP_PRICE_DEV_RATIO * abs(mean)
 
             if anomaly:
                 self._mark(event, QualityStatus.SUSPICIOUS, Reason.PRICE_ANOMALY)
                 self._bump(Reason.PRICE_ANOMALY)
 
                 # Venue circuit filter and volatility corridor rules
-                if event.venue == "XNSE" and sl.mean > 0 and abs(dev) / sl.mean >= NSE_CIRCUIT_FILTER_RATIO:
-                    self._mark(event, QualityStatus.SUSPICIOUS, Reason.CIRCUIT_FILTER_BREACH)
+                if (
+                    event.venue == "XNSE"
+                    and sl.mean > 0
+                    and abs(dev) / sl.mean >= NSE_CIRCUIT_FILTER_RATIO
+                ):
+                    self._mark(
+                        event, QualityStatus.SUSPICIOUS, Reason.CIRCUIT_FILTER_BREACH
+                    )
                     self._bump(Reason.CIRCUIT_FILTER_BREACH)
-                elif event.venue == "XETR" and sl.mean > 0 and abs(dev) / sl.mean >= XETR_VOLATILITY_INTERRUPTION_RATIO:
-                    self._mark(event, QualityStatus.SUSPICIOUS, Reason.VOLATILITY_INTERRUPTION)
+                elif (
+                    event.venue == "XETR"
+                    and sl.mean > 0
+                    and abs(dev) / sl.mean >= XETR_VOLATILITY_INTERRUPTION_RATIO
+                ):
+                    self._mark(
+                        event, QualityStatus.SUSPICIOUS, Reason.VOLATILITY_INTERRUPTION
+                    )
                     self._bump(Reason.VOLATILITY_INTERRUPTION)
-                elif event.venue in ("XTKS", "TSE") and sl.mean > 0 and abs(dev) / sl.mean >= TSE_SPECIAL_QUOTE_RATIO:
-                    self._mark(event, QualityStatus.SUSPICIOUS, Reason.SPECIAL_QUOTE_INDICATION)
+                elif (
+                    event.venue in ("XTKS", "TSE")
+                    and sl.mean > 0
+                    and abs(dev) / sl.mean >= TSE_SPECIAL_QUOTE_RATIO
+                ):
+                    self._mark(
+                        event, QualityStatus.SUSPICIOUS, Reason.SPECIAL_QUOTE_INDICATION
+                    )
                     self._bump(Reason.SPECIAL_QUOTE_INDICATION)
 
                 band = cfg.price_anomaly_stddev * math.sqrt(sd2)
@@ -625,7 +667,9 @@ class QualityEngine:
                     sl.last_seq = p_seq
                     sl.cand_plus1 = 0
 
-                p_ev = self._finish_evaluation(p_ev, sl, cfg, p_bad, p_hbid, p_hask, p_hpx)
+                p_ev = self._finish_evaluation(
+                    p_ev, sl, cfg, p_bad, p_hbid, p_hask, p_hpx
+                )
                 released.append(p_ev)
 
                 while (sl.last_seq + 1) in sl.pending:
@@ -634,7 +678,9 @@ class QualityEngine:
                     sl.last_seq = next_seq
                     sl.seen = ((sl.seen << 1) | 1) & SEQUENCE_BITMAP_MASK
                     self.reorder_repaired_total += 1
-                    r_ev = self._finish_evaluation(r_ev, sl, cfg, r_bad, r_hbid, r_hask, r_hpx)
+                    r_ev = self._finish_evaluation(
+                        r_ev, sl, cfg, r_bad, r_hbid, r_hask, r_hpx
+                    )
                     released.append(r_ev)
 
         return released

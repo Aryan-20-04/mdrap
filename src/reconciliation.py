@@ -33,9 +33,15 @@ __stability__ = "stable"
 # ---------------------------------------------------------------------------
 # Feed Reliability Scoring Weights & Windows (Spec §12 & §26)
 # ---------------------------------------------------------------------------
-DEFAULT_RELIABILITY_ALPHA: float = 0.02  # EWMA smoothing factor: S_t = (1 - alpha) * S_{t-1} + alpha * Y_t
-DEFAULT_DISAGREEMENT_PCT_THRESHOLD: float = 0.005  # 0.5% price divergence threshold for cross-feed conflict
-DEFAULT_AGREEMENT_WINDOW_S: float = 0.25  # Simulated market time window for concurrent observation
+DEFAULT_RELIABILITY_ALPHA: float = (
+    0.02  # EWMA smoothing factor: S_t = (1 - alpha) * S_{t-1} + alpha * Y_t
+)
+DEFAULT_DISAGREEMENT_PCT_THRESHOLD: float = (
+    0.005  # 0.5% price divergence threshold for cross-feed conflict
+)
+DEFAULT_AGREEMENT_WINDOW_S: float = (
+    0.25  # Simulated market time window for concurrent observation
+)
 
 WEIGHT_ACCURACY: float = 0.40
 WEIGHT_COMPLETENESS: float = 0.25

@@ -53,21 +53,34 @@ class QualityStatus(str, Enum):
 class Reason(str, Enum):
     """Deterministic failure and anomaly reason codes."""
 
-    SCHEMA_VIOLATION = "SCHEMA_VIOLATION"  # Bit 0: Schema validation failure or non-finite values
+    SCHEMA_VIOLATION = (
+        "SCHEMA_VIOLATION"  # Bit 0: Schema validation failure or non-finite values
+    )
     DUPLICATE = "DUPLICATE"  # Bit 1: Duplicate sequence or event ID already observed
-    SEQUENCE_GAP = "SEQUENCE_GAP"  # Bit 2: Missing sequence numbers indicating packet drop
-    OUT_OF_ORDER = "OUT_OF_ORDER"  # Bit 3: Decreasing or non-monotonic sequence or timestamp
+    SEQUENCE_GAP = (
+        "SEQUENCE_GAP"  # Bit 2: Missing sequence numbers indicating packet drop
+    )
+    OUT_OF_ORDER = (
+        "OUT_OF_ORDER"  # Bit 3: Decreasing or non-monotonic sequence or timestamp
+    )
     STALE = "STALE"  # Bit 4: Timestamp exceeds maximum allowed staleness threshold
     PRICE_ANOMALY = "PRICE_ANOMALY"  # Bit 5: Price movement exceeds statistical volatility threshold
-    CROSSED_QUOTE = "CROSSED_QUOTE"  # Bit 6: Bid price greater than or equal to ask price
-    CROSS_FEED_DISAGREEMENT = "CROSS_FEED_DISAGREEMENT"  # Bit 7: Consensus divergence between redundant feeds
+    CROSSED_QUOTE = (
+        "CROSSED_QUOTE"  # Bit 6: Bid price greater than or equal to ask price
+    )
+    CROSS_FEED_DISAGREEMENT = (
+        "CROSS_FEED_DISAGREEMENT"  # Bit 7: Consensus divergence between redundant feeds
+    )
     MALFORMED = "MALFORMED"  # Bit 8: Malformed message payload or invalid field format
     CIRCUIT_FILTER_BREACH = "CIRCUIT_FILTER_BREACH"  # Bit 9: NSE/BSE daily price band limit breach (+/- 10%)
     VOLATILITY_INTERRUPTION = "VOLATILITY_INTERRUPTION"  # Bit 10: Deutsche Boerse dynamic price corridor halt (+/- 5%)
     SPECIAL_QUOTE_INDICATION = "SPECIAL_QUOTE_INDICATION"  # Bit 11: Tokyo Stock Exchange Tokuhai quote indication (+/- 8%)
-    TS_IMPLAUSIBLE = "TS_IMPLAUSIBLE"  # Bit 12: exchange timestamp implausibly ahead of receive time
+    TS_IMPLAUSIBLE = (
+        "TS_IMPLAUSIBLE"  # Bit 12: exchange timestamp implausibly ahead of receive time
+    )
     RATE_LIMITED = "RATE_LIMITED"  # Bit 13: Ingress rate limit exceeded for source
     SECURITY_REJECT = "SECURITY_REJECT"  # Bit 14: Security gate rejection (sanitizer, HMAC, or auth failure)
+
 
 class AssetClass(str, Enum):
     """Supported asset classes across global venues."""

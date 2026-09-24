@@ -162,11 +162,15 @@ class SHMWriter:
                     self.shm.unlink()
                 except Exception:
                     pass
-                self.shm = SharedMemory(name=self.name, create=True, size=self.total_size)
+                self.shm = SharedMemory(
+                    name=self.name, create=True, size=self.total_size
+                )
 
         # Clear ring slots: write UNCOMMITTED into all commit_seq words
         for i in range(self.slot_count):
-            struct.pack_into("<Q", self.shm.buf, HEADER_SIZE + (i * SLOT_SIZE), UNCOMMITTED)
+            struct.pack_into(
+                "<Q", self.shm.buf, HEADER_SIZE + (i * SLOT_SIZE), UNCOMMITTED
+            )
 
         # Initialize Cache Line 1 (Writer Hot Line)
         pad32 = b"\x00" * 32
@@ -424,6 +428,7 @@ def _probe_active_epoch(name: str) -> int | None:
             probe = SharedMemory(name=name, create=False)
             try:
                 from multiprocessing import resource_tracker
+
                 resource_tracker.unregister(probe._name, "shared_memory")
             except Exception:
                 pass
@@ -450,11 +455,14 @@ class SHMReader:
 
         self.name = name
         try:
-            self.shm: SharedMemory | None = SharedMemory(name=self.name, create=False, track=False)
+            self.shm: SharedMemory | None = SharedMemory(
+                name=self.name, create=False, track=False
+            )
         except TypeError:
             self.shm = SharedMemory(name=self.name, create=False)
             try:
                 from multiprocessing import resource_tracker
+
                 resource_tracker.unregister(self.shm._name, "shared_memory")
             except Exception:
                 pass

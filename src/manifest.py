@@ -3,11 +3,11 @@
 Captures complete deterministic environment, configuration, hardware, and execution
 metadata for auditability and experiment reproducibility.
 """
+
 from __future__ import annotations
 
 import datetime
 import json
-import os
 import platform
 import subprocess
 import sys
@@ -78,7 +78,9 @@ def create_run_manifest(
     return manifest
 
 
-def write_run_manifest(manifest: dict[str, Any], filepath: str = "manifest.json") -> str:
+def write_run_manifest(
+    manifest: dict[str, Any], filepath: str = "manifest.json"
+) -> str:
     """Save manifest to JSON file."""
     with open(filepath, "w", encoding="utf-8") as f:
         json.dump(manifest, f, indent=2)

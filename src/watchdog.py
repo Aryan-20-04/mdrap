@@ -99,11 +99,23 @@ class SourceWatchdog:
                 # and didn't itself just wake up from an extended gap
                 others_active = any(
                     s != source
-                    and (current_time - self._last_seen.get(s, 0.0)) <= (self._ewma_interval.get(s, self.silence_threshold_s) * (self.adaptive_multiplier / 2.0))
-                    and (event.source != s or (prev_ts is not None and (now_ts - prev_ts) <= typical_gap * 3.0))
+                    and (current_time - self._last_seen.get(s, 0.0))
+                    <= (
+                        self._ewma_interval.get(s, self.silence_threshold_s)
+                        * (self.adaptive_multiplier / 2.0)
+                    )
+                    and (
+                        event.source != s
+                        or (
+                            prev_ts is not None
+                            and (now_ts - prev_ts) <= typical_gap * 3.0
+                        )
+                    )
                     for s in list(self._source_states.keys())
                 )
-                if others_active and (current_time - last_seen_time) > (typical_gap * self.adaptive_multiplier):
+                if others_active and (current_time - last_seen_time) > (
+                    typical_gap * self.adaptive_multiplier
+                ):
                     adaptive_silent = True
 
             is_silent = fixed_silent or adaptive_silent
@@ -133,7 +145,9 @@ class SourceWatchdog:
                             f"Source {source} adaptive silence: gap {current_time - last_seen_time:.4f}s > "
                             f"{self.adaptive_multiplier}x typical ({typical_gap:.4f}s) while peer feeds active"
                         )
-                        action_taken = "Marked SILENT (adaptive), initiating fast failover"
+                        action_taken = (
+                            "Marked SILENT (adaptive), initiating fast failover"
+                        )
                     else:
                         details = (
                             f"Source {source} silent for > {self.silence_threshold_s}s"
@@ -190,7 +204,9 @@ class SourceWatchdog:
         self._alerts.append(alert)
         return alert
 
-    def observe_shm_watermark(self, shm_obj: object, source_name: str = "SHM") -> WatchdogAlert | None:
+    def observe_shm_watermark(
+        self, shm_obj: object, source_name: str = "SHM"
+    ) -> WatchdogAlert | None:
         """Check if SHM watermark warning is active and issue alert."""
         is_warn = getattr(shm_obj, "is_watermark_warning_set", None)
         if is_warn and is_warn():

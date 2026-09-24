@@ -33,21 +33,41 @@ __stability__ = "experimental"
 BPS_FACTOR: float = 10_000.0  # 1 basis point = 0.01% = 1/10,000
 DEFAULT_TICK_SIZE: float = 0.01  # Standard equity minimum tick size ($0.01)
 DEFAULT_INITIAL_CAPITAL: float = 100_000.0  # Default paper trading capital ($100,000)
-DEFAULT_MAX_POSITION_SIZE: float = 5000.0  # Max absolute shares in any single instrument
-DEFAULT_MAX_ORDER_SIZE: float = 1000.0  # Max shares per individual order (fat-finger collar)
+DEFAULT_MAX_POSITION_SIZE: float = (
+    5000.0  # Max absolute shares in any single instrument
+)
+DEFAULT_MAX_ORDER_SIZE: float = (
+    1000.0  # Max shares per individual order (fat-finger collar)
+)
 DEFAULT_PRICE_COLLAR_BPS: float = 50.0  # 50 bps max deviation from mid (0.50%)
 DEFAULT_MAX_DRAWDOWN_PCT: float = 5.0  # Kill-switch if portfolio drawdown exceeds 5%
 DEFAULT_BOOK_DEPTH_LEVELS: int = 5  # Realistic multi-tier synthetic depth ladder rungs
-DEFAULT_BOOK_DEPTH_STEP_RATIO: float = 0.0005  # ~5 bps price spacing per synthetic ladder rung
-DEFAULT_BOOK_DEPTH_SIZE_MULTIPLIER: float = 0.35  # 35% depth volume increase per rung away from NBBO
-DEFAULT_WHALE_NOTIONAL_USD: float = 100_000.0  # Institutional block print threshold ($100k)
+DEFAULT_BOOK_DEPTH_STEP_RATIO: float = (
+    0.0005  # ~5 bps price spacing per synthetic ladder rung
+)
+DEFAULT_BOOK_DEPTH_SIZE_MULTIPLIER: float = (
+    0.35  # 35% depth volume increase per rung away from NBBO
+)
+DEFAULT_WHALE_NOTIONAL_USD: float = (
+    100_000.0  # Institutional block print threshold ($100k)
+)
 DEFAULT_WHALE_QUANTITY: float = 500.0  # Institutional block share count threshold
 DEFAULT_QUEUE_MAXLEN: int = 10_000  # Execution telemetry buffer capacity
-DEFAULT_FALLBACK_PRICE: float = 100.0  # Baseline fallback price for unquoted book walking
-AS_MM_INVENTORY_SKEW_SCALE: float = 0.05  # Avellaneda-Stoikov inventory skew scaling factor
-AS_MM_TOXIC_SPREAD_MULTIPLIER: float = 3.0  # Spread widening factor under SUSPICIOUS toxic flow
-AS_MM_REBALANCE_INVENTORY_RATIO: float = 0.50  # 50% max inventory triggers asymmetric single-sided quote
-AS_MM_DERISK_INVENTORY_RATIO: float = 0.80  # 80% max inventory triggers urgent inventory de-risking
+DEFAULT_FALLBACK_PRICE: float = (
+    100.0  # Baseline fallback price for unquoted book walking
+)
+AS_MM_INVENTORY_SKEW_SCALE: float = (
+    0.05  # Avellaneda-Stoikov inventory skew scaling factor
+)
+AS_MM_TOXIC_SPREAD_MULTIPLIER: float = (
+    3.0  # Spread widening factor under SUSPICIOUS toxic flow
+)
+AS_MM_REBALANCE_INVENTORY_RATIO: float = (
+    0.50  # 50% max inventory triggers asymmetric single-sided quote
+)
+AS_MM_DERISK_INVENTORY_RATIO: float = (
+    0.80  # 80% max inventory triggers urgent inventory de-risking
+)
 AS_MM_DEFAULT_VOLATILITY: float = 0.001  # Baseline fallback volatility sigma (~10 bps)
 
 
@@ -142,18 +162,26 @@ class OrderBook:
 
         # Reconstruct realistic depth rungs stepping away from NBBO
         if bid_price and bid_price > 0:
-            step = max(DEFAULT_TICK_SIZE, round(bid_price * DEFAULT_BOOK_DEPTH_STEP_RATIO, 2))  # ~5 bps per rung
+            step = max(
+                DEFAULT_TICK_SIZE, round(bid_price * DEFAULT_BOOK_DEPTH_STEP_RATIO, 2)
+            )  # ~5 bps per rung
             for lvl in range(1, depth_levels):
                 px = round(bid_price - (lvl * step), 2)
                 if px > 0:
-                    sz = round(bid_size * (1.0 + DEFAULT_BOOK_DEPTH_SIZE_MULTIPLIER * lvl), 1)
+                    sz = round(
+                        bid_size * (1.0 + DEFAULT_BOOK_DEPTH_SIZE_MULTIPLIER * lvl), 1
+                    )
                     self._bids[px] = sz
 
         if ask_price and ask_price > 0:
-            step = max(DEFAULT_TICK_SIZE, round(ask_price * DEFAULT_BOOK_DEPTH_STEP_RATIO, 2))
+            step = max(
+                DEFAULT_TICK_SIZE, round(ask_price * DEFAULT_BOOK_DEPTH_STEP_RATIO, 2)
+            )
             for lvl in range(1, depth_levels):
                 px = round(ask_price + (lvl * step), 2)
-                sz = round(ask_size * (1.0 + DEFAULT_BOOK_DEPTH_SIZE_MULTIPLIER * lvl), 1)
+                sz = round(
+                    ask_size * (1.0 + DEFAULT_BOOK_DEPTH_SIZE_MULTIPLIER * lvl), 1
+                )
                 self._asks[px] = sz
 
     def update_level(self, side: OrderSide | str, price: float, size: float) -> None:
@@ -275,7 +303,9 @@ class OrderBook:
             rungs_consumed.append({"price": px, "size": fill_sz, "available": sz})
 
         if remaining > 0:
-            penalty_step = max(DEFAULT_TICK_SIZE, best_px * DEFAULT_BOOK_DEPTH_STEP_RATIO)
+            penalty_step = max(
+                DEFAULT_TICK_SIZE, best_px * DEFAULT_BOOK_DEPTH_STEP_RATIO
+            )
             deep_px = (
                 (levels[-1][0] + penalty_step)
                 if is_buy
@@ -409,12 +439,16 @@ class Position:
 class RiskLimits:
     """Pre-trade risk controls protecting firm capital."""
 
-    max_position_size: float = DEFAULT_MAX_POSITION_SIZE  # Max absolute shares in any single instrument
-    max_order_size: float = DEFAULT_MAX_ORDER_SIZE  # Max shares per individual order (fat-finger guard)
-    price_collar_bps: float = (
-        DEFAULT_PRICE_COLLAR_BPS  # Max allowed deviation from NBBO midpoint (50 bps = 0.50%)
+    max_position_size: float = (
+        DEFAULT_MAX_POSITION_SIZE  # Max absolute shares in any single instrument
     )
-    max_drawdown_pct: float = DEFAULT_MAX_DRAWDOWN_PCT  # Kill-switch if portfolio drawdown exceeds 5%
+    max_order_size: float = (
+        DEFAULT_MAX_ORDER_SIZE  # Max shares per individual order (fat-finger guard)
+    )
+    price_collar_bps: float = DEFAULT_PRICE_COLLAR_BPS  # Max allowed deviation from NBBO midpoint (50 bps = 0.50%)
+    max_drawdown_pct: float = (
+        DEFAULT_MAX_DRAWDOWN_PCT  # Kill-switch if portfolio drawdown exceeds 5%
+    )
     allow_short: bool = True  # Whether short selling is enabled
 
 
@@ -425,7 +459,9 @@ class RiskManager:
     """
 
     def __init__(
-        self, limits: RiskLimits | None = None, initial_capital: float = DEFAULT_INITIAL_CAPITAL
+        self,
+        limits: RiskLimits | None = None,
+        initial_capital: float = DEFAULT_INITIAL_CAPITAL,
     ):
         self.limits = limits or RiskLimits()
         self.initial_capital = initial_capital
@@ -520,7 +556,9 @@ class PaperExecutor:
         self.positions: dict[str, Position] = {}
         self.orders: deque[Order] = deque(maxlen=DEFAULT_QUEUE_MAXLEN)
         self.fills: deque[dict[str, Any]] = deque(maxlen=DEFAULT_QUEUE_MAXLEN)
-        self.equity_curve: deque[tuple[float, float]] = deque(maxlen=DEFAULT_QUEUE_MAXLEN)  # (timestamp, equity)
+        self.equity_curve: deque[tuple[float, float]] = deque(
+            maxlen=DEFAULT_QUEUE_MAXLEN
+        )  # (timestamp, equity)
         self._order_counter = 0
         self._total_trades = 0
         self._win_count = 0
@@ -578,7 +616,9 @@ class PaperExecutor:
                 arrival_px = mid
             current_px = mid
             order.arrival_price = arrival_px
-            order.order_book_snapshot = order_book.snapshot(depth=DEFAULT_BOOK_DEPTH_LEVELS)
+            order.order_book_snapshot = order_book.snapshot(
+                depth=DEFAULT_BOOK_DEPTH_LEVELS
+            )
         elif bbo is not None and "bid" in bbo and "ask" in bbo:
             mid = (bbo["bid"] + bbo["ask"]) / 2.0
             arrival_px = bbo["ask"] if side == OrderSide.BUY else bbo["bid"]
@@ -1078,7 +1118,11 @@ class Strategy:
         avg_slippage = (
             (self.executor._slippage_bps_sum / total_trades)
             if total_trades > 0
-            else (sum(f.get("slippage_bps", 0) for f in fills) / len(fills) if fills else 0.0)
+            else (
+                sum(f.get("slippage_bps", 0) for f in fills) / len(fills)
+                if fills
+                else 0.0
+            )
         )
 
         return {
@@ -1277,7 +1321,9 @@ class AvellanedaStoikovStrategy(Strategy):
         self.symbol = symbol
         self.is_all = symbol.upper() in ("ALL", "*", "MARKET")
         syms = None if self.is_all else [s.strip() for s in symbol.split(",")]
-        super().__init__(name="AvellanedaStoikovMM", symbols=syms, risk_limits=risk_limits)
+        super().__init__(
+            name="AvellanedaStoikovMM", symbols=syms, risk_limits=risk_limits
+        )
         self.gamma = gamma
         self.kappa = kappa
         self.quote_size = quote_size
@@ -1302,7 +1348,8 @@ class AvellanedaStoikovStrategy(Strategy):
         # Quality Guard: Drop crossed or invalid quotes
         if (
             event.bid_price >= event.ask_price
-            or getattr(event, "quality_status", QualityStatus.VALID) == QualityStatus.INVALID
+            or getattr(event, "quality_status", QualityStatus.VALID)
+            == QualityStatus.INVALID
         ):
             return
 
@@ -1345,7 +1392,6 @@ class AvellanedaStoikovStrategy(Strategy):
         # When long (q > 0), reservation price drops below mid to attract sell flow.
         # When short (q < 0), reservation price rises above mid to attract buy flow.
         tick_size = DEFAULT_TICK_SIZE
-        base_half = max(tick_size, spread / 2.0)
         vol_scale = max(tick_size, sigma * mid)
         inventory_skew = q * self.gamma * (vol_scale * AS_MM_INVENTORY_SKEW_SCALE)
         reservation_price = micro_price - inventory_skew
@@ -1355,7 +1401,10 @@ class AvellanedaStoikovStrategy(Strategy):
         half_spread = max(tick_size, spread / 2.0)
 
         # Adverse Selection Guard: widen on SUSPICIOUS quality flag
-        is_suspicious = getattr(event, "quality_status", QualityStatus.VALID) == QualityStatus.SUSPICIOUS
+        is_suspicious = (
+            getattr(event, "quality_status", QualityStatus.VALID)
+            == QualityStatus.SUSPICIOUS
+        )
         self.toxic_flow_detected[inst] = is_suspicious
         if is_suspicious:
             half_spread *= AS_MM_TOXIC_SPREAD_MULTIPLIER
@@ -1398,13 +1447,13 @@ class AvellanedaStoikovStrategy(Strategy):
                 inst,
                 self.quote_size,
                 price=bid_px,
-                reason=f"AS-MM Bid (q={q:.0f}, r={reservation_price:.2f}, σ={sigma*BPS_FACTOR:.1f}bps)",
+                reason=f"AS-MM Bid (q={q:.0f}, r={reservation_price:.2f}, σ={sigma * BPS_FACTOR:.1f}bps)",
             )
             self.sell(
                 inst,
                 self.quote_size,
                 price=ask_px,
-                reason=f"AS-MM Ask (q={q:.0f}, r={reservation_price:.2f}, σ={sigma*BPS_FACTOR:.1f}bps)",
+                reason=f"AS-MM Ask (q={q:.0f}, r={reservation_price:.2f}, σ={sigma * BPS_FACTOR:.1f}bps)",
             )
 
     def on_tick(self, event: CanonicalEvent) -> None:
@@ -1415,7 +1464,10 @@ class AvellanedaStoikovStrategy(Strategy):
         if event.price is None:
             return
 
-        if getattr(event, "quality_status", QualityStatus.VALID) == QualityStatus.INVALID:
+        if (
+            getattr(event, "quality_status", QualityStatus.VALID)
+            == QualityStatus.INVALID
+        ):
             return
 
         pos = self.executor.get_position(inst)
@@ -1461,7 +1513,10 @@ class StrategyRunner:
                 # Check for whale print
                 if evt.price and evt.quantity:
                     notional = evt.price * evt.quantity
-                    if notional >= DEFAULT_WHALE_NOTIONAL_USD or evt.quantity >= DEFAULT_WHALE_QUANTITY:
+                    if (
+                        notional >= DEFAULT_WHALE_NOTIONAL_USD
+                        or evt.quantity >= DEFAULT_WHALE_QUANTITY
+                    ):
                         whale_info = {
                             "instrument": evt.instrument_id,
                             "price": evt.price,

@@ -51,7 +51,9 @@ class Alert:
 
     # Anti-flapping and noise suppression controls (Hysteresis & Cooldown)
     hysteresis_ticks: int = 1  # Required consecutive tick breaches before firing
-    hysteresis_margin_pct: float = 0.5  # Margin required to clear condition before re-arming
+    hysteresis_margin_pct: float = (
+        0.5  # Margin required to clear condition before re-arming
+    )
     cooldown_s: float = 0.0  # Min seconds between re-notifications (0 = fire immediately on each re-arm)
     consecutive_breaches: int = 0  # Monotonic count of consecutive ticks meeting breach
     last_notified_at: float = 0.0
@@ -115,7 +117,9 @@ class AlertEngine:
             )
         """)
         # Safe migration if table previously existed with fewer columns
-        existing_cols = {row[1] for row in cursor.execute("PRAGMA table_info(alerts)").fetchall()}
+        existing_cols = {
+            row[1] for row in cursor.execute("PRAGMA table_info(alerts)").fetchall()
+        }
         migration_cols = [
             ("hysteresis_ticks", "INTEGER DEFAULT 1"),
             ("hysteresis_margin_pct", "REAL DEFAULT 0.5"),
@@ -162,15 +166,31 @@ class AlertEngine:
                 repeat=bool(row[9]),
                 expiry=row[10],
                 message=row[11],
-                hysteresis_ticks=row[12] if len(row) > 12 and row[12] is not None else 1,
-                hysteresis_margin_pct=row[13] if len(row) > 13 and row[13] is not None else 0.5,
+                hysteresis_ticks=row[12]
+                if len(row) > 12 and row[12] is not None
+                else 1,
+                hysteresis_margin_pct=row[13]
+                if len(row) > 13 and row[13] is not None
+                else 0.5,
                 cooldown_s=row[14] if len(row) > 14 and row[14] is not None else 0.0,
-                consecutive_breaches=row[15] if len(row) > 15 and row[15] is not None else 0,
-                last_notified_at=row[16] if len(row) > 16 and row[16] is not None else 0.0,
-                re_armed=bool(row[17]) if len(row) > 17 and row[17] is not None else True,
-                delivery_status=row[18] if len(row) > 18 and row[18] is not None else "pending",
-                delivery_attempts=row[19] if len(row) > 19 and row[19] is not None else 0,
-                last_attempt_at=row[20] if len(row) > 20 and row[20] is not None else 0.0,
+                consecutive_breaches=row[15]
+                if len(row) > 15 and row[15] is not None
+                else 0,
+                last_notified_at=row[16]
+                if len(row) > 16 and row[16] is not None
+                else 0.0,
+                re_armed=bool(row[17])
+                if len(row) > 17 and row[17] is not None
+                else True,
+                delivery_status=row[18]
+                if len(row) > 18 and row[18] is not None
+                else "pending",
+                delivery_attempts=row[19]
+                if len(row) > 19 and row[19] is not None
+                else 0,
+                last_attempt_at=row[20]
+                if len(row) > 20 and row[20] is not None
+                else 0.0,
                 last_error=row[21] if len(row) > 21 else None,
             )
             self.alerts.append(a)
@@ -397,8 +417,12 @@ class AlertEngine:
 
             if is_triggered:
                 a.consecutive_breaches += 1
-                is_cooldown_elapsed = a.cooldown_s > 0 and (ts - a.last_notified_at >= a.cooldown_s)
-                is_first_arm = a.re_armed and a.consecutive_breaches >= a.hysteresis_ticks
+                is_cooldown_elapsed = a.cooldown_s > 0 and (
+                    ts - a.last_notified_at >= a.cooldown_s
+                )
+                is_first_arm = (
+                    a.re_armed and a.consecutive_breaches >= a.hysteresis_ticks
+                )
 
                 if is_first_arm or is_cooldown_elapsed:
                     a.triggered_at = ts
@@ -506,7 +530,8 @@ class AlertEngine:
     def query_pending_deliveries(self, limit: int = 50) -> list[Alert]:
         """Fetch triggered alerts that are pending external delivery."""
         pending = [
-            a for a in self.alerts
+            a
+            for a in self.alerts
             if a.delivery_status == "pending" and a.triggered_at > 0
         ]
         self.delivery_backlog_count = len(pending)
@@ -534,6 +559,7 @@ class AlertEngine:
                 self._persist(a)
                 break
         self.delivery_backlog_count = sum(
-            1 for a in self.alerts
+            1
+            for a in self.alerts
             if a.delivery_status == "pending" and a.triggered_at > 0
         )

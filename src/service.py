@@ -385,7 +385,9 @@ class MarketDataDaemon:
                             "status": "OK",
                             "action": "AUTH",
                             "client_id": ent.client_id,
-                            "role": ent.role.value if hasattr(ent.role, "value") else str(ent.role),
+                            "role": ent.role.value
+                            if hasattr(ent.role, "value")
+                            else str(ent.role),
                         }
                     )
                     + "\n"
@@ -896,7 +898,11 @@ class MarketDataDaemon:
             for s in self._sessions.values():
                 role_val = (
                     s.entitlement.role.value
-                    if (s.entitlement and hasattr(s.entitlement, "role") and hasattr(s.entitlement.role, "value"))
+                    if (
+                        s.entitlement
+                        and hasattr(s.entitlement, "role")
+                        and hasattr(s.entitlement.role, "value")
+                    )
                     else "DEFAULT"
                 )
                 role_breakdown[role_val] = role_breakdown.get(role_val, 0) + 1

@@ -229,11 +229,11 @@ CREATE INDEX IF NOT EXISTS idx_quarantine_merkle_ts ON quarantine_merkle_log(tim
 # ---------------------------------------------------------------------------
 DEFAULT_SQLITE_RETRIES: int = 3
 SQLITE_RETRY_BACKOFF_WRITE_S: float = 0.05  # 50 ms backoff on write lock contention
-SQLITE_RETRY_BACKOFF_READ_S: float = 0.01   # 10 ms backoff on read contention
-DEFAULT_SQLITE_TIMEOUT_S: float = 30.0      # 30-second busy timeout
-DEFAULT_BUSY_TIMEOUT_MS: int = 30000        # 30,000 ms pragma busy timeout
-DEFAULT_SQLITE_MMAP_MB: int = 64            # 64 MB mmap
-DEFAULT_SQLITE_CACHE_MB: int = 16           # 16 MB dedicated cache
+SQLITE_RETRY_BACKOFF_READ_S: float = 0.01  # 10 ms backoff on read contention
+DEFAULT_SQLITE_TIMEOUT_S: float = 30.0  # 30-second busy timeout
+DEFAULT_BUSY_TIMEOUT_MS: int = 30000  # 30,000 ms pragma busy timeout
+DEFAULT_SQLITE_MMAP_MB: int = 64  # 64 MB mmap
+DEFAULT_SQLITE_CACHE_MB: int = 16  # 16 MB dedicated cache
 BYTES_PER_MB: int = 1024 * 1024
 PAGE_CACHE_KIB_PER_MB: int = 1000
 
@@ -318,8 +318,17 @@ class Store:
             try:
                 cur = self.conn.execute("PRAGMA journal_mode=WAL;")
                 jm_row = cur.fetchone()
-                if path != ":memory:" and not path.startswith("file::memory:") and jm_row and jm_row[0].lower() != "wal":
-                    logger.warning("SQLite database at %s could not set journal_mode=WAL (got %s)", path, jm_row[0])
+                if (
+                    path != ":memory:"
+                    and not path.startswith("file::memory:")
+                    and jm_row
+                    and jm_row[0].lower() != "wal"
+                ):
+                    logger.warning(
+                        "SQLite database at %s could not set journal_mode=WAL (got %s)",
+                        path,
+                        jm_row[0],
+                    )
             except sqlite3.OperationalError:
                 pass  # In-memory or read-only filesystems do not support WAL
 
@@ -331,8 +340,12 @@ class Store:
                 self.conn.execute("PRAGMA synchronous=NORMAL;")
 
             # Memory-tuned pragmas: 64MB mmap and 16MB page cache by default
-            mmap_mb = int(os.environ.get("MDRAP_SQLITE_MMAP_MB", DEFAULT_SQLITE_MMAP_MB))
-            cache_mb = int(os.environ.get("MDRAP_SQLITE_CACHE_MB", DEFAULT_SQLITE_CACHE_MB))
+            mmap_mb = int(
+                os.environ.get("MDRAP_SQLITE_MMAP_MB", DEFAULT_SQLITE_MMAP_MB)
+            )
+            cache_mb = int(
+                os.environ.get("MDRAP_SQLITE_CACHE_MB", DEFAULT_SQLITE_CACHE_MB)
+            )
             mmap_bytes = mmap_mb * BYTES_PER_MB
             cache_kib = cache_mb * PAGE_CACHE_KIB_PER_MB
             self.conn.execute(f"PRAGMA mmap_size={mmap_bytes};")
@@ -341,7 +354,9 @@ class Store:
             self.conn.execute("PRAGMA user_version = 2;")
             self.conn.executescript(SCHEMA)
             try:
-                self.conn.execute("ALTER TABLE audit_log ADD COLUMN format_version INTEGER NOT NULL DEFAULT 2")
+                self.conn.execute(
+                    "ALTER TABLE audit_log ADD COLUMN format_version INTEGER NOT NULL DEFAULT 2"
+                )
             except Exception:
                 pass
 
@@ -349,7 +364,11 @@ class Store:
             try:
                 cur_cols = self.conn.execute("PRAGMA table_info(api_keys)").fetchall()
                 col_names = {c[1] for c in cur_cols}
-                if col_names and ("token_hash" not in col_names or "rate_limit_eps" in col_names or "tier" in col_names):
+                if col_names and (
+                    "token_hash" not in col_names
+                    or "rate_limit_eps" in col_names
+                    or "tier" in col_names
+                ):
                     # Legacy table exists with older columns
                     self.conn.execute("ALTER TABLE api_keys RENAME TO api_keys_legacy")
                     self.conn.execute("""
@@ -363,7 +382,9 @@ class Store:
                             expires_at REAL
                         )
                     """)
-                    self.conn.execute("CREATE INDEX IF NOT EXISTS idx_api_keys_client ON api_keys(client_id)")
+                    self.conn.execute(
+                        "CREATE INDEX IF NOT EXISTS idx_api_keys_client ON api_keys(client_id)"
+                    )
                     cur_legacy = self.conn.execute("SELECT * FROM api_keys_legacy")
                     legacy_col_names = [d[0] for d in cur_legacy.description]
                     legacy_rows = cur_legacy.fetchall()
@@ -372,7 +393,9 @@ class Store:
                         raw_tok = str(row_dict.get("token") or "")
                         tok_hash = str(row_dict.get("token_hash") or "")
                         if not tok_hash and raw_tok:
-                            tok_hash = hashlib.sha256(raw_tok.encode("utf-8")).hexdigest()
+                            tok_hash = hashlib.sha256(
+                                raw_tok.encode("utf-8")
+                            ).hexdigest()
                         if not tok_hash:
                             continue
                         pfx = str(row_dict.get("key_prefix") or "")
@@ -389,17 +412,24 @@ class Store:
                             """INSERT OR REPLACE INTO api_keys
                                (token_hash, key_prefix, client_id, role, is_active, created_at, expires_at)
                                VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                            (tok_hash, pfx, client_id, role, active, created, expires)
+                            (tok_hash, pfx, client_id, role, active, created, expires),
                         )
                     self.conn.execute("DROP TABLE api_keys_legacy")
                 elif col_names:
                     if "role" not in col_names:
-                        self.conn.execute("ALTER TABLE api_keys ADD COLUMN role TEXT NOT NULL DEFAULT 'VIEWER'")
+                        self.conn.execute(
+                            "ALTER TABLE api_keys ADD COLUMN role TEXT NOT NULL DEFAULT 'VIEWER'"
+                        )
                     if "key_prefix" not in col_names:
-                        self.conn.execute("ALTER TABLE api_keys ADD COLUMN key_prefix TEXT NOT NULL DEFAULT ''")
+                        self.conn.execute(
+                            "ALTER TABLE api_keys ADD COLUMN key_prefix TEXT NOT NULL DEFAULT ''"
+                        )
             except Exception as e:
                 import logging
-                logging.getLogger("mdrap.storage").warning("Auto-migration notice: %s", e)
+
+                logging.getLogger("mdrap.storage").warning(
+                    "Auto-migration notice: %s", e
+                )
             self.conn.commit()
 
             if path != ":memory:":
@@ -408,7 +438,9 @@ class Store:
                         path, timeout=DEFAULT_SQLITE_TIMEOUT_S, check_same_thread=False
                     )
                     self.read_conn.execute("PRAGMA query_only=ON;")
-                    self.read_conn.execute(f"PRAGMA busy_timeout={DEFAULT_BUSY_TIMEOUT_MS};")
+                    self.read_conn.execute(
+                        f"PRAGMA busy_timeout={DEFAULT_BUSY_TIMEOUT_MS};"
+                    )
                     self.read_conn.execute(f"PRAGMA mmap_size={mmap_bytes};")
                     self.read_conn.execute(f"PRAGMA cache_size=-{cache_kib};")
                     self.read_conn.execute("PRAGMA temp_store=MEMORY;")
@@ -586,13 +618,19 @@ class Store:
     def get_max_rowid(self, table: str = "canonical_events") -> int:
         """Return the maximum rowid currently stored in a table."""
         # Clean table name to prevent SQL injection
-        tbl_clean = "canonical_events" if table == "canonical_events" else ("quarantine" if table == "quarantine" else "canonical_events")
+        tbl_clean = (
+            "canonical_events"
+            if table == "canonical_events"
+            else ("quarantine" if table == "quarantine" else "canonical_events")
+        )
         cur = self.read_conn.execute(f"SELECT COALESCE(MAX(rowid), 0) FROM {tbl_clean}")
         row = cur.fetchone()
         return row[0] if row else 0
 
     @_read_synchronized
-    def query_canonical_after_rowid(self, last_rowid: int, limit: int = 100) -> list[tuple]:
+    def query_canonical_after_rowid(
+        self, last_rowid: int, limit: int = 100
+    ) -> list[tuple]:
         """Fetch canonical events with rowid strictly greater than last_rowid in monotonic order."""
         limit = min(max(1, limit), 10000)
         cur = self.read_conn.execute(
@@ -609,7 +647,9 @@ class Store:
         return cur.fetchall()
 
     @_read_synchronized
-    def query_quarantine_after_rowid(self, last_rowid: int, limit: int = 100) -> list[tuple]:
+    def query_quarantine_after_rowid(
+        self, last_rowid: int, limit: int = 100
+    ) -> list[tuple]:
         """Fetch quarantine records with rowid strictly greater than last_rowid in monotonic order."""
         limit = min(max(1, limit), 10000)
         cur = self.read_conn.execute(
@@ -751,7 +791,9 @@ class Store:
 
         try:
             self.conn.execute("DELETE FROM vwap_curves WHERE timestamp < ?", (cutoff,))
-            self.conn.execute("DELETE FROM watchdog_alerts WHERE timestamp < ?", (cutoff,))
+            self.conn.execute(
+                "DELETE FROM watchdog_alerts WHERE timestamp < ?", (cutoff,)
+            )
             self.conn.commit()
         except Exception:
             pass
@@ -1080,7 +1122,16 @@ class Store:
         self.conn.execute(
             """INSERT INTO audit_log (timestamp, actor, role, action, details, prev_hash, entry_hash, format_version)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (timestamp, actor, role, action, details, prev_hash, entry_hash, format_version),
+            (
+                timestamp,
+                actor,
+                role,
+                action,
+                details,
+                prev_hash,
+                entry_hash,
+                format_version,
+            ),
         )
 
     @_synchronized
@@ -1129,12 +1180,27 @@ class Store:
                 else "GENESIS_0000000000000000000000000000000000000000000000000000000000000000"
             )
             entry_hash = compute_audit_hash(
-                prev_hash, ts, actor, role, action, details, format_version=format_version
+                prev_hash,
+                ts,
+                actor,
+                role,
+                action,
+                details,
+                format_version=format_version,
             )
             self.conn.execute(
                 """INSERT INTO audit_log (timestamp, actor, role, action, details, prev_hash, entry_hash, format_version)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                (ts, actor, role, action, details, prev_hash, entry_hash, format_version),
+                (
+                    ts,
+                    actor,
+                    role,
+                    action,
+                    details,
+                    prev_hash,
+                    entry_hash,
+                    format_version,
+                ),
             )
         return entry_hash
 
@@ -1145,9 +1211,12 @@ class Store:
         if not quarantine_rows:
             return None
         from audit_format import compute_audit_hash
+
         ts = timestamp if timestamp is not None else time.time()
         leaves = [
-            hashlib.sha256(json.dumps(row, default=str, sort_keys=True).encode("utf-8")).digest()
+            hashlib.sha256(
+                json.dumps(row, default=str, sort_keys=True).encode("utf-8")
+            ).digest()
             for row in quarantine_rows
         ]
         batch_root = _compute_merkle_root(leaves)
@@ -1162,7 +1231,13 @@ class Store:
         )
         details = f"n={len(quarantine_rows)},root={batch_root}"
         entry_hash = compute_audit_hash(
-            prev_root, ts, "system", "pipeline", "QUARANTINE_BATCH", details, format_version=3
+            prev_root,
+            ts,
+            "system",
+            "pipeline",
+            "QUARANTINE_BATCH",
+            details,
+            format_version=3,
         )
         self.conn.execute(
             """INSERT INTO quarantine_merkle_log
@@ -1178,12 +1253,15 @@ class Store:
     ) -> str | None:
         """Append a batched Merkle root record for quarantined records."""
         with self.transaction():
-            return self._append_quarantine_merkle_batch_in_tx(quarantine_rows, timestamp)
+            return self._append_quarantine_merkle_batch_in_tx(
+                quarantine_rows, timestamp
+            )
 
     @_synchronized
     def verify_quarantine_merkle_integrity(self) -> tuple[bool, str, int]:
         """Verify the cryptographic hash-chain and batch Merkle roots of the quarantine log."""
         from audit_format import compute_audit_hash
+
         cur = self.conn.execute(
             "SELECT entry_id, timestamp, entry_hash, prev_root, batch_root, batch_size, format_version "
             "FROM quarantine_merkle_log ORDER BY entry_id ASC"
@@ -1192,7 +1270,9 @@ class Store:
         if not rows:
             return True, "Quarantine Merkle log is empty (valid)", 0
 
-        expected_prev = "GENESIS_0000000000000000000000000000000000000000000000000000000000000000"
+        expected_prev = (
+            "GENESIS_0000000000000000000000000000000000000000000000000000000000000000"
+        )
         for entry_id, ts, entry_hash, prev_root, batch_root, batch_size, f_ver in rows:
             if prev_root != expected_prev:
                 return (
@@ -1202,7 +1282,13 @@ class Store:
                 )
             details = f"n={batch_size},root={batch_root}"
             recomputed = compute_audit_hash(
-                prev_root, ts, "system", "pipeline", "QUARANTINE_BATCH", details, format_version=f_ver or 3
+                prev_root,
+                ts,
+                "system",
+                "pipeline",
+                "QUARANTINE_BATCH",
+                details,
+                format_version=f_ver or 3,
             )
             if recomputed != entry_hash:
                 return (
@@ -1212,7 +1298,11 @@ class Store:
                 )
             expected_prev = entry_hash
 
-        return True, f"Quarantine Merkle log verified ({len(rows)} batches intact)", len(rows)
+        return (
+            True,
+            f"Quarantine Merkle log verified ({len(rows)} batches intact)",
+            len(rows),
+        )
 
     @_synchronized
     def verify_audit_integrity(
@@ -1440,7 +1530,9 @@ class Store:
             key_prefix = token_hash[:12] + "..."
             ent.key_prefix = key_prefix
 
-        cur_cols = {c[1] for c in self.conn.execute("PRAGMA table_info(api_keys)").fetchall()}
+        cur_cols = {
+            c[1] for c in self.conn.execute("PRAGMA table_info(api_keys)").fetchall()
+        }
         if "rate_limit_eps" in cur_cols:
             self.conn.execute(
                 """INSERT OR REPLACE INTO api_keys
@@ -1490,7 +1582,9 @@ class Store:
                 ClientEntitlement(
                     token_hash=row[0],
                     key_prefix=row[1],
-                    token=row[0],  # for backward compatibility where ent.token is used in tests/maps
+                    token=row[
+                        0
+                    ],  # for backward compatibility where ent.token is used in tests/maps
                     client_id=row[2],
                     role=role,
                     is_active=bool(row[4]),

@@ -1044,7 +1044,9 @@ class LiveTickerDashboard:
                             )
                         )
                     else:
-                        live.update(self.render_multi_ticker_table(symbols, paused=paused))
+                        live.update(
+                            self.render_multi_ticker_table(symbols, paused=paused)
+                        )
                     last_render = now
 
                 if limit and count >= limit:

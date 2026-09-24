@@ -1,99 +1,198 @@
 # Contributing to MDRAP
 
-Guidelines for contributing to the Market Data Reliability & Acceleration Platform.
+Guidelines and engineering standards for contributing to the **Market Data Reliability & Acceleration Platform (MDRAP)**.
 
-## Prerequisites
+---
+
+## 0. Core Engineering Rule: The "No Skipping Gates" State Machine
+
+Every contribution, whether submitted by core maintainers or external contributors, must progress through this strict state machine. **No skipping gates.**
+
+```
+                    ┌──────────────────┐
+                    │   DEVELOPMENT    │
+                    └────────┬─────────┘
+                             │
+                             ▼
+                    ┌──────────────────┐
+                    │ LOCAL UNIT TESTS │
+                    └────────┬─────────┘
+                             │ PASS
+                             ▼
+                    ┌──────────────────┐
+                    │ STATIC ANALYSIS  │
+                    │ SECURITY CHECKS  │
+                    └────────┬─────────┘
+                             │ PASS
+                             ▼
+                    ┌──────────────────┐
+                    │ INTEGRATION TEST │
+                    └────────┬─────────┘
+                             │ PASS
+                             ▼
+                    ┌──────────────────┐
+                    │ MANUAL INSPECTION│
+                    └────────┬─────────┘
+                             │
+                             ▼
+                    ┌──────────────────┐
+                    │ LOCAL CHECKPOINT │
+                    └────────┬─────────┘
+                             │
+                             ▼
+                 ┌──────────────────────────┐
+                 │ MERGE INTO LOCAL RELEASE │
+                 │ CANDIDATE                │
+                 └────────────┬─────────────┘
+                              │
+                              ▼
+                 ┌──────────────────────────┐
+                 │ COMPLETE SYSTEM TEST     │
+                 └────────────┬─────────────┘
+                              │
+                              ▼
+                 ┌──────────────────────────┐
+                 │ PERFORMANCE BENCHMARKS   │
+                 └────────────┬─────────────┘
+                              │
+                              ▼
+                 ┌──────────────────────────┐
+                 │ DOCUMENTATION UPDATE     │
+                 └────────────┬─────────────┘
+                              │
+                              ▼
+                 ┌──────────────────────────┐
+                 │    RELEASE CANDIDATE     │
+                 └────────────┬─────────────┘
+                              │
+                              ▼
+                 ┌──────────────────────────┐
+                 │ FINAL RELEASE VALIDATION │
+                 └────────────┬─────────────┘
+                              │
+                              ▼
+                       ┌─────────────┐
+                       │    PUSH     │
+                       │   RELEASE   │
+                       └─────────────┘
+```
+
+---
+
+## The MDRAP Development Protocol
+
+1. **Never modify `main` directly.** All work occurs on feature or fix branches branching from `develop`.
+2. **Every feature begins in its own branch.** Branch naming convention: `feature/<topic>`, `fix/<issue>`, or `release/<version>`.
+3. **Every feature must have tests.** Untested code is dead code.
+4. **Existing tests must continue to pass.** Zero test regressions allowed across the 800+ suite.
+5. **New functionality must not silently change existing public APIs.** Adhere to [`docs/API_STABILITY.md`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/docs/API_STABILITY.md).
+6. **Security-sensitive changes require explicit security testing.**
+7. **Performance-sensitive changes require benchmarks.** Measure before claiming; record JSON outputs under `benchmarks/`.
+8. **Native code requires sanitizer testing.** C fastpath hot paths require memory safety verification.
+9. **Changes are locally validated before integration.** Run `./scripts/check.sh` locally.
+10. **A validated local checkpoint is created before merging the feature.**
+11. **The complete system is tested after integration.**
+12. **Performance is benchmarked after integration.**
+13. **Documentation is updated only after the implementation has passed validation.** Docs reflect tested reality, not intentions.
+14. **Documentation examples must be executable or verified.**
+15. **Release candidates are frozen.** No new features enter a release candidate.
+16. **Release candidates are rebuilt from a clean environment.**
+17. **Only fully validated release candidates are tagged and pushed.**
+18. **Every release receives a changelog.** Group into *Added*, *Changed*, *Fixed*, *Security*, *Performance*, and *Breaking Changes*.
+19. **Breaking changes require a major version.**
+20. **No feature is considered stable until it has sufficient tests, documentation, and real-world validation.**
+
+---
+
+## Branch Architecture
+
+```
+main (Production releases only, tagged vX.Y.Z)
+ │
+ ├── develop (Active integration branch)
+ │    │
+ │    ├── feature/quality-v2
+ │    ├── feature/websocket-hardening
+ │    ├── feature/feed-sdk
+ │    │
+ │    └── fix/issue-123
+ │
+ └── release/v1.0.0-rc1
+```
+
+- **`main`**: Protected. Only accepts merges from fully validated release candidates (`release/vX.Y.Z`).
+- **`develop`**: Primary collaboration branch. All features and bug fixes merge here via PR after passing all 9 local gates.
+- **`feature/*`**: Isolated feature branches.
+- **`fix/*`**: Bug fixes and security patches.
+- **`release/*`**: Release candidate branches created for stabilization, final benchmarking, and clean rebuild validation.
+
+---
+
+## Setup & Prerequisites
 
 - Python 3.10+
-- GCC or Clang (optional, required for native C fastpath acceleration)
-
-## Setup
+- GCC or Clang (for native C fastpath compilation)
 
 ```bash
 git clone https://github.com/Aryan-20-04/mdrap.git
 cd mdrap
+git checkout develop   # Always branch from develop!
 pip install -e ".[all]"
 python build_fastpath.py
 ```
 
 > [!TIP]
-> - **Full Development Environment (Recommended)**: `pip install -e ".[all]"` (or `pip install -r requirements.txt`) installs all development tools (`pytest`, `pytest-asyncio`, `pytest-timeout`), REST/WebSocket layers (`fastapi`, `uvicorn`, `httpx`), and columnar analytics (`pyarrow`, `duckdb`).
-> - **Zero-Dependency Core**: `pip install -e .` runs the pipeline, validation, and storage using only Python standard library. Optional API test suites gracefully skip when optional dependencies are absent.
+> - **Full Development Environment (Recommended)**: `pip install -e ".[all]"` (or `pip install -r requirements.txt`) installs all optional modules, API frameworks (`fastapi`, `uvicorn`, `httpx`), and testing tools (`pytest`, `pytest-asyncio`, `pytest-cov`, `pytest-timeout`).
+> - **Zero-Dependency Minimal Core Engine**: `pip install -e .` installs the engine using pure Python standard library only.
 
-## Running Tests
+---
 
-Run the test suite with a 30-second timeout guard:
+## The Local Validation Command (`check.sh`)
 
-```bash
-pytest tests/ -v --timeout=30
-```
-
-> [!IMPORTANT]
-> All tests must pass cleanly (`pytest tests/ -v`) prior to opening or merging any pull request. Never bypass test failures.
-
-## Code Style
-
-Lint and format code using Ruff:
+Before opening any pull request or committing changes, execute the 9-gate validation script:
 
 ```bash
-ruff check src/
-ruff format src/
+./scripts/check.sh        # Linux / macOS / Git Bash
+# or:
+.\scripts\check.bat       # Windows Command Prompt
+python scripts/check.py   # Universal cross-platform runner
 ```
 
-## Project Rules
+This single command executes:
+1. **Code formatting check**: `ruff format --check src/`
+2. **Static analysis & linting**: `ruff check src/`
+3. **Rules single-source-of-truth parity**: `python tools/gen_reasons.py --check`
+4. **Unit test suite**: Fast path core unit tests
+5. **Integration test suite**: Guarantees, decoupled sinks, and end-to-end pipelines
+6. **Security checks**: RBAC boundaries, token sanitization, and environment diagnostics
+7. **Dependency checks**: CVE hygiene thresholds
+8. **Native compilation**: `python build_fastpath.py`
+9. **Native tests**: Fastpath library load & FFI micro-benchmark smoke check
 
-- **Pure Python + rich only**: Standard library only; `rich` is the sole UI dependency.
-- **No Async / No Threading**: Pipeline execution remains synchronous for V1.
-- **CLI-Only**: No HTTP, REST, or WebSocket services for V1.
-- **Never Drop Bad Data**: Quarantine invalid or malformed data; never discard silently.
-- **Quality Hierarchy**: `INVALID` > `SUSPICIOUS` > `VALID` (status never downgrades).
-- **ID Generation**: Use `itertools.count()`, not `uuid.uuid4()`.
+If any check fails, the script exits immediately with code `1`. **Nothing proceeds.**
 
-## Extension Development
+---
 
-MDRAP provides standardized extension interfaces for integrating external venues, custom validation logic, and alternate persistence engines without altering core engine internals. Refer to the [Architecture Map](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/docs/map.md) for module orientation.
+## Public API & Extension Development
+
+Consult [`docs/API_STABILITY.md`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/docs/API_STABILITY.md) for stability contracts (`STABLE`, `BETA`, `EXPERIMENTAL`, `INTERNAL`).
+
+MDRAP provides standardized extension interfaces for integrating external venues, custom validation logic, and alternate persistence engines:
 
 ### 1. Adding a New Feed Adapter
-Exchange and venue integrations implement the [`FeedAdapter`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/adapters/__init__.py) protocol (`open()`, `__iter__()`, `close()`) and emit standardized [`RawEvent`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/models.py) objects. Adapters are discovered dynamically at runtime via the `mdrap.adapters` entry point group.
+Exchange and venue integrations implement the [`FeedAdapter`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/protocols.py) protocol (`open()`, `__iter__()`, `close()`) and emit standardized [`RawEvent`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/models.py) objects.
 - Guide: [Feed Adapter Development](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/docs/extending/feed-adapter.md)
-- Reference: [`src/adapters/__init__.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/adapters/__init__.py)
 
 ### 2. Adding a Custom Quality Rule
-User-defined quality validation rules are registered in the user bitmask range (bits 32–63) using the [`@register_rule`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/rules.py) decorator from [`src/rules.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/rules.py). User rules run post-native evaluation and cannot crash the pipeline or downgrade existing anomaly statuses.
+User-defined validation rules are registered in the user bitmask range (bits 32–63) using the [`@register_rule`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/rules.py) decorator from [`src/rules.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/rules.py). User rules run post-native evaluation and cannot crash the pipeline or downgrade existing anomaly statuses.
 - Guide: [Custom Quality Rules](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/docs/extending/quality-rules.md)
-- Reference: [`src/rules.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/rules.py)
 
 ### 3. Implementing a Storage Backend
-Custom persistence engines (e.g. Parquet, cloud object stores, or time-series databases) implement the [`StorageBackend`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/protocols.py) protocol defined in [`src/protocols.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/protocols.py), providing swappable archival and retrieval interfaces.
+Custom persistence engines implement the [`StorageBackend`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/protocols.py) protocol defined in [`src/protocols.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/protocols.py).
 - Guide: [Storage Backend Implementation](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/docs/extending/storage-backend.md)
-- Reference: [`src/protocols.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/protocols.py)
 
-## Stability Labels
+---
 
-Every Python module in `src/` must declare an explicit stability contract via the module-level `__stability__` attribute:
+## Baseline Verification Report
 
-```python
-__stability__ = "stable"  # "stable" | "beta" | "experimental"
-```
-
-- **`stable`**: Public API is frozen. Zero breaking changes without a formal deprecation period (at least one minor release cycle emitting a `DeprecationWarning`).
-- **`beta`**: Functionally complete and tested, but API ergonomics may evolve across minor versions.
-- **`experimental`**: Active prototyping or exploratory research. No backward-compatibility guarantees; interfaces may change or be removed at any time.
-
-> [!NOTE]
-> All new modules submitted to MDRAP default to `"experimental"`. Promotion to higher tiers requires test coverage ($\ge 85\%$ for `beta`, $\ge 90\%$ for `stable`), complete documentation, and at least one production release cycle.
-> For details, see [ADR 0005: Backbone Stability Policy](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/docs/decisions/0005-backbone-stability-policy.md).
-
-## Good First Issues
-
-- **Tests**: Add unit or edge-case tests in [`tests/`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/tests/).
-- **Quality Rules**: Implement or refine data validation rules in [`src/quality.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/quality.py).
-- **CLI Commands**: Add or improve CLI commands and reporting in [`src/cli.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/cli.py).
-
-## Pull Request Process
-
-1. Create a focused branch for your change.
-2. Verify all tests pass: `pytest tests/ -v --timeout=30`.
-3. Verify style is clean: `ruff check src/` and `ruff format --check src/`.
-4. Ensure any new module declares its `__stability__` attribute.
-5. Submit your pull request with a concise summary of changes and test results.
+For the frozen system baseline data, host specifications, and full module catalog, see [`docs/development/baseline.md`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/docs/development/baseline.md).

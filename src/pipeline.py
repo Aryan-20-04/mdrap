@@ -38,14 +38,14 @@ import threading
 import time
 from typing import Any, TYPE_CHECKING
 
-logger = logging.getLogger(__name__)
-
 from gateway import SchemaError, ingest, normalize
 from metrics import RunMetrics
 from models import CanonicalEvent, EventType, QualityStatus, RawEvent, Reason
 from quality import QualityEngine
 from reconciliation import Reconciler, ReliabilityTracker
 from storage import Store
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from archive import RawArchive
@@ -67,7 +67,9 @@ MAX_QUARANTINE_PAYLOAD_BYTES: int = 65536  # 64 KiB safety collar against storag
 DEFAULT_GC_GEN0_THRESHOLD: int = 50_000
 DEFAULT_GC_GEN1_THRESHOLD: int = 10
 DEFAULT_GC_GEN2_THRESHOLD: int = 10
-INV_NS_PER_SECOND: float = 1e-9  # Inverse nanoseconds multiplier for zero-division latency calculation
+INV_NS_PER_SECOND: float = (
+    1e-9  # Inverse nanoseconds multiplier for zero-division latency calculation
+)
 
 # Precomputed immutable JSON strings: eliminates per-event serialization overhead
 _VALIDATIONS_RUN_JSON = json.dumps(
@@ -132,12 +134,14 @@ def _safe_payload_json(payload: Any) -> str:
     s = json.dumps(payload, default=str)
     if len(s) > MAX_QUARANTINE_PAYLOAD_BYTES:
         h = hashlib.sha256(s.encode("utf-8")).hexdigest()
-        return json.dumps({
-            "truncated": True,
-            "sha256": h,
-            "orig_bytes": len(s),
-            "prefix": s[:MAX_QUARANTINE_PAYLOAD_BYTES],
-        })
+        return json.dumps(
+            {
+                "truncated": True,
+                "sha256": h,
+                "orig_bytes": len(s),
+                "prefix": s[:MAX_QUARANTINE_PAYLOAD_BYTES],
+            }
+        )
     return s
 
 
@@ -227,7 +231,9 @@ class Pipeline:
             except Exception as exc:
                 self._last_writer_exc = exc
                 self._spill_dead_letter(canon, quar, lin)
-                logger.error("Async storage writer error, spilled to dead letter: %s", exc)
+                logger.error(
+                    "Async storage writer error, spilled to dead letter: %s", exc
+                )
             finally:
                 self._write_queue.task_done()
 
@@ -255,7 +261,9 @@ class Pipeline:
             if isinstance(raw.payload, dict)
             else instrument_fallback
         )
-        r_val = reason_code.value if isinstance(reason_code, Reason) else str(reason_code)
+        r_val = (
+            reason_code.value if isinstance(reason_code, Reason) else str(reason_code)
+        )
         fake = CanonicalEvent(
             event_id=raw.raw_id,
             instrument_id=instrument,
@@ -531,7 +539,8 @@ class Pipeline:
                     continue
                 # Cryptographic HMAC verification (P2)
                 if isinstance(raw.payload, dict) and (
-                    self.security.hmac_required(raw.source) or "signature" in raw.payload
+                    self.security.hmac_required(raw.source)
+                    or "signature" in raw.payload
                 ):
                     sig = raw.payload.get("signature")
                     if not sig or not self.security.verify_payload(
@@ -567,18 +576,14 @@ class Pipeline:
 
         # Batch quality evaluation across all valid normalized events
         if valid_events:
-            t_qual_start_ns = time.perf_counter_ns()
             if hasattr(self.quality, "evaluate_batch"):
                 self.quality.evaluate_batch(valid_events)
             else:
                 for ev in valid_events:
                     self.quality.evaluate(ev)
             t_qual_end_ns = time.perf_counter_ns()
-            avg_qual_latency_s = (
-                (t_qual_end_ns - t_qual_start_ns) * INV_NS_PER_SECOND
-            ) / len(valid_events)
         else:
-            avg_qual_latency_s = 0.0
+            pass
 
         # Downstream sequential reconciliation & persistence, strictly in arrival order (A5)
         for valid_idx, event in zip(valid_indices, valid_events):
@@ -641,19 +646,34 @@ class Pipeline:
         fname = os.path.join(dl_dir, f"spill-{time.time_ns()}.jsonl")
         with open(fname, "w", encoding="utf-8") as f:
             for c in canon:
-                f.write(json.dumps(c.to_dict() if hasattr(c, "to_dict") else str(c)) + "\n")
+                f.write(
+                    json.dumps(c.to_dict() if hasattr(c, "to_dict") else str(c)) + "\n"
+                )
             for q in quar:
-                f.write(json.dumps({"type": "quarantine", "row": q}, default=str) + "\n")
-            for l in lin:
-                f.write(json.dumps({"type": "lineage", "row": l}, default=str) + "\n")
+                f.write(
+                    json.dumps({"type": "quarantine", "row": q}, default=str) + "\n"
+                )
+            for lineage_row in lin:
+                f.write(
+                    json.dumps({"type": "lineage", "row": lineage_row}, default=str)
+                    + "\n"
+                )
             f.flush()
             os.fsync(f.fileno())
 
     def flush(self, wait: bool = True):
         if self._canonical_batch or self._quarantine_batch or self._lineage_batch:
             self._last_flush_ts = time.time()
-            canon, quar, lin = self._canonical_batch, self._quarantine_batch, self._lineage_batch
-            self._canonical_batch, self._quarantine_batch, self._lineage_batch = [], [], []
+            canon, quar, lin = (
+                self._canonical_batch,
+                self._quarantine_batch,
+                self._lineage_batch,
+            )
+            self._canonical_batch, self._quarantine_batch, self._lineage_batch = (
+                [],
+                [],
+                [],
+            )
             health_rows = self._collect_health_rows()
 
             if self._async_writer_enabled:
@@ -661,7 +681,9 @@ class Pipeline:
                     self._write_queue.put((canon, quar, lin, health_rows), timeout=1.0)
                 except queue.Full:
                     self._spill_dead_letter(canon, quar, lin)
-                    logger.warning("Async storage queue full: spilled batch to dead letter")
+                    logger.warning(
+                        "Async storage queue full: spilled batch to dead letter"
+                    )
             else:
                 self._sync_flush(canon, quar, lin, health_rows)
 

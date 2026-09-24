@@ -7,16 +7,18 @@ Rules can be registered via:
     1. ``@register_rule(bit=N)`` decorator (in-process)
     2. ``importlib.metadata.entry_points(group="mdrap.quality_rules")`` (third-party packages)
 """
+
 from __future__ import annotations
 
 import sys
 
 from dataclasses import dataclass
-from typing import Callable, Any
+from typing import Callable
 from models import CanonicalEvent, QualityStatus
 
 USER_BIT_MIN = 32
 USER_BIT_MAX = 63
+
 
 @dataclass(slots=True)
 class UserRule:
@@ -48,7 +50,9 @@ def register_rule(
 
     def decorator(fn: Callable[[CanonicalEvent], bool]):
         if bit in _USER_RULES:
-            raise ValueError(f"Rule bit {bit} is already registered to '{_USER_RULES[bit].name}'")
+            raise ValueError(
+                f"Rule bit {bit} is already registered to '{_USER_RULES[bit].name}'"
+            )
         if clean_name in _USER_RULE_NAMES:
             raise ValueError(f"Rule name '{clean_name}' is already registered")
 
@@ -96,7 +100,10 @@ def evaluate_user_rules(event: CanonicalEvent) -> CanonicalEvent:
                 # Monotonic status escalation
                 if rule.severity == QualityStatus.INVALID:
                     event.quality_status = QualityStatus.INVALID
-                elif rule.severity == QualityStatus.SUSPICIOUS and event.quality_status != QualityStatus.INVALID:
+                elif (
+                    rule.severity == QualityStatus.SUSPICIOUS
+                    and event.quality_status != QualityStatus.INVALID
+                ):
                     event.quality_status = QualityStatus.SUSPICIOUS
 
                 if rule.name not in event.reasons:
@@ -144,4 +151,3 @@ def discover_quality_rules() -> int:
 
 
 __stability__ = "stable"
-

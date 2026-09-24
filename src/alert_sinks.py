@@ -23,8 +23,7 @@ import threading
 import time
 import urllib.request
 import urllib.error
-from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 from alerts import Alert, AlertEngine, AlertStatus, AlertType
 from protocols import AlertSink, DeliveryResult
@@ -100,7 +99,9 @@ class BaseHttpAlertSink:
         if self.security_manager and not self.signing_secret_key:
             # Check or create default alert feed secret
             try:
-                self.security_manager._secrets["MDRAP_ALERTS"] = b"mdrap-default-alert-signing-key-32b"
+                self.security_manager._secrets["MDRAP_ALERTS"] = (
+                    b"mdrap-default-alert-signing-key-32b"
+                )
             except Exception:
                 pass
 
@@ -126,14 +127,19 @@ class BaseHttpAlertSink:
 
         if self.security_manager and hasattr(self.security_manager, "sign_payload"):
             try:
-                sig = self.security_manager.sign_payload("MDRAP_ALERTS", payload_with_ts)
+                sig = self.security_manager.sign_payload(
+                    "MDRAP_ALERTS", payload_with_ts
+                )
                 return sig, ts_str
             except Exception:
                 pass
 
         import hmac
+
         secret = (self.signing_secret_key or "default-alert-key").encode("utf-8")
-        canonical_bytes = json.dumps(payload_with_ts, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        canonical_bytes = json.dumps(
+            payload_with_ts, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")
         sig = hmac.digest(secret, canonical_bytes, "sha256").hex()
         return sig, ts_str
 
@@ -172,7 +178,10 @@ class BaseHttpAlertSink:
         for attempt in range(1, self.max_retries + 1):
             try:
                 req = urllib.request.Request(
-                    self.endpoint_url, data=payload_bytes, headers=headers, method="POST"
+                    self.endpoint_url,
+                    data=payload_bytes,
+                    headers=headers,
+                    method="POST",
                 )
                 with urllib.request.urlopen(req, timeout=self.timeout_s) as resp:
                     if 200 <= resp.status < 300:
@@ -247,7 +256,11 @@ class SlackAlertSink(BaseHttpAlertSink):
         super().__init__(name="slack", endpoint_url=webhook_url, **kwargs)
 
     def format_payload(self, alert: Alert) -> dict:
-        color = "#e01e5a" if "INVALID" in alert.condition or "DRAWDOWN" in alert.condition else "#ecb22e"
+        color = (
+            "#e01e5a"
+            if "INVALID" in alert.condition or "DRAWDOWN" in alert.condition
+            else "#ecb22e"
+        )
         return {
             "text": f"🚨 *MDRAP Alert:* {alert.condition}",
             "attachments": [
@@ -256,8 +269,19 @@ class SlackAlertSink(BaseHttpAlertSink):
                     "fields": [
                         {"title": "Symbol", "value": alert.symbol, "short": True},
                         {"title": "Condition", "value": alert.condition, "short": True},
-                        {"title": "Triggered Value", "value": f"{alert.triggered_value:.4f}", "short": True},
-                        {"title": "Timestamp", "value": time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime(alert.triggered_at or time.time())), "short": True},
+                        {
+                            "title": "Triggered Value",
+                            "value": f"{alert.triggered_value:.4f}",
+                            "short": True,
+                        },
+                        {
+                            "title": "Timestamp",
+                            "value": time.strftime(
+                                "%Y-%m-%d %H:%M:%S UTC",
+                                time.gmtime(alert.triggered_at or time.time()),
+                            ),
+                            "short": True,
+                        },
                     ],
                     "footer": "MDRAP Real-Time Monitoring",
                 }
@@ -278,7 +302,11 @@ class PagerDutyAlertSink(BaseHttpAlertSink):
         self.routing_key = routing_key
 
     def format_payload(self, alert: Alert) -> dict:
-        severity = "critical" if alert.alert_type in (AlertType.QUALITY_DEGRADATION, AlertType.DRAWDOWN) else "warning"
+        severity = (
+            "critical"
+            if alert.alert_type in (AlertType.QUALITY_DEGRADATION, AlertType.DRAWDOWN)
+            else "warning"
+        )
         return {
             "routing_key": self.routing_key,
             "event_action": "trigger",
@@ -311,7 +339,10 @@ class MockAlertSink:
     def deliver(self, alert: Alert) -> DeliveryResult:
         if self.is_closed:
             return DeliveryResult(
-                alert_id=alert.alert_id, sink_name=self.name, status="FAILED", error_message="Closed"
+                alert_id=alert.alert_id,
+                sink_name=self.name,
+                status="FAILED",
+                error_message="Closed",
             )
 
         if self.simulate_failure:
@@ -455,7 +486,11 @@ class AlertDeliveryWorker:
         )
 
         with self._lock:
-            targets = [s for s in self.sinks if not sink_name or getattr(s, "name", "") == sink_name]
+            targets = [
+                s
+                for s in self.sinks
+                if not sink_name or getattr(s, "name", "") == sink_name
+            ]
 
         if not targets:
             return DeliveryResult(

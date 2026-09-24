@@ -4,6 +4,7 @@ Loads, resolves, and hashes `mdrap.toml` configurations using Python stdlib `tom
 Resolution precedence ladder:
     defaults -> venue -> instrument_class -> instrument
 """
+
 from __future__ import annotations
 
 import hashlib

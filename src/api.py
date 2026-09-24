@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import asynccontextmanager
-import hashlib
 import json
 import logging
 import os
@@ -36,7 +35,6 @@ from fastapi import (
     Query,
     Request,
     Response,
-    Security,
     WebSocket,
     WebSocketDisconnect,
     status,
@@ -49,11 +47,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from bbo import BBOEngine
 from depth import ConsolidatedDepthEngine
-from models import CanonicalEvent, EventType, QualityStatus, RawEvent
 from pipeline import Pipeline
 from reconciliation import ReliabilityTracker
 from security import (
-    AccessDenied,
     ClientEntitlement,
     Role,
     SecurityManager,
@@ -72,6 +68,7 @@ logger = logging.getLogger("mdrap.api")
 # Pydantic Schemas for Requests & Responses
 # ---------------------------------------------------------------------------
 
+
 class HealthResponse(BaseModel):
     status: str = "healthy"
     version: str = "2.2.0"
@@ -84,11 +81,21 @@ class HealthResponse(BaseModel):
 
 
 class FeedRegisterRequest(BaseModel):
-    source: str = Field(..., description="Feed source name (e.g. BINANCE, POLYGON, SIMULATOR)")
-    provider: str = Field("simulator", description="Provider type: crypto, polygon, databento, simulator")
-    symbols: List[str] = Field(default_factory=lambda: ["BTC/USD"], description="List of ticker symbols")
-    secret: Optional[str] = Field(None, description="Optional HMAC pre-shared key or feed secret")
-    config: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Provider specific options")
+    source: str = Field(
+        ..., description="Feed source name (e.g. BINANCE, POLYGON, SIMULATOR)"
+    )
+    provider: str = Field(
+        "simulator", description="Provider type: crypto, polygon, databento, simulator"
+    )
+    symbols: List[str] = Field(
+        default_factory=lambda: ["BTC/USD"], description="List of ticker symbols"
+    )
+    secret: Optional[str] = Field(
+        None, description="Optional HMAC pre-shared key or feed secret"
+    )
+    config: Optional[Dict[str, Any]] = Field(
+        default_factory=dict, description="Provider specific options"
+    )
 
 
 class FeedItem(BaseModel):
@@ -103,11 +110,15 @@ class FeedItem(BaseModel):
 class CreateKeyRequest(BaseModel):
     client_id: str = Field(..., description="Descriptive name or client identifier")
     role: str = Field("VIEWER", description="Role: VIEWER, OPERATOR, or ADMIN")
-    expires_at: Optional[float] = Field(None, description="Optional unix timestamp expiration")
+    expires_at: Optional[float] = Field(
+        None, description="Optional unix timestamp expiration"
+    )
 
 
 class CreateKeyResponse(BaseModel):
-    token: str = Field(..., description="Raw secret API key (shown ONCE, never retrievable again)")
+    token: str = Field(
+        ..., description="Raw secret API key (shown ONCE, never retrievable again)"
+    )
     key_prefix: str
     client_id: str
     role: str
@@ -128,6 +139,7 @@ class KeyItem(BaseModel):
 # Application State Container
 # ---------------------------------------------------------------------------
 
+
 class AppState:
     """Singleton state container for the MDRAP self-hosted runtime."""
 
@@ -141,7 +153,9 @@ class AppState:
         self.store = store or Store(self.db_path)
         self.security_manager = security_manager or SecurityManager(store=self.store)
         self.reliability = ReliabilityTracker()
-        self.watchdog = SourceWatchdog(reliability=self.reliability, silence_threshold_s=3.0)
+        self.watchdog = SourceWatchdog(
+            reliability=self.reliability, silence_threshold_s=3.0
+        )
         self.bbo = BBOEngine(quote_ttl_s=10.0, watchdog=self.watchdog)
         self.depth = ConsolidatedDepthEngine(depth_ttl_s=10.0, watchdog=self.watchdog)
         self.pipeline = Pipeline(
@@ -186,7 +200,9 @@ class AppState:
 
     async def broadcast_event(self, event_data: dict):
         """Dispatch validated canonical tick or BBO event to connected WebSocket clients."""
-        sym = str(event_data.get("instrument_id") or event_data.get("symbol") or "").upper()
+        sym = str(
+            event_data.get("instrument_id") or event_data.get("symbol") or ""
+        ).upper()
         dead_sockets = []
 
         # Copy keys to avoid mutation during iteration
@@ -206,6 +222,7 @@ class AppState:
 # ---------------------------------------------------------------------------
 # FastAPI Factory & Lifespan
 # ---------------------------------------------------------------------------
+
 
 def create_app(
     db_path: Optional[str] = None,
@@ -300,7 +317,9 @@ def create_app(
                 )
 
             actor_role = ent.role if isinstance(ent.role, Role) else Role[str(ent.role)]
-            if _ROLE_HIERARCHY.get(actor_role, 0) < _ROLE_HIERARCHY.get(required_role, 99):
+            if _ROLE_HIERARCHY.get(actor_role, 0) < _ROLE_HIERARCHY.get(
+                required_role, 99
+            ):
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail=(
@@ -340,7 +359,9 @@ def create_app(
                 "name": "mdrap_feed",
             },
             watchdog={
-                "healthy_sources": len([s for s, state in states.items() if state == "HEALTHY"]),
+                "healthy_sources": len(
+                    [s for s, state in states.items() if state == "HEALTHY"]
+                ),
                 "total_monitored": len(states),
                 "sources": states,
             },
@@ -426,7 +447,9 @@ def create_app(
         instrument_id: Optional[str] = Query(None, description="Ticker symbol filter"),
         limit: int = Query(100, ge=1, le=1000),
         since_ts: Optional[float] = Query(None, description="Unix timestamp minimum"),
-        status_filter: Optional[str] = Query(None, alias="status", description="VALID or SUSPICIOUS"),
+        status_filter: Optional[str] = Query(
+            None, alias="status", description="VALID or SUSPICIOUS"
+        ),
         _auth: ClientEntitlement = Depends(require_role(Role.VIEWER)),
     ):
         st: AppState = request.app.state.mdrap
@@ -468,7 +491,11 @@ def create_app(
         if source:
             items = [r for r in items if r.get("source", "").upper() == source.upper()]
         if instrument_id:
-            items = [r for r in items if r.get("instrument_id", "").upper() == instrument_id.upper()]
+            items = [
+                r
+                for r in items
+                if r.get("instrument_id", "").upper() == instrument_id.upper()
+            ]
         return items
 
     # 6. Audit Trail & Verification
@@ -536,7 +563,9 @@ def create_app(
                     "timestamp": ev.get("exchange_timestamp"),
                 }
         if not quote:
-            raise HTTPException(status_code=404, detail=f"No BBO quote available for instrument '{sym}'")
+            raise HTTPException(
+                status_code=404, detail=f"No BBO quote available for instrument '{sym}'"
+            )
         return {"instrument_id": sym, "bbo": quote}
 
     # 8. Consolidated L2 Depth
@@ -551,7 +580,12 @@ def create_app(
         ladder_obj = st.depth.current_ladder(sym)
         ladder = ladder_obj.to_dict() if ladder_obj else None
         if not ladder:
-            ladder = {"instrument_id": sym, "bids": [], "asks": [], "timestamp": time.time()}
+            ladder = {
+                "instrument_id": sym,
+                "bids": [],
+                "asks": [],
+                "timestamp": time.time(),
+            }
         return {"instrument_id": sym, "depth": ladder}
 
     # 9. Configuration (Sanitized, zero secrets)
@@ -566,8 +600,17 @@ def create_app(
             "version": "2.2.0",
             "durability": getattr(st.store, "durability", "balanced"),
             "supported_venues": [
-                "BINANCE", "COINBASE", "KRAKEN", "OKX", "BYBIT",
-                "NASDAQ", "CME", "NYSE", "BATS", "IEX", "NSE"
+                "BINANCE",
+                "COINBASE",
+                "KRAKEN",
+                "OKX",
+                "BYBIT",
+                "NASDAQ",
+                "CME",
+                "NYSE",
+                "BATS",
+                "IEX",
+                "NSE",
             ],
             "rules_active": [
                 "RULE_001_STALE_TICK",
@@ -595,7 +638,11 @@ def create_app(
         _auth: ClientEntitlement = Depends(require_role(Role.ADMIN)),
     ):
         st: AppState = request.app.state.mdrap
-        role = Role[req.role.upper()] if req.role.upper() in Role.__members__ else Role.VIEWER
+        role = (
+            Role[req.role.upper()]
+            if req.role.upper() in Role.__members__
+            else Role.VIEWER
+        )
         raw_token = f"mdrap_live_{secrets.token_urlsafe(24)}"
 
         ent = st.security_manager.register_api_key(
@@ -649,7 +696,9 @@ def create_app(
         if not revoked:
             # Try finding by exact prefix or token_hash
             for k in st.security_manager.list_api_keys():
-                if k.key_prefix == key_id or (k.token_hash and k.token_hash.startswith(key_id)):
+                if k.key_prefix == key_id or (
+                    k.token_hash and k.token_hash.startswith(key_id)
+                ):
                     st.security_manager.revoke_api_key(k.token_hash)
                     revoked = True
                     break
@@ -692,23 +741,29 @@ def create_app(
 
                 tok = auth_data.get("token") or auth_data.get("auth")
                 if tok:
-                    client_ent = st.security_manager.get_entitlement(tok, active_only=True)
+                    client_ent = st.security_manager.get_entitlement(
+                        tok, active_only=True
+                    )
             except Exception:
                 pass
 
         if not client_ent:
-            await websocket.send_json({"type": "ERROR", "error": "Unauthorized: Missing or invalid API key"})
+            await websocket.send_json(
+                {"type": "ERROR", "error": "Unauthorized: Missing or invalid API key"}
+            )
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
             return
 
         # 2. Register Client Subscription
         subscribed_symbols: Set[str] = set()
         st.subscribers[websocket] = subscribed_symbols
-        await websocket.send_json({
-            "type": "ACK",
-            "message": f"Connected to MDRAP Stream. Role: {client_ent.role.value if hasattr(client_ent.role, 'value') else client_ent.role}",
-            "client_id": client_ent.client_id,
-        })
+        await websocket.send_json(
+            {
+                "type": "ACK",
+                "message": f"Connected to MDRAP Stream. Role: {client_ent.role.value if hasattr(client_ent.role, 'value') else client_ent.role}",
+                "client_id": client_ent.client_id,
+            }
+        )
 
         try:
             while True:
@@ -738,10 +793,12 @@ def create_app(
                         syms = [syms]
                     for s in syms:
                         subscribed_symbols.add(s.upper())
-                    await websocket.send_json({
-                        "type": "SUBSCRIPTION_UPDATE",
-                        "subscribed": list(subscribed_symbols),
-                    })
+                    await websocket.send_json(
+                        {
+                            "type": "SUBSCRIPTION_UPDATE",
+                            "subscribed": list(subscribed_symbols),
+                        }
+                    )
 
                 elif action in ("UNSUB", "UNSUBSCRIBE"):
                     syms = cmd_data.get("symbols", [])
@@ -749,19 +806,25 @@ def create_app(
                         syms = [syms]
                     for s in syms:
                         subscribed_symbols.discard(s.upper())
-                    await websocket.send_json({
-                        "type": "SUBSCRIPTION_UPDATE",
-                        "subscribed": list(subscribed_symbols),
-                    })
+                    await websocket.send_json(
+                        {
+                            "type": "SUBSCRIPTION_UPDATE",
+                            "subscribed": list(subscribed_symbols),
+                        }
+                    )
 
                 elif action in ("PING",):
-                    await websocket.send_json({"type": "PONG", "timestamp": time.time()})
+                    await websocket.send_json(
+                        {"type": "PONG", "timestamp": time.time()}
+                    )
 
                 else:
-                    await websocket.send_json({
-                        "type": "ERROR",
-                        "error": f"Unknown command '{action}'. Supported: SUB, UNSUB, PING",
-                    })
+                    await websocket.send_json(
+                        {
+                            "type": "ERROR",
+                            "error": f"Unknown command '{action}'. Supported: SUB, UNSUB, PING",
+                        }
+                    )
 
         except WebSocketDisconnect:
             pass
@@ -783,13 +846,18 @@ def create_app(
 
     @app.get("/metrics", tags=["Metrics"])
     def get_prometheus_metrics(request: Request):
-        metrics_auth_required = os.environ.get("MDRAP_METRICS_AUTH", "0").lower() in ("1", "true")
+        metrics_auth_required = os.environ.get("MDRAP_METRICS_AUTH", "0").lower() in (
+            "1",
+            "true",
+        )
 
         # Trust the real TCP peer, never an untrusted client-supplied header,
         # unless that peer is an explicitly configured trusted reverse proxy.
         peer_host = request.client.host if request.client else "unknown"
         trusted_proxies = {
-            ip.strip() for ip in os.environ.get("MDRAP_TRUSTED_PROXY_IPS", "").split(",") if ip.strip()
+            ip.strip()
+            for ip in os.environ.get("MDRAP_TRUSTED_PROXY_IPS", "").split(",")
+            if ip.strip()
         }
 
         if peer_host in trusted_proxies:
@@ -819,7 +887,9 @@ def create_app(
                 )
 
         output = global_prometheus_exporter.render(app_state)
-        return Response(content=output, media_type="text/plain; version=0.0.4; charset=utf-8")
+        return Response(
+            content=output, media_type="text/plain; version=0.0.4; charset=utf-8"
+        )
 
     app.include_router(router)
     return app

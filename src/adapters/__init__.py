@@ -3,6 +3,7 @@
 Provides the FeedAdapter Protocol for exchange feed ingestion and dynamic
 discovery via standard library `importlib.metadata.entry_points(group="mdrap.adapters")`.
 """
+
 from __future__ import annotations
 
 import sys
@@ -48,7 +49,9 @@ def discover_adapters() -> dict[str, type[FeedAdapter]]:
         for ep in eps:
             try:
                 adapter_cls = ep.load()
-                if isinstance(adapter_cls, type) and issubclass(adapter_cls, FeedAdapter):
+                if isinstance(adapter_cls, type) and issubclass(
+                    adapter_cls, FeedAdapter
+                ):
                     adapters[ep.name] = adapter_cls
             except Exception:
                 pass

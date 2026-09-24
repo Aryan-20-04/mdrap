@@ -99,26 +99,42 @@ class QualityConfig:
             return self
 
         return QualityConfig(
-            staleness_threshold_s=float(overrides.get(
-                "staleness_threshold_s", self.staleness_threshold_s
-            )),
-            price_anomaly_stddev=float(overrides.get(
-                "price_anomaly_stddev", self.price_anomaly_stddev
-            )),
+            staleness_threshold_s=float(
+                overrides.get("staleness_threshold_s", self.staleness_threshold_s)
+            ),
+            price_anomaly_stddev=float(
+                overrides.get("price_anomaly_stddev", self.price_anomaly_stddev)
+            ),
             price_window=int(overrides.get("price_window", self.price_window)),
-            price_min_samples=int(overrides.get("price_min_samples", self.price_min_samples)),
-            price_reseed_after=int(overrides.get("price_reseed_after", self.price_reseed_after)),
-            price_sigma_floor_rel=float(overrides.get("price_sigma_floor_rel", self.price_sigma_floor_rel)),
-            price_reseed_band_rel=float(overrides.get("price_reseed_band_rel", self.price_reseed_band_rel)),
-            max_future_skew_s=float(overrides.get("max_future_skew_s", self.max_future_skew_s)),
+            price_min_samples=int(
+                overrides.get("price_min_samples", self.price_min_samples)
+            ),
+            price_reseed_after=int(
+                overrides.get("price_reseed_after", self.price_reseed_after)
+            ),
+            price_sigma_floor_rel=float(
+                overrides.get("price_sigma_floor_rel", self.price_sigma_floor_rel)
+            ),
+            price_reseed_band_rel=float(
+                overrides.get("price_reseed_band_rel", self.price_reseed_band_rel)
+            ),
+            max_future_skew_s=float(
+                overrides.get("max_future_skew_s", self.max_future_skew_s)
+            ),
             seq_jump_limit=int(overrides.get("seq_jump_limit", self.seq_jump_limit)),
             dedup_cache_size=int(
                 overrides.get("dedup_cache_size", self.dedup_cache_size)
             ),
             allow_negative=bool(overrides.get("allow_negative", self.allow_negative)),
-            unseq_dup_status=str(overrides.get("unseq_dup_status", self.unseq_dup_status)),
-            reorder_window_s=float(overrides.get("reorder_window_s", self.reorder_window_s)),
-            reorder_max_slots=int(overrides.get("reorder_max_slots", self.reorder_max_slots)),
+            unseq_dup_status=str(
+                overrides.get("unseq_dup_status", self.unseq_dup_status)
+            ),
+            reorder_window_s=float(
+                overrides.get("reorder_window_s", self.reorder_window_s)
+            ),
+            reorder_max_slots=int(
+                overrides.get("reorder_max_slots", self.reorder_max_slots)
+            ),
             asset_classes=self.asset_classes,
         )
 
@@ -276,8 +292,12 @@ def load_config(config_path: Optional[str] = None) -> PlatformConfig:
         price_anomaly_stddev=float(q_data.get("price_anomaly_stddev", 6.0)),
         price_window=int(q_data.get("price_window", 50)),
         dedup_cache_size=int(q_data.get("dedup_cache_size", 200_000)),
-        reorder_window_s=float(q_data.get("reorder_window_s", DEFAULT_REORDER_WINDOW_S)),
-        reorder_max_slots=int(q_data.get("reorder_max_slots", DEFAULT_REORDER_MAX_SLOTS)),
+        reorder_window_s=float(
+            q_data.get("reorder_window_s", DEFAULT_REORDER_WINDOW_S)
+        ),
+        reorder_max_slots=int(
+            q_data.get("reorder_max_slots", DEFAULT_REORDER_MAX_SLOTS)
+        ),
         asset_classes=q_data.get("asset_classes", {}),
     )
 

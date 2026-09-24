@@ -129,7 +129,9 @@ def normalize(raw: RawEvent) -> CanonicalEvent:
     event = CanonicalEvent(
         event_id=f"evt-{next(_gateway_id_counter)}",
         instrument_id=instrument,
-        event_type=_EVENT_TYPE_TRADE if event_type_raw == "TRADE" else _EVENT_TYPE_QUOTE,
+        event_type=_EVENT_TYPE_TRADE
+        if event_type_raw == "TRADE"
+        else _EVENT_TYPE_QUOTE,
         exchange_timestamp=float(exchange_ts),
         receive_timestamp=raw.receive_timestamp,
         processing_timestamp=0.0,  # Populated after quality evaluation

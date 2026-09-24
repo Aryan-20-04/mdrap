@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Generator
-from datetime import datetime, timezone
+from datetime import datetime
 import itertools
 import json
 import logging
@@ -57,6 +57,7 @@ def _parse_iso(s: Any) -> float | None:
         return datetime.fromisoformat(s).timestamp()
     except Exception:
         return None
+
 
 # Check optional websockets dependency
 try:
@@ -267,11 +268,7 @@ def parse_kraken_frame(
                         for row in body["as"][:5]
                         if _num(row[0]) is not None and _num(row[1]) is not None
                     ]
-                    ex_ts = (
-                        _num(body["bs"][0][2])
-                        if (len(body["bs"][0]) > 2)
-                        else None
-                    )
+                    ex_ts = _num(body["bs"][0][2]) if (len(body["bs"][0]) > 2) else None
                     return RawEvent(
                         source="KRAKEN",
                         payload={

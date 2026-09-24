@@ -12,7 +12,6 @@ Guarantees:
 
 from __future__ import annotations
 
-import os
 import time
 from typing import Any, Dict, Tuple
 
@@ -54,7 +53,9 @@ class PrometheusExporter:
 
     def inc_counter(self, name: str, value: float = 1.0) -> None:
         """Increment a named custom counter."""
-        self._custom_counters[name] = self._custom_counters.get(name, 0.0) + float(value)
+        self._custom_counters[name] = self._custom_counters.get(name, 0.0) + float(
+            value
+        )
 
     def render(self, state: Any | None = None) -> str:
         """Render all metrics into standard Prometheus 0.0.4 text format."""
@@ -78,50 +79,113 @@ class PrometheusExporter:
         # -------------------------------------------------------------------
         # 1. Pipeline Throughput & Quality Metrics
         # -------------------------------------------------------------------
-        metrics = getattr(state.pipeline, "metrics", None) if state and hasattr(state, "pipeline") else None
+        metrics = (
+            getattr(state.pipeline, "metrics", None)
+            if state and hasattr(state, "pipeline")
+            else None
+        )
 
-        processed = getattr(metrics, "processed", 0) if metrics else int(self._custom_counters.get("processed", 0))
-        dropped = getattr(metrics, "dropped", 0) if metrics else int(self._custom_counters.get("dropped", 0))
+        processed = (
+            getattr(metrics, "processed", 0)
+            if metrics
+            else int(self._custom_counters.get("processed", 0))
+        )
+        dropped = (
+            getattr(metrics, "dropped", 0)
+            if metrics
+            else int(self._custom_counters.get("dropped", 0))
+        )
 
-        add_metric("mdrap_events_processed_total", "counter", "Total count of events processed by the pipeline", processed)
-        add_metric("mdrap_events_dropped_total", "counter", "Total count of unrecoverable dropped events", dropped)
+        add_metric(
+            "mdrap_events_processed_total",
+            "counter",
+            "Total count of events processed by the pipeline",
+            processed,
+        )
+        add_metric(
+            "mdrap_events_dropped_total",
+            "counter",
+            "Total count of unrecoverable dropped events",
+            dropped,
+        )
 
         q_counts = getattr(metrics, "quality_counts", {}) if metrics else {}
-        valid_count = q_counts.get("VALID", int(self._custom_counters.get("quality_valid", 0)))
-        suspicious_count = q_counts.get("SUSPICIOUS", int(self._custom_counters.get("quality_suspicious", 0)))
-        invalid_count = q_counts.get("INVALID", int(self._custom_counters.get("quality_invalid", 0)))
+        valid_count = q_counts.get(
+            "VALID", int(self._custom_counters.get("quality_valid", 0))
+        )
+        suspicious_count = q_counts.get(
+            "SUSPICIOUS", int(self._custom_counters.get("quality_suspicious", 0))
+        )
+        invalid_count = q_counts.get(
+            "INVALID", int(self._custom_counters.get("quality_invalid", 0))
+        )
 
-        lines.append("# HELP mdrap_events_quality_total Breakdown of processed events by evaluated quality status")
+        lines.append(
+            "# HELP mdrap_events_quality_total Breakdown of processed events by evaluated quality status"
+        )
         lines.append("# TYPE mdrap_events_quality_total counter")
         lines.append(f'mdrap_events_quality_total{{status="VALID"}} {valid_count}')
-        lines.append(f'mdrap_events_quality_total{{status="SUSPICIOUS"}} {suspicious_count}')
+        lines.append(
+            f'mdrap_events_quality_total{{status="SUSPICIOUS"}} {suspicious_count}'
+        )
         lines.append(f'mdrap_events_quality_total{{status="INVALID"}} {invalid_count}')
 
         # Quarantine rate: (SUSPICIOUS + INVALID) / processed
         total_quarantined = suspicious_count + invalid_count
         quarantine_rate = (total_quarantined / processed) if processed > 0 else 0.0
-        add_metric("mdrap_quarantine_rate", "gauge", "Ratio of quarantined (suspicious + invalid) to total events", f"{quarantine_rate:.6f}")
+        add_metric(
+            "mdrap_quarantine_rate",
+            "gauge",
+            "Ratio of quarantined (suspicious + invalid) to total events",
+            f"{quarantine_rate:.6f}",
+        )
 
         # -------------------------------------------------------------------
         # 2. Feed Health, Disagreements & Watchdog
         # -------------------------------------------------------------------
-        uptime = (time.time() - state.start_time) if state and hasattr(state, "start_time") else 0.0
-        add_metric("mdrap_feed_uptime_seconds", "gauge", "MDRAP node uptime in seconds", f"{uptime:.2f}")
+        uptime = (
+            (time.time() - state.start_time)
+            if state and hasattr(state, "start_time")
+            else 0.0
+        )
+        add_metric(
+            "mdrap_feed_uptime_seconds",
+            "gauge",
+            "MDRAP node uptime in seconds",
+            f"{uptime:.2f}",
+        )
 
         watchdog = getattr(state, "watchdog", None) if state else None
         if watchdog and hasattr(watchdog, "source_states"):
             source_states = watchdog.source_states()
             healthy_count = sum(1 for s in source_states.values() if s == "HEALTHY")
-            add_metric("mdrap_feed_healthy_count", "gauge", "Number of currently healthy market data sources", healthy_count)
-            add_metric("mdrap_feed_monitored_total", "gauge", "Total number of monitored market data sources", len(source_states))
+            add_metric(
+                "mdrap_feed_healthy_count",
+                "gauge",
+                "Number of currently healthy market data sources",
+                healthy_count,
+            )
+            add_metric(
+                "mdrap_feed_monitored_total",
+                "gauge",
+                "Total number of monitored market data sources",
+                len(source_states),
+            )
 
-            lines.append("# HELP mdrap_feed_status Health status of each monitored source (1=HEALTHY, 0=OTHER)")
+            lines.append(
+                "# HELP mdrap_feed_status Health status of each monitored source (1=HEALTHY, 0=OTHER)"
+            )
             lines.append("# TYPE mdrap_feed_status gauge")
             for src, status_str in sorted(source_states.items()):
                 val = 1 if status_str == "HEALTHY" else 0
                 lines.append(f'mdrap_feed_status{{source="{src}"}} {val}')
         else:
-            add_metric("mdrap_feed_healthy_count", "gauge", "Number of currently healthy market data sources", int(self._custom_gauges.get("healthy_sources", 1)))
+            add_metric(
+                "mdrap_feed_healthy_count",
+                "gauge",
+                "Number of currently healthy market data sources",
+                int(self._custom_gauges.get("healthy_sources", 1)),
+            )
 
         # Cross-feed disagreements
         disagreement_count = 0
@@ -132,7 +196,12 @@ class PrometheusExporter:
         else:
             disagreement_count = int(self._custom_counters.get("disagreements", 0))
 
-        add_metric("mdrap_cross_feed_disagreements_total", "counter", "Total count of multi-venue consensus divergences", disagreement_count)
+        add_metric(
+            "mdrap_cross_feed_disagreements_total",
+            "counter",
+            "Total count of multi-venue consensus divergences",
+            disagreement_count,
+        )
 
         # -------------------------------------------------------------------
         # 3. Cryptographic Audit Chain Verification Status
@@ -153,7 +222,12 @@ class PrometheusExporter:
         else:
             audit_status = int(self._custom_gauges.get("audit_status", 1))
 
-        add_metric("mdrap_audit_verified_status", "gauge", "Merkle audit log verification status (1=VALID, 0=CORRUPT)", audit_status)
+        add_metric(
+            "mdrap_audit_verified_status",
+            "gauge",
+            "Merkle audit log verification status (1=VALID, 0=CORRUPT)",
+            audit_status,
+        )
 
         # -------------------------------------------------------------------
         # 4. Kafka / Redpanda OutputSink Metrics
@@ -168,9 +242,24 @@ class PrometheusExporter:
             k_produced = int(self._custom_counters.get("kafka_sink_produced", 0))
             k_dropped = int(self._custom_counters.get("kafka_sink_dropped", 0))
 
-        add_metric("mdrap_kafka_sink_lag_events", "gauge", "Durable Kafka sink checkpoint lag in events behind store", k_lag)
-        add_metric("mdrap_kafka_sink_produced_total", "counter", "Total events successfully produced to Kafka topic", k_produced)
-        add_metric("mdrap_kafka_sink_dropped_total", "counter", "Total events dropped or dead-lettered by Kafka sink", k_dropped)
+        add_metric(
+            "mdrap_kafka_sink_lag_events",
+            "gauge",
+            "Durable Kafka sink checkpoint lag in events behind store",
+            k_lag,
+        )
+        add_metric(
+            "mdrap_kafka_sink_produced_total",
+            "counter",
+            "Total events successfully produced to Kafka topic",
+            k_produced,
+        )
+        add_metric(
+            "mdrap_kafka_sink_dropped_total",
+            "counter",
+            "Total events dropped or dead-lettered by Kafka sink",
+            k_dropped,
+        )
 
         # -------------------------------------------------------------------
         # 5. Alert Delivery Metrics
@@ -185,29 +274,53 @@ class PrometheusExporter:
             a_failed = int(self._custom_counters.get("alert_failed", 0))
             a_backlog = int(self._custom_gauges.get("alert_backlog", 0))
 
-        lines.append("# HELP mdrap_alert_delivery_total Total count of external alert deliveries by status")
+        lines.append(
+            "# HELP mdrap_alert_delivery_total Total count of external alert deliveries by status"
+        )
         lines.append("# TYPE mdrap_alert_delivery_total counter")
         lines.append(f'mdrap_alert_delivery_total{{status="delivered"}} {a_delivered}')
         lines.append(f'mdrap_alert_delivery_total{{status="failed"}} {a_failed}')
-        add_metric("mdrap_alert_delivery_backlog", "gauge", "Current backlog of pending alert notifications", a_backlog)
+        add_metric(
+            "mdrap_alert_delivery_backlog",
+            "gauge",
+            "Current backlog of pending alert notifications",
+            a_backlog,
+        )
 
         # -------------------------------------------------------------------
         # 6. HTTP API Operational Metrics
         # -------------------------------------------------------------------
         if self._api_requests:
-            lines.append("# HELP mdrap_api_requests_total Total HTTP requests handled by method and endpoint")
+            lines.append(
+                "# HELP mdrap_api_requests_total Total HTTP requests handled by method and endpoint"
+            )
             lines.append("# TYPE mdrap_api_requests_total counter")
             for (m, ep), cnt in sorted(self._api_requests.items()):
-                lines.append(f'mdrap_api_requests_total{{method="{m}",endpoint="{ep}"}} {cnt}')
+                lines.append(
+                    f'mdrap_api_requests_total{{method="{m}",endpoint="{ep}"}} {cnt}'
+                )
 
         if self._api_errors:
-            lines.append("# HELP mdrap_api_errors_total Total HTTP error responses (>=400) by method and endpoint")
+            lines.append(
+                "# HELP mdrap_api_errors_total Total HTTP error responses (>=400) by method and endpoint"
+            )
             lines.append("# TYPE mdrap_api_errors_total counter")
             for (m, ep), cnt in sorted(self._api_errors.items()):
-                lines.append(f'mdrap_api_errors_total{{method="{m}",endpoint="{ep}"}} {cnt}')
+                lines.append(
+                    f'mdrap_api_errors_total{{method="{m}",endpoint="{ep}"}} {cnt}'
+                )
 
-        avg_latency = (self._api_latency_sum / self._api_latency_count) if self._api_latency_count > 0 else 0.0
-        add_metric("mdrap_api_latency_seconds_avg", "gauge", "Average HTTP request latency in seconds", f"{avg_latency:.6f}")
+        avg_latency = (
+            (self._api_latency_sum / self._api_latency_count)
+            if self._api_latency_count > 0
+            else 0.0
+        )
+        add_metric(
+            "mdrap_api_latency_seconds_avg",
+            "gauge",
+            "Average HTTP request latency in seconds",
+            f"{avg_latency:.6f}",
+        )
 
         # Terminating newline required by Prometheus specification
         return "\n".join(lines) + "\n"

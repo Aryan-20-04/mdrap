@@ -94,7 +94,6 @@ class _StdlibPanel(Panel):
 _StdlibConsole = Console
 
 
-
 def render_gemini_banner(console: Any) -> None:
     """Render retro gradient block banner matching Google Gemini CLI aesthetic."""
     banner_text = (

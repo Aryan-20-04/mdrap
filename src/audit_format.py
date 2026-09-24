@@ -4,11 +4,11 @@ MDRAP Audit Trail Payload Canonicalization.
 Shared between security.py, storage.py, and standalone audit verifier.
 Guarantees collision-free hash chaining across diverse inputs.
 """
+
 from __future__ import annotations
 
 import hashlib
 import json
-from typing import Any
 
 __stability__ = "stable"
 
@@ -21,7 +21,9 @@ def audit_bytes_v1(
     esc_role = str(role).replace("|", r"\|")
     esc_action = str(action).replace("|", r"\|")
     esc_details = str(details).replace("|", r"\|")
-    return f"{prev_hash}|{ts:.6f}|{esc_actor}|{esc_role}|{esc_action}|{esc_details}".encode("utf-8")
+    return f"{prev_hash}|{ts:.6f}|{esc_actor}|{esc_role}|{esc_action}|{esc_details}".encode(
+        "utf-8"
+    )
 
 
 def audit_bytes_v2(

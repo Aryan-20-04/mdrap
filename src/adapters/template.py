@@ -1,4 +1,5 @@
 """Minimal Custom Venue FeedAdapter Template (< 50 lines)."""
+
 from __future__ import annotations
 
 import time

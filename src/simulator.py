@@ -35,7 +35,9 @@ START_PRICE_GLOBAL: float = 250.0
 
 DEFAULT_DUPLICATE_RATE: float = 0.002
 DEFAULT_MISSING_RATE: float = 0.001  # sequence numbers skipped (never emitted)
-DEFAULT_OUT_OF_ORDER_RATE: float = 0.0005  # events emitted with a timestamp behind the last one
+DEFAULT_OUT_OF_ORDER_RATE: float = (
+    0.0005  # events emitted with a timestamp behind the last one
+)
 DEFAULT_MALFORMED_RATE: float = 0.0005  # payload missing/garbage fields
 DEFAULT_PRICE_ANOMALY_RATE: float = 0.0005  # deliberate extreme price spike
 DEFAULT_CROSSED_QUOTE_RATE: float = 0.0003  # bid > ask

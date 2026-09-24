@@ -200,7 +200,9 @@ class MDRAPClient:
         self.auth_token = (
             token
             if token is not None
-            else os.environ.get("MDRAP_API_KEY", os.environ.get("MDRAP_DAEMON_TOKEN", ""))
+            else os.environ.get(
+                "MDRAP_API_KEY", os.environ.get("MDRAP_DAEMON_TOKEN", "")
+            )
         )
         self.auto_replay = auto_replay
         self.max_replay_gap = max_replay_gap
@@ -399,7 +401,9 @@ class MDRAPClient:
             data = json.dumps(json_body).encode("utf-8")
             headers["Content-Type"] = "application/json"
 
-        req = urllib.request.Request(url, data=data, headers=headers, method=method.upper())
+        req = urllib.request.Request(
+            url, data=data, headers=headers, method=method.upper()
+        )
         try:
             with urllib.request.urlopen(req, timeout=self.timeout) as resp:
                 raw = resp.read().decode("utf-8")
@@ -490,7 +494,11 @@ class MDRAPClient:
             return self._http_request(
                 "GET",
                 "/v1/quarantine",
-                params={"limit": limit, "source": source, "instrument_id": instrument_id},
+                params={
+                    "limit": limit,
+                    "source": source,
+                    "instrument_id": instrument_id,
+                },
             )
         return []
 
@@ -498,12 +506,17 @@ class MDRAPClient:
         """Perform end-to-end cryptographic verification of the Merkle audit trail."""
         if self.base_url:
             return self._http_request("GET", "/v1/audit/verify")
-        return {"verified": True, "message": "Verification requires REST API connection"}
+        return {
+            "verified": True,
+            "message": "Verification requires REST API connection",
+        }
 
     def export_audit(self, format: str = "json") -> dict:
         """Export standalone tamper-evident audit proof bundle."""
         if self.base_url:
-            return self._http_request("GET", "/v1/audit/export", params={"format": format})
+            return self._http_request(
+                "GET", "/v1/audit/export", params={"format": format}
+            )
         return {}
 
     def stream_events(

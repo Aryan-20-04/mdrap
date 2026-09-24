@@ -303,7 +303,9 @@ def _load_native_lib():
                 lib.fastpath_engine_abi_version.restype = ctypes.c_int32
                 abi_ver = lib.fastpath_engine_abi_version()
                 if abi_ver != 5:
-                    raise RuntimeError(f"fastpath ABI mismatch: expected 5, got {abi_ver}")
+                    raise RuntimeError(
+                        f"fastpath ABI mismatch: expected 5, got {abi_ver}"
+                    )
 
             if hasattr(lib, "fastpath_engine_create"):
                 lib.fastpath_engine_create.argtypes = [
@@ -322,11 +324,17 @@ def _load_native_lib():
                 lib.fastpath_engine_reset.restype = None
 
             if hasattr(lib, "fastpath_engine_source_reset"):
-                lib.fastpath_engine_source_reset.argtypes = [ctypes.c_void_p, ctypes.c_int32]
+                lib.fastpath_engine_source_reset.argtypes = [
+                    ctypes.c_void_p,
+                    ctypes.c_int32,
+                ]
                 lib.fastpath_engine_source_reset.restype = None
 
             if hasattr(lib, "fastpath_engine_set_hash_seed"):
-                lib.fastpath_engine_set_hash_seed.argtypes = [ctypes.c_void_p, ctypes.c_uint64]
+                lib.fastpath_engine_set_hash_seed.argtypes = [
+                    ctypes.c_void_p,
+                    ctypes.c_uint64,
+                ]
                 lib.fastpath_engine_set_hash_seed.restype = None
 
             if hasattr(lib, "fastpath_engine_configure"):
@@ -365,9 +373,11 @@ def _load_native_lib():
                 lib.fastpath_engine_eval_fast.restype = ctypes.c_uint64
 
             if hasattr(lib, "fastpath_engine_eval_fast2"):
-                lib.fastpath_engine_eval_fast2.argtypes = [ctypes.c_void_p] + list(
-                    lib.fastpath_eval_fast.argtypes
-                ) + [ctypes.c_uint32]
+                lib.fastpath_engine_eval_fast2.argtypes = (
+                    [ctypes.c_void_p]
+                    + list(lib.fastpath_eval_fast.argtypes)
+                    + [ctypes.c_uint32]
+                )
                 lib.fastpath_engine_eval_fast2.restype = ctypes.c_uint64
 
             if hasattr(lib, "fastpath_engine_evaluate"):
@@ -788,10 +798,10 @@ _ENGINE_FAST_EVAL2 = (
 _NAN = math.nan
 
 FE_MASK_VALID = 0x80000000
-FE_HAS_PRICE  = 0x01
-FE_HAS_QTY    = 0x02
-FE_HAS_BID    = 0x04
-FE_HAS_ASK    = 0x08
+FE_HAS_PRICE = 0x01
+FE_HAS_QTY = 0x02
+FE_HAS_BID = 0x04
+FE_HAS_ASK = 0x08
 FE_HAS_BID_SZ = 0x10
 FE_HAS_ASK_SZ = 0x20
 
@@ -912,6 +922,7 @@ class FastQualityEngine:
 
         try:
             from rules import _USER_RULES, evaluate_user_rules
+
             if _USER_RULES:
                 res = evaluate_user_rules(res)
         except ImportError:
@@ -1121,8 +1132,12 @@ class FastQualityEngine:
             c_ev.ask_size = ev.ask_size if ev.ask_size is not None else _NAN
 
         try:
-            if self._engine_ptr and hasattr(_NATIVE_LIB, "fastpath_engine_evaluate_batch"):
-                _NATIVE_LIB.fastpath_engine_evaluate_batch(self._engine_ptr, c_events, c_results, n)
+            if self._engine_ptr and hasattr(
+                _NATIVE_LIB, "fastpath_engine_evaluate_batch"
+            ):
+                _NATIVE_LIB.fastpath_engine_evaluate_batch(
+                    self._engine_ptr, c_events, c_results, n
+                )
             else:
                 _NATIVE_LIB.fastpath_evaluate_batch(c_events, c_results, n)
         except Exception:

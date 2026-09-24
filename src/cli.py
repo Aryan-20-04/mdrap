@@ -49,8 +49,6 @@ from term import (  # noqa: E402
     Table,
     Panel,
     format_status,
-    format_direction,
-    format_num,
     render_gemini_banner,
     render_gemini_tips,
     render_gemini_box_top,
@@ -1024,7 +1022,9 @@ def cmd_keys(args):
             st_str = "[green]ACTIVE[/green]" if key.is_active else "[red]REVOKED[/red]"
             role_val = getattr(key.role, "value", str(key.role))
             role_badge = f"[bold]{role_val}[/bold]"
-            prefix_display = getattr(key, "key_prefix", "") or (key.token[:12] if key.token else "mdrap_live_***")
+            prefix_display = getattr(key, "key_prefix", "") or (
+                key.token[:12] if key.token else "mdrap_live_***"
+            )
             k_rows.append(
                 [
                     key.client_id,
@@ -1034,7 +1034,12 @@ def cmd_keys(args):
                 ]
             )
         console.print(
-            _t("MDRAP Client API Keys & Access Tokens (Hashed Storage)", k_cols, k_rows, show_lines=True)
+            _t(
+                "MDRAP Client API Keys & Access Tokens (Hashed Storage)",
+                k_cols,
+                k_rows,
+                show_lines=True,
+            )
         )
 
     elif action == "create":
@@ -1071,7 +1076,9 @@ def cmd_keys(args):
                 f"[bold green]API Key revoked successfully:[/bold green] [dim]{token}[/dim]"
             )
         else:
-            console.print(f"[bold red]Error:[/bold red] API token/prefix not found: {token}")
+            console.print(
+                f"[bold red]Error:[/bold red] API token/prefix not found: {token}"
+            )
 
     store.close()
 
@@ -2926,8 +2933,11 @@ def cmd_export(args):
 
     fmt = getattr(args, "format", None)
     table = getattr(args, "table", "canonical_events")
-    if fmt in ("parquet", "json") or (fmt == "csv" and custom_output and str(custom_output).endswith(".csv")):
+    if fmt in ("parquet", "json") or (
+        fmt == "csv" and custom_output and str(custom_output).endswith(".csv")
+    ):
         from export import export_data
+
         out_path = custom_output or f"{table}.{fmt}"
         count = export_data(db_path=db_path, table=table, output_path=out_path, fmt=fmt)
         console.print(
@@ -4733,7 +4743,10 @@ def cmd_strategy(args):
         # Fastpath Data Quality Guard: Filter corrupted or crossed events
         if quality_engine is not None:
             can = quality_engine.evaluate(can)
-            if getattr(can, "quality_status", QualityStatus.VALID) == QualityStatus.INVALID:
+            if (
+                getattr(can, "quality_status", QualityStatus.VALID)
+                == QualityStatus.INVALID
+            ):
                 continue
 
         event_count += 1
@@ -5902,7 +5915,9 @@ class MDRAPArgumentParser(argparse.ArgumentParser):
             valid_choices = [
                 c.strip().strip("'\"") for c in m_choice.group(2).split(",")
             ]
-            console.print(f"\n[bold red]Error in '{prog_name}':[/bold red] unrecognized command or choice '[bold yellow]{bad_val}[/bold yellow]'")
+            console.print(
+                f"\n[bold red]Error in '{prog_name}':[/bold red] unrecognized command or choice '[bold yellow]{bad_val}[/bold yellow]'"
+            )
             matches = difflib.get_close_matches(bad_val, valid_choices, n=2, cutoff=0.5)
             if matches:
                 console.print(
@@ -5912,7 +5927,9 @@ class MDRAPArgumentParser(argparse.ArgumentParser):
                 console.print("  [dim]Available command categories:[/dim]\n")
                 render_command_palette(console)
             else:
-                console.print(f"  [dim]Available choices:[/dim] {', '.join(valid_choices)}")
+                console.print(
+                    f"  [dim]Available choices:[/dim] {', '.join(valid_choices)}"
+                )
 
         # 2. Unrecognized arguments
         elif "unrecognized arguments:" in message:
@@ -5968,7 +5985,12 @@ class MDRAPArgumentParser(argparse.ArgumentParser):
 
 def cmd_config(args):
     """Handle mdrap config show."""
-    from config_loader import load_config, resolve_config, compute_config_hash, find_config_path
+    from config_loader import (
+        load_config,
+        resolve_config,
+        compute_config_hash,
+        find_config_path,
+    )
 
     cfg_path = find_config_path()
     cfg = load_config(cfg_path)
@@ -5978,16 +6000,33 @@ def cmd_config(args):
     inst = getattr(args, "instrument", None)
     inst_cls = getattr(args, "instrument_class", None)
 
-    resolved, origins = resolve_config(cfg, venue=venue, instrument_class=inst_cls, symbol=inst)
+    resolved, origins = resolve_config(
+        cfg, venue=venue, instrument_class=inst_cls, symbol=inst
+    )
 
     if getattr(args, "json", False):
         import json
-        print(json.dumps({
-            "config_file": str(cfg_path) if cfg_path else "defaults (in-memory)",
-            "config_sha256": cfg_hash,
-            "query": {"venue": venue, "instrument_class": inst_cls, "instrument": inst},
-            "parameters": {k: {"value": v, "origin": origins.get(k, "defaults")} for k, v in resolved.items()},
-        }, indent=2))
+
+        print(
+            json.dumps(
+                {
+                    "config_file": str(cfg_path)
+                    if cfg_path
+                    else "defaults (in-memory)",
+                    "config_sha256": cfg_hash,
+                    "query": {
+                        "venue": venue,
+                        "instrument_class": inst_cls,
+                        "instrument": inst,
+                    },
+                    "parameters": {
+                        k: {"value": v, "origin": origins.get(k, "defaults")}
+                        for k, v in resolved.items()
+                    },
+                },
+                indent=2,
+            )
+        )
         return
 
     console = Console()
@@ -6006,13 +6045,14 @@ def cmd_config(args):
         t.add_row(k, str(resolved[k]), origins.get(k, "defaults"))
 
     console.print(t)
-    console.print(f"[dim]Config file: {cfg_path or 'defaults (in-memory)'} | SHA-256: {cfg_hash[:16]}...[/dim]\n")
+    console.print(
+        f"[dim]Config file: {cfg_path or 'defaults (in-memory)'} | SHA-256: {cfg_hash[:16]}...[/dim]\n"
+    )
 
 
 def cmd_core(args):
     """Run standalone native C hot-path engine (T1 zero-lock tier)."""
     import subprocess
-    import shutil
     from build_fastpath import get_core_bin_name, build_core
 
     console = Console()
@@ -6023,15 +6063,21 @@ def cmd_core(args):
     if not os.path.isfile(core_path) or getattr(args, "build", False):
         console.print(f"[cyan]Compiling {bin_name}...[/cyan]")
         if not build_core(target_dir=base_dir, quiet=False):
-            console.print(f"[bold red]Failed to compile {bin_name}. Check C compiler on PATH.[/bold red]")
+            console.print(
+                f"[bold red]Failed to compile {bin_name}. Check C compiler on PATH.[/bold red]"
+            )
             return 1
 
     cmd = [
         core_path,
-        "--events", str(getattr(args, "events", 100000)),
-        "--shm", str(getattr(args, "shm", "mdrap_feed")),
-        "--symbol", str(getattr(args, "symbol", "BTC/USD")),
-        "--source", str(getattr(args, "source", "FEEDX")),
+        "--events",
+        str(getattr(args, "events", 100000)),
+        "--shm",
+        str(getattr(args, "shm", "mdrap_feed")),
+        "--symbol",
+        str(getattr(args, "symbol", "BTC/USD")),
+        "--source",
+        str(getattr(args, "source", "FEEDX")),
     ]
     if getattr(args, "rate", 0):
         cmd.extend(["--rate", str(args.rate)])
@@ -6055,10 +6101,15 @@ def cmd_doctor(args):
     import socket
     import sqlite3
     from config_loader import find_config_path, compute_config_hash
-    from fastpath import HAS_FASTPATH, _NATIVE_LIB
+    from fastpath import HAS_FASTPATH
 
     console = Console()
-    console.print(Panel("[bold cyan]MDRAP Platform Diagnostics & Doctor[/bold cyan]", border_style="cyan"))
+    console.print(
+        Panel(
+            "[bold cyan]MDRAP Platform Diagnostics & Doctor[/bold cyan]",
+            border_style="cyan",
+        )
+    )
 
     t = Table(title="Environment & System Integrity", show_lines=True)
     t.add_column("Diagnostic Check", style="cyan bold")
@@ -6071,8 +6122,14 @@ def cmd_doctor(args):
 
     # 2. C Compiler Detection
     compilers_found = [c for c in ("gcc", "clang", "cl") if shutil.which(c)]
-    comp_str = ", ".join(compilers_found) if compilers_found else "None detected on PATH"
-    t.add_row("C Compiler Detected", comp_str, format_status("PASS") if compilers_found else format_status("WARN"))
+    comp_str = (
+        ", ".join(compilers_found) if compilers_found else "None detected on PATH"
+    )
+    t.add_row(
+        "C Compiler Detected",
+        comp_str,
+        format_status("PASS") if compilers_found else format_status("WARN"),
+    )
 
     # 3. Active Engine Tier
     if HAS_FASTPATH:
@@ -6085,6 +6142,7 @@ def cmd_doctor(args):
 
     # 4. Native Core Binary (T1 Hot-Path Engine)
     from build_fastpath import get_core_bin_name
+
     core_bin = get_core_bin_name()
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     core_path = os.path.join(base_dir, core_bin)
@@ -6098,8 +6156,14 @@ def cmd_doctor(args):
 
     # 5. Hardware Timestamping Support (T1 Tier)
     if sys.platform.startswith("linux"):
-        has_so_ts = hasattr(socket, "SO_TIMESTAMPING") or hasattr(socket, "SCM_TIMESTAMPING")
-        ptp_devs = [f"/dev/{f}" for f in os.listdir("/dev") if f.startswith("ptp")] if os.path.exists("/dev") else []
+        has_so_ts = hasattr(socket, "SO_TIMESTAMPING") or hasattr(
+            socket, "SCM_TIMESTAMPING"
+        )
+        ptp_devs = (
+            [f"/dev/{f}" for f in os.listdir("/dev") if f.startswith("ptp")]
+            if os.path.exists("/dev")
+            else []
+        )
         if ptp_devs:
             ts_desc = f"Linux PHC / PTP Hardware Clock ({', '.join(ptp_devs)})"
             ts_status = "[bold green]● PASS[/bold green] (Hardware PTP Active)"
@@ -6124,13 +6188,19 @@ def cmd_doctor(args):
     cfg_path = find_config_path()
     cfg_str = str(cfg_path) if cfg_path else "Using built-in defaults"
     cfg_hash = compute_config_hash()
-    t.add_row("Configuration (mdrap.toml)", f"{cfg_str} (hash: {cfg_hash[:12]}...)", format_status("PASS"))
+    t.add_row(
+        "Configuration (mdrap.toml)",
+        f"{cfg_str} (hash: {cfg_hash[:12]}...)",
+        format_status("PASS"),
+    )
 
     # 5. SQLite WAL Mode
     db_path = getattr(args, "db", "data/mdrap.db")
     wal_ok = False
     try:
-        os.makedirs(os.path.dirname(db_path) if os.path.dirname(db_path) else ".", exist_ok=True)
+        os.makedirs(
+            os.path.dirname(db_path) if os.path.dirname(db_path) else ".", exist_ok=True
+        )
         conn = sqlite3.connect(db_path)
         cur = conn.cursor()
         cur.execute("PRAGMA journal_mode=WAL;")
@@ -6139,7 +6209,11 @@ def cmd_doctor(args):
         conn.close()
     except Exception:
         mode = "ERROR"
-    t.add_row("Storage WAL Journal Mode", f"Mode: {mode.upper()}", format_status("PASS") if wal_ok else format_status("WARN"))
+    t.add_row(
+        "Storage WAL Journal Mode",
+        f"Mode: {mode.upper()}",
+        format_status("PASS") if wal_ok else format_status("WARN"),
+    )
 
     # 6. 10k Smoke Benchmark
     import time
@@ -6173,7 +6247,12 @@ def cmd_doctor(args):
 def cmd_demo(args):
     """Run self-contained 50k-event execution opening live desk view."""
     console = Console()
-    console.print(Panel("[bold cyan]MDRAP Interactive Live Desk Demo[/bold cyan]\n[dim]Streaming 50,000 synthetic market events into SQLite WAL and launching Desk Navigator...[/dim]", border_style="cyan"))
+    console.print(
+        Panel(
+            "[bold cyan]MDRAP Interactive Live Desk Demo[/bold cyan]\n[dim]Streaming 50,000 synthetic market events into SQLite WAL and launching Desk Navigator...[/dim]",
+            border_style="cyan",
+        )
+    )
 
     args.events = 50_000
     args.seed = 42
@@ -6191,6 +6270,7 @@ def cmd_demo(args):
         return
 
     from navigator import MDRAPNavigator
+
     nav = MDRAPNavigator(console=console, db_path=args.db)
     nav.run()
 
@@ -6224,7 +6304,9 @@ _mdrap_completions() {{
 complete -F _mdrap_completions mdrap
 """
     elif shell == "zsh":
-        cmd_entries = "\n".join(f"        '{cmd}:MDRAP {cmd} command'" for cmd in commands)
+        cmd_entries = "\n".join(
+            f"        '{cmd}:MDRAP {cmd} command'" for cmd in commands
+        )
         script = f"""#compdef mdrap
 # MDRAP zsh completion
 
@@ -6260,13 +6342,15 @@ compdef _mdrap mdrap
             "complete -c mdrap -l plain -d 'Suppress ANSI color styling'",
         ]
         for cmd in commands:
-            lines.append(f"complete -c mdrap -n '__fish_use_subcommand' -a {cmd} -d 'MDRAP {cmd}'")
+            lines.append(
+                f"complete -c mdrap -n '__fish_use_subcommand' -a {cmd} -d 'MDRAP {cmd}'"
+            )
         script = "\n".join(lines) + "\n"
     elif shell in ("pwsh", "powershell", "ps1"):
         script = f"""# MDRAP PowerShell completion
 Register-ArgumentCompleter -Native -CommandName mdrap -ScriptBlock {{
     param($wordToComplete, $commandAst, $cursorPosition)
-    $commands = @({', '.join(f"'{c}'" for c in commands)})
+    $commands = @({", ".join(f"'{c}'" for c in commands)})
     $flags = @('--help', '--json', '--no-color', '--plain')
     $elements = $commandAst.CommandElements
     if ($elements.Count -le 2) {{
@@ -6278,7 +6362,10 @@ Register-ArgumentCompleter -Native -CommandName mdrap -ScriptBlock {{
 }}
 """
     else:
-        print(f"Unsupported shell: {shell}. Supported: bash, zsh, fish, powershell", file=sys.stderr)
+        print(
+            f"Unsupported shell: {shell}. Supported: bash, zsh, fish, powershell",
+            file=sys.stderr,
+        )
         return
 
     print(script, end="")
@@ -7694,26 +7781,80 @@ def build_parser() -> argparse.ArgumentParser:
         pass
 
     # Phase 12: Hierarchical Configuration Show
-    p_cfg = _sub("config", cmd_config, "Inspect and query hierarchical mdrap.toml configuration", ["cfg"])
-    p_cfg.add_argument("config_action", nargs="?", default="show", help="Action (default: show)")
+    p_cfg = _sub(
+        "config",
+        cmd_config,
+        "Inspect and query hierarchical mdrap.toml configuration",
+        ["cfg"],
+    )
+    p_cfg.add_argument(
+        "config_action", nargs="?", default="show", help="Action (default: show)"
+    )
     p_cfg.add_argument("--venue", help="Filter by venue code (e.g. binance, XNSE)")
-    p_cfg.add_argument("--instrument", "--symbol", help="Filter by instrument symbol (e.g. BTCUSDT, AAPL)")
-    p_cfg.add_argument("--instrument-class", help="Filter by asset class (e.g. crypto, equity)")
+    p_cfg.add_argument(
+        "--instrument",
+        "--symbol",
+        help="Filter by instrument symbol (e.g. BTCUSDT, AAPL)",
+    )
+    p_cfg.add_argument(
+        "--instrument-class", help="Filter by asset class (e.g. crypto, equity)"
+    )
 
     # Phase 14: Diagnosability Doctor
-    _sub("doctor", cmd_doctor, "Inspect environment, compiler, engine tier, WAL status, and run 10k smoke check", ["doc"], db=True)
+    _sub(
+        "doctor",
+        cmd_doctor,
+        "Inspect environment, compiler, engine tier, WAL status, and run 10k smoke check",
+        ["doc"],
+        db=True,
+    )
 
     # Phase 14: Demo
-    _sub("demo", cmd_demo, "Execute bundled 50k-event run and open live desk navigator", ["dm"], db=True)
+    _sub(
+        "demo",
+        cmd_demo,
+        "Execute bundled 50k-event run and open live desk navigator",
+        ["dm"],
+        db=True,
+    )
 
     # Phase 17: Standalone Native Core (T1 Hot Path)
-    p_core = _sub("core", cmd_core, "Run standalone native C hot-path engine (T1 zero-lock tier)", ["t1", "fast-core"])
-    p_core.add_argument("--events", "-e", type=int, default=100000, help="Number of simulated ticks (default: 100000)")
-    p_core.add_argument("--shm", default="mdrap_feed", help="Shared memory segment name (default: mdrap_feed)")
-    p_core.add_argument("--rate", "-r", type=int, default=0, help="Rate throttle in events/sec (0 = unconstrained)")
-    p_core.add_argument("--symbol", default="BTC/USD", help="Target symbol ticker (default: BTC/USD)")
-    p_core.add_argument("--source", default="FEEDX", help="Source identifier (default: FEEDX)")
-    p_core.add_argument("--build", action="store_true", help="Recompile mdrap-core binary before executing")
+    p_core = _sub(
+        "core",
+        cmd_core,
+        "Run standalone native C hot-path engine (T1 zero-lock tier)",
+        ["t1", "fast-core"],
+    )
+    p_core.add_argument(
+        "--events",
+        "-e",
+        type=int,
+        default=100000,
+        help="Number of simulated ticks (default: 100000)",
+    )
+    p_core.add_argument(
+        "--shm",
+        default="mdrap_feed",
+        help="Shared memory segment name (default: mdrap_feed)",
+    )
+    p_core.add_argument(
+        "--rate",
+        "-r",
+        type=int,
+        default=0,
+        help="Rate throttle in events/sec (0 = unconstrained)",
+    )
+    p_core.add_argument(
+        "--symbol", default="BTC/USD", help="Target symbol ticker (default: BTC/USD)"
+    )
+    p_core.add_argument(
+        "--source", default="FEEDX", help="Source identifier (default: FEEDX)"
+    )
+    p_core.add_argument(
+        "--build",
+        action="store_true",
+        help="Recompile mdrap-core binary before executing",
+    )
     p_core.add_argument("--quiet", "-q", action="store_true", help="Suppress output")
 
     # Shell Autocompletion Generator

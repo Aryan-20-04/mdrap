@@ -153,9 +153,7 @@ class AuthProvider(Protocol):
         VIEWER (1) < OPERATOR (2) < ADMIN (3)
     """
 
-    def get_entitlement(
-        self, token: str, active_only: bool = False
-    ) -> Any | None:
+    def get_entitlement(self, token: str, active_only: bool = False) -> Any | None:
         """Resolve a bearer token or API key to a ClientEntitlement, or None."""
         ...
 
@@ -218,9 +216,7 @@ class OutputSink(Protocol):
     or custom message brokers.
     """
 
-    def broadcast_tick(
-        self, event: CanonicalEvent, bbo: Any | None = None
-    ) -> None:
+    def broadcast_tick(self, event: CanonicalEvent, bbo: Any | None = None) -> None:
         """Deliver a processed tick event to consumers."""
         ...
 
@@ -268,4 +264,3 @@ class AlertSink(Protocol):
     def close(self) -> None:
         """Release underlying client or network connections."""
         ...
-

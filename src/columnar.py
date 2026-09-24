@@ -223,6 +223,7 @@ class ColumnarStore:
             except Exception:
                 # Offline / missing sqlite_scanner extension fallback: read via stdlib sqlite3
                 import sqlite3
+
                 before = self.count()
                 with sqlite3.connect(sqlite_path) as s_conn:
                     s_cursor = s_conn.cursor()
