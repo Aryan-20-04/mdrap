@@ -336,7 +336,30 @@ def create_app(
     # -----------------------------------------------------------------------
     router = APIRouter(prefix="/v1")
 
-    # 1. Health & Telemetry
+    # 1. Health, Liveness, and Readiness
+    @router.get("/liveness", tags=["Health"])
+    def get_liveness(request: Request):
+        st: AppState = request.app.state.mdrap
+        uptime = round(time.time() - st.start_time, 2)
+        return {"status": "alive", "uptime_seconds": uptime}
+
+    @router.get("/readiness", tags=["Health"])
+    def get_readiness(request: Request):
+        st: AppState = request.app.state.mdrap
+        try:
+            with st.store._lock:
+                st.store.conn.execute("SELECT 1;").fetchone()
+            db_ready = True
+        except Exception:
+            db_ready = False
+
+        if not db_ready:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail={"status": "not_ready", "reason": "Database unreachable"},
+            )
+        return {"status": "ready", "database": "connected"}
+
     @router.get("/health", response_model=HealthResponse, tags=["Health"])
     def get_health(request: Request):
         st: AppState = request.app.state.mdrap
@@ -366,6 +389,19 @@ def create_app(
                 "sources": states,
             },
         )
+
+    # Root alias health endpoints for orchestrator compatibility (e.g. k8s probes)
+    @app.get("/liveness", tags=["Health"])
+    def app_liveness(request: Request):
+        return get_liveness(request)
+
+    @app.get("/readiness", tags=["Health"])
+    def app_readiness(request: Request):
+        return get_readiness(request)
+
+    @app.get("/health", response_model=HealthResponse, tags=["Health"])
+    def app_health(request: Request):
+        return get_health(request)
 
     # 2. Feeds Management
     @router.get("/feeds", response_model=List[FeedItem], tags=["Feeds"])

@@ -38,7 +38,9 @@ def run_gate(gate_num: int, name: str, cmd: list[str] | None = None, func=None) 
     if cmd:
         res = subprocess.run(cmd, cwd=_REPO_ROOT)
         if res.returncode != 0:
-            print(f"\n[FAILED] Gate {gate_num} ({name}) failed with exit code {res.returncode}")
+            print(
+                f"\n[FAILED] Gate {gate_num} ({name}) failed with exit code {res.returncode}"
+            )
             sys.exit(1)
     elif func:
         try:
@@ -52,7 +54,10 @@ def run_gate(gate_num: int, name: str, cmd: list[str] | None = None, func=None) 
 
 def gate_rules_sync():
     import subprocess
-    res = subprocess.run([sys.executable, "tools/gen_reasons.py", "--check"], cwd=_REPO_ROOT)
+
+    res = subprocess.run(
+        [sys.executable, "tools/gen_reasons.py", "--check"], cwd=_REPO_ROOT
+    )
     if res.returncode != 0:
         raise RuntimeError("rules.def parity check failed")
 
@@ -64,7 +69,9 @@ def gate_dependency_audit():
     assert "pyarrow>=20.0.0" in req_content or "pyarrow>=23" in req_content, (
         "requirements.txt missing safe pyarrow constraint (CVE PYSEC-2026-113)"
     )
-    assert "<20.0.0" not in req_content, "requirements.txt contains vulnerable <20.0.0 ceiling for pyarrow"
+    assert "<20.0.0" not in req_content, (
+        "requirements.txt contains vulnerable <20.0.0 ceiling for pyarrow"
+    )
     assert "pytest>=8.4.2" in req_content or "pytest>=9.0.0" in req_content, (
         "requirements.txt missing safe pytest constraint (CVE PYSEC-2026-1845)"
     )
@@ -76,15 +83,25 @@ def gate_dependency_audit():
     except Exception as exc:
         print(f"Runtime package note: {exc}")
 
-    print("Dependency constraints in requirements.txt & pyproject.toml meet CVE safety thresholds.")
+    print(
+        "Dependency constraints in requirements.txt & pyproject.toml meet CVE safety thresholds."
+    )
 
 
 def gate_native_tests():
     sys.path.insert(0, os.path.join(_REPO_ROOT, "src"))
     import fastpath
+
     assert fastpath.is_available(), "Native fastpath library not available"
     res = subprocess.run(
-        [sys.executable, "benchmarks/micro_ffi.py", "--iterations", "10000", "--runs", "1"],
+        [
+            sys.executable,
+            "benchmarks/micro_ffi.py",
+            "--iterations",
+            "10000",
+            "--runs",
+            "1",
+        ],
         cwd=_REPO_ROOT,
     )
     if res.returncode != 0:
@@ -95,10 +112,18 @@ def main():
     print_banner("MDRAP 9-GATE LOCAL VALIDATION PROTOCOL")
 
     # Gate 1: Code Formatting
-    run_gate(1, "Code Formatting (ruff format --check src/)", [sys.executable, "-m", "ruff", "format", "--check", "src/"])
+    run_gate(
+        1,
+        "Code Formatting (ruff format --check src/)",
+        [sys.executable, "-m", "ruff", "format", "--check", "src/"],
+    )
 
     # Gate 2: Linting & Static Analysis
-    run_gate(2, "Static Analysis (ruff check src/)", [sys.executable, "-m", "ruff", "check", "src/"])
+    run_gate(
+        2,
+        "Static Analysis (ruff check src/)",
+        [sys.executable, "-m", "ruff", "check", "src/"],
+    )
 
     # Gate 3: Single-Source Rules
     run_gate(3, "Single-Source Rules Parity", func=gate_rules_sync)
@@ -148,6 +173,7 @@ def main():
             "tests/test_security.py",
             "tests/test_security_hardening_review.py",
             "tests/test_key_storage_hardening.py",
+            "tests/test_api_security_hardening.py",
             "-q",
         ],
     )

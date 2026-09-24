@@ -17,7 +17,7 @@ try:
 except ImportError:
     fastpath = None
 
-__stability__ = "beta"
+__stability__ = "experimental"
 
 
 class OptionType(str, enum.Enum):

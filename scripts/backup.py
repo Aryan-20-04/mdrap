@@ -63,7 +63,7 @@ def backup_database(
             chk_conn = sqlite3.connect(source_db)
             chk_conn.execute("PRAGMA wal_checkpoint(PASSIVE)")
             chk_conn.close()
-        except Exception as e:
+        except Exception:
             # Non-fatal if server has an exclusive lock; online backup still copies WAL
             pass
 
@@ -98,6 +98,7 @@ def backup_database(
         try:
             from security import SecurityManager
             from storage import Store
+
             chk_store = Store(temp_target)
             sec = SecurityManager(store=chk_store)
             audit_ok, audit_msg, audit_count = sec.verify_audit_trail()
@@ -105,7 +106,9 @@ def backup_database(
             if not audit_ok:
                 if os.path.exists(temp_target):
                     os.remove(temp_target)
-                raise RuntimeError(f"Cryptographic audit chain verification failed on backup: {audit_msg}")
+                raise RuntimeError(
+                    f"Cryptographic audit chain verification failed on backup: {audit_msg}"
+                )
         except Exception as e:
             if not audit_ok:
                 raise
@@ -149,11 +152,21 @@ def main():
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     default_db = os.environ.get("MDRAP_DB_PATH", "data/mdrap.db")
-    parser.add_argument("--db", default=default_db, help="Path to active MDRAP SQLite database")
-    parser.add_argument("--out-dir", default="backups", help="Directory to store backup files")
+    parser.add_argument(
+        "--db", default=default_db, help="Path to active MDRAP SQLite database"
+    )
+    parser.add_argument(
+        "--out-dir", default="backups", help="Directory to store backup files"
+    )
     parser.add_argument("--out", default=None, help="Explicit output backup filename")
-    parser.add_argument("--compress", action="store_true", help="Gzip compress the output backup")
-    parser.add_argument("--no-verify-audit", action="store_true", help="Skip Merkle audit chain verification")
+    parser.add_argument(
+        "--compress", action="store_true", help="Gzip compress the output backup"
+    )
+    parser.add_argument(
+        "--no-verify-audit",
+        action="store_true",
+        help="Skip Merkle audit chain verification",
+    )
     parser.add_argument("--json", action="store_true", help="Output JSON results")
 
     args = parser.parse_args()
@@ -173,12 +186,17 @@ def main():
             print(json.dumps(res, indent=2))
         else:
             print(f"[MDRAP Backup] SUCCESS: {res['backup_file']} ({res['size_human']})")
-            print(f"  Integrity: {res['integrity_check']} | Audit Chain: {res['audit_chain_status']} ({res['audit_chain_records']} records)")
+            print(
+                f"  Integrity: {res['integrity_check']} | Audit Chain: {res['audit_chain_status']} ({res['audit_chain_records']} records)"
+            )
             print(f"  Completed in {res['total_duration_s']}s")
         sys.exit(0)
     except Exception as e:
         if args.json:
-            print(json.dumps({"status": "ERROR", "error": str(e)}, indent=2), file=sys.stderr)
+            print(
+                json.dumps({"status": "ERROR", "error": str(e)}, indent=2),
+                file=sys.stderr,
+            )
         else:
             print(f"[MDRAP Backup] FAILED: {e}", file=sys.stderr)
         sys.exit(1)

@@ -78,12 +78,15 @@ def restore_database(
             try:
                 from security import SecurityManager
                 from storage import Store
+
                 chk_store = Store(unpacked_source)
                 sec = SecurityManager(store=chk_store)
                 audit_ok, audit_msg, audit_count = sec.verify_audit_trail()
                 chk_store.close()
                 if not audit_ok:
-                    raise RuntimeError(f"Cryptographic audit chain verification failed on backup: {audit_msg}")
+                    raise RuntimeError(
+                        f"Cryptographic audit chain verification failed on backup: {audit_msg}"
+                    )
             except Exception as e:
                 if not audit_ok:
                     raise
@@ -127,7 +130,9 @@ def restore_database(
         post_conn.close()
 
         if not (len(post_rows) == 1 and post_rows[0][0] == "ok"):
-            raise RuntimeError(f"Restored target database failed post-check: {post_rows}")
+            raise RuntimeError(
+                f"Restored target database failed post-check: {post_rows}"
+            )
 
         total_time = time.perf_counter() - t0
         target_size = os.path.getsize(target_db)
@@ -156,12 +161,28 @@ def main():
         description="MDRAP Database Restore Utility",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    parser.add_argument("--backup", required=True, help="Path to backup file (.db or .db.gz)")
+    parser.add_argument(
+        "--backup", required=True, help="Path to backup file (.db or .db.gz)"
+    )
     default_db = os.environ.get("MDRAP_DB_PATH", "data/mdrap.db")
-    parser.add_argument("--db", default=default_db, help="Target path for restored database")
-    parser.add_argument("--force", action="store_true", help="Overwrite existing database without confirmation")
-    parser.add_argument("--no-safety-backup", action="store_true", help="Skip creating a pre-restore backup")
-    parser.add_argument("--no-verify-audit", action="store_true", help="Skip Merkle audit chain verification")
+    parser.add_argument(
+        "--db", default=default_db, help="Target path for restored database"
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Overwrite existing database without confirmation",
+    )
+    parser.add_argument(
+        "--no-safety-backup",
+        action="store_true",
+        help="Skip creating a pre-restore backup",
+    )
+    parser.add_argument(
+        "--no-verify-audit",
+        action="store_true",
+        help="Skip Merkle audit chain verification",
+    )
     parser.add_argument("--json", action="store_true", help="Output JSON results")
 
     args = parser.parse_args()
@@ -177,15 +198,22 @@ def main():
         if args.json:
             print(json.dumps(res, indent=2))
         else:
-            print(f"[MDRAP Restore] SUCCESS: Restored to {res['target_database']} ({res['target_size_human']})")
+            print(
+                f"[MDRAP Restore] SUCCESS: Restored to {res['target_database']} ({res['target_size_human']})"
+            )
             if res["safety_backup"]:
                 print(f"  Safety snapshot saved to: {res['safety_backup']}")
-            print(f"  Integrity: {res['integrity_check']} | Audit Chain: {res['audit_chain_status']} ({res['audit_chain_records']} records)")
+            print(
+                f"  Integrity: {res['integrity_check']} | Audit Chain: {res['audit_chain_status']} ({res['audit_chain_records']} records)"
+            )
             print(f"  Completed in {res['duration_s']}s")
         sys.exit(0)
     except Exception as e:
         if args.json:
-            print(json.dumps({"status": "ERROR", "error": str(e)}, indent=2), file=sys.stderr)
+            print(
+                json.dumps({"status": "ERROR", "error": str(e)}, indent=2),
+                file=sys.stderr,
+            )
         else:
             print(f"[MDRAP Restore] FAILED: {e}", file=sys.stderr)
         sys.exit(1)

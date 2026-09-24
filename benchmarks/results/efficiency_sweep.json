@@ -1,0 +1,41 @@
+[
+  {
+    "events": 1000,
+    "elapsed_seconds": 0.0713,
+    "throughput_eps": 14024.08,
+    "p50_latency_us": 773.3,
+    "p99_latency_us": 2257.1,
+    "peak_rss_mb": 31.09,
+    "gc_delta": [
+      -8,
+      2,
+      0
+    ]
+  },
+  {
+    "events": 10000,
+    "elapsed_seconds": 0.7415,
+    "throughput_eps": 13486.07,
+    "p50_latency_us": 783.6,
+    "p99_latency_us": 2179.8,
+    "peak_rss_mb": 46.83,
+    "gc_delta": [
+      -9,
+      3,
+      1
+    ]
+  },
+  {
+    "events": 50000,
+    "elapsed_seconds": 5.7656,
+    "throughput_eps": 8672.06,
+    "p50_latency_us": 795.1,
+    "p99_latency_us": 2184.7,
+    "peak_rss_mb": 106.55,
+    "gc_delta": [
+      -9,
+      3,
+      6
+    ]
+  }
+]

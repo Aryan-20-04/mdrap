@@ -13,11 +13,166 @@ from __future__ import annotations
 import sys
 
 from dataclasses import dataclass
-from typing import Callable
-from models import CanonicalEvent, QualityStatus
+from typing import Callable, Optional
+from models import CanonicalEvent, QualityStatus, Reason
 
 USER_BIT_MIN = 32
 USER_BIT_MAX = 63
+
+
+@dataclass(frozen=True, slots=True)
+class RuleDefinition:
+    """Formalized metadata definition for canonical and user-defined quality rules."""
+
+    rule_id: str
+    name: str
+    severity: QualityStatus
+    stage: str
+    description: str
+    trigger_condition: str
+
+
+RULE_REGISTRY_METADATA: dict[str, RuleDefinition] = {
+    "MD001": RuleDefinition(
+        rule_id="MD001",
+        name=Reason.DUPLICATE.value,
+        severity=QualityStatus.INVALID,
+        stage="Sequence",
+        description="Duplicate sequence number or event ID already observed within window",
+        trigger_condition="Bit set in sequence window bitmap or duplicate key in unsequenced LRU",
+    ),
+    "MD002": RuleDefinition(
+        rule_id="MD002",
+        name=Reason.SEQUENCE_GAP.value,
+        severity=QualityStatus.SUSPICIOUS,
+        stage="Sequence",
+        description="Missing sequence numbers indicating packet drop or channel disconnect",
+        trigger_condition="seq - last_seq > 1 and not reorder-repaired within window",
+    ),
+    "MD003": RuleDefinition(
+        rule_id="MD003",
+        name=Reason.TS_IMPLAUSIBLE.value,
+        severity=QualityStatus.SUSPICIOUS,
+        stage="Timestamp",
+        description="Exchange timestamp implausibly ahead of local receive timestamp",
+        trigger_condition="exchange_timestamp > receive_timestamp + max_future_skew_s",
+    ),
+    "MD004": RuleDefinition(
+        rule_id="MD004",
+        name=Reason.STALE.value,
+        severity=QualityStatus.SUSPICIOUS,
+        stage="Timestamp",
+        description="Timestamp latency exceeds maximum permissible staleness threshold",
+        trigger_condition="receive_timestamp - exchange_timestamp > staleness_threshold_s",
+    ),
+    "MD005": RuleDefinition(
+        rule_id="MD005",
+        name=Reason.CROSSED_QUOTE.value,
+        severity=QualityStatus.INVALID,
+        stage="Book",
+        description="Bid price greater than or equal to ask price violating book arbitrage",
+        trigger_condition="bid_price >= ask_price and (bid_price > 0 and ask_price > 0)",
+    ),
+    "MD006": RuleDefinition(
+        rule_id="MD006",
+        name=Reason.PRICE_ANOMALY.value,
+        severity=QualityStatus.SUSPICIOUS,
+        stage="Statistical",
+        description="Price movement exceeds statistical rolling volatility corridor",
+        trigger_condition="abs(price - rolling_mean) > N * rolling_stddev",
+    ),
+    "MD007": RuleDefinition(
+        rule_id="MD007",
+        name=Reason.SCHEMA_VIOLATION.value,
+        severity=QualityStatus.INVALID,
+        stage="Schema",
+        description="Schema validation failure or non-finite values in numeric fields",
+        trigger_condition="Missing mandatory field or NaN/Inf or negative price/size without allow_negative",
+    ),
+    "MD008": RuleDefinition(
+        rule_id="MD008",
+        name=Reason.OUT_OF_ORDER.value,
+        severity=QualityStatus.SUSPICIOUS,
+        stage="Sequence",
+        description="Decreasing or non-monotonic sequence number or exchange timestamp",
+        trigger_condition="seq < last_seq without duplicate flag, or exchange_ts < last_ts",
+    ),
+    "MD009": RuleDefinition(
+        rule_id="MD009",
+        name=Reason.MALFORMED.value,
+        severity=QualityStatus.INVALID,
+        stage="Schema",
+        description="Malformed message payload or invalid field format during gateway parsing",
+        trigger_condition="Gateway normalization JSON parsing failure or corrupt byte framing",
+    ),
+    "MD010": RuleDefinition(
+        rule_id="MD010",
+        name=Reason.CIRCUIT_FILTER_BREACH.value,
+        severity=QualityStatus.SUSPICIOUS,
+        stage="Price",
+        description="NSE/BSE daily price band circuit filter breach (+/- 10%)",
+        trigger_condition="abs(price - base_price) / base_price > 0.10",
+    ),
+    "MD011": RuleDefinition(
+        rule_id="MD011",
+        name=Reason.VOLATILITY_INTERRUPTION.value,
+        severity=QualityStatus.SUSPICIOUS,
+        stage="Price",
+        description="Deutsche Boerse dynamic price corridor halt (+/- 5%)",
+        trigger_condition="abs(price - dynamic_reference) / dynamic_reference > 0.05",
+    ),
+    "MD012": RuleDefinition(
+        rule_id="MD012",
+        name=Reason.SPECIAL_QUOTE_INDICATION.value,
+        severity=QualityStatus.SUSPICIOUS,
+        stage="Price",
+        description="Tokyo Stock Exchange Tokuhai quote indication (+/- 8%)",
+        trigger_condition="abs(quote - previous_quote) / previous_quote > 0.08",
+    ),
+    "MD013": RuleDefinition(
+        rule_id="MD013",
+        name=Reason.CROSS_FEED_DISAGREEMENT.value,
+        severity=QualityStatus.SUSPICIOUS,
+        stage="Reconciliation",
+        description="Consensus divergence between redundant feeds for the same event",
+        trigger_condition="Feed price differs from consensus BBO by > reconciliation tolerance",
+    ),
+    "MD014": RuleDefinition(
+        rule_id="MD014",
+        name=Reason.RATE_LIMITED.value,
+        severity=QualityStatus.INVALID,
+        stage="Rate",
+        description="Ingress rate limit exceeded for sending source",
+        trigger_condition="Ingress token bucket exhausted for source identifier",
+    ),
+    "MD015": RuleDefinition(
+        rule_id="MD015",
+        name=Reason.SECURITY_REJECT.value,
+        severity=QualityStatus.INVALID,
+        stage="Security",
+        description="Security gate rejection (sanitizer, HMAC, or auth failure)",
+        trigger_condition="API key invalid, signature verification failure, or injection payload detected",
+    ),
+}
+
+_NAME_TO_RULE: dict[str, RuleDefinition] = {
+    r.name: r for r in RULE_REGISTRY_METADATA.values()
+}
+
+
+def get_rule_by_id(rule_id: str) -> Optional[RuleDefinition]:
+    """Retrieve rule definition by standard rule ID (e.g. 'MD001')."""
+    return RULE_REGISTRY_METADATA.get(rule_id.upper())
+
+
+def get_rule_by_name(name: str) -> Optional[RuleDefinition]:
+    """Retrieve rule definition by reason name (e.g. 'DUPLICATE')."""
+    return _NAME_TO_RULE.get(name.upper())
+
+
+def list_registered_definitions() -> list[RuleDefinition]:
+    """List all registered canonical quality rule definitions."""
+    return list(RULE_REGISTRY_METADATA.values())
 
 
 @dataclass(slots=True)

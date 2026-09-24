@@ -250,14 +250,17 @@ class Reconciler:
         best_score = -1.0
         total_price = 0.0
 
-        for src, (ev, ts) in per_instrument.items():
+        for src in sorted(per_instrument.keys()):
+            ev, ts = per_instrument[src]
             if abs(market_now - ts) <= window and src not in blocked:
                 p = ev.price
                 recent_sources.append(src)
                 recent_prices[src] = p
                 total_price += p
                 sc = scores.get(src, 0.0)
-                if sc > best_score:
+                if sc > best_score or (
+                    sc == best_score and (chosen_source == "" or src < chosen_source)
+                ):
                     best_score = sc
                     chosen_source = src
                     chosen_event = ev

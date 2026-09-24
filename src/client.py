@@ -187,6 +187,7 @@ class MDRAPClient:
         auto_replay: bool = True,
         max_replay_gap: int = 2000,
         timeout: float = 5.0,
+        max_retries: int = 3,
         use_shm: bool = False,
         shm_name: str = "mdrap_feed",
         use_binary: bool = False,
@@ -195,6 +196,7 @@ class MDRAPClient:
         self.base_url = (base_url or os.environ.get("MDRAP_BASE_URL", "")).rstrip("/")
         self.host = host
         self.port = port
+        self.max_retries = max_retries
 
         token = api_key or auth_token
         self.auth_token = (
@@ -219,6 +221,7 @@ class MDRAPClient:
         self.shm_reader = None
         self._subscribed_symbols: Set[str] = set()
         self._last_seq: Optional[int] = None
+        self.api_key = self.auth_token
 
         # Telemetry stats
         self.tier: Optional[str] = None
@@ -476,6 +479,18 @@ class MDRAPClient:
             res = self._send_query(f"LATEST {instrument_id}")
             return [res] if res else []
         return []
+
+    def events(
+        self,
+        instrument_id: Optional[str] = None,
+        limit: int = 100,
+        since_ts: Optional[float] = None,
+        status: Optional[str] = None,
+    ) -> list[dict]:
+        """Convenience alias for query_events."""
+        return self.query_events(
+            instrument_id=instrument_id, limit=limit, since_ts=since_ts, status=status
+        )
 
     def query_quality(self) -> dict:
         """Query data quality engine metrics, error rates, and feed reliability scores."""
@@ -1060,3 +1075,7 @@ class MDrapClient:
             df.set_index("ts", inplace=True)
             df.sort_index(inplace=True)
         return df
+
+
+# Canonical Institutional Client Alias
+Client = MDRAPClient

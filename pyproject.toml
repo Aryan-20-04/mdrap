@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mdrap"
-version = "2.2.0"
+version = "2.3.0"
 description = "Market Data Reliability & Acceleration Platform - Financial market infrastructure for converting noisy market feeds into validated canonical streams"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -113,7 +113,8 @@ py-modules = [
     "polygon_feed", "portfolio", "prometheus", "protocol", "protocols", "quality", "reconciliation",
     "research", "risk", "rules", "sbe", "scheduler", "security", "service",
     "shm", "simulator", "storage", "strategy_sdk", "stresstest", "symbology", "tca", "term",
-    "terminal_display", "trading_cli", "venues", "vessel", "watchdog", "workload_simulator", "ws_feed"
+    "terminal_display", "trading_cli", "venues", "vessel", "watchdog", "workload_simulator", "ws_feed",
+    "mdrap", "quarantine"
 ]
 package-dir = {"" = "src"}
 

@@ -1,0 +1,28 @@
+{
+  "timestamp": 1790267041.0766776,
+  "num_events": 10000,
+  "seed": 42,
+  "elapsed_seconds": 0.7391,
+  "throughput": {
+    "events_per_second": 13529.91,
+    "mb_per_second": 3.23
+  },
+  "latency_e2e_us": {
+    "p50": 783.6,
+    "p90": 1278.85,
+    "p95": 1774.1,
+    "p99": 2179.8,
+    "p99.9": 2570.0,
+    "max": 2764.9
+  },
+  "resources": {
+    "rss_mb": 46.55,
+    "user_cpu_seconds": 0.5469,
+    "system_cpu_seconds": 0.1719
+  },
+  "invariants": {
+    "dropped_events": 0,
+    "processed_events": 10000,
+    "zero_loss_verified": true
+  }
+}
