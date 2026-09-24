@@ -1,12 +1,12 @@
 # MDRAP Architecture Map
 
-This document serves as the canonical architectural map and reference for the module layout of the Market Data Reliability & Acceleration Platform (MDRAP). MDRAP employs a flat `src/` layout consisting of 72 Python modules (alongside native C acceleration sources and definition files). All Python modules import directly from one another (for example, `from models import CanonicalEvent` or `from storage import Store`) without nested namespace packages or heavyweight ORM/web frameworks. The platform adheres to strict data segregation across Raw, Canonical, Quarantined, and Derived analytics tiers, enforces an immutable quarantine-never-drop policy, prioritizes quality status evaluation (`INVALID` > `SUSPICIOUS` > `VALID`), and relies on deterministic monotonic identifiers generated via `itertools.count()`.
+This document serves as the canonical architectural map and reference for the module layout of the Market Data Reliability & Acceleration Platform (MDRAP). MDRAP employs a flat `src/` layout consisting of 75 Python modules (alongside native C acceleration sources and definition files). All Python modules import directly from one another (for example, `from models import CanonicalEvent` or `from storage import Store`) without nested namespace packages or heavyweight ORM/web frameworks. The platform adheres to strict data segregation across Raw, Canonical, Quarantined, and Derived analytics tiers, enforces an immutable quarantine-never-drop policy, prioritizes quality status evaluation (`INVALID` > `SUSPICIOUS` > `VALID`), and relies on deterministic monotonic identifiers generated via `itertools.count()`.
 
 ---
 
 ## Module Layers
 
-The 72 Python modules in `src/` are structured across 12 distinct functional layers, categorized from low-level data ingest and canonical pipeline processing to analytical engines, delivery fabrics, and client interfaces.
+The 75 Python modules in `src/` are structured across 12 distinct functional layers, categorized from low-level data ingest and canonical pipeline processing to analytical engines, delivery fabrics, and client interfaces.
 
 ### Core Pipeline (stable)
 
@@ -60,6 +60,7 @@ The 72 Python modules in `src/` are structured across 12 distinct functional lay
 | Module | Purpose | Key Exports | Stability |
 |---|---|---|---|
 | [`shm.py`](../src/shm.py) | Shared memory ring buffer SPMC | `SHMWriter`, `SHMReader` | `stable` |
+| [`kafka_sink.py`](../src/kafka_sink.py) | Durable Kafka/Redpanda streaming sink | `DurableKafkaSink`, `KafkaSinkConfig`, `InMemoryKafkaProducer` | `stable` |
 | [`protocol.py`](../src/protocol.py) | Binary wire protocol | `pack_tick_frame`, `unpack_tick_frame` | `stable` |
 | [`service.py`](../src/service.py) | TCP streaming daemon | `MarketDataDaemon` | `stable` |
 | [`gateway_tcp.py`](../src/gateway_tcp.py) | TCP gateway server | `TCPGatewayServer` | `beta` |
@@ -132,6 +133,8 @@ The 72 Python modules in `src/` are structured across 12 distinct functional lay
 | [`scheduler.py`](../src/scheduler.py) | Task scheduler | `Scheduler`, `ScheduledJob`, `CronParser` | `beta` |
 | [`watchdog.py`](../src/watchdog.py) | Source health watchdog | `SourceWatchdog` | `stable` |
 | [`alerts.py`](../src/alerts.py) | Alert engine | `AlertEngine` | `beta` |
+| [`alert_sinks.py`](../src/alert_sinks.py) | External alert delivery sinks & worker | `AlertDeliveryWorker`, `WebhookAlertSink`, `SlackAlertSink`, `PagerDutyAlertSink` | `stable` |
+| [`prometheus.py`](../src/prometheus.py) | Prometheus exposition formatter | `format_prometheus_metrics`, `export_prometheus_metrics` | `stable` |
 | [`benchmark.py`](../src/benchmark.py) | Pipeline benchmarking | `run_benchmark` | `stable` |
 | [`export.py`](../src/export.py) | CSV/JSON export utilities | Export utilities for ticks, bars, and anomalies | `stable` |
 | [`exporter.py`](../src/exporter.py) | Market data exporter | `MarketDataExporter` | `beta` |
@@ -149,7 +152,7 @@ The 72 Python modules in `src/` are structured across 12 distinct functional lay
 
 ## Extension Points
 
-MDRAP provides 5 primary extension points that allow external packages or user code to plug into the pipeline lifecycle without modifying core engine files:
+MDRAP provides 6 primary extension points that allow external packages or user code to plug into the pipeline lifecycle without modifying core engine files:
 
 | Extension Point | Protocol | Entry Point Group | Registration | Documentation |
 |---|---|---|---|---|
@@ -158,6 +161,7 @@ MDRAP provides 5 primary extension points that allow external packages or user c
 | Storage Backends | `StorageBackend` | `mdrap.storage_backends` | `entry_points` | [docs/extending/storage-backend.md](./extending/storage-backend.md) |
 | Auth Providers | `AuthProvider` | `mdrap.auth_providers` | `entry_points` | [docs/extending/auth-provider.md](./extending/auth-provider.md) |
 | Output Sinks | `OutputSink` | `mdrap.output_sinks` | `entry_points` | [docs/extending/output-sink.md](./extending/output-sink.md) |
+| Alert Sinks | `AlertSink` | `mdrap.alert_sinks` | `entry_points` | [docs/extending/alert-sink.md](./extending/alert-sink.md) |
 
 ---
 
@@ -183,6 +187,10 @@ flowchart TD
     adapters["adapters/"]
     feed_handler["feed_handler.py"]
     simulator["simulator.py"]
+    kafka_sink["kafka_sink.py"]
+    alerts["alerts.py"]
+    alert_sinks["alert_sinks.py"]
+    prometheus["prometheus.py"]
     
     gateway --> models
     quality --> models
@@ -197,6 +205,7 @@ flowchart TD
     api --> security
     api --> bbo
     api --> depth
+    api --> prometheus
     service --> pipeline
     service --> storage
     service --> security
@@ -206,6 +215,10 @@ flowchart TD
     feed_handler --> adapters
     bbo --> models
     depth --> models
+    kafka_sink --> storage
+    alerts --> models
+    alert_sinks --> alerts
+    prometheus --> storage
 ```
 
 ---

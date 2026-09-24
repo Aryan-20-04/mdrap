@@ -61,6 +61,7 @@ from security import (
 )
 from storage import Store
 from watchdog import SourceWatchdog
+from prometheus import global_prometheus_exporter
 
 __stability__ = "beta"
 
@@ -165,6 +166,10 @@ class AppState:
         # WebSocket subscribers: socket -> set of uppercase symbols (empty set = ALL)
         self.subscribers: Dict[WebSocket, Set[str]] = {}
         self._lock = asyncio.Lock()
+
+        # Decoupled downstream sinks for operational observability
+        self.kafka_sink: Any | None = None
+        self.alert_engine: Any | None = None
 
     def record_feed_event(self, source: str, count: int = 1):
         src = source.upper()
@@ -765,6 +770,51 @@ def create_app(
             pass
         finally:
             st.subscribers.pop(websocket, None)
+
+    @app.middleware("http")
+    async def metrics_middleware(request: Request, call_next):
+        t0 = time.perf_counter()
+        response = await call_next(request)
+        duration = time.perf_counter() - t0
+        path = request.url.path
+        if path.startswith("/v1/events/"):
+            path = "/v1/events/{instrument}"
+        global_prometheus_exporter.record_api_request(
+            request.method, path, duration, response.status_code
+        )
+        return response
+
+    @app.get("/metrics", tags=["Metrics"])
+    def get_prometheus_metrics(request: Request):
+        metrics_auth_required = os.environ.get("MDRAP_METRICS_AUTH", "0").lower() in ("1", "true")
+        forwarded = request.headers.get("X-Forwarded-For")
+        if forwarded:
+            client_host = forwarded.split(",")[0].strip()
+            is_loopback = client_host in ("127.0.0.1", "::1", "localhost")
+        else:
+            client_host = request.client.host if request.client else "unknown"
+            is_loopback = client_host in ("127.0.0.1", "::1", "localhost", "testclient")
+
+        if metrics_auth_required and not is_loopback:
+            token = get_token_from_request(
+                request,
+                x_api_key=request.headers.get("X-API-Key"),
+                authorization=request.headers.get("Authorization"),
+            )
+            if not token:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Metrics endpoint requires authentication. Provide valid API key via X-API-Key or Bearer token.",
+                )
+            ent = app_state.security_manager.get_entitlement(token, active_only=True)
+            if not ent:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Invalid or revoked API key",
+                )
+
+        output = global_prometheus_exporter.render(app_state)
+        return Response(content=output, media_type="text/plain; version=0.0.4; charset=utf-8")
 
     app.include_router(router)
     return app

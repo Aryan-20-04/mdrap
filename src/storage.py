@@ -279,6 +279,10 @@ class Store:
         self._lock = threading.RLock()
         self._read_lock = threading.RLock()
         with self._lock:
+            if path != ":memory:" and not path.startswith("file:"):
+                dir_path = os.path.dirname(os.path.abspath(path))
+                if dir_path:
+                    os.makedirs(dir_path, exist_ok=True)
             self.conn = sqlite3.connect(
                 path, timeout=DEFAULT_SQLITE_TIMEOUT_S, check_same_thread=False
             )
@@ -545,6 +549,49 @@ class Store:
     def commit(self):
         """Commit active database transaction."""
         self.conn.commit()
+
+    # -- Rowid cursor tailing for streaming sinks (Kafka, downstream consumers) --
+
+    @_read_synchronized
+    def get_max_rowid(self, table: str = "canonical_events") -> int:
+        """Return the maximum rowid currently stored in a table."""
+        # Clean table name to prevent SQL injection
+        tbl_clean = "canonical_events" if table == "canonical_events" else ("quarantine" if table == "quarantine" else "canonical_events")
+        cur = self.read_conn.execute(f"SELECT COALESCE(MAX(rowid), 0) FROM {tbl_clean}")
+        row = cur.fetchone()
+        return row[0] if row else 0
+
+    @_read_synchronized
+    def query_canonical_after_rowid(self, last_rowid: int, limit: int = 100) -> list[tuple]:
+        """Fetch canonical events with rowid strictly greater than last_rowid in monotonic order."""
+        limit = min(max(1, limit), 10000)
+        cur = self.read_conn.execute(
+            """SELECT rowid, event_id, instrument_id, event_type, exchange_timestamp,
+                      receive_timestamp, processing_timestamp, source, sequence_number,
+                      price, quantity, bid_price, bid_size, ask_price, ask_size,
+                      quality_status, reasons, raw_id
+               FROM canonical_events
+               WHERE rowid > ?
+               ORDER BY rowid ASC
+               LIMIT ?""",
+            (last_rowid, limit),
+        )
+        return cur.fetchall()
+
+    @_read_synchronized
+    def query_quarantine_after_rowid(self, last_rowid: int, limit: int = 100) -> list[tuple]:
+        """Fetch quarantine records with rowid strictly greater than last_rowid in monotonic order."""
+        limit = min(max(1, limit), 10000)
+        cur = self.read_conn.execute(
+            """SELECT rowid, event_id, instrument_id, source, quality_status, reasons,
+                      payload_json, receive_timestamp
+               FROM quarantine
+               WHERE rowid > ?
+               ORDER BY rowid ASC
+               LIMIT ?""",
+            (last_rowid, limit),
+        )
+        return cur.fetchall()
 
     # -- Query helpers (backs the CLI `query` subcommand / future API) --
 

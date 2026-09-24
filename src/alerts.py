@@ -49,6 +49,20 @@ class Alert:
     expiry: float = 0.0  # 0 = never expires
     message: str = ""  # triggered message
 
+    # Anti-flapping and noise suppression controls (Hysteresis & Cooldown)
+    hysteresis_ticks: int = 1  # Required consecutive tick breaches before firing
+    hysteresis_margin_pct: float = 0.5  # Margin required to clear condition before re-arming
+    cooldown_s: float = 0.0  # Min seconds between re-notifications (0 = fire immediately on each re-arm)
+    consecutive_breaches: int = 0  # Monotonic count of consecutive ticks meeting breach
+    last_notified_at: float = 0.0
+    re_armed: bool = True
+
+    # Last-mile delivery tracking (preventing false negatives)
+    delivery_status: str = "pending"  # "pending", "delivered", "failed"
+    delivery_attempts: int = 0
+    last_attempt_at: float = 0.0
+    last_error: str | None = None
+
 
 class AlertEngine:
     """
@@ -62,6 +76,10 @@ class AlertEngine:
         self.alerts: list[Alert] = []
         self._reference_prices: dict[str, float] = {}
         self.conn = None
+        # Delivery telemetry counters
+        self.delivery_delivered_count: int = 0
+        self.delivery_failed_count: int = 0
+        self.delivery_backlog_count: int = 0
         if self.db_path:
             self.conn = sqlite3.connect(self.db_path)
             self._init_db()
@@ -83,9 +101,39 @@ class AlertEngine:
                 triggered_value REAL,
                 repeat INTEGER,
                 expiry REAL,
-                message TEXT
+                message TEXT,
+                hysteresis_ticks INTEGER DEFAULT 1,
+                hysteresis_margin_pct REAL DEFAULT 0.5,
+                cooldown_s REAL DEFAULT 0.0,
+                consecutive_breaches INTEGER DEFAULT 0,
+                last_notified_at REAL DEFAULT 0.0,
+                re_armed INTEGER DEFAULT 1,
+                delivery_status TEXT DEFAULT 'pending',
+                delivery_attempts INTEGER DEFAULT 0,
+                last_attempt_at REAL DEFAULT 0.0,
+                last_error TEXT DEFAULT NULL
             )
         """)
+        # Safe migration if table previously existed with fewer columns
+        existing_cols = {row[1] for row in cursor.execute("PRAGMA table_info(alerts)").fetchall()}
+        migration_cols = [
+            ("hysteresis_ticks", "INTEGER DEFAULT 1"),
+            ("hysteresis_margin_pct", "REAL DEFAULT 0.5"),
+            ("cooldown_s", "REAL DEFAULT 0.0"),
+            ("consecutive_breaches", "INTEGER DEFAULT 0"),
+            ("last_notified_at", "REAL DEFAULT 0.0"),
+            ("re_armed", "INTEGER DEFAULT 1"),
+            ("delivery_status", "TEXT DEFAULT 'pending'"),
+            ("delivery_attempts", "INTEGER DEFAULT 0"),
+            ("last_attempt_at", "REAL DEFAULT 0.0"),
+            ("last_error", "TEXT DEFAULT NULL"),
+        ]
+        for col, ctype in migration_cols:
+            if col not in existing_cols:
+                try:
+                    cursor.execute(f"ALTER TABLE alerts ADD COLUMN {col} {ctype};")
+                except Exception:
+                    pass
         self.conn.commit()
 
         cursor.execute("SELECT MAX(alert_id) FROM alerts")
@@ -95,7 +143,9 @@ class AlertEngine:
 
         cursor.execute("""
             SELECT alert_id, alert_type, symbol, condition, threshold, status, 
-                   created_at, triggered_at, triggered_value, repeat, expiry, message 
+                   created_at, triggered_at, triggered_value, repeat, expiry, message,
+                   hysteresis_ticks, hysteresis_margin_pct, cooldown_s, consecutive_breaches,
+                   last_notified_at, re_armed, delivery_status, delivery_attempts, last_attempt_at, last_error
             FROM alerts
         """)
         for row in cursor.fetchall():
@@ -112,6 +162,16 @@ class AlertEngine:
                 repeat=bool(row[9]),
                 expiry=row[10],
                 message=row[11],
+                hysteresis_ticks=row[12] if len(row) > 12 and row[12] is not None else 1,
+                hysteresis_margin_pct=row[13] if len(row) > 13 and row[13] is not None else 0.5,
+                cooldown_s=row[14] if len(row) > 14 and row[14] is not None else 0.0,
+                consecutive_breaches=row[15] if len(row) > 15 and row[15] is not None else 0,
+                last_notified_at=row[16] if len(row) > 16 and row[16] is not None else 0.0,
+                re_armed=bool(row[17]) if len(row) > 17 and row[17] is not None else True,
+                delivery_status=row[18] if len(row) > 18 and row[18] is not None else "pending",
+                delivery_attempts=row[19] if len(row) > 19 and row[19] is not None else 0,
+                last_attempt_at=row[20] if len(row) > 20 and row[20] is not None else 0.0,
+                last_error=row[21] if len(row) > 21 else None,
             )
             self.alerts.append(a)
 
@@ -123,8 +183,10 @@ class AlertEngine:
             """
             INSERT OR REPLACE INTO alerts 
             (alert_id, alert_type, symbol, condition, threshold, status, created_at, 
-             triggered_at, triggered_value, repeat, expiry, message)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             triggered_at, triggered_value, repeat, expiry, message,
+             hysteresis_ticks, hysteresis_margin_pct, cooldown_s, consecutive_breaches,
+             last_notified_at, re_armed, delivery_status, delivery_attempts, last_attempt_at, last_error)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
             (
                 alert.alert_id,
@@ -139,6 +201,16 @@ class AlertEngine:
                 int(alert.repeat),
                 alert.expiry,
                 alert.message,
+                alert.hysteresis_ticks,
+                alert.hysteresis_margin_pct,
+                alert.cooldown_s,
+                alert.consecutive_breaches,
+                alert.last_notified_at,
+                int(alert.re_armed),
+                alert.delivery_status,
+                alert.delivery_attempts,
+                alert.last_attempt_at,
+                alert.last_error,
             ),
         )
         self.conn.commit()
@@ -324,15 +396,45 @@ class AlertEngine:
                         trigger_val = price
 
             if is_triggered:
-                a.triggered_at = ts
-                a.triggered_value = trigger_val
-                a.message = f"Alert Triggered: {a.condition} at {trigger_val:.4f}"
-                triggered.append(a)
+                a.consecutive_breaches += 1
+                is_cooldown_elapsed = a.cooldown_s > 0 and (ts - a.last_notified_at >= a.cooldown_s)
+                is_first_arm = a.re_armed and a.consecutive_breaches >= a.hysteresis_ticks
 
-                if not a.repeat:
-                    a.status = AlertStatus.TRIGGERED
+                if is_first_arm or is_cooldown_elapsed:
+                    a.triggered_at = ts
+                    a.triggered_value = trigger_val
+                    a.last_notified_at = ts
+                    a.re_armed = False
+                    a.delivery_status = "pending"
+                    a.message = f"Alert Triggered: {a.condition} at {trigger_val:.4f}"
+                    triggered.append(a)
 
-                self._persist(a)
+                    if not a.repeat:
+                        a.status = AlertStatus.TRIGGERED
+
+                    self._persist(a)
+            else:
+                # Anti-flapping: check if metric has cleared the hysteresis margin before re-arming
+                cleared = False
+                margin = abs(a.threshold) * (a.hysteresis_margin_pct / 100.0)
+                if a.alert_type == AlertType.PRICE_ABOVE:
+                    cleared = price <= (a.threshold - margin)
+                elif a.alert_type == AlertType.PRICE_BELOW:
+                    cleared = price >= (a.threshold + margin)
+                elif a.alert_type == AlertType.SPREAD_ABOVE:
+                    if bid > 0 and ask > 0:
+                        mid = (ask + bid) / 2.0
+                        spread_bps = ((ask - bid) / mid) * 10000.0
+                        cleared = spread_bps <= (a.threshold - margin)
+                elif a.alert_type == AlertType.VOLUME_SPIKE:
+                    cleared = volume < a.threshold
+                else:
+                    cleared = True
+
+                if cleared and (not a.re_armed or a.consecutive_breaches > 0):
+                    a.consecutive_breaches = 0
+                    a.re_armed = True
+                    self._persist(a)
 
         return triggered
 
@@ -400,3 +502,38 @@ class AlertEngine:
                 res["by_type"].get(a.alert_type.value, 0) + 1
             )
         return res
+
+    def query_pending_deliveries(self, limit: int = 50) -> list[Alert]:
+        """Fetch triggered alerts that are pending external delivery."""
+        pending = [
+            a for a in self.alerts
+            if a.delivery_status == "pending" and a.triggered_at > 0
+        ]
+        self.delivery_backlog_count = len(pending)
+        return pending[:limit]
+
+    def mark_delivery_status(
+        self,
+        alert_id: int,
+        status: str,
+        attempts: int,
+        last_attempt_at: float,
+        error: str | None = None,
+    ) -> None:
+        """Update delivery telemetry and status for an alert."""
+        for a in self.alerts:
+            if a.alert_id == alert_id:
+                a.delivery_status = status
+                a.delivery_attempts = attempts
+                a.last_attempt_at = last_attempt_at
+                a.last_error = error
+                if status == "delivered":
+                    self.delivery_delivered_count += 1
+                elif status == "failed":
+                    self.delivery_failed_count += 1
+                self._persist(a)
+                break
+        self.delivery_backlog_count = sum(
+            1 for a in self.alerts
+            if a.delivery_status == "pending" and a.triggered_at > 0
+        )

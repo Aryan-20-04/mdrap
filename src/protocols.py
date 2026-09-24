@@ -21,6 +21,7 @@ See Also:
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
 from models import CanonicalEvent
@@ -32,6 +33,8 @@ __all__ = [
     "AuthProvider",
     "QualityEvaluator",
     "OutputSink",
+    "AlertSink",
+    "DeliveryResult",
 ]
 
 
@@ -228,3 +231,41 @@ class OutputSink(Protocol):
     def close(self) -> None:
         """Release all delivery resources and connections."""
         ...
+
+
+@dataclass(slots=True)
+class DeliveryResult:
+    """Evidentiary outcome of an external alert delivery attempt."""
+
+    alert_id: int
+    sink_name: str
+    status: str  # "DELIVERED", "FAILED", "PENDING"
+    attempts: int = 1
+    error_message: str | None = None
+    delivered_at: float | None = None
+
+
+@runtime_checkable
+class AlertSink(Protocol):
+    """Protocol for external alert delivery sinks (Slack, Webhook, PagerDuty).
+
+    Alert sinks consume from the alerting engine outside the synchronous tick evaluation
+    loop. Implementations must handle delivery failures gracefully, retry with backoff,
+    and never block tick processing.
+    """
+
+    def deliver(self, alert: Any) -> DeliveryResult:
+        """Deliver an alert payload to the destination system.
+
+        Args:
+            alert: The Alert instance triggered by the engine.
+
+        Returns:
+            DeliveryResult recording delivery status and diagnostic metadata.
+        """
+        ...
+
+    def close(self) -> None:
+        """Release underlying client or network connections."""
+        ...
+
