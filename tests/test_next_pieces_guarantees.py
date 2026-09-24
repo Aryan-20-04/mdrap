@@ -27,6 +27,9 @@ import json
 import os
 import time
 import pytest
+
+pytest.importorskip("fastapi")
+
 from fastapi.testclient import TestClient
 
 from alerts import Alert, AlertEngine, AlertStatus, AlertType

@@ -12,9 +12,13 @@ Guidelines for contributing to the Market Data Reliability & Acceleration Platfo
 ```bash
 git clone https://github.com/Aryan-20-04/mdrap.git
 cd mdrap
-pip install -r requirements.txt
+pip install -e ".[all]"
 python build_fastpath.py
 ```
+
+> [!TIP]
+> - **Full Development Environment (Recommended)**: `pip install -e ".[all]"` (or `pip install -r requirements.txt`) installs all development tools (`pytest`, `pytest-asyncio`, `pytest-timeout`), REST/WebSocket layers (`fastapi`, `uvicorn`, `httpx`), and columnar analytics (`pyarrow`, `duckdb`).
+> - **Zero-Dependency Core**: `pip install -e .` runs the pipeline, validation, and storage using only Python standard library. Optional API test suites gracefully skip when optional dependencies are absent.
 
 ## Running Tests
 

@@ -13,6 +13,10 @@ from __future__ import annotations
 import os
 import tempfile
 import pytest
+
+pytest.importorskip("fastapi")
+pytest.importorskip("starlette")
+
 from starlette.testclient import TestClient
 
 from api import AppState, create_app

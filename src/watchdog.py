@@ -83,7 +83,7 @@ class SourceWatchdog:
         # Pull cached scores from the reliability tracker
         scores = getattr(self.reliability, "_cached_scores", {})
 
-        for source, state in self._source_states.items():
+        for source, state in list(self._source_states.items()):
             if state == SourceState.BLOCKED:
                 continue
 
@@ -101,7 +101,7 @@ class SourceWatchdog:
                     s != source
                     and (current_time - self._last_seen.get(s, 0.0)) <= (self._ewma_interval.get(s, self.silence_threshold_s) * (self.adaptive_multiplier / 2.0))
                     and (event.source != s or (prev_ts is not None and (now_ts - prev_ts) <= typical_gap * 3.0))
-                    for s in self._source_states
+                    for s in list(self._source_states.keys())
                 )
                 if others_active and (current_time - last_seen_time) > (typical_gap * self.adaptive_multiplier):
                     adaptive_silent = True

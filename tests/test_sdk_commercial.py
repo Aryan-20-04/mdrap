@@ -18,6 +18,10 @@ import tempfile
 import threading
 import time
 import pytest
+
+pytest.importorskip("fastapi")
+pytest.importorskip("uvicorn")
+
 import uvicorn
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

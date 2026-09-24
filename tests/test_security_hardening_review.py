@@ -12,6 +12,10 @@ from __future__ import annotations
 
 import os
 import pytest
+
+pytest.importorskip("fastapi")
+pytest.importorskip("starlette")
+
 from starlette.testclient import TestClient
 
 from api import create_app

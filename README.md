@@ -285,7 +285,7 @@ All latency and throughput figures trace directly to committed JSON benchmark re
 ```bash
 git clone https://github.com/Aryan-20-04/mdrap.git
 cd mdrap
-pip install -e . pytest rich pytest-timeout
+pip install -e ".[all]"
 ```
 
 **2. Compile Native Accelerators**
