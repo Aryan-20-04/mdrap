@@ -65,7 +65,7 @@ class ClientEntitlement:
         if self.token and not self.token_hash:
             self.token_hash = hashlib.sha256(self.token.encode("utf-8")).hexdigest()
         if self.token and not self.key_prefix:
-            self.key_prefix = self.token[:16] + "..." if len(self.token) > 16 else self.token
+            self.key_prefix = self.token[:12] + "..." if len(self.token) > 12 else self.token
         elif self.token_hash and not self.key_prefix:
             self.key_prefix = self.token_hash[:12] + "..."
         if isinstance(self.role, str) and self.role in Role.__members__:
@@ -621,7 +621,7 @@ class SecurityManager:
             token = f"mdrap_live_{secrets.token_urlsafe(24)}"
 
         tok_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
-        key_prefix = token[:16] + "..." if len(token) > 16 else token
+        key_prefix = token[:12] + "..." if len(token) > 12 else token
 
         ent = ClientEntitlement(
             token=token,

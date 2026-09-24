@@ -60,7 +60,7 @@ def test_raw_key_never_stored_in_database():
                 assert raw_token != str(val), f"Plaintext secret found in column {col}!"
             if row_dict["token_hash"] == expected_hash:
                 found_hash = True
-                assert row_dict["key_prefix"] == raw_token[:16] + "..."
+                assert row_dict["key_prefix"] == raw_token[:12] + "..."
                 assert row_dict["role"] == "ADMIN"
 
         assert found_hash, "SHA-256 hash was not found in api_keys table"

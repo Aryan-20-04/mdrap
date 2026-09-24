@@ -46,10 +46,11 @@ Any role at level $N$ possesses all permissions of levels $< N$.
 
 ## Integration with FastAPI (`api.py`)
 
-In [`src/api.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/api.py#L272-L304), the [`require_role`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/api.py#L272) dependency resolves incoming client identity from three potential carriers:
+In [`src/api.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/api.py), the [`require_role`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/api.py) dependency resolves incoming client identity from two standard HTTP header carriers:
 1. `X-API-Key: <token>` header
 2. `Authorization: Bearer <token>` header
-3. `?token=<token>` query parameter
+
+*(Note: Query parameter authentication `?token=<token>` is disabled on REST endpoints to prevent credential leakage in access logs, and is accepted exclusively for browser WebSocket handshakes at `/v1/events/stream`).*
 
 ```mermaid
 sequenceDiagram

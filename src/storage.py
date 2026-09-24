@@ -1328,7 +1328,7 @@ class Store:
 
         key_prefix = getattr(ent, "key_prefix", "")
         if not key_prefix and raw_token:
-            key_prefix = raw_token[:16] + "..." if len(raw_token) > 16 else raw_token
+            key_prefix = raw_token[:12] + "..." if len(raw_token) > 12 else raw_token
             ent.key_prefix = key_prefix
         elif not key_prefix:
             key_prefix = token_hash[:12] + "..."

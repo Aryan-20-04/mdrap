@@ -274,11 +274,8 @@ def create_app(
         if authorization and authorization.lower().startswith("bearer "):
             return authorization[7:].strip()
 
-        # 3. Check query param ?token=
-        query_token = request.query_params.get("token")
-        if query_token:
-            return query_token.strip()
-
+        # Query param ?token= is deliberately NOT supported on REST endpoints
+        # to prevent raw secret leakage in access logs, proxies, referers, and browser histories.
         return None
 
     def require_role(required_role: Role):
@@ -787,13 +784,21 @@ def create_app(
     @app.get("/metrics", tags=["Metrics"])
     def get_prometheus_metrics(request: Request):
         metrics_auth_required = os.environ.get("MDRAP_METRICS_AUTH", "0").lower() in ("1", "true")
-        forwarded = request.headers.get("X-Forwarded-For")
-        if forwarded:
-            client_host = forwarded.split(",")[0].strip()
-            is_loopback = client_host in ("127.0.0.1", "::1", "localhost")
+
+        # Trust the real TCP peer, never an untrusted client-supplied header,
+        # unless that peer is an explicitly configured trusted reverse proxy.
+        peer_host = request.client.host if request.client else "unknown"
+        trusted_proxies = {
+            ip.strip() for ip in os.environ.get("MDRAP_TRUSTED_PROXY_IPS", "").split(",") if ip.strip()
+        }
+
+        if peer_host in trusted_proxies:
+            forwarded = request.headers.get("X-Forwarded-For")
+            client_host = forwarded.split(",")[0].strip() if forwarded else peer_host
         else:
-            client_host = request.client.host if request.client else "unknown"
-            is_loopback = client_host in ("127.0.0.1", "::1", "localhost", "testclient")
+            client_host = peer_host
+
+        is_loopback = client_host in ("127.0.0.1", "::1", "localhost", "testclient")
 
         if metrics_auth_required and not is_loopback:
             token = get_token_from_request(
