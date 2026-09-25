@@ -1138,12 +1138,6 @@ class FastQualityEngine:
         if not events:
             return events
 
-        if not _NATIVE_LIB or not hasattr(_NATIVE_LIB, "fastpath_evaluate_batch"):
-            # Fallback to sequential evaluate
-            for ev in events:
-                self.evaluate(ev)
-            return events
-
         if self.thread_safe:
             with self._eval_lock:
                 return self._evaluate_batch_unlocked(events)
@@ -1152,6 +1146,11 @@ class FastQualityEngine:
     def _evaluate_batch_unlocked(
         self, events: list[CanonicalEvent]
     ) -> list[CanonicalEvent]:
+        if self._engine_ptr_c or not _NATIVE_LIB or not hasattr(_NATIVE_LIB, "fastpath_evaluate_batch"):
+            for ev in events:
+                self._evaluate_unlocked(ev)
+            return events
+
         n = len(events)
         c_events = (_CFastEvent * n)()
         c_results = (_CFastResult * n)()
