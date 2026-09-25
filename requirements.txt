@@ -13,7 +13,7 @@ rich>=13.0.0,<14.0.0            # High-performance terminal cockpit, live ticker
 openpyxl>=3.1.0,<4.0.0         # 5-Tab Institutional Microsoft Excel (.xlsx) financial model exporter (falls back to CSV)
 
 # --- Live Streaming Ingestion (Optional) ---
-websockets>=12.0,<15.0        # Real-time WebSocket streaming feed handlers for Binance/Coinbase public feeds
+websockets>=12.0,<17.0        # Real-time WebSocket streaming feed handlers for Binance/Coinbase public feeds
 
 # --- Configuration Management (Optional) ---
 pyyaml>=6.0,<7.0             # Parses external config.yaml (graceful stdlib fallback parser included)
