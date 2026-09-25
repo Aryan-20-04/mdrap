@@ -23,6 +23,16 @@ from quality import QualityConfig, QualityEngine
 
 __stability__ = "stable"
 
+# Phase 3: Native C-API Extension Module
+_C_EXT = None
+try:
+    import _fastpath_c as _C_EXT
+except ImportError:
+    try:
+        from src import _fastpath_c as _C_EXT
+    except ImportError:
+        _C_EXT = None
+
 # ---------------------------------------------------------------------------
 # Native C Kernel ABI Geometry Constants (Matching fastpath.c)
 # ---------------------------------------------------------------------------
@@ -808,7 +818,7 @@ FE_HAS_ASK_SZ = 0x20
 
 def is_available() -> bool:
     """Return True if the native C accelerator library is loaded and operational."""
-    return _NATIVE_LIB is not None
+    return _C_EXT is not None or _NATIVE_LIB is not None
 
 
 class FastQualityEngine:
@@ -831,12 +841,40 @@ class FastQualityEngine:
         self._source_map = dict(_SOURCE_ID_MAP)
         self._inst_map = dict(_INSTRUMENT_ID_MAP)
         self._fallback_engine: QualityEngine | None = None
-        self.is_native = bool(_NATIVE_LIB is not None)
+        self.is_native = bool(_C_EXT is not None or _NATIVE_LIB is not None)
         self.thread_safe = thread_safe
         self._eval_lock = threading.Lock()
 
         self._engine_ptr = None
-        if _NATIVE_LIB:
+        self._engine_ptr_c = None
+        if _C_EXT:
+            try:
+                self._engine_ptr_c = _C_EXT.engine_create(
+                    self.cfg.staleness_threshold_s,
+                    self.cfg.price_anomaly_stddev,
+                    self.cfg.price_window,
+                )
+                unseq_st = (
+                    2
+                    if getattr(self.cfg, "unseq_dup_status", "SUSPICIOUS")
+                    == "INVALID"
+                    else 1
+                )
+                _C_EXT.engine_configure(
+                    self._engine_ptr_c,
+                    getattr(self.cfg, "price_min_samples", 20),
+                    getattr(self.cfg, "price_reseed_after", 8),
+                    float(getattr(self.cfg, "price_sigma_floor_rel", 2e-4)),
+                    float(getattr(self.cfg, "price_reseed_band_rel", 0.01)),
+                    float(getattr(self.cfg, "max_future_skew_s", 1.0)),
+                    int(getattr(self.cfg, "seq_jump_limit", 1 << 24)),
+                    unseq_st,
+                    1 if getattr(self.cfg, "allow_negative", False) else 0,
+                )
+            except Exception:
+                self._engine_ptr_c = None
+
+        if not self._engine_ptr_c and _NATIVE_LIB:
             if hasattr(_NATIVE_LIB, "fastpath_engine_create"):
                 self._engine_ptr = _NATIVE_LIB.fastpath_engine_create(
                     self.cfg.staleness_threshold_s,
@@ -871,11 +909,18 @@ class FastQualityEngine:
                     self.cfg.price_anomaly_stddev,
                     self.cfg.price_window,
                 )
-        else:
+        elif not self._engine_ptr_c:
             self._fallback_engine = QualityEngine(self.cfg)
 
     def close(self) -> None:
         """Release native C engine context heap allocations."""
+        if getattr(self, "_engine_ptr_c", None) and _C_EXT:
+            try:
+                _C_EXT.engine_destroy(self._engine_ptr_c)
+            except Exception:
+                pass
+            self._engine_ptr_c = None
+
         if (
             getattr(self, "_engine_ptr", None)
             and _NATIVE_LIB
@@ -892,7 +937,9 @@ class FastQualityEngine:
         with self._eval_lock:
             self.counts = {"VALID": 0, "SUSPICIOUS": 0, "INVALID": 0}
             self.reason_counts = {}
-            if (
+            if getattr(self, "_engine_ptr_c", None) and _C_EXT:
+                _C_EXT.engine_reset(self._engine_ptr_c)
+            elif (
                 self._engine_ptr
                 and _NATIVE_LIB
                 and hasattr(_NATIVE_LIB, "fastpath_engine_reset")
@@ -931,7 +978,7 @@ class FastQualityEngine:
         return res
 
     def _evaluate_unlocked(self, event: CanonicalEvent) -> CanonicalEvent:
-        if not _FAST_EVAL:
+        if not self._engine_ptr_c and not _FAST_EVAL:
             if not self._fallback_engine:
                 self._fallback_engine = QualityEngine(self.cfg)
             res = self._fallback_engine.evaluate(event)
@@ -988,8 +1035,26 @@ class FastQualityEngine:
             return res
 
         try:
+            # Phase 3: Ultra-fast C-API extension (< 250 ns, zero ctypes boxing)
+            if self._engine_ptr_c and _C_EXT:
+                packed = _C_EXT.eval_fast2(
+                    self._engine_ptr_c,
+                    s_id,
+                    i_id,
+                    1 if event.event_type == EventType.QUOTE else 0,
+                    event.exchange_timestamp,
+                    event.receive_timestamp,
+                    event.sequence_number if event.sequence_number is not None else -1,
+                    c_price,
+                    c_qty,
+                    c_bid_px,
+                    c_ask_px,
+                    c_bid_sz,
+                    c_ask_sz,
+                    pm,
+                )
             # Direct CPU register call to C hot path (< 100 ns)
-            if self._engine_ptr and _ENGINE_FAST_EVAL2:
+            elif self._engine_ptr and _ENGINE_FAST_EVAL2:
                 packed = _ENGINE_FAST_EVAL2(
                     self._engine_ptr,
                     s_id,
@@ -1567,11 +1632,17 @@ def get_buffer_address(obj) -> int:
 
 def has_native_shm() -> bool:
     """Check if compiled native C shared memory acceleration is active."""
-    return bool(_NATIVE_LIB and hasattr(_NATIVE_LIB, "fastpath_shm_read_slot"))
+    return bool(_C_EXT is not None or (_NATIVE_LIB and hasattr(_NATIVE_LIB, "fastpath_shm_read_slot")))
 
 
 def native_shm_read_slot(buf_ptr, slot_count: int, target_seq: int) -> dict | None:
     """Read an SHM slot using compiled native C acceleration in sub-30 nanoseconds."""
+    if _C_EXT and hasattr(_C_EXT, "shm_read_slot_v3"):
+        try:
+            return _C_EXT.shm_read_slot_v3(buf_ptr, slot_count, target_seq)
+        except Exception:
+            pass
+
     if not has_native_shm():
         return None
     raw_addr = get_buffer_address(buf_ptr)

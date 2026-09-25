@@ -282,8 +282,102 @@ def build_core(target_dir: Optional[str] = None, quiet: bool = False) -> bool:
         return False
 
 
+def build_extension(target_dir: Optional[str] = None, quiet: bool = False) -> bool:
+    """
+    Compile src/_fastpath_c.c into native Python C-API extension module (_fastpath_c.pyd / .so).
+    Returns True on success, False otherwise.
+    """
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    src_dir = os.path.join(base_dir, "src")
+    c_source = os.path.join(src_dir, "_fastpath_c.c")
+    if not os.path.isfile(c_source):
+        if not quiet:
+            print(f"[build] Notice: _fastpath_c.c not found at {c_source}")
+        return False
+
+    if target_dir is None:
+        target_dir = src_dir
+    os.makedirs(target_dir, exist_ok=True)
+
+    compiler = _find_compiler()
+    if not compiler:
+        return False
+
+    import sysconfig
+    py_include = sysconfig.get_path("include")
+    ext_suffix = sysconfig.get_config_var("EXT_SUFFIX") or (".pyd" if sys.platform == "win32" else ".so")
+    out_ext = os.path.normpath(os.path.join(target_dir, f"_fastpath_c{ext_suffix}"))
+
+    if compiler in ("gcc", "clang"):
+        cmd = [
+            compiler,
+            "-O3",
+            "-march=native",
+            "-mavx2",
+            "-shared",
+            "-I", py_include,
+            "-I", src_dir,
+            "-o", out_ext,
+            c_source,
+        ]
+        if sys.platform == "win32":
+            py_libdir = sysconfig.get_config_var("LIBDIR") or os.path.join(sys.base_prefix, "libs")
+            cmd.extend([
+                f"-L{py_libdir}",
+                f"-lpython{sys.version_info.major}{sys.version_info.minor}",
+                "-Wl,--enable-stdcall-fixup",
+            ])
+        elif sys.platform == "darwin":
+            cmd.extend(["-undefined", "dynamic_lookup"])
+        else:
+            cmd.extend(["-fPIC"])
+    elif compiler == "cl":
+        py_libdir = sysconfig.get_config_var("LIBDIR") or os.path.join(sys.base_prefix, "libs")
+        cmd = [
+            "cl.exe",
+            "/O2",
+            "/LD",
+            f"/I{py_include}",
+            f"/I{src_dir}",
+            c_source,
+            f"/Fe:{out_ext}",
+            f"/link",
+            f"/LIBPATH:{py_libdir}",
+        ]
+    else:
+        return False
+
+    if not quiet:
+        print(f"[build] Compiling {os.path.basename(c_source)} -> {out_ext} using {compiler}")
+
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=30.0,
+            shell=False,
+        )
+    except Exception as exc:
+        if not quiet:
+            print(f"[build] Compilation error: {exc}")
+        return False
+
+    if result.returncode == 0 and os.path.isfile(out_ext):
+        if not quiet:
+            size = os.path.getsize(out_ext)
+            print(f"[build] SUCCESS! Compiled {out_ext} ({size:,} bytes)")
+        return True
+    else:
+        if not quiet:
+            err_msg = result.stderr.strip() or result.stdout.strip()
+            print(f"[build] FAILED with returncode {result.returncode}:\n{err_msg}")
+        return False
+
+
 if __name__ == "__main__":
     out_target = sys.argv[1] if len(sys.argv) > 1 and not sys.argv[1].startswith("-") else None
     ok1 = build(target_dir=out_target, quiet=False)
     ok2 = build_core(target_dir=out_target, quiet=False)
+    ok3 = build_extension(target_dir=out_target, quiet=False)
     sys.exit(0 if (ok1 and ok2) else 1)
