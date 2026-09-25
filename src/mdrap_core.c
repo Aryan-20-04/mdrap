@@ -444,8 +444,10 @@ int main(int argc, char **argv) {
         MD_FENCE_RELEASE();
         slot->commit_seq = seq;
 
-        /* Atomic release store to publish head sequence */
-        MD_STORE_REL_U64((uint8_t *)shm.base_ptr + 24, seq + 1);
+        /* Amortized publishing of head sequence (every 32 ticks) */
+        if ((seq & 0x1F) == 0) {
+            MD_STORE_REL_U64((uint8_t *)shm.base_ptr + 24, seq + 1);
+        }
 
         events_done++;
 
@@ -468,6 +470,9 @@ int main(int argc, char **argv) {
             }
         }
     }
+
+    /* Final publish to ensure exact head is updated at end of stream */
+    MD_STORE_REL_U64((uint8_t *)shm.base_ptr + 24, events_done + 1);
 
     double t_end = now_seconds();
     double total_sec = t_end - t_start;

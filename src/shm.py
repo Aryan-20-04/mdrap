@@ -565,20 +565,19 @@ class SHMReader:
             return None
 
         head = struct.unpack_from("<Q", self.shm.buf, 24)[0]
-        if head == 0 or seq >= head:
-            return None  # Future sequence or nothing published
-
-        lag = head - seq
-        if lag >= self.watermark_slots or self.is_watermark_warning_set():
-            self.overrun_stats.watermark_warnings += 1
-            self.overrun_stats.watermark_events += 1
 
         # Overrun detection: publisher has lapped the reader
-        if lag > self.slot_count:
+        if head > 0 and head > seq and (head - seq) > self.slot_count:
             self.overrun_stats.total_laps += 1
             self.overrun_stats.last_lap_seq = seq
             self.overrun_stats.last_lap_ts = time.time()
             return None
+
+        if head > seq:
+            lag = head - seq
+            if lag >= self.watermark_slots or self.is_watermark_warning_set():
+                self.overrun_stats.watermark_warnings += 1
+                self.overrun_stats.watermark_events += 1
 
         slot_idx = seq & self.mask
         offset = HEADER_SIZE + (slot_idx * SLOT_SIZE)
@@ -709,24 +708,23 @@ class SHMReader:
                 pass
 
             head = struct.unpack_from("<Q", self.shm.buf, 24)[0]
-            if curr_seq < head:
-                # Overrun check
-                if head - curr_seq > self.slot_count:
-                    skipped = (head - self.slot_count) - curr_seq
-                    self.overrun_stats.skipped_ticks += max(0, skipped)
-                    curr_seq = head - self.slot_count
+            # Overrun check
+            if head > 0 and head > curr_seq and (head - curr_seq) > self.slot_count:
+                skipped = (head - self.slot_count) - curr_seq
+                self.overrun_stats.skipped_ticks += max(0, skipped)
+                curr_seq = head - self.slot_count
 
-                item = self.read_slot(curr_seq)
-                if item:
-                    item["recv_ts"] = time.time()
-                    yield item
-                    count += 1
-                    curr_seq += 1
-                    t_start = time.time()
-                    spin_count = 0
-                    if max_events and count >= max_events:
-                        return
-                    continue
+            item = self.read_slot(curr_seq)
+            if item:
+                item["recv_ts"] = time.time()
+                yield item
+                count += 1
+                curr_seq += 1
+                t_start = time.time()
+                spin_count = 0
+                if max_events and count >= max_events:
+                    return
+                continue
 
             # When caught up with writer or spinning, verify external epoch validity
             if spin_count == 0 or (spin_count & 0xFF) == 0:

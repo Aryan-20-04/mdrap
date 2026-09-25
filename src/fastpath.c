@@ -1239,8 +1239,7 @@ EXPORT int32_t fastpath_shm_read_slot_v3(
 ) {
     if (!out || !shm3_geometry_ok(buf, len, slot_count)) return 0;
     const uint64_t head = MD_LOAD_ACQ_U64(buf + SHM3_OFF_HEAD);
-    if (target_seq >= head) return 0;                                /* not published yet */
-    if (head - target_seq > slot_count) return -1;                   /* lapped */
+    if (head > target_seq && (head - target_seq > slot_count)) return -1; /* lapped */
     const uint8_t *slot = buf + SHM3_HDR_SIZE + (size_t)(target_seq & (slot_count - 1u)) * SHM3_SLOT_SIZE;
     const uint64_t c1 = MD_LOAD_ACQ_U64(slot);
     if (c1 != target_seq) return (c1 == MD_UNCOMMITTED || c1 < target_seq) ? 0 : -1;
