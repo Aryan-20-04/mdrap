@@ -69,10 +69,12 @@ benchmarks/profile_latency_*.json
 *.db-wal
 *.db-shm
 *.db-journal
+*.dbn
 data/*.db
 data/*.db-wal
 data/*.db-shm
 data/*.db-journal
+data/*.dbn
 data/raw_archive/
 data/deadletter/
 !data/.gitkeep
