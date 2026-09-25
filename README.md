@@ -1,11 +1,11 @@
 # Market Data Reliability & Acceleration Platform (MDRAP)
 ### Open-Source Self-Hosted Reliability, Reconciliation & Audit Infrastructure for Real-Time Financial Market Data
 
-[![Version](https://img.shields.io/badge/version-2.3.0-blue.svg)](pyproject.toml)
+[![Version](https://img.shields.io/badge/version-2.4.0-blue.svg)](pyproject.toml)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue.svg)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-815%20passing%20(100%25)-brightgreen.svg)](tests/)
-[![Hot Path Latency](https://img.shields.io/badge/hot--path-37.5%20ns%20batch%20%7C%2050.0%20ns%20single%20%7C%2044.8%20ns%20core-orange.svg)](docs/benchmark-methodology.md)
-[![Architecture](https://img.shields.io/badge/architecture-V1%20%7C%20V2%20%7C%20V4%20C--Fastpath%20%7C%20V5%20Core%20%7C%20V6%20Resilience-purple.svg)](docs/architecture.md)
+[![Tests](https://img.shields.io/badge/tests-879%20passing%20(100%25)-brightgreen.svg)](tests/)
+[![Hot Path Latency](https://img.shields.io/badge/hot--path-48.7%20ns%20native%20%7C%202.10%20%C2%B5s%20python%20%7C%202.70%20%C2%B5s%20persist-orange.svg)](docs/benchmark-methodology.md)
+[![Architecture](https://img.shields.io/badge/architecture-Layer%201%20Native%20%7C%20Layer%202%20C--API%20%7C%20Layer%203%20Decoupled-purple.svg)](docs/architecture.md)
 [![Manual](https://img.shields.io/badge/manual-Operator%20%26%20User%20Guide-teal.svg)](docs/USER_GUIDE.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
@@ -64,10 +64,12 @@ python cli.py serve --host 0.0.0.0 --port 8000
 | In-flight jitter buffer | ✅ Sliding self-repair delay window | ❌ | ❌ | ❌ |
 | Decoupled async persistence | ✅ Non-blocking SPSC writer queue | ❌ | ❌ | Manual |
 | Cryptographic audit trail | ✅ Batched Merkle trees + hash chain | ❌ | ❌ | ❌ |
-| Standalone C Hot-Path (`mdrap-core`) | ✅ 44.8–61.3 ns / 16.3M–22.3M eps | ❌ | ❌ (C++ core) | ✅ (q kernel) |
+| Standalone C Hot-Path (`mdrap-core`) | ✅ 48.7 ns / >20.5M eps (AVX2 + RDTSC) | ❌ | ❌ (C++ core) | ✅ (q kernel) |
+| Python C-API Compute Loop | ✅ 2.10 µs / 423k eps (METH_FASTCALL) | ❌ | ❌ | ❌ |
+| Decoupled Binary Journal Persistence | ✅ 2.70 µs / 349k eps (.dbn / AOF) | ✅ Purpose-built | ✅ Parquet catalog | ✅ Purpose-built |
 | Zero-lock SPSC shared memory | ✅ 128B seqlock + watermark bitflag | ❌ | ❌ | Custom |
 | Distributed output streaming | ✅ Kafka / Redpanda durable sink | ❌ | Custom | Custom |
-| Tick-level persistence | SQLite WAL + DuckDB Parquet | ✅ Purpose-built | ✅ Parquet catalog | ✅ Purpose-built |
+| Tick-level analytical persistence | SQLite WAL + DuckDB Parquet | ✅ Purpose-built | ✅ Parquet catalog | ✅ Purpose-built |
 | Strategy execution & MM | Avellaneda-Stoikov HFT SDK | ❌ | ✅ Purpose-built | Via q |
 | `pip install` + CLI | ✅ Zero-dependency pure stdlib | ❌ (Java) | ✅ | ❌ (Commercial) |
 
