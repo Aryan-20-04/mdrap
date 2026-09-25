@@ -1,0 +1,19 @@
+{
+  "test_name": "multi_venue_soak_load_test",
+  "timestamp": 1790324747.1549637,
+  "total_events": 1000000,
+  "slot_count": 65536,
+  "batch_size": 2000,
+  "producer_throughput_eps": 119046.4,
+  "producer_wall_sec": 8.4001,
+  "drain_throughput_eps": 116895.4,
+  "total_wall_sec": 8.5547,
+  "max_drain_lag": 43183,
+  "laps_detected": 0,
+  "watermark_alerts": 0,
+  "dropped_events": 0,
+  "memory_rss_start_mb": 35.53,
+  "memory_rss_end_mb": 27.67,
+  "memory_growth_mb": -7.86,
+  "verification_status": "PASSED"
+}

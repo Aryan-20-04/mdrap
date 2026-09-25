@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import os
+import struct
 import threading
 import time
 from typing import Any
@@ -128,21 +129,27 @@ class SHMDrainWorker:
                     if lag >= self.reader.watermark_slots:
                         self.stats.watermark_alerts += 1
 
-                # Fast zero-copy slot read
-                slot_dict = self.reader.read_slot(self._current_seq)
-                if slot_dict is None:
+                # Fast zero-copy slot read with seqlock double-read
+                slot_idx = self._current_seq & self.reader.mask
+                offset = HEADER_SIZE + (slot_idx * SLOT_SIZE)
+                c1 = struct.unpack_from("<Q", self.reader.shm.buf, offset)[0]
+                if c1 != self._current_seq:
+                    break
+
+                raw_slot = bytes(self.reader.shm.buf[offset : offset + SLOT_SIZE])
+                c2 = struct.unpack_from("<Q", self.reader.shm.buf, offset)[0]
+                if c2 != c1:
                     break
 
                 # 1. Drain directly to memory-mapped binary journal
                 if self.journal:
-                    slot_idx = self._current_seq & self.reader.mask
-                    offset = HEADER_SIZE + (slot_idx * SLOT_SIZE)
-                    raw_slot = bytes(self.reader.shm.buf[offset : offset + SLOT_SIZE])
                     self.journal.append_raw_slot(raw_slot)
 
-                # 2. Accumulate canonical events for relational store
+                # 2. Accumulate canonical events for relational store (only if store enabled)
                 if self.store:
-                    self._pending_canonical.append(self._to_canonical_event(slot_dict))
+                    slot_dict = self.reader.read_slot(self._current_seq)
+                    if slot_dict:
+                        self._pending_canonical.append(self._to_canonical_event(slot_dict))
 
                 self.stats.drained_count += 1
                 self.stats.last_drained_seq = self._current_seq
