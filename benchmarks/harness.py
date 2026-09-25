@@ -5,6 +5,7 @@ Provides deterministic statistical measurement with warmup cycles,
 percentiles (p50, p90, p99, p99.9) using time.perf_counter_ns,
 median-of-medians, and interquartile range (IQR).
 """
+
 from __future__ import annotations
 
 import math
@@ -64,13 +65,15 @@ def measure(fn: Callable[[], Any], runs: int = 7, warmup: int = 2) -> dict[str, 
         run_p90s.append(p90)
         run_p99s.append(p99)
         run_p99_9s.append(p99_9)
-        run_summaries.append({
-            "elapsed_ns": elapsed_ns,
-            "p50": p50,
-            "p90": p90,
-            "p99": p99,
-            "p99_9": p99_9,
-        })
+        run_summaries.append(
+            {
+                "elapsed_ns": elapsed_ns,
+                "p50": p50,
+                "p90": p90,
+                "p99": p99,
+                "p99_9": p99_9,
+            }
+        )
 
     median_p50 = percentile(run_p50s, 50.0)
     q1 = percentile(run_p50s, 25.0)

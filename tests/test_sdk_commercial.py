@@ -89,6 +89,7 @@ def live_api_server():
     t.join(timeout=2.0)
     store.close()
     import gc
+
     gc.collect()
     if os.path.exists(db_path):
         try:

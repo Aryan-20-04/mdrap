@@ -1,8 +1,10 @@
 """
 Unit tests for ML/AI Feature Store and Technical Indicators (Gap 9).
 """
+
 import sys, os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 import math
 import pytest
@@ -18,7 +20,7 @@ from features import (
     order_book_imbalance,
     realized_volatility,
     FeatureRegistry,
-    FeatureStore
+    FeatureStore,
 )
 
 
@@ -105,31 +107,34 @@ def test_microstructure_features():
 def test_feature_store_integration():
     bars = []
     for i in range(40):
-        bars.append({
-            'timestamp': 1000.0 + i * 60,
-            'open': 100.0 + i,
-            'high': 102.0 + i,
-            'low': 99.0 + i,
-            'close': 101.0 + i,
-            'volume': 1000.0 + i * 10
-        })
+        bars.append(
+            {
+                "timestamp": 1000.0 + i * 60,
+                "open": 100.0 + i,
+                "high": 102.0 + i,
+                "low": 99.0 + i,
+                "close": 101.0 + i,
+                "volume": 1000.0 + i * 10,
+            }
+        )
 
     fs = FeatureStore()
     feat_dict = fs.compute_features(bars)
-    assert 'rsi_14' in feat_dict
-    assert 'bb_upper' in feat_dict
-    assert 'atr_14' in feat_dict
-    assert 'obv' in feat_dict
+    assert "rsi_14" in feat_dict
+    assert "bb_upper" in feat_dict
+    assert "atr_14" in feat_dict
+    assert "obv" in feat_dict
 
     records = fs.to_records(bars)
     assert len(records) == 40
-    assert 'close' in records[-1]
-    assert 'rsi_14' in records[-1]
-    assert not math.isnan(records[-1]['rsi_14'])
+    assert "close" in records[-1]
+    assert "rsi_14" in records[-1]
+    assert not math.isnan(records[-1]["rsi_14"])
 
 
 def test_python_fallbacks_without_fastpath(monkeypatch):
     import features
+
     monkeypatch.setattr(features, "fastpath", None)
 
     prices = [100.0 + (i * 0.5) for i in range(35)]
@@ -159,6 +164,7 @@ def test_python_fallbacks_without_fastpath(monkeypatch):
 
 def test_features_empty_and_edge_cases():
     import features
+
     # Empty inputs
     assert features.rsi([]) == []
     assert features.obv([], []) == []
@@ -180,11 +186,13 @@ def test_features_empty_and_edge_cases():
 
 def test_feature_registry_custom():
     import features
+
     reg = features.FeatureRegistry()
-    reg.register("custom_feat", lambda b: [1.0] * len(b), description="Constant feature")
+    reg.register(
+        "custom_feat", lambda b: [1.0] * len(b), description="Constant feature"
+    )
     assert reg.get("custom_feat") is not None
     assert reg.get("non_existent") is None
     all_f = reg.list_all()
     assert len(all_f) == 1
     assert all_f[0]["name"] == "custom_feat"
-

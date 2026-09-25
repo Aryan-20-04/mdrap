@@ -1,8 +1,10 @@
 """
 Unit tests for Scheduled Reports & Task Scheduler (Gap 12).
 """
+
 import sys, os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 import time
 import datetime
@@ -12,7 +14,7 @@ from scheduler import Scheduler, ScheduledJob, CronParser
 
 def test_cron_parser_hourly():
     now = time.time()
-    next_ts = CronParser.next_run_after('@hourly', now)
+    next_ts = CronParser.next_run_after("@hourly", now)
     assert next_ts > now
     dt = datetime.datetime.fromtimestamp(next_ts)
     assert dt.minute == 0
@@ -20,7 +22,7 @@ def test_cron_parser_hourly():
 
 def test_cron_parser_daily():
     now = time.time()
-    next_ts = CronParser.next_run_after('@daily', now)
+    next_ts = CronParser.next_run_after("@daily", now)
     assert next_ts > now
     dt = datetime.datetime.fromtimestamp(next_ts)
     assert dt.minute == 0
@@ -30,7 +32,7 @@ def test_cron_parser_daily():
 def test_cron_parser_custom_interval():
     # Every 15 minutes: */15 * * * *
     now = time.time()
-    next_ts = CronParser.next_run_after('*/15 * * * *', now)
+    next_ts = CronParser.next_run_after("*/15 * * * *", now)
     assert next_ts > now
     dt = datetime.datetime.fromtimestamp(next_ts)
     assert dt.minute in {0, 15, 30, 45}
@@ -78,7 +80,7 @@ def test_scheduler_check_and_run():
         return counter
 
     job = s.add_job("CounterJob", "* * * * *", inc, job_id="c1")
-    
+
     # Simulate a future time where next_run is reached
     future_time = job.next_run + 5.0
     executed = s.check_and_run(current_time=future_time)

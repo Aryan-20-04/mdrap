@@ -2,6 +2,7 @@
 Ponytail Benchmark: Multi-Market Sim Latency, Backtest, 4-Stage Decomposition & Alternative Comparisons.
 Stdlib & existing MDRAP engines only.
 """
+
 import ctypes, json, math, os, sqlite3, sys, time
 from typing import Any, Dict, List
 
@@ -41,11 +42,17 @@ def pct(vals: List[float], q: float) -> float:
     return s[idx]
 
 
-def benchmark_markets(num_events: int = 10_000) -> tuple[Dict[str, Any], Dict[str, List[CanonicalEvent]]]:
+def benchmark_markets(
+    num_events: int = 10_000,
+) -> tuple[Dict[str, Any], Dict[str, List[CanonicalEvent]]]:
     markets = ["us", "nse", "xetra", "tse", "global"]
     res = {}
-    print(f"\n{'='*75}\n1. MULTI-MARKET SIMULATION LATENCY & THROUGHPUT ({num_events:,} events each)\n{'='*75}")
-    print(f"{'Market':<10} | {'Processed':<10} | {'Wall (s)':<9} | {'Throughput':<14} | {'p50 (us)':<9} | {'p95 (us)':<9} | {'p99 (us)':<9}")
+    print(
+        f"\n{'=' * 75}\n1. MULTI-MARKET SIMULATION LATENCY & THROUGHPUT ({num_events:,} events each)\n{'=' * 75}"
+    )
+    print(
+        f"{'Market':<10} | {'Processed':<10} | {'Wall (s)':<9} | {'Throughput':<14} | {'p50 (us)':<9} | {'p95 (us)':<9} | {'p99 (us)':<9}"
+    )
     print("-" * 75)
 
     market_events: Dict[str, List[CanonicalEvent]] = {}
@@ -72,20 +79,37 @@ def benchmark_markets(num_events: int = 10_000) -> tuple[Dict[str, Any], Dict[st
         p99 = pct(lats_us, 0.99)
 
         market_events[m] = canonical_list
-        res[m] = {"processed": len(lats_us), "elapsed_s": elapsed, "eps": eps, "p50_us": p50, "p95_us": p95, "p99_us": p99}
-        print(f"{m.upper():<10} | {len(lats_us):<10,d} | {elapsed:<9.3f} | {eps:<14,.0f} | {p50:<9.1f} | {p95:<9.1f} | {p99:<9.1f}")
+        res[m] = {
+            "processed": len(lats_us),
+            "elapsed_s": elapsed,
+            "eps": eps,
+            "p50_us": p50,
+            "p95_us": p95,
+            "p99_us": p99,
+        }
+        print(
+            f"{m.upper():<10} | {len(lats_us):<10,d} | {elapsed:<9.3f} | {eps:<14,.0f} | {p50:<9.1f} | {p95:<9.1f} | {p99:<9.1f}"
+        )
 
     return res, market_events
 
 
-def benchmark_backtests(market_events: Dict[str, List[CanonicalEvent]]) -> Dict[str, Any]:
-    print(f"\n{'='*75}\n2. STRATEGY BACKTEST EXECUTION (SpreadCaptureMarketMaker on Canonical Streams)\n{'='*75}")
-    print(f"{'Market':<10} | {'Trades':<8} | {'Duration (s)':<12} | {'Final Equity':<14} | {'Return %':<10} | {'Sharpe':<8} | {'MaxDD %':<8}")
+def benchmark_backtests(
+    market_events: Dict[str, List[CanonicalEvent]],
+) -> Dict[str, Any]:
+    print(
+        f"\n{'=' * 75}\n2. STRATEGY BACKTEST EXECUTION (SpreadCaptureMarketMaker on Canonical Streams)\n{'=' * 75}"
+    )
+    print(
+        f"{'Market':<10} | {'Trades':<8} | {'Duration (s)':<12} | {'Final Equity':<14} | {'Return %':<10} | {'Sharpe':<8} | {'MaxDD %':<8}"
+    )
     print("-" * 75)
     res = {}
     for m, events in market_events.items():
         engine = BacktestEngine(initial_capital=100_000.0)
-        strat = SpreadCaptureMarketMaker(symbol="ALL", min_spread_bps=0.01, quote_size=10.0)
+        strat = SpreadCaptureMarketMaker(
+            symbol="ALL", min_spread_bps=0.01, quote_size=10.0
+        )
         t0 = time.perf_counter()
         bt_res = engine.run(strat, events)
         bt_dur = time.perf_counter() - t0
@@ -98,12 +122,16 @@ def benchmark_backtests(market_events: Dict[str, List[CanonicalEvent]]) -> Dict[
             "sharpe": bt_res.sharpe_ratio,
             "max_dd_pct": bt_res.max_drawdown_pct,
         }
-        print(f"{m.upper():<10} | {bt_res.total_trades:<8,d} | {bt_dur:<12.3f} | ${bt_res.final_equity:<13,.2f} | {bt_res.total_return_pct:<10.2f} | {bt_res.sharpe_ratio:<8.2f} | {bt_res.max_drawdown_pct:<8.2f}")
+        print(
+            f"{m.upper():<10} | {bt_res.total_trades:<8,d} | {bt_dur:<12.3f} | ${bt_res.final_equity:<13,.2f} | {bt_res.total_return_pct:<10.2f} | {bt_res.sharpe_ratio:<8.2f} | {bt_res.max_drawdown_pct:<8.2f}"
+        )
     return res
 
 
 def benchmark_stage_breakdown(num_events: int = 20_000) -> Dict[str, Any]:
-    print(f"\n{'='*75}\n3. 4-STAGE PIPELINE CRITICAL PATH DECOMPOSITION ({num_events:,} events, seed=42)\n{'='*75}")
+    print(
+        f"\n{'=' * 75}\n3. 4-STAGE PIPELINE CRITICAL PATH DECOMPOSITION ({num_events:,} events, seed=42)\n{'=' * 75}"
+    )
     sim = FeedSimulator(SimulatorConfig(seed=42, num_events=num_events, market="us"))
     raw_events = [raw for raw, _ in sim.generate()]
     n = len(raw_events)
@@ -146,7 +174,9 @@ def benchmark_stage_breakdown(num_events: int = 20_000) -> Dict[str, Any]:
         c = CanonicalEvent(
             event_id=f"evt-{i}",
             instrument_id=str(p.get("instrument") or "AAPL"),
-            event_type=EventType.TRADE if p.get("event_type") == "TRADE" else EventType.QUOTE,
+            event_type=EventType.TRADE
+            if p.get("event_type") == "TRADE"
+            else EventType.QUOTE,
             exchange_timestamp=safe_float(p.get("exchange_ts"), 0.0),
             receive_timestamp=ev.receive_timestamp,
             processing_timestamp=time.time(),
@@ -202,23 +232,38 @@ def benchmark_stage_breakdown(num_events: int = 20_000) -> Dict[str, Any]:
         os.remove(db_test)
 
     from collections import deque
+
     ring = deque(maxlen=32768)
     t0 = time.perf_counter_ns()
     for ev in py_objs:
         ring.append(ev)
     t_io_ring_ns = time.perf_counter_ns() - t0
 
-    total_py_ms = (t_decode_json_ns + t_alloc_py_ns + t_eval_py_ns + t_io_sqlite_ns) / 1e6
+    total_py_ms = (
+        t_decode_json_ns + t_alloc_py_ns + t_eval_py_ns + t_io_sqlite_ns
+    ) / 1e6
     total_opt_ms = (t_decode_sbe_ns + t_alloc_c_ns + t_eval_c_ns + t_io_ring_ns) / 1e6
 
-    print(f"{'Stage':<22} | {'Standard / Python':<20} | {'Alternative / Fast':<20} | {'Speedup':<8}")
+    print(
+        f"{'Stage':<22} | {'Standard / Python':<20} | {'Alternative / Fast':<20} | {'Speedup':<8}"
+    )
     print("-" * 75)
-    print(f"{'1. Feed Decode':<22} | {t_decode_json_ns/1e6:7.2f} ms ({t_decode_json_ns/n:5.0f} ns/e) | {t_decode_sbe_ns/1e6:7.2f} ms ({t_decode_sbe_ns/n:5.0f} ns/e) | {t_decode_json_ns/max(1,t_decode_sbe_ns):5.1f}x")
-    print(f"{'2. Object Allocation':<22} | {t_alloc_py_ns/1e6:7.2f} ms ({t_alloc_py_ns/n:5.0f} ns/e) | {t_alloc_c_ns/1e6:7.2f} ms ({t_alloc_c_ns/n:5.0f} ns/e) | {t_alloc_py_ns/max(1,t_alloc_c_ns):5.1f}x")
-    print(f"{'3. Quality & Sched':<22} | {t_eval_py_ns/1e6:7.2f} ms ({t_eval_py_ns/n:5.0f} ns/e) | {t_eval_c_ns/1e6:7.2f} ms ({t_eval_c_ns/n:5.0f} ns/e) | {t_eval_py_ns/max(1,t_eval_c_ns):5.1f}x")
-    print(f"{'4. I/O Persistence':<22} | {t_io_sqlite_ns/1e6:7.2f} ms ({t_io_sqlite_ns/n:5.0f} ns/e) | {t_io_ring_ns/1e6:7.2f} ms ({t_io_ring_ns/n:5.0f} ns/e) | {t_io_sqlite_ns/max(1,t_io_ring_ns):5.1f}x")
+    print(
+        f"{'1. Feed Decode':<22} | {t_decode_json_ns / 1e6:7.2f} ms ({t_decode_json_ns / n:5.0f} ns/e) | {t_decode_sbe_ns / 1e6:7.2f} ms ({t_decode_sbe_ns / n:5.0f} ns/e) | {t_decode_json_ns / max(1, t_decode_sbe_ns):5.1f}x"
+    )
+    print(
+        f"{'2. Object Allocation':<22} | {t_alloc_py_ns / 1e6:7.2f} ms ({t_alloc_py_ns / n:5.0f} ns/e) | {t_alloc_c_ns / 1e6:7.2f} ms ({t_alloc_c_ns / n:5.0f} ns/e) | {t_alloc_py_ns / max(1, t_alloc_c_ns):5.1f}x"
+    )
+    print(
+        f"{'3. Quality & Sched':<22} | {t_eval_py_ns / 1e6:7.2f} ms ({t_eval_py_ns / n:5.0f} ns/e) | {t_eval_c_ns / 1e6:7.2f} ms ({t_eval_c_ns / n:5.0f} ns/e) | {t_eval_py_ns / max(1, t_eval_c_ns):5.1f}x"
+    )
+    print(
+        f"{'4. I/O Persistence':<22} | {t_io_sqlite_ns / 1e6:7.2f} ms ({t_io_sqlite_ns / n:5.0f} ns/e) | {t_io_ring_ns / 1e6:7.2f} ms ({t_io_ring_ns / n:5.0f} ns/e) | {t_io_sqlite_ns / max(1, t_io_ring_ns):5.1f}x"
+    )
     print("-" * 75)
-    print(f"{'Total Execution Time':<22} | {total_py_ms:7.2f} ms ({n/(total_py_ms/1000):,.0f} eps) | {total_opt_ms:7.2f} ms ({n/(total_opt_ms/1000):,.0f} eps) | {total_py_ms/max(0.001,total_opt_ms):5.1f}x")
+    print(
+        f"{'Total Execution Time':<22} | {total_py_ms:7.2f} ms ({n / (total_py_ms / 1000):,.0f} eps) | {total_opt_ms:7.2f} ms ({n / (total_opt_ms / 1000):,.0f} eps) | {total_py_ms / max(0.001, total_opt_ms):5.1f}x"
+    )
 
     return {
         "decode": {"py_ns": t_decode_json_ns, "sbe_ns": t_decode_sbe_ns},
@@ -230,11 +275,17 @@ def benchmark_stage_breakdown(num_events: int = 20_000) -> Dict[str, Any]:
 
 
 def benchmark_implementations_comparison(num_events: int = 10_000) -> Dict[str, Any]:
-    print(f"\n{'='*75}\n4. FULL PIPELINE COMPARISON ON IDENTICAL EVENT SET ({num_events:,} events, seed=42)\n{'='*75}")
-    print(f"{'Implementation':<32} | {'Wall (s)':<9} | {'Throughput':<14} | {'p50 (us)':<9} | {'p95 (us)':<9} | {'Speedup':<8}")
+    print(
+        f"\n{'=' * 75}\n4. FULL PIPELINE COMPARISON ON IDENTICAL EVENT SET ({num_events:,} events, seed=42)\n{'=' * 75}"
+    )
+    print(
+        f"{'Implementation':<32} | {'Wall (s)':<9} | {'Throughput':<14} | {'p50 (us)':<9} | {'p95 (us)':<9} | {'Speedup':<8}"
+    )
     print("-" * 75)
 
-    sim_proto = FeedSimulator(SimulatorConfig(seed=42, num_events=num_events, market="us"))
+    sim_proto = FeedSimulator(
+        SimulatorConfig(seed=42, num_events=num_events, market="us")
+    )
     raw_events = [raw for raw, _ in sim_proto.generate()]
 
     # 1. Baseline: V1 Synchronous Pipeline
@@ -264,14 +315,30 @@ def benchmark_implementations_comparison(num_events: int = 10_000) -> Dict[str, 
     eps_c = len(raw_events) / dur_c
 
     rows = [
-        ("V1 Baseline (Synchronous + SQLite)", dur_v1, eps_v1, pct(lats_v1, 0.5), pct(lats_v1, 0.95), 1.0),
-        ("V1 + Native C Hotpath Engine", dur_c, eps_c, pct(lats_c, 0.5), pct(lats_c, 0.95), dur_v1 / dur_c),
+        (
+            "V1 Baseline (Synchronous + SQLite)",
+            dur_v1,
+            eps_v1,
+            pct(lats_v1, 0.5),
+            pct(lats_v1, 0.95),
+            1.0,
+        ),
+        (
+            "V1 + Native C Hotpath Engine",
+            dur_c,
+            eps_c,
+            pct(lats_c, 0.5),
+            pct(lats_c, 0.95),
+            dur_v1 / dur_c,
+        ),
     ]
 
     for name, d, e, p50, p95, spd in rows:
         p50_s = f"{p50:<9.1f}" if p50 > 0 else "N/A      "
         p95_s = f"{p95:<9.1f}" if p95 > 0 else "N/A      "
-        print(f"{name:<36} | {d:<9.3f} | {e:<14,.0f} | {p50_s} | {p95_s} | {spd:<7.2f}x")
+        print(
+            f"{name:<36} | {d:<9.3f} | {e:<14,.0f} | {p50_s} | {p95_s} | {spd:<7.2f}x"
+        )
     print("=" * 75 + "\n")
 
 

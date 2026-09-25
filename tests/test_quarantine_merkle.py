@@ -50,7 +50,9 @@ def test_quarantine_merkle_tamper_detection():
     store.commit()
 
     # Tamper with the batch_root in the database
-    store.conn.execute("UPDATE quarantine_merkle_log SET batch_root = 'deadbeef' WHERE entry_id = 1")
+    store.conn.execute(
+        "UPDATE quarantine_merkle_log SET batch_root = 'deadbeef' WHERE entry_id = 1"
+    )
     store.commit()
 
     valid, msg, count = store.verify_quarantine_merkle_integrity()

@@ -1,6 +1,7 @@
 """
 Unit tests for MDRAP Institutional Order Flow Tracker & Lee-Ready Classifier.
 """
+
 import os
 import sys
 import pytest
@@ -54,27 +55,39 @@ def test_lee_ready_tick_rule_fallback_on_midpoint():
 
 def test_order_flow_tracker_cvd_and_aggregation():
     tracker = OrderFlowTracker("AAPL")
-    
+
     # Ingest 3 trades:
     # 1. Buy 200 shares at 150.10 ($30,020 notional -> MEDIUM)
     t1 = tracker.observe_trade(
-        price=150.10, size=200.0, timestamp=1000.0,
-        bid=149.90, ask=150.10, broker="GSCO"
+        price=150.10,
+        size=200.0,
+        timestamp=1000.0,
+        bid=149.90,
+        ask=150.10,
+        broker="GSCO",
     )
     assert t1.aggressor_side == AggressorSide.BUY
     assert t1.flow_category == FlowCategory.MEDIUM
 
     # 2. Sell 200 shares at 149.90
     t2 = tracker.observe_trade(
-        price=149.90, size=200.0, timestamp=1001.0,
-        bid=149.90, ask=150.10, broker="MSCO"
+        price=149.90,
+        size=200.0,
+        timestamp=1001.0,
+        bid=149.90,
+        ask=150.10,
+        broker="MSCO",
     )
     assert t2.aggressor_side == AggressorSide.SELL
 
     # 3. Buy 15,000 shares at 150.10 (Whale block)
     t3 = tracker.observe_trade(
-        price=150.10, size=15000.0, timestamp=1002.0,
-        bid=149.90, ask=150.10, broker="GSCO"
+        price=150.10,
+        size=15000.0,
+        timestamp=1002.0,
+        bid=149.90,
+        ask=150.10,
+        broker="GSCO",
     )
     assert t3.aggressor_side == AggressorSide.BUY
     assert t3.flow_category == FlowCategory.WHALE

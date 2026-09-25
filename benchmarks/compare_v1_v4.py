@@ -4,6 +4,7 @@ Benchmark Comparison: V1 (Pure Python) vs V4 (Native C Hot Path).
 Runs both pipelines across 7 runs (2 warmup) at 100,000 events (seed=42),
 measuring throughput (eps) and processing latency (p50, IQR) via benchmarks.harness.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -63,28 +64,42 @@ def benchmark_tier(tier: str, events: int = 100_000, seed: int = 42) -> dict:
 
 def main():
     parser = argparse.ArgumentParser(description="Compare V1 vs V4 performance")
-    parser.add_argument("--events", type=int, default=100_000, help="Event count (default 100,000)")
+    parser.add_argument(
+        "--events", type=int, default=100_000, help="Event count (default 100,000)"
+    )
     parser.add_argument("--seed", type=int, default=42, help="Seed (default 42)")
     args = parser.parse_args()
 
-    print(f"[*] Running V1 vs V4 benchmark ({args.events:,} events, 7 runs, 2 warmup)...")
+    print(
+        f"[*] Running V1 vs V4 benchmark ({args.events:,} events, 7 runs, 2 warmup)..."
+    )
     print("    Benchmarking V1 (Pure Python)...")
     v1 = benchmark_tier("v1", events=args.events, seed=args.seed)
-    print(f"    -> V1 p50: {v1['p50']:.2f} µs (IQR: {v1['iqr']:.2f} µs) | {v1['median_eps']:,.1f} eps")
+    print(
+        f"    -> V1 p50: {v1['p50']:.2f} µs (IQR: {v1['iqr']:.2f} µs) | {v1['median_eps']:,.1f} eps"
+    )
 
     print("    Benchmarking V4 (Native C Hot Path)...")
     v4 = benchmark_tier("v4", events=args.events, seed=args.seed)
-    print(f"    -> V4 p50: {v4['p50']:.2f} µs (IQR: {v4['iqr']:.2f} µs) | {v4['median_eps']:,.1f} eps")
+    print(
+        f"    -> V4 p50: {v4['p50']:.2f} µs (IQR: {v4['iqr']:.2f} µs) | {v4['median_eps']:,.1f} eps"
+    )
 
     print("\n" + "=" * 70)
     print("V1 Baseline vs V4 Native C Comparison (7 timed runs, 2 warmup)")
     print("=" * 70)
     print(f"{'Metric':<30} | {'V1 (Pure Python)':<18} | {'V4 (Native C)':<18}")
     print("-" * 70)
-    print(f"{'Processing Latency p50':<30} | {v1['p50']:>14.2f} µs | {v4['p50']:>14.2f} µs")
+    print(
+        f"{'Processing Latency p50':<30} | {v1['p50']:>14.2f} µs | {v4['p50']:>14.2f} µs"
+    )
     print(f"{'p50 IQR (Spread)':<30} | {v1['iqr']:>14.2f} µs | {v4['iqr']:>14.2f} µs")
-    print(f"{'p50 Q1 - Q3 Range':<30} | {v1['q1']:.2f} - {v1['q3']:.2f} µs  | {v4['q1']:.2f} - {v4['q3']:.2f} µs")
-    print(f"{'Throughput (median)':<30} | {v1['median_eps']:>14,.1f} eps | {v4['median_eps']:>14,.1f} eps")
+    print(
+        f"{'p50 Q1 - Q3 Range':<30} | {v1['q1']:.2f} - {v1['q3']:.2f} µs  | {v4['q1']:.2f} - {v4['q3']:.2f} µs"
+    )
+    print(
+        f"{'Throughput (median)':<30} | {v1['median_eps']:>14,.1f} eps | {v4['median_eps']:>14,.1f} eps"
+    )
     print("-" * 70)
 
     p50_wins = v4["p50"] < v1["p50"]

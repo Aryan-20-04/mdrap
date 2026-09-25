@@ -1,6 +1,7 @@
 """
 Resilience & Offline Integration Tests for MarketDataDaemon, StreamClient & WebSocket Feeds.
 """
+
 from __future__ import annotations
 
 import json
@@ -10,6 +11,7 @@ import time
 import pytest
 
 import sys
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from models import CanonicalEvent, EventType, QualityStatus, RawEvent
@@ -26,6 +28,7 @@ from ws_feed import (
 # ---------------------------------------------------------------------------
 # Offline WebSocket Frame Parsing Tests (Zero-Network)
 # ---------------------------------------------------------------------------
+
 
 def test_offline_binance_frame_parser():
     """Verify Binance WebSocket JSON depth and trade frames parse accurately into RawEvent."""
@@ -69,7 +72,12 @@ def test_offline_coinbase_frame_parser():
 def test_offline_kraken_okx_bybit_parsers():
     """Verify Kraken, OKX, and Bybit payload frames parse cleanly."""
     # Kraken ticker frame (list with dict body)
-    frame_kr = [0, {"b": ["65000.0", "1", "0.5"], "a": ["65001.0", "1", "1.0"]}, "ticker", "XBT/USD"]
+    frame_kr = [
+        0,
+        {"b": ["65000.0", "1", "0.5"], "a": ["65001.0", "1", "1.0"]},
+        "ticker",
+        "XBT/USD",
+    ]
     raw_kr = parse_kraken_frame(frame_kr, "BTC/USD")
     assert raw_kr is not None
     assert raw_kr.source == "KRAKEN"
@@ -102,15 +110,25 @@ def test_offline_kraken_okx_bybit_parsers():
 # MarketDataDaemon & StreamClient Resilience Tests
 # ---------------------------------------------------------------------------
 
+
 def test_daemon_client_connect_and_broadcast():
     """Verify StreamClient connects, authenticates, receives broadcast ticks, and closes cleanly."""
     port = 19877
-    daemon = MarketDataDaemon(host="127.0.0.1", port=port, db_path=":memory:", enable_shm=False, use_live=False, sim_speed_eps=5000.0)
+    daemon = MarketDataDaemon(
+        host="127.0.0.1",
+        port=port,
+        db_path=":memory:",
+        enable_shm=False,
+        use_live=False,
+        sim_speed_eps=5000.0,
+    )
     daemon.start(blocking=False)
     time.sleep(0.3)
 
     try:
-        client = StreamClient(host="127.0.0.1", port=port, auth_token="mdrap_demo_pro_key")
+        client = StreamClient(
+            host="127.0.0.1", port=port, auth_token="mdrap_demo_pro_key"
+        )
         client.connect()
 
         # Query daemon status over client

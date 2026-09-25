@@ -6,10 +6,10 @@ database transactions. Reads committed slots from the lock-free circular SHM rin
 buffer and asynchronously drains them into the append-only binary journal and/or
 relational analytical storage (Spec §5, §26).
 """
+
 from __future__ import annotations
 
 import logging
-import os
 import struct
 import threading
 import time
@@ -93,7 +93,11 @@ class SHMDrainWorker:
         else:
             latest = self.reader.read_latest_seq()
             # Start from slot 0 or latest - buffer size if ring wrapped
-            self._current_seq = max(0, latest - self.reader.slot_count + 1) if latest > self.reader.slot_count else 0
+            self._current_seq = (
+                max(0, latest - self.reader.slot_count + 1)
+                if latest > self.reader.slot_count
+                else 0
+            )
 
         self._stop_event.clear()
         self._t_start = time.time()
@@ -149,7 +153,9 @@ class SHMDrainWorker:
                 if self.store:
                     slot_dict = self.reader.read_slot(self._current_seq)
                     if slot_dict:
-                        self._pending_canonical.append(self._to_canonical_event(slot_dict))
+                        self._pending_canonical.append(
+                            self._to_canonical_event(slot_dict)
+                        )
 
                 self.stats.drained_count += 1
                 self.stats.last_drained_seq = self._current_seq
@@ -205,12 +211,18 @@ class SHMDrainWorker:
         q_status = (
             QualityStatus.VALID
             if st_str == "VALID"
-            else (QualityStatus.SUSPICIOUS if st_str == "SUSPICIOUS" else QualityStatus.INVALID)
+            else (
+                QualityStatus.SUSPICIOUS
+                if st_str == "SUSPICIOUS"
+                else QualityStatus.INVALID
+            )
         )
         return CanonicalEvent(
             event_id=f"shm_{slot_dict['seq']}",
             instrument_id=slot_dict.get("sym", "UNKNOWN"),
-            event_type=EventType.DEPTH if slot_dict.get("type") == "DEPTH" else EventType.TRADE,
+            event_type=EventType.DEPTH
+            if slot_dict.get("type") == "DEPTH"
+            else EventType.TRADE,
             exchange_timestamp=slot_dict.get("exchange_ts", 0.0),
             receive_timestamp=slot_dict.get("ingest_ts", 0.0),
             processing_timestamp=slot_dict.get("broadcast_ts", 0.0),

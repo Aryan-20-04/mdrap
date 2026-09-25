@@ -191,8 +191,12 @@ def test_decision_identity_pipeline_process_one_vs_process_batch():
         assert src_one == src_batch, f"Order violated for source {source}"
 
     for inst in ("AAPL", "MSFT"):
-        inst_one = [ev.event_id for ev in results_one if ev and ev.instrument_id == inst]
-        inst_batch = [ev.event_id for ev in results_batch if ev and ev.instrument_id == inst]
+        inst_one = [
+            ev.event_id for ev in results_one if ev and ev.instrument_id == inst
+        ]
+        inst_batch = [
+            ev.event_id for ev in results_batch if ev and ev.instrument_id == inst
+        ]
         assert inst_one == inst_batch, f"Order violated for instrument {inst}"
 
 
@@ -222,4 +226,3 @@ def test_decision_identity_python_vs_c_fastpath():
 
         assert ev_py.quality_status == ev_fast.quality_status
         assert set(ev_py.reasons) == set(ev_fast.reasons)
-

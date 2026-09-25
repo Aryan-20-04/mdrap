@@ -11,6 +11,7 @@ from columnar import ColumnarStore
 
 try:
     import duckdb
+
     HAS_DUCKDB = True
 except ImportError:
     HAS_DUCKDB = False
@@ -25,7 +26,14 @@ def memory_store():
     store.close()
 
 
-def make_trade(event_id: str, symbol: str, price: float, qty: float, ts: float, delta_proc: float = 0.0005) -> CanonicalEvent:
+def make_trade(
+    event_id: str,
+    symbol: str,
+    price: float,
+    qty: float,
+    ts: float,
+    delta_proc: float = 0.0005,
+) -> CanonicalEvent:
     return CanonicalEvent(
         event_id=event_id,
         instrument_id=symbol,
@@ -34,14 +42,18 @@ def make_trade(event_id: str, symbol: str, price: float, qty: float, ts: float, 
         receive_timestamp=ts + 0.0001,
         processing_timestamp=ts + 0.0001 + delta_proc,
         source="FEEDA",
-        sequence_number=int(event_id.replace("t", "").replace("q", "").replace("e", "") or "1"),
+        sequence_number=int(
+            event_id.replace("t", "").replace("q", "").replace("e", "") or "1"
+        ),
         price=price,
         quantity=qty,
         quality_status=QualityStatus.VALID,
     )
 
 
-def make_quote(event_id: str, symbol: str, bid: float, ask: float, ts: float) -> CanonicalEvent:
+def make_quote(
+    event_id: str, symbol: str, bid: float, ask: float, ts: float
+) -> CanonicalEvent:
     return CanonicalEvent(
         event_id=event_id,
         instrument_id=symbol,
@@ -50,7 +62,9 @@ def make_quote(event_id: str, symbol: str, bid: float, ask: float, ts: float) ->
         receive_timestamp=ts + 0.0001,
         processing_timestamp=ts + 0.0002,
         source="FEEDB",
-        sequence_number=int(event_id.replace("t", "").replace("q", "").replace("e", "") or "1"),
+        sequence_number=int(
+            event_id.replace("t", "").replace("q", "").replace("e", "") or "1"
+        ),
         bid_price=bid,
         bid_size=100.0,
         ask_price=ask,
@@ -218,7 +232,9 @@ def test_columnar_export_parquet(memory_store):
         assert os.path.getsize(exported_path) > 0
 
         # Verify reading back via duckdb
-        check_count = memory_store.con.execute(f"SELECT count(*) FROM read_parquet('{exported_path}')").fetchone()[0]
+        check_count = memory_store.con.execute(
+            f"SELECT count(*) FROM read_parquet('{exported_path}')"
+        ).fetchone()[0]
         assert check_count == 2
 
 
@@ -229,7 +245,9 @@ def test_columnar_sql(memory_store):
     ]
     memory_store.ingest_events(events)
 
-    rows = memory_store.sql("SELECT instrument_id, price FROM canonical_ticks ORDER BY price")
+    rows = memory_store.sql(
+        "SELECT instrument_id, price FROM canonical_ticks ORDER BY price"
+    )
     assert len(rows) == 2
     assert rows[0]["instrument_id"] == "AAPL"
     assert rows[0]["price"] == 150.0
@@ -316,5 +334,3 @@ def test_export_parquet_partitioned(memory_store):
             f"SELECT count(*) FROM read_parquet('{glob_path}')"
         ).fetchone()[0]
         assert cnt == 3
-
-

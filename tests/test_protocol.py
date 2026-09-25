@@ -10,9 +10,14 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from client import MarketEvent, MDRAPClient
 from service import MarketDataDaemon
 from protocol import (
-    pack_tick_frame, unpack_tick_payload,
-    pack_depth_frame, unpack_depth_payload,
-    BinaryStreamParser, HEADER_STRUCT, TICK_PAYLOAD_LEN, DEPTH_PAYLOAD_LEN
+    pack_tick_frame,
+    unpack_tick_payload,
+    pack_depth_frame,
+    unpack_depth_payload,
+    BinaryStreamParser,
+    HEADER_STRUCT,
+    TICK_PAYLOAD_LEN,
+    DEPTH_PAYLOAD_LEN,
 )
 
 
@@ -35,7 +40,7 @@ def test_tick_binary_roundtrip():
     )
 
     assert len(frame) == HEADER_STRUCT.size + TICK_PAYLOAD_LEN
-    payload_bytes = frame[HEADER_STRUCT.size:]
+    payload_bytes = frame[HEADER_STRUCT.size :]
     parsed = unpack_tick_payload(payload_bytes)
 
     assert parsed["type"] == "TICK"
@@ -70,7 +75,7 @@ def test_depth_binary_roundtrip():
     )
 
     assert len(frame) == HEADER_STRUCT.size + DEPTH_PAYLOAD_LEN
-    payload_bytes = frame[HEADER_STRUCT.size:]
+    payload_bytes = frame[HEADER_STRUCT.size :]
     parsed = unpack_depth_payload(payload_bytes)
 
     assert parsed["type"] == "DEPTH"
@@ -86,14 +91,34 @@ def test_depth_binary_roundtrip():
 def test_binary_stream_parser_fragmentation():
     """Verify that BinaryStreamParser reassembles frames across fragmented chunks."""
     f1 = pack_tick_frame(
-        seq=1, symbol="AAPL", source="FEEDX", price=150.0, size=10.0,
-        bid=149.9, ask=150.1, status="VALID", is_crossed=False,
-        exchange_ts=1000.0, ingest_ts=1000.001, broadcast_ts=1000.002, engine_us=10.0
+        seq=1,
+        symbol="AAPL",
+        source="FEEDX",
+        price=150.0,
+        size=10.0,
+        bid=149.9,
+        ask=150.1,
+        status="VALID",
+        is_crossed=False,
+        exchange_ts=1000.0,
+        ingest_ts=1000.001,
+        broadcast_ts=1000.002,
+        engine_us=10.0,
     )
     f2 = pack_depth_frame(
-        seq=2, symbol="AAPL", best_bid=149.9, best_ask=150.1, bid_size=50.0, ask_size=50.0,
-        micro_price=150.0, ofi=0.0, is_crossed=False,
-        exchange_ts=1000.0, ingest_ts=1000.001, broadcast_ts=1000.002, engine_us=12.0
+        seq=2,
+        symbol="AAPL",
+        best_bid=149.9,
+        best_ask=150.1,
+        bid_size=50.0,
+        ask_size=50.0,
+        micro_price=150.0,
+        ofi=0.0,
+        is_crossed=False,
+        exchange_ts=1000.0,
+        ingest_ts=1000.001,
+        broadcast_ts=1000.002,
+        engine_us=12.0,
     )
 
     combined = f1 + f2
@@ -103,7 +128,7 @@ def test_binary_stream_parser_fragmentation():
     events = []
     chunk_size = 15
     for i in range(0, len(combined), chunk_size):
-        chunk = combined[i:i + chunk_size]
+        chunk = combined[i : i + chunk_size]
         events.extend(parser.feed(chunk))
 
     assert len(events) == 2
@@ -119,14 +144,26 @@ def test_binary_serialization_speed_benchmark():
     count = 10_000
     for i in range(count):
         pack_tick_frame(
-            seq=i, symbol="BTC/USD", source="BINANCE", price=80000.0, size=1.0,
-            bid=79999.0, ask=80001.0, status="VALID", is_crossed=False,
-            exchange_ts=1000.0, ingest_ts=1000.001, broadcast_ts=1000.002, engine_us=10.0
+            seq=i,
+            symbol="BTC/USD",
+            source="BINANCE",
+            price=80000.0,
+            size=1.0,
+            bid=79999.0,
+            ask=80001.0,
+            status="VALID",
+            is_crossed=False,
+            exchange_ts=1000.0,
+            ingest_ts=1000.001,
+            broadcast_ts=1000.002,
+            engine_us=10.0,
         )
     elapsed_ns = time.perf_counter_ns() - t0
     avg_ns = elapsed_ns / count
     # Threshold 50,000ns accommodates tracing/profiling overhead and heavy multi-suite scheduling jitter (normally < 1,000ns)
-    assert avg_ns < 50_000, f"Binary pack latency was {avg_ns:.1f} ns (expected < 50000ns)"
+    assert avg_ns < 50_000, (
+        f"Binary pack latency was {avg_ns:.1f} ns (expected < 50000ns)"
+    )
 
 
 @pytest.fixture
@@ -158,9 +195,19 @@ def test_binary_stream_parser_sync_recovery():
     parser = BinaryStreamParser()
     garbage = b"RANDOM_CORRUPT_BYTES_WITHOUT_MAGIC_MD_HERE_EXTRA_JUNK"
     valid_tick = pack_tick_frame(
-        seq=999, symbol="BTC/USD", source="COINBASE", price=81000.0, size=2.0,
-        bid=80990.0, ask=81010.0, status="VALID", is_crossed=False,
-        exchange_ts=1000.0, ingest_ts=1000.001, broadcast_ts=1000.002, engine_us=11.5
+        seq=999,
+        symbol="BTC/USD",
+        source="COINBASE",
+        price=81000.0,
+        size=2.0,
+        bid=80990.0,
+        ask=81010.0,
+        status="VALID",
+        is_crossed=False,
+        exchange_ts=1000.0,
+        ingest_ts=1000.001,
+        broadcast_ts=1000.002,
+        engine_us=11.5,
     )
     events = parser.feed(garbage + valid_tick)
     assert len(events) == 1
@@ -171,7 +218,9 @@ def test_binary_stream_parser_sync_recovery():
 
 def test_client_daemon_binary_streaming(running_daemon):
     """End-to-end integration: client streams binary frames over TCP socket."""
-    with MDRAPClient(host="127.0.0.1", port=running_daemon.port, use_binary=True) as client:
+    with MDRAPClient(
+        host="127.0.0.1", port=running_daemon.port, use_binary=True
+    ) as client:
         client.subscribe("ALL")
         events = []
         for ev in client.stream(timeout=3.0, max_events=10):
@@ -189,8 +238,12 @@ def test_client_daemon_binary_streaming(running_daemon):
 
 def test_mixed_json_and_binary_clients(running_daemon):
     """Verify concurrent JSON and Binary clients receive identical stream without interference."""
-    with MDRAPClient(host="127.0.0.1", port=running_daemon.port, use_binary=False) as json_client:
-        with MDRAPClient(host="127.0.0.1", port=running_daemon.port, use_binary=True) as bin_client:
+    with MDRAPClient(
+        host="127.0.0.1", port=running_daemon.port, use_binary=False
+    ) as json_client:
+        with MDRAPClient(
+            host="127.0.0.1", port=running_daemon.port, use_binary=True
+        ) as bin_client:
             json_client.subscribe("ALL")
             bin_client.subscribe("ALL")
 

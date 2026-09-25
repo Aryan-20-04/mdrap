@@ -18,13 +18,20 @@ from protocols import StorageBackend, AuthProvider, QualityEvaluator, OutputSink
 from storage import Store
 from security import SecurityManager, Role, ClientEntitlement
 from quality import QualityEngine
-from rules import register_rule, unregister_rule, clear_user_rules, discover_quality_rules, evaluate_user_rules
+from rules import (
+    register_rule,
+    unregister_rule,
+    clear_user_rules,
+    discover_quality_rules,
+    evaluate_user_rules,
+)
 from adapters import FeedAdapter, discover_adapters
 
 
 # ---------------------------------------------------------------------------
 # Minimal Alternate Implementations
 # ---------------------------------------------------------------------------
+
 
 class MinimalMemoryStorage:
     """Minimal alternative in-memory storage implementation for testing StorageBackend."""
@@ -86,8 +93,13 @@ class MinimalMemoryStorage:
     def commit(self) -> None:
         self.committed = True
 
-    def query_events(self, instrument_id: str | None = None, limit: int = 1000) -> list[dict]:
-        return [{"event_id": e.event_id, "instrument_id": e.instrument_id} for e in self.events[:limit]]
+    def query_events(
+        self, instrument_id: str | None = None, limit: int = 1000
+    ) -> list[dict]:
+        return [
+            {"event_id": e.event_id, "instrument_id": e.instrument_id}
+            for e in self.events[:limit]
+        ]
 
     def latest(self, instrument_id: str, limit: int = 1) -> list[dict]:
         return [
@@ -103,7 +115,11 @@ class MinimalMemoryStorage:
         return []
 
     def counts(self) -> dict[str, int]:
-        return {"canonical": len(self.events), "quarantine": len(self.quarantine), "lineage": len(self.lineage)}
+        return {
+            "canonical": len(self.events),
+            "quarantine": len(self.quarantine),
+            "lineage": len(self.lineage),
+        }
 
     def close(self) -> None:
         self.closed = True
@@ -122,13 +138,17 @@ class MinimalAuthProvider:
             )
         }
 
-    def get_entitlement(self, token: str, active_only: bool = False) -> ClientEntitlement | None:
+    def get_entitlement(
+        self, token: str, active_only: bool = False
+    ) -> ClientEntitlement | None:
         ent = self.keys.get(token)
         if active_only and ent and not ent.is_active:
             return None
         return ent
 
-    def authorize(self, actor_or_token: Any, required_role: Any, action_name: str = "") -> None:
+    def authorize(
+        self, actor_or_token: Any, required_role: Any, action_name: str = ""
+    ) -> None:
         pass
 
     def log_audit(
@@ -208,6 +228,7 @@ class MinimalFeedAdapter:
 # ---------------------------------------------------------------------------
 # Test Cases
 # ---------------------------------------------------------------------------
+
 
 def test_default_classes_satisfy_protocols():
     """Verify built-in components fulfill their respective runtime protocols."""

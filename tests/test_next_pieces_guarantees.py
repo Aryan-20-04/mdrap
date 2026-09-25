@@ -53,6 +53,7 @@ from storage import Store
 # 1. Pipeline Isolation & Chaos Tests (Rule 1 & Rule 2)
 # ---------------------------------------------------------------------------
 
+
 def test_pipeline_isolation_when_kafka_down():
     """Verify core pipeline continues processing with zero blockage when Kafka sink fails."""
     store = Store(":memory:")
@@ -120,6 +121,7 @@ def test_pipeline_isolation_when_alert_sink_down():
 # ---------------------------------------------------------------------------
 # 2. Delivery Semantics & Checkpoint Resumption (Kafka Sink)
 # ---------------------------------------------------------------------------
+
 
 def test_kafka_durable_at_least_once_and_checkpoint_resume(tmp_path):
     """Verify DurableKafkaSink resumes cleanly from persisted checkpoint across restarts."""
@@ -233,6 +235,7 @@ def test_kafka_topic_separation_false_positive_prevention():
 # 3. Alert Delivery Hysteresis & False-Positive Prevention
 # ---------------------------------------------------------------------------
 
+
 def test_alert_hysteresis_suppresses_flicker_noise():
     """Verify hysteresis window requires N sustained breaches and margin clearing to re-arm."""
     engine = AlertEngine(":memory:")
@@ -289,6 +292,7 @@ def test_alert_cooldown_deduplication():
 # 4. Security & Cryptographic Signature Verification
 # ---------------------------------------------------------------------------
 
+
 def test_alert_outbound_hmac_signing_and_verification():
     """Verify outbound webhook payloads are signed via SecurityManager and verify correctly."""
     sec = SecurityManager()
@@ -330,6 +334,7 @@ def test_alert_outbound_hmac_signing_and_verification():
 # 5. Heartbeat & Liveness Self-Test
 # ---------------------------------------------------------------------------
 
+
 def test_alert_heartbeat_liveness_self_test():
     """Verify heartbeat self-test alert exercises the delivery sink."""
     engine = AlertEngine(":memory:")
@@ -346,6 +351,7 @@ def test_alert_heartbeat_liveness_self_test():
 # ---------------------------------------------------------------------------
 # 6. Prometheus Operational Metrics & Reconciliation Tests
 # ---------------------------------------------------------------------------
+
 
 def test_prometheus_operational_metrics_exposition():
     """Verify /metrics renders authentic format and reflects active telemetry counts."""
@@ -415,13 +421,21 @@ def test_prometheus_reconciliation_kafka_lag():
     assert sink.lag() == 5
 
     exporter = PrometheusExporter()
-    rendered = exporter.render(state=type("State", (), {"kafka_sink": sink, "pipeline": None, "store": store})())
+    rendered = exporter.render(
+        state=type(
+            "State", (), {"kafka_sink": sink, "pipeline": None, "store": store}
+        )()
+    )
     assert "mdrap_kafka_sink_lag_events 5" in rendered
 
     # After producing: lag decreases to 0
     sink.poll_and_produce()
     assert sink.lag() == 0
-    rendered2 = exporter.render(state=type("State", (), {"kafka_sink": sink, "pipeline": None, "store": store})())
+    rendered2 = exporter.render(
+        state=type(
+            "State", (), {"kafka_sink": sink, "pipeline": None, "store": store}
+        )()
+    )
     assert "mdrap_kafka_sink_lag_events 0" in rendered2
     assert "mdrap_kafka_sink_produced_total 5" in rendered2
 
@@ -483,5 +497,6 @@ def test_regression_benchmark_gate():
     # Hot path overhead gate: Sinks run decoupled, so pipeline duration per event must remain fast (< 250µs/event)
     per_event_base_us = (base_duration / N) * 1_000_000
     per_event_sinks_us = (sinks_duration / N) * 1_000_000
-    assert per_event_sinks_us < 500.0, f"Hot path regressed: {per_event_sinks_us:.2f} µs/event"
-
+    assert per_event_sinks_us < 500.0, (
+        f"Hot path regressed: {per_event_sinks_us:.2f} µs/event"
+    )

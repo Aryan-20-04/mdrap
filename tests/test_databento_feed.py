@@ -1,6 +1,7 @@
 """
 Unit and Integration Tests for Databento Binary Encoding (DBN) Feed Engine.
 """
+
 import io
 import os
 import sys
@@ -72,7 +73,7 @@ def test_decode_dbn_trade():
         inst_id=2001,
         price=5500.50,
         size=15,
-        side=b'B',
+        side=b"B",
     )
     assert len(raw_bytes) == 48
 
@@ -142,7 +143,9 @@ def test_synthetic_dbn_generator_batch():
 
 def test_databento_feed_manager_mock():
     """Verify DatabentoFeedManager generates and streams events."""
-    mgr = DatabentoFeedManager(symbols=["AAPL", "ES.c.0"], mock_mode=True, max_queue_size=100)
+    mgr = DatabentoFeedManager(
+        symbols=["AAPL", "ES.c.0"], mock_mode=True, max_queue_size=100
+    )
     assert mgr.mock_mode is True
     mgr.start()
     assert mgr.is_running() is True

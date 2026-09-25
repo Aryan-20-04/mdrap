@@ -180,12 +180,34 @@ def test_client_automated_gap_detection_and_replay():
         # Read sub line
         conn.recv(1024)
         # Send event 1
-        ev1 = json.dumps({"type": "TICK", "seq": 1, "sym": "BTC/USD", "price": 100.0, "status": "VALID"}) + "\n"
+        ev1 = (
+            json.dumps(
+                {
+                    "type": "TICK",
+                    "seq": 1,
+                    "sym": "BTC/USD",
+                    "price": 100.0,
+                    "status": "VALID",
+                }
+            )
+            + "\n"
+        )
         conn.sendall(ev1.encode("utf-8"))
         time.sleep(0.05)
 
         # Intentionally skip event 2, send event 3!
-        ev3 = json.dumps({"type": "TICK", "seq": 3, "sym": "BTC/USD", "price": 102.0, "status": "VALID"}) + "\n"
+        ev3 = (
+            json.dumps(
+                {
+                    "type": "TICK",
+                    "seq": 3,
+                    "sym": "BTC/USD",
+                    "price": 102.0,
+                    "status": "VALID",
+                }
+            )
+            + "\n"
+        )
         conn.sendall(ev3.encode("utf-8"))
 
         # Wait for potential query socket for REPLAY
@@ -193,13 +215,26 @@ def test_client_automated_gap_detection_and_replay():
         req = q_conn.recv(1024).decode("utf-8")
         if "REPLAY" in req:
             # Replay missing event 2
-            rep_resp = json.dumps({
-                "status": "OK",
-                "action": "REPLAY",
-                "from_seq": 2,
-                "to_seq": 2,
-                "events": [{"type": "TICK", "seq": 2, "sym": "BTC/USD", "price": 101.0, "status": "VALID"}],
-            }) + "\n"
+            rep_resp = (
+                json.dumps(
+                    {
+                        "status": "OK",
+                        "action": "REPLAY",
+                        "from_seq": 2,
+                        "to_seq": 2,
+                        "events": [
+                            {
+                                "type": "TICK",
+                                "seq": 2,
+                                "sym": "BTC/USD",
+                                "price": 101.0,
+                                "status": "VALID",
+                            }
+                        ],
+                    }
+                )
+                + "\n"
+            )
             q_conn.sendall(rep_resp.encode("utf-8"))
         q_conn.close()
 
@@ -238,7 +273,9 @@ def test_client_unsubscribe_and_queries(running_daemon):
         assert "L2:BTC/USD" in client._subscribed_symbols
         assert "VWAP:BTC/USD" in client._subscribed_symbols
 
-        client.unsubscribe(["BTC/USD", "ETH/USD"], include_depth=True, include_vwap=True)
+        client.unsubscribe(
+            ["BTC/USD", "ETH/USD"], include_depth=True, include_vwap=True
+        )
         assert "BTC/USD" not in client._subscribed_symbols
         assert "L2:BTC/USD" not in client._subscribed_symbols
 
@@ -247,4 +284,3 @@ def test_client_unsubscribe_and_queries(running_daemon):
         assert bbo is not None or bbo is None
         vwap = client.get_vwap("BTC/USD", sizes=[1.0, 5.0])
         assert vwap is not None or vwap is None
-

@@ -856,8 +856,7 @@ class FastQualityEngine:
                 )
                 unseq_st = (
                     2
-                    if getattr(self.cfg, "unseq_dup_status", "SUSPICIOUS")
-                    == "INVALID"
+                    if getattr(self.cfg, "unseq_dup_status", "SUSPICIOUS") == "INVALID"
                     else 1
                 )
                 _C_EXT.engine_configure(
@@ -1146,7 +1145,11 @@ class FastQualityEngine:
     def _evaluate_batch_unlocked(
         self, events: list[CanonicalEvent]
     ) -> list[CanonicalEvent]:
-        if self._engine_ptr_c or not _NATIVE_LIB or not hasattr(_NATIVE_LIB, "fastpath_evaluate_batch"):
+        if (
+            self._engine_ptr_c
+            or not _NATIVE_LIB
+            or not hasattr(_NATIVE_LIB, "fastpath_evaluate_batch")
+        ):
             for ev in events:
                 self._evaluate_unlocked(ev)
             return events
@@ -1631,7 +1634,10 @@ def get_buffer_address(obj) -> int:
 
 def has_native_shm() -> bool:
     """Check if compiled native C shared memory acceleration is active."""
-    return bool(_C_EXT is not None or (_NATIVE_LIB and hasattr(_NATIVE_LIB, "fastpath_shm_read_slot")))
+    return bool(
+        _C_EXT is not None
+        or (_NATIVE_LIB and hasattr(_NATIVE_LIB, "fastpath_shm_read_slot"))
+    )
 
 
 def native_shm_read_slot(buf_ptr, slot_count: int, target_seq: int) -> dict | None:

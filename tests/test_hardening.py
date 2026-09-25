@@ -11,6 +11,7 @@ Verifies:
 7. FastPath Capacity Fallback (Graceful fallback when exceeding C static table limits).
 8. BBO TTL Staleness Guard (Expired quote eviction).
 """
+
 import os
 import sys
 import time
@@ -33,7 +34,9 @@ from security import SecurityManager, TokenBucketRateLimiter
 from bbo import BBOEngine
 
 
-def _make_trade(eid: str, inst: str, price: float, ts: float, src: str = "FEEDX", seq: int = 1) -> CanonicalEvent:
+def _make_trade(
+    eid: str, inst: str, price: float, ts: float, src: str = "FEEDX", seq: int = 1
+) -> CanonicalEvent:
     return CanonicalEvent(
         event_id=eid,
         instrument_id=inst,
@@ -97,7 +100,13 @@ def test_slow_consumer_queue_isolation():
         for i in range(1200):
             raw = RawEvent(
                 source="TESTFEED",
-                payload={"instrument": "AAPL", "price": 150.0 + i * 0.01, "quantity": 100, "sequence": i + 1, "exchange_ts": 1000.0 + i},
+                payload={
+                    "instrument": "AAPL",
+                    "price": 150.0 + i * 0.01,
+                    "quantity": 100,
+                    "sequence": i + 1,
+                    "exchange_ts": 1000.0 + i,
+                },
                 receive_timestamp=1000.0 + i,
                 raw_id=f"tick_{i}",
             )
@@ -190,7 +199,9 @@ def test_clean_baseline_welford_immunity():
 
     # Step 1: Establish stable baseline for AAPL at $150
     for i in range(40):
-        ev = _make_trade(f"base_{i}", "AAPL", 150.0 + (i % 2) * 0.05, 1000.0 + i, seq=i + 1)
+        ev = _make_trade(
+            f"base_{i}", "AAPL", 150.0 + (i % 2) * 0.05, 1000.0 + i, seq=i + 1
+        )
         evaluated = engine.evaluate(ev)
         assert evaluated.quality_status == QualityStatus.VALID
 
@@ -234,7 +245,9 @@ def test_ewma_reliability_responsiveness():
     # In the old cumulative model: 40 / 1040 = 3.8% error rate -> score ~ 0.96 (fails to trip degradation threshold of 0.90)
     # In the new EWMA model: EWMA error rate rapidly rises -> score falls below 0.85 immediately
     updated_stats = tracker.stats["FEEDX"]
-    assert updated_stats.score < 0.85, f"Expected score < 0.85, got {updated_stats.score}"
+    assert updated_stats.score < 0.85, (
+        f"Expected score < 0.85, got {updated_stats.score}"
+    )
     assert updated_stats.ewma_error_rate > 0.40
 
 
@@ -250,15 +263,51 @@ def test_rate_limited_events_are_quarantined():
     pipeline = Pipeline(store=store, security=sec)
 
     # 1st & 2nd events allowed
-    raw1 = RawEvent(source="FEED_BURST", payload={"instrument": "AAPL", "event_type": "TRADE", "exchange_ts": 1000.0, "price": 150.0, "quantity": 100, "sequence": 1}, receive_timestamp=1000.0, raw_id="r1")
-    raw2 = RawEvent(source="FEED_BURST", payload={"instrument": "AAPL", "event_type": "TRADE", "exchange_ts": 1000.01, "price": 150.1, "quantity": 100, "sequence": 2}, receive_timestamp=1000.01, raw_id="r2")
+    raw1 = RawEvent(
+        source="FEED_BURST",
+        payload={
+            "instrument": "AAPL",
+            "event_type": "TRADE",
+            "exchange_ts": 1000.0,
+            "price": 150.0,
+            "quantity": 100,
+            "sequence": 1,
+        },
+        receive_timestamp=1000.0,
+        raw_id="r1",
+    )
+    raw2 = RawEvent(
+        source="FEED_BURST",
+        payload={
+            "instrument": "AAPL",
+            "event_type": "TRADE",
+            "exchange_ts": 1000.01,
+            "price": 150.1,
+            "quantity": 100,
+            "sequence": 2,
+        },
+        receive_timestamp=1000.01,
+        raw_id="r2",
+    )
     ev1 = pipeline.process_one(raw1)
     ev2 = pipeline.process_one(raw2)
     assert ev1.quality_status == QualityStatus.VALID
     assert ev2.quality_status == QualityStatus.VALID
 
     # 3rd event exceeds rate limit capacity
-    raw3 = RawEvent(source="FEED_BURST", payload={"instrument": "AAPL", "event_type": "TRADE", "exchange_ts": 1000.02, "price": 150.2, "quantity": 100, "sequence": 3}, receive_timestamp=1000.02, raw_id="r3")
+    raw3 = RawEvent(
+        source="FEED_BURST",
+        payload={
+            "instrument": "AAPL",
+            "event_type": "TRADE",
+            "exchange_ts": 1000.02,
+            "price": 150.2,
+            "quantity": 100,
+            "sequence": 3,
+        },
+        receive_timestamp=1000.02,
+        raw_id="r3",
+    )
     ev3 = pipeline.process_one(raw3)
 
     # Invariant: Must NOT return None or silently drop. Must be INVALID and quarantined.
@@ -286,7 +335,14 @@ def test_time_based_flush_for_low_volume_feeds():
     for i in range(3):
         raw = RawEvent(
             source="SLOW_FEED",
-            payload={"instrument": "MSFT", "event_type": "TRADE", "price": 400.0 + i, "quantity": 50, "sequence": i + 1, "exchange_ts": 1000.0 + i},
+            payload={
+                "instrument": "MSFT",
+                "event_type": "TRADE",
+                "price": 400.0 + i,
+                "quantity": 50,
+                "sequence": i + 1,
+                "exchange_ts": 1000.0 + i,
+            },
             receive_timestamp=1000.0 + i,
             raw_id=f"slow_{i}",
         )
@@ -370,6 +426,7 @@ def test_bbo_staleness_guard():
 # =========================================================================
 def test_out_of_order_event_not_treated_as_concurrent():
     from reconciliation import CrossFeedReconciler, ReliabilityConfig
+
     cfg = ReliabilityConfig(agreement_window_s=0.25)
     reconciler = CrossFeedReconciler(cfg=cfg)
 
@@ -389,4 +446,3 @@ def test_out_of_order_event_not_treated_as_concurrent():
     ev3 = _make_trade("ev3", "AAPL", 155.0, 105.0, src="FEEDA")
     dec3 = reconciler.reconcile(ev3)
     assert dec3 is None
-

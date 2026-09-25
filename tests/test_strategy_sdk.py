@@ -1,5 +1,6 @@
 import os
 import sys
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 import pytest
@@ -29,13 +30,25 @@ def test_risk_manager_max_order_size():
     pos = Position(symbol="AAPL")
 
     # Valid order size
-    order = Order(order_id="1", symbol="AAPL", side=OrderSide.BUY, order_type=OrderType.MARKET, quantity=200.0)
+    order = Order(
+        order_id="1",
+        symbol="AAPL",
+        side=OrderSide.BUY,
+        order_type=OrderType.MARKET,
+        quantity=200.0,
+    )
     ok, err = rm.validate_order(order, 150.0, pos, 50_000.0)
     assert ok is True
     assert err is None
 
     # Exceeds max order size
-    big_order = Order(order_id="2", symbol="AAPL", side=OrderSide.BUY, order_type=OrderType.MARKET, quantity=1000.0)
+    big_order = Order(
+        order_id="2",
+        symbol="AAPL",
+        side=OrderSide.BUY,
+        order_type=OrderType.MARKET,
+        quantity=1000.0,
+    )
     ok, err = rm.validate_order(big_order, 150.0, pos, 50_000.0)
     assert ok is False
     assert "exceeds max order limit" in err
@@ -47,12 +60,26 @@ def test_risk_manager_price_collar():
     pos = Position(symbol="AAPL")
 
     # Midpoint is 100.0, 50 bps is 0.50. Range is [99.50, 100.50]
-    valid_limit = Order(order_id="1", symbol="AAPL", side=OrderSide.BUY, order_type=OrderType.LIMIT, quantity=100.0, price=100.30)
+    valid_limit = Order(
+        order_id="1",
+        symbol="AAPL",
+        side=OrderSide.BUY,
+        order_type=OrderType.LIMIT,
+        quantity=100.0,
+        price=100.30,
+    )
     ok, err = rm.validate_order(valid_limit, 100.0, pos, 100_000.0)
     assert ok is True
 
     # Fat-finger order: price=110.0 (1000 bps away)
-    fat_finger = Order(order_id="2", symbol="AAPL", side=OrderSide.BUY, order_type=OrderType.LIMIT, quantity=100.0, price=110.0)
+    fat_finger = Order(
+        order_id="2",
+        symbol="AAPL",
+        side=OrderSide.BUY,
+        order_type=OrderType.LIMIT,
+        quantity=100.0,
+        price=110.0,
+    )
     ok, err = rm.validate_order(fat_finger, 100.0, pos, 100_000.0)
     assert ok is False
     assert "deviates by" in err
@@ -62,7 +89,13 @@ def test_risk_manager_kill_switch_drawdown():
     limits = RiskLimits(max_drawdown_pct=5.0)
     rm = RiskManager(limits=limits, initial_capital=100_000.0)
     pos = Position(symbol="AAPL")
-    order = Order(order_id="1", symbol="AAPL", side=OrderSide.BUY, order_type=OrderType.MARKET, quantity=100.0)
+    order = Order(
+        order_id="1",
+        symbol="AAPL",
+        side=OrderSide.BUY,
+        order_type=OrderType.MARKET,
+        quantity=100.0,
+    )
 
     # Equity drops to 94,000 (6% drawdown)
     ok, err = rm.validate_order(order, 100.0, pos, 94_000.0)
@@ -75,7 +108,13 @@ def test_risk_manager_zero_equity_handling():
     """Verify RiskManager handles non-positive initial capital and negative equity gracefully."""
     rm = RiskManager(initial_capital=0.0)
     pos = Position(symbol="AAPL")
-    order = Order(order_id="zero_eq", symbol="AAPL", side=OrderSide.BUY, order_type=OrderType.MARKET, quantity=10.0)
+    order = Order(
+        order_id="zero_eq",
+        symbol="AAPL",
+        side=OrderSide.BUY,
+        order_type=OrderType.MARKET,
+        quantity=10.0,
+    )
 
     # Negative equity with 0 peak equity triggers 100% drawdown kill-switch
     ok, err = rm.validate_order(order, 100.0, pos, -100.0)
@@ -84,13 +123,14 @@ def test_risk_manager_zero_equity_handling():
     assert rm.kill_switch_triggered is True
 
 
-
 def test_paper_executor_market_order_fill():
     executor = PaperExecutor(initial_cash=50_000.0)
     bbo = {"bid": 150.0, "ask": 150.10, "bid_size": 500.0, "ask_size": 500.0}
 
     # Buy Market 100 shares
-    order = executor.submit_order("AAPL", OrderSide.BUY, OrderType.MARKET, 100.0, bbo=bbo)
+    order = executor.submit_order(
+        "AAPL", OrderSide.BUY, OrderType.MARKET, 100.0, bbo=bbo
+    )
     assert order.status == OrderStatus.FILLED
     assert order.filled_price == 150.10
     assert executor.cash == 50_000.0 - (100.0 * 150.10)
@@ -122,15 +162,29 @@ def test_whale_momentum_strategy_execution():
 
     # Initial quote to establish BBO
     q1 = CanonicalEvent(
-        event_id="q1", instrument_id="AAPL", event_type=EventType.QUOTE,
-        exchange_timestamp=1000.0, receive_timestamp=1000.001, processing_timestamp=1000.002,
-        source="FEEDX", sequence_number=1, bid_price=150.0, ask_price=150.10,
+        event_id="q1",
+        instrument_id="AAPL",
+        event_type=EventType.QUOTE,
+        exchange_timestamp=1000.0,
+        receive_timestamp=1000.001,
+        processing_timestamp=1000.002,
+        source="FEEDX",
+        sequence_number=1,
+        bid_price=150.0,
+        ask_price=150.10,
     )
     # Institutional whale buy print: 1000 shares @ 150.50 (> $100k notional)
     t1 = CanonicalEvent(
-        event_id="t1", instrument_id="AAPL", event_type=EventType.TRADE,
-        exchange_timestamp=1001.0, receive_timestamp=1001.001, processing_timestamp=1001.002,
-        source="FEEDX", sequence_number=2, price=150.50, quantity=1000.0,
+        event_id="t1",
+        instrument_id="AAPL",
+        event_type=EventType.TRADE,
+        exchange_timestamp=1001.0,
+        receive_timestamp=1001.001,
+        processing_timestamp=1001.002,
+        source="FEEDX",
+        sequence_number=2,
+        price=150.50,
+        quantity=1000.0,
     )
 
     metrics = runner.run_events([q1, t1])
@@ -146,9 +200,16 @@ def test_spread_capture_market_maker():
 
     # Wide spread quote: Bid=100.00, Ask=100.10 (10 bps spread)
     q1 = CanonicalEvent(
-        event_id="q1", instrument_id="AAPL", event_type=EventType.QUOTE,
-        exchange_timestamp=1000.0, receive_timestamp=1000.001, processing_timestamp=1000.002,
-        source="FEEDX", sequence_number=1, bid_price=100.00, ask_price=100.10,
+        event_id="q1",
+        instrument_id="AAPL",
+        event_type=EventType.QUOTE,
+        exchange_timestamp=1000.0,
+        receive_timestamp=1000.001,
+        processing_timestamp=1000.002,
+        source="FEEDX",
+        sequence_number=1,
+        bid_price=100.00,
+        ask_price=100.10,
     )
 
     metrics = runner.run_events([q1])
@@ -162,7 +223,9 @@ def test_spread_capture_market_maker():
 
 def test_order_book_microstructure_and_depth():
     book = OrderBook("AAPL")
-    book.update_quote(bid_price=150.00, ask_price=150.05, bid_size=200.0, ask_size=100.0)
+    book.update_quote(
+        bid_price=150.00, ask_price=150.05, bid_size=200.0, ask_size=100.0
+    )
 
     best_bid, bid_sz = book.best_bid
     best_ask, ask_sz = book.best_ask
@@ -196,7 +259,9 @@ def test_order_book_walk_book_execution():
     book.update_level(OrderSide.SELL, 100.20, 200.0)
 
     # Buy 150 shares -> should consume 100 @ 100.10, and 50 @ 100.20
-    vwap, slippage_bps, slippage_usd, eff_spread_bps, rungs = book.walk_book(OrderSide.BUY, 150.0)
+    vwap, slippage_bps, slippage_usd, eff_spread_bps, rungs = book.walk_book(
+        OrderSide.BUY, 150.0
+    )
     expected_vwap = (100.0 * 100.10 + 50.0 * 100.20) / 150.0
     assert round(vwap, 4) == round(expected_vwap, 4)
     assert len(rungs) == 2
@@ -213,14 +278,28 @@ def test_strategy_order_book_snapshot_on_execution():
     runner = StrategyRunner(strat)
 
     q1 = CanonicalEvent(
-        event_id="q1", instrument_id="AAPL", event_type=EventType.QUOTE,
-        exchange_timestamp=1000.0, receive_timestamp=1000.001, processing_timestamp=1000.002,
-        source="FEEDX", sequence_number=1, bid_price=150.00, ask_price=150.10,
+        event_id="q1",
+        instrument_id="AAPL",
+        event_type=EventType.QUOTE,
+        exchange_timestamp=1000.0,
+        receive_timestamp=1000.001,
+        processing_timestamp=1000.002,
+        source="FEEDX",
+        sequence_number=1,
+        bid_price=150.00,
+        ask_price=150.10,
     )
     t1 = CanonicalEvent(
-        event_id="t1", instrument_id="AAPL", event_type=EventType.TRADE,
-        exchange_timestamp=1001.0, receive_timestamp=1001.001, processing_timestamp=1001.002,
-        source="FEEDX", sequence_number=2, price=150.50, quantity=1000.0,
+        event_id="t1",
+        instrument_id="AAPL",
+        event_type=EventType.TRADE,
+        exchange_timestamp=1001.0,
+        receive_timestamp=1001.001,
+        processing_timestamp=1001.002,
+        source="FEEDX",
+        sequence_number=2,
+        price=150.50,
+        quantity=1000.0,
     )
 
     runner.run_events([q1, t1])
@@ -240,14 +319,28 @@ def test_strategy_execution_ledger():
     runner = StrategyRunner(strat)
 
     q1 = CanonicalEvent(
-        event_id="q1", instrument_id="AAPL", event_type=EventType.QUOTE,
-        exchange_timestamp=1000.0, receive_timestamp=1000.001, processing_timestamp=1000.002,
-        source="FEEDX", sequence_number=1, bid_price=150.00, ask_price=150.10,
+        event_id="q1",
+        instrument_id="AAPL",
+        event_type=EventType.QUOTE,
+        exchange_timestamp=1000.0,
+        receive_timestamp=1000.001,
+        processing_timestamp=1000.002,
+        source="FEEDX",
+        sequence_number=1,
+        bid_price=150.00,
+        ask_price=150.10,
     )
     t1 = CanonicalEvent(
-        event_id="t1", instrument_id="AAPL", event_type=EventType.TRADE,
-        exchange_timestamp=1001.0, receive_timestamp=1001.001, processing_timestamp=1001.002,
-        source="FEEDX", sequence_number=2, price=150.50, quantity=1000.0,
+        event_id="t1",
+        instrument_id="AAPL",
+        event_type=EventType.TRADE,
+        exchange_timestamp=1001.0,
+        receive_timestamp=1001.001,
+        processing_timestamp=1001.002,
+        source="FEEDX",
+        sequence_number=2,
+        price=150.50,
+        quantity=1000.0,
     )
 
     runner.run_events([q1, t1])
@@ -272,14 +365,28 @@ def test_strategy_export_executions_json_and_csv(tmp_path):
     runner = StrategyRunner(strat)
 
     q1 = CanonicalEvent(
-        event_id="q1", instrument_id="AAPL", event_type=EventType.QUOTE,
-        exchange_timestamp=1000.0, receive_timestamp=1000.001, processing_timestamp=1000.002,
-        source="FEEDX", sequence_number=1, bid_price=150.00, ask_price=150.10,
+        event_id="q1",
+        instrument_id="AAPL",
+        event_type=EventType.QUOTE,
+        exchange_timestamp=1000.0,
+        receive_timestamp=1000.001,
+        processing_timestamp=1000.002,
+        source="FEEDX",
+        sequence_number=1,
+        bid_price=150.00,
+        ask_price=150.10,
     )
     t1 = CanonicalEvent(
-        event_id="t1", instrument_id="AAPL", event_type=EventType.TRADE,
-        exchange_timestamp=1001.0, receive_timestamp=1001.001, processing_timestamp=1001.002,
-        source="FEEDX", sequence_number=2, price=150.50, quantity=1000.0,
+        event_id="t1",
+        instrument_id="AAPL",
+        event_type=EventType.TRADE,
+        exchange_timestamp=1001.0,
+        receive_timestamp=1001.001,
+        processing_timestamp=1001.002,
+        source="FEEDX",
+        sequence_number=2,
+        price=150.50,
+        quantity=1000.0,
     )
     runner.run_events([q1, t1])
 
@@ -308,14 +415,23 @@ def test_strategy_export_executions_json_and_csv(tmp_path):
 
 
 def test_avellaneda_stoikov_quoting_and_inventory_skew():
-    strat = AvellanedaStoikovStrategy(symbol="AAPL", gamma=0.1, kappa=1.5, quote_size=50.0, max_inventory=500.0)
+    strat = AvellanedaStoikovStrategy(
+        symbol="AAPL", gamma=0.1, kappa=1.5, quote_size=50.0, max_inventory=500.0
+    )
     runner = StrategyRunner(strat)
 
     # Initial quote at 100.00 / 100.05
     q1 = CanonicalEvent(
-        event_id="q1", instrument_id="AAPL", event_type=EventType.QUOTE,
-        exchange_timestamp=1000.0, receive_timestamp=1000.001, processing_timestamp=1000.002,
-        source="FEEDX", sequence_number=1, bid_price=100.00, ask_price=100.05,
+        event_id="q1",
+        instrument_id="AAPL",
+        event_type=EventType.QUOTE,
+        exchange_timestamp=1000.0,
+        receive_timestamp=1000.001,
+        processing_timestamp=1000.002,
+        source="FEEDX",
+        sequence_number=1,
+        bid_price=100.00,
+        ask_price=100.05,
     )
     runner.run_events([q1])
 
@@ -328,29 +444,49 @@ def test_avellaneda_stoikov_quoting_and_inventory_skew():
     assert sell_order.price >= 100.05
 
     # Simulate long inventory position
-    strat.executor.get_position("AAPL").quantity = 300.0  # long 300 shares (>= 50% max_inventory)
+    strat.executor.get_position(
+        "AAPL"
+    ).quantity = 300.0  # long 300 shares (>= 50% max_inventory)
     q2 = CanonicalEvent(
-        event_id="q2", instrument_id="AAPL", event_type=EventType.QUOTE,
-        exchange_timestamp=1001.0, receive_timestamp=1001.001, processing_timestamp=1001.002,
-        source="FEEDX", sequence_number=2, bid_price=100.00, ask_price=100.05,
+        event_id="q2",
+        instrument_id="AAPL",
+        event_type=EventType.QUOTE,
+        exchange_timestamp=1001.0,
+        receive_timestamp=1001.001,
+        processing_timestamp=1001.002,
+        source="FEEDX",
+        sequence_number=2,
+        bid_price=100.00,
+        ask_price=100.05,
     )
     runner.run_events([q2])
 
     # With long inventory, reservation price drops and strategy asymmetrically quotes only the sell side
     assert strat.reservation_prices["AAPL"] < 100.025
-    active_orders = [o for o in strat.executor.orders if o.status == OrderStatus.PENDING]
+    active_orders = [
+        o for o in strat.executor.orders if o.status == OrderStatus.PENDING
+    ]
     assert all(o.side == OrderSide.SELL for o in active_orders)
 
 
 def test_avellaneda_stoikov_quality_shield():
-    strat = AvellanedaStoikovStrategy(symbol="AAPL", gamma=0.1, kappa=1.5, quote_size=50.0)
+    strat = AvellanedaStoikovStrategy(
+        symbol="AAPL", gamma=0.1, kappa=1.5, quote_size=50.0
+    )
     runner = StrategyRunner(strat)
 
     # 1. Crossed quote with INVALID status should be completely rejected
     crossed = CanonicalEvent(
-        event_id="bad_q", instrument_id="AAPL", event_type=EventType.QUOTE,
-        exchange_timestamp=1000.0, receive_timestamp=1000.001, processing_timestamp=1000.002,
-        source="FEEDX", sequence_number=1, bid_price=101.00, ask_price=100.00,
+        event_id="bad_q",
+        instrument_id="AAPL",
+        event_type=EventType.QUOTE,
+        exchange_timestamp=1000.0,
+        receive_timestamp=1000.001,
+        processing_timestamp=1000.002,
+        source="FEEDX",
+        sequence_number=1,
+        bid_price=101.00,
+        ask_price=100.00,
         quality_status=QualityStatus.INVALID,
     )
     runner.run_events([crossed])
@@ -358,9 +494,16 @@ def test_avellaneda_stoikov_quality_shield():
 
     # 2. SUSPICIOUS quote should trigger 3x spread expansion defense
     suspicious = CanonicalEvent(
-        event_id="sus_q", instrument_id="AAPL", event_type=EventType.QUOTE,
-        exchange_timestamp=1001.0, receive_timestamp=1001.001, processing_timestamp=1001.002,
-        source="FEEDX", sequence_number=2, bid_price=100.00, ask_price=100.06,
+        event_id="sus_q",
+        instrument_id="AAPL",
+        event_type=EventType.QUOTE,
+        exchange_timestamp=1001.0,
+        receive_timestamp=1001.001,
+        processing_timestamp=1001.002,
+        source="FEEDX",
+        sequence_number=2,
+        bid_price=100.00,
+        ask_price=100.06,
         quality_status=QualityStatus.SUSPICIOUS,
     )
     runner.run_events([suspicious])
@@ -375,15 +518,29 @@ def test_avellaneda_stoikov_passive_fills():
 
     # Quote placed: Bid=100.00, Ask=100.05
     q1 = CanonicalEvent(
-        event_id="q1", instrument_id="AAPL", event_type=EventType.QUOTE,
-        exchange_timestamp=1000.0, receive_timestamp=1000.001, processing_timestamp=1000.002,
-        source="FEEDX", sequence_number=1, bid_price=100.00, ask_price=100.05,
+        event_id="q1",
+        instrument_id="AAPL",
+        event_type=EventType.QUOTE,
+        exchange_timestamp=1000.0,
+        receive_timestamp=1000.001,
+        processing_timestamp=1000.002,
+        source="FEEDX",
+        sequence_number=1,
+        bid_price=100.00,
+        ask_price=100.05,
     )
     # Trade print crosses our buy limit (market sell trade at 99.98 <= 100.00)
     t1 = CanonicalEvent(
-        event_id="t1", instrument_id="AAPL", event_type=EventType.TRADE,
-        exchange_timestamp=1000.1, receive_timestamp=1000.101, processing_timestamp=1000.102,
-        source="FEEDX", sequence_number=2, price=99.98, quantity=100.0,
+        event_id="t1",
+        instrument_id="AAPL",
+        event_type=EventType.TRADE,
+        exchange_timestamp=1000.1,
+        receive_timestamp=1000.101,
+        processing_timestamp=1000.102,
+        source="FEEDX",
+        sequence_number=2,
+        price=99.98,
+        quantity=100.0,
     )
     runner.run_events([q1, t1])
 
@@ -393,5 +550,3 @@ def test_avellaneda_stoikov_passive_fills():
     fill = strat.executor.fills[0]
     assert fill["side"] == "BUY"
     assert fill["qty"] == 50.0
-
-

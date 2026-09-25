@@ -15,14 +15,19 @@ from simulator import FeedSimulator, SimulatorConfig
 
 def _make_event(**overrides):
     base = dict(
-        event_id="e1", instrument_id="AAPL", event_type=EventType.TRADE,
-        exchange_timestamp=1000.0, receive_timestamp=1000.001,
-        processing_timestamp=0.0, source="FEEDX", sequence_number=1,
-        price=100.0, quantity=10.0,
+        event_id="e1",
+        instrument_id="AAPL",
+        event_type=EventType.TRADE,
+        exchange_timestamp=1000.0,
+        receive_timestamp=1000.001,
+        processing_timestamp=0.0,
+        source="FEEDX",
+        sequence_number=1,
+        price=100.0,
+        quantity=10.0,
     )
     base.update(overrides)
     return CanonicalEvent(**base)
-
 
 
 def test_fastpath_crossed_quote_is_invalid():
@@ -53,7 +58,6 @@ def test_fastpath_duplicate():
     assert Reason.DUPLICATE.value in res2.reasons
 
 
-
 def test_fastpath_parity_with_python_engine():
     """Runs identical stream through both Python QualityEngine and Native C FastQualityEngine."""
     sim = FeedSimulator(SimulatorConfig(seed=42, num_events=3000))
@@ -63,11 +67,20 @@ def test_fastpath_parity_with_python_engine():
     for raw, _label in sim.generate():
         try:
             ev_py = normalize(raw)
-            ev_c = normalize(RawEvent(source=raw.source, payload=raw.payload, receive_timestamp=raw.receive_timestamp, raw_id=raw.raw_id))
+            ev_c = normalize(
+                RawEvent(
+                    source=raw.source,
+                    payload=raw.payload,
+                    receive_timestamp=raw.receive_timestamp,
+                    raw_id=raw.raw_id,
+                )
+            )
             res_py = py_eng.evaluate(ev_py)
             res_c = c_eng.evaluate(ev_c)
 
-            assert res_py.quality_status == res_c.quality_status, f"Status mismatch: py={res_py.quality_status}, c={res_c.quality_status}"
+            assert res_py.quality_status == res_c.quality_status, (
+                f"Status mismatch: py={res_py.quality_status}, c={res_c.quality_status}"
+            )
         except Exception:
             pass
 
@@ -84,9 +97,33 @@ def test_native_replay_buffer_record_and_query():
     st = buf.stats()
     assert st["total_recorded"] == 0
 
-    buf.record(seq=1, symbol="AAPL", source="FEEDX", price=150.0, size=10.0, bid=149.9, ask=150.1)
-    buf.record(seq=2, symbol="MSFT", source="FEEDY", price=320.0, size=5.0, bid=319.9, ask=320.1)
-    buf.record(seq=3, symbol="AAPL", source="FEEDX", price=150.5, size=20.0, bid=150.4, ask=150.6)
+    buf.record(
+        seq=1,
+        symbol="AAPL",
+        source="FEEDX",
+        price=150.0,
+        size=10.0,
+        bid=149.9,
+        ask=150.1,
+    )
+    buf.record(
+        seq=2,
+        symbol="MSFT",
+        source="FEEDY",
+        price=320.0,
+        size=5.0,
+        bid=319.9,
+        ask=320.1,
+    )
+    buf.record(
+        seq=3,
+        symbol="AAPL",
+        source="FEEDX",
+        price=150.5,
+        size=20.0,
+        bid=150.4,
+        ask=150.6,
+    )
 
     assert len(buf) == 3
     st = buf.stats()
@@ -221,6 +258,7 @@ def test_native_replay_buffer_fallback_parity():
 
 def test_multithreaded_fastpath_safety():
     import threading
+
     eng = FastQualityEngine()
     errors = []
 
@@ -233,7 +271,11 @@ def test_multithreaded_fastpath_safety():
             )
             try:
                 res = eng.evaluate(ev)
-                if res.quality_status not in (QualityStatus.VALID, QualityStatus.SUSPICIOUS, QualityStatus.INVALID):
+                if res.quality_status not in (
+                    QualityStatus.VALID,
+                    QualityStatus.SUSPICIOUS,
+                    QualityStatus.INVALID,
+                ):
                     errors.append(f"Unexpected status: {res.quality_status}")
             except Exception as e:
                 errors.append(str(e))
@@ -245,5 +287,3 @@ def test_multithreaded_fastpath_safety():
         t.join()
 
     assert not errors, f"Encountered concurrency errors in FastQualityEngine: {errors}"
-
-

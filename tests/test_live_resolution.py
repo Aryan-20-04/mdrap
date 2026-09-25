@@ -7,6 +7,7 @@ Validates:
 4. Strict zero-artificial-data policy (fallback_sim=False produces empty lists on 404).
 5. Currency symbol mapping and terminal rendering (INR ₹, EUR €, GBP £, USD $).
 """
+
 import sys
 import os
 import unittest
@@ -15,7 +16,11 @@ from unittest.mock import MagicMock, patch
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from live import resolve_venue_symbols, LiveConnector, INTERNATIONAL_EXCHANGE_SUFFIXES
-from terminal_display import get_currency_symbol, render_candlestick_chart, LiveTickerDashboard
+from terminal_display import (
+    get_currency_symbol,
+    render_candlestick_chart,
+    LiveTickerDashboard,
+)
 
 
 class TestLiveTickerResolution(unittest.TestCase):
@@ -66,11 +71,15 @@ class TestLiveTickerResolution(unittest.TestCase):
         # Patch _get_json to simulate 404
         with patch.object(connector, "_get_json", return_value=None):
             # Default: fallback_sim=False -> strictly zero fake data
-            evs_real = connector.fetch_equity_events("UNKNOWN_NONEXISTENT_999", fallback_sim=False)
+            evs_real = connector.fetch_equity_events(
+                "UNKNOWN_NONEXISTENT_999", fallback_sim=False
+            )
             self.assertEqual(len(evs_real), 0)
 
             # Explicit simulation mode: fallback_sim=True -> generates synthetic ticks
-            evs_sim = connector.fetch_equity_events("UNKNOWN_NONEXISTENT_999", fallback_sim=True)
+            evs_sim = connector.fetch_equity_events(
+                "UNKNOWN_NONEXISTENT_999", fallback_sim=True
+            )
             self.assertGreater(len(evs_sim), 0)
             self.assertTrue(evs_sim[0].payload.get("is_simulated"))
 
@@ -78,7 +87,15 @@ class TestLiveTickerResolution(unittest.TestCase):
         """stream_ticks with fallback_sim=False must not yield synthetic ticks on missing data."""
         connector = LiveConnector()
         with patch.object(connector, "_get_json", return_value=None):
-            ticks = list(connector.stream_ticks(["UNKNOWN_SYM_999"], limit=5, fallback_sim=False, poll_interval_s=0.001, max_empty_polls=2))
+            ticks = list(
+                connector.stream_ticks(
+                    ["UNKNOWN_SYM_999"],
+                    limit=5,
+                    fallback_sim=False,
+                    poll_interval_s=0.001,
+                    max_empty_polls=2,
+                )
+            )
             self.assertEqual(len(ticks), 0)
 
     def test_probe_or_resolve_equity_fallback(self):
@@ -89,14 +106,16 @@ class TestLiveTickerResolution(unittest.TestCase):
             if "TMPV.NS" in url:
                 return {
                     "chart": {
-                        "result": [{
-                            "meta": {
-                                "symbol": "TMPV.NS",
-                                "currency": "INR",
-                                "exchangeName": "NSI",
-                                "regularMarketPrice": 301.10,
+                        "result": [
+                            {
+                                "meta": {
+                                    "symbol": "TMPV.NS",
+                                    "currency": "INR",
+                                    "exchangeName": "NSI",
+                                    "regularMarketPrice": 301.10,
+                                }
                             }
-                        }]
+                        ]
                     }
                 }
             return None
@@ -139,8 +158,22 @@ class TestMultiCurrencyFormatting(unittest.TestCase):
     def test_candlestick_chart_currency_rendering(self):
         """Candlestick chart summary and price axis should display the correct currency symbol."""
         candles = [
-            {"open": 300.0, "high": 305.0, "low": 298.0, "close": 302.0, "volume": 1000, "bucket_start": 1000.0},
-            {"open": 302.0, "high": 306.0, "low": 301.0, "close": 304.5, "volume": 1500, "bucket_start": 1005.0},
+            {
+                "open": 300.0,
+                "high": 305.0,
+                "low": 298.0,
+                "close": 302.0,
+                "volume": 1000,
+                "bucket_start": 1000.0,
+            },
+            {
+                "open": 302.0,
+                "high": 306.0,
+                "low": 301.0,
+                "close": 304.5,
+                "volume": 1500,
+                "bucket_start": 1005.0,
+            },
         ]
         chart_inr = render_candlestick_chart(candles, currency_symbol="₹")
         self.assertIn("₹", chart_inr)
@@ -156,12 +189,28 @@ class TestMultiVenueEquityIntegration(unittest.TestCase):
         """TMPV should resolve to both NSE (TMPV.NS) and BSE (TMPV.BO) venues."""
         connector = LiveConnector()
         with patch.object(connector, "probe_or_resolve_equity") as mock_probe:
+
             def _probe(sym: str):
                 if sym == "TMPV.NS":
-                    return ("TMPV.NS", {"exchangeName": "NSI", "currency": "INR", "regularMarketPrice": 301.10})
+                    return (
+                        "TMPV.NS",
+                        {
+                            "exchangeName": "NSI",
+                            "currency": "INR",
+                            "regularMarketPrice": 301.10,
+                        },
+                    )
                 elif sym == "TMPV.BO":
-                    return ("TMPV.BO", {"exchangeName": "BSE", "currency": "INR", "regularMarketPrice": 301.80})
+                    return (
+                        "TMPV.BO",
+                        {
+                            "exchangeName": "BSE",
+                            "currency": "INR",
+                            "regularMarketPrice": 301.80,
+                        },
+                    )
                 return None
+
             mock_probe.side_effect = _probe
 
             venues = connector.resolve_equity_venues("TMPV")
@@ -173,6 +222,7 @@ class TestMultiVenueEquityIntegration(unittest.TestCase):
     def test_trade_event_does_not_clobber_venue_quotes(self):
         """A subsequent TRADE event with zero bid/ask must not clobber existing venue quotes with dashes."""
         from models import RawEvent
+
         dashboard = LiveTickerDashboard()
 
         # 1. Quote event arrives with bid=300.95 and ask=301.25

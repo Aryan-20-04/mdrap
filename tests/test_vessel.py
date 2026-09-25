@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import sys, os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 import pytest
 from vessel import (
@@ -26,7 +27,16 @@ def test_haversine_nm():
 
 def test_chokepoints_catalog():
     assert len(GLOBAL_CHOKEPOINTS) >= 8
-    expected_keys = {"hormuz", "malacca", "suez", "bab_el_mandeb", "panama", "bosphorus", "cape", "dover"}
+    expected_keys = {
+        "hormuz",
+        "malacca",
+        "suez",
+        "bab_el_mandeb",
+        "panama",
+        "bosphorus",
+        "cape",
+        "dover",
+    }
     for k in expected_keys:
         assert k in GLOBAL_CHOKEPOINTS
         cp = GLOBAL_CHOKEPOINTS[k]
@@ -154,7 +164,10 @@ def test_commodity_breakdown():
     assert breakdown["total_vessels_tracked"] >= 20
     assert breakdown["laden_vessels"] > 0
     assert breakdown["ballast_vessels"] >= 1
-    assert breakdown["laden_vessels"] + breakdown["ballast_vessels"] == breakdown["total_vessels_tracked"]
+    assert (
+        breakdown["laden_vessels"] + breakdown["ballast_vessels"]
+        == breakdown["total_vessels_tracked"]
+    )
 
     categories = breakdown["categories"]
     assert "Crude Oil" in categories
@@ -165,7 +178,9 @@ def test_commodity_breakdown():
     # Verify top charterers
     top_charterers = breakdown["top_charterers"]
     assert len(top_charterers) > 0
-    assert any("Shell" in c[0] or "Aramco" in c[0] or "BP" in c[0] for c in top_charterers)
+    assert any(
+        "Shell" in c[0] or "Aramco" in c[0] or "BP" in c[0] for c in top_charterers
+    )
 
 
 def test_update_position():

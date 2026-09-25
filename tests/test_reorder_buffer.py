@@ -6,7 +6,13 @@ from pipeline import Pipeline
 from storage import Store
 
 
-def _create_event(seq: int, price: float = 100.0, instrument: str = "AAPL", source: str = "FEED1", ts: float = 1000.0) -> CanonicalEvent:
+def _create_event(
+    seq: int,
+    price: float = 100.0,
+    instrument: str = "AAPL",
+    source: str = "FEED1",
+    ts: float = 1000.0,
+) -> CanonicalEvent:
     return CanonicalEvent(
         event_id=f"evt_{seq}",
         instrument_id=instrument,
@@ -108,7 +114,14 @@ def test_reorder_buffer_pipeline_integration():
     def make_raw(seq):
         return RawEvent(
             source="FEED1",
-            payload={"instrument": "AAPL", "event_type": "TRADE", "price": 150.0, "quantity": 10.0, "sequence": seq, "exchange_ts": 1000.0 + seq},
+            payload={
+                "instrument": "AAPL",
+                "event_type": "TRADE",
+                "price": 150.0,
+                "quantity": 10.0,
+                "sequence": seq,
+                "exchange_ts": 1000.0 + seq,
+            },
             receive_timestamp=1000.0 + seq,
             raw_id=f"r_{seq}",
         )

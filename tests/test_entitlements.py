@@ -87,13 +87,17 @@ def test_sqlite_api_key_persistence(temp_db):
 
 def test_daemon_auth_with_valid_and_revoked_keys(auth_daemon):
     # 1. Connect with valid key
-    with MDRAPClient(host="127.0.0.1", port=auth_daemon.port, auth_token="mdrap_demo_pro_key") as client:
+    with MDRAPClient(
+        host="127.0.0.1", port=auth_daemon.port, auth_token="mdrap_demo_pro_key"
+    ) as client:
         assert client.is_connected()
         assert client.client_id == "Demo_Pro_Quant"
 
     # 2. Connect with invalid token
     with pytest.raises(PermissionError) as exc_info:
-        with MDRAPClient(host="127.0.0.1", port=auth_daemon.port, auth_token="invalid_key_xyz") as client:
+        with MDRAPClient(
+            host="127.0.0.1", port=auth_daemon.port, auth_token="invalid_key_xyz"
+        ) as client:
             pass
     assert "INVALID_TOKEN" in str(exc_info.value)
 
@@ -102,14 +106,18 @@ def test_daemon_auth_with_valid_and_revoked_keys(auth_daemon):
     auth_daemon.security_manager.revoke_api_key(temp_key.token)
 
     with pytest.raises(PermissionError) as exc_info2:
-        with MDRAPClient(host="127.0.0.1", port=auth_daemon.port, auth_token=temp_key.token) as client:
+        with MDRAPClient(
+            host="127.0.0.1", port=auth_daemon.port, auth_token=temp_key.token
+        ) as client:
             pass
     assert "REVOKED_TOKEN" in str(exc_info2.value)
 
 
 def test_authenticated_client_full_access(auth_daemon):
     """Verify that authenticated clients have full access to L1, L2, Binary wire format, and Replay (no paywalls)."""
-    with MDRAPClient(host="127.0.0.1", port=auth_daemon.port, auth_token="mdrap_demo_free_key") as client:
+    with MDRAPClient(
+        host="127.0.0.1", port=auth_daemon.port, auth_token="mdrap_demo_free_key"
+    ) as client:
         # 1. Standard L1 subscription is allowed
         res_sub = client._send_query("SUB BTC/USD")
         assert res_sub.get("status") == "OK"
@@ -129,7 +137,9 @@ def test_authenticated_client_full_access(auth_daemon):
 
 def test_pro_tier_permissions(auth_daemon):
     """Verify that clients can access L2 depth, binary format, and replays."""
-    with MDRAPClient(host="127.0.0.1", port=auth_daemon.port, auth_token="mdrap_demo_pro_key") as client:
+    with MDRAPClient(
+        host="127.0.0.1", port=auth_daemon.port, auth_token="mdrap_demo_pro_key"
+    ) as client:
         # L2 Depth allowed
         res_depth = client._send_query("SUB L2:BTC/USD")
         assert res_depth.get("status") == "OK"
@@ -151,7 +161,9 @@ def test_rate_limiter_throttles_events(auth_daemon):
         rate_limit_eps=5.0,
     )
 
-    with MDRAPClient(host="127.0.0.1", port=auth_daemon.port, auth_token=slow_key.token) as client:
+    with MDRAPClient(
+        host="127.0.0.1", port=auth_daemon.port, auth_token=slow_key.token
+    ) as client:
         client.subscribe("ALL")
         events = []
         # Receive a few events

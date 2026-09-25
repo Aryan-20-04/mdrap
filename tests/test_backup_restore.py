@@ -79,6 +79,7 @@ def populated_db():
     }
 
     import gc
+
     gc.collect()
     if os.path.exists(src_path):
         try:
@@ -114,6 +115,7 @@ def test_online_backup_and_audit_verification(populated_db):
         chk_store.close()
     finally:
         import gc
+
         gc.collect()
         if os.path.exists(bak_target):
             try:
@@ -168,6 +170,7 @@ def test_compressed_backup_and_restore(populated_db):
 
     finally:
         import gc
+
         gc.collect()
         for p in (bak_gz, restore_target):
             if os.path.exists(p):
@@ -197,7 +200,9 @@ def test_restore_safety_backup_on_existing_target(populated_db):
 
         # Attempt restore without force -> must raise
         with pytest.raises(RuntimeError) as exc:
-            restore_database(backup_file=bak_target, target_db=existing_target, force=False)
+            restore_database(
+                backup_file=bak_target, target_db=existing_target, force=False
+            )
         assert "already exists" in str(exc.value)
 
         # Restore with force and safety_backup
@@ -217,6 +222,7 @@ def test_restore_safety_backup_on_existing_target(populated_db):
 
     finally:
         import gc
+
         gc.collect()
         for p in (bak_target, existing_target):
             if os.path.exists(p):

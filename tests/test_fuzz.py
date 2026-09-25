@@ -1,5 +1,7 @@
-﻿"""Regression test for differential fuzzing."""
+"""Regression test for differential fuzzing."""
+
 from fuzz.fuzz_differential import run_sbe_differential_fuzz
+
 
 def test_sbe_differential_fuzz_smoke():
     """Run 2,000 differential fuzz iterations on SBE frame decoder."""

@@ -11,6 +11,7 @@ Simulates a multi-venue production stream:
   3. Microsecond drain lag and sustained throughput
   4. Bit-level journal record integrity verification
 """
+
 from __future__ import annotations
 
 import argparse
@@ -37,11 +38,13 @@ def get_process_memory_mb() -> float:
     """Get current process RSS in megabytes."""
     try:
         import psutil
+
         return psutil.Process(os.getpid()).memory_info().rss / (1024 * 1024)
     except ImportError:
         if sys.platform == "win32":
             import ctypes
             from ctypes import wintypes
+
             class PROCESS_MEMORY_COUNTERS(ctypes.Structure):
                 _fields_ = [
                     ("cb", wintypes.DWORD),
@@ -55,6 +58,7 @@ def get_process_memory_mb() -> float:
                     ("PagefileUsage", ctypes.c_size_t),
                     ("PeakPagefileUsage", ctypes.c_size_t),
                 ]
+
             counters = PROCESS_MEMORY_COUNTERS()
             counters.cb = ctypes.sizeof(PROCESS_MEMORY_COUNTERS)
             k32 = ctypes.windll.kernel32
@@ -75,7 +79,13 @@ def run_soak_test(
     random.seed(seed)
     instruments = ["AAPL", "MSFT", "GOOGL", "NVDA", "TSLA"]
     sources = ["BATS", "ARCA", "NSDQ"]
-    base_prices = {"AAPL": 175.0, "MSFT": 420.0, "GOOGL": 180.0, "NVDA": 130.0, "TSLA": 250.0}
+    base_prices = {
+        "AAPL": 175.0,
+        "MSFT": 420.0,
+        "GOOGL": 180.0,
+        "NVDA": 130.0,
+        "TSLA": 250.0,
+    }
 
     shm_name = f"soak_test_shm_{os.getpid()}_{time.time_ns()}"
     writer = SHMWriter(name=shm_name, slot_count=slot_count)
@@ -85,7 +95,9 @@ def run_soak_test(
 
         print("=" * 76)
         print(f"MDRAP MULTI-VENUE SOAK LOAD TEST: {total_events:,} events")
-        print(f"Architecture: Lock-Free SHM ({slot_count:,} slots) -> Async Drainer -> Binary Journal")
+        print(
+            f"Architecture: Lock-Free SHM ({slot_count:,} slots) -> Async Drainer -> Binary Journal"
+        )
         print(f"Venues: {', '.join(sources)} | Symbols: {', '.join(instruments)}")
         print("=" * 76)
 
@@ -146,14 +158,18 @@ def run_soak_test(
                 if now - last_log >= 2.0:
                     pct = (seq / total_events) * 100
                     cur_eps = seq / (now - t_prod_start)
-                    print(f"  Progress: {pct:5.1f}% | Seq: {seq:,} | Lag: {lag:6,d} | Prod EPS: {cur_eps:,.0f} | Mem: {get_process_memory_mb():.1f} MB")
+                    print(
+                        f"  Progress: {pct:5.1f}% | Seq: {seq:,} | Lag: {lag:6,d} | Prod EPS: {cur_eps:,.0f} | Mem: {get_process_memory_mb():.1f} MB"
+                    )
                     last_log = now
 
         t_prod_end = time.perf_counter()
         prod_wall_sec = t_prod_end - t_prod_start
         prod_eps = total_events / prod_wall_sec
 
-        print(f"\n[PRODUCER COMPLETED] {total_events:,} ticks written in {prod_wall_sec:.3f} s ({prod_eps:,.0f} eps)")
+        print(
+            f"\n[PRODUCER COMPLETED] {total_events:,} ticks written in {prod_wall_sec:.3f} s ({prod_eps:,.0f} eps)"
+        )
         print(f"[DRAINER WAITING] Draining remaining slots to journal...")
 
         t_drain_wait_start = time.perf_counter()
@@ -167,15 +183,21 @@ def run_soak_test(
         mem_end = get_process_memory_mb()
         mem_growth = mem_end - mem_start
 
-        print(f"[DRAIN STATUS] Completed in {total_drain_sec:.3f} s | Target reached: {drain_ok}")
+        print(
+            f"[DRAIN STATUS] Completed in {total_drain_sec:.3f} s | Target reached: {drain_ok}"
+        )
         print(f"[MEMORY] Final RSS: {mem_end:.2f} MB (Delta: {mem_growth:+.2f} MB)")
 
         # Verify journal contents
         print("[VERIFICATION] Validating binary journal file...")
         with BinaryJournalReader(journal_path) as j_reader:
             persisted_records = j_reader.record_count
-            assert drain_ok is True, f"Drainer timed out before reaching sequence {total_events}"
-            assert persisted_records == total_events, f"Journal record count mismatch: {persisted_records} vs {total_events}"
+            assert drain_ok is True, (
+                f"Drainer timed out before reaching sequence {total_events}"
+            )
+            assert persisted_records == total_events, (
+                f"Journal record count mismatch: {persisted_records} vs {total_events}"
+            )
 
             # Spot check samples across the file
             sample_indices = [0, 100, 1000, 50000, total_events // 2, total_events - 1]
@@ -183,11 +205,15 @@ def run_soak_test(
                 if s_idx < total_events:
                     rec = j_reader.read_record(s_idx)
                     expected_seq = s_idx + 1
-                    assert rec["seq"] == expected_seq, f"Sequence mismatch at index {s_idx}: {rec['seq']} != {expected_seq}"
+                    assert rec["seq"] == expected_seq, (
+                        f"Sequence mismatch at index {s_idx}: {rec['seq']} != {expected_seq}"
+                    )
                     assert rec["sym"] == instruments[expected_seq % 5]
                     assert rec["source"] == sources[expected_seq % 3]
 
-        print(f"[VERIFICATION PASSED] All {total_events:,} events bit-identical and verified in order!")
+        print(
+            f"[VERIFICATION PASSED] All {total_events:,} events bit-identical and verified in order!"
+        )
 
         drain_stats = drainer.stats.to_dict()
 
@@ -222,9 +248,13 @@ def run_soak_test(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="MDRAP Multi-Venue Soak Load Test")
-    parser.add_argument("--events", type=int, default=1_000_000, help="Total events to stream")
+    parser.add_argument(
+        "--events", type=int, default=1_000_000, help="Total events to stream"
+    )
     parser.add_argument("--slots", type=int, default=65536, help="SHM slot count")
     parser.add_argument("--batch", type=int, default=2000, help="Drainer batch size")
     args = parser.parse_args()
 
-    run_soak_test(total_events=args.events, slot_count=args.slots, batch_size=args.batch)
+    run_soak_test(
+        total_events=args.events, slot_count=args.slots, batch_size=args.batch
+    )

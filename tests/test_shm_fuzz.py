@@ -2,6 +2,7 @@
 Fuzz testing and boundary resilience for MDRAP Shared Memory Ring Buffer Engine v3.
 Tests malformed headers, torn sequences, buffer boundaries, epoch mutations, and invalid slot states.
 """
+
 from __future__ import annotations
 
 import math
@@ -73,7 +74,9 @@ class TestSHMFuzzAndBoundaries:
         _cleanup_shm(name)
         shm = SharedMemory(name=name, create=True, size=64)
         try:
-            with pytest.raises(ValueError, match=r"(SHM buffer too small|Invalid SHM magic)"):
+            with pytest.raises(
+                ValueError, match=r"(SHM buffer too small|Invalid SHM magic)"
+            ):
                 SHMReader(name=name)
         finally:
             shm.close()

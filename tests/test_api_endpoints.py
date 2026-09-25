@@ -188,6 +188,7 @@ def test_audit_endpoints(api_env):
 
 def test_bbo_and_depth_endpoints(api_env):
     import time
+
     client = api_env["client"]
     state = api_env["state"]
     view_headers = {"X-API-Key": api_env["viewer_key"]}
@@ -240,7 +241,10 @@ def test_config_endpoint_redacts_secrets(api_env):
     cfg_str = str(cfg)
     assert api_env["admin_key"] not in cfg_str
     assert "mdrap_live_" not in cfg_str
-    assert "secret" not in cfg_str.lower() or cfg["security"]["cryptographic_feed_secrets_sealed"] is True
+    assert (
+        "secret" not in cfg_str.lower()
+        or cfg["security"]["cryptographic_feed_secrets_sealed"] is True
+    )
 
 
 def test_keys_crud_lifecycle(api_env):

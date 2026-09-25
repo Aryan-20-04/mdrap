@@ -1,6 +1,7 @@
 """
 Unit and Integration Tests for Polygon.io High-Throughput Streaming Feed Engine.
 """
+
 import json
 import os
 import sys
@@ -106,12 +107,32 @@ def test_parse_polygon_aggregate():
 
 def test_parse_polygon_batch_frame():
     """Verify parsing of multi-message batch JSON string."""
-    batch_json = json.dumps([
-        {"ev": "status", "status": "success"},
-        {"ev": "Q", "sym": "AAPL", "bx": "V", "bp": 150.0, "bs": 10, "ax": "Q", "ap": 150.1, "as": 20, "t": 1625000000000},
-        {"ev": "T", "sym": "AAPL", "i": "1", "x": 7, "p": 150.05, "s": 100, "t": 1625000000001},
-        {"invalid": "format"},
-    ])
+    batch_json = json.dumps(
+        [
+            {"ev": "status", "status": "success"},
+            {
+                "ev": "Q",
+                "sym": "AAPL",
+                "bx": "V",
+                "bp": 150.0,
+                "bs": 10,
+                "ax": "Q",
+                "ap": 150.1,
+                "as": 20,
+                "t": 1625000000000,
+            },
+            {
+                "ev": "T",
+                "sym": "AAPL",
+                "i": "1",
+                "x": 7,
+                "p": 150.05,
+                "s": 100,
+                "t": 1625000000001,
+            },
+            {"invalid": "format"},
+        ]
+    )
     events = parse_polygon_frame(batch_json)
     assert len(events) == 2
     assert events[0].payload["event_type"] == "QUOTE"
@@ -131,7 +152,9 @@ def test_polygon_mock_stream():
 
 def test_polygon_feed_manager_mock():
     """Verify PolygonFeedManager operates in mock mode and emits events."""
-    mgr = PolygonFeedManager(symbols=["AAPL", "NVDA"], mock_mode=True, max_queue_size=100)
+    mgr = PolygonFeedManager(
+        symbols=["AAPL", "NVDA"], mock_mode=True, max_queue_size=100
+    )
     assert mgr.mock_mode is True
     mgr.start()
     assert mgr.is_running() is True
@@ -159,7 +182,12 @@ def test_polygon_feed_manager_queue_eviction():
     for i in range(10):
         raw = RawEvent(
             source="TEST",
-            payload={"instrument": "AAPL", "event_type": "QUOTE", "bid": 100 + i, "ask": 101 + i},
+            payload={
+                "instrument": "AAPL",
+                "event_type": "QUOTE",
+                "bid": 100 + i,
+                "ask": 101 + i,
+            },
             receive_timestamp=time.time(),
             raw_id=f"test-{i}",
         )

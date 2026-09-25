@@ -1,5 +1,10 @@
-﻿import pytest
-from config_loader import load_config, resolve_config, compute_config_hash, to_quality_config
+import pytest
+from config_loader import (
+    load_config,
+    resolve_config,
+    compute_config_hash,
+    to_quality_config,
+)
 
 SAMPLE_CONFIG = {
     "defaults": {
@@ -22,10 +27,11 @@ SAMPLE_CONFIG = {
                     "staleness_threshold_s": 0.5,
                     "price_anomaly_stddev": 4.0,
                 }
-            }
+            },
         }
-    }
+    },
 }
+
 
 def test_config_resolution_ladder():
     # 1. Base defaults
@@ -41,24 +47,32 @@ def test_config_resolution_ladder():
     assert origins_v["circuit_filter_pct"] == "defaults"
 
     # 3. Instrument class override
-    resolved_cls, origins_cls = resolve_config(SAMPLE_CONFIG, venue="binance", instrument_class="crypto")
+    resolved_cls, origins_cls = resolve_config(
+        SAMPLE_CONFIG, venue="binance", instrument_class="crypto"
+    )
     assert resolved_cls["staleness_threshold_s"] == 1.5
-    assert origins_cls["staleness_threshold_s"] == "venue.binance.instrument_class.crypto"
+    assert (
+        origins_cls["staleness_threshold_s"] == "venue.binance.instrument_class.crypto"
+    )
     assert resolved_cls["price_anomaly_stddev"] == 5.0
     assert origins_cls["price_anomaly_stddev"] == "venue.binance"
 
     # 4. Specific instrument override
-    resolved_inst, origins_inst = resolve_config(SAMPLE_CONFIG, venue="binance", symbol="BTCUSDT")
+    resolved_inst, origins_inst = resolve_config(
+        SAMPLE_CONFIG, venue="binance", symbol="BTCUSDT"
+    )
     assert resolved_inst["staleness_threshold_s"] == 0.5
     assert origins_inst["staleness_threshold_s"] == "venue.binance.instrument.BTCUSDT"
     assert resolved_inst["price_anomaly_stddev"] == 4.0
     assert origins_inst["price_anomaly_stddev"] == "venue.binance.instrument.BTCUSDT"
+
 
 def test_hash_determinism():
     h1 = compute_config_hash(SAMPLE_CONFIG)
     h2 = compute_config_hash(SAMPLE_CONFIG)
     assert h1 == h2
     assert len(h1) == 64
+
 
 def test_to_quality_config():
     resolved_inst, _ = resolve_config(SAMPLE_CONFIG, venue="binance", symbol="BTCUSDT")

@@ -2,6 +2,7 @@
 Unit tests for src/exporter.py to expand test coverage.
 Tests gather_report_data, export_excel, export_csv_package, and order flow exports.
 """
+
 from __future__ import annotations
 
 import os
@@ -76,5 +77,7 @@ def test_export_order_flow_workbook():
 
         out_path = os.path.join(tmpdir, "flow_nvda.xlsx")
         exporter = MarketDataExporter(db_path=":memory:")
-        result = exporter.export_flow_workbook(summary, symbol="NVDA", output_path=out_path)
+        result = exporter.export_flow_workbook(
+            summary, symbol="NVDA", output_path=out_path
+        )
         assert os.path.exists(result)

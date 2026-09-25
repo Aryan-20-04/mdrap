@@ -6,7 +6,13 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from security import SecurityManager, Role, PermissionError, TokenBucketRateLimiter, InputSanitizer
+from security import (
+    SecurityManager,
+    Role,
+    PermissionError,
+    TokenBucketRateLimiter,
+    InputSanitizer,
+)
 from storage import Store
 from pipeline import Pipeline
 from models import RawEvent, QualityStatus
@@ -47,7 +53,7 @@ def test_rbac_hierarchy():
     sec = SecurityManager()
     # VIEWER permitted for VIEWER actions
     sec.authorize(Role.VIEWER, Role.VIEWER, "read_bbo")
-    
+
     # VIEWER blocked from OPERATOR actions
     with pytest.raises(PermissionError):
         sec.authorize(Role.VIEWER, Role.OPERATOR, "start_ingestion")
@@ -80,12 +86,16 @@ def test_token_bucket_rate_limiter():
 
 def test_input_sanitizer():
     # Valid payload
-    valid, err = InputSanitizer.sanitize({"instrument": "BTC/USD", "price": 70000.0, "quantity": 1.5, "sequence": 10})
+    valid, err = InputSanitizer.sanitize(
+        {"instrument": "BTC/USD", "price": 70000.0, "quantity": 1.5, "sequence": 10}
+    )
     assert valid is True
     assert err is None
 
     # Malformed symbol / injection attempt
-    valid, err = InputSanitizer.sanitize({"instrument": "AAPL'; DROP TABLE--", "price": 150.0})
+    valid, err = InputSanitizer.sanitize(
+        {"instrument": "AAPL'; DROP TABLE--", "price": 150.0}
+    )
     assert valid is False
     assert "Invalid symbol format" in err
 
@@ -103,9 +113,21 @@ def test_tamper_evident_audit_chain(store):
     sec = SecurityManager(store=store)
 
     # Log sequential administrative actions
-    sec.log_audit("FEED_CONNECTED", actor="operator_alice", role=Role.OPERATOR, details="FEEDX connected")
-    sec.log_audit("CIRCUIT_BREAKER_TRIPPED", actor="system", role=Role.ADMIN, details="FEEDY spread spike")
-    sec.log_audit("FEED_UNBLOCKED", actor="admin_bob", role=Role.ADMIN, details="FEEDY restored")
+    sec.log_audit(
+        "FEED_CONNECTED",
+        actor="operator_alice",
+        role=Role.OPERATOR,
+        details="FEEDX connected",
+    )
+    sec.log_audit(
+        "CIRCUIT_BREAKER_TRIPPED",
+        actor="system",
+        role=Role.ADMIN,
+        details="FEEDY spread spike",
+    )
+    sec.log_audit(
+        "FEED_UNBLOCKED", actor="admin_bob", role=Role.ADMIN, details="FEEDY restored"
+    )
 
     # Verify pristine chain
     valid, msg, count = sec.verify_audit_trail()
@@ -114,7 +136,9 @@ def test_tamper_evident_audit_chain(store):
     assert "verified" in msg.lower()
 
     # Tamper with the middle record in the database directly
-    store.conn.execute("UPDATE audit_log SET details = 'HACKED DETAILS' WHERE entry_id = 2")
+    store.conn.execute(
+        "UPDATE audit_log SET details = 'HACKED DETAILS' WHERE entry_id = 2"
+    )
     store.conn.commit()
 
     # Verify tampering is immediately detected
@@ -129,9 +153,21 @@ def test_pipeline_with_security(store):
     pipeline = Pipeline(store=store, security=sec)
 
     # 1. Clean event with valid signature
-    clean_payload = {"instrument": "AAPL", "event_type": "TRADE", "exchange_ts": 1000.0, "price": 150.0, "quantity": 100, "sequence": 1}
+    clean_payload = {
+        "instrument": "AAPL",
+        "event_type": "TRADE",
+        "exchange_ts": 1000.0,
+        "price": 150.0,
+        "quantity": 100,
+        "sequence": 1,
+    }
     clean_payload["signature"] = sec.sign_payload("FEEDX", clean_payload)
-    raw_clean = RawEvent(source="FEEDX", payload=clean_payload, receive_timestamp=1000.001, raw_id="raw-1")
+    raw_clean = RawEvent(
+        source="FEEDX",
+        payload=clean_payload,
+        receive_timestamp=1000.001,
+        raw_id="raw-1",
+    )
 
     ev1 = pipeline.process_one(raw_clean)
     assert ev1 is not None
@@ -140,7 +176,12 @@ def test_pipeline_with_security(store):
     # 2. Tampered event with forged payload
     tampered_payload = dict(clean_payload)
     tampered_payload["price"] = 9999.0  # Forged price
-    raw_tampered = RawEvent(source="FEEDX", payload=tampered_payload, receive_timestamp=1000.002, raw_id="raw-2")
+    raw_tampered = RawEvent(
+        source="FEEDX",
+        payload=tampered_payload,
+        receive_timestamp=1000.002,
+        raw_id="raw-2",
+    )
 
     ev2 = pipeline.process_one(raw_tampered)
     assert ev2 is not None
@@ -159,7 +200,9 @@ def test_audit_proof_export_and_standalone_verify(store):
     """Verifies exporting a JSON audit proof and verifying it independently without database."""
     sec = SecurityManager(store=store)
     sec.log_audit("SYS_START", actor="kernel", role=Role.ADMIN, details="Node boot")
-    sec.log_audit("FEED_ADD", actor="admin", role=Role.ADMIN, details="Added KRAKEN feed")
+    sec.log_audit(
+        "FEED_ADD", actor="admin", role=Role.ADMIN, details="Added KRAKEN feed"
+    )
     sec.log_audit("HEARTBEAT", actor="watchdog", role=Role.OPERATOR, details="Ping OK")
 
     fd, proof_file = tempfile.mkstemp(suffix=".json")
@@ -182,6 +225,7 @@ def test_audit_proof_export_and_standalone_verify(store):
 def test_audit_proof_standalone_tamper_detection(store):
     """Verifies that tampering with an exported JSON proof file is detected."""
     import json
+
     sec = SecurityManager(store=store)
     sec.log_audit("INIT", actor="system", role=Role.ADMIN, details="System genesis")
     sec.log_audit("TRADE", actor="bot", role=Role.OPERATOR, details="Executed order")
@@ -235,6 +279,7 @@ def test_sanitizer_rejects_boolean_values():
 def test_rate_limiter_multithreaded_concurrency():
     """Verifies thread-safe token bucket consumption under concurrent access."""
     import threading
+
     limiter = TokenBucketRateLimiter(rate=0.0, capacity=100.0)
     allowed_count = [0]
     lock = threading.Lock()
@@ -272,7 +317,12 @@ def test_env_secrets_resolution():
 def test_audit_hash_delimiter_collision_resistance(store):
     """Verifies pipe delimiter escaping prevents audit hash collision/injection."""
     sec = SecurityManager(store=store)
-    sec.log_audit("TEST_DELIM", actor="admin|injected", role=Role.ADMIN, details="field|injected|payload")
+    sec.log_audit(
+        "TEST_DELIM",
+        actor="admin|injected",
+        role=Role.ADMIN,
+        details="field|injected|payload",
+    )
     valid, msg, count = sec.verify_audit_trail()
     assert valid is True
     assert count == 1
@@ -282,6 +332,7 @@ def test_hmac_compact_json_compatibility():
     """Verifies HMAC signature uses compact JSON separators matching cross-language standards."""
     import hashlib
     import hmac
+
     sec = SecurityManager()
     sec.register_feed_secret("TESTFEED", "secret123")
     payload = {"b": 2, "a": 1}
@@ -292,5 +343,3 @@ def test_hmac_compact_json_compatibility():
     expected = hmac.new(b"secret123", raw_json, hashlib.sha256).hexdigest()
     assert sig == expected
     assert sec.verify_payload("TESTFEED", payload, expected) is True
-
-

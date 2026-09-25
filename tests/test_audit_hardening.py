@@ -11,6 +11,7 @@ and institutional microstructure calculations implemented during the platform au
 6. Institutional Level-1 Order Flow Imbalance (OFI) & Cumulative Volume Delta (CVD).
 7. Terminal dashboard rendering and multi-timeframe candle resampling.
 """
+
 from __future__ import annotations
 
 import json
@@ -22,6 +23,7 @@ import time
 import pytest
 
 import sys
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from archive import RawArchive, replay
@@ -38,6 +40,7 @@ from storage import Store
 
 try:
     import duckdb
+
     HAS_DUCKDB = True
 except ImportError:
     HAS_DUCKDB = False
@@ -46,6 +49,7 @@ except ImportError:
 # ---------------------------------------------------------------------------
 # Track 1: Numerical Bounds & NaN/Inf Protection
 # ---------------------------------------------------------------------------
+
 
 def test_quality_engine_rejects_nan_price():
     """Verify QualityEngine rejects NaN prices with SCHEMA_VIOLATION before stats update."""
@@ -168,6 +172,7 @@ def test_fastpath_engine_bounds_validation():
 # Track 2: DuckDB Concurrency & Incremental CDC
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.skipif(not HAS_DUCKDB, reason="duckdb is not installed")
 def test_duckdb_read_only_concurrency():
     """Verify multiple readers can access DuckDB even when an active connection is held."""
@@ -288,6 +293,7 @@ def test_incremental_cdc_synchronization():
 # Track 3: Resilient Raw Archive Replay
 # ---------------------------------------------------------------------------
 
+
 def test_archive_replay_recovers_from_corrupted_jsonl():
     """Verify archive.replay() recovers gracefully from corrupted JSON lines without halting."""
     temp_dir = tempfile.mkdtemp()
@@ -297,9 +303,24 @@ def test_archive_replay_recovers_from_corrupted_jsonl():
         file_path = os.path.join(date_dir, "FEED_A.jsonl")
 
         # Write 2 valid events, 1 corrupted line, and 1 more valid event
-        valid_ev1 = {"raw_id": "r1", "source": "FEED_A", "receive_timestamp": 1000.0, "payload": {"price": 100.0}}
-        valid_ev2 = {"raw_id": "r2", "source": "FEED_A", "receive_timestamp": 1001.0, "payload": {"price": 101.0}}
-        valid_ev3 = {"raw_id": "r3", "source": "FEED_A", "receive_timestamp": 1002.0, "payload": {"price": 102.0}}
+        valid_ev1 = {
+            "raw_id": "r1",
+            "source": "FEED_A",
+            "receive_timestamp": 1000.0,
+            "payload": {"price": 100.0},
+        }
+        valid_ev2 = {
+            "raw_id": "r2",
+            "source": "FEED_A",
+            "receive_timestamp": 1001.0,
+            "payload": {"price": 101.0},
+        }
+        valid_ev3 = {
+            "raw_id": "r3",
+            "source": "FEED_A",
+            "receive_timestamp": 1002.0,
+            "payload": {"price": 102.0},
+        }
 
         with open(file_path, "w", encoding="utf-8") as f:
             f.write(json.dumps(valid_ev1) + "\n")
@@ -320,6 +341,7 @@ def test_archive_replay_recovers_from_corrupted_jsonl():
 # ---------------------------------------------------------------------------
 # Track 4: Cryptographic Secrets Hardening
 # ---------------------------------------------------------------------------
+
 
 def test_cryptographic_secrets_hardening():
     """Verify create_feed_secret creates secure random secrets rather than predictable strings (S3)."""
@@ -345,6 +367,7 @@ def test_cryptographic_secrets_hardening():
 # ---------------------------------------------------------------------------
 # Track 5: Microstructure: OFI & Cumulative Volume Delta (CVD)
 # ---------------------------------------------------------------------------
+
 
 def test_order_flow_imbalance_and_cvd_calculation():
     """Verify Cont-Kukanov-Stoikov Level 1 OFI and CVD calculations."""
@@ -430,6 +453,7 @@ def test_order_flow_imbalance_and_cvd_calculation():
 # ---------------------------------------------------------------------------
 # Track 6: Terminal Dashboard Rendering Verification
 # ---------------------------------------------------------------------------
+
 
 def test_terminal_dashboard_render():
     """Verify legacy/batch terminal dashboard render produces renderable group without errors."""

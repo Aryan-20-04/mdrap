@@ -1,6 +1,7 @@
 """
 Tests for MDRAP Keyboard-First Modal Navigator Engine (src/navigator.py).
 """
+
 import os
 import sys
 import unittest
@@ -105,7 +106,9 @@ class TestDataGrid(unittest.TestCase):
         # Sort by price descending
         self.grid.toggle_sort("price")
         self.assertTrue(self.grid.sort_desc)
-        self.assertEqual(self.grid.filtered_rows[0]["symbol"], "BTC/USD")  # 68400.0 highest
+        self.assertEqual(
+            self.grid.filtered_rows[0]["symbol"], "BTC/USD"
+        )  # 68400.0 highest
 
     def test_update_rows_preserves_selection(self):
         self.grid.move_selection(2)  # Selected NVDA
@@ -215,6 +218,7 @@ class TestNavigatorDesk(unittest.TestCase):
 class TestNavigatorCLIIntegration(unittest.TestCase):
     def test_parser_desk_command_and_aliases(self):
         from cli import build_parser, cmd_desk
+
         parser = build_parser()
 
         for alias in ["desk", "nav", "navigator", "tui"]:
@@ -223,12 +227,14 @@ class TestNavigatorCLIIntegration(unittest.TestCase):
 
     def test_quick_action_0(self):
         from cli import QUICK_ACTIONS
+
         self.assertIn("0", QUICK_ACTIONS)
         self.assertEqual(QUICK_ACTIONS["0"], ["desk"])
 
     @patch("navigator.MDRAPNavigator.run")
     def test_cmd_desk_execution(self, mock_run):
         from cli import cmd_desk
+
         cmd_desk(MagicMock())
         mock_run.assert_called_once()
 
@@ -236,6 +242,7 @@ class TestNavigatorCLIIntegration(unittest.TestCase):
 class TestNavigatorRenderingStability(unittest.TestCase):
     def test_all_tabs_render_without_jitter_or_overflow(self):
         from rich.console import Console
+
         c = Console(width=100, height=24)
         nav = MDRAPNavigator(console=c)
 
@@ -251,13 +258,16 @@ class TestNavigatorRenderingStability(unittest.TestCase):
 class TestLiveResilience(unittest.TestCase):
     def setUp(self):
         from live import LiveConnector
+
         self.conn = LiveConnector(timeout=1.0)
 
     def test_fetch_equity_events_fallback_on_unlisted_symbol(self):
         # TMPV does not exist on Yahoo Finance, so _get_json returns None
         with patch.object(self.conn, "_get_json", return_value=None):
             # When fallback_sim=False, returns empty list safely
-            self.assertEqual(self.conn.fetch_equity_events("TMPV", fallback_sim=False), [])
+            self.assertEqual(
+                self.conn.fetch_equity_events("TMPV", fallback_sim=False), []
+            )
             # When fallback_sim=True (streaming mode), synthesizes ticks to prevent freeze
             events = self.conn.fetch_equity_events("TMPV", fallback_sim=True)
             self.assertEqual(len(events), 2)
@@ -269,27 +279,50 @@ class TestLiveResilience(unittest.TestCase):
     def test_stream_ticks_completes_with_unlisted_symbol(self):
         # Stream 4 ticks of TMPV without blocking or hanging when fallback_sim=True
         with patch.object(self.conn, "_get_json", return_value=None):
-            ticks = list(self.conn.stream_ticks(["TMPV"], limit=4, poll_interval_s=0.01, fallback_sim=True))
+            ticks = list(
+                self.conn.stream_ticks(
+                    ["TMPV"], limit=4, poll_interval_s=0.01, fallback_sim=True
+                )
+            )
             self.assertEqual(len(ticks), 4)
             for t in ticks:
                 self.assertIn("SIM", t.source)
 
             # Enforces strict zero fake data policy when fallback_sim=False
-            strict_ticks = list(self.conn.stream_ticks(["TMPV"], limit=4, poll_interval_s=0.01, fallback_sim=False, max_empty_polls=2))
+            strict_ticks = list(
+                self.conn.stream_ticks(
+                    ["TMPV"],
+                    limit=4,
+                    poll_interval_s=0.01,
+                    fallback_sim=False,
+                    max_empty_polls=2,
+                )
+            )
             self.assertEqual(len(strict_ticks), 0)
 
     def test_stream_ticks_crypto_fallback_on_unknown_pair(self):
         # When all crypto venues return None, synthesize ticks when fallback_sim=True
         with patch.object(self.conn, "fetch_quote", return_value=None):
-            ticks = list(self.conn.stream_ticks(["UNKNOWN/USD"], limit=2, poll_interval_s=0.01, fallback_sim=True))
+            ticks = list(
+                self.conn.stream_ticks(
+                    ["UNKNOWN/USD"], limit=2, poll_interval_s=0.01, fallback_sim=True
+                )
+            )
             self.assertEqual(len(ticks), 2)
             self.assertIn("SIM", ticks[0].source)
 
             # Strict policy: no fake data if fallback_sim=False
-            strict_ticks = list(self.conn.stream_ticks(["UNKNOWN/USD"], limit=2, poll_interval_s=0.01, fallback_sim=False, max_empty_polls=2))
+            strict_ticks = list(
+                self.conn.stream_ticks(
+                    ["UNKNOWN/USD"],
+                    limit=2,
+                    poll_interval_s=0.01,
+                    fallback_sim=False,
+                    max_empty_polls=2,
+                )
+            )
             self.assertEqual(len(strict_ticks), 0)
 
 
 if __name__ == "__main__":
     unittest.main()
-

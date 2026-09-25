@@ -57,23 +57,25 @@ def test_vessel_stress_throughput():
 
     elapsed = time.perf_counter() - t0
     # 10,000 haversine calculations should easily finish under 250ms in pure Python
-    assert elapsed < 0.25, f"10k distance calculations took {elapsed:.4f}s (expected < 0.25s)"
+    assert elapsed < 0.25, (
+        f"10k distance calculations took {elapsed:.4f}s (expected < 0.25s)"
+    )
 
 
 def test_vessel_o1_lookup_speed():
     """Empirically verifies O(1) indexed lookup performance over 20,000 queries."""
     tracker = VesselTracker()
     test_identifiers = [
-        "9745342",            # IMO: FRONT ALTAIR
-        "538006849",          # MMSI: FRONT ALTAIR
-        "FRONT ALTAIR",       # Exact Name
-        "9235268",            # IMO: TI EUROPE
-        "205423000",          # MMSI: TI EUROPE
-        "TI EUROPE",          # Exact Name
-        "9811000",            # IMO: EVER GIVEN
-        "353136000",          # MMSI: EVER GIVEN
-        "EVER GIVEN",         # Exact Name
-        "BERGE BULKER",       # Name: BERGE BULKER
+        "9745342",  # IMO: FRONT ALTAIR
+        "538006849",  # MMSI: FRONT ALTAIR
+        "FRONT ALTAIR",  # Exact Name
+        "9235268",  # IMO: TI EUROPE
+        "205423000",  # MMSI: TI EUROPE
+        "TI EUROPE",  # Exact Name
+        "9811000",  # IMO: EVER GIVEN
+        "353136000",  # MMSI: EVER GIVEN
+        "EVER GIVEN",  # Exact Name
+        "BERGE BULKER",  # Name: BERGE BULKER
     ]
 
     t0 = time.perf_counter()
@@ -85,23 +87,30 @@ def test_vessel_o1_lookup_speed():
 
     elapsed = time.perf_counter() - t0
     # 20,000 dictionary hash lookups should finish under 100ms (or 500ms when coverage tracing is active)
-    max_expected = 0.50 if getattr(sys, "gettrace", lambda: None)() is not None else 0.10
-    assert elapsed < max_expected, f"20,000 lookups took {elapsed:.4f}s (expected < {max_expected}s)"
+    max_expected = (
+        0.50 if getattr(sys, "gettrace", lambda: None)() is not None else 0.10
+    )
+    assert elapsed < max_expected, (
+        f"20,000 lookups took {elapsed:.4f}s (expected < {max_expected}s)"
+    )
 
 
-@pytest.mark.parametrize("bad_lat, bad_lon", [
-    (float("nan"), 50.0),
-    (50.0, float("nan")),
-    (float("inf"), 50.0),
-    (50.0, float("-inf")),
-    (90.1, 0.0),
-    (-90.1, 0.0),
-    (0.0, 180.1),
-    (0.0, -180.1),
-    (1e20, 0.0),
-    ("50.0", 0.0),
-    (None, 0.0),
-])
+@pytest.mark.parametrize(
+    "bad_lat, bad_lon",
+    [
+        (float("nan"), 50.0),
+        (50.0, float("nan")),
+        (float("inf"), 50.0),
+        (50.0, float("-inf")),
+        (90.1, 0.0),
+        (-90.1, 0.0),
+        (0.0, 180.1),
+        (0.0, -180.1),
+        (1e20, 0.0),
+        ("50.0", 0.0),
+        (None, 0.0),
+    ],
+)
 def test_vessel_adversarial_coordinates_fuzzing(bad_lat, bad_lon):
     """Fuzzes coordinate inputs with NaN, Inf, out-of-bounds, and malformed types."""
     with pytest.raises(ValueError):
@@ -111,16 +120,19 @@ def test_vessel_adversarial_coordinates_fuzzing(bad_lat, bad_lon):
         haversine_nm(bad_lat, bad_lon, 0.0, 0.0)
 
 
-@pytest.mark.parametrize("bad_speed, bad_heading", [
-    (-1.0, 180.0),
-    (200.0, 180.0),
-    (float("nan"), 180.0),
-    (15.0, -1.0),
-    (15.0, 360.5),
-    (15.0, float("inf")),
-    ("fast", 180.0),
-    (15.0, "north"),
-])
+@pytest.mark.parametrize(
+    "bad_speed, bad_heading",
+    [
+        (-1.0, 180.0),
+        (200.0, 180.0),
+        (float("nan"), 180.0),
+        (15.0, -1.0),
+        (15.0, 360.5),
+        (15.0, float("inf")),
+        ("fast", 180.0),
+        (15.0, "north"),
+    ],
+)
 def test_vessel_adversarial_speed_and_heading(bad_speed, bad_heading):
     """Fuzzes speed and heading with negative, excessive, NaN, Inf, and malformed types."""
     with pytest.raises(ValueError):

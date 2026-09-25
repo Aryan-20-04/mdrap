@@ -9,6 +9,7 @@ asynchronous drain worker, and binary journal persistence under catastrophic eve
 4. Journal partial-write / file truncation recovery
 5. Buffer overrun and extreme watermark backpressure
 """
+
 import os
 import tempfile
 import time
@@ -43,10 +44,20 @@ def test_failure_writer_crash_epoch_rollover():
         # Write 10 ticks in epoch 1
         for seq in range(1, 11):
             w1.write_tick(
-                seq=seq, symbol="AAPL", source="FEED1", price=150.0 + seq, size=100.0,
-                bid=149.0 + seq, ask=151.0 + seq, bid_size=10.0, ask_size=10.0,
-                status="VALID", is_crossed=False,
-                exchange_ts=1000.0 + seq, ingest_ts=1000.0 + seq, broadcast_ts=1000.0 + seq,
+                seq=seq,
+                symbol="AAPL",
+                source="FEED1",
+                price=150.0 + seq,
+                size=100.0,
+                bid=149.0 + seq,
+                ask=151.0 + seq,
+                bid_size=10.0,
+                ask_size=10.0,
+                status="VALID",
+                is_crossed=False,
+                exchange_ts=1000.0 + seq,
+                ingest_ts=1000.0 + seq,
+                broadcast_ts=1000.0 + seq,
                 engine_us=1.0,
             )
 
@@ -64,13 +75,22 @@ def test_failure_writer_crash_epoch_rollover():
             new_epoch = w1.epoch_id + 1
             # Re-write Line 1 with new epoch
             HEADER_LINE1_STRUCT.pack_into(
-                w1.shm.buf, 0,
-                MAGIC, VERSION, SLOT_SIZE, slot_count, 0,
-                new_epoch, 0, b"\x00" * 32,
+                w1.shm.buf,
+                0,
+                MAGIC,
+                VERSION,
+                SLOT_SIZE,
+                slot_count,
+                0,
+                new_epoch,
+                0,
+                b"\x00" * 32,
             )
 
             # Reader checks epoch validity
-            assert reader.check_epoch_valid() is False, "Reader must detect publisher epoch invalidation"
+            assert reader.check_epoch_valid() is False, (
+                "Reader must detect publisher epoch invalidation"
+            )
 
             # Re-attaching reader connects to new epoch
             new_reader = SHMReader(name=shm_name)
@@ -96,10 +116,20 @@ def test_failure_seqlock_torn_read_handling():
     try:
         # Write valid tick seq 5
         writer.write_tick(
-            seq=5, symbol="NVDA", source="FEEDX", price=500.0, size=10.0,
-            bid=499.0, ask=501.0, bid_size=5.0, ask_size=5.0,
-            status="VALID", is_crossed=False,
-            exchange_ts=1000.0, ingest_ts=1000.0, broadcast_ts=1000.0,
+            seq=5,
+            symbol="NVDA",
+            source="FEEDX",
+            price=500.0,
+            size=10.0,
+            bid=499.0,
+            ask=501.0,
+            bid_size=5.0,
+            ask_size=5.0,
+            status="VALID",
+            is_crossed=False,
+            exchange_ts=1000.0,
+            ingest_ts=1000.0,
+            broadcast_ts=1000.0,
             engine_us=1.0,
         )
 
@@ -117,7 +147,9 @@ def test_failure_seqlock_torn_read_handling():
 
             # Reader attempting to read seq 5 must reject it as incomplete
             torn_read = reader.read_slot(5)
-            assert torn_read is None, "Reader must reject slot while writer has not finalized commit_seq"
+            assert torn_read is None, (
+                "Reader must reject slot while writer has not finalized commit_seq"
+            )
 
             # Writer completes the write
             struct.pack_into("<Q", writer.shm.buf, slot_offset, 5)
@@ -146,10 +178,20 @@ def test_failure_drain_worker_crash_and_restart():
             # Produce 50 ticks
             for seq in range(1, 51):
                 writer.write_tick(
-                    seq=seq, symbol="GOOGL", source="FEED1", price=140.0 + seq, size=20.0,
-                    bid=139.0 + seq, ask=141.0 + seq, bid_size=10.0, ask_size=10.0,
-                    status="VALID", is_crossed=False,
-                    exchange_ts=1000.0 + seq, ingest_ts=1000.0 + seq, broadcast_ts=1000.0 + seq,
+                    seq=seq,
+                    symbol="GOOGL",
+                    source="FEED1",
+                    price=140.0 + seq,
+                    size=20.0,
+                    bid=139.0 + seq,
+                    ask=141.0 + seq,
+                    bid_size=10.0,
+                    ask_size=10.0,
+                    status="VALID",
+                    is_crossed=False,
+                    exchange_ts=1000.0 + seq,
+                    ingest_ts=1000.0 + seq,
+                    broadcast_ts=1000.0 + seq,
                     engine_us=1.0,
                 )
 
@@ -177,10 +219,20 @@ def test_failure_drain_worker_crash_and_restart():
             # Produce 30 more ticks (seq 51 to 80)
             for seq in range(51, 81):
                 writer.write_tick(
-                    seq=seq, symbol="GOOGL", source="FEED1", price=140.0 + seq, size=20.0,
-                    bid=139.0 + seq, ask=141.0 + seq, bid_size=10.0, ask_size=10.0,
-                    status="VALID", is_crossed=False,
-                    exchange_ts=1000.0 + seq, ingest_ts=1000.0 + seq, broadcast_ts=1000.0 + seq,
+                    seq=seq,
+                    symbol="GOOGL",
+                    source="FEED1",
+                    price=140.0 + seq,
+                    size=20.0,
+                    bid=139.0 + seq,
+                    ask=141.0 + seq,
+                    bid_size=10.0,
+                    ask_size=10.0,
+                    status="VALID",
+                    is_crossed=False,
+                    exchange_ts=1000.0 + seq,
+                    ingest_ts=1000.0 + seq,
+                    broadcast_ts=1000.0 + seq,
                     engine_us=1.0,
                 )
 
@@ -223,7 +275,11 @@ def test_failure_journal_truncation_recovery():
         with BinaryJournal(journal_path, initial_records=1024) as j1:
             for i in range(1, 26):
                 j1.append_tick(
-                    seq=i, symbol="TSLA", source="FEED1", price=200.0 + i, size=10.0,
+                    seq=i,
+                    symbol="TSLA",
+                    source="FEED1",
+                    price=200.0 + i,
+                    size=10.0,
                     status="VALID",
                 )
             assert j1.record_count == 25
@@ -242,7 +298,11 @@ def test_failure_journal_truncation_recovery():
 
             # Subsequent write should succeed at record index 25
             j2.append_tick(
-                seq=26, symbol="TSLA", source="FEED1", price=226.0, size=10.0,
+                seq=26,
+                symbol="TSLA",
+                source="FEED1",
+                price=226.0,
+                size=10.0,
                 status="VALID",
             )
             assert j2.record_count == 26
@@ -269,10 +329,20 @@ def test_failure_buffer_overrun_backpressure():
             # Writer blasts 100 ticks without consumer reading
             for seq in range(1, 101):
                 writer.write_tick(
-                    seq=seq, symbol="AMD", source="FEED1", price=120.0 + seq, size=10.0,
-                    bid=119.0 + seq, ask=121.0 + seq, bid_size=10.0, ask_size=10.0,
-                    status="VALID", is_crossed=False,
-                    exchange_ts=1000.0 + seq, ingest_ts=1000.0 + seq, broadcast_ts=1000.0 + seq,
+                    seq=seq,
+                    symbol="AMD",
+                    source="FEED1",
+                    price=120.0 + seq,
+                    size=10.0,
+                    bid=119.0 + seq,
+                    ask=121.0 + seq,
+                    bid_size=10.0,
+                    ask_size=10.0,
+                    status="VALID",
+                    is_crossed=False,
+                    exchange_ts=1000.0 + seq,
+                    ingest_ts=1000.0 + seq,
+                    broadcast_ts=1000.0 + seq,
                     engine_us=1.0,
                 )
 
@@ -280,7 +350,9 @@ def test_failure_buffer_overrun_backpressure():
             # Attempting to read old seq 1 must trigger lap detection:
             slot1 = reader.read_slot(1)
             assert slot1 is None
-            assert reader.overrun_stats.total_laps >= 1, "Reader must record overrun lap"
+            assert reader.overrun_stats.total_laps >= 1, (
+                "Reader must record overrun lap"
+            )
 
             # Consumer jumps forward to an active recent sequence (e.g. latest - 10)
             latest = reader.read_latest_seq()

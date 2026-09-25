@@ -35,12 +35,14 @@ def test_w1_genuine_timestamps():
 
     # OKX books5 with ms timestamp
     okx_msg = {
-        "data": [{
-            "ts": "1705320000123",
-            "seqId": "987654",
-            "bids": [["49999.0", "1.5"]],
-            "asks": [["50001.0", "2.0"]],
-        }]
+        "data": [
+            {
+                "ts": "1705320000123",
+                "seqId": "987654",
+                "bids": [["49999.0", "1.5"]],
+                "asks": [["50001.0", "2.0"]],
+            }
+        ]
     }
     raw = parse_okx_frame(okx_msg, "BTC/USD")
     assert raw is not None

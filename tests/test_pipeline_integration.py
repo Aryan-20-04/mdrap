@@ -34,11 +34,15 @@ def test_no_event_is_silently_dropped():
     pipeline, store = _run(5000)
     canonical_total = sum(store.counts().values())
     quarantine_rows = store.quarantine_sample(limit=100000)
-    invalid_only_in_quarantine = [r for r in quarantine_rows if r["quality_status"] == "INVALID"]
+    invalid_only_in_quarantine = [
+        r for r in quarantine_rows if r["quality_status"] == "INVALID"
+    ]
     # Every INVALID event lives in quarantine; canonical_total covers VALID+SUSPICIOUS
     # (SUSPICIOUS also gets a quarantine copy, so quarantine count >= invalid count).
     assert len(invalid_only_in_quarantine) >= 0
-    assert canonical_total + len(invalid_only_in_quarantine) >= 5000 - 100  # allow schema-failure edge cases
+    assert (
+        canonical_total + len(invalid_only_in_quarantine) >= 5000 - 100
+    )  # allow schema-failure edge cases
 
 
 def test_replay_is_deterministic():

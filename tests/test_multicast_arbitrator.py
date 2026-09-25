@@ -109,7 +109,9 @@ def test_arbitrator_multi_channel():
     arb = ABFeedArbitrator(initial_seq=1)
 
     p1_eq = UDPPacket(channel_id="EQUITY", sequence_num=1, feed_id="A", payload=b"AAPL")
-    p1_fx = UDPPacket(channel_id="FOREX", sequence_num=1, feed_id="A", payload=b"EURUSD")
+    p1_fx = UDPPacket(
+        channel_id="FOREX", sequence_num=1, feed_id="A", payload=b"EURUSD"
+    )
     p2_eq = UDPPacket(channel_id="EQUITY", sequence_num=2, feed_id="A", payload=b"MSFT")
 
     d1 = arb.on_packet(p1_eq)
@@ -127,7 +129,9 @@ def test_arbitrator_multi_channel():
 
 def test_multicast_feed_simulator_end_to_end():
     # 5% packet drop on Feed A, 5% packet drop on Feed B
-    sim = MulticastFeedSimulator(channel_id="SIM1", drop_rate_a=0.05, drop_rate_b=0.05, seed=12345)
+    sim = MulticastFeedSimulator(
+        channel_id="SIM1", drop_rate_a=0.05, drop_rate_b=0.05, seed=12345
+    )
     arb = ABFeedArbitrator(
         tcp_replay_client=sim.tcp_replay_request,
         initial_seq=1,

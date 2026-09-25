@@ -1,17 +1,38 @@
 import math, os, sys, pytest
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 import fastpath, options, features, risk, fix_engine
 
 if fastpath._NATIVE_LIB is None:
-    pytest.skip("Native C fastpath library is disabled or not available", allow_module_level=True)
+    pytest.skip(
+        "Native C fastpath library is disabled or not available",
+        allow_module_level=True,
+    )
+
 
 def test_native_exports():
     assert fastpath._NATIVE_LIB is not None
-    for fn in ['fastpath_bsm_price', 'fastpath_bsm_greeks', 'fastpath_binomial_price', 'fastpath_implied_volatility', 'fastpath_calc_rsi', 'fastpath_calc_ema', 'fastpath_calc_bollinger', 'fastpath_calc_atr', 'fastpath_monte_carlo_var', 'fastpath_fix_checksum']:        assert hasattr(fastpath._NATIVE_LIB, fn)
+    for fn in [
+        "fastpath_bsm_price",
+        "fastpath_bsm_greeks",
+        "fastpath_binomial_price",
+        "fastpath_implied_volatility",
+        "fastpath_calc_rsi",
+        "fastpath_calc_ema",
+        "fastpath_calc_bollinger",
+        "fastpath_calc_atr",
+        "fastpath_monte_carlo_var",
+        "fastpath_fix_checksum",
+    ]:
+        assert hasattr(fastpath._NATIVE_LIB, fn)
 
 
 def test_bsm_price_parity():
-    for S, K, T, r, sigma in [(100, 100, 1.0, 0.05, 0.20), (150, 140, 0.5, 0.03, 0.25), (80, 100, 0.25, 0.04, 0.35)]:
+    for S, K, T, r, sigma in [
+        (100, 100, 1.0, 0.05, 0.20),
+        (150, 140, 0.5, 0.03, 0.25),
+        (80, 100, 0.25, 0.04, 0.35),
+    ]:
         for is_call in (True, False):
             c_val = fastpath.fast_bsm_price(S, K, T, r, sigma, is_call)
             opt_type = options.OptionType.CALL if is_call else options.OptionType.PUT
@@ -86,6 +107,6 @@ def test_monte_carlo_var_c():
 
 
 def test_fix_checksum_parity():
-    msg = '8=FIX.4.2\x019=12\x0135=0\x01'
+    msg = "8=FIX.4.2\x019=12\x0135=0\x01"
     cks = fastpath.fast_fix_checksum(msg)
     assert cks == sum(ord(c) for c in msg) % 256

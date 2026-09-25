@@ -47,7 +47,9 @@ def pin_to_core(core_id: int = 2) -> bool:
             mask = ctypes.c_size_t(1 << core_id)
             res = k32.SetProcessAffinityMask(cur_proc, mask)
             if res:
-                print(f"[PIN] Successfully pinned process to CPU Core {core_id} (mask: {1 << core_id:#x})")
+                print(
+                    f"[PIN] Successfully pinned process to CPU Core {core_id} (mask: {1 << core_id:#x})"
+                )
                 return True
         except Exception as exc:
             print(f"[PIN WARNING] Failed to pin core on Windows: {exc}")
@@ -61,13 +63,19 @@ def pin_to_core(core_id: int = 2) -> bool:
     return False
 
 
-def measure_layer1_native_core(runs: int = 5, events: int = 1_000_000) -> dict[str, Any]:
+def measure_layer1_native_core(
+    runs: int = 5, events: int = 1_000_000
+) -> dict[str, Any]:
     """Measure Layer 1: Standalone Native Hot Path (mdrap-core.exe)."""
     print("\n" + "=" * 72)
-    print(f"MEASURING LAYER 1: Standalone Native C Hot Path ({events:,} events x {runs} runs)")
+    print(
+        f"MEASURING LAYER 1: Standalone Native C Hot Path ({events:,} events x {runs} runs)"
+    )
     print("=" * 72)
 
-    core_bin = os.path.join(_REPO_ROOT, "mdrap-core.exe" if sys.platform == "win32" else "mdrap-core")
+    core_bin = os.path.join(
+        _REPO_ROOT, "mdrap-core.exe" if sys.platform == "win32" else "mdrap-core"
+    )
     if not os.path.exists(core_bin):
         raise FileNotFoundError(f"Native core binary not found: {core_bin}")
 
@@ -79,7 +87,13 @@ def measure_layer1_native_core(runs: int = 5, events: int = 1_000_000) -> dict[s
         shm_name = f"phase0_bench_{r}"
         cmd = [core_bin, "--events", str(events), "--shm", shm_name]
         t0 = time.perf_counter()
-        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd=_REPO_ROOT)
+        proc = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            cwd=_REPO_ROOT,
+        )
         wall_sec = time.perf_counter() - t0
 
         if proc.returncode != 0:
@@ -108,16 +122,20 @@ def measure_layer1_native_core(runs: int = 5, events: int = 1_000_000) -> dict[s
                     except ValueError:
                         pass
 
-        run_results.append({
-            "run": r,
-            "events": events,
-            "elapsed_seconds": round(wall_sec, 4),
-            "throughput_eps": round(eps, 1),
-            "latency_ns": round(ns_per_tick, 2),
-        })
+        run_results.append(
+            {
+                "run": r,
+                "events": events,
+                "elapsed_seconds": round(wall_sec, 4),
+                "throughput_eps": round(eps, 1),
+                "latency_ns": round(ns_per_tick, 2),
+            }
+        )
         latencies_ns.append(ns_per_tick)
         throughputs_eps.append(eps)
-        print(f"  Run {r}: {eps:,.0f} eps | {ns_per_tick:.1f} ns/tick ({wall_sec:.4f}s)")
+        print(
+            f"  Run {r}: {eps:,.0f} eps | {ns_per_tick:.1f} ns/tick ({wall_sec:.4f}s)"
+        )
 
     sorted_lats = sorted(latencies_ns)
     sorted_tps = sorted(throughputs_eps)
@@ -143,14 +161,20 @@ def measure_layer1_native_core(runs: int = 5, events: int = 1_000_000) -> dict[s
     }
 
 
-def measure_layer2_python_compute_loop(events: int = 100_000, seed: int = 42) -> dict[str, Any]:
+def measure_layer2_python_compute_loop(
+    events: int = 100_000, seed: int = 42
+) -> dict[str, Any]:
     """Measure Layer 2: Python Tier 3 Compute Loop (ctypes FFI FastQualityEngine)."""
     print("\n" + "=" * 72)
-    print(f"MEASURING LAYER 2: Python Tier 3 Compute Loop ({events:,} events, seed={seed})")
+    print(
+        f"MEASURING LAYER 2: Python Tier 3 Compute Loop ({events:,} events, seed={seed})"
+    )
     print("=" * 72)
 
     engine = FastQualityEngine()
-    sim = FeedSimulator(SimulatorConfig(seed=seed, num_events=events, instruments=["AAPL"]))
+    sim = FeedSimulator(
+        SimulatorConfig(seed=seed, num_events=events, instruments=["AAPL"])
+    )
 
     # Pre-generate canonical events to measure strictly the compute loop (evaluating rules)
     print("[layer2] Pre-generating canonical events...")
@@ -177,7 +201,9 @@ def measure_layer2_python_compute_loop(events: int = 100_000, seed: int = 42) ->
         )
 
     print("[layer2] Executing compute loop with per-event timing samples...")
-    sample_stride = 10  # Sample 10,000 events to avoid perf_counter_ns overhead dominating
+    sample_stride = (
+        10  # Sample 10,000 events to avoid perf_counter_ns overhead dominating
+    )
     sampled_latencies_us = []
 
     t0 = time.perf_counter()
@@ -204,7 +230,9 @@ def measure_layer2_python_compute_loop(events: int = 100_000, seed: int = 42) ->
     max_lat = sampled_latencies_us[-1]
 
     print(f"  Throughput : {eps:,.0f} eps ({elapsed_s:.3f}s)")
-    print(f"  Latency p50: {p50:.2f} µs | p95: {p95:.2f} µs | p99: {p99:.2f} µs | p99.9: {p999:.2f} µs")
+    print(
+        f"  Latency p50: {p50:.2f} µs | p95: {p95:.2f} µs | p99: {p99:.2f} µs | p99.9: {p999:.2f} µs"
+    )
 
     return {
         "events": events,
@@ -223,7 +251,9 @@ def measure_layer2_python_compute_loop(events: int = 100_000, seed: int = 42) ->
     }
 
 
-def measure_layer3_durable_pipeline(events: int = 50_000, seed: int = 42) -> dict[str, Any]:
+def measure_layer3_durable_pipeline(
+    events: int = 50_000, seed: int = 42
+) -> dict[str, Any]:
     """Measure Layer 3: Durable Pipeline (Pipeline + SQLite WAL + Merkle Audit)."""
     print("\n" + "=" * 72)
     print(f"MEASURING LAYER 3: Durable Pipeline ({events:,} events, seed={seed})")
@@ -238,7 +268,9 @@ def measure_layer3_durable_pipeline(events: int = 50_000, seed: int = 42) -> dic
 
     store = Store(db_path)
     pipeline = Pipeline(store=store)
-    sim = FeedSimulator(SimulatorConfig(seed=seed, num_events=events, instruments=["AAPL"]))
+    sim = FeedSimulator(
+        SimulatorConfig(seed=seed, num_events=events, instruments=["AAPL"])
+    )
 
     t0 = time.perf_counter()
     for raw, _ in sim.generate():
@@ -265,7 +297,9 @@ def measure_layer3_durable_pipeline(events: int = 50_000, seed: int = 42) -> dic
             pass
 
     print(f"  Throughput : {eps:,.0f} eps ({elapsed_s:.3f}s)")
-    print(f"  Latency p50: {e2e['p50']:.1f} µs | p95: {e2e['p95']:.1f} µs | p99: {e2e['p99']:.1f} µs | p99.9: {e2e['p999']:.1f} µs")
+    print(
+        f"  Latency p50: {e2e['p50']:.1f} µs | p95: {e2e['p95']:.1f} µs | p99: {e2e['p99']:.1f} µs | p99.9: {e2e['p999']:.1f} µs"
+    )
 
     return {
         "events": events,

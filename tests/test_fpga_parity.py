@@ -3,6 +3,7 @@ MDRAP FPGA Learning Track (Phase 22 - Tier 2 Simulation).
 Cycle-accurate register-transfer level (RTL) emulation of mdrap_crossed_quote.v
 and mdrap_sequence_gap.v, asserting 100% parity against Python & C quality engines.
 """
+
 from __future__ import annotations
 
 import os
@@ -26,7 +27,9 @@ class FpgaCrossedQuoteModel:
         self.is_crossed: bool = False
         self.valid_out: bool = False
 
-    def clock_step(self, valid_in: bool, bid: float | None, ask: float | None) -> tuple[bool, bool]:
+    def clock_step(
+        self, valid_in: bool, bid: float | None, ask: float | None
+    ) -> tuple[bool, bool]:
         """Simulate one posedge clk transition."""
         if not valid_in or bid is None or ask is None:
             self.is_crossed = False
@@ -165,7 +168,9 @@ class TestFpgaSpikeParity:
                 and ev.ask_price > 0
                 and ev.bid_price >= ev.ask_price
             )
-            assert is_c == expected_crossed, f"Crossed mismatch on seq {ev.sequence_number}"
+            assert is_c == expected_crossed, (
+                f"Crossed mismatch on seq {ev.sequence_number}"
+            )
 
             # If truth or engine detected crossed quote, FPGA must agree
             if "CROSSED_QUOTE" in reason_names:

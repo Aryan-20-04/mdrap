@@ -144,6 +144,7 @@ def test_websocket_subscription_and_unsubscription(ws_env):
 
 def test_websocket_realtime_broadcast(ws_env):
     import asyncio
+
     client = ws_env["client"]
     token = ws_env["token"]
     state = ws_env["state"]

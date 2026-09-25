@@ -21,7 +21,9 @@ def temp_db():
 
 def test_legacy_drop_source_window():
     sim = FeedSimulator(SimulatorConfig(seed=42, num_events=50))
-    gen = drop_source_window(sim.generate(), source="FEEDX", start_count=5, duration_count=5)
+    gen = drop_source_window(
+        sim.generate(), source="FEEDX", start_count=5, duration_count=5
+    )
     dropped = 0
     total = 0
     for raw, label, was_dropped in gen:

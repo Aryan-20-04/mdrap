@@ -1,6 +1,7 @@
 """
 Tests for RunMetrics flush duration recording and stages_us attribution (Gap 3).
 """
+
 from metrics import RunMetrics
 from pipeline import Pipeline
 from simulator import FeedSimulator, SimulatorConfig

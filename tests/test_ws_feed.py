@@ -1,6 +1,7 @@
 """
 Unit and Integration Tests for MDRAP Multi-Venue Persistent WebSocket Feed Engine.
 """
+
 import os
 import sys
 import json
@@ -158,11 +159,13 @@ def test_parse_bybit_orderbook_frame():
 
 def test_parse_venue_frame_dispatcher():
     """Verify universal parse_venue_frame dispatcher with string JSON."""
-    json_str = json.dumps({
-        "lastUpdateId": 999,
-        "bids": [["65000.0", "1.0"]],
-        "asks": [["65005.0", "2.0"]],
-    })
+    json_str = json.dumps(
+        {
+            "lastUpdateId": 999,
+            "bids": [["65000.0", "1.0"]],
+            "asks": [["65005.0", "2.0"]],
+        }
+    )
     raw = parse_venue_frame("BINANCE", json_str, "BTC/USD")
     assert raw is not None
     assert raw.source == "BINANCE"
@@ -185,7 +188,12 @@ def test_ws_manager_lifecycle():
     # Verify queue buffering
     mock_raw = RawEvent(
         source="BINANCE",
-        payload={"instrument": "BTC/USD", "event_type": "QUOTE", "bid": 65000.0, "ask": 65005.0},
+        payload={
+            "instrument": "BTC/USD",
+            "event_type": "QUOTE",
+            "bid": 65000.0,
+            "ask": 65005.0,
+        },
         receive_timestamp=1000.0,
         raw_id="r1",
     )

@@ -75,7 +75,9 @@ def test_s7_access_denied_hierarchy_and_audit():
 
 def test_s8_sanitizer_bounds_and_symbols():
     # OCC Option symbol (with spaces)
-    ok, err = InputSanitizer.sanitize({"instrument": "AAPL  240119C00150000", "price": 5.25})
+    ok, err = InputSanitizer.sanitize(
+        {"instrument": "AAPL  240119C00150000", "price": 5.25}
+    )
     assert ok is True, f"Failed OCC symbol: {err}"
 
     # Symbol with special chars ES=F, ETH/USDT:USDT
@@ -105,7 +107,9 @@ def test_s8_sanitizer_bounds_and_symbols():
     assert ok is False
 
     # Sequence > 2**63 - 1 rejected
-    ok, err = InputSanitizer.sanitize({"instrument": "AAPL", "price": 100.0, "sequence": 2**64})
+    ok, err = InputSanitizer.sanitize(
+        {"instrument": "AAPL", "price": 100.0, "sequence": 2**64}
+    )
     assert ok is False
 
 

@@ -4,6 +4,7 @@ Tests American vs European option pricing, binomial trees, IV solver convergence
 put-call parity boundary checking, VolatilitySurface interpolation, smile/term structure,
 and OptionsChain max pain calculations.
 """
+
 from __future__ import annotations
 
 import math
@@ -33,7 +34,9 @@ from options import (
 def test_options_binomial_american_put_vs_call():
     # American Call without dividends has same price as European Call
     call_euro = bsm_price(100.0, 100.0, 1.0, 0.05, 0.20, OptionType.CALL)
-    call_amer = binomial_price(100.0, 100.0, 1.0, 0.05, 0.20, OptionType.CALL, steps=100)
+    call_amer = binomial_price(
+        100.0, 100.0, 1.0, 0.05, 0.20, OptionType.CALL, steps=100
+    )
     assert abs(call_euro - call_amer) < 0.5
 
     # Deep ITM American put has early exercise value >= S - K
@@ -47,7 +50,13 @@ def test_options_binomial_american_put_vs_call():
 
 
 def test_options_contract_pricing():
-    c_euro = OptionContract("AAPL", strike=150.0, expiry_days=30.0, option_type=OptionType.CALL, exercise_style=ExerciseStyle.EUROPEAN)
+    c_euro = OptionContract(
+        "AAPL",
+        strike=150.0,
+        expiry_days=30.0,
+        option_type=OptionType.CALL,
+        exercise_style=ExerciseStyle.EUROPEAN,
+    )
     p_euro = price_option(c_euro, spot=155.0, risk_free_rate=0.05, volatility=0.25)
     assert p_euro.model == "BSM"
     assert p_euro.theoretical > 0.0
@@ -55,7 +64,13 @@ def test_options_contract_pricing():
     assert p_euro.time_value > 0.0
     assert 0.0 <= p_euro.greeks.delta <= 1.0
 
-    c_amer = OptionContract("AAPL", strike=150.0, expiry_days=30.0, option_type=OptionType.PUT, exercise_style=ExerciseStyle.AMERICAN)
+    c_amer = OptionContract(
+        "AAPL",
+        strike=150.0,
+        expiry_days=30.0,
+        option_type=OptionType.PUT,
+        exercise_style=ExerciseStyle.AMERICAN,
+    )
     p_amer = price_option(c_amer, spot=140.0, risk_free_rate=0.05, volatility=0.25)
     assert p_amer.model == "BINOMIAL"
     assert p_amer.theoretical >= 10.0
@@ -65,12 +80,16 @@ def test_options_contract_pricing():
 def test_options_iv_solver():
     # Known price at vol=0.30
     price_target = bsm_price(100.0, 100.0, 0.5, 0.05, 0.30, OptionType.CALL)
-    solved_iv = implied_volatility(price_target, 100.0, 100.0, 0.5, 0.05, OptionType.CALL)
+    solved_iv = implied_volatility(
+        price_target, 100.0, 100.0, 0.5, 0.05, OptionType.CALL
+    )
     assert abs(solved_iv - 0.30) < 1e-4
 
     # Put IV solving
     put_target = bsm_price(100.0, 100.0, 0.5, 0.05, 0.25, OptionType.PUT)
-    solved_put_iv = implied_volatility(put_target, 100.0, 100.0, 0.5, 0.05, OptionType.PUT)
+    solved_put_iv = implied_volatility(
+        put_target, 100.0, 100.0, 0.5, 0.05, OptionType.PUT
+    )
     assert abs(solved_put_iv - 0.25) < 1e-4
 
     # Degenerate inputs (market price below intrinsic)
@@ -132,7 +151,9 @@ def test_options_volatility_surface():
 
 def test_options_chain_and_max_pain():
     chain = OptionsChain("AAPL", spot=150.0, risk_free_rate=0.05)
-    chain.add_expiry(expiry_days=30.0, strikes=[140.0, 145.0, 150.0, 155.0, 160.0], volatility=0.25)
+    chain.add_expiry(
+        expiry_days=30.0, strikes=[140.0, 145.0, 150.0, 155.0, 160.0], volatility=0.25
+    )
 
     entries = chain.chain()
     assert len(entries) == 10  # 5 calls + 5 puts
@@ -146,6 +167,7 @@ def test_options_chain_and_max_pain():
 
 def test_options_python_fallback(monkeypatch):
     import options
+
     monkeypatch.setattr(options, "fastpath", None)
 
     # European Call & Put via Python BSM
@@ -166,8 +188,12 @@ def test_options_python_fallback(monkeypatch):
     assert g_put.rho < 0.0
 
     # Binomial American Tree via Python
-    bin_call = options.binomial_price(100.0, 100.0, 1.0, 0.05, 0.20, OptionType.CALL, steps=50)
-    bin_put = options.binomial_price(100.0, 100.0, 1.0, 0.05, 0.20, OptionType.PUT, steps=50)
+    bin_call = options.binomial_price(
+        100.0, 100.0, 1.0, 0.05, 0.20, OptionType.CALL, steps=50
+    )
+    bin_put = options.binomial_price(
+        100.0, 100.0, 1.0, 0.05, 0.20, OptionType.PUT, steps=50
+    )
     assert abs(bin_call - c_px) < 0.5
     assert bin_put > 5.0
 
@@ -181,4 +207,3 @@ def test_options_python_fallback(monkeypatch):
     assert options.bsm_price(100.0, 100.0, 1.0, 0.05, 0.0, OptionType.CALL) > 0.0
     g_edge = options.bsm_greeks(100.0, 100.0, 0.0, 0.05, 0.20, OptionType.CALL)
     assert g_edge.gamma == 0.0
-

@@ -15,7 +15,7 @@ from service import MarketDataDaemon, StreamClient
 def running_daemon():
     fd, db_path = tempfile.mkstemp(suffix=".db")
     os.close(fd)
-    
+
     # Use ephemeral port to avoid conflict
     daemon = MarketDataDaemon(
         host="127.0.0.1",
@@ -99,13 +99,18 @@ def test_daemon_token_auth_success():
     fd, db_path = tempfile.mkstemp(suffix=".db")
     os.close(fd)
     daemon = MarketDataDaemon(
-        host="127.0.0.1", port=0, db_path=db_path,
-        sim_speed_eps=5000.0, auth_token="test_secret_token_123"
+        host="127.0.0.1",
+        port=0,
+        db_path=db_path,
+        sim_speed_eps=5000.0,
+        auth_token="test_secret_token_123",
     )
     daemon.start(blocking=False)
     time.sleep(0.3)
     try:
-        client = StreamClient(host="127.0.0.1", port=daemon.port, auth_token="test_secret_token_123")
+        client = StreamClient(
+            host="127.0.0.1", port=daemon.port, auth_token="test_secret_token_123"
+        )
         client.connect()
         ticks = list(client.stream(symbol="ALL", limit=2))
         assert len(ticks) == 2
@@ -121,19 +126,26 @@ def test_daemon_token_auth_rejection():
     fd, db_path = tempfile.mkstemp(suffix=".db")
     os.close(fd)
     daemon = MarketDataDaemon(
-        host="127.0.0.1", port=0, db_path=db_path,
-        sim_speed_eps=5000.0, auth_token="mandatory_token_xyz"
+        host="127.0.0.1",
+        port=0,
+        db_path=db_path,
+        sim_speed_eps=5000.0,
+        auth_token="mandatory_token_xyz",
     )
     daemon.start(blocking=False)
     time.sleep(0.3)
     try:
         # Client connects with bad token
         with pytest.raises(PermissionError):
-            bad_client = StreamClient(host="127.0.0.1", port=daemon.port, auth_token="wrong_token")
+            bad_client = StreamClient(
+                host="127.0.0.1", port=daemon.port, auth_token="wrong_token"
+            )
             bad_client.connect()
 
         # Unauthenticated query returns error
-        unauth_client = StreamClient(host="127.0.0.1", port=daemon.port, auth_token=None)
+        unauth_client = StreamClient(
+            host="127.0.0.1", port=daemon.port, auth_token=None
+        )
         res = unauth_client._send_query("STATUS")
         assert "error" in res
     finally:
@@ -159,8 +171,11 @@ def test_unauthenticated_client_cannot_access_l2():
     os.close(fd)
     port = 19889
     daemon = MarketDataDaemon(
-        host="127.0.0.1", port=port, db_path=db_path,
-        sim_speed_eps=5000.0, require_auth=True
+        host="127.0.0.1",
+        port=port,
+        db_path=db_path,
+        sim_speed_eps=5000.0,
+        require_auth=True,
     )
     daemon.start(blocking=False)
     time.sleep(0.3)
@@ -174,5 +189,3 @@ def test_unauthenticated_client_cannot_access_l2():
         daemon.stop()
         if os.path.exists(db_path):
             os.remove(db_path)
-
-

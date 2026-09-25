@@ -45,7 +45,7 @@ def test_asset_class_overrides():
         asset_classes={
             "crypto": {"staleness_threshold_s": 2.0, "price_anomaly_stddev": 7.0},
             "equities": {"staleness_threshold_s": 0.25, "price_anomaly_stddev": 3.5},
-        }
+        },
     )
 
     btc_cfg = base_cfg.for_instrument("BTC/USD")
@@ -68,24 +68,38 @@ def test_quality_engine_with_config():
         asset_classes={
             "crypto": {"staleness_threshold_s": 2.0},
             "equities": {"staleness_threshold_s": 0.10},
-        }
+        },
     )
     qe = QualityEngine(config=cfg)
 
     # 1. Crypto tick with 0.5s network delay (allowed under crypto 2.0s tolerance)
     crypto_evt = CanonicalEvent(
-        event_id="e1", instrument_id="BTC/USD", event_type=EventType.QUOTE,
-        exchange_timestamp=1000.0, receive_timestamp=1000.50, processing_timestamp=1000.51,
-        source="BINANCE", sequence_number=1, bid_price=50000.0, ask_price=50001.0
+        event_id="e1",
+        instrument_id="BTC/USD",
+        event_type=EventType.QUOTE,
+        exchange_timestamp=1000.0,
+        receive_timestamp=1000.50,
+        processing_timestamp=1000.51,
+        source="BINANCE",
+        sequence_number=1,
+        bid_price=50000.0,
+        ask_price=50001.0,
     )
     res_c = qe.evaluate(crypto_evt)
     assert res_c.quality_status.value == "VALID"
 
     # 2. Equity tick with 0.5s network delay (stale under equity 0.10s tolerance)
     equity_evt = CanonicalEvent(
-        event_id="e2", instrument_id="AAPL", event_type=EventType.QUOTE,
-        exchange_timestamp=1000.0, receive_timestamp=1000.50, processing_timestamp=1000.51,
-        source="EQUITIES", sequence_number=1, bid_price=220.0, ask_price=220.05
+        event_id="e2",
+        instrument_id="AAPL",
+        event_type=EventType.QUOTE,
+        exchange_timestamp=1000.0,
+        receive_timestamp=1000.50,
+        processing_timestamp=1000.51,
+        source="EQUITIES",
+        sequence_number=1,
+        bid_price=220.0,
+        ask_price=220.05,
     )
     res_e = qe.evaluate(equity_evt)
     assert res_e.quality_status.value == "SUSPICIOUS"

@@ -4,6 +4,7 @@ Measures end-to-end wire-to-SHM single-tick execution latency and throughput
 of the standalone C hot-path process across multiple runs.
 Generates committed JSON benchmark report: benchmarks/mdrap_core_bench.json.
 """
+
 from __future__ import annotations
 
 import json
@@ -20,7 +21,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 import build_fastpath
 
 
-def run_benchmark(events: int = 1_000_000, runs: int = 5, output_file: str | None = None) -> dict:
+def run_benchmark(
+    events: int = 1_000_000, runs: int = 5, output_file: str | None = None
+) -> dict:
     repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     core_bin_name = build_fastpath.get_core_bin_name()
     core_bin_path = os.path.join(repo_root, core_bin_name)
@@ -32,7 +35,9 @@ def run_benchmark(events: int = 1_000_000, runs: int = 5, output_file: str | Non
             raise RuntimeError(f"Failed to build {core_bin_name}")
 
     results = []
-    print(f"[bench] Executing {runs} runs of {events:,} events each with {core_bin_name}...")
+    print(
+        f"[bench] Executing {runs} runs of {events:,} events each with {core_bin_name}..."
+    )
 
     # Pattern match output
     # Events Processed : 1000000
@@ -46,7 +51,13 @@ def run_benchmark(events: int = 1_000_000, runs: int = 5, output_file: str | Non
     for r in range(1, runs + 1):
         cmd = [core_bin_path, "--events", str(events), "--shm", f"bench_core_{r}"]
         t0 = time.perf_counter()
-        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd=repo_root)
+        proc = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            cwd=repo_root,
+        )
         wall_time = time.perf_counter() - t0
 
         if proc.returncode != 0:
@@ -60,13 +71,15 @@ def run_benchmark(events: int = 1_000_000, runs: int = 5, output_file: str | Non
         ns = float(m_ns.group(1)) if m_ns else (wall_time / events * 1e9)
         el_sec = float(m_time.group(1)) if m_time else wall_time
 
-        results.append({
-            "run": r,
-            "events": events,
-            "elapsed_seconds": el_sec,
-            "throughput_eps": eps,
-            "latency_ns_per_tick": ns,
-        })
+        results.append(
+            {
+                "run": r,
+                "events": events,
+                "elapsed_seconds": el_sec,
+                "throughput_eps": eps,
+                "latency_ns_per_tick": ns,
+            }
+        )
         print(f"  Run {r}: {eps:,.0f} eps | {ns:.1f} ns/tick ({el_sec:.4f}s)")
 
     throughputs = [res["throughput_eps"] for res in results]

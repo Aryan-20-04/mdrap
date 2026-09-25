@@ -3,6 +3,7 @@ MDRAP Multi-Source Contention Benchmark (Phase 19).
 Demonstrates flat p99.9 tail latency of zero-lock single-writer ingestion vs.
 mutex-locked multi-source ingestion under thread contention (1, 2, 4, 8 sources).
 """
+
 from __future__ import annotations
 
 import json
@@ -31,7 +32,9 @@ def percentile(vals: list[float], p: float) -> float:
     return float(s[int(f)] * (c - k) + s[int(c)] * (k - f))
 
 
-def run_locked_contention(num_sources: int, events_per_source: int = 5000) -> tuple[float, list[float]]:
+def run_locked_contention(
+    num_sources: int, events_per_source: int = 5000
+) -> tuple[float, list[float]]:
     """Simulate multi-source ingestion contending on a single mutex lock."""
     lock = threading.Lock()
     all_latencies_us: list[float] = []
@@ -70,7 +73,9 @@ def run_locked_contention(num_sources: int, events_per_source: int = 5000) -> tu
     return eps, all_latencies_us
 
 
-def run_lockfree_contention(num_sources: int, events_per_source: int = 5000) -> tuple[float, list[float]]:
+def run_lockfree_contention(
+    num_sources: int, events_per_source: int = 5000
+) -> tuple[float, list[float]]:
     """Simulate multi-source ingestion with partitioned lock-free execution (zero locks)."""
     all_latencies_us: list[float] = []
     lat_lock = threading.Lock()
@@ -111,7 +116,12 @@ def run_lockfree_contention(num_sources: int, events_per_source: int = 5000) -> 
 
 def main():
     console = Console()
-    console.print(Panel("[bold cyan]MDRAP Lock-Free vs Locked Contention Benchmark[/bold cyan]\n[dim]Evaluating tail latency (p50, p95, p99, p99.9) under multi-source contention[/dim]", border_style="cyan"))
+    console.print(
+        Panel(
+            "[bold cyan]MDRAP Lock-Free vs Locked Contention Benchmark[/bold cyan]\n[dim]Evaluating tail latency (p50, p95, p99, p99.9) under multi-source contention[/dim]",
+            border_style="cyan",
+        )
+    )
 
     concurrency_levels = [1, 2, 4, 8]
     events_per_source = 10000
@@ -169,25 +179,27 @@ def main():
             f"{ratio_lf:.1f}x",
         )
 
-        results["concurrency_sweep"].append({
-            "sources": sources,
-            "locked": {
-                "throughput_eps": eps_locked,
-                "p50_us": p50_l,
-                "p95_us": p95_l,
-                "p99_us": p99_l,
-                "p99_9_us": p99_9_l,
-                "tail_ratio": ratio_l,
-            },
-            "lockfree": {
-                "throughput_eps": eps_lf,
-                "p50_us": p50_lf,
-                "p95_us": p95_lf,
-                "p99_us": p99_lf,
-                "p99_9_us": p99_9_lf,
-                "tail_ratio": ratio_lf,
-            },
-        })
+        results["concurrency_sweep"].append(
+            {
+                "sources": sources,
+                "locked": {
+                    "throughput_eps": eps_locked,
+                    "p50_us": p50_l,
+                    "p95_us": p95_l,
+                    "p99_us": p99_l,
+                    "p99_9_us": p99_9_l,
+                    "tail_ratio": ratio_l,
+                },
+                "lockfree": {
+                    "throughput_eps": eps_lf,
+                    "p50_us": p50_lf,
+                    "p95_us": p95_lf,
+                    "p99_us": p99_lf,
+                    "p99_9_us": p99_9_lf,
+                    "tail_ratio": ratio_lf,
+                },
+            }
+        )
 
     console.print(t)
 

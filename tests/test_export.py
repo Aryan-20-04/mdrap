@@ -1,6 +1,7 @@
 """
 Unit and Integration Tests for MDRAP Excel (.xlsx) and CSV Financial Model Exporter.
 """
+
 import csv
 import os
 import shutil
@@ -18,6 +19,7 @@ from simulator import FeedSimulator, SimulatorConfig
 
 try:
     import openpyxl
+
     HAS_OPENPYXL = True
 except ImportError:
     HAS_OPENPYXL = False
@@ -28,7 +30,7 @@ def temp_env():
     """Create isolated temporary directory for test outputs and databases."""
     temp_dir = tempfile.mkdtemp(prefix="mdrap_export_test_")
     db_path = os.path.join(temp_dir, "test_mdrap.db")
-    
+
     # Pre-populate database with a controlled run
     store = Store(db_path)
     pipe = Pipeline(store=store)
@@ -149,7 +151,7 @@ def test_exporter_auto_populates_empty_db(temp_env):
     """Verify that an empty DB is automatically populated via simulation if queried."""
     empty_db = os.path.join(temp_env["dir"], "empty.db")
     exporter = MarketDataExporter(db_path=empty_db)
-    
+
     out_xlsx = os.path.join(temp_env["dir"], "empty_auto.xlsx")
     res_path = exporter.export_excel("AAPL", output_path=out_xlsx)
     assert os.path.exists(res_path)
@@ -187,7 +189,9 @@ def test_export_data_json_and_sql_injection_defense(temp_env):
 
     # 1. Valid export to JSON
     json_out = os.path.join(temp_env["dir"], "valid.json")
-    count = export_data(temp_env["db"], table="canonical_events", output_path=json_out, fmt="json")
+    count = export_data(
+        temp_env["db"], table="canonical_events", output_path=json_out, fmt="json"
+    )
     assert count > 0
     assert os.path.exists(json_out)
 

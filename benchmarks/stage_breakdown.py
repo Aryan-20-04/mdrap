@@ -3,6 +3,7 @@ Empirical 4-Stage Critical Path Benchmark for MDRAP
 Measures Feed Decode, Allocation, Scheduling/Execution, and I/O separately
 on identical 100,000 deterministic events (seed=42).
 """
+
 import ctypes
 import json
 import math
@@ -69,17 +70,20 @@ def run_stage_breakdown(num_events: int = 100_000, seed: int = 42) -> Dict[str, 
     # JSON wire string parsing vs Binary SBE frame unpacking
     # =========================================================================
     print("\n--- STAGE 1: FEED DECODE ---")
-    
+
     # Prepare payloads
     json_payloads = [
-        json.dumps({
-            "seq": safe_int(ev.payload.get("sequence"), i),
-            "sym": str(ev.payload.get("instrument", "AAPL")),
-            "src": ev.source,
-            "px": safe_float(ev.payload.get("price"), 100.0),
-            "sz": safe_float(ev.payload.get("quantity"), 10.0),
-            "ts": safe_float(ev.payload.get("exchange_ts"), 0.0),
-        }) for i, ev in enumerate(raw_events)
+        json.dumps(
+            {
+                "seq": safe_int(ev.payload.get("sequence"), i),
+                "sym": str(ev.payload.get("instrument", "AAPL")),
+                "src": ev.source,
+                "px": safe_float(ev.payload.get("price"), 100.0),
+                "sz": safe_float(ev.payload.get("quantity"), 10.0),
+                "ts": safe_float(ev.payload.get("exchange_ts"), 0.0),
+            }
+        )
+        for i, ev in enumerate(raw_events)
     ]
 
     sbe_frames = bytearray(n * 128)
@@ -145,8 +149,12 @@ def run_stage_breakdown(num_events: int = 100_000, seed: int = 42) -> Dict[str, 
         },
         "speedup": t_json_total / max(t_sbe_total, 1e-9),
     }
-    print(f"JSON Decode:   {results['feed_decode']['python_json']['total_s']:.4f}s ({results['feed_decode']['python_json']['eps']:,.0f} eps, p50: {results['feed_decode']['python_json']['p50_ns']:.0f} ns)")
-    print(f"SBE Binary:    {results['feed_decode']['binary_sbe']['total_s']:.4f}s ({results['feed_decode']['binary_sbe']['eps']:,.0f} eps, p50: {results['feed_decode']['binary_sbe']['p50_ns']:.0f} ns)")
+    print(
+        f"JSON Decode:   {results['feed_decode']['python_json']['total_s']:.4f}s ({results['feed_decode']['python_json']['eps']:,.0f} eps, p50: {results['feed_decode']['python_json']['p50_ns']:.0f} ns)"
+    )
+    print(
+        f"SBE Binary:    {results['feed_decode']['binary_sbe']['total_s']:.4f}s ({results['feed_decode']['binary_sbe']['eps']:,.0f} eps, p50: {results['feed_decode']['binary_sbe']['p50_ns']:.0f} ns)"
+    )
     print(f"Speedup:       {results['feed_decode']['speedup']:.2f}x")
 
     # =========================================================================
@@ -154,7 +162,7 @@ def run_stage_breakdown(num_events: int = 100_000, seed: int = 42) -> Dict[str, 
     # Dynamic Python Dataclass Creation vs Contiguous Memory Array Indexing
     # =========================================================================
     print("\n--- STAGE 2: ALLOCATION ---")
-    
+
     # 2.A: Python Object Allocation (CanonicalEvent Dataclass)
     alloc_py_latencies_ns = []
     py_objects = []
@@ -172,10 +180,18 @@ def run_stage_breakdown(num_events: int = 100_000, seed: int = 42) -> Dict[str, 
             processing_timestamp=time.time(),
             source=ev.source,
             sequence_number=safe_int(p.get("sequence"), i),
-            price=safe_float(p.get("price"), 100.0) if p.get("price") is not None else None,
-            quantity=safe_float(p.get("quantity"), 10.0) if p.get("quantity") is not None else None,
-            bid_price=safe_float(p.get("bid"), 99.95) if p.get("bid") is not None else None,
-            ask_price=safe_float(p.get("ask"), 100.05) if p.get("ask") is not None else None,
+            price=safe_float(p.get("price"), 100.0)
+            if p.get("price") is not None
+            else None,
+            quantity=safe_float(p.get("quantity"), 10.0)
+            if p.get("quantity") is not None
+            else None,
+            bid_price=safe_float(p.get("bid"), 99.95)
+            if p.get("bid") is not None
+            else None,
+            ask_price=safe_float(p.get("ask"), 100.05)
+            if p.get("ask") is not None
+            else None,
             quality_status=QualityStatus.VALID,
         )
         t_end = time.perf_counter_ns()
@@ -216,8 +232,12 @@ def run_stage_breakdown(num_events: int = 100_000, seed: int = 42) -> Dict[str, 
         },
         "speedup": t_alloc_py_total / max(t_alloc_c_total, 1e-9),
     }
-    print(f"Python Dataclass:   {results['allocation']['python_dataclass']['total_s']:.4f}s ({results['allocation']['python_dataclass']['eps']:,.0f} eps, p50: {results['allocation']['python_dataclass']['p50_ns']:.0f} ns)")
-    print(f"Contiguous Native:  {results['allocation']['contiguous_native']['total_s']:.4f}s ({results['allocation']['contiguous_native']['eps']:,.0f} eps, p50: {results['allocation']['contiguous_native']['p50_ns']:.0f} ns)")
+    print(
+        f"Python Dataclass:   {results['allocation']['python_dataclass']['total_s']:.4f}s ({results['allocation']['python_dataclass']['eps']:,.0f} eps, p50: {results['allocation']['python_dataclass']['p50_ns']:.0f} ns)"
+    )
+    print(
+        f"Contiguous Native:  {results['allocation']['contiguous_native']['total_s']:.4f}s ({results['allocation']['contiguous_native']['eps']:,.0f} eps, p50: {results['allocation']['contiguous_native']['p50_ns']:.0f} ns)"
+    )
     print(f"Speedup:            {results['allocation']['speedup']:.2f}x")
 
     # =========================================================================
@@ -225,7 +245,7 @@ def run_stage_breakdown(num_events: int = 100_000, seed: int = 42) -> Dict[str, 
     # Pure Python Loop & Engine vs Vectorized Contiguous Native C Kernel
     # =========================================================================
     print("\n--- STAGE 3: SCHEDULING & QUALITY EVALUATION ---")
-    
+
     # 3.A: Pure Python Quality Engine (interpreted loop, dynamic dispatch)
     py_engine = QualityEngine(QualityConfig())
     eval_py_latencies_ns = []
@@ -255,7 +275,7 @@ def run_stage_breakdown(num_events: int = 100_000, seed: int = 42) -> Dict[str, 
 
     c_results_array = (_CFastResult * n)()
     _NATIVE_LIB.fastpath_init(1.0, 4.0, 100)
-    
+
     t0 = time.perf_counter()
     _NATIVE_LIB.fastpath_evaluate_batch(c_events_array, c_results_array, n)
     t_eval_c_total = time.perf_counter() - t0
@@ -280,8 +300,12 @@ def run_stage_breakdown(num_events: int = 100_000, seed: int = 42) -> Dict[str, 
         },
         "speedup": t_eval_py_total / max(t_eval_c_total, 1e-9),
     }
-    print(f"Python Engine:      {results['scheduling_execution']['python_engine']['total_s']:.4f}s ({results['scheduling_execution']['python_engine']['eps']:,.0f} eps, p50: {results['scheduling_execution']['python_engine']['p50_ns']:.0f} ns)")
-    print(f"Native C Kernel:    {results['scheduling_execution']['native_c_kernel']['total_s']:.6f}s ({results['scheduling_execution']['native_c_kernel']['eps']:,.0f} eps, avg: {results['scheduling_execution']['native_c_kernel']['p50_ns']:.1f} ns)")
+    print(
+        f"Python Engine:      {results['scheduling_execution']['python_engine']['total_s']:.4f}s ({results['scheduling_execution']['python_engine']['eps']:,.0f} eps, p50: {results['scheduling_execution']['python_engine']['p50_ns']:.0f} ns)"
+    )
+    print(
+        f"Native C Kernel:    {results['scheduling_execution']['native_c_kernel']['total_s']:.6f}s ({results['scheduling_execution']['native_c_kernel']['eps']:,.0f} eps, avg: {results['scheduling_execution']['native_c_kernel']['p50_ns']:.1f} ns)"
+    )
     print(f"Speedup:            {results['scheduling_execution']['speedup']:.2f}x")
 
     # =========================================================================
@@ -289,7 +313,7 @@ def run_stage_breakdown(num_events: int = 100_000, seed: int = 42) -> Dict[str, 
     # SQLite WAL Batch Commits vs Zero-Copy Shared Memory (SHM)
     # =========================================================================
     print("\n--- STAGE 4: I/O & PERSISTENCE ---")
-    
+
     # 4.A: SQLite WAL Batch Write (batch size = 1,000)
     db_file = "test_stage_io.db"
     if os.path.exists(db_file):
@@ -304,13 +328,20 @@ def run_stage_breakdown(num_events: int = 100_000, seed: int = 42) -> Dict[str, 
         )
     """)
     rows = [
-        (ev.event_id, ev.instrument_id, ev.event_type.value,
-         ev.exchange_timestamp, ev.receive_timestamp, ev.price, ev.quantity)
+        (
+            ev.event_id,
+            ev.instrument_id,
+            ev.event_type.value,
+            ev.exchange_timestamp,
+            ev.receive_timestamp,
+            ev.price,
+            ev.quantity,
+        )
         for ev in py_objects
     ]
     batch_size = 1000
     batches = [rows[i : i + batch_size] for i in range(0, n, batch_size)]
-    
+
     io_sqlite_latencies_ns = []
     t0 = time.perf_counter()
     for b in batches:
@@ -374,8 +405,12 @@ def run_stage_breakdown(num_events: int = 100_000, seed: int = 42) -> Dict[str, 
         },
         "speedup": t_io_sqlite_total / max(t_io_shm_total, 1e-9),
     }
-    print(f"SQLite WAL (Disk):  {results['io_persistence']['sqlite_wal']['total_s']:.4f}s ({results['io_persistence']['sqlite_wal']['eps']:,.0f} eps, p50: {results['io_persistence']['sqlite_wal']['p50_ns']:.0f} ns)")
-    print(f"Shared Memory (SHM):{results['io_persistence']['shm_ring']['total_s']:.4f}s ({results['io_persistence']['shm_ring']['eps']:,.0f} eps, p50: {results['io_persistence']['shm_ring']['p50_ns']:.0f} ns)")
+    print(
+        f"SQLite WAL (Disk):  {results['io_persistence']['sqlite_wal']['total_s']:.4f}s ({results['io_persistence']['sqlite_wal']['eps']:,.0f} eps, p50: {results['io_persistence']['sqlite_wal']['p50_ns']:.0f} ns)"
+    )
+    print(
+        f"Shared Memory (SHM):{results['io_persistence']['shm_ring']['total_s']:.4f}s ({results['io_persistence']['shm_ring']['eps']:,.0f} eps, p50: {results['io_persistence']['shm_ring']['p50_ns']:.0f} ns)"
+    )
     print(f"Speedup:            {results['io_persistence']['speedup']:.2f}x")
 
     # =========================================================================
@@ -413,7 +448,9 @@ def run_stage_breakdown(num_events: int = 100_000, seed: int = 42) -> Dict[str, 
     print(f"\nNative / SBE / SHM Total Time:{total_native:.4f}s")
     for stage, pct in results["summary"]["time_breakdown_native_pct"].items():
         print(f"  - {stage:22}: {pct:5.1f}%")
-    print(f"\nOverall Pipeline Speedup:     {results['summary']['overall_speedup']:.2f}x")
+    print(
+        f"\nOverall Pipeline Speedup:     {results['summary']['overall_speedup']:.2f}x"
+    )
     print("=" * 60)
 
     out_path = os.path.join(os.path.dirname(__file__), "stage_breakdown.json")

@@ -1,6 +1,7 @@
 """
 Unit tests for MDRAP Transaction Cost Analysis (TCA) & Best Execution Engine.
 """
+
 import os
 import sys
 import pytest
@@ -13,7 +14,7 @@ from tca import ExecutionRecord, TCAEngine, TCAMetrics
 
 def test_tca_single_buy_price_improvement():
     engine = TCAEngine()
-    
+
     # Prevailing BBO: 149.95 / 150.05, Mid = 150.00
     bbo = ConsolidatedBBO(
         instrument_id="AAPL",
@@ -44,7 +45,7 @@ def test_tca_single_buy_price_improvement():
     )
 
     metrics = engine.evaluate_execution(record, prevailing_bbo=bbo)
-    
+
     # 150.05 - 150.02 = 0.03 price improvement per share
     assert metrics.is_price_improved is True
     assert metrics.is_disimproved is False
@@ -56,7 +57,7 @@ def test_tca_single_buy_price_improvement():
 
 def test_tca_single_sell_disimprovement_slippage():
     engine = TCAEngine()
-    
+
     # Prevailing BBO: 149.95 / 150.05, Mid = 150.00
     bbo = ConsolidatedBBO(
         instrument_id="AAPL",
@@ -87,7 +88,7 @@ def test_tca_single_sell_disimprovement_slippage():
     )
 
     metrics = engine.evaluate_execution(record, prevailing_bbo=bbo)
-    
+
     assert metrics.is_price_improved is False
     assert metrics.is_disimproved is True
     # Slippage = Arrival (150.00) - Exec (149.90) = +0.10 cents
@@ -99,9 +100,9 @@ def test_tca_single_sell_disimprovement_slippage():
 def test_tca_batch_evaluation_and_broker_scorecard():
     engine = TCAEngine()
     records = TCAEngine.generate_demo_executions(symbol="AAPL", count=50)
-    
+
     report = engine.evaluate_batch(records)
-    
+
     assert report["total_trades"] == 50
     assert report["total_shares"] > 0
     assert report["total_notional"] > 0

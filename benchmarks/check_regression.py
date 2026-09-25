@@ -13,7 +13,9 @@ import sys
 from typing import Any
 
 
-def check_regression(current: dict[str, Any], baseline: dict[str, Any]) -> tuple[bool, list[str]]:
+def check_regression(
+    current: dict[str, Any], baseline: dict[str, Any]
+) -> tuple[bool, list[str]]:
     """Evaluates performance metrics against regression safety thresholds."""
     violations = []
 
@@ -68,6 +70,7 @@ if __name__ == "__main__":
     if not os.path.exists(base_path):
         # Establish current run as baseline if baseline doesn't exist yet
         import shutil
+
         shutil.copyfile(curr_path, base_path)
         print(f"[INIT] Established {curr_path} as new baseline: {base_path}")
         sys.exit(0)
@@ -84,5 +87,7 @@ if __name__ == "__main__":
             print(f"  - {e}")
         sys.exit(1)
     else:
-        print(f"[OK] Performance regression check PASSED (0 regressions detected vs baseline).")
+        print(
+            f"[OK] Performance regression check PASSED (0 regressions detected vs baseline)."
+        )
         sys.exit(0)

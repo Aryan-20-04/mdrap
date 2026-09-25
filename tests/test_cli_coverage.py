@@ -3,6 +3,7 @@ Comprehensive test suite for src/cli.py and src/trading_cli.py.
 Exercises all CLI subcommands, parser options, flag combinations,
 typo auto-corrections, and trading engine integrations.
 """
+
 from __future__ import annotations
 
 import io
@@ -62,6 +63,7 @@ def test_cli_venues_and_symbology(parser):
     _run_cmd(parser, ["venues"])
     import symbology
     import fx
+
     info = symbology.resolve_symbol("AAPL")
     assert info.ticker == "AAPL"
     assert symbology.get_native_currency("RELIANCE.NS") == "INR"
@@ -89,7 +91,21 @@ def test_cli_execution_pipelines(parser):
     _run_cmd(parser, ["compare", "-e", "10", "-s", "42"])
     _run_cmd(parser, ["loadtest", "--levels", "5,10"])
     _run_cmd(parser, ["stress", "--module", "gateway", "-e", "10"])
-    _run_cmd(parser, ["chaos", "kill", "--kill-source", "FEEDX", "--kill-start", "2", "--kill-duration", "2", "-e", "10"])
+    _run_cmd(
+        parser,
+        [
+            "chaos",
+            "kill",
+            "--kill-source",
+            "FEEDX",
+            "--kill-start",
+            "2",
+            "--kill-duration",
+            "2",
+            "-e",
+            "10",
+        ],
+    )
     _run_cmd(parser, ["feed", "--source", "crypto", "-c", "5", "--mock"])
 
 
@@ -114,6 +130,7 @@ def test_cli_trading_commands(parser):
 
 def test_cli_fix_engine():
     import fix_engine
+
     sample_fix = (
         "8=FIX.4.2\x019=55\x0135=D\x0149=BUYER\x0156=SELLER\x0134=1\x01"
         "52=20260901-12:00:00\x0111=ORD1\x0121=1\x0155=AAPL\x0154=1\x01"
@@ -184,15 +201,22 @@ def test_cli_interactive_shell():
         "/tca AAPL",
         "/columnar",
         "/help",
-        "1", "2", "3", "4", "5", "6", "9",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "9",
         "/exit",
     ]
     it = iter(script)
-    with patch("rich.console.Console.input", side_effect=lambda *a, **kw: next(it, "exit")):
+    with patch(
+        "rich.console.Console.input", side_effect=lambda *a, **kw: next(it, "exit")
+    ):
         buf = io.StringIO()
         with redirect_stdout(buf), redirect_stderr(buf):
             try:
                 cli.cmd_shell(cli.build_parser().parse_args(["shell"]))
             except (StopIteration, SystemExit):
                 pass
-

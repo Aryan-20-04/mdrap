@@ -64,14 +64,22 @@ def test_billion_laughs_rejection():
 
 def test_oversized_xml_rejection():
     """Confirms that XML payloads exceeding the maximum size ceiling are rejected prior to parsing."""
-    large_payload = b"<ownershipDocument>" + b"A" * (2 * 1024 * 1024 + 50) + b"</ownershipDocument>"
+    large_payload = (
+        b"<ownershipDocument>" + b"A" * (2 * 1024 * 1024 + 50) + b"</ownershipDocument>"
+    )
     with pytest.raises(SecurityError, match="exceeds size ceiling"):
         validate_xml_security(large_payload, max_bytes=2 * 1024 * 1024)
 
 
 def test_xml_depth_recursion_rejection():
     """Validates recursion depth limits preventing tag explosion DoS."""
-    deep_xml = "<root>" + ("<layer>" * 28) + "<item>Safe</item>" + ("</layer>" * 28) + "</root>"
+    deep_xml = (
+        "<root>"
+        + ("<layer>" * 28)
+        + "<item>Safe</item>"
+        + ("</layer>" * 28)
+        + "</root>"
+    )
     root = ET.fromstring(deep_xml)
     with pytest.raises(SecurityError, match="nesting depth limit"):
         check_xml_depth(root, max_depth=20)
@@ -81,13 +89,13 @@ def test_ssrf_validation_blocks_unauthorized_destinations():
     """Verifies that requests can never be routed to internal IP addresses, AWS metadata, or non-SEC hosts."""
     unsafe_urls = [
         "http://data.sec.gov/submissions/CIK0000320193.json",  # plain HTTP
-        "https://169.254.169.254/latest/meta-data/",            # AWS/cloud metadata
-        "https://127.0.0.1:8080/admin",                        # Loopback IP
-        "https://localhost:443/data",                           # Localhost name
-        "https://internal-bank-api.prod/keys",                 # Internal corporate host
-        "https://evil-sec.gov/submissions/test.json",           # Lookalike spoof
-        "https://data.sec.gov:8443/test.json",                  # Non-standard port
-        "https://data.sec.gov/submissions/../../etc/passwd",    # Path traversal sequence
+        "https://169.254.169.254/latest/meta-data/",  # AWS/cloud metadata
+        "https://127.0.0.1:8080/admin",  # Loopback IP
+        "https://localhost:443/data",  # Localhost name
+        "https://internal-bank-api.prod/keys",  # Internal corporate host
+        "https://evil-sec.gov/submissions/test.json",  # Lookalike spoof
+        "https://data.sec.gov:8443/test.json",  # Non-standard port
+        "https://data.sec.gov/submissions/../../etc/passwd",  # Path traversal sequence
     ]
     for url in unsafe_urls:
         with pytest.raises(SecurityError):
@@ -110,7 +118,9 @@ def test_sanitize_output_text_masks_local_paths():
     assert r"C:\Users\KIIT0001" not in scrubbed_win
     assert "[WORKSPACE]" in scrubbed_win
 
-    raw_linux = "Error reading archive at /home/runner/work/mdrap/data/archive/2026-09-12"
+    raw_linux = (
+        "Error reading archive at /home/runner/work/mdrap/data/archive/2026-09-12"
+    )
     scrubbed_nix = sanitize_output_text(raw_linux)
     assert "/home/runner" not in scrubbed_nix
     assert "[WORKSPACE]" in scrubbed_nix
@@ -145,7 +155,7 @@ def test_submissions_caching_speed_and_ttl(tmp_path):
                 "primaryDocDescription": ["8-K"],
                 "items": [["5.02"]],
             }
-        }
+        },
     }
 
     with patch.object(client, "_request", return_value=mock_submissions) as mock_req:

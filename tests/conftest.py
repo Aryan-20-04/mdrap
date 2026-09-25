@@ -1,6 +1,7 @@
 """
 Pytest configuration for MDRAP test suite.
 """
+
 import os
 
 # Enable demo keys during test runs

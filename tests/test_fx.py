@@ -1,6 +1,7 @@
 """
 Tests for Foreign Exchange (FX) Matrix and Currency Conversion Engine.
 """
+
 import pytest
 from fx import FXMatrix, convert_currency, GLOBAL_FX
 

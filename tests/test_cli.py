@@ -8,7 +8,15 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 import unittest.mock as mock
 
-from cli import build_parser, cmd_status, cmd_query, cmd_analytics, cmd_watchdog, cmd_bbo, cmd_live
+from cli import (
+    build_parser,
+    cmd_status,
+    cmd_query,
+    cmd_analytics,
+    cmd_watchdog,
+    cmd_bbo,
+    cmd_live,
+)
 from storage import Store
 from pipeline import Pipeline
 from simulator import FeedSimulator, SimulatorConfig
@@ -70,12 +78,15 @@ def test_cmd_status_runs_successfully(populated_db, capsys):
     args = parser.parse_args(["status", "--db", populated_db])
     cmd_status(args)
     captured = capsys.readouterr()
-    assert "MDRAP Platform Status Overview" in captured.out or "Canonical Events" in captured.out
+    assert (
+        "MDRAP Platform Status Overview" in captured.out
+        or "Canonical Events" in captured.out
+    )
 
 
 def test_cmd_analytics_positional_dispatch(populated_db, capsys):
     parser = build_parser()
-    
+
     # 1. OHLCV
     args = parser.parse_args(["analytics", "ohlcv", "AAPL", "--db", populated_db])
     cmd_analytics(args)
@@ -92,12 +103,14 @@ def test_cmd_analytics_positional_dispatch(populated_db, capsys):
     args = parser.parse_args(["analytics", "vol", "--db", populated_db])
     cmd_analytics(args)
     captured = capsys.readouterr()
-    assert "Realized Volatility by Instrument" in captured.out or "Std Dev" in captured.out
+    assert (
+        "Realized Volatility by Instrument" in captured.out or "Std Dev" in captured.out
+    )
 
 
 def test_cmd_query_positional_dispatch(populated_db, capsys):
     parser = build_parser()
-    
+
     # Health
     args = parser.parse_args(["query", "health", "--db", populated_db])
     cmd_query(args)
@@ -116,17 +129,23 @@ def test_cmd_watchdog_dispatch(populated_db, capsys):
     args = parser.parse_args(["watchdog", "status", "--db", populated_db])
     cmd_watchdog(args)
     captured = capsys.readouterr()
-    assert "Source Health & Live Watchdog Status" in captured.out or "HEALTHY" in captured.out
+    assert (
+        "Source Health & Live Watchdog Status" in captured.out
+        or "HEALTHY" in captured.out
+    )
 
 
 def test_cmd_bbo_dispatch(populated_db, capsys):
     parser = build_parser()
-    
+
     # 1. Single symbol query
     args = parser.parse_args(["bbo", "AAPL", "--db", populated_db])
     cmd_bbo(args)
     captured = capsys.readouterr()
-    assert "Synthetic Consolidated Best Bid & Offer" in captured.out or "AAPL" in captured.out
+    assert (
+        "Synthetic Consolidated Best Bid & Offer" in captured.out
+        or "AAPL" in captured.out
+    )
 
     # 2. All symbols query
     args = parser.parse_args(["bbo", "all", "--db", populated_db])
@@ -138,12 +157,20 @@ def test_cmd_bbo_dispatch(populated_db, capsys):
 def test_cmd_live_dispatch(populated_db, capsys):
     parser = build_parser()
     args = parser.parse_args(["live", "BTC/USD", "-l", "2", "--db", populated_db])
-    
+
     with mock.patch("live.LiveConnector.stream_ticks") as mock_stream:
         from models import RawEvent
+
         mock_raw = RawEvent(
             source="BINANCE",
-            payload={"instrument": "BTC/USD", "event_type": "QUOTE", "exchange_ts": 1000.0, "sequence": 1, "bid": 70000.0, "ask": 70001.0},
+            payload={
+                "instrument": "BTC/USD",
+                "event_type": "QUOTE",
+                "exchange_ts": 1000.0,
+                "sequence": 1,
+                "bid": 70000.0,
+                "ask": 70001.0,
+            },
             receive_timestamp=1000.002,
             raw_id="mock-1",
         )
@@ -156,7 +183,14 @@ def test_cmd_live_dispatch(populated_db, capsys):
 
 
 def test_gemini_ui_components_render_cleanly(capsys):
-    from term import render_gemini_banner, render_gemini_tips, render_gemini_box_top, render_gemini_box_bottom, Console
+    from term import (
+        render_gemini_banner,
+        render_gemini_tips,
+        render_gemini_box_top,
+        render_gemini_box_bottom,
+        Console,
+    )
+
     console = Console()
     render_gemini_banner(console)
     render_gemini_tips(console)
@@ -171,7 +205,7 @@ def test_gemini_ui_components_render_cleanly(capsys):
 
 def test_term_stdlib_fallback_renders_clean_text(capsys):
     from term import _StdlibConsole, _StdlibTable, _StdlibPanel, strip_tags
-    
+
     # 1. Test strip_tags removes rich markup
     assert strip_tags("[bold green]SUCCESS[/bold green]") == "SUCCESS"
     assert strip_tags("[cyan]AAPL[/cyan]") == "AAPL"
@@ -202,20 +236,27 @@ def test_term_stdlib_fallback_renders_clean_text(capsys):
 def test_fastpath_resilience_on_fault():
     from fastpath import FastQualityEngine
     from models import CanonicalEvent, EventType
-    
+
     engine = FastQualityEngine()
     event = CanonicalEvent(
-        event_id="e1", instrument_id="AAPL", event_type=EventType.TRADE,
-        exchange_timestamp=1000.0, receive_timestamp=1000.001,
-        processing_timestamp=1000.002, source="FEEDA", sequence_number=1,
-        price=150.0, quantity=100.0
+        event_id="e1",
+        instrument_id="AAPL",
+        event_type=EventType.TRADE,
+        exchange_timestamp=1000.0,
+        receive_timestamp=1000.001,
+        processing_timestamp=1000.002,
+        source="FEEDA",
+        sequence_number=1,
+        price=150.0,
+        quantity=100.0,
     )
     # Evaluate normally
     res = engine.evaluate(event)
     assert res.quality_status.value in ("VALID", "SUSPICIOUS", "INVALID")
-    
+
     # Simulate C function failure or unavailable fast eval
     import fastpath
+
     orig_eval = fastpath._FAST_EVAL
     try:
         fastpath._FAST_EVAL = None  # force fallback to pure Python
@@ -301,6 +342,7 @@ def test_ticker_first_and_mnemonic_dispatch():
 
 def test_cmd_throughput_dispatch(capsys):
     from fastpath import is_available
+
     if not is_available():
         pytest.skip("FastPath native library not available")
     parser = build_parser()
@@ -342,7 +384,9 @@ def test_cmd_strategy_dispatch(capsys):
     assert "spread_capture" in captured.out
 
     # 2. run
-    args = parser.parse_args(["strategy", "run", "-s", "whale_momentum", "-i", "AAPL", "-e", "100"])
+    args = parser.parse_args(
+        ["strategy", "run", "-s", "whale_momentum", "-i", "AAPL", "-e", "100"]
+    )
     args.func(args)
     captured = capsys.readouterr()
     assert "MDRAP Paper Trading Strategy Engine" in captured.out
@@ -379,6 +423,7 @@ def test_edgar_routing(monkeypatch):
 
 def test_edgar_open_argument():
     from cli import build_parser
+
     parser = build_parser()
     args = parser.parse_args(["edgar", "filings", "NVDA", "-o"])
     assert args.open_browser is True
@@ -391,6 +436,7 @@ def test_edgar_open_argument():
 
 def test_cmd_run_duckdb_sync_error_handling(tmp_path, capsys, monkeypatch):
     from cli import build_parser, cmd_run
+
     parser = build_parser()
     db_file = str(tmp_path / "test.db")
     duck_file = str(tmp_path / "test.duckdb")
@@ -414,7 +460,9 @@ def test_cmd_run_duckdb_sync_error_handling(tmp_path, capsys, monkeypatch):
     assert '"diverged": true' in captured.out
 
     # 2. Strict sync: exits 1
-    args_strict = parser.parse_args(["run", "-e", "10", "--db", db_file, "--strict-sync"])
+    args_strict = parser.parse_args(
+        ["run", "-e", "10", "--db", db_file, "--strict-sync"]
+    )
     setattr(args_strict, "duckdb", duck_file)
     with pytest.raises(SystemExit) as exc_info:
         cmd_run(args_strict)
@@ -498,8 +546,16 @@ def test_error_path_palette_fallback(capsys):
     assert exc_info.value.code != 0
     captured = capsys.readouterr()
     # Stderr should show clean categorized palette and not raw choice list
-    assert "unrecognized command or choice" in captured.err or "unrecognized command or choice" in captured.out
-    assert "Available command categories:" in captured.err or "Available command categories:" in captured.out or "Market Desk" in captured.err or "Market Desk" in captured.out
+    assert (
+        "unrecognized command or choice" in captured.err
+        or "unrecognized command or choice" in captured.out
+    )
+    assert (
+        "Available command categories:" in captured.err
+        or "Available command categories:" in captured.out
+        or "Market Desk" in captured.err
+        or "Market Desk" in captured.out
+    )
 
 
 def test_completion_command_generation(capsys):
@@ -547,11 +603,15 @@ def test_trimmed_aliases_and_mnemonic_backward_compatibility():
     assert parser.parse_args(["cvd", "AAPL"]).func is not None
 
     # 2. Trimmed legacy mnemonics exist in MNEMONIC_MAP for transparent interception
-    legacy_keys = ["navigator", "tui", "compact", "prune", "ladder", "book", "whales", "duckdb"]
+    legacy_keys = [
+        "navigator",
+        "tui",
+        "compact",
+        "prune",
+        "ladder",
+        "book",
+        "whales",
+        "duckdb",
+    ]
     for k in legacy_keys:
         assert k in MNEMONIC_MAP
-
-
-
-
-

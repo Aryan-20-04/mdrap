@@ -3,6 +3,7 @@ Comprehensive tests for src/terminal_display.py.
 Exercises sparklines, candlestick charts, layout building, dashboard state,
 and panel renderers.
 """
+
 from __future__ import annotations
 
 import os
@@ -33,12 +34,42 @@ def test_sparkline_renderers():
 
 def test_candlestick_chart_rendering():
     candles = [
-        {"bucket": 1000.0, "open": 100.0, "high": 105.0, "low": 98.0, "close": 103.0, "volume": 5000.0},
-        {"bucket": 1060.0, "open": 103.0, "high": 107.0, "low": 101.0, "close": 106.0, "volume": 8000.0},
-        {"bucket": 1120.0, "open": 106.0, "high": 108.0, "low": 102.0, "close": 104.0, "volume": 3000.0},
-        {"bucket": 1180.0, "open": 104.0, "high": 109.0, "low": 103.0, "close": 108.0, "volume": 12000.0},
+        {
+            "bucket": 1000.0,
+            "open": 100.0,
+            "high": 105.0,
+            "low": 98.0,
+            "close": 103.0,
+            "volume": 5000.0,
+        },
+        {
+            "bucket": 1060.0,
+            "open": 103.0,
+            "high": 107.0,
+            "low": 101.0,
+            "close": 106.0,
+            "volume": 8000.0,
+        },
+        {
+            "bucket": 1120.0,
+            "open": 106.0,
+            "high": 108.0,
+            "low": 102.0,
+            "close": 104.0,
+            "volume": 3000.0,
+        },
+        {
+            "bucket": 1180.0,
+            "open": 104.0,
+            "high": 109.0,
+            "low": 103.0,
+            "close": 108.0,
+            "volume": 12000.0,
+        },
     ]
-    chart = terminal_display.render_candlestick_chart(candles, title="AAPL", width=50, height=12)
+    chart = terminal_display.render_candlestick_chart(
+        candles, title="AAPL", width=50, height=12
+    )
     assert chart is not None
     assert "AAPL" in str(chart)
 

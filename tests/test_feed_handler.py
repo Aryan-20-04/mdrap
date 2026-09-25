@@ -1,6 +1,7 @@
 """
 Unit and Integration Tests for Unified Streaming Feed Supervisor and Pipeline Ingestion.
 """
+
 import os
 import sys
 import time
@@ -23,19 +24,25 @@ from models import RawEvent, QualityStatus
 def test_supervisor_init_providers():
     """Verify supervisor initializes appropriate worker instances based on provider."""
     # Databento provider
-    cfg_dbn = FeedSupervisorConfig(provider=FeedProvider.DATABENTO, symbols=["AAPL"], mock_mode=True)
+    cfg_dbn = FeedSupervisorConfig(
+        provider=FeedProvider.DATABENTO, symbols=["AAPL"], mock_mode=True
+    )
     sup_dbn = StreamingFeedSupervisor(cfg_dbn)
     assert len(sup_dbn._workers) == 1
     assert sup_dbn._workers[0][0] == "databento"
 
     # Polygon provider
-    cfg_poly = FeedSupervisorConfig(provider=FeedProvider.POLYGON, symbols=["MSFT"], mock_mode=True)
+    cfg_poly = FeedSupervisorConfig(
+        provider=FeedProvider.POLYGON, symbols=["MSFT"], mock_mode=True
+    )
     sup_poly = StreamingFeedSupervisor(cfg_poly)
     assert len(sup_poly._workers) == 1
     assert sup_poly._workers[0][0] == "polygon"
 
     # All providers
-    cfg_all = FeedSupervisorConfig(provider=FeedProvider.ALL, symbols=["BTC/USD", "AAPL"], mock_mode=True)
+    cfg_all = FeedSupervisorConfig(
+        provider=FeedProvider.ALL, symbols=["BTC/USD", "AAPL"], mock_mode=True
+    )
     sup_all = StreamingFeedSupervisor(cfg_all)
     assert len(sup_all._workers) >= 2
 
@@ -96,7 +103,9 @@ def test_supervisor_stream_polygon():
 
 def test_supervisor_telemetry_stats():
     """Verify aggregated supervisor telemetry statistics."""
-    cfg = FeedSupervisorConfig(provider=FeedProvider.DATABENTO, symbols=["AAPL"], mock_mode=True)
+    cfg = FeedSupervisorConfig(
+        provider=FeedProvider.DATABENTO, symbols=["AAPL"], mock_mode=True
+    )
     sup = StreamingFeedSupervisor(cfg)
     sup.start()
 

@@ -12,6 +12,7 @@ Measures and records performance metrics across all 3 architectural layers:
 Compares against benchmarks/results/baseline_phase0.json and generates:
   - benchmarks/results/optimized_phase6.json
 """
+
 from __future__ import annotations
 
 import ctypes
@@ -48,7 +49,9 @@ def pin_to_core(core_id: int = 2) -> bool:
             mask = ctypes.c_size_t(1 << core_id)
             res = k32.SetProcessAffinityMask(cur_proc, mask)
             if res:
-                print(f"[PIN] Successfully pinned process to CPU Core {core_id} (mask: {1 << core_id:#x})")
+                print(
+                    f"[PIN] Successfully pinned process to CPU Core {core_id} (mask: {1 << core_id:#x})"
+                )
                 return True
         except Exception as exc:
             print(f"[PIN WARNING] Failed to pin core on Windows: {exc}")
@@ -62,13 +65,19 @@ def pin_to_core(core_id: int = 2) -> bool:
     return False
 
 
-def measure_layer1_native_core(runs: int = 5, events: int = 1_000_000, core_id: int = 2) -> dict[str, Any]:
+def measure_layer1_native_core(
+    runs: int = 5, events: int = 1_000_000, core_id: int = 2
+) -> dict[str, Any]:
     """Measure Layer 1: Standalone Native C Hot Path (mdrap-core.exe)."""
     print("\n" + "=" * 76)
-    print(f"MEASURING LAYER 1: Optimized Native C Hot Path ({events:,} events x {runs} runs, core={core_id})")
+    print(
+        f"MEASURING LAYER 1: Optimized Native C Hot Path ({events:,} events x {runs} runs, core={core_id})"
+    )
     print("=" * 76)
 
-    core_bin = os.path.join(_REPO_ROOT, "mdrap-core.exe" if sys.platform == "win32" else "mdrap-core")
+    core_bin = os.path.join(
+        _REPO_ROOT, "mdrap-core.exe" if sys.platform == "win32" else "mdrap-core"
+    )
     if not os.path.exists(core_bin):
         raise FileNotFoundError(f"Native core binary not found: {core_bin}")
 
@@ -78,9 +87,23 @@ def measure_layer1_native_core(runs: int = 5, events: int = 1_000_000, core_id: 
 
     for r in range(1, runs + 1):
         shm_name = f"phase6_bench_{r}"
-        cmd = [core_bin, "--events", str(events), "--shm", shm_name, "--core", str(core_id)]
+        cmd = [
+            core_bin,
+            "--events",
+            str(events),
+            "--shm",
+            shm_name,
+            "--core",
+            str(core_id),
+        ]
         t0 = time.perf_counter()
-        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd=_REPO_ROOT)
+        proc = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            cwd=_REPO_ROOT,
+        )
         wall_sec = time.perf_counter() - t0
 
         if proc.returncode != 0:
@@ -111,14 +134,18 @@ def measure_layer1_native_core(runs: int = 5, events: int = 1_000_000, core_id: 
 
         throughputs_eps.append(eps)
         latencies_ns.append(ns_per_tick)
-        run_results.append({
-            "run": r,
-            "events": events,
-            "elapsed_seconds": round(wall_sec, 4),
-            "throughput_eps": round(eps, 1),
-            "latency_ns": round(ns_per_tick, 2),
-        })
-        print(f"  Run {r}/{runs}: {eps:,.0f} eps | {ns_per_tick:.2f} ns/tick ({wall_sec:.4f}s)")
+        run_results.append(
+            {
+                "run": r,
+                "events": events,
+                "elapsed_seconds": round(wall_sec, 4),
+                "throughput_eps": round(eps, 1),
+                "latency_ns": round(ns_per_tick, 2),
+            }
+        )
+        print(
+            f"  Run {r}/{runs}: {eps:,.0f} eps | {ns_per_tick:.2f} ns/tick ({wall_sec:.4f}s)"
+        )
 
     sorted_tps = sorted(throughputs_eps)
     sorted_lats = sorted(latencies_ns)
@@ -144,10 +171,14 @@ def measure_layer1_native_core(runs: int = 5, events: int = 1_000_000, core_id: 
     }
 
 
-def measure_layer2_python_compute_loop(events: int = 100_000, seed: int = 42) -> dict[str, Any]:
+def measure_layer2_python_compute_loop(
+    events: int = 100_000, seed: int = 42
+) -> dict[str, Any]:
     """Measure Layer 2: Python Compute Loop using _fastpath_c Native C-API Extension."""
     print("\n" + "=" * 76)
-    print(f"MEASURING LAYER 2: Python Compute Loop (_fastpath_c C-API, {events:,} events, seed={seed})")
+    print(
+        f"MEASURING LAYER 2: Python Compute Loop (_fastpath_c C-API, {events:,} events, seed={seed})"
+    )
     print("=" * 76)
 
     engine = FastQualityEngine()
@@ -203,7 +234,9 @@ def measure_layer2_python_compute_loop(events: int = 100_000, seed: int = 42) ->
     max_lat = sampled_latencies_us[-1]
 
     print(f"  Throughput : {eps:,.0f} eps ({elapsed_s:.4f}s)")
-    print(f"  Latency p50: {p50:.3f} µs | p95: {p95:.3f} µs | p99: {p99:.3f} µs | p99.9: {p999:.3f} µs")
+    print(
+        f"  Latency p50: {p50:.3f} µs | p95: {p95:.3f} µs | p99: {p99:.3f} µs | p99.9: {p999:.3f} µs"
+    )
 
     return {
         "events": events,
@@ -222,13 +255,17 @@ def measure_layer2_python_compute_loop(events: int = 100_000, seed: int = 42) ->
     }
 
 
-def measure_layer3_decoupled_persistence(events: int = 50_000, seed: int = 42) -> dict[str, Any]:
+def measure_layer3_decoupled_persistence(
+    events: int = 50_000, seed: int = 42
+) -> dict[str, Any]:
     """
     Measure Layer 3: Decoupled Durable Persistence Pipeline.
     Evaluates BinaryJournal (.dbn/AOF) append-only memory-mapped persistence.
     """
     print("\n" + "=" * 76)
-    print(f"MEASURING LAYER 3: Decoupled Binary Journal Persistence ({events:,} events, seed={seed})")
+    print(
+        f"MEASURING LAYER 3: Decoupled Binary Journal Persistence ({events:,} events, seed={seed})"
+    )
     print("=" * 76)
 
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -295,7 +332,9 @@ def measure_layer3_decoupled_persistence(events: int = 50_000, seed: int = 42) -
         max_lat = sampled_latencies_us[-1]
 
         print(f"  Throughput : {eps:,.0f} eps ({elapsed_s:.4f}s)")
-        print(f"  Latency p50: {p50:.3f} µs | p95: {p95:.3f} µs | p99: {p99:.3f} µs | p99.9: {p999:.3f} µs")
+        print(
+            f"  Latency p50: {p50:.3f} µs | p95: {p95:.3f} µs | p99: {p99:.3f} µs | p99.9: {p999:.3f} µs"
+        )
 
         return {
             "events": events,
@@ -359,7 +398,9 @@ def run_full_phase6_benchmarks() -> dict[str, Any]:
         print("\n" + "=" * 90)
         print("MDRAP PERFORMANCE SCORECARD: BASELINE (PHASE 0) VS OPTIMIZED (PHASE 6)")
         print("=" * 90)
-        print(f"{'Layer / Metric':<32} | {'Baseline (Phase 0)':<20} | {'Optimized (Phase 6)':<20} | {'Speedup Delta':<14}")
+        print(
+            f"{'Layer / Metric':<32} | {'Baseline (Phase 0)':<20} | {'Optimized (Phase 6)':<20} | {'Speedup Delta':<14}"
+        )
         print("-" * 90)
 
         # Layer 1 (1M)
@@ -370,14 +411,22 @@ def run_full_phase6_benchmarks() -> dict[str, Any]:
         l1_eps_mult = o_l1_eps / b_l1_eps
         l1_lat_red = ((b_l1_lat - o_l1_lat) / b_l1_lat) * 100
 
-        print(f"{'Layer 1: Native Hotpath EPS':<32} | {b_l1_eps:17,.0f}  | {o_l1_eps:17,.0f}  | {l1_eps_mult:+.2f}x ({l1_eps_mult-1:+.1%})")
-        print(f"{'Layer 1: Per-Tick Latency':<32} | {b_l1_lat:17.2f} ns| {o_l1_lat:17.2f} ns| {l1_lat_red:+.1f}% faster")
+        print(
+            f"{'Layer 1: Native Hotpath EPS':<32} | {b_l1_eps:17,.0f}  | {o_l1_eps:17,.0f}  | {l1_eps_mult:+.2f}x ({l1_eps_mult - 1:+.1%})"
+        )
+        print(
+            f"{'Layer 1: Per-Tick Latency':<32} | {b_l1_lat:17.2f} ns| {o_l1_lat:17.2f} ns| {l1_lat_red:+.1f}% faster"
+        )
 
         # Layer 1 (10M)
         o_l1_10m_eps = l1_result_10m["throughput_eps"]["median"]
         o_l1_10m_lat = l1_result_10m["latency_ns_per_tick"]["p50"]
-        print(f"{'Layer 1: 10M Events Run EPS':<32} | {'(N/A - unscaled)':<20} | {o_l1_10m_eps:17,.0f}  | Sustained")
-        print(f"{'Layer 1: 10M Events Latency':<32} | {'(N/A - unscaled)':<20} | {o_l1_10m_lat:17.2f} ns| Sub-50ns scale")
+        print(
+            f"{'Layer 1: 10M Events Run EPS':<32} | {'(N/A - unscaled)':<20} | {o_l1_10m_eps:17,.0f}  | Sustained"
+        )
+        print(
+            f"{'Layer 1: 10M Events Latency':<32} | {'(N/A - unscaled)':<20} | {o_l1_10m_lat:17.2f} ns| Sub-50ns scale"
+        )
 
         # Layer 2
         b_l2_eps = b["layer2_python_compute_loop"]["throughput_eps"]
@@ -390,9 +439,15 @@ def run_full_phase6_benchmarks() -> dict[str, Any]:
         l2_p50_red = ((b_l2_p50 - o_l2_p50) / b_l2_p50) * 100
         l2_p99_red = ((b_l2_p99 - o_l2_p99) / b_l2_p99) * 100
 
-        print(f"{'Layer 2: Python Compute EPS':<32} | {b_l2_eps:17,.0f}  | {o_l2_eps:17,.0f}  | {l2_eps_mult:+.2f}x ({l2_eps_mult-1:+.1%})")
-        print(f"{'Layer 2: Compute Latency p50':<32} | {b_l2_p50:17.2f} µs| {o_l2_p50:17.2f} µs| {l2_p50_red:+.1f}% faster")
-        print(f"{'Layer 2: Compute Latency p99':<32} | {b_l2_p99:17.2f} µs| {o_l2_p99:17.2f} µs| {l2_p99_red:+.1f}% faster")
+        print(
+            f"{'Layer 2: Python Compute EPS':<32} | {b_l2_eps:17,.0f}  | {o_l2_eps:17,.0f}  | {l2_eps_mult:+.2f}x ({l2_eps_mult - 1:+.1%})"
+        )
+        print(
+            f"{'Layer 2: Compute Latency p50':<32} | {b_l2_p50:17.2f} µs| {o_l2_p50:17.2f} µs| {l2_p50_red:+.1f}% faster"
+        )
+        print(
+            f"{'Layer 2: Compute Latency p99':<32} | {b_l2_p99:17.2f} µs| {o_l2_p99:17.2f} µs| {l2_p99_red:+.1f}% faster"
+        )
 
         # Layer 3
         b_l3_eps = b["layer3_durable_pipeline"]["throughput_eps"]
@@ -402,8 +457,12 @@ def run_full_phase6_benchmarks() -> dict[str, Any]:
         l3_eps_mult = o_l3_eps / b_l3_eps
         l3_p50_red = ((b_l3_p50 - o_l3_p50) / b_l3_p50) * 100
 
-        print(f"{'Layer 3: Persistence EPS':<32} | {b_l3_eps:17,.0f}  | {o_l3_eps:17,.0f}  | {l3_eps_mult:+.2f}x ({l3_eps_mult-1:+.1%})")
-        print(f"{'Layer 3: Persistence Latency p50':<32} | {b_l3_p50:17.2f} µs| {o_l3_p50:17.2f} µs| {l3_p50_red:+.1f}% faster")
+        print(
+            f"{'Layer 3: Persistence EPS':<32} | {b_l3_eps:17,.0f}  | {o_l3_eps:17,.0f}  | {l3_eps_mult:+.2f}x ({l3_eps_mult - 1:+.1%})"
+        )
+        print(
+            f"{'Layer 3: Persistence Latency p50':<32} | {b_l3_p50:17.2f} µs| {o_l3_p50:17.2f} µs| {l3_p50_red:+.1f}% faster"
+        )
         print("=" * 90)
 
     return report

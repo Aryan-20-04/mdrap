@@ -8,6 +8,7 @@ Evaluates:
 4. High-Throughput Burst Saturation & Tail Latency Profile (p50, p95, p99, p99.9)
 5. Live Feed Failure & Watchdog Silence Boundary
 """
+
 from __future__ import annotations
 
 import os
@@ -39,6 +40,7 @@ def test_instrument_universe_capacity_and_fallback_limit():
     an expanded universe (e.g. 100 instruments) runs safely without memory corruption.
     """
     from fastpath import is_available
+
     if not is_available():
         pytest.skip("FastPath native library not available")
     engine = FastQualityEngine()
@@ -116,39 +118,45 @@ def test_order_book_depth_exhaustion_and_tca_slippage_boundary():
     symbol = "BTC/USD"
 
     # Seed 3 venues with thin depth (Total available ask depth = 1.0 + 2.0 + 3.0 = 6.0 units)
-    engine.observe(RawEvent(
-        source="BINANCE",
-        payload={
-            "instrument": symbol,
-            "exchange_ts": 1000.0,
-            "bids": [[65000.0, 2.0]],
-            "asks": [[65010.0, 1.0]],
-        },
-        receive_timestamp=1000.001,
-        raw_id="b1",
-    ))
-    engine.observe(RawEvent(
-        source="COINBASE",
-        payload={
-            "instrument": symbol,
-            "exchange_ts": 1000.01,
-            "bids": [[64995.0, 5.0]],
-            "asks": [[65015.0, 2.0]],
-        },
-        receive_timestamp=1000.011,
-        raw_id="c1",
-    ))
-    engine.observe(RawEvent(
-        source="KRAKEN",
-        payload={
-            "instrument": symbol,
-            "exchange_ts": 1000.02,
-            "bids": [[64990.0, 4.0]],
-            "asks": [[65020.0, 3.0]],
-        },
-        receive_timestamp=1000.021,
-        raw_id="k1",
-    ))
+    engine.observe(
+        RawEvent(
+            source="BINANCE",
+            payload={
+                "instrument": symbol,
+                "exchange_ts": 1000.0,
+                "bids": [[65000.0, 2.0]],
+                "asks": [[65010.0, 1.0]],
+            },
+            receive_timestamp=1000.001,
+            raw_id="b1",
+        )
+    )
+    engine.observe(
+        RawEvent(
+            source="COINBASE",
+            payload={
+                "instrument": symbol,
+                "exchange_ts": 1000.01,
+                "bids": [[64995.0, 5.0]],
+                "asks": [[65015.0, 2.0]],
+            },
+            receive_timestamp=1000.011,
+            raw_id="c1",
+        )
+    )
+    engine.observe(
+        RawEvent(
+            source="KRAKEN",
+            payload={
+                "instrument": symbol,
+                "exchange_ts": 1000.02,
+                "bids": [[64990.0, 4.0]],
+                "asks": [[65020.0, 3.0]],
+            },
+            receive_timestamp=1000.021,
+            raw_id="k1",
+        )
+    )
 
     ladder = engine.current_ladder(symbol)
     assert ladder is not None
@@ -185,28 +193,32 @@ def test_multi_venue_crossed_market_and_arbitrage_detection():
     engine = ConsolidatedDepthEngine()
     symbol = "ETH/USD"
 
-    engine.observe(RawEvent(
-        source="COINBASE",
-        payload={
-            "instrument": symbol,
-            "exchange_ts": 1000.0,
-            "bids": [[100.50, 10.0]],
-            "asks": [[100.70, 5.0]],
-        },
-        receive_timestamp=1000.001,
-        raw_id="c_arb",
-    ))
-    engine.observe(RawEvent(
-        source="BINANCE",
-        payload={
-            "instrument": symbol,
-            "exchange_ts": 1000.05,
-            "bids": [[100.00, 10.0]],
-            "asks": [[100.20, 5.0]],
-        },
-        receive_timestamp=1000.051,
-        raw_id="b_arb",
-    ))
+    engine.observe(
+        RawEvent(
+            source="COINBASE",
+            payload={
+                "instrument": symbol,
+                "exchange_ts": 1000.0,
+                "bids": [[100.50, 10.0]],
+                "asks": [[100.70, 5.0]],
+            },
+            receive_timestamp=1000.001,
+            raw_id="c_arb",
+        )
+    )
+    engine.observe(
+        RawEvent(
+            source="BINANCE",
+            payload={
+                "instrument": symbol,
+                "exchange_ts": 1000.05,
+                "bids": [[100.00, 10.0]],
+                "asks": [[100.20, 5.0]],
+            },
+            receive_timestamp=1000.051,
+            raw_id="b_arb",
+        )
+    )
 
     ladder = engine.current_ladder(symbol)
     assert ladder is not None
@@ -220,34 +232,38 @@ def test_multi_venue_crossed_market_and_arbitrage_detection():
 
     # Also verify BBOEngine flags crossed quote
     bbo_engine = BBOEngine()
-    bbo = bbo_engine.observe(CanonicalEvent(
-        event_id="arb_1",
-        instrument_id="ETH/USD",
-        event_type=EventType.QUOTE,
-        exchange_timestamp=1000.0,
-        receive_timestamp=1000.001,
-        processing_timestamp=1000.002,
-        source="COINBASE",
-        sequence_number=1,
-        bid_price=100.50,
-        bid_size=10.0,
-        ask_price=100.60,
-        ask_size=10.0,
-    ))
-    bbo2 = bbo_engine.observe(CanonicalEvent(
-        event_id="arb_2",
-        instrument_id="ETH/USD",
-        event_type=EventType.QUOTE,
-        exchange_timestamp=1000.1,
-        receive_timestamp=1000.101,
-        processing_timestamp=1000.102,
-        source="BINANCE",
-        sequence_number=2,
-        bid_price=100.10,
-        bid_size=10.0,
-        ask_price=100.20,
-        ask_size=5.0,
-    ))
+    bbo = bbo_engine.observe(
+        CanonicalEvent(
+            event_id="arb_1",
+            instrument_id="ETH/USD",
+            event_type=EventType.QUOTE,
+            exchange_timestamp=1000.0,
+            receive_timestamp=1000.001,
+            processing_timestamp=1000.002,
+            source="COINBASE",
+            sequence_number=1,
+            bid_price=100.50,
+            bid_size=10.0,
+            ask_price=100.60,
+            ask_size=10.0,
+        )
+    )
+    bbo2 = bbo_engine.observe(
+        CanonicalEvent(
+            event_id="arb_2",
+            instrument_id="ETH/USD",
+            event_type=EventType.QUOTE,
+            exchange_timestamp=1000.1,
+            receive_timestamp=1000.101,
+            processing_timestamp=1000.102,
+            source="BINANCE",
+            sequence_number=2,
+            bid_price=100.10,
+            bid_size=10.0,
+            ask_price=100.20,
+            ask_size=5.0,
+        )
+    )
     assert bbo2 is not None
     assert bbo2.is_crossed is True
 
@@ -261,16 +277,28 @@ def test_watchdog_silence_failover_boundary():
     watchdog = SourceWatchdog(reliability, silence_threshold_s=2.0)
 
     ev1 = CanonicalEvent(
-        event_id="w1", instrument_id="AAPL", event_type=EventType.TRADE,
-        exchange_timestamp=1000.0, receive_timestamp=1000.001,
-        processing_timestamp=1000.002, source="BINANCE", sequence_number=1,
-        price=150.0, quantity=10.0
+        event_id="w1",
+        instrument_id="AAPL",
+        event_type=EventType.TRADE,
+        exchange_timestamp=1000.0,
+        receive_timestamp=1000.001,
+        processing_timestamp=1000.002,
+        source="BINANCE",
+        sequence_number=1,
+        price=150.0,
+        quantity=10.0,
     )
     ev2 = CanonicalEvent(
-        event_id="w2", instrument_id="AAPL", event_type=EventType.TRADE,
-        exchange_timestamp=1000.0, receive_timestamp=1000.001,
-        processing_timestamp=1000.002, source="COINBASE", sequence_number=1,
-        price=150.0, quantity=10.0
+        event_id="w2",
+        instrument_id="AAPL",
+        event_type=EventType.TRADE,
+        exchange_timestamp=1000.0,
+        receive_timestamp=1000.001,
+        processing_timestamp=1000.002,
+        source="COINBASE",
+        sequence_number=1,
+        price=150.0,
+        quantity=10.0,
     )
     watchdog.observe(ev1)
     watchdog.observe(ev2)
@@ -279,10 +307,16 @@ def test_watchdog_silence_failover_boundary():
 
     # Binance keeps streaming at t=1003.0 (>2s gap for Coinbase)
     ev3 = CanonicalEvent(
-        event_id="w3", instrument_id="AAPL", event_type=EventType.TRADE,
-        exchange_timestamp=1003.0, receive_timestamp=1003.001,
-        processing_timestamp=1003.002, source="BINANCE", sequence_number=2,
-        price=150.2, quantity=5.0
+        event_id="w3",
+        instrument_id="AAPL",
+        event_type=EventType.TRADE,
+        exchange_timestamp=1003.0,
+        receive_timestamp=1003.001,
+        processing_timestamp=1003.002,
+        source="BINANCE",
+        sequence_number=2,
+        price=150.2,
+        quantity=5.0,
     )
     alerts = watchdog.observe(ev3)
     assert watchdog.source_states()["COINBASE"] == SourceState.SILENT.value
@@ -291,14 +325,22 @@ def test_watchdog_silence_failover_boundary():
 
     # Coinbase reconnects at t=1004.0
     ev4 = CanonicalEvent(
-        event_id="w4", instrument_id="AAPL", event_type=EventType.TRADE,
-        exchange_timestamp=1004.0, receive_timestamp=1004.001,
-        processing_timestamp=1004.002, source="COINBASE", sequence_number=2,
-        price=150.1, quantity=15.0
+        event_id="w4",
+        instrument_id="AAPL",
+        event_type=EventType.TRADE,
+        exchange_timestamp=1004.0,
+        receive_timestamp=1004.001,
+        processing_timestamp=1004.002,
+        source="COINBASE",
+        sequence_number=2,
+        price=150.1,
+        quantity=15.0,
     )
     rec_alerts = watchdog.observe(ev4)
     assert watchdog.source_states()["COINBASE"] == SourceState.HEALTHY.value
-    assert any(a.source == "COINBASE" and a.alert_type == "RECOVERY" for a in rec_alerts)
+    assert any(
+        a.source == "COINBASE" and a.alert_type == "RECOVERY" for a in rec_alerts
+    )
 
 
 def test_burst_throughput_saturation_and_latency_profile():

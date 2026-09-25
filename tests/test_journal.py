@@ -1,6 +1,7 @@
 """
 Tests for MDRAP Append-Only Memory-Mapped Binary Journal (.dbn / AOF).
 """
+
 import os
 import tempfile
 import pytest
@@ -102,14 +103,18 @@ def test_journal_reopen_and_append():
 
         with BinaryJournal(journal_path, initial_records=1024, epoch=12345) as j1:
             for i in range(1, 51):
-                j1.append_tick(seq=i, symbol="SOL/USD", source="COINBASE", price=150.0, size=10.0)
+                j1.append_tick(
+                    seq=i, symbol="SOL/USD", source="COINBASE", price=150.0, size=10.0
+                )
 
         # Reopen journal and append more events
         with BinaryJournal(journal_path) as j2:
             assert j2.record_count == 50
             assert j2.epoch == 12345
             for i in range(51, 101):
-                j2.append_tick(seq=i, symbol="SOL/USD", source="COINBASE", price=155.0, size=5.0)
+                j2.append_tick(
+                    seq=i, symbol="SOL/USD", source="COINBASE", price=155.0, size=5.0
+                )
             assert j2.record_count == 100
 
         with BinaryJournalReader(journal_path) as reader:
@@ -124,5 +129,7 @@ def test_journal_corrupt_file_handling():
         with open(journal_path, "wb") as f:
             f.write(b"BAD_MAGIC_HEADER_THAT_FAILS_VALIDATION")
 
-        with pytest.raises(ValueError, match="Invalid journal magic|file smaller than header"):
+        with pytest.raises(
+            ValueError, match="Invalid journal magic|file smaller than header"
+        ):
             BinaryJournalReader(journal_path)

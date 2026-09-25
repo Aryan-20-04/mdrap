@@ -6,18 +6,19 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from shm import (
-    SHMWriter, SHMReader, HAS_SHM, VERSION,
-    HEADER_SIZE, SLOT_SIZE
-)
+from shm import SHMWriter, SHMReader, HAS_SHM, VERSION, HEADER_SIZE, SLOT_SIZE
+
 
 @pytest.mark.skipif(not HAS_SHM, reason="SharedMemory not available")
 def test_m4_zero_filled_buffer_no_phantom_tick():
     """M4: A zero-filled or newly initialized buffer must never yield a phantom tick for seq 0."""
     from multiprocessing.shared_memory import SharedMemory
+
     shm_name = "test_m4_zero_fill"
     try:
-        raw_shm = SharedMemory(name=shm_name, create=True, size=HEADER_SIZE + 256 * SLOT_SIZE)
+        raw_shm = SharedMemory(
+            name=shm_name, create=True, size=HEADER_SIZE + 256 * SLOT_SIZE
+        )
         raw_shm.buf[:] = b"\x00" * len(raw_shm.buf)
         # Attempting to read slot 0 from an empty/uninitialized segment
         # In v3, reader validates header or read_slot returns None (head==0)
@@ -35,6 +36,7 @@ def test_m4_zero_filled_buffer_no_phantom_tick():
             raw_shm.unlink()
         except Exception:
             pass
+
 
 @pytest.mark.skipif(not HAS_SHM, reason="SharedMemory not available")
 def test_m5_m6_present_bitmask_and_unknown_status():
@@ -70,6 +72,7 @@ def test_m5_m6_present_bitmask_and_unknown_status():
     finally:
         reader.close()
         writer.close()
+
 
 @pytest.mark.skipif(not HAS_SHM, reason="SharedMemory not available")
 def test_m3_epoch_change_detection():

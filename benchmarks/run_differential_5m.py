@@ -31,9 +31,13 @@ def _format_hex_dump(c_struct) -> str:
     return " ".join(f"{b:02X}" for b in raw_bytes)
 
 
-def run_seed_differential(seed: int, num_events: int = 1_000_000, chunk_size: int = 128):
+def run_seed_differential(
+    seed: int, num_events: int = 1_000_000, chunk_size: int = 128
+):
     print(f"\n--- Running Seed {seed} ({num_events:,} events) ---", flush=True)
-    cfg = QualityConfig(staleness_threshold_s=0.05, price_anomaly_stddev=6.0, price_window=50)
+    cfg = QualityConfig(
+        staleness_threshold_s=0.05, price_anomaly_stddev=6.0, price_window=50
+    )
 
     sim_cfg = SimulatorConfig(
         seed=seed,
@@ -118,10 +122,16 @@ def run_seed_differential(seed: int, num_events: int = 1_000_000, chunk_size: in
                     c_ev.exchange_ts = orig_ev.exchange_timestamp
                     c_ev.receive_ts = orig_ev.receive_timestamp
                     c_ev.sequence_num = (
-                        orig_ev.sequence_number if orig_ev.sequence_number is not None else -1
+                        orig_ev.sequence_number
+                        if orig_ev.sequence_number is not None
+                        else -1
                     )
-                    c_ev.price = orig_ev.price if orig_ev.price is not None else math.nan
-                    c_ev.quantity = orig_ev.quantity if orig_ev.quantity is not None else math.nan
+                    c_ev.price = (
+                        orig_ev.price if orig_ev.price is not None else math.nan
+                    )
+                    c_ev.quantity = (
+                        orig_ev.quantity if orig_ev.quantity is not None else math.nan
+                    )
 
                     c_res = _CFastResult()
                     c_res.status = (
@@ -175,7 +185,9 @@ def run_seed_differential(seed: int, num_events: int = 1_000_000, chunk_size: in
     rate = total_checked / elapsed
 
     assert q_py.counts == q_c.counts == q_batch.counts, "Counts mismatch"
-    assert q_py.reason_counts == q_c.reason_counts == q_batch.reason_counts, "Reasons mismatch"
+    assert q_py.reason_counts == q_c.reason_counts == q_batch.reason_counts, (
+        "Reasons mismatch"
+    )
 
     print(
         f"  [PASS] Seed {seed}: {total_checked:,} events in {elapsed:.2f}s ({rate:,.0f} eps) -> 0 discrepancies",
@@ -197,7 +209,11 @@ def run_seed_differential(seed: int, num_events: int = 1_000_000, chunk_size: in
 
 def main():
     if not HAS_FASTPATH:
-        print("[ERROR] Native C accelerator not loaded! Aborting.", file=sys.stderr, flush=True)
+        print(
+            "[ERROR] Native C accelerator not loaded! Aborting.",
+            file=sys.stderr,
+            flush=True,
+        )
         sys.exit(1)
 
     seeds = [42, 1337, 777, 2026, 99999]
@@ -205,8 +221,14 @@ def main():
     total_target = len(seeds) * events_per_seed
 
     print("=" * 70, flush=True)
-    print("MDRAP Phase 6: 5,000,000 Event Differential Testing Acceptance Gate", flush=True)
-    print(f"Target: {len(seeds)} seeds x {events_per_seed:,} = {total_target:,} events", flush=True)
+    print(
+        "MDRAP Phase 6: 5,000,000 Event Differential Testing Acceptance Gate",
+        flush=True,
+    )
+    print(
+        f"Target: {len(seeds)} seeds x {events_per_seed:,} = {total_target:,} events",
+        flush=True,
+    )
     print("Engines: Pure Python vs Native C vs Native C Batch", flush=True)
     print(
         "Faults Injected: Stale, Crossed, Negative, NaN, Sequence Gap, Out of Order, Spike, Flash Crash, Duplicate",
@@ -240,8 +262,14 @@ def main():
 
     print("\n" + "=" * 70, flush=True)
     print("PHASE 6 ACCEPTANCE GATE: PASSED", flush=True)
-    print(f"Evaluated {total_target:,} events across 3 engines with ZERO discrepancies.", flush=True)
-    print(f"Total time: {total_elapsed:.2f}s | Aggregate rate: {overall_eps:,.0f} eps", flush=True)
+    print(
+        f"Evaluated {total_target:,} events across 3 engines with ZERO discrepancies.",
+        flush=True,
+    )
+    print(
+        f"Total time: {total_elapsed:.2f}s | Aggregate rate: {overall_eps:,.0f} eps",
+        flush=True,
+    )
     print(f"Results recorded: {out_path}", flush=True)
     print("=" * 70, flush=True)
 

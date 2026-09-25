@@ -5,6 +5,7 @@ Empirical verification across:
 2. Comprehensive adversarial stress testing with NaN, Inf, -Inf, negative prices,
    negative sizes, negative timestamps, extreme subnormals/overflows, and zero divisions.
 """
+
 from __future__ import annotations
 
 import math
@@ -27,7 +28,12 @@ from storage import Store
 from bbo import BBOEngine, ConsolidatedBBO
 from depth import ConsolidatedDepthEngine
 from mbo import OrderBookMBO
-from analytics import MarketAnalytics, OHLCVAggregator, SpreadAnalyzer, VolatilityTracker
+from analytics import (
+    MarketAnalytics,
+    OHLCVAggregator,
+    SpreadAnalyzer,
+    VolatilityTracker,
+)
 from flow_tracker import OrderFlowTracker, FlowCategory, AggressorSide
 from tca import TCAEngine, ExecutionRecord
 from stresstest import stress_adversarial_fuzzing, compute_latencies_us
@@ -70,6 +76,7 @@ class TestCommandTimingBenchmark:
         bbo = BBOEngine()
         pipe = Pipeline(store, analytics=analytics, bbo=bbo)
         from simulator import FeedSimulator, SimulatorConfig
+
         sim = FeedSimulator(SimulatorConfig(seed=42, num_events=500))
         for raw, _ in sim.generate():
             pipe.process_one(raw)
@@ -87,7 +94,16 @@ class TestCommandTimingBenchmark:
             "bbo": ["bbo", "AAPL", "--db", db_path],
             "depth": ["depth", "AAPL", "--db", db_path, "--limit", "5"],
             "vwap": ["vwap", "AAPL", "--db", db_path],
-            "chart": ["chart", "AAPL", "--db", db_path, "--width", "30", "--height", "6"],
+            "chart": [
+                "chart",
+                "AAPL",
+                "--db",
+                db_path,
+                "--width",
+                "30",
+                "--height",
+                "6",
+            ],
             "ohlcv": ["analytics", "ohlcv", "AAPL", "--db", db_path, "-l", "5"],
             "spread": ["analytics", "spread", "AAPL", "--db", db_path],
             "vol": ["analytics", "vol", "--db", db_path],
@@ -108,7 +124,19 @@ class TestCommandTimingBenchmark:
             "latest": ["query", "latest", "AAPL", "--db", db_path, "-l", "5"],
             "lineage": ["query", "lineage", "AAPL", "--db", db_path],
             "quar": ["query", "quarantine", "--db", db_path, "-l", "5"],
-            "simulate": ["simulate", "--scale", "custom", "--normal", "1", "--fast", "1", "-t", "0.5", "--db", db_path],
+            "simulate": [
+                "simulate",
+                "--scale",
+                "custom",
+                "--normal",
+                "1",
+                "--fast",
+                "1",
+                "-t",
+                "0.5",
+                "--db",
+                db_path,
+            ],
             "health": ["query", "health", "--db", db_path],
             "watchdog": ["watchdog", "status", "--db", db_path],
             "strategy": ["strategy", "list"],
@@ -147,14 +175,23 @@ class TestCommandTimingBenchmark:
         try:
             from rich.console import Console
             from rich.table import Table
+
             with capsys.disabled():
                 c = Console()
-                tbl = Table(title="MDRAP CLI Commands Latency Benchmark (§26 Empirical Measurement)")
+                tbl = Table(
+                    title="MDRAP CLI Commands Latency Benchmark (§26 Empirical Measurement)"
+                )
                 tbl.add_column("Command", style="bold cyan")
                 tbl.add_column("Execution Latency (ms)", justify="right")
                 tbl.add_column("Status", justify="center")
                 for cmd, ms, ok, _ in timing_results:
-                    tbl.add_row(cmd, f"{ms:8.2f} ms", "[bold green]PASS[/bold green]" if ok else "[bold red]FAIL[/bold red]")
+                    tbl.add_row(
+                        cmd,
+                        f"{ms:8.2f} ms",
+                        "[bold green]PASS[/bold green]"
+                        if ok
+                        else "[bold red]FAIL[/bold red]",
+                    )
                 c.print("\n")
                 c.print(tbl)
         except Exception:
@@ -188,61 +225,179 @@ class TestAdversarialSystemStress:
 
         adversarial_payloads = [
             # 1. NaN price
-            {"instrument": "AAPL", "event_type": "TRADE", "exchange_ts": 1000.0, "sequence": 1,
-             "price": float("nan"), "quantity": 100.0},
+            {
+                "instrument": "AAPL",
+                "event_type": "TRADE",
+                "exchange_ts": 1000.0,
+                "sequence": 1,
+                "price": float("nan"),
+                "quantity": 100.0,
+            },
             # 2. +Infinity price
-            {"instrument": "AAPL", "event_type": "TRADE", "exchange_ts": 1001.0, "sequence": 2,
-             "price": float("inf"), "quantity": 100.0},
+            {
+                "instrument": "AAPL",
+                "event_type": "TRADE",
+                "exchange_ts": 1001.0,
+                "sequence": 2,
+                "price": float("inf"),
+                "quantity": 100.0,
+            },
             # 3. -Infinity price
-            {"instrument": "AAPL", "event_type": "TRADE", "exchange_ts": 1002.0, "sequence": 3,
-             "price": float("-inf"), "quantity": 100.0},
+            {
+                "instrument": "AAPL",
+                "event_type": "TRADE",
+                "exchange_ts": 1002.0,
+                "sequence": 3,
+                "price": float("-inf"),
+                "quantity": 100.0,
+            },
             # 4. Negative price
-            {"instrument": "AAPL", "event_type": "TRADE", "exchange_ts": 1003.0, "sequence": 4,
-             "price": -150.0, "quantity": 100.0},
+            {
+                "instrument": "AAPL",
+                "event_type": "TRADE",
+                "exchange_ts": 1003.0,
+                "sequence": 4,
+                "price": -150.0,
+                "quantity": 100.0,
+            },
             # 5. Negative small price (-0.00001)
-            {"instrument": "AAPL", "event_type": "TRADE", "exchange_ts": 1004.0, "sequence": 5,
-             "price": -0.00001, "quantity": 100.0},
+            {
+                "instrument": "AAPL",
+                "event_type": "TRADE",
+                "exchange_ts": 1004.0,
+                "sequence": 5,
+                "price": -0.00001,
+                "quantity": 100.0,
+            },
             # 6. NaN quantity
-            {"instrument": "AAPL", "event_type": "TRADE", "exchange_ts": 1005.0, "sequence": 6,
-             "price": 150.0, "quantity": float("nan")},
+            {
+                "instrument": "AAPL",
+                "event_type": "TRADE",
+                "exchange_ts": 1005.0,
+                "sequence": 6,
+                "price": 150.0,
+                "quantity": float("nan"),
+            },
             # 7. +Infinity quantity
-            {"instrument": "AAPL", "event_type": "TRADE", "exchange_ts": 1006.0, "sequence": 7,
-             "price": 150.0, "quantity": float("inf")},
+            {
+                "instrument": "AAPL",
+                "event_type": "TRADE",
+                "exchange_ts": 1006.0,
+                "sequence": 7,
+                "price": 150.0,
+                "quantity": float("inf"),
+            },
             # 8. Negative quantity
-            {"instrument": "AAPL", "event_type": "TRADE", "exchange_ts": 1007.0, "sequence": 8,
-             "price": 150.0, "quantity": -50.0},
+            {
+                "instrument": "AAPL",
+                "event_type": "TRADE",
+                "exchange_ts": 1007.0,
+                "sequence": 8,
+                "price": 150.0,
+                "quantity": -50.0,
+            },
             # 9. Zero price
-            {"instrument": "AAPL", "event_type": "TRADE", "exchange_ts": 1008.0, "sequence": 9,
-             "price": 0.0, "quantity": 100.0},
+            {
+                "instrument": "AAPL",
+                "event_type": "TRADE",
+                "exchange_ts": 1008.0,
+                "sequence": 9,
+                "price": 0.0,
+                "quantity": 100.0,
+            },
             # 10. NaN bid in Quote
-            {"instrument": "AAPL", "event_type": "QUOTE", "exchange_ts": 1009.0, "sequence": 10,
-             "bid": float("nan"), "ask": 150.5, "bid_size": 100.0, "ask_size": 100.0},
+            {
+                "instrument": "AAPL",
+                "event_type": "QUOTE",
+                "exchange_ts": 1009.0,
+                "sequence": 10,
+                "bid": float("nan"),
+                "ask": 150.5,
+                "bid_size": 100.0,
+                "ask_size": 100.0,
+            },
             # 11. Infinity ask in Quote
-            {"instrument": "AAPL", "event_type": "QUOTE", "exchange_ts": 1010.0, "sequence": 11,
-             "bid": 149.5, "ask": float("inf"), "bid_size": 100.0, "ask_size": 100.0},
+            {
+                "instrument": "AAPL",
+                "event_type": "QUOTE",
+                "exchange_ts": 1010.0,
+                "sequence": 11,
+                "bid": 149.5,
+                "ask": float("inf"),
+                "bid_size": 100.0,
+                "ask_size": 100.0,
+            },
             # 12. Negative bid in Quote
-            {"instrument": "AAPL", "event_type": "QUOTE", "exchange_ts": 1011.0, "sequence": 12,
-             "bid": -149.5, "ask": 150.5, "bid_size": 100.0, "ask_size": 100.0},
+            {
+                "instrument": "AAPL",
+                "event_type": "QUOTE",
+                "exchange_ts": 1011.0,
+                "sequence": 12,
+                "bid": -149.5,
+                "ask": 150.5,
+                "bid_size": 100.0,
+                "ask_size": 100.0,
+            },
             # 13. Crossed Quote (bid > ask)
-            {"instrument": "AAPL", "event_type": "QUOTE", "exchange_ts": 1012.0, "sequence": 13,
-             "bid": 160.0, "ask": 140.0, "bid_size": 100.0, "ask_size": 100.0},
+            {
+                "instrument": "AAPL",
+                "event_type": "QUOTE",
+                "exchange_ts": 1012.0,
+                "sequence": 13,
+                "bid": 160.0,
+                "ask": 140.0,
+                "bid_size": 100.0,
+                "ask_size": 100.0,
+            },
             # 14. Extreme overflow (1e18)
-            {"instrument": "AAPL", "event_type": "TRADE", "exchange_ts": 1013.0, "sequence": 14,
-             "price": 1e18, "quantity": 1e18},
+            {
+                "instrument": "AAPL",
+                "event_type": "TRADE",
+                "exchange_ts": 1013.0,
+                "sequence": 14,
+                "price": 1e18,
+                "quantity": 1e18,
+            },
             # 15. Extreme subnormal (1e-300)
-            {"instrument": "AAPL", "event_type": "TRADE", "exchange_ts": 1014.0, "sequence": 15,
-             "price": 1e-300, "quantity": 1e-300},
+            {
+                "instrument": "AAPL",
+                "event_type": "TRADE",
+                "exchange_ts": 1014.0,
+                "sequence": 15,
+                "price": 1e-300,
+                "quantity": 1e-300,
+            },
             # 16. Negative exchange timestamp
-            {"instrument": "AAPL", "event_type": "TRADE", "exchange_ts": -1000.0, "sequence": 16,
-             "price": 150.0, "quantity": 100.0},
+            {
+                "instrument": "AAPL",
+                "event_type": "TRADE",
+                "exchange_ts": -1000.0,
+                "sequence": 16,
+                "price": 150.0,
+                "quantity": 100.0,
+            },
             # 17. Malformed dictionary
             {"wrong_key": 12345},
             # 18. Clean Valid Trade (Survives to canonical table)
-            {"instrument": "AAPL", "event_type": "TRADE", "exchange_ts": 1015.0, "sequence": 17,
-             "price": 150.50, "quantity": 200.0},
+            {
+                "instrument": "AAPL",
+                "event_type": "TRADE",
+                "exchange_ts": 1015.0,
+                "sequence": 17,
+                "price": 150.50,
+                "quantity": 200.0,
+            },
             # 19. Clean Valid Quote (Survives to BBO and canonical)
-            {"instrument": "AAPL", "event_type": "QUOTE", "exchange_ts": 1016.0, "sequence": 18,
-             "bid": 150.40, "ask": 150.60, "bid_size": 500.0, "ask_size": 500.0},
+            {
+                "instrument": "AAPL",
+                "event_type": "QUOTE",
+                "exchange_ts": 1016.0,
+                "sequence": 18,
+                "bid": 150.40,
+                "ask": 150.60,
+                "bid_size": 500.0,
+                "ask_size": 500.0,
+            },
         ]
 
         # Ingest entire stream 100 times (1,900 events under stress)
@@ -258,8 +413,10 @@ class TestAdversarialSystemStress:
                 if "sequence" in p:
                     p["sequence"] = total_events
 
-                is_clean = (item.get("event_type") in ("TRADE", "QUOTE") 
-                            and (item.get("price") == 150.50 or (item.get("bid") == 150.40 and item.get("ask") == 150.60)))
+                is_clean = item.get("event_type") in ("TRADE", "QUOTE") and (
+                    item.get("price") == 150.50
+                    or (item.get("bid") == 150.40 and item.get("ask") == 150.60)
+                )
                 if is_clean:
                     valid_expected += 1
 
@@ -291,9 +448,10 @@ class TestAdversarialSystemStress:
         assert pipeline.metrics.quality_counts.get("INVALID", 0) >= 1400
         assert sum(counts.values()) == 500
 
-
         # 4. Canonical events only contain strictly finite, positive prices
-        cur = store.conn.execute("SELECT price, quantity, bid_price, ask_price FROM canonical_events")
+        cur = store.conn.execute(
+            "SELECT price, quantity, bid_price, ask_price FROM canonical_events"
+        )
         rows = cur.fetchall()
         for px, qty, bid, ask in rows:
             if px is not None:
@@ -329,10 +487,16 @@ class TestAdversarialSystemStress:
         # QualityEngine should invalidate NaN/Inf without adding them to baseline
         qe = QualityEngine()
         ev_nan = CanonicalEvent(
-            event_id="e-nan", instrument_id="AAPL", event_type=EventType.TRADE,
-            exchange_timestamp=1000.0, receive_timestamp=1000.001,
-            processing_timestamp=0.0, source="FEEDX", sequence_number=1,
-            price=float("nan"), quantity=100.0
+            event_id="e-nan",
+            instrument_id="AAPL",
+            event_type=EventType.TRADE,
+            exchange_timestamp=1000.0,
+            receive_timestamp=1000.001,
+            processing_timestamp=0.0,
+            source="FEEDX",
+            sequence_number=1,
+            price=float("nan"),
+            quantity=100.0,
         )
         res = qe.evaluate(ev_nan)
         assert res.quality_status == QualityStatus.INVALID
@@ -356,7 +520,9 @@ class TestAdversarialSystemStress:
         tracker.observe_trade(price=0.0, size=100.0, timestamp=1005.0)
 
         # Ingest valid trades
-        tracker.observe_trade(price=150.0, size=100.0, timestamp=1006.0, bid=149.9, ask=150.1)
+        tracker.observe_trade(
+            price=150.0, size=100.0, timestamp=1006.0, bid=149.9, ask=150.1
+        )
 
         # Invariants: CVD, CND, volume must remain finite real numbers
         assert math.isfinite(tracker.total_volume)
@@ -370,13 +536,64 @@ class TestAdversarialSystemStress:
         engine = TCAEngine()
 
         records = [
-            ExecutionRecord(trade_id="T1", symbol="AAPL", side="BUY", price=float("nan"), shares=100.0, timestamp=1000.0),
-            ExecutionRecord(trade_id="T2", symbol="AAPL", side="SELL", price=float("inf"), shares=100.0, timestamp=1001.0),
-            ExecutionRecord(trade_id="T3", symbol="AAPL", side="BUY", price=-150.0, shares=100.0, timestamp=1002.0),
-            ExecutionRecord(trade_id="T4", symbol="AAPL", side="BUY", price=150.0, shares=float("nan"), timestamp=1003.0),
-            ExecutionRecord(trade_id="T5", symbol="AAPL", side="BUY", price=150.0, shares=-50.0, timestamp=1004.0),
-            ExecutionRecord(trade_id="T6", symbol="AAPL", side="BUY", price=150.0, shares=100.0, timestamp=1005.0, arrival_price=float("nan")),
-            ExecutionRecord(trade_id="T7", symbol="AAPL", side="BUY", price=150.0, shares=200.0, timestamp=1006.0, arrival_price=150.05),
+            ExecutionRecord(
+                trade_id="T1",
+                symbol="AAPL",
+                side="BUY",
+                price=float("nan"),
+                shares=100.0,
+                timestamp=1000.0,
+            ),
+            ExecutionRecord(
+                trade_id="T2",
+                symbol="AAPL",
+                side="SELL",
+                price=float("inf"),
+                shares=100.0,
+                timestamp=1001.0,
+            ),
+            ExecutionRecord(
+                trade_id="T3",
+                symbol="AAPL",
+                side="BUY",
+                price=-150.0,
+                shares=100.0,
+                timestamp=1002.0,
+            ),
+            ExecutionRecord(
+                trade_id="T4",
+                symbol="AAPL",
+                side="BUY",
+                price=150.0,
+                shares=float("nan"),
+                timestamp=1003.0,
+            ),
+            ExecutionRecord(
+                trade_id="T5",
+                symbol="AAPL",
+                side="BUY",
+                price=150.0,
+                shares=-50.0,
+                timestamp=1004.0,
+            ),
+            ExecutionRecord(
+                trade_id="T6",
+                symbol="AAPL",
+                side="BUY",
+                price=150.0,
+                shares=100.0,
+                timestamp=1005.0,
+                arrival_price=float("nan"),
+            ),
+            ExecutionRecord(
+                trade_id="T7",
+                symbol="AAPL",
+                side="BUY",
+                price=150.0,
+                shares=200.0,
+                timestamp=1006.0,
+                arrival_price=150.05,
+            ),
         ]
 
         batch = engine.evaluate_batch(records)
@@ -394,28 +611,49 @@ class TestAdversarialSystemStress:
 
         # Ingest NaN trade
         t_nan = CanonicalEvent(
-            event_id="t-nan", instrument_id="AAPL", event_type=EventType.TRADE,
-            exchange_timestamp=1000.0, receive_timestamp=1000.001,
-            processing_timestamp=1000.002, source="FEEDX", sequence_number=1,
-            price=float("nan"), quantity=100.0, quality_status=QualityStatus.INVALID
+            event_id="t-nan",
+            instrument_id="AAPL",
+            event_type=EventType.TRADE,
+            exchange_timestamp=1000.0,
+            receive_timestamp=1000.001,
+            processing_timestamp=1000.002,
+            source="FEEDX",
+            sequence_number=1,
+            price=float("nan"),
+            quantity=100.0,
+            quality_status=QualityStatus.INVALID,
         )
         analytics.observe(t_nan)
 
         # Ingest NaN quote
         q_nan = CanonicalEvent(
-            event_id="q-nan", instrument_id="AAPL", event_type=EventType.QUOTE,
-            exchange_timestamp=1001.0, receive_timestamp=1001.001,
-            processing_timestamp=1001.002, source="FEEDX", sequence_number=2,
-            bid_price=float("nan"), ask_price=150.0, quality_status=QualityStatus.INVALID
+            event_id="q-nan",
+            instrument_id="AAPL",
+            event_type=EventType.QUOTE,
+            exchange_timestamp=1001.0,
+            receive_timestamp=1001.001,
+            processing_timestamp=1001.002,
+            source="FEEDX",
+            sequence_number=2,
+            bid_price=float("nan"),
+            ask_price=150.0,
+            quality_status=QualityStatus.INVALID,
         )
         analytics.observe(q_nan)
 
         # Ingest valid trade & quote
         t_valid = CanonicalEvent(
-            event_id="t-val", instrument_id="AAPL", event_type=EventType.TRADE,
-            exchange_timestamp=1002.0, receive_timestamp=1002.001,
-            processing_timestamp=1002.002, source="FEEDX", sequence_number=3,
-            price=150.0, quantity=100.0, quality_status=QualityStatus.VALID
+            event_id="t-val",
+            instrument_id="AAPL",
+            event_type=EventType.TRADE,
+            exchange_timestamp=1002.0,
+            receive_timestamp=1002.001,
+            processing_timestamp=1002.002,
+            source="FEEDX",
+            sequence_number=3,
+            price=150.0,
+            quantity=100.0,
+            quality_status=QualityStatus.VALID,
         )
         analytics.observe(t_valid)
 
@@ -436,19 +674,33 @@ class TestAdversarialSystemStress:
         bbo = BBOEngine()
 
         q_invalid = CanonicalEvent(
-            event_id="q-inv", instrument_id="AAPL", event_type=EventType.QUOTE,
-            exchange_timestamp=1000.0, receive_timestamp=1000.001,
-            processing_timestamp=1000.002, source="FEEDX", sequence_number=1,
-            bid_price=160.0, ask_price=150.0, quality_status=QualityStatus.INVALID
+            event_id="q-inv",
+            instrument_id="AAPL",
+            event_type=EventType.QUOTE,
+            exchange_timestamp=1000.0,
+            receive_timestamp=1000.001,
+            processing_timestamp=1000.002,
+            source="FEEDX",
+            sequence_number=1,
+            bid_price=160.0,
+            ask_price=150.0,
+            quality_status=QualityStatus.INVALID,
         )
         res = bbo.observe(q_invalid)
         assert res is None  # INVALID quotes never poison the BBO book
 
         q_valid = CanonicalEvent(
-            event_id="q-val", instrument_id="AAPL", event_type=EventType.QUOTE,
-            exchange_timestamp=1001.0, receive_timestamp=1001.001,
-            processing_timestamp=1001.002, source="FEEDX", sequence_number=2,
-            bid_price=149.95, ask_price=150.05, quality_status=QualityStatus.VALID
+            event_id="q-val",
+            instrument_id="AAPL",
+            event_type=EventType.QUOTE,
+            exchange_timestamp=1001.0,
+            receive_timestamp=1001.001,
+            processing_timestamp=1001.002,
+            source="FEEDX",
+            sequence_number=2,
+            bid_price=149.95,
+            ask_price=150.05,
+            quality_status=QualityStatus.VALID,
         )
         res_valid = bbo.observe(q_valid)
         assert res_valid is not None

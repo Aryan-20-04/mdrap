@@ -1,12 +1,15 @@
 """
 Tests for Venue-Aware Market Quality & Microstructure Rules (Circuit Bands, Volatility Interruptions).
 """
+
 import pytest
 from models import CanonicalEvent, EventType, QualityStatus, Reason
 from quality import QualityEngine, QualityConfig
 
 
-def _make_event(instrument="AAPL", price=100.0, venue="XNAS", currency="USD", seq=1, ts=1000.0):
+def _make_event(
+    instrument="AAPL", price=100.0, venue="XNAS", currency="USD", seq=1, ts=1000.0
+):
     return CanonicalEvent(
         event_id=f"evt-{seq}",
         instrument_id=instrument,
@@ -29,12 +32,26 @@ def test_nse_circuit_filter_breach():
 
     # Feed 20 baseline events at ₹2400.0
     for i in range(1, 21):
-        evt = _make_event(instrument="RELIANCE.NS", price=2400.0 + (i % 2), venue="XNSE", currency="INR", seq=i, ts=1000.0 + i)
+        evt = _make_event(
+            instrument="RELIANCE.NS",
+            price=2400.0 + (i % 2),
+            venue="XNSE",
+            currency="INR",
+            seq=i,
+            ts=1000.0 + i,
+        )
         evaluated = engine.evaluate(evt)
         assert evaluated.quality_status == QualityStatus.VALID
 
     # Sudden 15% jump beyond circuit limit (₹2400 -> ₹2780)
-    spike_evt = _make_event(instrument="RELIANCE.NS", price=2780.0, venue="XNSE", currency="INR", seq=21, ts=1022.0)
+    spike_evt = _make_event(
+        instrument="RELIANCE.NS",
+        price=2780.0,
+        venue="XNSE",
+        currency="INR",
+        seq=21,
+        ts=1022.0,
+    )
     evaluated_spike = engine.evaluate(spike_evt)
 
     assert evaluated_spike.quality_status == QualityStatus.SUSPICIOUS
@@ -47,12 +64,26 @@ def test_xetra_volatility_interruption():
 
     # Feed 20 baseline events at €150.0
     for i in range(1, 21):
-        evt = _make_event(instrument="SAP.DE", price=150.0 + 0.05 * (i % 2), venue="XETR", currency="EUR", seq=i, ts=1000.0 + i)
+        evt = _make_event(
+            instrument="SAP.DE",
+            price=150.0 + 0.05 * (i % 2),
+            venue="XETR",
+            currency="EUR",
+            seq=i,
+            ts=1000.0 + i,
+        )
         evaluated = engine.evaluate(evt)
         assert evaluated.quality_status == QualityStatus.VALID
 
     # Sudden 6% move beyond Xetra volatility corridor (€150 -> €160)
-    spike_evt = _make_event(instrument="SAP.DE", price=160.0, venue="XETR", currency="EUR", seq=21, ts=1022.0)
+    spike_evt = _make_event(
+        instrument="SAP.DE",
+        price=160.0,
+        venue="XETR",
+        currency="EUR",
+        seq=21,
+        ts=1022.0,
+    )
     evaluated_spike = engine.evaluate(spike_evt)
 
     assert evaluated_spike.quality_status == QualityStatus.SUSPICIOUS
@@ -65,12 +96,26 @@ def test_tse_special_quote_indication():
 
     # Feed 20 baseline events at ¥3000
     for i in range(1, 21):
-        evt = _make_event(instrument="7203.T", price=3000.0 + (i % 2), venue="XTKS", currency="JPY", seq=i, ts=1000.0 + i)
+        evt = _make_event(
+            instrument="7203.T",
+            price=3000.0 + (i % 2),
+            venue="XTKS",
+            currency="JPY",
+            seq=i,
+            ts=1000.0 + i,
+        )
         evaluated = engine.evaluate(evt)
         assert evaluated.quality_status == QualityStatus.VALID
 
     # Sudden 10% move (¥3000 -> ¥3350)
-    spike_evt = _make_event(instrument="7203.T", price=3350.0, venue="XTKS", currency="JPY", seq=21, ts=1022.0)
+    spike_evt = _make_event(
+        instrument="7203.T",
+        price=3350.0,
+        venue="XTKS",
+        currency="JPY",
+        seq=21,
+        ts=1022.0,
+    )
     evaluated_spike = engine.evaluate(spike_evt)
 
     assert evaluated_spike.quality_status == QualityStatus.SUSPICIOUS
@@ -83,10 +128,19 @@ def test_us_standard_price_anomaly():
 
     # Feed baseline events at $100
     for i in range(1, 21):
-        evt = _make_event(instrument="AAPL", price=100.0 + 0.01 * (i % 2), venue="XNAS", currency="USD", seq=i, ts=1000.0 + i)
+        evt = _make_event(
+            instrument="AAPL",
+            price=100.0 + 0.01 * (i % 2),
+            venue="XNAS",
+            currency="USD",
+            seq=i,
+            ts=1000.0 + i,
+        )
         engine.evaluate(evt)
 
-    spike_evt = _make_event(instrument="AAPL", price=125.0, venue="XNAS", currency="USD", seq=21, ts=1022.0)
+    spike_evt = _make_event(
+        instrument="AAPL", price=125.0, venue="XNAS", currency="USD", seq=21, ts=1022.0
+    )
     evaluated = engine.evaluate(spike_evt)
 
     assert evaluated.quality_status == QualityStatus.SUSPICIOUS

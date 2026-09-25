@@ -12,6 +12,7 @@ under cProfile and high-resolution timing, attributing microseconds per event to
 Acceptance: Stage costs sum to within 10% of measured end-to-end processing p50.
 Emits baseline_<date>.json and evaluates the Phase 0 Gate.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -36,24 +37,36 @@ from simulator import FeedSimulator, SimulatorConfig
 from storage import Store
 
 
-def profile_pipeline(events: int = 100_000, seed: int = 42, ffi_samples: int = 1_000_000) -> dict[str, Any]:
-    print(f"[*] Step 1/3: Calibrating ctypes FFI boundary tax ({ffi_samples:,} iterations)...")
+def profile_pipeline(
+    events: int = 100_000, seed: int = 42, ffi_samples: int = 1_000_000
+) -> dict[str, Any]:
+    print(
+        f"[*] Step 1/3: Calibrating ctypes FFI boundary tax ({ffi_samples:,} iterations)..."
+    )
     ffi_res = run_micro_ffi(iterations=ffi_samples, runs=3, warmup=1)
-    ffi_boundary_tax_ns = ffi_res.get("variants", {}).get("ii_pinned_12_scalars_ns", ffi_res.get("ffi_boundary_tax_ns", 2500.0))
+    ffi_boundary_tax_ns = ffi_res.get("variants", {}).get(
+        "ii_pinned_12_scalars_ns", ffi_res.get("ffi_boundary_tax_ns", 2500.0)
+    )
     ffi_boundary_tax_us = ffi_boundary_tax_ns / 1000.0
     c_logic_ns = ffi_res.get("pure_c_quality_logic_ns", ffi_res.get("c_logic_ns", 70.0))
     c_logic_us = c_logic_ns / 1000.0
 
-    print(f"    -> ctypes boundary tax: {ffi_boundary_tax_ns:.2f} ns ({ffi_boundary_tax_us:.3f} µs)")
+    print(
+        f"    -> ctypes boundary tax: {ffi_boundary_tax_ns:.2f} ns ({ffi_boundary_tax_us:.3f} µs)"
+    )
     print(f"    -> C-side quality logic: {c_logic_ns:.2f} ns ({c_logic_us:.3f} µs)")
 
-    print(f"\n[*] Step 2/3: Initializing V4 pipeline and generator ({events:,} events, seed={seed})...")
+    print(
+        f"\n[*] Step 2/3: Initializing V4 pipeline and generator ({events:,} events, seed={seed})..."
+    )
     sim = FeedSimulator(SimulatorConfig(seed=seed, num_events=events))
     store = Store(":memory:")
     quality = FastQualityEngine()
     pipeline = Pipeline(store, quality=quality)
 
-    print(f"\n[*] Step 3/3: Running V4 pipeline under cProfile and metrics instrumentation...")
+    print(
+        f"\n[*] Step 3/3: Running V4 pipeline under cProfile and metrics instrumentation..."
+    )
     pr = cProfile.Profile()
     pr.enable()
 
@@ -67,7 +80,9 @@ def profile_pipeline(events: int = 100_000, seed: int = 42, ffi_samples: int = 1
     store.close()
 
     total_pipeline_time_s = (t_end - t_start) / 1_000_000_000.0
-    throughput_eps = events / total_pipeline_time_s if total_pipeline_time_s > 0 else 0.0
+    throughput_eps = (
+        events / total_pipeline_time_s if total_pipeline_time_s > 0 else 0.0
+    )
 
     # Extract metrics summary from pipeline
     summary = pipeline.metrics.summary()
@@ -97,9 +112,16 @@ def profile_pipeline(events: int = 100_000, seed: int = 42, ffi_samples: int = 1
     }
 
     sum_of_stages_us = (
-        p50_norm + ffi_bound_actual + c_logic_actual + py_wrapper_actual + p50_rec + p50_store
+        p50_norm
+        + ffi_bound_actual
+        + c_logic_actual
+        + py_wrapper_actual
+        + p50_rec
+        + p50_store
     )
-    discrepancy_pct = abs(sum_of_stages_us - p50_total) / p50_total * 100.0 if p50_total > 0 else 0.0
+    discrepancy_pct = (
+        abs(sum_of_stages_us - p50_total) / p50_total * 100.0 if p50_total > 0 else 0.0
+    )
 
     # Gate Decision: FFI boundary share of end-to-end budget
     ffi_share_pct = (ffi_bound_actual / p50_total) * 100.0 if p50_total > 0 else 0.0
@@ -131,8 +153,12 @@ def profile_pipeline(events: int = 100_000, seed: int = 42, ffi_samples: int = 1
         "gate": {
             "threshold_pct": 15.0,
             "measured_ffi_pct": round(ffi_share_pct, 2),
-            "decision": "SKIP_PHASES_3_AND_4" if gate_passed_under_15 else "PROCEED_TO_PHASE_1_AND_4",
-            "action": "Skip Phases 3-4 and jump to Phase 5" if gate_passed_under_15 else "Proceed with hot path fixes and C extension",
+            "decision": "SKIP_PHASES_3_AND_4"
+            if gate_passed_under_15
+            else "PROCEED_TO_PHASE_1_AND_4",
+            "action": "Skip Phases 3-4 and jump to Phase 5"
+            if gate_passed_under_15
+            else "Proceed with hot path fixes and C extension",
         },
         "cprofile_top_functions": cprofile_top[:2000],
     }
@@ -141,8 +167,12 @@ def profile_pipeline(events: int = 100_000, seed: int = 42, ffi_samples: int = 1
 
 def main():
     parser = argparse.ArgumentParser(description="Profile MDRAP V4 Hot Path Stages")
-    parser.add_argument("--events", type=int, default=100_000, help="Event count (default 100,000)")
-    parser.add_argument("--seed", type=int, default=42, help="Deterministic seed (default 42)")
+    parser.add_argument(
+        "--events", type=int, default=100_000, help="Event count (default 100,000)"
+    )
+    parser.add_argument(
+        "--seed", type=int, default=42, help="Deterministic seed (default 42)"
+    )
     parser.add_argument("--output", type=str, default=None, help="Output JSON path")
     parser.add_argument("--json", action="store_true", help="Output JSON directly")
     args = parser.parse_args()
@@ -155,7 +185,9 @@ def main():
     gate = res["gate"]
 
     print("\n" + "=" * 78)
-    print(f"MDRAP V4 Pipeline Cost Breakdown ({args.events:,} events, seed={args.seed})")
+    print(
+        f"MDRAP V4 Pipeline Cost Breakdown ({args.events:,} events, seed={args.seed})"
+    )
     print("=" * 78)
     print(f"{'Pipeline Stage':<45} | {'Cost (µs/event)':<15} | {'Share (%)':<10}")
     print("-" * 78)
@@ -164,13 +196,21 @@ def main():
         share = (cost / p50_us) * 100.0 if p50_us > 0 else 0.0
         print(f"{clean_name:<45} | {cost:>11.3f} µs | {share:>8.1f}%")
     print("-" * 78)
-    print(f"{'Sum of Measured Stages':<45} | {sum_us:>11.3f} µs | {(sum_us / p50_us)*100 if p50_us > 0 else 0:>8.1f}%")
+    print(
+        f"{'Sum of Measured Stages':<45} | {sum_us:>11.3f} µs | {(sum_us / p50_us) * 100 if p50_us > 0 else 0:>8.1f}%"
+    )
     print(f"{'Measured End-to-End Latency (p50)':<45} | {p50_us:>11.3f} µs |   100.0%")
-    print(f"{'Stage Sum Discrepancy':<45} | {disc_pct:>11.2f} %  |   [ACCEPTANCE: {'PASS' if disc_pct <= 10.0 else 'FAIL'}]")
+    print(
+        f"{'Stage Sum Discrepancy':<45} | {disc_pct:>11.2f} %  |   [ACCEPTANCE: {'PASS' if disc_pct <= 10.0 else 'FAIL'}]"
+    )
     print("=" * 78)
     print(f"Throughput:                     {res['throughput_eps']:,.1f} events/sec")
-    print(f"Net ctypes FFI Tax:             {res['stage_breakdown_p50_us']['2_ctypes_ffi_boundary_us']:.3f} µs ({res['ffi_share_of_budget_pct']:.1f}% of budget)")
-    print(f"Pure C Quality Logic:           {res['stage_breakdown_p50_us']['3_c_side_quality_eval_us']:.3f} µs")
+    print(
+        f"Net ctypes FFI Tax:             {res['stage_breakdown_p50_us']['2_ctypes_ffi_boundary_us']:.3f} µs ({res['ffi_share_of_budget_pct']:.1f}% of budget)"
+    )
+    print(
+        f"Pure C Quality Logic:           {res['stage_breakdown_p50_us']['3_c_side_quality_eval_us']:.3f} µs"
+    )
     print(f"Phase 0 Gate Threshold:         {gate['threshold_pct']:.1f}%")
     print(f"Gate Verdict:                   {gate['decision']} ({gate['action']})")
     print("=" * 78)

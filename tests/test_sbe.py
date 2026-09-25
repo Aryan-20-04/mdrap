@@ -1,6 +1,7 @@
 """
 Tests for Simple Binary Encoding (SBE) Wire Protocol (Spec §18, §26).
 """
+
 from __future__ import annotations
 
 import json

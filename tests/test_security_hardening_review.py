@@ -27,7 +27,9 @@ from storage import Store
 class RemotePeerMiddleware:
     """ASGI middleware to simulate arbitrary remote TCP peer addresses."""
 
-    def __init__(self, asgi_app, peer_host: str = "198.51.100.1", peer_port: int = 54321):
+    def __init__(
+        self, asgi_app, peer_host: str = "198.51.100.1", peer_port: int = 54321
+    ):
         self.app = asgi_app
         self.peer_host = peer_host
         self.peer_port = peer_port
@@ -88,7 +90,9 @@ def test_metrics_spoofed_forwarded_for_rejected(auth_app_and_keys):
     assert "mdrap_events_processed_total" in r_authed.text
 
     # 5. Valid API key supplied via Bearer Authorization -> 200 OK
-    r_bearer = client.get("/metrics", headers={"Authorization": f"Bearer {viewer_ent.token}"})
+    r_bearer = client.get(
+        "/metrics", headers={"Authorization": f"Bearer {viewer_ent.token}"}
+    )
     assert r_bearer.status_code == 200
 
 
@@ -133,7 +137,9 @@ def test_rest_endpoints_reject_query_string_token(auth_app_and_keys):
     assert r_header.status_code == 200
 
     # 3. GET /v1/events with Authorization: Bearer -> 200 OK
-    r_bearer = client.get("/v1/events", headers={"Authorization": f"Bearer {viewer_ent.token}"})
+    r_bearer = client.get(
+        "/v1/events", headers={"Authorization": f"Bearer {viewer_ent.token}"}
+    )
     assert r_bearer.status_code == 200
 
     # 4. POST /v1/keys with ?token= -> 401 Unauthorized

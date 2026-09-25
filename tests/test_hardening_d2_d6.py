@@ -6,7 +6,9 @@ from models import CanonicalEvent, EventType, QualityStatus
 from storage import Store
 
 
-def _make_event(event_id: str, ts: float, proc_ts: float | None = None) -> CanonicalEvent:
+def _make_event(
+    event_id: str, ts: float, proc_ts: float | None = None
+) -> CanonicalEvent:
     return CanonicalEvent(
         event_id=event_id,
         instrument_id="AAPL",
@@ -67,8 +69,13 @@ def test_d5_chunked_retention(tmp_path):
         recent_ts = now - (5 * 86400)
 
         # Insert 6000 old events (to test chunking > 5000) and 100 recent events
-        old_events = [_make_event(f"old_{i}", ts=old_ts, proc_ts=old_ts) for i in range(6000)]
-        recent_events = [_make_event(f"recent_{i}", ts=recent_ts, proc_ts=recent_ts) for i in range(100)]
+        old_events = [
+            _make_event(f"old_{i}", ts=old_ts, proc_ts=old_ts) for i in range(6000)
+        ]
+        recent_events = [
+            _make_event(f"recent_{i}", ts=recent_ts, proc_ts=recent_ts)
+            for i in range(100)
+        ]
         store.write_canonical_batch(old_events)
         store.write_canonical_batch(recent_events)
         store.commit()
@@ -98,7 +105,9 @@ def test_d6_transaction_context_and_retry():
             store.conn.execute(
                 "INSERT INTO canonical_events (event_id, instrument_id, quality_status) VALUES ('tx1', 'AAPL', 'VALID')"
             )
-        cur = store.conn.execute("SELECT COUNT(*) FROM canonical_events WHERE event_id='tx1'")
+        cur = store.conn.execute(
+            "SELECT COUNT(*) FROM canonical_events WHERE event_id='tx1'"
+        )
         assert cur.fetchone()[0] == 1
 
         # Test transaction rollback
@@ -109,7 +118,9 @@ def test_d6_transaction_context_and_retry():
                 )
                 raise ValueError("Force rollback")
 
-        cur = store.conn.execute("SELECT COUNT(*) FROM canonical_events WHERE event_id='tx2'")
+        cur = store.conn.execute(
+            "SELECT COUNT(*) FROM canonical_events WHERE event_id='tx2'"
+        )
         assert cur.fetchone()[0] == 0
 
 

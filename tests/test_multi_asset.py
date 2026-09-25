@@ -1,8 +1,10 @@
 """
 Tests for multi-asset class support in models.py (Gap 11).
 """
+
 import sys, os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 import pytest
 from models import (
@@ -12,7 +14,7 @@ from models import (
     BondSecurity,
     CanonicalEvent,
     EventType,
-    QualityStatus
+    QualityStatus,
 )
 
 
@@ -32,7 +34,7 @@ def test_futures_contract_model():
         expiry_date="2026-06-19",
         contract_size=50.0,
         tick_size=0.25,
-        settlement_type="CASH"
+        settlement_type="CASH",
     )
     assert fc.symbol == "ESM26"
     assert fc.contract_size == 50.0
@@ -46,7 +48,7 @@ def test_option_derivative_model():
         strike=200.0,
         expiry_date="2026-06-19",
         option_type="CALL",
-        contract_multiplier=100.0
+        contract_multiplier=100.0,
     )
     assert opt.strike == 200.0
     assert opt.option_type == "CALL"
@@ -60,7 +62,7 @@ def test_bond_security_model():
         coupon_rate=4.25,
         maturity_date="2036-05-15",
         face_value=1000.0,
-        payment_frequency=2
+        payment_frequency=2,
     )
     assert bond.cusip == "912828XX1"
     assert bond.coupon_rate == 4.25
@@ -79,7 +81,7 @@ def test_canonical_event_multi_asset_extensions():
         source="NASDAQ",
         sequence_number=1,
         price=150.0,
-        quantity=100.0
+        quantity=100.0,
     )
     assert eq_event.asset_class == AssetClass.EQUITY
     assert eq_event.strike is None
@@ -100,7 +102,7 @@ def test_canonical_event_multi_asset_extensions():
         expiry_date="2026-06-19",
         contract_size=50.0,
         underlying_id="SPX",
-        open_interest=150000.0
+        open_interest=150000.0,
     )
     assert fut_event.asset_class == AssetClass.FUTURES
     assert fut_event.contract_size == 50.0
@@ -124,7 +126,7 @@ def test_canonical_event_multi_asset_extensions():
         put_call="CALL",
         implied_vol=0.22,
         delta=0.48,
-        gamma=0.03
+        gamma=0.03,
     )
     assert opt_event.asset_class == AssetClass.OPTIONS
     assert opt_event.strike == 200.0
@@ -146,7 +148,7 @@ def test_canonical_event_multi_asset_extensions():
         coupon=4.25,
         maturity_date="2036-05-15",
         yield_to_worst=4.42,
-        duration=7.8
+        duration=7.8,
     )
     assert bond_event.asset_class == AssetClass.BOND
     assert bond_event.yield_to_worst == 4.42

@@ -72,6 +72,7 @@ def test_raw_key_never_stored_in_database():
             except Exception:
                 pass
         import gc
+
         gc.collect()
         if os.path.exists(db_path):
             try:
@@ -140,6 +141,7 @@ def test_schema_auto_migration_from_legacy():
             except Exception:
                 pass
         import gc
+
         gc.collect()
         if os.path.exists(db_path):
             try:

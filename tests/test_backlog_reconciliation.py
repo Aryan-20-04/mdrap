@@ -135,4 +135,6 @@ def test_reconciliation_exceeding_agreement_window():
 
     reconciler.reconcile(ev_nasdaq)
     dec = reconciler.reconcile(ev_nyse)
-    assert dec is None, "Quorum should NOT form when exchange_timestamp gap exceeds window"
+    assert dec is None, (
+        "Quorum should NOT form when exchange_timestamp gap exceeds window"
+    )

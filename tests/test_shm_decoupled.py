@@ -10,6 +10,7 @@ Verifies:
 6. Fault isolation: reader crashes/failures cannot block or corrupt the writer.
 7. Native C fastpath consistency with pure Python implementation.
 """
+
 from __future__ import annotations
 
 import ctypes
@@ -405,7 +406,9 @@ def test_native_fastpath_read_consistency():
         assert py_tick["seq"] == c_tick["seq"] == 10
         assert py_tick["sym"] == c_tick["sym"] == "NVDA"
         assert py_tick["source"] == c_tick["source"] == "NASDAQ"
-        assert py_tick["price"] == pytest.approx(c_tick["price"]) == pytest.approx(125.75)
+        assert (
+            py_tick["price"] == pytest.approx(c_tick["price"]) == pytest.approx(125.75)
+        )
         assert py_tick["size"] == pytest.approx(c_tick["size"]) == pytest.approx(500.0)
         assert py_tick["bid"] == pytest.approx(c_tick["bid"]) == pytest.approx(125.70)
         assert py_tick["ask"] == pytest.approx(c_tick["ask"]) == pytest.approx(125.80)

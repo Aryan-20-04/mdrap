@@ -16,7 +16,10 @@ def test_s1_no_hardcoded_secrets_without_demo(monkeypatch, tmp_path):
 
     sec = SecurityManager()
     assert "mdrap_demo_key" not in sec._api_keys
-    assert not hasattr(SecurityManager, "DEFAULT_SECRETS") or len(getattr(SecurityManager, "DEFAULT_SECRETS", {})) == 0
+    assert (
+        not hasattr(SecurityManager, "DEFAULT_SECRETS")
+        or len(getattr(SecurityManager, "DEFAULT_SECRETS", {})) == 0
+    )
 
 
 def test_s1_demo_mode(monkeypatch, tmp_path):

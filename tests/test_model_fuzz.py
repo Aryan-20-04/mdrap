@@ -14,14 +14,16 @@ from models import safe_parse_market_event
 
 
 def random_string(max_len: int = 30) -> str:
-    letters = string.ascii_letters + string.digits + "!@#$%^&*()_+-=[]{}|;':,./<>? \t\n\r"
+    letters = (
+        string.ascii_letters + string.digits + "!@#$%^&*()_+-=[]{}|;':,./<>? \t\n\r"
+    )
     return "".join(random.choice(letters) for _ in range(random.randint(0, max_len)))
 
 
 def random_value():
     choices = [
         random.uniform(-1e12, 1e12),
-        random.randint(-2**65, 2**65),
+        random.randint(-(2**65), 2**65),
         float("nan"),
         float("inf"),
         float("-inf"),
@@ -91,15 +93,17 @@ def test_fuzz_parser_never_crashes():
         assert isinstance(errors, list)
 
         # Test 2: Arbitrary binary / string bytes
-        raw_junk = random.choice([
-            random_string(100),
-            random_string(100).encode("utf-8", errors="replace"),
-            b"\x80abc\x00\xff\xfe\xca\xfe\xba\xbe" * 10,
-            "",
-            "{}",
-            "null",
-            "12345",
-            '{"unclosed": "json',
-        ])
+        raw_junk = random.choice(
+            [
+                random_string(100),
+                random_string(100).encode("utf-8", errors="replace"),
+                b"\x80abc\x00\xff\xfe\xca\xfe\xba\xbe" * 10,
+                "",
+                "{}",
+                "null",
+                "12345",
+                '{"unclosed": "json',
+            ]
+        )
         ev, errors = safe_parse_market_event(raw_junk)
         assert isinstance(errors, list)

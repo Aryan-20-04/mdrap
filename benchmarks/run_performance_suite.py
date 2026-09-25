@@ -106,5 +106,7 @@ if __name__ == "__main__":
     out_file = os.path.join(results_dir, "v1.0.0.json")
     with open(out_file, "w", encoding="utf-8") as f:
         json.dump(res, f, indent=2)
-    print(f"[OK] Benchmark complete: {res['throughput']['events_per_second']} eps | p99: {res['latency_e2e_us']['p99']} us")
+    print(
+        f"[OK] Benchmark complete: {res['throughput']['events_per_second']} eps | p99: {res['latency_e2e_us']['p99']} us"
+    )
     print(f"[OK] Saved results to {out_file}")

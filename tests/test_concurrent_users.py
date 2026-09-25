@@ -1,6 +1,7 @@
 """
 Unit & Integration Tests for Concurrent Multi-Device Workload Simulation (§26).
 """
+
 from __future__ import annotations
 
 import os
@@ -77,6 +78,7 @@ def test_concurrent_normal_and_fast_devices():
             )
 
             import concurrent.futures
+
             with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
                 f_norm = executor.submit(run_device_worker, cfg_normal)
                 f_fast = executor.submit(run_device_worker, cfg_fast)
@@ -86,12 +88,34 @@ def test_concurrent_normal_and_fast_devices():
             # Assertions
             assert res_normal.total_ops > 0
             assert res_fast.total_ops > 0
-            assert len(res_normal.errors) == 0, f"Normal user errors: {res_normal.errors}"
+            assert len(res_normal.errors) == 0, (
+                f"Normal user errors: {res_normal.errors}"
+            )
             assert len(res_fast.errors) == 0, f"Fast user errors: {res_fast.errors}"
             # Fast bot should achieve significantly higher operation count than human-paced user
             assert res_fast.total_ops > res_normal.total_ops
-            assert any(k in res_normal.op_breakdown for k in ("BBO_QUOTE", "STATUS", "VENUE_HEALTH", "DAEMON_HEALTH", "CANDLESTICK_OHLCV", "SPREAD_ANALYTICS"))
-            assert any(k in res_fast.op_breakdown for k in ("L2_DEPTH_LADDER", "VWAP_CURVE", "STREAM_TICKS", "TICK_REPLAY", "SIMD_MICRO_BENCH", "CALCULATE_SPREAD"))
+            assert any(
+                k in res_normal.op_breakdown
+                for k in (
+                    "BBO_QUOTE",
+                    "STATUS",
+                    "VENUE_HEALTH",
+                    "DAEMON_HEALTH",
+                    "CANDLESTICK_OHLCV",
+                    "SPREAD_ANALYTICS",
+                )
+            )
+            assert any(
+                k in res_fast.op_breakdown
+                for k in (
+                    "L2_DEPTH_LADDER",
+                    "VWAP_CURVE",
+                    "STREAM_TICKS",
+                    "TICK_REPLAY",
+                    "SIMD_MICRO_BENCH",
+                    "CALCULATE_SPREAD",
+                )
+            )
             assert res_fast.p50_ms > 0.0
 
         finally:
@@ -116,7 +140,13 @@ def test_workload_simulator_tier_orchestration():
 
         try:
             sim.start_services()
-            rep = sim.run_tier(normal_count=2, fast_count=2, monitor_count=1, duration_s=1.5, mode="thread")
+            rep = sim.run_tier(
+                normal_count=2,
+                fast_count=2,
+                monitor_count=1,
+                duration_s=1.5,
+                mode="thread",
+            )
 
             assert rep["total_devices"] == 5
             assert rep["total_ops"] > 0

@@ -1,6 +1,7 @@
-﻿import json
+import json
 import os
 from manifest import create_run_manifest, write_run_manifest
+
 
 def test_manifest_creation_and_serialization(tmp_path):
     manifest = create_run_manifest(

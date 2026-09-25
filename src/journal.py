@@ -5,18 +5,18 @@ Implements an append-only memory-mapped binary transaction log designed for
 sub-microsecond tick durability, zero serialization overhead, and instant replay.
 Uses 128-byte fixed-size binary records matching the SHM Slot V3 architecture (Spec §5, §26).
 """
+
 from __future__ import annotations
 
 import mmap
 import os
 import struct
 import time
-from typing import Any, Generator
+from typing import Generator
 
 from shm import (
     SLOT_SIZE,
     SLOT_STRUCT,
-    HEADER_SIZE,
     STATUS_MAP_FWD,
     STATUS_MAP_REV,
     SHM3_PRESENT_PRICE,
@@ -68,7 +68,10 @@ class BinaryJournal:
         self._init_journal()
 
     def _init_journal(self) -> None:
-        file_exists = os.path.exists(self.filepath) and os.path.getsize(self.filepath) >= JOURNAL_HEADER_SIZE
+        file_exists = (
+            os.path.exists(self.filepath)
+            and os.path.getsize(self.filepath) >= JOURNAL_HEADER_SIZE
+        )
 
         if file_exists:
             # Reopen existing journal
@@ -96,7 +99,9 @@ class BinaryJournal:
                 raise ValueError(f"Unsupported journal version: {ver}")
             if rec_sz != SLOT_SIZE:
                 self.close()
-                raise ValueError(f"Incompatible journal record size: {rec_sz} != {SLOT_SIZE}")
+                raise ValueError(
+                    f"Incompatible journal record size: {rec_sz} != {SLOT_SIZE}"
+                )
 
             self.epoch = epoch
             self._record_count = count
@@ -176,7 +181,9 @@ class BinaryJournal:
         if self._closed or not self._mm:
             raise RuntimeError("Journal is closed")
         if len(slot_bytes) != SLOT_SIZE:
-            raise ValueError(f"Slot size must be {SLOT_SIZE} bytes, got {len(slot_bytes)}")
+            raise ValueError(
+                f"Slot size must be {SLOT_SIZE} bytes, got {len(slot_bytes)}"
+            )
 
         self._ensure_capacity(1)
 
@@ -352,7 +359,9 @@ class BinaryJournalReader:
     def read_record(self, index: int) -> dict:
         """Unpack a specific 0-indexed record from the journal."""
         if index < 0 or index >= self.record_count:
-            raise IndexError(f"Record index out of range: {index} (total={self.record_count})")
+            raise IndexError(
+                f"Record index out of range: {index} (total={self.record_count})"
+            )
 
         offset = JOURNAL_HEADER_SIZE + (index * SLOT_SIZE)
         raw = SLOT_STRUCT.unpack_from(self._mm, offset)

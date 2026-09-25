@@ -1,6 +1,7 @@
 """
 Unit and Integration Tests for MDRAP Consolidated Level-2 Market Depth Engine.
 """
+
 import os
 import sys
 import tempfile
@@ -151,7 +152,12 @@ def test_depth_ttl_eviction():
     # Venue A quotes at t=1000.0
     r1 = RawEvent(
         source="BINANCE",
-        payload={"instrument": "ETH/USD", "exchange_ts": 1000.0, "bids": [[3500.0, 2.0]], "asks": [[3505.0, 2.0]]},
+        payload={
+            "instrument": "ETH/USD",
+            "exchange_ts": 1000.0,
+            "bids": [[3500.0, 2.0]],
+            "asks": [[3505.0, 2.0]],
+        },
         receive_timestamp=1000.001,
         raw_id="r1",
     )
@@ -160,7 +166,12 @@ def test_depth_ttl_eviction():
     # Venue B quotes at t=1002.5 (>1.0s TTL later)
     r2 = RawEvent(
         source="COINBASE",
-        payload={"instrument": "ETH/USD", "exchange_ts": 1002.5, "bids": [[3490.0, 1.0]], "asks": [[3495.0, 1.0]]},
+        payload={
+            "instrument": "ETH/USD",
+            "exchange_ts": 1002.5,
+            "bids": [[3490.0, 1.0]],
+            "asks": [[3495.0, 1.0]],
+        },
         receive_timestamp=1002.501,
         raw_id="r2",
     )
@@ -215,30 +226,34 @@ def test_price_level_aggregation_across_venues():
     engine = ConsolidatedDepthEngine()
 
     # Binance quotes bid 50000 with size 2.0, ask 50010 with size 1.0
-    engine.observe(RawEvent(
-        source="BINANCE",
-        payload={
-            "instrument": "BTC/USD",
-            "exchange_ts": 1000.0,
-            "bids": [[50000.0, 2.0], [49990.0, 5.0]],
-            "asks": [[50010.0, 1.0], [50020.0, 4.0]],
-        },
-        receive_timestamp=1000.001,
-        raw_id="b1",
-    ))
+    engine.observe(
+        RawEvent(
+            source="BINANCE",
+            payload={
+                "instrument": "BTC/USD",
+                "exchange_ts": 1000.0,
+                "bids": [[50000.0, 2.0], [49990.0, 5.0]],
+                "asks": [[50010.0, 1.0], [50020.0, 4.0]],
+            },
+            receive_timestamp=1000.001,
+            raw_id="b1",
+        )
+    )
 
     # Coinbase also quotes bid at the EXACT SAME price 50000 with size 3.5, and ask at 50010 with size 2.5
-    ladder = engine.observe(RawEvent(
-        source="COINBASE",
-        payload={
-            "instrument": "BTC/USD",
-            "exchange_ts": 1000.01,
-            "bids": [[50000.0, 3.5], [49980.0, 1.0]],
-            "asks": [[50010.0, 2.5], [50030.0, 3.0]],
-        },
-        receive_timestamp=1000.011,
-        raw_id="c1",
-    ))
+    ladder = engine.observe(
+        RawEvent(
+            source="COINBASE",
+            payload={
+                "instrument": "BTC/USD",
+                "exchange_ts": 1000.01,
+                "bids": [[50000.0, 3.5], [49980.0, 1.0]],
+                "asks": [[50010.0, 2.5], [50030.0, 3.0]],
+            },
+            receive_timestamp=1000.011,
+            raw_id="c1",
+        )
+    )
 
     assert ladder is not None
     # 1. Raw depth has 4 bids and 4 asks
@@ -276,24 +291,25 @@ def test_liquidity_depth_within_bps():
     # 10 bps band = 100.1 * 0.001 = 0.1001
     # Bid floor for 10 bps: 100.1 - 0.1001 = 99.9999 (only 100.0 qualifies, 99.5 does not)
     # Ask ceiling for 10 bps: 100.1 + 0.1001 = 100.2001 (only 100.2 qualifies, 100.5 does not)
-    ladder = engine.observe(RawEvent(
-        source="BINANCE",
-        payload={
-            "instrument": "AAPL",
-            "exchange_ts": 1000.0,
-            "bids": [[100.0, 10.0], [99.5, 20.0]],
-            "asks": [[100.2, 5.0], [100.5, 15.0]],
-        },
-        receive_timestamp=1000.001,
-        raw_id="r1",
-    ))
+    ladder = engine.observe(
+        RawEvent(
+            source="BINANCE",
+            payload={
+                "instrument": "AAPL",
+                "exchange_ts": 1000.0,
+                "bids": [[100.0, 10.0], [99.5, 20.0]],
+                "asks": [[100.2, 5.0], [100.5, 15.0]],
+            },
+            receive_timestamp=1000.001,
+            raw_id="r1",
+        )
+    )
 
     bid_notional, ask_notional = ladder.depth_within_bps(10.0)
     assert bid_notional == 100.0 * 10.0  # 1000.0
-    assert ask_notional == 100.2 * 5.0   # 501.0
+    assert ask_notional == 100.2 * 5.0  # 501.0
 
     # 100 bps band includes all levels
     bid_all, ask_all = ladder.depth_within_bps(100.0)
     assert bid_all == (100.0 * 10.0) + (99.5 * 20.0)
     assert ask_all == (100.2 * 5.0) + (100.5 * 15.0)
-

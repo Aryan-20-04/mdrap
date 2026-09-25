@@ -7,8 +7,13 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from shm import (
-    SHMWriter, SHMReader, MAGIC, VERSION,
-    EVENT_TYPE_TICK, EVENT_TYPE_DEPTH, HAS_SHM
+    SHMWriter,
+    SHMReader,
+    MAGIC,
+    VERSION,
+    EVENT_TYPE_TICK,
+    EVENT_TYPE_DEPTH,
+    HAS_SHM,
 )
 
 

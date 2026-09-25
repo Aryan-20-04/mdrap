@@ -3,6 +3,7 @@ Comprehensive unit tests for src/navigator.py to expand code coverage.
 Tests DataGrid manipulation, sorting, filtering, viewport scrolling,
 ModalNavigator state machine transitions, key handling, and drilldown actions.
 """
+
 from __future__ import annotations
 
 import os
@@ -309,6 +310,7 @@ def test_modal_navigator_render():
 @pytest.mark.skipif(sys.platform != "win32", reason="msvcrt is Windows-only")
 def test_key_reader_all_keys():
     from navigator import KeyReader, Key
+
     kr = KeyReader()
 
     test_cases = [
@@ -329,7 +331,9 @@ def test_key_reader_all_keys():
     ]
     for key_bytes, expected in test_cases:
         it = iter(key_bytes)
-        with patch("msvcrt.kbhit", side_effect=[True, True, False] if len(key_bytes) > 1 else [True, False]):
+        with patch(
+            "msvcrt.kbhit",
+            side_effect=[True, True, False] if len(key_bytes) > 1 else [True, False],
+        ):
             with patch("msvcrt.getch", side_effect=lambda: next(it)):
                 assert kr.read_key(timeout_s=0.05) == expected
-

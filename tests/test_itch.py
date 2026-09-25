@@ -1,6 +1,7 @@
 """
 Unit tests for NASDAQ TotalView-ITCH 5.0 binary protocol engine and benchmark suite.
 """
+
 import gzip
 import os
 import struct
@@ -124,12 +125,16 @@ def test_order_book_tracker_lifecycle():
     ts_b = (34_200_000_000_000).to_bytes(6, "big")
 
     # 1. Add Bid: 500 shares of AAPL @ 150.00
-    p1 = STRUCT_A.pack(1, 0, ts_b, 101, b"B", 500, b"AAPL    ", int(150.00 * PRICE_FACTOR_ITCH))
+    p1 = STRUCT_A.pack(
+        1, 0, ts_b, 101, b"B", 500, b"AAPL    ", int(150.00 * PRICE_FACTOR_ITCH)
+    )
     msg1 = ITCHParser.parse_payload(MSG_ADD_ORDER, p1)
     book.process_message(msg1)
 
     # 2. Add Ask: 300 shares of AAPL @ 150.10
-    p2 = STRUCT_A.pack(1, 0, ts_b, 102, b"S", 300, b"AAPL    ", int(150.10 * PRICE_FACTOR_ITCH))
+    p2 = STRUCT_A.pack(
+        1, 0, ts_b, 102, b"S", 300, b"AAPL    ", int(150.10 * PRICE_FACTOR_ITCH)
+    )
     msg2 = ITCHParser.parse_payload(MSG_ADD_ORDER, p2)
     book.process_message(msg2)
 

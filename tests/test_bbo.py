@@ -42,9 +42,17 @@ def _make_quote(
 def test_bbo_synthetic_aggregation():
     """Venue A has best ask, Venue B has best bid -> synthetic tight spread."""
     engine = BBOEngine()
-    
+
     # Venue A quotes AAPL: 150.00 / 150.50
-    q1 = _make_quote("AAPL", "FEEDA", bid_price=150.00, bid_size=100.0, ask_price=150.50, ask_size=200.0, ts=1000.0)
+    q1 = _make_quote(
+        "AAPL",
+        "FEEDA",
+        bid_price=150.00,
+        bid_size=100.0,
+        ask_price=150.50,
+        ask_size=200.0,
+        ts=1000.0,
+    )
     bbo1 = engine.observe(q1)
     assert bbo1 is not None
     assert bbo1.best_bid == 150.00
@@ -54,7 +62,15 @@ def test_bbo_synthetic_aggregation():
     assert round(bbo1.spread, 2) == 0.50
 
     # Venue B quotes AAPL: 150.20 (tighter bid!) / 150.80
-    q2 = _make_quote("AAPL", "FEEDB", bid_price=150.20, bid_size=300.0, ask_price=150.80, ask_size=150.0, ts=1000.1)
+    q2 = _make_quote(
+        "AAPL",
+        "FEEDB",
+        bid_price=150.20,
+        bid_size=300.0,
+        ask_price=150.80,
+        ask_size=150.0,
+        ts=1000.1,
+    )
     bbo2 = engine.observe(q2)
     assert bbo2 is not None
     assert bbo2.best_bid == 150.20
@@ -70,15 +86,31 @@ def test_bbo_synthetic_aggregation():
 def test_bbo_crossed_market_detection():
     """Cross-venue arbitrage: Venue A bid exceeds Venue B ask."""
     engine = BBOEngine()
-    
+
     # Venue A bids aggressively: 151.00 / 152.00
-    q1 = _make_quote("AAPL", "FEEDA", bid_price=151.00, bid_size=100.0, ask_price=152.00, ask_size=100.0, ts=1000.0)
+    q1 = _make_quote(
+        "AAPL",
+        "FEEDA",
+        bid_price=151.00,
+        bid_size=100.0,
+        ask_price=152.00,
+        ask_size=100.0,
+        ts=1000.0,
+    )
     engine.observe(q1)
 
     # Venue B offers cheaply: 149.00 / 150.50
-    q2 = _make_quote("AAPL", "FEEDB", bid_price=149.00, bid_size=100.0, ask_price=150.50, ask_size=100.0, ts=1000.1)
+    q2 = _make_quote(
+        "AAPL",
+        "FEEDB",
+        bid_price=149.00,
+        bid_size=100.0,
+        ask_price=150.50,
+        ask_size=100.0,
+        ts=1000.1,
+    )
     bbo = engine.observe(q2)
-    
+
     assert bbo.is_crossed
     assert not bbo.is_locked
     assert bbo.best_bid == 151.00  # from FEEDA
@@ -89,13 +121,29 @@ def test_bbo_crossed_market_detection():
 def test_bbo_locked_market_detection():
     """Cross-venue locked market: Best bid equals best ask."""
     engine = BBOEngine()
-    
+
     # Venue A bids 150.00
-    q1 = _make_quote("AAPL", "FEEDA", bid_price=150.00, bid_size=100.0, ask_price=151.00, ask_size=100.0, ts=1000.0)
+    q1 = _make_quote(
+        "AAPL",
+        "FEEDA",
+        bid_price=150.00,
+        bid_size=100.0,
+        ask_price=151.00,
+        ask_size=100.0,
+        ts=1000.0,
+    )
     engine.observe(q1)
 
     # Venue B asks 150.00
-    q2 = _make_quote("AAPL", "FEEDB", bid_price=149.00, bid_size=100.0, ask_price=150.00, ask_size=100.0, ts=1000.1)
+    q2 = _make_quote(
+        "AAPL",
+        "FEEDB",
+        bid_price=149.00,
+        bid_size=100.0,
+        ask_price=150.00,
+        ask_size=100.0,
+        ts=1000.1,
+    )
     bbo = engine.observe(q2)
 
     assert bbo.is_locked
@@ -106,13 +154,29 @@ def test_bbo_locked_market_detection():
 def test_bbo_quote_ttl_eviction():
     """Quotes older than quote_ttl_s in market time are evicted from top of book."""
     engine = BBOEngine(quote_ttl_s=2.0)
-    
+
     # FEEDA bids 150.00 at t=1000.0
-    q1 = _make_quote("AAPL", "FEEDA", bid_price=150.00, bid_size=100.0, ask_price=151.00, ask_size=100.0, ts=1000.0)
+    q1 = _make_quote(
+        "AAPL",
+        "FEEDA",
+        bid_price=150.00,
+        bid_size=100.0,
+        ask_price=151.00,
+        ask_size=100.0,
+        ts=1000.0,
+    )
     engine.observe(q1)
 
     # FEEDB quotes at t=1003.0 (>2.0s later) with lower bid 148.00
-    q2 = _make_quote("AAPL", "FEEDB", bid_price=148.00, bid_size=100.0, ask_price=149.00, ask_size=100.0, ts=1003.0)
+    q2 = _make_quote(
+        "AAPL",
+        "FEEDB",
+        bid_price=148.00,
+        bid_size=100.0,
+        ask_price=149.00,
+        ask_size=100.0,
+        ts=1003.0,
+    )
     bbo = engine.observe(q2)
 
     # FEEDA quote should be pruned due to staleness
@@ -122,9 +186,11 @@ def test_bbo_quote_ttl_eviction():
 
 def test_bbo_pruning_with_watchdog():
     """When a watchdog reports a source as degraded/blocked, its quotes are evicted."""
+
     class MockWatchdog:
         def __init__(self):
             self.active_sources = {"FEEDA", "FEEDB"}
+
         def is_source_active(self, source: str) -> bool:
             return source in self.active_sources
 
@@ -132,8 +198,24 @@ def test_bbo_pruning_with_watchdog():
     engine = BBOEngine(watchdog=watchdog)
 
     # Both FEEDA and FEEDB quote
-    q1 = _make_quote("AAPL", "FEEDA", bid_price=150.00, bid_size=100.0, ask_price=150.50, ask_size=100.0, ts=1000.0)
-    q2 = _make_quote("AAPL", "FEEDB", bid_price=150.20, bid_size=100.0, ask_price=150.80, ask_size=100.0, ts=1000.1)
+    q1 = _make_quote(
+        "AAPL",
+        "FEEDA",
+        bid_price=150.00,
+        bid_size=100.0,
+        ask_price=150.50,
+        ask_size=100.0,
+        ts=1000.0,
+    )
+    q2 = _make_quote(
+        "AAPL",
+        "FEEDB",
+        bid_price=150.20,
+        bid_size=100.0,
+        ask_price=150.80,
+        ask_size=100.0,
+        ts=1000.1,
+    )
     engine.observe(q1)
     bbo = engine.observe(q2)
     assert bbo.best_bid == 150.20  # from FEEDB
@@ -142,7 +224,15 @@ def test_bbo_pruning_with_watchdog():
     watchdog.active_sources.remove("FEEDB")
 
     # New quote arrives from FEEDA, triggering book re-evaluation
-    q3 = _make_quote("AAPL", "FEEDA", bid_price=150.05, bid_size=100.0, ask_price=150.45, ask_size=100.0, ts=1000.2)
+    q3 = _make_quote(
+        "AAPL",
+        "FEEDA",
+        bid_price=150.05,
+        bid_size=100.0,
+        ask_price=150.45,
+        ask_size=100.0,
+        ts=1000.2,
+    )
     bbo_after = engine.observe(q3)
 
     # FEEDB is evicted because watchdog says it's inactive!
@@ -156,15 +246,29 @@ def test_bbo_ignores_invalid_and_trades():
 
     # Trade event
     trade = CanonicalEvent(
-        event_id="t1", instrument_id="AAPL", event_type=EventType.TRADE,
-        exchange_timestamp=1000.0, receive_timestamp=1000.001,
-        processing_timestamp=1000.002, source="FEEDA", sequence_number=1,
-        price=150.0, quantity=100.0
+        event_id="t1",
+        instrument_id="AAPL",
+        event_type=EventType.TRADE,
+        exchange_timestamp=1000.0,
+        receive_timestamp=1000.001,
+        processing_timestamp=1000.002,
+        source="FEEDA",
+        sequence_number=1,
+        price=150.0,
+        quantity=100.0,
     )
     assert engine.observe(trade) is None
 
     # Invalid quote (e.g. malformed or locally crossed)
-    bad_quote = _make_quote("AAPL", "FEEDA", bid_price=151.0, bid_size=10.0, ask_price=149.0, ask_size=10.0, status=QualityStatus.INVALID)
+    bad_quote = _make_quote(
+        "AAPL",
+        "FEEDA",
+        bid_price=151.0,
+        bid_size=10.0,
+        ask_price=149.0,
+        ask_size=10.0,
+        status=QualityStatus.INVALID,
+    )
     assert engine.observe(bad_quote) is None
     assert engine.current_bbo("AAPL") is None
 
@@ -172,13 +276,29 @@ def test_bbo_ignores_invalid_and_trades():
 def test_bbo_venue_attribution():
     """Tracks venue contribution to the top of book."""
     engine = BBOEngine()
-    
+
     # FEEDA sets both bid and ask
-    q1 = _make_quote("AAPL", "FEEDA", bid_price=150.0, bid_size=100.0, ask_price=151.0, ask_size=100.0, ts=1000.0)
+    q1 = _make_quote(
+        "AAPL",
+        "FEEDA",
+        bid_price=150.0,
+        bid_size=100.0,
+        ask_price=151.0,
+        ask_size=100.0,
+        ts=1000.0,
+    )
     engine.observe(q1)
 
     # FEEDB improves bid only
-    q2 = _make_quote("AAPL", "FEEDB", bid_price=150.5, bid_size=100.0, ask_price=151.5, ask_size=100.0, ts=1000.1)
+    q2 = _make_quote(
+        "AAPL",
+        "FEEDB",
+        bid_price=150.5,
+        bid_size=100.0,
+        ask_price=151.5,
+        ask_size=100.0,
+        ts=1000.1,
+    )
     engine.observe(q2)
 
     attr = engine.venue_attribution()
@@ -195,9 +315,18 @@ def test_bbo_storage_persistence_and_query():
     try:
         with Store(path) as store:
             bbo = ConsolidatedBBO(
-                instrument_id="AAPL", best_bid=150.25, best_bid_size=500.0, best_bid_source="FEEDX",
-                best_ask=150.35, best_ask_size=600.0, best_ask_source="FEEDY",
-                spread=0.10, mid_price=150.30, is_crossed=False, is_locked=False, timestamp=1000.0
+                instrument_id="AAPL",
+                best_bid=150.25,
+                best_bid_size=500.0,
+                best_bid_source="FEEDX",
+                best_ask=150.35,
+                best_ask_size=600.0,
+                best_ask_source="FEEDY",
+                spread=0.10,
+                mid_price=150.30,
+                is_crossed=False,
+                is_locked=False,
+                timestamp=1000.0,
             )
             store.write_bbo_batch([bbo])
             store.commit()
@@ -242,6 +371,7 @@ def test_pipeline_bbo_end_to_end():
 def test_bbo_serialization_with_one_sided_book():
     """Verify one-sided quotes do not produce IEEE 754 Infinity in JSON serialization."""
     import json
+
     engine = BBOEngine()
     # Quote with bid only, no ask price (None)
     q = CanonicalEvent(
@@ -275,4 +405,3 @@ def test_bbo_serialization_with_one_sided_book():
     wire_bytes = engine.get_wire_bbo("AAPL")
     assert wire_bytes is not None
     assert b"Infinity" not in wire_bytes
-

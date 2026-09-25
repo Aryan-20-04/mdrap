@@ -6,6 +6,7 @@ Ensures:
 - central config parser surfaces syntax errors to sys.stderr and uses defaults.
 - WebSocket frame parsers return malformed RawEvents instead of silently dropping corrupt data.
 """
+
 import io
 import json
 import os
@@ -25,6 +26,7 @@ from models import RawEvent
 
 class FailingStoreMock:
     """Mock store that raises an error on API key persistence."""
+
     def save_api_key(self, *args, **kwargs):
         raise RuntimeError("Disk I/O failure on save")
 

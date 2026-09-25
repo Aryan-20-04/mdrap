@@ -23,7 +23,10 @@ from fastpath import (
 )
 
 if _NATIVE_LIB is None:
-    pytest.skip("Native C fastpath library is disabled or not available", allow_module_level=True)
+    pytest.skip(
+        "Native C fastpath library is disabled or not available",
+        allow_module_level=True,
+    )
 
 
 def _pure_python_haversine(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -76,7 +79,9 @@ def test_haversine_exact_numerical_parity():
         c_dist = fast_haversine_nm(lat1, lon1, lat2, lon2)
         assert c_dist is not None
         # Must match to within 0.1 nautical miles
-        assert abs(py_dist - c_dist) <= 0.1, f"Mismatch at ({lat1},{lon1})->({lat2},{lon2}): py={py_dist}, c={c_dist}"
+        assert abs(py_dist - c_dist) <= 0.1, (
+            f"Mismatch at ({lat1},{lon1})->({lat2},{lon2}): py={py_dist}, c={c_dist}"
+        )
 
 
 def test_spatial_geofence_single_and_batch_parity():
@@ -86,15 +91,15 @@ def test_spatial_geofence_single_and_batch_parity():
     assert c_cps is not None
 
     test_vessels = [
-        (26.40, 56.45),   # Hormuz entrance
-        (1.25, 103.80),   # Singapore / Malacca
-        (30.00, 32.50),   # Suez
-        (12.50, 43.30),   # Bab-el-Mandeb
-        (51.00, 1.40),    # Dover
+        (26.40, 56.45),  # Hormuz entrance
+        (1.25, 103.80),  # Singapore / Malacca
+        (30.00, 32.50),  # Suez
+        (12.50, 43.30),  # Bab-el-Mandeb
+        (51.00, 1.40),  # Dover
         (-34.50, 18.50),  # Cape of Good Hope
-        (41.10, 29.05),   # Bosphorus
-        (9.10, -79.70),   # Panama
-        (0.00, -25.00),   # Mid-Atlantic (Open Sea)
+        (41.10, 29.05),  # Bosphorus
+        (9.10, -79.70),  # Panama
+        (0.00, -25.00),  # Mid-Atlantic (Open Sea)
     ]
 
     lats = [t[0] for t in test_vessels]
@@ -150,7 +155,7 @@ def test_spatial_geofence_single_and_batch_parity():
 def test_fastpath_fallback_resilience_when_c_unavailable(monkeypatch):
     """Verify that if the C library is missing or fails, vessel.py falls back to pure Python seamlessly."""
     import vessel
-    
+
     # Temporarily force fastpath to be disabled
     monkeypatch.setattr(vessel, "_HAS_FASTPATH", False)
     monkeypatch.setattr(vessel, "_C_CHOKEPOINTS", None)
@@ -209,4 +214,6 @@ def test_fastpath_benchmark_speedup():
     # Even across 8 chokepoint comparisons per vessel (80,000 chokepoint checks total),
     # C should execute in well under 50 milliseconds (allow 1.5s under heavy full test suite load)
     assert c_duration < 1.5
-    print(f"\n[FASTPATH BENCHMARK] Evaluated {count} vessels across {len(cp_list)} chokepoints ({count * len(cp_list):,} checks) in {c_duration*1000:.2f} ms ({c_per_call_ns:.1f} ns/vessel)")
+    print(
+        f"\n[FASTPATH BENCHMARK] Evaluated {count} vessels across {len(cp_list)} chokepoints ({count * len(cp_list):,} checks) in {c_duration * 1000:.2f} ms ({c_per_call_ns:.1f} ns/vessel)"
+    )

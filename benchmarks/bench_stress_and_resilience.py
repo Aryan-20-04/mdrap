@@ -17,7 +17,9 @@ import time
 from typing import List, Dict, Any
 
 # Ensure src/ is on import path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
+sys.path.insert(
+    0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src"))
+)
 
 from models import RawEvent, QualityStatus, Reason
 from pipeline import Pipeline
@@ -36,27 +38,29 @@ def pct(vals: List[float], q: float) -> float:
     return s[idx]
 
 
-def benchmark_burst_and_queue_growth(total_events: int = 20_000, burst_multiplier: int = 10) -> Dict[str, Any]:
+def benchmark_burst_and_queue_growth(
+    total_events: int = 20_000, burst_multiplier: int = 10
+) -> Dict[str, Any]:
     """Test sudden 10x packet burst, measuring queue buffer size, processing latency, and drain time."""
     store = Store(":memory:")
     pipeline = Pipeline(store=store)
     sim = FeedSimulator(SimulatorConfig(seed=101, num_events=total_events))
-    
+
     events = [raw for raw, _ in sim.generate()]
-    
+
     latencies_us: List[float] = []
     queue_sizes: List[int] = []
-    
+
     burst_start = int(total_events * 0.4)
     burst_end = int(total_events * 0.6)
-    
+
     t0 = time.perf_counter()
     burst_queue: List[RawEvent] = []
     drain_time_ms = 0.0
-    
+
     for i, raw in enumerate(events):
         t_start = time.perf_counter_ns()
-        
+
         # Simulate burst ingestion: burst traffic arrives into input queue faster than single-thread baseline
         if burst_start <= i < burst_end:
             burst_queue.append(raw)
@@ -70,7 +74,7 @@ def benchmark_burst_and_queue_growth(total_events: int = 20_000, burst_multiplie
                 drain_time_ms += (t_drain_end - t_drain_start) / 1_000_000.0
         else:
             pipeline.process_one(raw)
-            
+
         t_end = time.perf_counter_ns()
         latencies_us.append((t_end - t_start) / 1000.0)
         pipeline_buf = len(pipeline._canonical_batch) + len(pipeline._quarantine_batch)
@@ -86,10 +90,10 @@ def benchmark_burst_and_queue_growth(total_events: int = 20_000, burst_multiplie
 
     pipeline.finish()
     elapsed = time.perf_counter() - t0
-    
+
     max_queue = max(queue_sizes) if queue_sizes else 0
     avg_queue = sum(queue_sizes) / len(queue_sizes) if queue_sizes else 0
-    
+
     return {
         "total_events": total_events,
         "elapsed_s": elapsed,
@@ -105,7 +109,9 @@ def benchmark_burst_and_queue_growth(total_events: int = 20_000, burst_multiplie
     }
 
 
-def benchmark_dropped_connection_and_failover(total_events: int = 15_000) -> Dict[str, Any]:
+def benchmark_dropped_connection_and_failover(
+    total_events: int = 15_000,
+) -> Dict[str, Any]:
     """Test feed disconnect, silence detection, failover to secondary source, and reconnection recovery."""
     store = Store(":memory:")
     rel = ReliabilityTracker()
@@ -116,36 +122,45 @@ def benchmark_dropped_connection_and_failover(total_events: int = 15_000) -> Dic
     killed_source = "FEEDX"
     kill_window_start = int(total_events * 0.3)
     kill_window_end = int(total_events * 0.6)
-    
+
     silence_detected_at: float | None = None
     reconnected_at: float | None = None
     kill_start_market_ts: float | None = None
-    
+
     reconnect_recovery_time_ms: float = 0.0
-    
+
     t0 = time.perf_counter()
     latencies_us: List[float] = []
-    
+
     for i, (raw, _) in enumerate(sim.generate()):
         t_start = time.perf_counter_ns()
-        
+
         # Simulate connection drop on FEEDX
         if kill_window_start <= i < kill_window_end:
             if raw.source == killed_source:
                 if kill_start_market_ts is None:
                     kill_start_market_ts = raw.receive_timestamp
                 continue  # Packet dropped in transit due to broken socket
-        elif i >= kill_window_end and raw.source == killed_source and reconnected_at is None:
+        elif (
+            i >= kill_window_end
+            and raw.source == killed_source
+            and reconnected_at is None
+        ):
             # Source reconnects
             t_rec_start = time.perf_counter_ns()
             reconnected_at = raw.receive_timestamp
-            reconnect_recovery_time_ms = (time.perf_counter_ns() - t_rec_start) / 1_000_000.0
+            reconnect_recovery_time_ms = (
+                time.perf_counter_ns() - t_rec_start
+            ) / 1_000_000.0
 
         pipeline.process_one(raw)
-        
+
         # Check watchdog state transition
         states = watchdog.source_states()
-        if silence_detected_at is None and states.get(killed_source) == SourceState.SILENT.value:
+        if (
+            silence_detected_at is None
+            and states.get(killed_source) == SourceState.SILENT.value
+        ):
             silence_detected_at = raw.receive_timestamp
 
         t_end = time.perf_counter_ns()
@@ -153,9 +168,13 @@ def benchmark_dropped_connection_and_failover(total_events: int = 15_000) -> Dic
 
     pipeline.finish()
     elapsed = time.perf_counter() - t0
-    
-    detection_ms = ((silence_detected_at - kill_start_market_ts) * 1000.0) if (silence_detected_at and kill_start_market_ts) else 500.0
-    
+
+    detection_ms = (
+        ((silence_detected_at - kill_start_market_ts) * 1000.0)
+        if (silence_detected_at and kill_start_market_ts)
+        else 500.0
+    )
+
     return {
         "total_events_processed": pipeline.metrics.processed,
         "elapsed_s": elapsed,
@@ -170,21 +189,23 @@ def benchmark_dropped_connection_and_failover(total_events: int = 15_000) -> Dic
     }
 
 
-def benchmark_out_of_order_events(total_events: int = 15_000, shuffle_window: int = 20) -> Dict[str, Any]:
+def benchmark_out_of_order_events(
+    total_events: int = 15_000, shuffle_window: int = 20
+) -> Dict[str, Any]:
     """Test packet arrival jitter and out-of-order sequencing, measuring quarantine rate and canonical integrity."""
     store = Store(":memory:")
     pipeline = Pipeline(store=store)
     sim = FeedSimulator(SimulatorConfig(seed=303, num_events=total_events))
-    
+
     raw_list = [raw for raw, _ in sim.generate()]
-    
+
     # Deliberately shuffle a subset of events within sliding windows of size `shuffle_window`
     shuffled_events: List[RawEvent] = []
     rng = random.Random(42)
-    
+
     shuffle_start = int(total_events * 0.2)
     shuffle_end = int(total_events * 0.7)
-    
+
     i = 0
     while i < len(raw_list):
         if shuffle_start <= i < shuffle_end and i + shuffle_window <= len(raw_list):
@@ -198,7 +219,7 @@ def benchmark_out_of_order_events(total_events: int = 15_000, shuffle_window: in
 
     t0 = time.perf_counter()
     latencies_us: List[float] = []
-    
+
     for raw in shuffled_events:
         t_start = time.perf_counter_ns()
         pipeline.process_one(raw)
@@ -207,11 +228,12 @@ def benchmark_out_of_order_events(total_events: int = 15_000, shuffle_window: in
 
     pipeline.finish()
     elapsed = time.perf_counter() - t0
-    
-    quarantine_count = pipeline.metrics.quality_counts.get(QualityStatus.SUSPICIOUS.value, 0) + \
-                       pipeline.metrics.quality_counts.get(QualityStatus.INVALID.value, 0)
+
+    quarantine_count = pipeline.metrics.quality_counts.get(
+        QualityStatus.SUSPICIOUS.value, 0
+    ) + pipeline.metrics.quality_counts.get(QualityStatus.INVALID.value, 0)
     valid_count = pipeline.metrics.quality_counts.get(QualityStatus.VALID.value, 0)
-    
+
     return {
         "total_events": len(shuffled_events),
         "elapsed_s": elapsed,
@@ -231,8 +253,9 @@ if __name__ == "__main__":
     b1 = benchmark_burst_and_queue_growth()
     b2 = benchmark_dropped_connection_and_failover()
     b3 = benchmark_out_of_order_events()
-    
+
     import json
+
     print("\n--- 1. BURST & QUEUE GROWTH ---")
     print(json.dumps(b1, indent=2))
     print("\n--- 2. DROPPED CONNECTION & RECOVERY ---")

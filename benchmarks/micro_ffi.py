@@ -8,6 +8,7 @@ Deconstructs ctypes FFI call overhead across 4 calling conventions requested in 
   (iv)  Struct-by-reference (1 pointer argument vs 12 scalar arguments)
   (v)   Single scalar argument baseline (1 integer argument)
 """
+
 from __future__ import annotations
 
 import argparse
@@ -23,7 +24,9 @@ from fastpath import _NATIVE_LIB, _CFastEvent, is_available
 
 def run_micro_ffi(iterations: int = 2_000_000, runs: int = 5, warmup: int = 1) -> dict:
     if not is_available() or not _NATIVE_LIB:
-        raise RuntimeError("Native C library (_fastpath_native.dll/so) is not available.")
+        raise RuntimeError(
+            "Native C library (_fastpath_native.dll/so) is not available."
+        )
 
     dll_path = _NATIVE_LIB._name
 
@@ -200,14 +203,26 @@ def run_micro_ffi(iterations: int = 2_000_000, runs: int = 5, warmup: int = 1) -
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Deconstruct ctypes FFI boundary overhead across 4 variants")
-    parser.add_argument("--iterations", type=int, default=2_000_000, help="Number of loop iterations (default 2M)")
-    parser.add_argument("--runs", type=int, default=5, help="Number of timed runs (default 5)")
+    parser = argparse.ArgumentParser(
+        description="Deconstruct ctypes FFI boundary overhead across 4 variants"
+    )
+    parser.add_argument(
+        "--iterations",
+        type=int,
+        default=2_000_000,
+        help="Number of loop iterations (default 2M)",
+    )
+    parser.add_argument(
+        "--runs", type=int, default=5, help="Number of timed runs (default 5)"
+    )
     parser.add_argument("--json", action="store_true", help="Output JSON only")
     args = parser.parse_args()
 
     if not args.json:
-        print(f"[*] Running micro_ffi deconstruction ({args.iterations:,} iterations x {args.runs} runs)...", flush=True)
+        print(
+            f"[*] Running micro_ffi deconstruction ({args.iterations:,} iterations x {args.runs} runs)...",
+            flush=True,
+        )
 
     res = run_micro_ffi(iterations=args.iterations, runs=args.runs)
 
@@ -217,21 +232,44 @@ def main():
         print("=" * 70)
         print("MDRAP ctypes FFI Deconstruction Results (Phase 9R.2)")
         print("=" * 70)
-        print(f"Loop baseline (Python overhead):          {res['loop_baseline_ns']:>8.2f} ns")
-        print(f"(i)   Bare CDLL (no argtypes, 12 args):   {res['variants']['i_bare_no_argtypes_ns']:>8.2f} ns")
-        print(f"(ii)  Pinned CDLL (12 scalar args):       {res['variants']['ii_pinned_12_scalars_ns']:>8.2f} ns")
-        print(f"(iii) CFUNCTYPE prototype (12 args):      {res['variants']['iii_cfunctype_prototype_ns']:>8.2f} ns")
-        print(f"(iv)  Struct-by-pointer (1 arg):          {res['variants']['iv_struct_by_reference_ns']:>8.2f} ns")
-        print(f"(v)   Single scalar arg (1 int):          {res['variants']['v_single_scalar_arg_ns']:>8.2f} ns")
+        print(
+            f"Loop baseline (Python overhead):          {res['loop_baseline_ns']:>8.2f} ns"
+        )
+        print(
+            f"(i)   Bare CDLL (no argtypes, 12 args):   {res['variants']['i_bare_no_argtypes_ns']:>8.2f} ns"
+        )
+        print(
+            f"(ii)  Pinned CDLL (12 scalar args):       {res['variants']['ii_pinned_12_scalars_ns']:>8.2f} ns"
+        )
+        print(
+            f"(iii) CFUNCTYPE prototype (12 args):      {res['variants']['iii_cfunctype_prototype_ns']:>8.2f} ns"
+        )
+        print(
+            f"(iv)  Struct-by-pointer (1 arg):          {res['variants']['iv_struct_by_reference_ns']:>8.2f} ns"
+        )
+        print(
+            f"(v)   Single scalar arg (1 int):          {res['variants']['v_single_scalar_arg_ns']:>8.2f} ns"
+        )
         print("-" * 70)
-        print(f"Full fastpath_eval_fast (FFI + C logic):  {res['full_eval_fast_ns']:>8.2f} ns")
-        print(f"Pure C quality logic (net of pinned FFI): {res['pure_c_quality_logic_ns']:>8.2f} ns")
+        print(
+            f"Full fastpath_eval_fast (FFI + C logic):  {res['full_eval_fast_ns']:>8.2f} ns"
+        )
+        print(
+            f"Pure C quality logic (net of pinned FFI): {res['pure_c_quality_logic_ns']:>8.2f} ns"
+        )
         print("=" * 70)
-        delta_dynamic = res['variants']['i_bare_no_argtypes_ns'] - res['variants']['ii_pinned_12_scalars_ns']
+        delta_dynamic = (
+            res["variants"]["i_bare_no_argtypes_ns"]
+            - res["variants"]["ii_pinned_12_scalars_ns"]
+        )
         print(f"\n[Audit Analysis]")
         print(f"  Dynamic arg inspection delta (i vs ii): {delta_dynamic:+.2f} ns")
-        print(f"  Per-scalar-arg marshaling cost: ~{(res['variants']['ii_pinned_12_scalars_ns'] - res['variants']['v_single_scalar_arg_ns']) / 11:.2f} ns/arg")
-        print(f"  Speedup switching to struct-by-ref: {res['variants']['ii_pinned_12_scalars_ns'] / res['variants']['iv_struct_by_reference_ns']:.2f}x faster FFI boundary")
+        print(
+            f"  Per-scalar-arg marshaling cost: ~{(res['variants']['ii_pinned_12_scalars_ns'] - res['variants']['v_single_scalar_arg_ns']) / 11:.2f} ns/arg"
+        )
+        print(
+            f"  Speedup switching to struct-by-ref: {res['variants']['ii_pinned_12_scalars_ns'] / res['variants']['iv_struct_by_reference_ns']:.2f}x faster FFI boundary"
+        )
 
 
 if __name__ == "__main__":

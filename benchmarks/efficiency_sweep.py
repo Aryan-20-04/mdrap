@@ -23,8 +23,11 @@ from simulator import FeedSimulator, SimulatorConfig
 from storage import Store
 
 
-def sweep_scale(event_counts: list[int] = [1_000, 10_000, 50_000]) -> list[dict[str, Any]]:
+def sweep_scale(
+    event_counts: list[int] = [1_000, 10_000, 50_000],
+) -> list[dict[str, Any]]:
     import psutil
+
     proc = psutil.Process()
     results = []
 
@@ -64,7 +67,9 @@ def sweep_scale(event_counts: list[int] = [1_000, 10_000, 50_000]) -> list[dict[
             "gc_delta": [gc_end[i] - gc_start[i] for i in range(3)],
         }
         results.append(res)
-        print(f"Scale {n:>6} events: {eps:>8.1f} eps | p50: {p50:>6.1f}us | p99: {p99:>6.1f}us | RSS: {rss_mb:>5.1f}MB")
+        print(
+            f"Scale {n:>6} events: {eps:>8.1f} eps | p50: {p50:>6.1f}us | p99: {p99:>6.1f}us | RSS: {rss_mb:>5.1f}MB"
+        )
 
     return results
 

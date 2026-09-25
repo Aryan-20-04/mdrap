@@ -10,7 +10,9 @@ from models import CanonicalEvent, EventType, QualityStatus, Reason
 from quality import QualityConfig, QualityEngine
 from fastpath import FastQualityEngine, HAS_FASTPATH, _CFastEvent, _CFastResult
 
-pytestmark = pytest.mark.skipif(not HAS_FASTPATH, reason="Native fastpath library not available")
+pytestmark = pytest.mark.skipif(
+    not HAS_FASTPATH, reason="Native fastpath library not available"
+)
 
 
 def generate_parity_stream(seed: int, num_events: int) -> list[CanonicalEvent]:
@@ -67,6 +69,7 @@ def generate_parity_stream(seed: int, num_events: int) -> list[CanonicalEvent]:
 
 def _format_hex_dump(c_struct) -> str:
     import ctypes
+
     raw_bytes = bytes(ctypes.string_at(ctypes.byref(c_struct), ctypes.sizeof(c_struct)))
     return " ".join(f"{b:02X}" for b in raw_bytes)
 
@@ -76,7 +79,9 @@ def test_parity_differential_seed(seed: int):
     # Support fast unit-test mode or full 1M scale via env var
     num_events = int(os.environ.get("MDRAP_PARITY_EVENTS", "50000"))
 
-    cfg = QualityConfig(staleness_threshold_s=0.05, price_anomaly_stddev=6.0, price_window=50)
+    cfg = QualityConfig(
+        staleness_threshold_s=0.05, price_anomaly_stddev=6.0, price_window=50
+    )
 
     events = generate_parity_stream(seed, num_events)
 
@@ -116,12 +121,18 @@ def test_parity_differential_seed(seed: int):
             c_ev.event_type = 1 if ec.event_type == EventType.QUOTE else 0
             c_ev.exchange_ts = ec.exchange_timestamp
             c_ev.receive_ts = ec.receive_timestamp
-            c_ev.sequence_num = ec.sequence_number if ec.sequence_number is not None else -1
+            c_ev.sequence_num = (
+                ec.sequence_number if ec.sequence_number is not None else -1
+            )
             c_ev.price = ec.price if ec.price is not None else math.nan
             c_ev.quantity = ec.quantity if ec.quantity is not None else math.nan
 
             c_res = _CFastResult()
-            c_res.status = 1 if ec.quality_status == QualityStatus.VALID else (2 if ec.quality_status == QualityStatus.SUSPICIOUS else 3)
+            c_res.status = (
+                1
+                if ec.quality_status == QualityStatus.VALID
+                else (2 if ec.quality_status == QualityStatus.SUSPICIOUS else 3)
+            )
 
             diag = (
                 f"\n[DIFFERENTIAL PARITY FAILURE] at Event Index: {idx}\n"
