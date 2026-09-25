@@ -93,7 +93,38 @@ static void handle_sigint(int sig) {
     g_running = 0;
 }
 
-static inline double now_seconds(void) {
+#if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
+  #include <x86intrin.h>
+  #include <cpuid.h>
+  #define HAS_X86_INTRINSICS 1
+#endif
+
+typedef struct {
+    bool     has_invariant_tsc;
+    uint64_t base_tsc;
+    double   base_time;
+    double   inv_tsc_freq;
+    double   tsc_freq_hz;
+} TscClock;
+
+static TscClock g_clock = {0};
+
+static bool cpu_has_invariant_tsc(void) {
+#ifdef HAS_X86_INTRINSICS
+    unsigned int eax, ebx, ecx, edx;
+    if (__get_cpuid(0x80000000, &eax, &ebx, &ecx, &edx)) {
+        if (eax >= 0x80000007) {
+            __get_cpuid(0x80000007, &eax, &ebx, &ecx, &edx);
+            if (edx & (1 << 8)) {
+                return true;
+            }
+        }
+    }
+#endif
+    return false;
+}
+
+static inline double os_now_seconds(void) {
 #ifdef _WIN32
     static LARGE_INTEGER freq;
     static int init = 0;
@@ -108,6 +139,57 @@ static inline double now_seconds(void) {
     struct timespec ts;
     clock_gettime(CLOCK_REALTIME, &ts);
     return (double)ts.tv_sec + (double)ts.tv_nsec * 1e-9;
+#endif
+}
+
+static void tsc_clock_init(void) {
+    g_clock.has_invariant_tsc = cpu_has_invariant_tsc();
+    if (!g_clock.has_invariant_tsc) {
+        return;
+    }
+#ifdef HAS_X86_INTRINSICS
+    /* Calibrate against OS high-resolution timer over 30ms */
+    double t0_os = os_now_seconds();
+    uint64_t t0_tsc = __rdtsc();
+    while (os_now_seconds() - t0_os < 0.030) {}
+    double t1_os = os_now_seconds();
+    uint64_t t1_tsc = __rdtsc();
+
+    double tsc_freq = (double)(t1_tsc - t0_tsc) / (t1_os - t0_os);
+    if (tsc_freq > 1e6) {
+        g_clock.base_time = t1_os;
+        g_clock.base_tsc = t1_tsc;
+        g_clock.inv_tsc_freq = 1.0 / tsc_freq;
+        g_clock.tsc_freq_hz = tsc_freq;
+    } else {
+        g_clock.has_invariant_tsc = false;
+    }
+#endif
+}
+
+static inline double now_seconds(void) {
+#ifdef HAS_X86_INTRINSICS
+    if (g_clock.has_invariant_tsc) {
+        uint64_t tsc = __rdtsc();
+        return g_clock.base_time + (double)(tsc - g_clock.base_tsc) * g_clock.inv_tsc_freq;
+    }
+#endif
+    return os_now_seconds();
+}
+
+static bool pin_current_thread_to_core(int core_id) {
+    if (core_id < 0) return false;
+#ifdef _WIN32
+    DWORD_PTR mask = (DWORD_PTR)1 << core_id;
+    DWORD_PTR res = SetThreadAffinityMask(GetCurrentThread(), mask);
+    return res != 0;
+#elif defined(__linux__)
+    cpu_set_t cpuset;
+    CPU_ZERO(&cpuset);
+    CPU_SET(core_id, &cpuset);
+    return pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset) == 0;
+#else
+    return false;
 #endif
 }
 
@@ -210,6 +292,7 @@ int main(int argc, char **argv) {
     uint64_t target_events = 100000ULL;
     int rate_limit_eps = 0;
     int quiet = 0;
+    int cpu_core = -1;
     const char *sym_str = "BTC/USD";
     const char *src_str = "FEEDX";
 
@@ -220,6 +303,7 @@ int main(int argc, char **argv) {
             printf("  --shm <name>      Shared memory segment name (default: %s)\n", DEFAULT_SHM_NAME);
             printf("  --events <num>    Number of events to generate/process (default: 100000)\n");
             printf("  --rate <eps>      Throttle rate limit in events/sec (0 = unconstrained)\n");
+            printf("  --core <id>       Pin daemon thread to physical CPU core ID\n");
             printf("  --symbol <sym>    Target symbol ticker (default: BTC/USD)\n");
             printf("  --source <src>    Source identifier (default: FEEDX)\n");
             printf("  --quiet           Suppress stdout output\n");
@@ -231,6 +315,8 @@ int main(int argc, char **argv) {
             target_events = strtoull(argv[++i], NULL, 10);
         } else if (strcmp(argv[i], "--rate") == 0 && i + 1 < argc) {
             rate_limit_eps = atoi(argv[++i]);
+        } else if (strcmp(argv[i], "--core") == 0 && i + 1 < argc) {
+            cpu_core = atoi(argv[++i]);
         } else if (strcmp(argv[i], "--quiet") == 0) {
             quiet = 1;
         } else if (strcmp(argv[i], "--symbol") == 0 && i + 1 < argc) {
@@ -240,6 +326,14 @@ int main(int argc, char **argv) {
         }
     }
 
+    /* Core pinning if specified */
+    if (cpu_core >= 0) {
+        pin_current_thread_to_core(cpu_core);
+    }
+
+    /* Calibrate RDTSC on the active pinned core */
+    tsc_clock_init();
+
     signal(SIGINT, handle_sigint);
     signal(SIGTERM, handle_sigint);
 
@@ -248,6 +342,14 @@ int main(int argc, char **argv) {
         printf("  Shared Memory : %s (slots=%u, stride=%d bytes)\n", shm_name, slot_count, SLOT_STRIDE);
         printf("  Target Events : %llu\n", (unsigned long long)target_events);
         printf("  Target Symbol : %s | Source: %s\n", sym_str, src_str);
+        if (cpu_core >= 0) {
+            printf("  CPU Affinity  : Pinned to Core %d\n", cpu_core);
+        }
+        if (g_clock.has_invariant_tsc) {
+            printf("  Clock Source  : Invariant Calibrated RDTSC (%.2f MHz)\n", g_clock.tsc_freq_hz / 1e6);
+        } else {
+            printf("  Clock Source  : High-Resolution OS Timer (Fallback)\n");
+        }
     }
 
     ShmContext shm;
