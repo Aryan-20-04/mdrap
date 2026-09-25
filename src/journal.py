@@ -103,7 +103,19 @@ class BinaryJournal:
             self._first_seq = first_seq
             self._last_seq = last_seq
             self._created_ts = created_ts
+
+            rem = (file_size - JOURNAL_HEADER_SIZE) % SLOT_SIZE
+            if rem != 0:
+                clean_size = file_size - rem
+                self._mm.close()
+                os.ftruncate(self._fd, clean_size)
+                self._mm = mmap.mmap(self._fd, 0, access=mmap.ACCESS_WRITE)
+                file_size = clean_size
+
             self._capacity_records = (file_size - JOURNAL_HEADER_SIZE) // SLOT_SIZE
+            if self._record_count > self._capacity_records:
+                self._record_count = self._capacity_records
+                self._write_header()
         else:
             # Create fresh journal
             os.makedirs(os.path.dirname(os.path.abspath(self.filepath)), exist_ok=True)
@@ -332,6 +344,10 @@ class BinaryJournalReader:
         if ver != JOURNAL_VERSION:
             self.close()
             raise ValueError(f"Unsupported journal version: {ver}")
+
+        available_records = max(0, (file_size - JOURNAL_HEADER_SIZE) // SLOT_SIZE)
+        if self.record_count > available_records:
+            self.record_count = available_records
 
     def read_record(self, index: int) -> dict:
         """Unpack a specific 0-indexed record from the journal."""
