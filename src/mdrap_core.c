@@ -95,6 +95,7 @@ static void handle_sigint(int sig) {
 
 #if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
   #include <x86intrin.h>
+  #include <immintrin.h>
   #include <cpuid.h>
   #define HAS_X86_INTRINSICS 1
 #endif
@@ -378,32 +379,50 @@ int main(int argc, char **argv) {
     strncpy(sym_buf, sym_str, sizeof(sym_buf) - 1);
     strncpy(src_buf, src_str, sizeof(src_buf) - 1);
 
+    uint64_t chunk3_raw[4] = {0};
+    memcpy(&chunk3_raw[0], sym_buf, 16);
+    memcpy(&chunk3_raw[2], src_buf, 8);
+    chunk3_raw[3] = 0;
+#ifdef __AVX2__
+    __m256i v_chunk3 = _mm256_loadu_si256((const __m256i *)chunk3_raw);
+#endif
+
+    FastEvent ev;
+    memset(&ev, 0, sizeof(ev));
+    ev.source_id = 0;
+    ev.instrument_id = 0;
+    ev.event_type = 0; /* TRADE */
+    ev.present_mask = FE_MASK_VALID | FE_HAS_PRICE | FE_HAS_QTY | FE_HAS_BID | FE_HAS_ASK;
+    ev.quantity = 1.5;
+    ev.bid_size = 5.0;
+    ev.ask_size = 5.0;
+
     double base_price = 80000.0;
     double current_price = base_price;
 
     while (g_running && events_done < target_events) {
         uint64_t seq = events_done + 1;
+
+        /* Hardware L1 prefetch for ring buffer slot (seq + 4) */
+#ifdef HAS_X86_INTRINSICS
+        uint32_t pf_idx = (uint32_t)((seq + 4) & shm.mask);
+        const char *pf_ptr = (const char *)(slot_base + ((size_t)pf_idx * SLOT_STRIDE));
+        _mm_prefetch(pf_ptr, _MM_HINT_T0);
+        _mm_prefetch(pf_ptr + 64, _MM_HINT_T0);
+#endif
+
         double t_now = now_seconds();
 
         /* Simulate small deterministic random walk */
         double delta = ((double)(seq % 11) - 5.0) * 0.10;
         current_price = base_price + delta;
 
-        FastEvent ev;
-        memset(&ev, 0, sizeof(ev));
-        ev.source_id = 0;
-        ev.instrument_id = 0;
-        ev.event_type = 0; /* TRADE */
-        ev.present_mask = FE_MASK_VALID | FE_HAS_PRICE | FE_HAS_QTY | FE_HAS_BID | FE_HAS_ASK;
         ev.exchange_ts = t_now;
         ev.receive_ts = t_now;
         ev.sequence_num = (int64_t)seq;
         ev.price = current_price;
-        ev.quantity = 1.5;
         ev.bid_price = current_price - 0.50;
         ev.ask_price = current_price + 0.50;
-        ev.bid_size = 5.0;
-        ev.ask_size = 5.0;
 
         /* Phase 19: Execute quality engine with ZERO mutex locks */
         FastResult res;
@@ -420,28 +439,45 @@ int main(int argc, char **argv) {
         slot->commit_seq = UNCOMMITTED_SEQ;
         MD_FENCE_RELEASE();
 
-        /* Populate slot payload */
-        slot->event_type = 1; /* TICK */
-        slot->status = st_code;
-        slot->is_crossed = 0;
-        slot->present = 0x3F; /* price, size, bid, ask, bsz, asz */
-        slot->trunc = 0;
-        slot->exchange_ts = ev.exchange_ts;
-        slot->ingest_ts = ev.receive_ts;
-        slot->broadcast_ts = t_now;
-        slot->engine_us = 0.050f; /* ~50ns execution */
-        slot->pad2 = 0;
-        slot->price = ev.price;
-        slot->size = ev.quantity;
+        /* SIMD Chunk 3 (offset 96..127): symbol[16] + source[8] + pad3[8] */
+#ifdef __AVX2__
+        _mm256_storeu_si256((__m256i *)((uint8_t *)slot + 96), v_chunk3);
+#else
+        uint64_t *d3 = (uint64_t *)((uint8_t *)slot + 96);
+        d3[0] = chunk3_raw[0]; d3[1] = chunk3_raw[1];
+        d3[2] = chunk3_raw[2]; d3[3] = 0;
+#endif
+
+        /* SIMD Chunk 2 (offset 64..95): bid, ask, bid_sz, ask_sz */
+#ifdef __AVX2__
+        __m256d v_chunk2 = _mm256_set_pd(5.0, 5.0, ev.ask_price, ev.bid_price);
+        _mm256_storeu_pd((double *)((uint8_t *)slot + 64), v_chunk2);
+#else
         slot->bid = ev.bid_price;
         slot->ask = ev.ask_price;
-        slot->bid_sz = ev.bid_size;
-        slot->ask_sz = ev.ask_size;
-        memcpy(slot->symbol, sym_buf, 16);
-        memcpy(slot->source, src_buf, 8);
+        slot->bid_sz = 5.0;
+        slot->ask_sz = 5.0;
+#endif
 
-        /* Release write and commit sequence */
+        /* Chunk 1 (offset 32..63): broadcast_ts, engine_us+pad2, price, size */
+        slot->broadcast_ts = t_now;
+        slot->engine_us = 0.050f;
+        slot->pad2 = 0;
+        slot->price = current_price;
+        slot->size = 1.5;
+
+        /* Chunk 0 (offset 8..31): flags, exchange_ts, ingest_ts */
+        uint64_t flags_word = (uint64_t)1 | ((uint64_t)st_code << 8) | ((uint64_t)0x3F << 24);
+        *(uint64_t *)((uint8_t *)slot + 8) = flags_word;
+        *(double *)((uint8_t *)slot + 16) = ev.exchange_ts;
+        *(double *)((uint8_t *)slot + 24) = ev.receive_ts;
+
+        /* Store fence and release commit sequence */
+#ifdef HAS_X86_INTRINSICS
+        _mm_sfence();
+#else
         MD_FENCE_RELEASE();
+#endif
         slot->commit_seq = seq;
 
         /* Amortized publishing of head sequence (every 32 ticks) */
