@@ -1,0 +1,100 @@
+{
+  "metadata": {
+    "phase": "Phase 0 - Baseline Lock-In",
+    "git_commit": "8a2c1bf5c423a15ab629eb24d98c961f21ea1e6a",
+    "git_tag": "baseline-phase0",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "python_version": "3.13.1",
+    "cpu_core_pinned": true,
+    "pinned_core_id": 2,
+    "timestamp": "2026-09-25 05:03:18Z"
+  },
+  "layer1_native_core_hotpath": {
+    "events_per_run": 1000000,
+    "runs_count": 5,
+    "throughput_eps": {
+      "min": 18078769.0,
+      "median": 19513680.0,
+      "max": 19797315.0,
+      "mean": 19273034.2
+    },
+    "latency_ns_per_tick": {
+      "p50": 51.2,
+      "p90": 55.3,
+      "p95": 55.3,
+      "p99": 55.3,
+      "p99.9": 55.3,
+      "mean": 51.92
+    },
+    "runs": [
+      {
+        "run": 1,
+        "events": 1000000,
+        "elapsed_seconds": 0.083,
+        "throughput_eps": 18078769.0,
+        "latency_ns": 55.3
+      },
+      {
+        "run": 2,
+        "events": 1000000,
+        "elapsed_seconds": 0.0821,
+        "throughput_eps": 19338956.0,
+        "latency_ns": 51.7
+      },
+      {
+        "run": 3,
+        "events": 1000000,
+        "elapsed_seconds": 0.0854,
+        "throughput_eps": 19636451.0,
+        "latency_ns": 50.9
+      },
+      {
+        "run": 4,
+        "events": 1000000,
+        "elapsed_seconds": 0.0825,
+        "throughput_eps": 19513680.0,
+        "latency_ns": 51.2
+      },
+      {
+        "run": 5,
+        "events": 1000000,
+        "elapsed_seconds": 0.0792,
+        "throughput_eps": 19797315.0,
+        "latency_ns": 50.5
+      }
+    ]
+  },
+  "layer2_python_compute_loop": {
+    "events": 100000,
+    "elapsed_seconds": 0.5027,
+    "throughput_eps": 198912.1,
+    "latency_us": {
+      "p50": 4.6,
+      "p90": 4.8,
+      "p95": 4.9,
+      "p99": 6.7,
+      "p99.9": 69.8,
+      "max": 9912.5,
+      "mean": 5.916
+    },
+    "sample_count": 10000
+  },
+  "layer3_durable_pipeline": {
+    "events": 50000,
+    "elapsed_seconds": 2.8245,
+    "throughput_eps": 17702.2,
+    "latency_us": {
+      "p50": 795.1,
+      "p90": 1291.4,
+      "p95": 1787.7,
+      "p99": 2184.7,
+      "p99.9": 2649.1,
+      "max": 3094.9
+    },
+    "invariants": {
+      "dropped_events": 0,
+      "processed_events": 50000,
+      "zero_loss_verified": true
+    }
+  }
+}
