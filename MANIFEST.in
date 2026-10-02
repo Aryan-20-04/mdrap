@@ -11,7 +11,7 @@ include mdrap.bat
 
 include mdrap.toml
 
-recursive-include src *.py *.c *.h *.dll *.so *.dylib *.pyd *.def *.pyi py.typed
+recursive-include src *.py *.c *.h *.def *.pyi py.typed
 recursive-include docs *.md
 recursive-include tests *.py
 recursive-include examples *.py *.ipynb

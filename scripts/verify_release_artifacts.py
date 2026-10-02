@@ -19,7 +19,7 @@ from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _DIST_DIR = _REPO_ROOT / "dist"
-_TARGET_VERSION = "2.4.0"
+_TARGET_VERSION = "2.4.1"
 
 
 def sha256_file(filepath: Path) -> str:

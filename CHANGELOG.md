@@ -3,6 +3,25 @@
 All notable changes to MDRAP are documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.1] - 2026-10-02
+
+### Added
+- **Slowest-Reader Watermark Tracking**: Real-time reader watermark tracking in zero-copy shared memory (`src/shm.py`, `tests/test_shm_watermark.py`).
+- **Memory Ordering Fences**: Explicit native memory barrier fences (`_mm_sfence` / `_mm_lfence`) in `_fastpath_native.dll` and `src/fastpath.c`.
+- **GIL-Released C Micro-Batching**: GIL release around C compute batches in `src/_fastpath_c.c` and `src/fastpath.py`.
+- **WebSocket Drop Counters**: Backpressure drop tracking and resilient connection logging in `src/ws_feed.py`.
+
+### Fixed
+- **API Key Revocation**: Deterministic key ID entropy matching in `src/security.py`.
+- **Gateway Timestamp Normalization**: Nullable exchange timestamp fallback for unsequenced crypto feeds (`src/gateway.py`).
+- **Reconciliation In-Place Mutation**: Fixed cache mutation on cross-feed disagreement in `src/reconciliation.py`.
+- **Spinlock Self-Deadlock Fix**: Resolved recursion and thread cleanup deadlocks in `src/fastpath.c`.
+
+### Changed
+- **Stdlib Hygiene Cleanups**: Replaced hand-rolled percentile logic with `statistics.quantiles` in contention benchmark.
+- **Byte Formatting Optimization**: Replaced manual hex formatting with `bytes.hex(' ')` in differential runner.
+- **Service Dedup**: Imported `poll_keypress` directly from `term.py`.
+
 ## [2.4.0] - 2026-09-25
 
 ### Added

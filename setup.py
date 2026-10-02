@@ -19,9 +19,7 @@ class BuildPyWithFastpath(build_py):
             import build_fastpath
 
             base_dir = os.path.dirname(os.path.abspath(__file__))
-            # Compile into wheel/install target directory
-            build_fastpath.build(target_dir=self.build_lib, quiet=False)
-            # Copy fastpath.c, rules.def, py.typed, fastpath.pyi, and build_fastpath.py into wheel target so JIT works anywhere
+            # Copy fastpath.c, rules.def, py.typed, fastpath.pyi, and build_fastpath.py into target so JIT works anywhere
             src_c = os.path.join(base_dir, "src", "fastpath.c")
             if os.path.isfile(src_c):
                 import shutil
@@ -47,30 +45,14 @@ class BuildPyWithFastpath(build_py):
                 import shutil
 
                 shutil.copy2(bfp, os.path.join(self.build_lib, "build_fastpath.py"))
-            # Copy C source files and precompiled libraries into build_lib
+            # Copy C source files into build_lib so users can compile native extensions locally
             for extra_src in ("_fastpath_c.c", "mdrap_core.c"):
                 src_f = os.path.join(base_dir, "src", extra_src)
                 if os.path.isfile(src_f):
                     import shutil
 
                     shutil.copy2(src_f, os.path.join(self.build_lib, extra_src))
-            # Also copy precompiled shared libraries from src/ if they exist
-            for lib_path in glob.glob(os.path.join(base_dir, "src", "*_fastpath*.*")):
-                lib_name = os.path.basename(lib_path)
-                if lib_name.endswith((".dll", ".so", ".dylib", ".pyd")):
-                    dest_lib = os.path.join(self.build_lib, lib_name)
-                    if not os.path.isfile(dest_lib):
-                        import shutil
-
-                        shutil.copy2(lib_path, dest_lib)
-            for lib in ("fastpath.dll", "fastpath.dylib"):
-                src_lib = os.path.join(base_dir, "src", lib)
-                dest_lib = os.path.join(self.build_lib, lib)
-                if os.path.isfile(src_lib) and not os.path.isfile(dest_lib):
-                    import shutil
-
-                    shutil.copy2(src_lib, dest_lib)
-            # Also compile into src/ for in-tree execution
+            # Also compile into src/ for local in-tree execution
             src_dir = os.path.join(base_dir, "src")
             build_fastpath.build(target_dir=src_dir, quiet=True)
         except Exception as exc:
@@ -102,7 +84,7 @@ py_modules = list(
 
 setup(
     name="mdrap",
-    version="2.4.0",
+    version="2.4.1",
     description="Market Data Reliability & Acceleration Platform",
     package_dir={"": "src"},
     packages=find_packages(where="src"),
@@ -115,13 +97,6 @@ setup(
             "rules.def",
             "py.typed",
             "*.pyi",
-            "*.pyd",
-            "_fastpath_native.dll",
-            "_fastpath_native.so",
-            "_fastpath_native.dylib",
-            "_fastpath_native.pyd",
-            "fastpath.dll",
-            "fastpath.dylib",
         ],
     },
     include_package_data=True,
