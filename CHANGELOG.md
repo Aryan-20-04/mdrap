@@ -12,17 +12,17 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   - Hardware L1 cache prefetching (`_mm_prefetch`).
   - 32-tick amortized head sequence publishing with seqlock consumer decoupling.
   - Command-line CPU core pinning (`--core` argument via Windows `SetProcessAffinityMask` / Linux `sched_setaffinity`).
-  - Measured throughput: **20,543,180 eps** (p50: **48.7 ns**) at 1M events; **20,259,673 eps** (p50: **50.3 ns**) sustained at 10M events.
+  - Measured throughput: **21,296,184 eps** (p50: **47.0 ns**) at 1M events; **21,096,231 eps** (p50: **47.4 ns**) sustained at 10M events.
 - **Layer 2: Native Python C-API Extension Module (`src/_fastpath_c.c`, `src/fastpath.py`)**:
   - Direct C-API extension (`_fastpath_c.pyd`) with `METH_FASTCALL` parameter passing, eliminating ctypes FFI marshaling and object boxing.
-  - Measured throughput: **423,228 eps** (+112.8% speedup / 2.13x over Phase 0 baseline).
-  - Per-event compute latency: **p50: 2.10 µs**, **p95: 2.30 µs**, **p99: 2.70 µs**.
+  - Measured throughput: **415,581 eps** (+108.9% speedup / 2.09x over Phase 0 baseline).
+  - Per-event compute latency: **p50: 1.90 µs**, **p95: 2.10 µs**, **p99: 2.70 µs**.
 - **Layer 3: Decoupled Memory-Mapped Binary Journal & Asynchronous Drainer (`src/journal.py`, `src/shm_drainer.py`)**:
   - Fixed 128-byte append-only binary transaction log (`.dbn` / AOF) matching the SHM slot format.
   - Asynchronous background worker (`SHMDrainWorker`) polling the lock-free circular SHM ring buffer without producer contention.
   - Auto-healing partial file truncation recovery on system crash or abnormal termination.
-  - Measured throughput: **349,383 eps** (+1,873.7% / 19.74x speedup over SQLite WAL baseline).
-  - Persistence latency: **p50: 2.70 µs** (99.7% latency reduction).
+  - Measured throughput: **332,871 eps** (+1,780.4% / 18.80x speedup over SQLite WAL baseline).
+  - Persistence latency: **p50: 2.50 µs** (99.7% latency reduction), **p95: 4.50 µs**, **p99: 5.80 µs**.
 - **Catastrophic Failure Mode Test Suite (`tests/test_failure_modes.py`)**:
   - Writer process crash and epoch rollover validation.
   - Seqlock torn-read recovery during writer mid-write race conditions.
@@ -39,15 +39,15 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 | Layer / Metric | Baseline (Phase 0) | Optimized (Phase 6) | Speedup / Improvement Delta |
 | :--- | :--- | :--- | :--- |
-| **Layer 1: Native Hotpath EPS (1M)** | 19,513,680 eps | **20,543,180 eps** | **+1.05x (+5.3%)** |
-| **Layer 1: Per-Tick Latency (1M)** | 51.20 ns | **48.70 ns** | **+4.9% faster** (Sub-50ns scale) |
-| **Layer 1: Sustained Run EPS (10M)** | *(unscaled)* | **20,259,673 eps** | **Sustained >20M eps** |
-| **Layer 1: Latency per Tick (10M)** | *(unscaled)* | **50.30 ns** | **Sub-50ns scale** |
-| **Layer 2: Python Compute Loop EPS** | 198,912 eps | **423,228 eps** | **+2.13x (+112.8% speedup)** |
-| **Layer 2: Compute Latency p50** | 4.60 µs | **2.10 µs** | **+54.3% faster** |
+| **Layer 1: Native Hotpath EPS (1M)** | 19,513,680 eps | **21,296,184 eps** | **+1.09x (+9.1%)** |
+| **Layer 1: Per-Tick Latency (1M)** | 51.20 ns | **47.00 ns** | **+8.2% faster** (Sub-50ns scale) |
+| **Layer 1: Sustained Run EPS (10M)** | *(unscaled)* | **21,096,231 eps** | **Sustained >21M eps** |
+| **Layer 1: Latency per Tick (10M)** | *(unscaled)* | **47.40 ns** | **Sub-50ns scale** |
+| **Layer 2: Python Compute Loop EPS** | 198,912 eps | **415,581 eps** | **+2.09x (+108.9% speedup)** |
+| **Layer 2: Compute Latency p50** | 4.60 µs | **1.90 µs** | **+58.7% faster** |
 | **Layer 2: Compute Latency p99** | 6.70 µs | **2.70 µs** | **+59.7% faster** |
-| **Layer 3: Persistence EPS** | 17,702 eps | **349,383 eps** | **+19.74x (+1,873.7% speedup)** |
-| **Layer 3: Persistence Latency p50** | 795.10 µs | **2.70 µs** | **+99.7% latency reduction** |
+| **Layer 3: Persistence EPS** | 17,702 eps | **332,871 eps** | **+18.80x (+1,780.4% speedup)** |
+| **Layer 3: Persistence Latency p50** | 795.10 µs | **2.50 µs** | **+99.7% latency reduction** |
 | **Layer 3: Multi-Venue Soak (1M)** | *(unscaled)* | **1,000,000 events** | **0 dropped events / 0 laps** |
 
 ## [2.3.0] - 2026-09-24

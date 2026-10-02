@@ -3,8 +3,8 @@
 
 [![Version](https://img.shields.io/badge/version-2.4.0-blue.svg)](pyproject.toml)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue.svg)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-879%20passing%20(100%25)-brightgreen.svg)](tests/)
-[![Hot Path Latency](https://img.shields.io/badge/hot--path-48.7%20ns%20native%20%7C%202.10%20%C2%B5s%20python%20%7C%202.70%20%C2%B5s%20persist-orange.svg)](docs/benchmark-methodology.md)
+[![Tests](https://img.shields.io/badge/tests-881%20passing%20(100%25)-brightgreen.svg)](tests/)
+[![Hot Path Latency](https://img.shields.io/badge/hot--path-47.0%20ns%20native%20%7C%201.90%20%C2%B5s%20python%20%7C%202.50%20%C2%B5s%20persist-orange.svg)](docs/benchmark-methodology.md)
 [![Architecture](https://img.shields.io/badge/architecture-Layer%201%20Native%20%7C%20Layer%202%20C--API%20%7C%20Layer%203%20Decoupled-purple.svg)](docs/architecture.md)
 [![Manual](https://img.shields.io/badge/manual-Operator%20%26%20User%20Guide-teal.svg)](docs/USER_GUIDE.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -64,9 +64,9 @@ python cli.py serve --host 0.0.0.0 --port 8000
 | In-flight jitter buffer | ✅ Sliding self-repair delay window | ❌ | ❌ | ❌ |
 | Decoupled async persistence | ✅ Non-blocking SPSC writer queue | ❌ | ❌ | Manual |
 | Cryptographic audit trail | ✅ Batched Merkle trees + hash chain | ❌ | ❌ | ❌ |
-| Standalone C Hot-Path (`mdrap-core`) | ✅ 48.7 ns / >20.5M eps (AVX2 + RDTSC) | ❌ | ❌ (C++ core) | ✅ (q kernel) |
-| Python C-API Compute Loop | ✅ 2.10 µs / 423k eps (METH_FASTCALL) | ❌ | ❌ | ❌ |
-| Decoupled Binary Journal Persistence | ✅ 2.70 µs / 349k eps (.dbn / AOF) | ✅ Purpose-built | ✅ Parquet catalog | ✅ Purpose-built |
+| Standalone C Hot-Path (`mdrap-core`) | ✅ 47.0 ns / >21.2M eps (AVX2 + RDTSC) | ❌ | ❌ (C++ core) | ✅ (q kernel) |
+| Python C-API Compute Loop | ✅ 1.90 µs / 415k eps (METH_FASTCALL) | ❌ | ❌ | ❌ |
+| Decoupled Binary Journal Persistence | ✅ 2.50 µs / 332k eps (.dbn / AOF) | ✅ Purpose-built | ✅ Parquet catalog | ✅ Purpose-built |
 | Zero-lock SPSC shared memory | ✅ 128B seqlock + watermark bitflag | ❌ | ❌ | Custom |
 | Distributed output streaming | ✅ Kafka / Redpanda durable sink | ❌ | Custom | Custom |
 | Tick-level analytical persistence | SQLite WAL + DuckDB Parquet | ✅ Purpose-built | ✅ Parquet catalog | ✅ Purpose-built |
@@ -115,7 +115,7 @@ flowchart TD
         RULES["src/rules.def X-Macro<br/>Bits 0-15 Core, 16-31 Venue, 32-63 User"]
         QE["7-Rule Quality Engine<br/>Schema, Dedup, Gap, Order, Stale, Crossed, 6σ"]
         FP["Native C Hot Path (_fastpath_native.so/.dll)<br/>37.5 ns batch / 50 ns single | ~15.3 µs Python pipeline"]
-        CORE["Standalone Native Core (mdrap-core)<br/>Wire-to-SHM | 44.8-61.3 ns / 16.3M-22.3M eps"]
+        CORE["Standalone Native Core (mdrap-core)<br/>Kernel + SHM Publish | 44.8-61.3 ns / 16.3M-22.3M eps"]
         WD["Source Watchdog & Failover Circuit Breaker<br/>Silence & Degradation Monitoring"]
         BBO["Synthetic Consolidated BBO<br/>Multi-Exchange NBBO & Depth"]
     end
@@ -163,8 +163,8 @@ flowchart TD
 - **Strict Quality Priority**: Non-downgradable progression: `INVALID` > `SUSPICIOUS` > `VALID`. Quarantines bad data; **every drop is counted and reported**.
 
 ### 2. Standalone Native Core (`mdrap-core` / `src/mdrap_core.c`)
-- **Zero-Python Execution**: Standalone compiled C binary running wire-to-SHM with zero Python interpreter frames, CPython FFI, or GIL overhead.
-- **Verified Throughput**: **16.31M to 22.35M events/second** (**44.8 to 61.3 ns per tick** end-to-end wire-to-SHM latency).
+- **Zero-Python Execution**: Standalone compiled C binary running kernel-to-SHM publish with zero Python interpreter frames, CPython FFI, or GIL overhead.
+- **Verified Throughput**: **16.31M to 22.35M events/second** (**44.8 to 61.3 ns per tick** mean latency on in-process synthetic stream directly streaming into shared memory rings).
 - **Benchmark Proven**: Reproducible via `python benchmarks/bench_mdrap_core.py`, with committed report [`benchmarks/mdrap_core_bench.json`](benchmarks/mdrap_core_bench.json).
 
 ### 3. Zero-Lock SPSC Shared Memory Ring Buffer (`src/shm.py` v3 Layout)
@@ -273,7 +273,7 @@ All latency and throughput figures trace directly to committed JSON benchmark re
 
 ### Latency Hierarchy & Physical Bounds
 - **Native C Batch (37.5 ns) vs Pipeline (15.3 µs)**: The **37.5 ns** figure measures the C accelerator alone operating on pre-batched contiguous arrays in CPU L1 cache. The **15.3 µs** figure is the same accelerator measured end-to-end inside the full Python pipeline compute loop (normalization + 7-rule scoring + cross-feed reconciliation + NBBO tracking).
-- **Standalone Core (44.8–61.3 ns)**: The out-of-process standalone binary (`mdrap-core`) bypasses the Python interpreter completely, achieving wire-to-SHM execution at hardware speeds.
+- **Standalone Core (44.8–61.3 ns)**: The out-of-process standalone binary (`mdrap-core`) bypasses the Python interpreter completely, achieving 44.8–61.3 ns mean latency per tick on in-process C kernel evaluation + SHM publish on synthetic stream.
 - **Decoupled Persistence ($p99.9 = 314.7\,\mu\text{s}$)**: Bounded async queuing isolates the hot loop from SQLite synchronous fsync pauses ($2.2\text{ ms}$ baseline), delivering $7\times$ lower tail latency under $10\times$ volume surges.
 - **Physics of the "~5 Nanosecond" Myth**: At 4.0 GHz, one CPU clock cycle is 0.25 nanoseconds; **5 nanoseconds is exactly 20 CPU cycles**. Software running on general-purpose OS kernels cannot receive network packets, parse payloads, and evaluate state in 5 nanoseconds (PCIe bus transfer from NIC to RAM alone takes 100–250 ns). Sub-20 ns latencies are only physically possible in dedicated hardware FPGA gate logic.
 
@@ -508,12 +508,12 @@ python scripts/restore.py --backup /backups/mdrap_backup_20260922_120000.db.gz -
 
 ## Verification & Testing
 
-MDRAP includes an institutional test suite of **815 automated unit, integration, quantitative, options, native C fastpath, fuzzing, FPGA parity, API security, and client integration tests** (100% passing):
+MDRAP includes an institutional test suite of **881 automated unit, integration, quantitative, options, native C fastpath, fuzzing, FPGA parity, API security, and client integration tests** (941 collected, 881 run by default with 60 slow/network deselected, 100% passing):
 
 ### 1. Full Production Test Suite (With FastPath & Native Binaries)
 ```bash
 pytest tests/ -q
-# Result: 815 passed in ~105s (0 failures, 100% green)
+# Result: 881 passed (0 failures, 100% green)
 ```
 
 ### 2. Pure Python Fallback Verification (No C Libraries)

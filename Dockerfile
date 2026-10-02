@@ -19,14 +19,14 @@ COPY src/ src/
 COPY build_fastpath.py .
 
 # Compile native C fastpath accelerator shared object (_fastpath_native.so)
-RUN python build_fastpath.py || echo "Warning: C fastpath compilation skipped"
+RUN python build_fastpath.py
 
 # Stage 2: Production runtime image (lean and hardened)
 FROM python:3.12-slim-bookworm AS runner
 
 LABEL maintainer="MDRAP Platform Engineering" \
       description="Market Data Reliability & Acceleration Platform (Self-Hosted)" \
-      version="2.2.0"
+      version="2.4.0"
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \

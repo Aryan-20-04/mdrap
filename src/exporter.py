@@ -1048,7 +1048,7 @@ class MarketDataExporter:
         ws1["A1"] = f"MDRAP Best Execution & TCA Audit Report: {symbol}"
         ws1["A1"].font = font_title
         ws1["A2"] = (
-            f"Regulatory Compliance Benchmark (SEC Rule 606 & MiFID II RTS 28) | Merkle Proof: {tca_report.get('merkle_root', '')[:24]}..."
+            f"Execution Quality Analysis (SEC Rule 606 & MiFID II RTS 28 Methodology) | Merkle Proof: {tca_report.get('merkle_root', '')[:24]}..."
         )
         ws1["A2"].font = Font(name="Segoe UI", size=9, italic=True, color="64748B")
 
@@ -1059,9 +1059,9 @@ class MarketDataExporter:
                 "Composite execution benchmark vs true consolidated NBBO",
             ),
             (
-                "Regulatory Compliance Verdict",
+                "Quality Assessment Verdict",
                 tca_report.get("compliance_status", "COMPLIANT"),
-                "SEC Rule 605/606 & MiFID II RTS 27/28 Best Execution standard",
+                "SEC Rule 605/606 & MiFID II RTS 27/28 Benchmark Model",
             ),
             (
                 "Cryptographic Merkle Root",

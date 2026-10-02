@@ -11,8 +11,10 @@ from client import Client, MDRAPClient, MarketEvent
 from models import CanonicalEvent, EventType, QualityStatus, Reason
 
 __version__ = "2.3.0"
+__stability__ = "stable"
 
 __all__ = [
+    "__stability__",
     "__version__",
     "Client",
     "MDRAPClient",
@@ -22,5 +24,3 @@ __all__ = [
     "QualityStatus",
     "Reason",
 ]
-
-__stability__ = "stable"

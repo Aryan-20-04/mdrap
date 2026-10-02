@@ -144,3 +144,49 @@ def test_shm_watchdog_watermark_alert_integration():
         assert len(watchdog.alerts()) == 1
     finally:
         writer.close()
+
+
+@pytest.mark.skipif(not HAS_SHM, reason="SharedMemory not available")
+def test_shm_multi_reader_slowest_watermark():
+    """Verify that slowest consumer (min cursor across active readers) determines ring occupancy."""
+    shm_name = "test_shm_wm_multi_reader"
+    writer = SHMWriter(name=shm_name, slot_count=16)
+    try:
+        assert writer.watermark_slots == 12
+
+        for seq in range(13):
+            writer.write_tick(
+                seq=seq,
+                symbol="BTC/USD",
+                source="SRC1",
+                price=100.0 + seq,
+                size=1.0,
+                bid=99.0,
+                ask=101.0,
+                bid_size=10.0,
+                ask_size=10.0,
+                status="VALID",
+                is_crossed=False,
+                exchange_ts=time.time(),
+                ingest_ts=time.time(),
+                broadcast_ts=time.time(),
+                engine_us=1.0,
+            )
+
+        # Fast reader advances to sequence 12
+        writer.update_reader_seq(12, reader_id="fast_consumer")
+        assert not writer.is_watermark_warning_set()
+
+        # Slow reader is still at sequence 0 -> oldest_consumer is min(12, 0) = 0
+        writer.update_reader_seq(0, reader_id="slow_consumer")
+        # Occupancy must be 12 (write_seq 12 - slow reader 0 >= watermark_slots 12)
+        assert writer.is_watermark_warning_set()
+        assert writer._last_known_read_seq == 0
+
+        # Slow reader advances to sequence 12 -> both at 12
+        writer.update_reader_seq(12, reader_id="slow_consumer")
+        assert not writer.is_watermark_warning_set()
+        assert writer._last_known_read_seq == 12
+    finally:
+        writer.close()
+

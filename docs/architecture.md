@@ -161,23 +161,24 @@ The platform converts noisy, delayed, duplicated, and inconsistent market data f
   - **SHM Backpressure Watermark**: Cache Line 2 header padding bitflag signals 80% ring buffer occupancy to consumers and watchdog telemetry.
 - **Final Version Production Architecture (The 3-Layer Performance Engine):**
   - **Layer 1 (Native C Hot Path - Wire-to-SHM):**
-    - Sub-50 ns per tick / >20.5M eps sustained throughput (`mdrap-core.exe`).
+    - Sub-50 ns per tick / >21.2M eps sustained throughput (`mdrap-core.exe`).
     - Invariant calibrated RDTSC timing (`CPUID.80000007H:EDX[8]`) with zero kernel clock-read overhead.
     - 256-bit AVX2 SIMD slot writing (`_mm256_storeu_si256`) writing 128-byte slots in four vector operations with `_mm_sfence`.
     - Hardware L1 cache prefetching (`_mm_prefetch`).
     - 32-tick amortized head sequence publishing with seqlock-decoupled consumer polling.
     - Explicit process core pinning (`--core` argument via `SetProcessAffinityMask` / `sched_setaffinity`).
+    - Measured per-tick latency: **47.00 ns** (1M events median), **47.40 ns** (10M events sustained).
   - **Layer 2 (Python Compute Loop - Accelerated In-Memory Analysis):**
     - High-throughput Python engine utilizing `_fastpath_c.pyd` native C-API extension.
     - `METH_FASTCALL` direct CPU register parameter passing, eliminating ctypes FFI overhead and object boxing.
-    - Measured throughput: **423,228 eps** (+112.8% speedup over baseline).
-    - Per-event latency: **p50: 2.10 µs**, **p95: 2.30 µs**, **p99: 2.70 µs**.
+    - Measured throughput: **415,581 eps** (+108.9% speedup over baseline).
+    - Per-event latency: **p50: 1.90 µs**, **p95: 2.10 µs**, **p99: 2.70 µs**.
   - **Layer 3 (Durable Decoupled Storage Pipeline):**
     - Zero SQL lock contention on the ingest path via append-only memory-mapped `BinaryJournal` (`.dbn` / AOF).
     - Asynchronous `SHMDrainWorker` polling the lock-free circular SHM ring buffer without backpressure jitter.
     - Auto-healing partial file truncation recovery on system crash or abnormal process termination.
-    - Measured persistence throughput: **349,383 eps** (+1,873.7% / 19.74x speedup over SQLite WAL baseline).
-    - Latency p50: **2.70 µs** (99.7% latency reduction).
+    - Measured persistence throughput: **332,871 eps** (+1,780.4% / 18.80x speedup over SQLite WAL baseline).
+    - Latency: **p50: 2.50 µs** (99.7% latency reduction), **p95: 4.50 µs**, **p99: 5.80 µs**.
     - Multi-venue soak load test: **1,000,000 events** across 5 instruments and 3 venues with **0 dropped events**, zero laps, and flat memory RSS.
 - **T2 Hardware Exploration Track (FPGA Simulation Spike):**
   - **Synthesizable Verilog RTL (`fpga/`)**: Combinatorial carry-chain crossed-quote comparator (`mdrap_crossed_quote.v`) and pipelined sequence gap detector (`mdrap_sequence_gap.v`) evaluating rules in ~3.3 ns (1 cycle @ 300 MHz).

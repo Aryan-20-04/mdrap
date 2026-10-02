@@ -1145,11 +1145,12 @@ class FastQualityEngine:
     def _evaluate_batch_unlocked(
         self, events: list[CanonicalEvent]
     ) -> list[CanonicalEvent]:
-        if (
-            self._engine_ptr_c
-            or not _NATIVE_LIB
-            or not hasattr(_NATIVE_LIB, "fastpath_evaluate_batch")
-        ):
+        has_c_batch = bool(self._engine_ptr_c and _C_EXT and hasattr(_C_EXT, "engine_evaluate_batch"))
+        has_dll_batch = bool(_NATIVE_LIB and (
+            (self._engine_ptr and hasattr(_NATIVE_LIB, "fastpath_engine_evaluate_batch"))
+            or hasattr(_NATIVE_LIB, "fastpath_evaluate_batch")
+        ))
+        if not (has_c_batch or has_dll_batch):
             for ev in events:
                 self._evaluate_unlocked(ev)
             return events
@@ -1199,14 +1200,25 @@ class FastQualityEngine:
             c_ev.ask_size = ev.ask_size if ev.ask_size is not None else _NAN
 
         try:
-            if self._engine_ptr and hasattr(
+            if self._engine_ptr_c and _C_EXT and hasattr(_C_EXT, "engine_evaluate_batch"):
+                _C_EXT.engine_evaluate_batch(
+                    self._engine_ptr_c,
+                    ctypes.addressof(c_events),
+                    ctypes.addressof(c_results),
+                    n,
+                )
+            elif self._engine_ptr and hasattr(
                 _NATIVE_LIB, "fastpath_engine_evaluate_batch"
             ):
                 _NATIVE_LIB.fastpath_engine_evaluate_batch(
                     self._engine_ptr, c_events, c_results, n
                 )
-            else:
+            elif _NATIVE_LIB and hasattr(_NATIVE_LIB, "fastpath_evaluate_batch"):
                 _NATIVE_LIB.fastpath_evaluate_batch(c_events, c_results, n)
+            else:
+                for ev in events:
+                    self._evaluate_unlocked(ev)
+                return events
         except Exception:
             # Fallback to individual evaluate if batch call fails
             for ev in events:
@@ -1745,6 +1757,100 @@ def native_shm_read_slot(buf_ptr, slot_count: int, target_seq: int) -> dict | No
             "broadcast_ts": slot.broadcast_ts,
             "engine_us": slot.engine_us,
         }
+
+
+def native_shm_write_tick(
+    buf_ptr,
+    slot_count: int,
+    seq: int,
+    symbol: str,
+    source: str,
+    price: float | None,
+    size: float | None,
+    bid: float | None,
+    ask: float | None,
+    bid_sz: float | None,
+    ask_sz: float | None,
+    status: str,
+    is_crossed: bool,
+    exchange_ts: float,
+    ingest_ts: float,
+    broadcast_ts: float,
+    engine_us: float,
+) -> bool:
+    """Write an SHM tick slot using native C release semantics and atomic two-phase commit."""
+    if _C_EXT and hasattr(_C_EXT, "shm_write_tick_v3"):
+        try:
+            return (
+                _C_EXT.shm_write_tick_v3(
+                    buf_ptr,
+                    slot_count,
+                    seq,
+                    symbol,
+                    source,
+                    price or 0.0,
+                    size or 0.0,
+                    bid or 0.0,
+                    ask or 0.0,
+                    bid_sz or 0.0,
+                    ask_sz or 0.0,
+                    1 if status == "VALID" else (2 if status == "SUSPICIOUS" else (3 if status == "INVALID" else 0)),
+                    1 if is_crossed else 0,
+                    exchange_ts or 0.0,
+                    ingest_ts or 0.0,
+                    broadcast_ts or 0.0,
+                    engine_us or 0.0,
+                )
+                == 1
+            )
+        except Exception:
+            pass
+
+    if not has_native_shm() or not hasattr(_NATIVE_LIB, "fastpath_shm_write_tick_v3"):
+        return False
+
+    raw_addr = get_buffer_address(buf_ptr)
+    total_len = 128 + slot_count * 128
+    st_code = 1 if status == "VALID" else (2 if status == "SUSPICIOUS" else (3 if status == "INVALID" else 0))
+    present = 0
+    if price is not None:
+        present |= 0x01
+    if size is not None:
+        present |= 0x02
+    if bid is not None:
+        present |= 0x04
+    if ask is not None:
+        present |= 0x08
+    if bid_sz is not None:
+        present |= 0x10
+    if ask_sz is not None:
+        present |= 0x20
+
+    sym_bytes = (symbol or "").encode("ascii", errors="replace")[:16]
+    src_bytes = (source or "").encode("ascii", errors="replace")[:8]
+
+    res = _NATIVE_LIB.fastpath_shm_write_tick_v3(
+        ctypes.c_void_p(raw_addr),
+        ctypes.c_size_t(total_len),
+        ctypes.c_uint32(slot_count),
+        ctypes.c_uint64(seq),
+        sym_bytes,
+        src_bytes,
+        ctypes.c_double(price or 0.0),
+        ctypes.c_double(size or 0.0),
+        ctypes.c_double(bid or 0.0),
+        ctypes.c_double(ask or 0.0),
+        ctypes.c_double(bid_sz or 0.0),
+        ctypes.c_double(ask_sz or 0.0),
+        ctypes.c_uint8(st_code),
+        ctypes.c_uint8(1 if is_crossed else 0),
+        ctypes.c_uint8(present),
+        ctypes.c_double(exchange_ts or 0.0),
+        ctypes.c_double(ingest_ts or 0.0),
+        ctypes.c_double(broadcast_ts or 0.0),
+        ctypes.c_float(engine_us or 0.0),
+    )
+    return res == 1
 
 
 # ============================================================================

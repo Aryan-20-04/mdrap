@@ -194,6 +194,7 @@ class SHMWriter:
         self._last_heartbeat = now
         self.watermark_pct = DEFAULT_SHM_WATERMARK_PCT
         self.watermark_slots = int(self.slot_count * self.watermark_pct)
+        self._reader_cursors: dict[str | int, int] = {}
         self._last_known_read_seq = 0
 
     @property
@@ -221,10 +222,12 @@ class SHMWriter:
         except Exception:
             return False
 
-    def update_reader_seq(self, read_seq: int) -> None:
-        """Update slowest known reader sequence to evaluate ring buffer occupancy."""
-        self._last_known_read_seq = max(self._last_known_read_seq, read_seq)
-        occupancy = self._write_seq - self._last_known_read_seq
+    def update_reader_seq(self, read_seq: int, reader_id: str | int = "default") -> None:
+        """Update reader sequence and compute true slowest known reader sequence (min of active reader cursors)."""
+        self._reader_cursors[reader_id] = max(self._reader_cursors.get(reader_id, 0), read_seq)
+        oldest_consumer = min(self._reader_cursors.values()) if self._reader_cursors else read_seq
+        self._last_known_read_seq = oldest_consumer
+        occupancy = self._write_seq - oldest_consumer
         if occupancy >= self.watermark_slots:
             self.set_watermark_flag(True)
         elif occupancy < int(self.slot_count * (self.watermark_pct * 0.8)):
@@ -263,6 +266,36 @@ class SHMWriter:
         """
         if not self.shm:
             return
+
+        # Native acquire/release atomic publication fast path
+        try:
+            from fastpath import native_shm_write_tick
+            if native_shm_write_tick(
+                self.shm.buf,
+                self.slot_count,
+                seq,
+                symbol,
+                source,
+                price,
+                size,
+                bid,
+                ask,
+                bid_size,
+                ask_size,
+                status,
+                is_crossed,
+                exchange_ts,
+                ingest_ts,
+                broadcast_ts,
+                engine_us,
+            ):
+                self._head_seq = seq + 1
+                now = time.time()
+                if (seq & 0x1FF) == 0 or (now - self._last_heartbeat) >= 0.1:
+                    self.update_heartbeat()
+                return
+        except Exception:
+            pass
 
         slot_idx = seq & self.mask
         offset = HEADER_SIZE + (slot_idx * SLOT_SIZE)
@@ -578,6 +611,15 @@ class SHMReader:
             if lag >= self.watermark_slots or self.is_watermark_warning_set():
                 self.overrun_stats.watermark_warnings += 1
                 self.overrun_stats.watermark_events += 1
+
+        # Native acquire/release atomic slot read fast path
+        try:
+            from fastpath import native_shm_read_slot
+            native_item = native_shm_read_slot(self.shm.buf, self.slot_count, seq)
+            if native_item is not None:
+                return native_item
+        except Exception:
+            pass
 
         slot_idx = seq & self.mask
         offset = HEADER_SIZE + (slot_idx * SLOT_SIZE)

@@ -491,14 +491,19 @@ class OptionsChain:
         self._chain: list[dict] = []
 
     def add_expiry(
-        self, expiry_days: float, strikes: list[float], volatility: float = 0.20
+        self,
+        expiry_days: float,
+        strikes: list[float],
+        volatility: float = 0.20,
+        strike_vols: dict[float, float] | None = None,
     ):
-        """Generate theoretical prices and Greeks for all strikes at an expiry."""
+        """Generate theoretical prices and Greeks for all strikes at an expiry (with optional strike-specific volatility smile/skew)."""
         for K in strikes:
+            vol = strike_vols.get(K, volatility) if strike_vols else volatility
             for opt_type in (OptionType.CALL, OptionType.PUT):
                 contract = OptionContract(self.underlying, K, expiry_days, opt_type)
                 price_info = price_option(
-                    contract, self.spot, self.risk_free_rate, volatility
+                    contract, self.spot, self.risk_free_rate, vol
                 )
 
                 self._chain.append(
@@ -507,7 +512,7 @@ class OptionsChain:
                         "expiry_days": expiry_days,
                         "option_type": opt_type.value,
                         "price": price_info.theoretical,
-                        "iv": volatility,
+                        "iv": vol,
                         "delta": price_info.greeks.delta,
                         "gamma": price_info.greeks.gamma,
                         "theta": price_info.greeks.theta,

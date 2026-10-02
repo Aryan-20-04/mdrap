@@ -23,7 +23,7 @@ Architectural Objectives (MDRAP Spec §12 & §26):
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from models import CanonicalEvent, QualityStatus, Reason
 
@@ -182,6 +182,7 @@ class CanonicalDecision:
     disagreement: bool
     reason: str
     competing_sources: list
+    quality_reasons: list[str] = field(default_factory=list)
 
 
 class Reconciler:
@@ -278,8 +279,9 @@ class Reconciler:
                     disagreement = True
                     break
 
+        quality_reasons: list[str] = []
         if disagreement:
-            chosen_event.reasons.append(Reason.CROSS_FEED_DISAGREEMENT.value)
+            quality_reasons.append(Reason.CROSS_FEED_DISAGREEMENT.value)
             reason = (
                 f"disagreement across {recent_sources} "
                 f"(prices={recent_prices}); selected highest-reliability source"
@@ -296,6 +298,7 @@ class Reconciler:
             disagreement=disagreement,
             reason=reason,
             competing_sources=recent_sources,
+            quality_reasons=quality_reasons,
         )
 
 

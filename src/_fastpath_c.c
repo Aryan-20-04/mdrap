@@ -162,6 +162,27 @@ static PyObject *py_engine_reset(PyObject *self, PyObject *args) {
     Py_RETURN_NONE;
 }
 
+static PyObject *py_engine_evaluate_batch(PyObject *self, PyObject *args) {
+    (void)self;
+    uint64_t engine_ptr = 0;
+    uint64_t events_ptr = 0;
+    uint64_t results_ptr = 0;
+    int32_t count = 0;
+    if (!PyArg_ParseTuple(args, "KKKi", &engine_ptr, &events_ptr, &results_ptr, &count)) {
+        return NULL;
+    }
+    FastEngine *eng = (FastEngine *)(uintptr_t)engine_ptr;
+    const FastEvent *evs = (const FastEvent *)(uintptr_t)events_ptr;
+    FastResult *res = (FastResult *)(uintptr_t)results_ptr;
+    if (!eng || !evs || !res || count <= 0) {
+        Py_RETURN_NONE;
+    }
+    Py_BEGIN_ALLOW_THREADS
+    fastpath_engine_evaluate_batch(eng, evs, res, count);
+    Py_END_ALLOW_THREADS
+    Py_RETURN_NONE;
+}
+
 static PyObject *py_engine_source_reset(PyObject *self, PyObject *args) {
     (void)self;
     uint64_t engine_ptr = 0;
@@ -372,6 +393,7 @@ static PyMethodDef FastpathMethods[] = {
     {"engine_destroy", (PyCFunction)py_engine_destroy, METH_VARARGS, "Destroy FastEngine context"},
     {"engine_configure", (PyCFunction)py_engine_configure, METH_VARARGS, "Configure FastEngine thresholds"},
     {"engine_reset", (PyCFunction)py_engine_reset, METH_VARARGS, "Reset FastEngine internal statistics"},
+    {"engine_evaluate_batch", (PyCFunction)py_engine_evaluate_batch, METH_VARARGS, "Evaluate a batch of FastEvents in C releasing GIL"},
     {"engine_source_reset", (PyCFunction)py_engine_source_reset, METH_VARARGS, "Reset a single source session in FastEngine"},
     {"engine_set_hash_seed", (PyCFunction)py_engine_set_hash_seed, METH_VARARGS, "Set hash seed for FastEngine"},
     {"shm_read_slot_v3", (PyCFunction)py_shm_read_slot_v3, METH_FASTCALL, "Read slot from SHM buffer v3"},

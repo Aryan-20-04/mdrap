@@ -66,7 +66,7 @@ class MarketDataDaemon:
         sim_events: int = 0,  # 0 = infinite continuous stream
         sim_speed_eps: float = 1000.0,
         auth_token: Optional[str] = None,
-        require_auth: bool = False,
+        require_auth: Optional[bool] = None,
         enable_shm: bool = True,
         shm_name: str = "mdrap_feed",
     ):
@@ -78,8 +78,13 @@ class MarketDataDaemon:
         self.sim_speed_eps = sim_speed_eps
         self.enable_shm = enable_shm
         self.shm_name = shm_name
-        self.require_auth = require_auth
-        import os
+        env_auth = os.environ.get("MDRAP_REQUIRE_AUTH")
+        if require_auth is not None:
+            self.require_auth = require_auth
+        elif env_auth is not None:
+            self.require_auth = env_auth.lower() in ("1", "true", "yes")
+        else:
+            self.require_auth = False
 
         self.auth_token = (
             auth_token
@@ -1140,12 +1145,7 @@ class TerminalCockpit:
             return
 
         print("\033[?25l", end="")  # Hide cursor
-        try:
-            from terminal_display import poll_keypress
-        except Exception:
-
-            def poll_keypress():
-                return None
+        from term import poll_keypress
 
         paused = False
         try:

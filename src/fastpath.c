@@ -539,9 +539,8 @@ EXPORT void fastpath_engine_destroy(FastEngine *eng) {
     free(eng);
 }
 
-EXPORT void fastpath_engine_reset(FastEngine *eng) {
+static inline void engine_reset_nolock(FastEngine *eng) {
     if (!eng) return;
-    MD_LOCK(&eng->lock);
     for (int s = 0; s < MAX_SOURCES; ++s) eng->source_epoch[s]++;   /* O(1): slots reinitialise lazily */
     memset(eng->dedup_keys, 0, sizeof(eng->dedup_keys));
     eng->dedup_active = 0; eng->dedup_count = 0;
@@ -549,6 +548,12 @@ EXPORT void fastpath_engine_reset(FastEngine *eng) {
     eng->replay_min_seq = 0;
     eng->replay_max_seq = 0;
     eng->replay_total_recorded = 0;
+}
+
+EXPORT void fastpath_engine_reset(FastEngine *eng) {
+    if (!eng) return;
+    MD_LOCK(&eng->lock);
+    engine_reset_nolock(eng);
     MD_UNLOCK(&eng->lock);
 }
 
@@ -954,10 +959,16 @@ EXPORT void fastpath_cleanup(void) {
 }
 
 EXPORT void fastpath_init(double staleness_threshold_s, double anomaly_stddev, int32_t price_window) {
-    if (g_default_engine) {
-        fastpath_engine_destroy(g_default_engine);
+    FastEngine *e = get_default_engine();
+    if (e) {
+        MD_LOCK(&e->lock);
+        engine_reset_nolock(e);
+        e->staleness_threshold_s = staleness_threshold_s > 0.0 ? staleness_threshold_s : 0.05;
+        e->price_anomaly_stddev = anomaly_stddev > 0.0 ? anomaly_stddev : 6.0;
+        e->price_window = price_window > MAX_WINDOW ? MAX_WINDOW : (price_window > 0 ? price_window : 50);
+        if (e->price_window < 2) e->price_window = 2;
+        MD_UNLOCK(&e->lock);
     }
-    g_default_engine = fastpath_engine_create(staleness_threshold_s, anomaly_stddev, price_window);
 }
 
 EXPORT void fastpath_reset(void) {

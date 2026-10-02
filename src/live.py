@@ -346,8 +346,8 @@ class LiveConnector:
             payload = {
                 "instrument": mapping["canonical"],
                 "event_type": "QUOTE",
-                "exchange_ts": t_recv - 0.005,
-                "sequence": next(_seq_counter),
+                "exchange_ts": None,
+                "sequence": None,
                 "bid": bid_p,
                 "ask": ask_p,
                 "bid_size": bid_s,
@@ -378,12 +378,28 @@ class LiveConnector:
             bid_p = float(data["bid"])
             ask_p = float(data["ask"])
             size = float(data.get("size", 1.0))
+            ex_ts = None
+            if "time" in data and isinstance(data["time"], str):
+                try:
+                    t_str = data["time"]
+                    if t_str.endswith("Z"):
+                        t_str = t_str[:-1] + "+00:00"
+                    from datetime import datetime
+
+                    ex_ts = datetime.fromisoformat(t_str).timestamp()
+                except Exception:
+                    ex_ts = None
+            seq = (
+                int(data["sequence"])
+                if ("sequence" in data and data["sequence"] is not None)
+                else None
+            )
 
             payload = {
                 "instrument": mapping["canonical"],
                 "event_type": "QUOTE",
-                "exchange_ts": t_recv - 0.008,
-                "sequence": next(_seq_counter),
+                "exchange_ts": ex_ts,
+                "sequence": seq,
                 "bid": bid_p,
                 "ask": ask_p,
                 "bid_size": size,
@@ -420,8 +436,8 @@ class LiveConnector:
             payload = {
                 "instrument": mapping["canonical"],
                 "event_type": "QUOTE",
-                "exchange_ts": t_recv - 0.010,
-                "sequence": next(_seq_counter),
+                "exchange_ts": None,
+                "sequence": None,
                 "bid": bid_p,
                 "ask": ask_p,
                 "bid_size": bid_s,
@@ -454,12 +470,18 @@ class LiveConnector:
             ask_p = float(item["askPx"])
             bid_s = float(item.get("bidSz", 1.0))
             ask_s = float(item.get("askSz", 1.0))
+            ex_ts = (float(item["ts"]) / 1000.0) if item.get("ts") else None
+            seq = (
+                int(item["seqId"])
+                if ("seqId" in item and item["seqId"] is not None)
+                else None
+            )
 
             payload = {
                 "instrument": mapping["canonical"],
                 "event_type": "QUOTE",
-                "exchange_ts": t_recv - 0.007,
-                "sequence": next(_seq_counter),
+                "exchange_ts": ex_ts,
+                "sequence": seq,
                 "bid": bid_p,
                 "ask": ask_p,
                 "bid_size": bid_s,
@@ -492,12 +514,19 @@ class LiveConnector:
             ask_p = float(item["ask1Price"])
             bid_s = float(item.get("bid1Size", 1.0))
             ask_s = float(item.get("ask1Size", 1.0))
+            raw_time = data.get("time") or item.get("time")
+            ex_ts = (float(raw_time) / 1000.0) if raw_time else None
+            seq = (
+                int(item["seq"])
+                if ("seq" in item and item["seq"] is not None)
+                else None
+            )
 
             payload = {
                 "instrument": mapping["canonical"],
                 "event_type": "QUOTE",
-                "exchange_ts": t_recv - 0.006,
-                "sequence": next(_seq_counter),
+                "exchange_ts": ex_ts,
+                "sequence": seq,
                 "bid": bid_p,
                 "ask": ask_p,
                 "bid_size": bid_s,
@@ -560,8 +589,8 @@ class LiveConnector:
         q_payload = {
             "instrument": canonical_sym,
             "event_type": "QUOTE",
-            "exchange_ts": t_recv - 0.015,
-            "sequence": next(_seq_counter),
+            "exchange_ts": t_recv,
+            "sequence": None,
             "bid": bid_p,
             "ask": ask_p,
             "bid_size": 100.0,
@@ -570,15 +599,17 @@ class LiveConnector:
             "bids": bids_l2,
             "asks": asks_l2,
             "is_simulated": True,
+            "source_kind": "SIMULATED",
         }
         t_payload = {
             "instrument": canonical_sym,
             "event_type": "TRADE",
-            "exchange_ts": t_recv - 0.010,
-            "sequence": next(_seq_counter),
+            "exchange_ts": t_recv,
+            "sequence": None,
             "price": new_px,
             "quantity": 100.0,
             "is_simulated": True,
+            "source_kind": "SIMULATED",
         }
         return [
             RawEvent(
@@ -627,14 +658,15 @@ class LiveConnector:
         payload = {
             "instrument": symbol,
             "event_type": "QUOTE",
-            "exchange_ts": t_recv - 0.015,
-            "sequence": next(_seq_counter),
+            "exchange_ts": t_recv,
+            "sequence": None,
             "bid": bid_p,
             "ask": ask_p,
             "bid_size": 1.5,
             "ask_size": 1.5,
             "price": new_px,
             "is_simulated": True,
+            "source_kind": "SIMULATED",
         }
         return [
             RawEvent(
@@ -755,7 +787,7 @@ class LiveConnector:
         self._equity_venues_cache[s] = venues
         return venues
 
-    # 6. Global Equities (Yahoo Finance)
+    # 6. Global Equities
     def fetch_equity_events(
         self,
         symbol: str,
@@ -765,9 +797,8 @@ class LiveConnector:
         resolved_ticker: str | None = None,
     ) -> list[RawEvent]:
         """
-        Fetch real-time equity/commodity market events (top-of-book quote and latest trade)
-        for any global stock ticker (e.g. TMPV.NS, AAPL, PLTR, AMD, TSLA, SPY, GOLD).
-        Zero fake data by default (Principle 1 & 5). Only generates synthetic ticks if fallback_sim=True.
+        Fetch equity market events from resolved online quote feed or fallback simulator.
+        Uses actual market price, volume, and timestamp without fabricating sequence IDs.
         """
         if resolved_ticker:
             ticker = resolved_ticker
@@ -807,14 +838,16 @@ class LiveConnector:
                 if source != "EQUITIES"
                 else live_meta.get("exchangeName", "EQUITIES")
             )
+            # Use actual market timestamp if available
+            market_time = live_meta.get("regularMarketTime")
+            exchange_ts = float(market_time) if market_time is not None else None
 
-            # Estimate tight consolidated spread and multi-level depth book around market price
             spread_offset = max(0.01, round(price * 0.0005, 2))
-            bid_p = round(float(live_meta.get("bid", price - spread_offset)), 2)
-            ask_p = round(float(live_meta.get("ask", price + spread_offset)), 2)
-            _vol = float(live_meta.get("regularMarketVolume", 1000.0) or 1000.0)
+            raw_bid = live_meta.get("bid")
+            raw_ask = live_meta.get("ask")
+            bid_p = round(float(raw_bid if raw_bid is not None else price - spread_offset), 2)
+            ask_p = round(float(raw_ask if raw_ask is not None else price + spread_offset), 2)
 
-            # Build 5-level depth book for Level-2 books
             bids_l2 = [
                 [round(bid_p - i * spread_offset, 2), float(100 * (i + 1))]
                 for i in range(5)
@@ -825,41 +858,41 @@ class LiveConnector:
                 for i in range(5)
             ]
 
-            # 1. Quote event (updates BBO NBBO and Level-2 order book depth)
             q_payload = {
                 "instrument": canon_sym,
                 "event_type": "QUOTE",
-                "exchange_ts": t_recv - 0.015,
-                "sequence": next(_seq_counter),
+                "exchange_ts": exchange_ts,
+                "sequence": None,
                 "bid": bid_p,
                 "ask": ask_p,
-                "bid_size": 100.0,
-                "ask_size": 100.0,
+                "bid_size": float(live_meta.get("bidSize", 100.0) or 100.0),
+                "ask_size": float(live_meta.get("askSize", 100.0) or 100.0),
                 "price": price,
                 "currency": currency,
                 "exchange": exchange,
                 "bids": bids_l2,
                 "asks": asks_l2,
+                "source_kind": "REST_INDICATIVE",
             }
             events.append(
                 RawEvent(
                     source=source,
                     payload=q_payload,
-                    receive_timestamp=t_recv,
-                    raw_id=f"live-equities-quote-{next(_raw_counter)}",
+                        receive_timestamp=t_recv,
+                        raw_id=f"live-equities-quote-{next(_raw_counter)}",
+                    )
                 )
-            )
 
-            # 2. Trade event (updates OHLCV candlestick aggregator and trade volume)
             t_payload = {
                 "instrument": canon_sym,
                 "event_type": "TRADE",
-                "exchange_ts": t_recv - 0.010,
-                "sequence": next(_seq_counter),
+                "exchange_ts": exchange_ts,
+                "sequence": None,
                 "price": price,
-                "quantity": 100.0,
+                "quantity": float(live_meta.get("regularMarketVolume", 100.0) or 100.0),
                 "currency": currency,
                 "exchange": exchange,
+                "source_kind": "REST_INDICATIVE",
             }
             events.append(
                 RawEvent(
@@ -878,17 +911,17 @@ class LiveConnector:
             )
 
     def fetch_equity_quote(self, symbol: str) -> RawEvent | None:
-        """Fetch real-time top-of-book equity or commodity quote."""
+        """Fetch real-time top-of-book equity quote."""
         evs = self.fetch_equity_events(symbol, fallback_sim=False)
         return evs[0] if evs else None
 
     def fetch_equity_candles(
         self, symbol: str, limit: int = 25
     ) -> list[dict[str, Any]]:
-        """Fetch real historical OHLCV candles for any equity or commodity directly from Yahoo Finance."""
+        """Fetch historical OHLCV candles for equity symbols."""
         resolved = self.probe_or_resolve_equity(symbol)
         mapping = resolve_venue_symbols(symbol)
-        ticker = resolved[0] if resolved else (mapping["yahoo"] or mapping["canonical"])
+        ticker = resolved[0] if resolved else (mapping.get("yahoo") or mapping["canonical"])
         url = YAHOO_CHART_URL.format(symbol=ticker)
         data = self._get_json(url)
         if not data or not data.get("chart", {}).get("result"):

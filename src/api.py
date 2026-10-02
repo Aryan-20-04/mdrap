@@ -21,7 +21,6 @@ from contextlib import asynccontextmanager
 import json
 import logging
 import os
-import secrets
 import sys
 import time
 from typing import Any, Dict, List, Optional, Set
@@ -120,6 +119,7 @@ class CreateKeyResponse(BaseModel):
         ..., description="Raw secret API key (shown ONCE, never retrievable again)"
     )
     key_prefix: str
+    key_id: Optional[str] = None
     client_id: str
     role: str
     created_at: float
@@ -128,6 +128,7 @@ class CreateKeyResponse(BaseModel):
 
 class KeyItem(BaseModel):
     key_prefix: str
+    key_id: Optional[str] = None
     client_id: str
     role: str
     is_active: bool
@@ -432,6 +433,29 @@ def create_app(
             )
         return result
 
+    @router.get("/feed/{source}/health", tags=["Feeds"])
+    def get_feed_health(
+        source: str,
+        request: Request,
+        _auth: ClientEntitlement = Depends(require_role(Role.VIEWER)),
+    ):
+        st: AppState = request.app.state.mdrap
+        src = source.upper()
+        health_rows = st.store.feed_health()
+        for row in health_rows:
+            if row.get("source", "").upper() == src:
+                return row
+        if src in st.active_feeds:
+            d = st.active_feeds[src]
+            return {
+                "source": src,
+                "provider": d.get("provider", "UNKNOWN"),
+                "status": d.get("status", "ACTIVE"),
+                "events_count": d.get("events_count", 0),
+                "dropped_count": d.get("dropped_count", 0),
+            }
+        raise HTTPException(status_code=404, detail=f"Feed source '{source}' not found")
+
     @router.post("/feeds", tags=["Feeds"])
     def register_feed(
         req: FeedRegisterRequest,
@@ -505,6 +529,37 @@ def create_app(
             events = [e for e in events if e.get("quality_status") == sf]
         return events
 
+    @router.get("/events/{event_id}", tags=["Events"])
+    def get_event_by_id(
+        event_id: str,
+        request: Request,
+        include_lineage: bool = Query(True, description="Include lineage decision record"),
+        _auth: ClientEntitlement = Depends(require_role(Role.VIEWER)),
+    ):
+        st: AppState = request.app.state.mdrap
+        ev = st.store.get_event(event_id)
+        if not ev:
+            raise HTTPException(status_code=404, detail=f"Event '{event_id}' not found")
+        if include_lineage:
+            lin = st.store.event_lineage(event_id)
+            ev["lineage"] = lin
+        return ev
+
+    @router.get("/instrument/{instrument_id}/latest", tags=["Events"])
+    def get_latest_instrument_event(
+        instrument_id: str,
+        request: Request,
+        _auth: ClientEntitlement = Depends(require_role(Role.VIEWER)),
+    ):
+        st: AppState = request.app.state.mdrap
+        events = st.store.latest(instrument_id, limit=1)
+        if not events:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No canonical events found for instrument '{instrument_id}'",
+            )
+        return events[0]
+
     # 4. Data Quality & Anomaly Analytics
     @router.get("/quality", tags=["Quality"])
     def get_quality_summary(
@@ -541,6 +596,31 @@ def create_app(
                 if r.get("instrument_id", "").upper() == instrument_id.upper()
             ]
         return items
+
+    @router.post("/quarantine/{event_id}/reprocess", tags=["Quarantine"])
+    def reprocess_quarantined_event(
+        event_id: str,
+        request: Request,
+        _auth: ClientEntitlement = Depends(require_role(Role.OPERATOR)),
+    ):
+        st: AppState = request.app.state.mdrap
+        ev = st.store.reprocess_quarantine(event_id, st.pipeline)
+        if ev is None:
+            raise HTTPException(
+                status_code=404, detail=f"Quarantined record '{event_id}' not found"
+            )
+        st.security_manager.log_audit(
+            action="QUARANTINE_REPROCESSED",
+            actor=_auth.client_id,
+            role=_auth.role,
+            details=f"Reprocessed quarantined event '{event_id}' -> status: {ev.quality_status.value}",
+        )
+        return {
+            "status": "ok",
+            "event_id": ev.event_id,
+            "quality_status": ev.quality_status.value,
+            "reasons": ev.reasons,
+        }
 
     # 6. Audit Trail & Verification
     @router.get("/audit", tags=["Audit"])
@@ -687,14 +767,12 @@ def create_app(
             if req.role.upper() in Role.__members__
             else Role.VIEWER
         )
-        raw_token = f"mdrap_live_{secrets.token_urlsafe(24)}"
-
         ent = st.security_manager.register_api_key(
             client_id=req.client_id,
             role=role,
-            token=raw_token,
             expires_at=req.expires_at,
         )
+        raw_token = ent.token
         st.security_manager.log_audit(
             action="API_KEY_CREATED",
             actor=_auth.client_id,
@@ -704,6 +782,7 @@ def create_app(
         return CreateKeyResponse(
             token=raw_token,
             key_prefix=ent.key_prefix,
+            key_id=ent.key_id,
             client_id=ent.client_id,
             role=ent.role.value if hasattr(ent.role, "value") else str(ent.role),
             created_at=ent.created_at,
@@ -720,6 +799,7 @@ def create_app(
         return [
             KeyItem(
                 key_prefix=k.key_prefix,
+                key_id=getattr(k, "key_id", None),
                 client_id=k.client_id,
                 role=k.role.value if hasattr(k.role, "value") else str(k.role),
                 is_active=k.is_active,
@@ -738,10 +818,12 @@ def create_app(
         st: AppState = request.app.state.mdrap
         revoked = st.security_manager.revoke_api_key(key_id)
         if not revoked:
-            # Try finding by exact prefix or token_hash
+            # Try finding by exact key_id, prefix or token_hash
             for k in st.security_manager.list_api_keys():
-                if k.key_prefix == key_id or (
-                    k.token_hash and k.token_hash.startswith(key_id)
+                if (
+                    getattr(k, "key_id", None) == key_id
+                    or k.key_prefix == key_id
+                    or (k.token_hash and k.token_hash.startswith(key_id))
                 ):
                     st.security_manager.revoke_api_key(k.token_hash)
                     revoked = True

@@ -58,6 +58,7 @@ class ClientEntitlement:
     client_id: str = ""
     token_hash: str = ""
     key_prefix: str = ""
+    key_id: str = ""
     role: Role = Role.VIEWER
     created_at: float = field(default_factory=time.time)
     expires_at: Optional[float] = None
@@ -72,6 +73,7 @@ class ClientEntitlement:
             )
         elif self.token_hash and not self.key_prefix:
             self.key_prefix = self.token_hash[:12] + "..."
+        self.key_id = self.key_id or (self.token_hash[:16] if self.token_hash else "")
         if isinstance(self.role, str) and self.role in Role.__members__:
             self.role = Role[self.role]
 
@@ -80,6 +82,7 @@ class ClientEntitlement:
             "token": self.token,
             "token_hash": self.token_hash,
             "key_prefix": self.key_prefix,
+            "key_id": self.key_id,
             "client_id": self.client_id,
             "role": self.role.value if hasattr(self.role, "value") else str(self.role),
             "created_at": self.created_at,
@@ -96,6 +99,7 @@ class ClientEntitlement:
             client_id=str(data.get("client_id", "")),
             token_hash=str(data.get("token_hash", "")),
             key_prefix=str(data.get("key_prefix", "")),
+            key_id=str(data.get("key_id", "")),
             role=role,
             created_at=float(data.get("created_at", time.time())),
             expires_at=float(data["expires_at"])
@@ -437,6 +441,7 @@ class SecurityManager:
                     token_hash=th,
                     client_id=cfg["client_id"],
                     key_prefix=tok[:12] + "...",
+                    key_id=th[:16],
                     role=cfg.get("role", Role.VIEWER),
                 )
         # Load API key overrides from environment (e.g. MDRAP_API_KEY_ADMIN=custom_token)
@@ -449,6 +454,7 @@ class SecurityManager:
                     token_hash=th,
                     client_id=f"Env_Client_{suffix}",
                     key_prefix=v[:12] + "...",
+                    key_id=th[:16],
                     role=role_val,
                 )
         if self.store and hasattr(self.store, "load_api_keys"):
@@ -713,12 +719,12 @@ class SecurityManager:
 
         if not token:
             existing_prefixes = {
-                k.key_prefix for k in self._api_keys.values() if k.is_active
+                k.key_prefix for k in self._api_keys.values()
             }
             while True:
                 candidate = f"mdrap_live_{secrets.token_urlsafe(24)}"
                 cand_pfx = candidate[:12] + "..." if len(candidate) > 12 else candidate
-                if cand_pfx not in existing_prefixes or len(existing_prefixes) >= 60:
+                if cand_pfx not in existing_prefixes:
                     token = candidate
                     break
 
@@ -729,6 +735,7 @@ class SecurityManager:
             token=token,
             token_hash=tok_hash,
             key_prefix=key_prefix,
+            key_id=tok_hash[:16],
             client_id=client_id,
             role=role_clean,
             expires_at=expires_at,
@@ -748,14 +755,20 @@ class SecurityManager:
         return ent
 
     def revoke_api_key(self, token: str) -> bool:
-        """Revoke an active API key immediately by token, token_hash, or key_prefix."""
+        """Revoke an active API key immediately by token, token_hash, key_id, or key_prefix."""
         ent = self._api_keys.get_by_token_or_hash(token)
         if not ent:
-            # Check by key_prefix in registered keys (match active first)
+            # Try exact key_id match first (16 hex chars = 64 bits entropy)
             for v in list(self._api_keys.values()):
-                if v.key_prefix == token and v.is_active:
+                if v.key_id == token and v.is_active:
                     ent = v
                     break
+        if not ent:
+            # Fall back to key_prefix match (low entropy, kept for backward compat)
+            matching = [v for v in self._api_keys.values() if v.key_prefix == token and v.is_active]
+            if matching:
+                matching.sort(key=lambda x: getattr(x, "created_at", 0.0), reverse=True)
+                ent = matching[0]
             if not ent:
                 for v in list(self._api_keys.values()):
                     if v.key_prefix == token:
@@ -763,7 +776,7 @@ class SecurityManager:
                         break
         if ent:
             ent.is_active = False
-            if self.store and hasattr(self.store, "revoke_api_key"):
+            if self.store and hasattr(self.store, 'revoke_api_key'):
                 try:
                     self.store.revoke_api_key(ent.token_hash or token)
                 except Exception as exc:

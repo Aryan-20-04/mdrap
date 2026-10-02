@@ -1,15 +1,16 @@
 """
 Maritime AIS Supply Chain & Geodesic Chokepoint Intelligence Engine.
 
-This module provides institutional-grade alternative data tracking for commercial maritime
+This module provides alternative data tracking for commercial maritime
 traffic, critical oceanic chokepoint geofencing, and floating commodity inventory:
-- Real-time GPS/AIS coordinate tracking with mathematical haversine geodesic distance:
+- GPS/AIS coordinate tracking with mathematical haversine geodesic distance:
       d = 2R * arcsin(sqrt(sin^2(Δlat/2) + cos(lat1)*cos(lat2)*sin^2(Δlon/2)))
   where R = 3440.065 nautical miles.
-- C-extension native fastpath integration via ctypes for vectorized fleet geofencing.
+- Vectorized fleet geofencing with C-extension native fastpath integration via ctypes.
 - Major maritime trade chokepoints: Strait of Hormuz, Malacca, Bab-el-Mandeb, Suez Canal,
   Panama Canal, Bosphorus, Gibraltar, Dover Strait.
-- Floating commodity cargo breakdown (crude oil, LNG, dry bulk, containerized freight).
+- Curated reference fleet watch-list fixture for offline geodesic benchmarking and UI validation.
+- Live transponder positions can be ingested via the AIS position stream adapter.
 """
 
 from __future__ import annotations
@@ -329,6 +330,7 @@ _FLEET_FIELDS = (
     "last_update",
 )
 
+# Baseline reference fleet watch-list fixture for offline geodesic benchmarking and UI validation.
 _FLEET_RECORDS = [
     (
         "9745342",

@@ -12,18 +12,18 @@ The table below reconciles all latency and throughput metrics reported across th
 
 | Tier | Component / Pipeline Stage | Throughput (eps) | Latency p50 | Latency p95 | Latency p99 | Source Report / Command |
 |---|---|---|---|---|---|---|
-| **Tier 1A** | Native C Kernel (Batch L1) | **26,652,452 eps** | **37.5 ns** (0.038 µs) | 37.5 ns | 37.5 ns | `benchmarks/stage_breakdown.json` (`stage_breakdown.py`) |
+| **Tier 1A** | Native C Kernel (Batch L1) | **41,000,410 eps** | **24.4 ns** (0.024 µs) | 24.4 ns | 24.4 ns | `benchmarks/stage_breakdown.json` (`stage_breakdown.py`) |
 | **Tier 1B** | Native C Kernel (Single Call) | **18,669,082 eps** | **50.0 ns** (0.050 µs) | 55.0 ns | 72.0 ns | `benchmarks/micro_ffi.py --iterations 100000` |
 | **Tier 1C** | ctypes FFI Overhead (Scalar) | — | **~1.7 µs** | ~2.5 µs | ~3.8 µs | `benchmarks/micro_ffi.py` |
 | **Tier 1D** | ctypes FFI Overhead (Batch) | — | **~0.35 µs/event** | ~0.50 µs | ~0.80 µs | `benchmarks/micro_ffi.py` (5.2x faster than scalar FFI) |
-| **Tier 1E** | Standalone Native Core (`mdrap-core`) | **16,317,473–22,345,370 eps** | **44.8–61.3 ns** (0.05 µs) | 58.7 ns | 63.4 ns | `benchmarks/mdrap_core_bench.json` (`bench_mdrap_core.py`) |
-| **Tier 2A** | SBE Binary Frame Decoder | **1,175,606 eps** | **600 ns** (0.60 µs) | 900 ns | 1,100 ns | `benchmarks/stage_breakdown.json` (vs Python JSON 3,000 ns) |
-| **Tier 2B** | Contiguous Event Allocation | **987,066 eps** | **700 ns** (0.70 µs) | 1,200 ns | 1,500 ns | `benchmarks/stage_breakdown.json` (vs Dataclass 2,000 ns) |
+| **Tier 1E** | Standalone Native Core (`mdrap-core`) | **22,573,023–25,982,149 eps** | **38.5–44.3 ns** (0.04 µs) | 44.3 ns | 44.3 ns | `benchmarks/mdrap_core_bench.json` (`bench_mdrap_core.py`) |
+| **Tier 2A** | SBE Binary Frame Decoder | **1,311,847 eps** | **600 ns** (0.60 µs) | 900 ns | 1,100 ns | `benchmarks/stage_breakdown.json` (vs Python JSON 2,800 ns) |
+| **Tier 2B** | Contiguous Event Allocation | **1,096,753 eps** | **700 ns** (0.70 µs) | 1,200 ns | 1,500 ns | `benchmarks/stage_breakdown.json` (vs Dataclass 2,100 ns) |
 | **Tier 2C** | V4 In-Memory Hot Path (Batch C) | **34,241 eps** | **15.30 µs** (0.015 ms) | 28.40 µs | 45.10 µs | `benchmarks/baseline_*.json` (`cli.py compare -e 100000`) |
 | **Tier 2D** | V1 In-Memory Baseline (Pure Py) | **28,562 eps** | **21.00 µs** (0.021 ms) | 38.20 µs | 58.90 µs | `benchmarks/baseline_v1_*.json` (`cli.py compare -e 100000`) |
 | **Tier 3A** | SHM Broadcast Ring Publish | **208,479 eps** | **4.10 µs** (0.004 ms) | 5.30 µs | 8.10 µs | `benchmarks/stage_breakdown.json` |
-| **Tier 3B** | SQLite WAL Batched Flush (Sync) | **330,136 eps** | **2.27 µs** (in-memory) | 4.15 µs | 8.88 µs | `benchmarks/stage_breakdown.json` |
-| **Tier 4** | End-to-End Durable Ingest-to-Disk | **23,600 eps** | **783.6 µs** (0.78 ms) | 1,240 µs | 2,850 µs | Full pipeline with SQLite WAL batched commits |
+| **Tier 3B** | SQLite WAL Batched Flush (Sync) | **595,073 eps** | **1.32 µs** (in-memory) | 4.15 µs | 8.88 µs | `benchmarks/stage_breakdown.json` |
+| **Tier 4** | End-to-End Durable Ingest-to-Disk | **19,955 eps** | **795.1 µs** (0.80 ms) | 1,787 µs | 2,185 µs | `benchmarks/results/v1.0.0.json` (with SQLite WAL batched commits) |
 
 ---
 
@@ -96,15 +96,17 @@ Empirical measurements from `benchmarks/results/optimized_phase6.json` pinned to
 
 | Layer / Measurement Tier | Baseline (Phase 0) | Optimized (Phase 6) | Speedup / Improvement Delta | Verification |
 | :--- | :--- | :--- | :--- | :--- |
-| **Layer 1: Native Hotpath EPS (1M)** | 19,513,680 eps | **20,543,180 eps** | **+1.05x (+5.3%)** | `mdrap-core.exe` (AVX2 + RDTSC) |
-| **Layer 1: Per-Tick Latency (1M)** | 51.20 ns | **48.70 ns** | **+4.9% faster** (Sub-50ns scale) | Invariant RDTSC |
-| **Layer 1: Sustained Run EPS (10M)** | *(unscaled)* | **20,259,673 eps** | **Sustained >20M eps** | 10M events in 0.56 s |
-| **Layer 1: Latency per Tick (10M)** | *(unscaled)* | **50.30 ns** | **Sub-50ns class** | Zero drift |
-| **Layer 2: Python Compute Loop EPS** | 198,912 eps | **423,228 eps** | **+2.13x (+112.8% speedup)** | `_fastpath_c.pyd` C-API |
-| **Layer 2: Compute Latency p50** | 4.60 µs | **2.10 µs** | **+54.3% faster** | Zero ctypes boxing |
-| **Layer 2: Compute Latency p95** | 4.90 µs | **2.30 µs** | **+53.1% faster** | Fastcall registers |
+| **Layer 1: Native Hotpath EPS (1M)** | 19,513,680 eps | **21,296,184 eps** | **+1.09x (+9.1%)** | `mdrap-core.exe` (AVX2 + RDTSC) |
+| **Layer 1: Per-Tick Latency (1M)** | 51.20 ns | **47.00 ns** | **+8.2% faster** (Sub-50ns scale) | Invariant RDTSC |
+| **Layer 1: Sustained Run EPS (10M)** | *(unscaled)* | **21,096,231 eps** | **Sustained >21M eps** | 10M events in 0.537 s |
+| **Layer 1: Latency per Tick (10M)** | *(unscaled)* | **47.40 ns** | **Sub-50ns class** | Zero drift |
+| **Layer 2: Python Compute Loop EPS** | 198,912 eps | **415,581 eps** | **+2.09x (+108.9% speedup)** | `_fastpath_c.pyd` C-API |
+| **Layer 2: Compute Latency p50** | 4.60 µs | **1.90 µs** | **+58.7% faster** | Zero ctypes boxing |
+| **Layer 2: Compute Latency p95** | 4.90 µs | **2.10 µs** | **+57.1% faster** | Fastcall registers |
 | **Layer 2: Compute Latency p99** | 6.70 µs | **2.70 µs** | **+59.7% faster** | Tail suppression |
-| **Layer 3: Durable Persistence EPS** | 17,702 eps | **349,383 eps** | **+19.74x (+1,873.7% speedup)** | `BinaryJournal` (.dbn) |
-| **Layer 3: Persistence Latency p50** | 795.10 µs | **2.70 µs** | **+99.7% latency reduction** | Decoupled SHM drainer |
+| **Layer 3: Durable Persistence EPS** | 17,702 eps | **332,871 eps** | **+18.80x (+1,780.4% speedup)** | `BinaryJournal` (.dbn) |
+| **Layer 3: Persistence Latency p50** | 795.10 µs | **2.50 µs** | **+99.7% latency reduction** | Decoupled SHM drainer |
+| **Layer 3: Persistence Latency p95** | *(unscaled)* | **4.50 µs** | **High percentile** | Low queue lag |
+| **Layer 3: Persistence Latency p99** | *(unscaled)* | **5.80 µs** | **Tail bound** | Zero SQL contention |
 | **Layer 3: Multi-Venue Soak (1M)** | *(unscaled)* | **1,000,000 events** | **0 dropped events / 0 laps** | `run_soak_test.py` |
 

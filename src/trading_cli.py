@@ -59,7 +59,7 @@ def cmd_backtest(args: argparse.Namespace) -> None:
 
     if not events:
         console.print(
-            f"[yellow]No events found in {db_path} for {symbol}. Generating simulated benchmark stream...[/yellow]"
+            f"[yellow]Notice: No events found in {db_path} for {symbol}. Running illustrative backtest on deterministic simulated stream (seed=42).[/yellow]"
         )
         from models import CanonicalEvent, EventType, QualityStatus
         import random
@@ -163,26 +163,50 @@ def cmd_risk(args: argparse.Namespace) -> None:
 
     conf = getattr(args, "confidence", 0.95)
     capital = getattr(args, "capital", 100_000.0)
-
-    console.print(
-        Panel.fit(
-            f"[bold red]Institutional Portfolio Risk & VaR Engine[/bold red]\n"
-            f"Confidence: [bold]{conf * 100:.1f}%[/bold] | Capital: [bold]${capital:,.2f}[/bold]",
-            border_style="red",
-        )
-    )
+    db_path = getattr(args, "db", "data/mdrap.db")
+    symbol = getattr(args, "symbol", None)
 
     engine = PortfolioRiskEngine(confidence_level=conf, initial_capital=capital)
-    # Feed sample return path
-    import random
+    loaded_real = False
 
-    rnd = random.Random(42)
-    val = capital
-    t0 = time.time() - 252 * 86400
-    for i in range(252):
-        ret = rnd.gauss(0.0005, 0.015)
-        val *= 1.0 + ret
-        engine.observe(t0 + i * 86400, val)
+    if symbol and os.path.exists(db_path):
+        try:
+            from bardb import BarDatabase
+            bardb = BarDatabase(db_path)
+            bars = bardb.get_bars(symbol, timeframe="1d", limit=252)
+            if bars and len(bars) >= 30:
+                for b in bars:
+                    engine.observe(float(b.timestamp), float(b.close))
+                loaded_real = True
+        except Exception:
+            pass
+
+    if not loaded_real:
+        console.print(
+            Panel.fit(
+                f"[bold red]Portfolio Risk & VaR Engine [ILLUSTRATIVE / DEMO][/bold red]\n"
+                f"Confidence: [bold]{conf * 100:.1f}%[/bold] | Capital: [bold]${capital:,.2f}[/bold]\n"
+                f"[dim]Data: Simulated 252-day Gaussian return path (seed=42)[/dim]",
+                border_style="red",
+            )
+        )
+        import random
+
+        rnd = random.Random(42)
+        val = capital
+        t0 = time.time() - 252 * 86400
+        for i in range(252):
+            ret = rnd.gauss(0.0005, 0.015)
+            val *= 1.0 + ret
+            engine.observe(t0 + i * 86400, val)
+    else:
+        console.print(
+            Panel.fit(
+                f"[bold red]Institutional Portfolio Risk & VaR Engine[/bold red]\n"
+                f"Symbol: [bold green]{symbol}[/bold green] | Confidence: [bold]{conf * 100:.1f}%[/bold] | Capital: [bold]${capital:,.2f}[/bold]",
+                border_style="red",
+            )
+        )
 
     s = engine.summary()
     console.print(
@@ -362,6 +386,9 @@ def cmd_options(args: argparse.Namespace) -> None:
                 border="magenta",
             )
         )
+        console.print(
+            f"[dim]Notice: Theoretical Black-Scholes chain evaluated with flat implied volatility (sigma = {vol * 100:.1f}%). Market smile/skew adjustments can be specified per-strike.[/dim]\n"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -430,74 +457,12 @@ def cmd_news(args: argparse.Namespace) -> None:
         if not feed._items:
             if fetch_err:
                 console.print(
-                    f"[dim yellow][Notice] Live news retrieval unavailable ({fetch_err}). Showing offline baseline feed.[/dim yellow]"
+                    f"[dim yellow][Notice] Live news retrieval unavailable ({fetch_err}). No headlines to display.[/dim yellow]"
                 )
-            now = time.time()
-            seed_headlines = [
-                (
-                    "NVIDIA announces next-generation Blackwell Ultra architecture with record energy efficiency",
-                    "Reuters",
-                    now - 300,
-                    ["NVDA"],
-                ),
-                (
-                    "NVIDIA data center revenue surges 142% year-over-year beating analyst expectations",
-                    "Bloomberg",
-                    now - 1800,
-                    ["NVDA"],
-                ),
-                (
-                    "Apple expands enterprise AI partnership and raises quarterly share repurchase program",
-                    "WSJ",
-                    now - 3600,
-                    ["AAPL"],
-                ),
-                (
-                    "Microsoft cloud Azure gross margin expands amid surging enterprise AI workload adoption",
-                    "FT",
-                    now - 5400,
-                    ["MSFT"],
-                ),
-                (
-                    "Tesla robotaxi commercial deployment clears regulatory milestone in key state markets",
-                    "CNBC",
-                    now - 7200,
-                    ["TSLA"],
-                ),
-                (
-                    "NVIDIA faces minor supply chain bottleneck for advanced CoWoS packaging capacity",
-                    "TechCrunch",
-                    now - 10800,
-                    ["NVDA"],
-                ),
-                (
-                    "Federal Reserve signals benchmark interest rate cut citing easing core inflation data",
-                    "Bloomberg",
-                    now - 14400,
-                    ["SPY"],
-                ),
-                (
-                    "Major semiconductor index rallies as global AI accelerator demand accelerates",
-                    "Reuters",
-                    now - 18000,
-                    ["NVDA", "AMD"],
-                ),
-                (
-                    "NVIDIA partners with global telecommunications giants on 6G AI-RAN infrastructure",
-                    "PR_Newswire",
-                    now - 21600,
-                    ["NVDA"],
-                ),
-                (
-                    "Securities and Exchange Commission approves new institutional market microstructure transparency rule",
-                    "SEC",
-                    now - 28800,
-                    ["SPY"],
-                ),
-            ]
-            for hl, src, ts, syms in seed_headlines:
-                item = feed.add_headline(hl, source=src, timestamp=ts)
-                item.symbols = syms
+            else:
+                console.print(
+                    "[dim yellow][Notice] No news headlines available for the selected symbols.[/dim yellow]"
+                )
 
     if action in ("latest", "fetch"):
         _populate_feed(symbol)

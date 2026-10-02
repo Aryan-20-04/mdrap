@@ -66,8 +66,6 @@ def ingest(raw: RawEvent) -> RawEvent:
 REQUIRED_TRADE_FIELDS = (
     "instrument",
     "event_type",
-    "exchange_ts",
-    "sequence",
     "price",
     "quantity",
 )
@@ -76,8 +74,6 @@ REQUIRED_TRADE_FIELDS = (
 REQUIRED_QUOTE_FIELDS = (
     "instrument",
     "event_type",
-    "exchange_ts",
-    "sequence",
     "bid",
     "ask",
 )
@@ -107,12 +103,18 @@ def normalize(raw: RawEvent) -> CanonicalEvent:
             missing = [req for req in required if req not in p]
             raise SchemaError(f"missing fields: {missing}")
 
-    exchange_ts = p["exchange_ts"]
-    if not isinstance(exchange_ts, (int, float)):
+    # exchange_ts: use receive_timestamp as fallback for unsequenced feeds
+    clock_source = "EXCHANGE"
+    exchange_ts = p.get("exchange_ts")
+    if exchange_ts is None:
+        exchange_ts = raw.receive_timestamp
+        clock_source = "GATEWAY_RECV"
+    elif not isinstance(exchange_ts, (int, float)):
         raise SchemaError(f"exchange_ts not numeric: {exchange_ts!r}")
 
-    sequence = p["sequence"]
-    if not isinstance(sequence, int):
+    # sequence: optional for feeds that don't provide monotonic sequence numbers
+    sequence = p.get("sequence")
+    if sequence is not None and not isinstance(sequence, int):
         raise SchemaError(f"sequence not an int: {sequence!r}")
 
     instrument = p["instrument"]
@@ -141,6 +143,13 @@ def normalize(raw: RawEvent) -> CanonicalEvent:
         source_id=s_id,
         instrument_id_int=i_id,
     )
+    event.clock_source = clock_source
+    if p.get("is_simulated") or "SIM" in raw.source:
+        event.source_kind = "SIMULATED"
+    elif "REPLAY" in raw.source:
+        event.source_kind = "REPLAY"
+    else:
+        event.source_kind = str(p.get("source_kind", "LIVE"))
 
     meta = _symbol_metadata_cache.get(instrument)
     if meta is None:

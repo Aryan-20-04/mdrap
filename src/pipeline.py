@@ -70,6 +70,10 @@ DEFAULT_GC_GEN2_THRESHOLD: int = 10
 INV_NS_PER_SECOND: float = (
     1e-9  # Inverse nanoseconds multiplier for zero-division latency calculation
 )
+# Timing sampling: only measure perf_counter_ns on 1-in-(mask+1) events when enabled.
+# 0 = measure every event (default, no sampling).  0x3F = 1-in-64.  0xFF = 1-in-256.
+# Controlled via MDRAP_TIMING_SAMPLE_MASK env var or Pipeline(timing_sample_mask=...).
+DEFAULT_TIMING_SAMPLE_MASK: int = 0
 
 # Precomputed immutable JSON strings: eliminates per-event serialization overhead
 _VALIDATIONS_RUN_JSON = json.dumps(
@@ -160,6 +164,7 @@ class Pipeline:
         security: SecurityManager | None = None,
         flush_interval_s: float = DEFAULT_FLUSH_INTERVAL_S,
         async_writer: bool | None = None,
+        timing_sample_mask: int | None = None,
     ):
         self.store = store
         if quality is not None:
@@ -189,6 +194,16 @@ class Pipeline:
         self._quarantine_batch: list[tuple] = []
         self._lineage_batch: list[tuple] = []
         self._pending_raw_payloads: dict[str, Any] = {}
+
+        # Timing sampling: skip perf_counter_ns on most events when mask > 0
+        if timing_sample_mask is not None:
+            self._timing_sample_mask: int = timing_sample_mask
+        else:
+            env_mask = os.environ.get("MDRAP_TIMING_SAMPLE_MASK", "")
+            self._timing_sample_mask = (
+                int(env_mask, 0) if env_mask else DEFAULT_TIMING_SAMPLE_MASK
+            )
+        self._event_counter: int = 0
 
         self._async_writer_enabled = (
             async_writer
@@ -318,7 +333,10 @@ class Pipeline:
     def process_one(
         self, raw: RawEvent, source_label: str | None = None
     ) -> CanonicalEvent | None:
-        t_start_ns = time.perf_counter_ns()
+        # Timing sampling: only instrument 1-in-(mask+1) events when mask > 0
+        self._event_counter += 1
+        _do_timing = (self._event_counter & self._timing_sample_mask) == 0
+        t_start_ns = time.perf_counter_ns() if _do_timing else 0
         # Write-ahead: archive raw event BEFORE any processing or security decisions (P1)
         if self.archive:
             self.archive.write(raw)
@@ -370,11 +388,11 @@ class Pipeline:
                 record_lineage=True,
             )
 
-        t_norm_ns = time.perf_counter_ns()
+        t_norm_ns = time.perf_counter_ns() if _do_timing else 0
         self._pending_raw_payloads[str(event.raw_id)] = raw.payload
 
         event = self.quality.evaluate(event)
-        t_qual_ns = time.perf_counter_ns()
+        t_qual_ns = time.perf_counter_ns() if _do_timing else 0
 
         res_event = None
         if event is not None:
@@ -408,9 +426,12 @@ class Pipeline:
             self._pending_raw_payloads.pop(str(event.raw_id), None)
 
         event.processing_timestamp = time.time()
-        t_rec_start_ns = time.perf_counter_ns()
+        t_rec_start_ns = time.perf_counter_ns() if t_start_ns else 0
 
         decision = self.reconciler.reconcile(event)
+        # Apply reconciliation quality annotations to current event (not cached copies)
+        if decision and decision.quality_reasons:
+            event.reasons.extend(decision.quality_reasons)
         self.reliability.observe(event)
 
         # Feed analytics engine (V3: OHLCV, spread, volatility)
@@ -425,7 +446,7 @@ class Pipeline:
         if self.watchdog:
             self.watchdog.observe(event)
 
-        t_rec_end_ns = time.perf_counter_ns()
+        t_rec_end_ns = time.perf_counter_ns() if t_start_ns else 0
 
         if event.quality_status != QualityStatus.INVALID:
             self._enqueue_canonical(event)
@@ -467,8 +488,8 @@ class Pipeline:
             )
         )
 
-        t_end_ns = time.perf_counter_ns()
-        if t_start_ns > 0 and self.metrics:
+        if t_start_ns and self.metrics:
+            t_end_ns = time.perf_counter_ns()
             e2e_latency = event.receive_timestamp - event.exchange_timestamp
             proc_latency = (t_end_ns - t_start_ns) * INV_NS_PER_SECOND
             ingest_latency = (t_norm_ns - t_start_ns) * INV_NS_PER_SECOND
@@ -504,11 +525,15 @@ class Pipeline:
         start_times_ns: list[int] = []
         norm_times_ns: list[int] = []
 
+        # Timing sampling: decide once per batch whether to instrument timing
+        self._event_counter += len(raw_events)
+        _do_timing = (self._event_counter & self._timing_sample_mask) == 0
+
         valid_indices: list[int] = []
         valid_events: list[CanonicalEvent] = []
 
         for idx, raw in enumerate(raw_events):
-            t_start = time.perf_counter_ns()
+            t_start = time.perf_counter_ns() if _do_timing else 0
             start_times_ns.append(t_start)
 
             # Write-ahead: archive raw event BEFORE any processing or security decisions (P1)
@@ -525,7 +550,7 @@ class Pipeline:
                         "quarantined (security: rate limit exceeded)",
                         Reason.RATE_LIMITED.value,
                     )
-                    norm_times_ns.append(time.perf_counter_ns())
+                    norm_times_ns.append(time.perf_counter_ns() if _do_timing else 0)
                     continue
                 valid, err_msg = self.security.sanitizer.sanitize(raw.payload)
                 if not valid:
@@ -535,7 +560,7 @@ class Pipeline:
                         f"quarantined (security sanitization: {err_msg})",
                         Reason.MALFORMED.value,
                     )
-                    norm_times_ns.append(time.perf_counter_ns())
+                    norm_times_ns.append(time.perf_counter_ns() if _do_timing else 0)
                     continue
                 # Cryptographic HMAC verification (P2)
                 if isinstance(raw.payload, dict) and (
@@ -552,7 +577,7 @@ class Pipeline:
                             "quarantined (security: HMAC verification failed)",
                             Reason.SECURITY_REJECT.value,
                         )
-                        norm_times_ns.append(time.perf_counter_ns())
+                        norm_times_ns.append(time.perf_counter_ns() if _do_timing else 0)
                         continue
 
             raw = ingest(raw)
@@ -567,10 +592,10 @@ class Pipeline:
                     Reason.SCHEMA_VIOLATION.value,
                     record_lineage=True,
                 )
-                norm_times_ns.append(time.perf_counter_ns())
+                norm_times_ns.append(time.perf_counter_ns() if _do_timing else 0)
                 continue
 
-            norm_times_ns.append(time.perf_counter_ns())
+            norm_times_ns.append(time.perf_counter_ns() if _do_timing else 0)
             valid_indices.append(idx)
             valid_events.append(event)
 
@@ -581,9 +606,9 @@ class Pipeline:
             else:
                 for ev in valid_events:
                     self.quality.evaluate(ev)
-            t_qual_end_ns = time.perf_counter_ns()
+            t_qual_end_ns = time.perf_counter_ns() if _do_timing else 0
         else:
-            pass
+            t_qual_end_ns = 0
 
         # Downstream sequential reconciliation & persistence, strictly in arrival order (A5)
         for valid_idx, event in zip(valid_indices, valid_events):

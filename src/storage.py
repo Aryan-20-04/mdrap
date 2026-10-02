@@ -695,6 +695,18 @@ class Store:
         return [dict(zip(cols, row)) for row in cur.fetchall()]
 
     @_read_synchronized
+    def get_event(self, event_id: str) -> dict | None:
+        """Fetch a single canonical event by its unique event_id."""
+        cur = self.read_conn.execute(
+            "SELECT * FROM canonical_events WHERE event_id=?", (event_id,)
+        )
+        row = cur.fetchone()
+        if not row:
+            return None
+        cols = [d[0] for d in cur.description]
+        return dict(zip(cols, row))
+
+    @_read_synchronized
     def event_lineage(self, event_id: str) -> dict | None:
         cur = self.read_conn.execute(
             "SELECT * FROM lineage WHERE event_id=?", (event_id,)
@@ -704,6 +716,39 @@ class Store:
             return None
         cols = [d[0] for d in cur.description]
         return dict(zip(cols, row))
+
+    @_read_synchronized
+    def get_quarantined_record(self, event_id: str) -> dict | None:
+        """Fetch a single quarantine record by event_id."""
+        cur = self.read_conn.execute(
+            "SELECT * FROM quarantine WHERE event_id=?", (event_id,)
+        )
+        row = cur.fetchone()
+        if not row:
+            return None
+        cols = [d[0] for d in cur.description]
+        return dict(zip(cols, row))
+
+    def reprocess_quarantine(self, event_id: str, pipeline: Any) -> Any | None:
+        """Reprocess a quarantined event through the pipeline."""
+        rec = self.get_quarantined_record(event_id)
+        if not rec:
+            return None
+        import json
+        from models import RawEvent
+
+        payload_str = rec.get("payload_json", "{}")
+        try:
+            payload = json.loads(payload_str)
+        except Exception:
+            payload = {}
+        raw = RawEvent(
+            source=rec.get("source", "UNKNOWN"),
+            payload=payload if isinstance(payload, dict) else {},
+            receive_timestamp=float(rec.get("receive_timestamp", 0.0)),
+            raw_id=rec.get("event_id", ""),
+        )
+        return pipeline.process_one(raw)
 
     @_read_synchronized
     def feed_health(self):

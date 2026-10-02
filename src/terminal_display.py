@@ -42,34 +42,7 @@ __stability__ = "beta"
 # ---------------------------------------------------------------------------
 
 
-def poll_keypress() -> Optional[str]:
-    """Check if a keyboard key was pressed without blocking (Windows & POSIX)."""
-    if sys.platform == "win32":
-        try:
-            import msvcrt
-
-            if msvcrt.kbhit():
-                ch = msvcrt.getch()
-                if ch in (b"\xe0", b"\x00"):  # Special key prefix (arrows, F-keys)
-                    if msvcrt.kbhit():
-                        msvcrt.getch()  # consume scan code
-                    return None
-                try:
-                    return ch.decode("utf-8", errors="ignore")
-                except Exception:
-                    return None
-        except Exception:
-            return None
-    else:
-        try:
-            import select
-
-            r, _, _ = select.select([sys.stdin], [], [], 0)
-            if r:
-                return sys.stdin.read(1)
-        except Exception:
-            return None
-    return None
+from term import poll_keypress
 
 
 # ---------------------------------------------------------------------------

@@ -5,60 +5,60 @@
     "python_version": "3.13.1",
     "cpu_core_pinned": true,
     "pinned_core_id": 2,
-    "timestamp": "2026-09-25 08:30:44Z"
+    "timestamp": "2026-10-01 17:59:09Z"
   },
   "layer1_native_core_hotpath_1m": {
     "events_per_run": 1000000,
     "runs_count": 5,
     "throughput_eps": {
-      "min": 19893028.0,
-      "median": 20543180.0,
-      "max": 20797849.0,
-      "mean": 20446624.8
+      "min": 20980043.0,
+      "median": 21296184.0,
+      "max": 22717728.0,
+      "mean": 21643184.0
     },
     "latency_ns_per_tick": {
-      "p50": 48.7,
-      "p90": 50.3,
-      "p95": 50.3,
-      "p99": 50.3,
-      "p99.9": 50.3,
-      "mean": 48.94
+      "p50": 47.0,
+      "p90": 47.7,
+      "p95": 47.7,
+      "p99": 47.7,
+      "p99.9": 47.7,
+      "mean": 46.26
     },
     "runs": [
       {
         "run": 1,
         "events": 1000000,
-        "elapsed_seconds": 0.1111,
-        "throughput_eps": 20672170.0,
-        "latency_ns": 48.4
+        "elapsed_seconds": 0.1616,
+        "throughput_eps": 21974393.0,
+        "latency_ns": 45.5
       },
       {
         "run": 2,
         "events": 1000000,
-        "elapsed_seconds": 0.1097,
-        "throughput_eps": 20797849.0,
-        "latency_ns": 48.1
+        "elapsed_seconds": 0.1083,
+        "throughput_eps": 21296184.0,
+        "latency_ns": 47.0
       },
       {
         "run": 3,
         "events": 1000000,
-        "elapsed_seconds": 0.1107,
-        "throughput_eps": 20326897.0,
-        "latency_ns": 49.2
+        "elapsed_seconds": 0.1132,
+        "throughput_eps": 20980043.0,
+        "latency_ns": 47.7
       },
       {
         "run": 4,
         "events": 1000000,
-        "elapsed_seconds": 0.1132,
-        "throughput_eps": 20543180.0,
-        "latency_ns": 48.7
+        "elapsed_seconds": 0.1071,
+        "throughput_eps": 22717728.0,
+        "latency_ns": 44.0
       },
       {
         "run": 5,
         "events": 1000000,
-        "elapsed_seconds": 0.1121,
-        "throughput_eps": 19893028.0,
-        "latency_ns": 50.3
+        "elapsed_seconds": 0.1112,
+        "throughput_eps": 21247572.0,
+        "latency_ns": 47.1
       }
     ]
   },
@@ -66,63 +66,63 @@
     "events_per_run": 10000000,
     "runs_count": 2,
     "throughput_eps": {
-      "min": 19862030.0,
-      "median": 20259673.0,
-      "max": 20259673.0,
-      "mean": 20060851.5
+      "min": 20982186.0,
+      "median": 21096231.0,
+      "max": 21096231.0,
+      "mean": 21039208.5
     },
     "latency_ns_per_tick": {
-      "p50": 50.3,
-      "p90": 50.3,
-      "p95": 50.3,
-      "p99": 50.3,
-      "p99.9": 50.3,
-      "mean": 49.85
+      "p50": 47.7,
+      "p90": 47.7,
+      "p95": 47.7,
+      "p99": 47.7,
+      "p99.9": 47.7,
+      "mean": 47.55
     },
     "runs": [
       {
         "run": 1,
         "events": 10000000,
-        "elapsed_seconds": 0.5637,
-        "throughput_eps": 19862030.0,
-        "latency_ns": 50.3
+        "elapsed_seconds": 0.5373,
+        "throughput_eps": 21096231.0,
+        "latency_ns": 47.4
       },
       {
         "run": 2,
         "events": 10000000,
-        "elapsed_seconds": 0.5595,
-        "throughput_eps": 20259673.0,
-        "latency_ns": 49.4
+        "elapsed_seconds": 0.5424,
+        "throughput_eps": 20982186.0,
+        "latency_ns": 47.7
       }
     ]
   },
   "layer2_python_compute_loop": {
     "events": 100000,
-    "elapsed_seconds": 0.2363,
-    "throughput_eps": 423227.9,
+    "elapsed_seconds": 0.2406,
+    "throughput_eps": 415581.1,
     "latency_us": {
-      "p50": 2.1,
-      "p90": 2.3,
-      "p95": 2.3,
+      "p50": 1.9,
+      "p90": 2.0,
+      "p95": 2.1,
       "p99": 2.7,
-      "p99.9": 9.8,
-      "max": 2632.0,
-      "mean": 2.694
+      "p99.9": 17.9,
+      "max": 2525.8,
+      "mean": 2.267
     },
     "sample_count": 10000
   },
   "layer3_durable_pipeline": {
     "events": 50000,
-    "elapsed_seconds": 0.1431,
-    "throughput_eps": 349383.3,
+    "elapsed_seconds": 0.1502,
+    "throughput_eps": 332871.1,
     "latency_us": {
-      "p50": 2.7,
-      "p90": 2.9,
-      "p95": 4.7,
+      "p50": 2.5,
+      "p90": 2.7,
+      "p95": 4.5,
       "p99": 5.8,
-      "p99.9": 18.3,
-      "max": 34.8,
-      "mean": 2.825
+      "p99.9": 27.1,
+      "max": 1321.2,
+      "mean": 2.95
     },
     "invariants": {
       "dropped_events": 0,

@@ -42,6 +42,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "src
 
 from benchmark import run_benchmark, save_result  # noqa: E402
 from pipeline import Pipeline  # noqa: E402
+from rich import box  # noqa: E402
 from simulator import FeedSimulator, SimulatorConfig  # noqa: E402
 from storage import Store  # noqa: E402
 from term import (  # noqa: E402
@@ -49,10 +50,13 @@ from term import (  # noqa: E402
     Table,
     Panel,
     format_status,
-    render_gemini_banner,
+    format_latency,
+    format_rate,
+    render_brand_header,
+    render_step_start,
+    render_step_success,
+    render_summary_card,
     render_gemini_tips,
-    render_gemini_box_top,
-    render_gemini_box_bottom,
 )
 
 __stability__ = "beta"
@@ -174,11 +178,30 @@ def cmd_run(args):
     accel_str = " + Native C" if use_fastpath else ""
     archive_str = " + Archive" if use_archive else ""
     version_str = f"V1 (Synchronous{accel_str}{archive_str})"
-    print(
-        f"[run] {version_str} | {cfg.num_events:,} events | seed={cfg.seed} | db={args.db}",
-        file=sys.stderr,
-    )
 
+    is_interactive = sys.stdout.isatty() and not getattr(args, "json", False)
+    force_pretty = getattr(args, "pretty", False)
+    show_ui = (is_interactive or force_pretty) and not args.dashboard
+
+    console = Console()
+    if show_ui:
+        render_step_start(
+            console,
+            "Ingestion & Validation Pipeline",
+            {
+                "Engine": version_str,
+                "Workload Target": f"{cfg.num_events:,} events (seed: {cfg.seed})",
+                "Storage Target": f"{args.db}",
+                "Realtime Analytics": "Enabled" if use_analytics else "Disabled",
+            },
+        )
+    else:
+        print(
+            f"[run] {version_str} | {cfg.num_events:,} events | seed={cfg.seed} | db={args.db}",
+            file=sys.stderr,
+        )
+
+    t_start = time.perf_counter()
     try:
         if args.dashboard:
             from dashboard import Dashboard
@@ -193,6 +216,13 @@ def cmd_run(args):
                         dash.refresh()
                         last_refresh = now
                 dash.refresh()
+        elif show_ui:
+            with console.status(
+                "[bold cyan]Processing market feed events...[/bold cyan]",
+                spinner="dots",
+            ):
+                for raw, _label in sim.generate():
+                    pipeline.process_one(raw)
         else:
             for raw, _label in sim.generate():
                 pipeline.process_one(raw)
@@ -243,7 +273,82 @@ def cmd_run(args):
             summary = pipeline.metrics.summary()
             if sync_meta:
                 summary["storage_sync"] = sync_meta
-            print(json.dumps(summary, indent=2))
+
+            if getattr(args, "json", False) or (
+                not sys.stdout.isatty() and not force_pretty
+            ):
+                print(json.dumps(summary, indent=2))
+            else:
+                elapsed = summary.get("elapsed_s", 0.0) or (
+                    time.perf_counter() - t_start
+                )
+                rate = summary.get("throughput_eps", 0.0)
+                render_step_success(
+                    console,
+                    "Pipeline Execution Complete",
+                    f"{cfg.num_events:,} events in {elapsed:.3f}s | {format_rate(rate)}",
+                )
+                console.print()
+
+                perf_sec = [
+                    ("Throughput", f"[bold green]{rate:,.0f} eps[/bold green]"),
+                    ("Elapsed Time", f"{elapsed:.3f}s"),
+                    (
+                        "Processed Events",
+                        f"{summary.get('processed', cfg.num_events):,}",
+                    ),
+                    ("Target Store", f"{args.db}"),
+                ]
+
+                lat_p50 = summary.get("e2e_latency_us", {}).get("p50", 0.0)
+                lat_p95 = summary.get("e2e_latency_us", {}).get("p95", 0.0)
+                lat_p99 = summary.get("e2e_latency_us", {}).get("p99", 0.0)
+                lat_max = summary.get("e2e_latency_us", {}).get("max", 0.0)
+                lat_sec = [
+                    ("p50 Latency", format_latency(lat_p50)),
+                    ("p95 Latency", format_latency(lat_p95)),
+                    ("p99 Latency", format_latency(lat_p99)),
+                    ("Max Latency", format_latency(lat_max)),
+                ]
+
+                q = summary.get("quality_counts", {})
+                tot_q = max(1, sum(q.values()))
+                val_n = q.get("VALID", 0)
+                susp_n = q.get("SUSPICIOUS", 0)
+                inv_n = q.get("INVALID", 0)
+
+                sync_desc = (
+                    "[bold green]● Synced[/bold green]"
+                    if sync_meta and sync_meta.get("status") == "OK"
+                    else (
+                        "[bold yellow]▲ Diverged[/bold yellow]"
+                        if sync_meta and sync_meta.get("diverged")
+                        else "[dim]Disabled[/dim]"
+                    )
+                )
+                qual_sec = [
+                    (
+                        "VALID Records",
+                        f"[bold green]● {val_n:,}[/bold green] ({val_n / tot_q * 100:.1f}%)",
+                    ),
+                    (
+                        "SUSPICIOUS",
+                        f"[bold yellow]▲ {susp_n:,}[/bold yellow] ({susp_n / tot_q * 100:.1f}%)",
+                    ),
+                    (
+                        "Quarantined",
+                        f"[bold red]✕ {inv_n:,}[/bold red] ({inv_n / tot_q * 100:.1f}%)",
+                    ),
+                    ("DuckDB CDC Sync", sync_desc),
+                ]
+
+                render_summary_card(
+                    console,
+                    title="MDRAP PIPELINE EXECUTION SUMMARY",
+                    sections=[perf_sec, lat_sec, qual_sec],
+                    meta=f"seed: {cfg.seed} • {version_str}",
+                    border_style="cyan",
+                )
         store.close()
 
 
@@ -251,6 +356,23 @@ def cmd_benchmark(args):
     cfg = _config_from_args(args)
     version = getattr(args, "version", "v1").lower()
     fastpath = getattr(args, "fastpath", True)
+    console = Console()
+    is_interactive = sys.stdout.isatty() and not getattr(args, "json", False)
+    force_pretty = getattr(args, "pretty", False)
+    show_ui = is_interactive or force_pretty
+
+    if show_ui:
+        render_step_start(
+            console,
+            f"Benchmarking Platform: {args.label}",
+            {
+                "Workload": f"{cfg.num_events:,} events (seed: {cfg.seed})",
+                "Engine": f"{version.upper()} ({'Native C Accelerator' if fastpath else 'Pure Python'})",
+                "Warmup Events": f"{args.warmup:,}",
+                "Store Path": f"{args.db}",
+            },
+        )
+
     if args.profile:
         import cProfile
         import pstats
@@ -287,17 +409,70 @@ def cmd_benchmark(args):
             fastpath=fastpath,
         )
     path = save_result(result, out_dir=args.out_dir)
-    print(f"Saved: {path}\n")
-    print(json.dumps(result, indent=2))
+
+    if getattr(args, "json", False) or (not sys.stdout.isatty() and not force_pretty):
+        print(f"Saved: {path}\n", file=sys.stderr)
+        print(json.dumps(result, indent=2))
+    else:
+        perf = result["performance"]
+        render_step_success(
+            console,
+            f"Benchmark Complete: {args.label}",
+            f"{perf['throughput_eps']:,.0f} eps | {perf['elapsed_s']:.3f}s",
+        )
+        console.print()
+
+        perf_sec = [
+            (
+                "Throughput",
+                f"[bold green]{perf['throughput_eps']:,.0f} eps[/bold green]",
+            ),
+            ("Elapsed Time", f"{perf['elapsed_s']:.3f}s"),
+            ("Processed Events", f"{perf.get('events_processed', cfg.num_events):,}"),
+            ("Warmup Events", f"{args.warmup:,}"),
+        ]
+
+        e2e = perf.get("e2e_latency_us", {})
+        lat_sec = [
+            ("p50 Latency", format_latency(e2e.get("p50", 0.0))),
+            ("p95 Latency", format_latency(e2e.get("p95", 0.0))),
+            ("p99 Latency", format_latency(e2e.get("p99", 0.0))),
+            ("p99.9 Latency", format_latency(e2e.get("p999", 0.0))),
+        ]
+
+        det = result.get("quality_detection", {})
+        qual_sec = [
+            (
+                "Ground Truth F1",
+                f"[bold green]{det.get('f1_score', 1.0):.4f}[/bold green]",
+            ),
+            ("Precision", f"{det.get('precision', 1.0):.4f}"),
+            ("Recall", f"{det.get('recall', 1.0):.4f}"),
+            ("Result Saved", f"[dim]{path}[/dim]"),
+        ]
+
+        render_summary_card(
+            console,
+            title=f"MDRAP BENCHMARK REPORT: {args.label}",
+            sections=[perf_sec, lat_sec, qual_sec],
+            meta=f"version: {version} • seed: {cfg.seed}",
+            border_style="cyan",
+        )
 
 
 def cmd_compare(args):
     cfg = _config_from_args(args)
-    print(
-        f"[compare] Running Architectural Benchmarks on {cfg.num_events:,} events (seed={cfg.seed})...",
-        file=sys.stderr,
+    console = Console()
+    render_step_start(
+        console,
+        "Architectural Benchmark Comparison",
+        {
+            "Workload": f"{cfg.num_events:,} events",
+            "Seed": f"{cfg.seed}",
+            "Warmup": f"{args.warmup:,} events",
+        },
     )
-    print("[1/2] Running V1 Baseline (Pure Python)...", file=sys.stderr)
+    render_step_start(console, "[1/2] Running V1 Baseline (Pure Python)...")
     res_py = run_benchmark(
         cfg,
         db_path=args.db,
@@ -306,7 +481,13 @@ def cmd_compare(args):
         version="v1",
         fastpath=False,
     )
-    print("[2/2] Running V1 + Native C Hot Path...", file=sys.stderr)
+    render_step_success(
+        console,
+        "Pure Python Baseline Complete",
+        f"{res_py['performance']['throughput_eps']:,.0f} eps | {res_py['performance']['elapsed_s']:.3f}s",
+    )
+
+    render_step_start(console, "[2/2] Running V1 + Native C Hot Path...")
     res_c = run_benchmark(
         cfg,
         db_path=args.db,
@@ -315,13 +496,18 @@ def cmd_compare(args):
         version="v1",
         fastpath=True,
     )
+    render_step_success(
+        console,
+        "Native C Hot Path Accelerator Complete",
+        f"{res_c['performance']['throughput_eps']:,.0f} eps | {res_c['performance']['elapsed_s']:.3f}s",
+    )
+    console.print()
 
-    console = Console()
     table = Table(
-        title=f"MDRAP Architectural Comparison: Pure Python vs Native C Hot Path\n(Workload: {cfg.num_events:,} events, seed={cfg.seed})"
+        title=f"MDRAP Architectural Comparison: Pure Python vs Native C Hot Path\n[dim](Workload: {cfg.num_events:,} events, seed={cfg.seed})[/dim]"
     )
     table.add_column("Metric", style="cyan", no_wrap=True)
-    table.add_column("V1 Pure Python", style="magenta")
+    table.add_column("V1 Pure Python", style="white")
     table.add_column("V1 + Native C Hotpath", style="bold green")
     table.add_column("Speedup / Delta", style="bold yellow")
 
@@ -387,8 +573,12 @@ def cmd_compare(args):
         "Parity (0.00%)",
     )
 
-    console.print()
     console.print(table)
+    if eps_c > eps_py:
+        lat_delta = p_py["e2e_latency_us"]["p99"] - p_c["e2e_latency_us"]["p99"]
+        console.print(
+            f"\n[bold green]🏆 Performance Verdict:[/bold green] Native C Hot Path achieved [bold green]{speedup_eps}[/bold green] throughput speedup and cut p99 tail latency by [bold green]{lat_delta:,.1f} µs[/bold green].\n"
+        )
     console.print()
 
 
@@ -1343,12 +1533,17 @@ def cmd_status(args):
         print(json.dumps(data, indent=2))
         return
 
+    is_healthy = True
+    if health:
+        is_healthy = all(h.get("score", 1.0) >= 0.90 for h in health)
+
     console.print()
-    console.print(
-        Panel.fit(
-            f"[bold cyan]MDRAP Platform Status Overview[/bold cyan]  |  Database: [bold]{args.db}[/bold] ([green]{db_size_mb:.2f} MB[/green])",
-            border_style="cyan",
-        )
+    render_brand_header(
+        console,
+        title="MDRAP Platform Status Overview",
+        subtitle="Canonical Pipeline, Venue Reliability & Real-Time Analytics",
+        badge="ALL FEEDS HEALTHY" if is_healthy else "FEED DEGRADED",
+        meta=f"Database: {args.db} ({db_size_mb:.2f} MB)",
     )
 
     t1_rows = [
@@ -1365,7 +1560,7 @@ def cmd_status(args):
             f"[red]{inv / max(1, tot) * 100:.1f}%[/red]",
         ),
         ("Quarantine Store", f"{quar_count:,}", "Persisted for audit"),
-        ("Lineage Traces", f"{lineage_count:,}", "100% decision traceability"),
+        ("Lineage Traces", f"{lineage_count:,}", "100% deterministic"),
     ]
     console.print(
         _t(
@@ -1395,9 +1590,13 @@ def cmd_status(args):
             score = h.get("score", 0)
             status = "HEALTHY" if score >= 0.90 else "DEGRADED"
             routing = (
-                "Primary"
+                "[bold green]Primary[/bold green]"
                 if score >= 0.95
-                else ("Eligible" if status == "HEALTHY" else "Traffic Diverted")
+                else (
+                    "[green]Eligible[/green]"
+                    if status == "HEALTHY"
+                    else "[bold red]Traffic Diverted[/bold red]"
+                )
             )
             t2_rows.append(
                 (
@@ -1452,8 +1651,13 @@ def cmd_status(args):
             )
         )
 
+    console.print()
     console.print(
-        "\n[dim]Quick shortcuts: mdrap r (run) | mdrap bbo (bbo) | mdrap a (analytics) | mdrap q (query) | mdrap t (test-all)[/dim]\n"
+        "[dim]💡 Quick Commands: [bold cyan]mdrap bbo all[/bold cyan]  •  "
+        "[bold cyan]mdrap live[/bold cyan]  •  "
+        "[bold cyan]mdrap top[/bold cyan]  •  "
+        "[bold cyan]mdrap doctor[/bold cyan]  •  "
+        "[bold cyan]mdrap shell[/bold cyan][/dim]\n"
     )
 
 
@@ -2222,7 +2426,7 @@ def cmd_live(args):
                             s_meta = resolve_venue_symbols(cur_sym)
                             if s_meta["type"] == "EQUITY":
                                 eq_evs = connector.fetch_equity_events(
-                                    cur_sym, fallback_sim=True
+                                    cur_sym, fallback_sim=False
                                 )
                                 if eq_evs and eq_evs[0].payload.get("price"):
                                     ref_px = float(eq_evs[0].payload["price"])
@@ -4102,10 +4306,10 @@ def cmd_tca(args):
     console.print(
         Panel.fit(
             f"[bold cyan]MDRAP Institutional Best Execution & TCA Slippage Engine (§26)[/bold cyan]\n"
-            f"• Regulatory Compliance: [bold green]SEC Rule 605 / 606 & MiFID II RTS 27/28 Audited[/bold green]\n"
+            f"• Analysis Framework:     [bold cyan]SEC Rule 605 / 606 & MiFID II RTS 27/28 Methodology[/bold cyan]\n"
             f"• Target Symbol:          [bold yellow]{sym}[/bold yellow]  |  Total Executions: [bold green]{batch_res['total_trades']:,}[/bold green] orders\n"
             f"• Total Executed Value:   [bold green]${batch_res['total_notional']:,.2f}[/bold green]  |  Shares: [bold]{batch_res['total_shares']:,.0f}[/bold]\n"
-            f"• Compliance Stance:      [bold green]{batch_res['compliance_status']}[/bold green]",
+            f"• Execution Score:        [bold green]{batch_res['compliance_status']}[/bold green]",
             border_style="cyan",
         )
     )
@@ -4264,17 +4468,30 @@ def cmd_report(args):
         tracker = PortfolioTracker(db_path=db_path)
         positions = [p for p in tracker.all_positions() if p.quantity > 0]
 
-        # ponytail: standard Form 13F Information Table format
+        # Calculate preceding calendar quarter end per SEC 13F filing rules
+        today = datetime.date.today()
+        q_ends = [
+            datetime.date(today.year - 1, 12, 31),
+            datetime.date(today.year, 3, 31),
+            datetime.date(today.year, 6, 30),
+            datetime.date(today.year, 9, 30),
+            datetime.date(today.year, 12, 31),
+        ]
+        q_end = [q for q in q_ends if q <= today][-1]
+
+        # Standard Form 13F Information Table format (whole dollars per 2023 SEC amendments)
         entries = []
         for p in positions:
             sym_info = resolve_symbol(p.symbol)
             cusip_or_isin = sym_info.isin or sym_info.figi or p.symbol
+            val_whole = int(round(p.market_value))
             val_thousands = round(p.market_value / 1000.0, 1)
             entries.append(
                 {
                     "issuer_name": sym_info.name or p.symbol,
                     "title_of_class": "COMMON STOCK",
                     "cusip_isin": cusip_or_isin,
+                    "value_usd": val_whole,
                     "value_usd_000s": val_thousands,
                     "shares_principal": int(p.quantity),
                     "investment_discretion": "SOLE",
@@ -4286,7 +4503,8 @@ def cmd_report(args):
                 json.dumps(
                     {
                         "report": "SEC_FORM_13F",
-                        "quarter_ended": datetime.date.today().isoformat(),
+                        "compliance_status": "ILLUSTRATIVE_LOCAL_PORTFOLIO",
+                        "quarter_ended": q_end.isoformat(),
                         "holdings": entries,
                     },
                     indent=2,
@@ -4294,35 +4512,68 @@ def cmd_report(args):
             )
             return
 
-        table = Table(title="SEC Form 13F Information Table (Institutional Holdings)")
+        table = Table(
+            title="SEC Form 13F Information Table (Institutional Holdings) [ILLUSTRATIVE]"
+        )
         table.add_column("Name of Issuer", style="cyan")
         table.add_column("Class", style="dim")
         table.add_column("CUSIP/ISIN", style="yellow")
-        table.add_column("Value ($000s)", justify="right", style="green")
+        table.add_column("Value ($)", justify="right", style="green")
         table.add_column("Shares", justify="right", style="bold")
         table.add_column("Discretion", style="magenta")
 
         if not entries:
-            table.add_row("No long equity positions held", "-", "-", "0.0", "0", "-")
+            table.add_row("No long equity positions held", "-", "-", "$0", "0", "-")
         else:
             for e in entries:
                 table.add_row(
                     e["issuer_name"][:30],
                     e["title_of_class"],
                     e["cusip_isin"],
-                    f"${e['value_usd_000s']:,.1f}",
+                    f"${e['value_usd']:,}",
                     f"{e['shares_principal']:,}",
                     e["investment_discretion"],
                 )
         console.print(table)
+        console.print(
+            f"[dim]Quarter Ended: {q_end.isoformat()} | Values reported to nearest dollar per SEC Form 13F instructions (amended 2023). Local portfolio ledger representation.[/dim]\n"
+        )
 
     elif report_type in ("rts28", "mifid", "mifid2", "venues"):
-        from tca import TCAEngine, generate_demo_executions
+        from tca import TCAEngine, generate_demo_executions, ExecutionRecord
 
-        sym = getattr(args, "symbol", "AAPL") or "AAPL"
-        execs = generate_demo_executions(
-            symbol=sym, count=100, seed=getattr(args, "seed", 42)
-        )
+        fills_file = getattr(args, "file", None) or getattr(args, "fills", None)
+        is_demo = True
+        if fills_file and os.path.exists(fills_file):
+            import csv
+
+            execs = []
+            with open(fills_file, "r", encoding="utf-8") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    execs.append(
+                        ExecutionRecord(
+                            trade_id=row.get("trade_id", f"EXEC-{len(execs) + 1}"),
+                            symbol=row.get("symbol", "AAPL"),
+                            side=row.get("side", "BUY"),
+                            price=float(row.get("price", 150.0)),
+                            shares=float(row.get("shares", 100.0)),
+                            timestamp=float(row.get("timestamp", time.time())),
+                            broker=row.get("broker", "DMA Direct"),
+                            venue=row.get("venue", "NASDAQ"),
+                            order_type=row.get("order_type", "MARKET"),
+                            arrival_price=float(row["arrival_price"])
+                            if "arrival_price" in row
+                            else None,
+                        )
+                    )
+            is_demo = False
+        else:
+            sym = getattr(args, "symbol", "AAPL") or "AAPL"
+            execs = generate_demo_executions(
+                symbol=sym, count=100, seed=getattr(args, "seed", 42)
+            )
+
         engine = TCAEngine()
         batch_res = engine.evaluate_batch(execs)
         scorecards = batch_res.get("broker_scorecards", [])
@@ -4348,6 +4599,9 @@ def cmd_report(args):
                 json.dumps(
                     {
                         "report": "MIFID_II_RTS_28",
+                        "compliance_status": "ILLUSTRATIVE_DEMO_NOT_AUDITED"
+                        if is_demo
+                        else "CALCULATED_FROM_FILLS",
                         "year": datetime.date.today().year,
                         "asset_class": "EQUITIES",
                         "top_execution_venues": rts28_entries,
@@ -4357,7 +4611,12 @@ def cmd_report(args):
             )
             return
 
-        table = Table(title="MiFID II RTS 28 — Top 5 Execution Venues / Brokers")
+        tbl_title = (
+            "MiFID II RTS 28 — Top 5 Execution Venues / Brokers [ILLUSTRATIVE — DEMO DATA]"
+            if is_demo
+            else "MiFID II RTS 28 — Top 5 Execution Venues / Brokers"
+        )
+        table = Table(title=tbl_title)
         table.add_column("Execution Venue / Broker", style="cyan")
         table.add_column("Orders", justify="right", style="bold")
         table.add_column("Volume %", justify="right", style="green")
@@ -4375,6 +4634,10 @@ def cmd_report(args):
                 f"{r['price_improved_pct']:.1f}%",
             )
         console.print(table)
+        if is_demo:
+            console.print(
+                "[yellow]Notice: Illustrative demo report generated from synthetic execution sample. Not an official audited regulatory filing.[/yellow]\n"
+            )
     else:
         console.print(
             f"[bold red]Unknown report type:[/bold red] '{report_type}'. Choose '13f' or 'rts28'."
@@ -5596,7 +5859,7 @@ def cmd_vessel(args):
                 )
             )
             console.print(
-                f"[dim]Tracking {len(vessels)} commercial vessels. Use 'python -m cli vessel track <NAME>' for full voyage dossier.[/dim]\n"
+                f"[dim]Tracking {len(vessels)} commercial vessels (reference watch-list fixture). Use 'python -m cli vessel track <NAME>' for full voyage dossier.[/dim]\n"
             )
 
         elif action in ("track", "inspect", "show"):
@@ -6104,57 +6367,80 @@ def cmd_doctor(args):
     from fastpath import HAS_FASTPATH
 
     console = Console()
-    console.print(
-        Panel(
-            "[bold cyan]MDRAP Platform Diagnostics & Doctor[/bold cyan]",
-            border_style="cyan",
-        )
+    console.print()
+    render_brand_header(
+        console,
+        title="MDRAP Platform Diagnostics & Doctor",
+        subtitle="Environment Integrity, Acceleration Tiers & Storage Engine",
+        badge="DIAGNOSTIC SCAN",
+        meta=f"Host: {platform.node() or 'local'}",
     )
 
-    t = Table(title="Environment & System Integrity", show_lines=True)
-    t.add_column("Diagnostic Check", style="cyan bold")
-    t.add_column("Status / Detection", style="bold white")
-    t.add_column("Result", style="bold green")
+    t = Table(title="Platform Integrity & Acceleration Checklist", show_lines=False)
+    t.add_column("Category", style="dim", justify="left")
+    t.add_column("Diagnostic Check", style="bold cyan", justify="left")
+    t.add_column("Status / Detection", style="white", justify="left")
+    t.add_column("Result", justify="right")
+
+    remediations = []
 
     # 1. Python Environment
     py_ver = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro} ({platform.python_implementation()})"
-    t.add_row("Python Version", py_ver, format_status("PASS"))
+    t.add_row("Runtime", "Python Version", py_ver, format_status("PASS"))
 
-    # 2. C Compiler Detection
+    # 2. Config File
+    cfg_path = find_config_path()
+    cfg_str = str(cfg_path) if cfg_path else "Built-in defaults (in-memory)"
+    cfg_hash = compute_config_hash()
+    t.add_row(
+        "Config",
+        "Configuration (mdrap.toml)",
+        f"{cfg_str} (hash: {cfg_hash[:8]}...)",
+        format_status("PASS"),
+    )
+
+    # 3. C Compiler Detection
     compilers_found = [c for c in ("gcc", "clang", "cl") if shutil.which(c)]
     comp_str = (
         ", ".join(compilers_found) if compilers_found else "None detected on PATH"
     )
-    t.add_row(
-        "C Compiler Detected",
-        comp_str,
-        format_status("PASS") if compilers_found else format_status("WARN"),
-    )
+    c_status = format_status("PASS") if compilers_found else format_status("WARN")
+    t.add_row("Compiler", "C Compiler Detected", comp_str, c_status)
+    if not compilers_found:
+        remediations.append(
+            "Install GCC, Clang, or MSVC to compile high-throughput Native C vectorized kernels."
+        )
 
-    # 3. Active Engine Tier
+    # 4. Active Engine Tier
     if HAS_FASTPATH:
-        tier_status = "[bold green]● PASS[/bold green] (Native C Fastpath Active)"
+        tier_status = format_status("PASS") + " (Vectorized C)"
         tier_desc = "C DLL Vectorized Context (_fastpath_native.dll)"
     else:
-        tier_status = "[yellow]▲ FALLBACK[/yellow] (Pure Python Engine)"
-        tier_desc = "Pure Python QualityEngine"
-    t.add_row("Active Engine Tier", tier_desc, tier_status)
+        tier_status = format_status("WARN") + " (Pure Python)"
+        tier_desc = "Pure Python QualityEngine (Fallback)"
+        remediations.append(
+            "Native C Fastpath DLL is not compiled. Build with: `python build_fastpath.py`"
+        )
+    t.add_row("Engine", "Active Engine Tier", tier_desc, tier_status)
 
-    # 4. Native Core Binary (T1 Hot-Path Engine)
+    # 5. Native Core Binary (T1 Hot-Path Engine)
     from build_fastpath import get_core_bin_name
 
     core_bin = get_core_bin_name()
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     core_path = os.path.join(base_dir, core_bin)
     if os.path.isfile(core_path):
-        core_status = "[bold green]● READY[/bold green]"
-        core_desc = f"{core_bin} present ({os.path.getsize(core_path):,} bytes)"
+        core_status = format_status("READY")
+        core_desc = f"{core_bin} ({os.path.getsize(core_path):,} bytes)"
     else:
-        core_status = "[yellow]▲ UNCOMPILED[/yellow]"
-        core_desc = f"{core_bin} not built (run `mdrap core --build` or `python build_fastpath.py`)"
-    t.add_row("Native Core Binary (T1)", core_desc, core_status)
+        core_status = format_status("WARN")
+        core_desc = f"{core_bin} uncompiled"
+        remediations.append(
+            "Native standalone core binary is missing. Build with: `mdrap core --build`"
+        )
+    t.add_row("Engine", "Native Core Binary (T1)", core_desc, core_status)
 
-    # 5. Hardware Timestamping Support (T1 Tier)
+    # 6. Hardware Timestamping Support (T1 Tier)
     if sys.platform.startswith("linux"):
         has_so_ts = hasattr(socket, "SO_TIMESTAMPING") or hasattr(
             socket, "SCM_TIMESTAMPING"
@@ -6166,35 +6452,25 @@ def cmd_doctor(args):
         )
         if ptp_devs:
             ts_desc = f"Linux PHC / PTP Hardware Clock ({', '.join(ptp_devs)})"
-            ts_status = "[bold green]● PASS[/bold green] (Hardware PTP Active)"
+            ts_status = format_status("PASS") + " (Hardware PTP)"
         elif has_so_ts:
-            ts_desc = "SO_TIMESTAMPING supported (NIC hardware timestamping available)"
-            ts_status = "[bold green]● PASS[/bold green] (Kernel SO_TIMESTAMPING)"
+            ts_desc = "Kernel SO_TIMESTAMPING (NIC HW TS available)"
+            ts_status = format_status("PASS") + " (SO_TIMESTAMPING)"
         else:
-            ts_desc = "Linux CLOCK_REALTIME / CLOCK_MONOTONIC_RAW (Software fallback)"
-            ts_status = "[yellow]▲ FALLBACK[/yellow] (Software Timestamps)"
+            ts_desc = "Linux CLOCK_MONOTONIC_RAW (Software fallback)"
+            ts_status = format_status("WARN") + " (Software)"
     elif sys.platform == "win32":
-        ts_desc = "Windows QPC (QueryPerformanceCounter, ~100ns precision)"
-        ts_status = "[yellow]▲ FALLBACK[/yellow] (Software QPC; Linux + PHC required for NIC HW TS)"
+        ts_desc = "Windows QPC (~100ns precision)"
+        ts_status = format_status("PASS") + " (High-Res QPC)"
     elif sys.platform == "darwin":
         ts_desc = "macOS mach_absolute_time (~41ns precision)"
-        ts_status = "[yellow]▲ FALLBACK[/yellow] (Software Mach Time)"
+        ts_status = format_status("PASS") + " (Mach Absolute Time)"
     else:
-        ts_desc = f"{sys.platform} clock_gettime (Software fallback)"
-        ts_status = "[yellow]▲ FALLBACK[/yellow] (Software Timestamps)"
-    t.add_row("Hardware Timestamping (T1)", ts_desc, ts_status)
+        ts_desc = f"{sys.platform} clock_gettime"
+        ts_status = format_status("WARN")
+    t.add_row("Timestamps", "Timestamp Precision", ts_desc, ts_status)
 
-    # 6. Config File
-    cfg_path = find_config_path()
-    cfg_str = str(cfg_path) if cfg_path else "Using built-in defaults"
-    cfg_hash = compute_config_hash()
-    t.add_row(
-        "Configuration (mdrap.toml)",
-        f"{cfg_str} (hash: {cfg_hash[:12]}...)",
-        format_status("PASS"),
-    )
-
-    # 5. SQLite WAL Mode
+    # 7. SQLite WAL Mode
     db_path = getattr(args, "db", "data/mdrap.db")
     wal_ok = False
     try:
@@ -6210,12 +6486,17 @@ def cmd_doctor(args):
     except Exception:
         mode = "ERROR"
     t.add_row(
+        "Persistence",
         "Storage WAL Journal Mode",
         f"Mode: {mode.upper()}",
         format_status("PASS") if wal_ok else format_status("WARN"),
     )
+    if not wal_ok:
+        remediations.append(
+            f"Storage database is not in WAL mode. Enable with: `sqlite3 {db_path} 'PRAGMA journal_mode=WAL;'`"
+        )
 
-    # 6. 10k Smoke Benchmark
+    # 8. 10k Smoke Benchmark
     import time
     from simulator import FeedSimulator, SimulatorConfig
     from pipeline import Pipeline
@@ -6236,12 +6517,36 @@ def cmd_doctor(args):
     p50_us = (t_proc / 10_000) * 1_000_000
 
     t.add_row(
-        "10k Smoke Benchmark",
+        "Smoke Test",
+        "10k Event Smoke Benchmark",
         f"{eps:,.0f} eps | avg: {p50_us:.2f} us/event",
         format_status("HEALTHY"),
     )
 
     console.print(t)
+    console.print()
+
+    if remediations:
+        rem_lines = "\n".join(
+            f"  [dim]•[/dim] [white]{r}[/white]" for r in remediations
+        )
+        console.print(
+            Panel(
+                f"[bold yellow]Optimization & Remediation Recommendations:[/bold yellow]\n\n{rem_lines}",
+                title="[yellow]Doctor Recommendations[/yellow]",
+                title_align="left",
+                border_style="yellow",
+                box=box.ROUNDED,
+            )
+        )
+        console.print()
+        console.print(
+            "[bold yellow]▲ SYSTEM OPERATIONAL (WITH RECOMMENDATIONS):[/bold yellow] Follow guidance above to unlock maximum throughput.\n"
+        )
+    else:
+        console.print(
+            "[bold green]● ALL CHECKS PASSED:[/bold green] Platform is fully optimized for high-throughput institutional workloads.\n"
+        )
 
 
 def cmd_demo(args):
@@ -6371,6 +6676,98 @@ Register-ArgumentCompleter -Native -CommandName mdrap -ScriptBlock {{
     print(script, end="")
 
 
+def _add_fastpath_args(p: argparse.ArgumentParser) -> None:
+    p.add_argument(
+        "-f",
+        "--fastpath",
+        dest="fastpath",
+        action="store_true",
+        default=True,
+        help="Enable Native C hot path accelerator (default: enabled)",
+    )
+    p.add_argument(
+        "--no-fastpath",
+        dest="fastpath",
+        action="store_false",
+        help="Disable Native C accelerator and use pure Python",
+    )
+
+
+def _add_limit_arg(
+    p: argparse.ArgumentParser, default: int = 20, help_text: str = "Row limit"
+) -> None:
+    p.add_argument("-l", "--limit", type=int, default=default, help=help_text)
+
+
+def _add_symbol_arg(
+    p: argparse.ArgumentParser, default: str = "AAPL", help_text: str | None = None
+) -> None:
+    p.add_argument(
+        "symbol",
+        nargs="?",
+        default=default,
+        help=help_text or f"Symbol (default: {default})",
+    )
+
+
+def _add_events_arg(
+    p: argparse.ArgumentParser, default: int = 50_000, help_text: str | None = None
+) -> None:
+    p.add_argument(
+        "-e",
+        "--events",
+        type=int,
+        default=default,
+        help=help_text or f"Number of events (default: {default:,})",
+    )
+
+
+def _add_seed_arg(p: argparse.ArgumentParser, default: int = 42) -> None:
+    p.add_argument(
+        "-s",
+        "--seed",
+        type=int,
+        default=default,
+        help="Deterministic random seed",
+    )
+
+
+def _add_host_port_args(
+    p: argparse.ArgumentParser,
+    default_host: str = "127.0.0.1",
+    default_port: int = 9876,
+) -> None:
+    p.add_argument(
+        "--host",
+        default=default_host,
+        help=f"Listening host (default: {default_host})",
+    )
+    p.add_argument(
+        "-p",
+        "--port",
+        type=int,
+        default=default_port,
+        help=f"Listening port (default: {default_port})",
+    )
+
+
+def _add_export_report_args(
+    p: argparse.ArgumentParser, report_name: str = "report"
+) -> None:
+    p.add_argument(
+        "--export",
+        nargs="?",
+        const=True,
+        default=None,
+        help=f"Export {report_name} (.xlsx)",
+    )
+    p.add_argument(
+        "--open",
+        action="store_true",
+        help="Open exported report in Microsoft Excel (Windows only)",
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = MDRAPArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -6379,6 +6776,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--json",
         action="store_true",
         help="Output structured JSON instead of formatted tables",
+    )
+    parser.add_argument(
+        "--pretty",
+        action="store_true",
+        help="Force rich terminal UI formatting even in non-interactive/redirected contexts",
     )
     parser.add_argument(
         "--no-color",
@@ -6416,6 +6818,12 @@ def build_parser() -> argparse.ArgumentParser:
             help="Output structured JSON instead of formatted tables",
         )
         p.add_argument(
+            "--pretty",
+            action="store_true",
+            default=argparse.SUPPRESS,
+            help="Force rich terminal UI formatting even in non-interactive/redirected contexts",
+        )
+        p.add_argument(
             "--no-color",
             "--plain",
             action="store_true",
@@ -6426,15 +6834,12 @@ def build_parser() -> argparse.ArgumentParser:
         p.set_defaults(func=func)
         return p
 
-    # Keyboard-First Modal Desk Navigator (Vim/Excel ergonomics)
     _sub(
         "desk",
         cmd_desk,
         "Launch interactive keyboard-first modal desk navigator (Vim/Excel ergonomics)",
         ["nav"],
     )
-
-    # Status dashboard (quick overview)
     _sub(
         "status",
         cmd_status,
@@ -6442,8 +6847,6 @@ def build_parser() -> argparse.ArgumentParser:
         ["s"],
         db=True,
     )
-
-    # Interactive Shell (warm process with slash commands)
     _sub(
         "shell",
         lambda args: cmd_shell(args, parser),
@@ -6468,20 +6871,7 @@ def build_parser() -> argparse.ArgumentParser:
         default="v1",
         help="Pipeline version (v1: sync, v2: streaming)",
     )
-    p_run.add_argument(
-        "-f",
-        "--fastpath",
-        dest="fastpath",
-        action="store_true",
-        default=True,
-        help="Enable Native C hot path accelerator (default: enabled)",
-    )
-    p_run.add_argument(
-        "--no-fastpath",
-        dest="fastpath",
-        action="store_false",
-        help="Disable Native C accelerator and use pure Python",
-    )
+    _add_fastpath_args(p_run)
     p_run.add_argument(
         "-a",
         "--archive",
@@ -6526,20 +6916,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_bench.add_argument(
         "-v", "--version", choices=["v1", "v2"], default="v1", help="Pipeline version"
     )
-    p_bench.add_argument(
-        "-f",
-        "--fastpath",
-        dest="fastpath",
-        action="store_true",
-        default=True,
-        help="Enable Native C hot path accelerator (default: enabled)",
-    )
-    p_bench.add_argument(
-        "--no-fastpath",
-        dest="fastpath",
-        action="store_false",
-        help="Disable Native C accelerator and use pure Python",
-    )
+    _add_fastpath_args(p_bench)
     p_bench.add_argument("-w", "--warmup", type=int, default=5000, help="Warmup events")
     p_bench.add_argument("-l", "--label", default="baseline", help="Benchmark label")
     p_bench.add_argument(
@@ -6578,7 +6955,7 @@ def build_parser() -> argparse.ArgumentParser:
         default="10000,50000,100000,250000,500000",
         help="Comma-separated event counts",
     )
-    p_load.add_argument("-s", "--seed", type=int, default=42)
+    _add_seed_arg(p_load)
     p_load.add_argument("-o", "--out-dir", default="benchmarks")
 
     # Chaos drill (§15)
@@ -6592,8 +6969,8 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["feed", "jitter", "burst", "storage", "all", "kill"],
         help="Chaos drill type",
     )
-    p_chaos.add_argument("-e", "--events", type=int, default=50_000)
-    p_chaos.add_argument("-s", "--seed", type=int, default=42)
+    _add_events_arg(p_chaos, default=50_000)
+    _add_seed_arg(p_chaos)
     p_chaos.add_argument("--kill-source", default="FEEDX", help="Source to drop")
     p_chaos.add_argument(
         "--kill-start", type=int, default=0, help="Drop begins after this many events"
@@ -6686,9 +7063,7 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="FILE",
         help="Independently verify a standalone JSON audit proof without database access",
     )
-    p_audit.add_argument(
-        "-l", "--limit", type=int, default=20, help="Number of audit records to show"
-    )
+    _add_limit_arg(p_audit, default=20, help_text="Number of audit records to show")
 
     # Query
     p_query = _sub(
@@ -6713,7 +7088,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_query.add_argument(
         "--latest", metavar="INSTRUMENT", help="Latest event for instrument"
     )
-    p_query.add_argument("-l", "--limit", type=int, default=1, help="Row limit")
+    _add_limit_arg(p_query, default=1, help_text="Row limit")
     p_query.add_argument("--lineage", metavar="EVENT_ID", help="Lineage for event ID")
     p_query.add_argument("--health", action="store_true", help="Feed health summary")
     p_query.add_argument(
@@ -6814,7 +7189,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_analytics.add_argument(
         "--summary", action="store_true", help="Show market analytics summary"
     )
-    p_analytics.add_argument("-l", "--limit", type=int, default=20, help="Row limit")
+    _add_limit_arg(p_analytics, default=20, help_text="Row limit")
 
     # Synthetic Consolidated BBO
     p_bbo = _sub(
@@ -6824,8 +7199,8 @@ def build_parser() -> argparse.ArgumentParser:
         ["nbbo"],
         db=True,
     )
-    p_bbo.add_argument(
-        "symbol", nargs="?", default=None, help="Instrument symbol (e.g. AAPL or 'all')"
+    _add_symbol_arg(
+        p_bbo, default=None, help_text="Instrument symbol (e.g. AAPL or 'all')"
     )
 
     # Live market streaming & in-place ticker dashboard
@@ -6836,18 +7211,15 @@ def build_parser() -> argparse.ArgumentParser:
         ["stream"],
         db=True,
     )
-    p_live.add_argument(
-        "symbol",
-        nargs="?",
+    _add_symbol_arg(
+        p_live,
         default="BTC/USD",
-        help="Symbol to stream (e.g. BTC/USD, AAPL, or 'all')",
+        help_text="Symbol to stream (e.g. BTC/USD, AAPL, or 'all')",
     )
-    p_live.add_argument(
-        "-l",
-        "--limit",
-        type=int,
+    _add_limit_arg(
+        p_live,
         default=20,
-        help="Number of ticks to stream (default 20, 0 for continuous)",
+        help_text="Number of ticks to stream (default 20, 0 for continuous)",
     )
     p_live.add_argument(
         "--fast",
@@ -6930,8 +7302,8 @@ def build_parser() -> argparse.ArgumentParser:
         ["candle"],
         db=True,
     )
-    p_chart.add_argument(
-        "symbol", nargs="?", default="AAPL", help="Symbol to chart (e.g. AAPL, BTC/USD)"
+    _add_symbol_arg(
+        p_chart, default="AAPL", help_text="Symbol to chart (e.g. AAPL, BTC/USD)"
     )
     p_chart.add_argument(
         "-i",
@@ -6970,15 +7342,11 @@ def build_parser() -> argparse.ArgumentParser:
         ["l2"],
         db=True,
     )
-    p_depth.add_argument(
-        "symbol", nargs="?", default="BTC/USD", help="Symbol to inspect (e.g. BTC/USD)"
+    _add_symbol_arg(
+        p_depth, default="BTC/USD", help_text="Symbol to inspect (e.g. BTC/USD)"
     )
-    p_depth.add_argument(
-        "-l",
-        "--limit",
-        type=int,
-        default=10,
-        help="Number of depth levels per side (default 10)",
+    _add_limit_arg(
+        p_depth, default=10, help_text="Number of depth levels per side (default 10)"
     )
 
     # Phase E: Multi-Venue VWAP Execution & Slippage Curves
@@ -6989,8 +7357,8 @@ def build_parser() -> argparse.ArgumentParser:
         ["curve"],
         db=True,
     )
-    p_vwap.add_argument(
-        "symbol", nargs="?", default="BTC/USD", help="Symbol to inspect (e.g. BTC/USD)"
+    _add_symbol_arg(
+        p_vwap, default="BTC/USD", help_text="Symbol to inspect (e.g. BTC/USD)"
     )
     p_vwap.add_argument(
         "--sizes",
@@ -7008,8 +7376,8 @@ def build_parser() -> argparse.ArgumentParser:
         ["exp"],
         db=True,
     )
-    p_export.add_argument(
-        "symbol", nargs="?", default="AAPL", help="Symbol to export (default: AAPL)"
+    _add_symbol_arg(
+        p_export, default="AAPL", help_text="Symbol to export (default: AAPL)"
     )
     p_export.add_argument(
         "-o", "--output", default=None, help="Custom output file or directory path"
@@ -7066,9 +7434,7 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="N",
         help="Show recent watchdog alerts",
     )
-    p_watchdog.add_argument(
-        "-l", "--limit", type=int, default=10, help="Alert count limit"
-    )
+    _add_limit_arg(p_watchdog, default=10, help_text="Alert count limit")
 
     # Phase 10 / Market Service: Headless Streaming Daemon & Subscriber Client (§18)
     p_daemon = _sub(
@@ -7078,21 +7444,14 @@ def build_parser() -> argparse.ArgumentParser:
         ["d"],
         db=True,
     )
-    p_daemon.add_argument("--host", default="127.0.0.1", help="Listening IP host")
-    p_daemon.add_argument(
-        "-p", "--port", type=int, default=9876, help="Listening TCP port"
-    )
+    _add_host_port_args(p_daemon, default_host="127.0.0.1", default_port=9876)
     p_daemon.add_argument(
         "--live",
         action="store_true",
         help="Ingest real-time Binance & Coinbase market feeds",
     )
-    p_daemon.add_argument(
-        "-e",
-        "--events",
-        type=int,
-        default=0,
-        help="Event limit (0 for infinite continuous stream)",
+    _add_events_arg(
+        p_daemon, default=0, help_text="Event limit (0 for infinite continuous stream)"
     )
     p_daemon.add_argument(
         "--speed", type=float, default=1000.0, help="Simulated events per second"
@@ -7119,20 +7478,12 @@ def build_parser() -> argparse.ArgumentParser:
         "Subscribe to daemon stream and output ticks or depth to stdout",
         ["subscribe"],
     )
-    p_sub.add_argument(
-        "symbol",
-        nargs="?",
-        default="ALL",
-        help="Symbol to stream (e.g. BTC/USD, AAPL, or ALL)",
+    _add_symbol_arg(
+        p_sub, default="ALL", help_text="Symbol to stream (e.g. BTC/USD, AAPL, or ALL)"
     )
-    p_sub.add_argument("--host", default="127.0.0.1")
-    p_sub.add_argument("-p", "--port", type=int, default=9876)
-    p_sub.add_argument(
-        "-l",
-        "--limit",
-        type=int,
-        default=0,
-        help="Limit number of ticks (0 for continuous)",
+    _add_host_port_args(p_sub, default_host="127.0.0.1", default_port=9876)
+    _add_limit_arg(
+        p_sub, default=0, help_text="Limit number of ticks (0 for continuous)"
     )
     p_sub.add_argument(
         "--l2",
@@ -7175,8 +7526,7 @@ def build_parser() -> argparse.ArgumentParser:
         "Launch dynamic full-screen terminal service cockpit",
         ["mon"],
     )
-    p_top.add_argument("--host", default="127.0.0.1")
-    p_top.add_argument("-p", "--port", type=int, default=9876)
+    _add_host_port_args(p_top, default_host="127.0.0.1", default_port=9876)
     p_top.add_argument(
         "--token", default="", help="Pre-shared bearer authentication token"
     )
@@ -7203,12 +7553,8 @@ def build_parser() -> argparse.ArgumentParser:
         default="all",
         help="Target module to stress",
     )
-    p_stress.add_argument(
-        "-e",
-        "--events",
-        type=int,
-        default=25000,
-        help="Number of stress events (default 25,000)",
+    _add_events_arg(
+        p_stress, default=25000, help_text="Number of stress events (default 25,000)"
     )
 
     # Comprehensive test runner
@@ -7388,12 +7734,10 @@ def build_parser() -> argparse.ArgumentParser:
         "Run dual-path Multicast UDP A/B feed arbitration and TCP replay test (§18, §26)",
         ["arb"],
     )
-    p_arb.add_argument(
-        "-e",
-        "--events",
-        type=int,
+    _add_events_arg(
+        p_arb,
         default=500,
-        help="Number of dual-line events to simulate (default: 500)",
+        help_text="Number of dual-line events to simulate (default: 500)",
     )
     p_arb.add_argument(
         "--drop-a",
@@ -7415,12 +7759,10 @@ def build_parser() -> argparse.ArgumentParser:
         "Benchmark 500,000 to 1,000,000+ events/sec on vectorized Native C SBE stream (§26)",
         ["tp"],
     )
-    p_tp.add_argument(
-        "-e",
-        "--events",
-        type=int,
+    _add_events_arg(
+        p_tp,
         default=1_000_000,
-        help="Number of events to benchmark (e.g. 500000 or 1000000, default: 1,000,000)",
+        help_text="Number of events to benchmark (e.g. 500000 or 1000000, default: 1,000,000)",
     )
     p_tp.add_argument(
         "--anomalies",
@@ -7442,8 +7784,8 @@ def build_parser() -> argparse.ArgumentParser:
         ["bestex"],
         db=True,
     )
-    p_tca.add_argument(
-        "symbol", nargs="?", default="AAPL", help="Instrument symbol (default: AAPL)"
+    _add_symbol_arg(
+        p_tca, default="AAPL", help_text="Instrument symbol (default: AAPL)"
     )
     p_tca.add_argument(
         "-c",
@@ -7455,9 +7797,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_tca.add_argument(
         "-f", "--file", default=None, help="Path to execution records CSV file"
     )
-    p_tca.add_argument(
-        "-s", "--seed", type=int, default=42, help="Deterministic random seed"
-    )
+    _add_seed_arg(p_tca, default=42)
     p_tca.add_argument(
         "--demo",
         action="store_true",
@@ -7470,18 +7810,7 @@ def build_parser() -> argparse.ArgumentParser:
         default="ARRIVAL_PRICE",
         help="Benchmark price for slippage calculation",
     )
-    p_tca.add_argument(
-        "--export",
-        nargs="?",
-        const=True,
-        default=None,
-        help="Export 3-tab audit-grade Excel TCA report (.xlsx)",
-    )
-    p_tca.add_argument(
-        "--open",
-        action="store_true",
-        help="Open exported report in Microsoft Excel (Windows only)",
-    )
+    _add_export_report_args(p_tca, "3-tab audit-grade Excel TCA report")
 
     # Institutional Fund Regulatory Compliance Reports (SEC 13F, MiFID II RTS 28)
     p_report = _sub(
@@ -7503,9 +7832,7 @@ def build_parser() -> argparse.ArgumentParser:
         default="AAPL",
         help="Target symbol for venue analysis (default: AAPL)",
     )
-    p_report.add_argument(
-        "-s", "--seed", type=int, default=42, help="Deterministic random seed"
-    )
+    _add_seed_arg(p_report, default=42)
 
     # Institutional Order Flow & Cumulative Volume Delta (CVD) Tracker (§26)
     p_flow = _sub(
@@ -7515,8 +7842,8 @@ def build_parser() -> argparse.ArgumentParser:
         ["cvd"],
         db=True,
     )
-    p_flow.add_argument(
-        "symbol", nargs="?", default="AAPL", help="Instrument symbol (default: AAPL)"
+    _add_symbol_arg(
+        p_flow, default="AAPL", help_text="Instrument symbol (default: AAPL)"
     )
     p_flow.add_argument(
         "-c",
@@ -7525,26 +7852,13 @@ def build_parser() -> argparse.ArgumentParser:
         default=500,
         help="Number of trades to analyze (default: 500)",
     )
-    p_flow.add_argument(
-        "-s", "--seed", type=int, default=42, help="Deterministic random seed"
-    )
+    _add_seed_arg(p_flow, default=42)
     p_flow.add_argument(
         "--whales",
         action="store_true",
         help="Display only whale blocks and institutional prints",
     )
-    p_flow.add_argument(
-        "--export",
-        nargs="?",
-        const=True,
-        default=None,
-        help="Export 3-tab Order Flow & CVD Excel report (.xlsx)",
-    )
-    p_flow.add_argument(
-        "--open",
-        action="store_true",
-        help="Open exported report in Microsoft Excel (Windows only)",
-    )
+    _add_export_report_args(p_flow, "3-tab Order Flow & CVD Excel report")
 
     # Institutional Algorithmic Strategy Engine & Paper EMS (§26)
     p_strat = _sub(
@@ -7571,12 +7885,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_strat.add_argument(
         "-i", "--symbol", default="AAPL", help="Instrument symbol (default: AAPL)"
     )
-    p_strat.add_argument(
-        "-e",
-        "--events",
-        type=int,
+    _add_events_arg(
+        p_strat,
         default=1000,
-        help="Event count for paper simulation (default: 1000)",
+        help_text="Event count for paper simulation (default: 1000)",
     )
     p_strat.add_argument(
         "-b",
@@ -7608,12 +7920,7 @@ def build_parser() -> argparse.ArgumentParser:
         "Launch AsyncIO TCP Gateway for external clients",
         ["gw"],
     )
-    p_gw.add_argument(
-        "--host", default="127.0.0.1", help="TCP bind host (default: 127.0.0.1)"
-    )
-    p_gw.add_argument(
-        "-p", "--port", type=int, default=9000, help="TCP listen port (default: 9000)"
-    )
+    _add_host_port_args(p_gw, default_host="127.0.0.1", default_port=9000)
 
     # Phase 9: Python SDK Demo
     _sub("sdk-demo", cmd_sdk_demo, "Run Quant-Ready Python SDK Client Demo", ["sdk"])
@@ -7646,12 +7953,10 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Path to .itch or .itch.gz file (for parse)",
     )
-    p_itch.add_argument(
-        "-e",
-        "--events",
-        type=int,
+    _add_events_arg(
+        p_itch,
         default=1_000_000,
-        help="Number of messages (for bench/generate, default: 1,000,000)",
+        help_text="Number of messages (for bench/generate, default: 1,000,000)",
     )
     p_itch.add_argument(
         "-o",
@@ -7659,12 +7964,10 @@ def build_parser() -> argparse.ArgumentParser:
         default="data/sample.itch",
         help="Output file path (for generate)",
     )
-    p_itch.add_argument(
-        "-l",
-        "--limit",
-        type=int,
+    _add_limit_arg(
+        p_itch,
         default=50,
-        help="Number of records to preview (for parse)",
+        help_text="Number of records to preview (for parse)",
     )
 
     # Phase 10: SEC EDGAR Alternative Data & Corporate Research Engine
@@ -7694,12 +7997,10 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Filter by form type (e.g., 10-K, 10-Q, 8-K, 4)",
     )
-    p_edgar.add_argument(
-        "-l",
-        "--limit",
-        type=int,
+    _add_limit_arg(
+        p_edgar,
         default=15,
-        help="Maximum number of items to display (default: 15)",
+        help_text="Maximum number of items to display (default: 15)",
     )
     p_edgar.add_argument(
         "-m",
@@ -7764,12 +8065,10 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["laden", "ballast", "LADEN", "BALLAST"],
         help="Filter by cargo load status (laden, ballast)",
     )
-    p_vessel.add_argument(
-        "-l",
-        "--limit",
-        type=int,
+    _add_limit_arg(
+        p_vessel,
         default=25,
-        help="Maximum number of vessels to display (default: 25)",
+        help_text="Maximum number of vessels to display (default: 25)",
     )
 
     # Quantitative Research, Trading & Risk Subparsers (Gaps 1-12)
@@ -7825,12 +8124,10 @@ def build_parser() -> argparse.ArgumentParser:
         "Run standalone native C hot-path engine (T1 zero-lock tier)",
         ["t1", "fast-core"],
     )
-    p_core.add_argument(
-        "--events",
-        "-e",
-        type=int,
+    _add_events_arg(
+        p_core,
         default=100000,
-        help="Number of simulated ticks (default: 100000)",
+        help_text="Number of simulated ticks (default: 100000)",
     )
     p_core.add_argument(
         "--shm",
@@ -8221,6 +8518,12 @@ ALL_CANONICAL_COMMANDS = [
 
 def render_command_palette(console: Console) -> None:
     """Render clean, high-density 4-quadrant Wall Street command palette."""
+    render_brand_header(
+        console,
+        title="MDRAP PLATFORM COMMAND MATRIX",
+        subtitle="Market Desk, Quant, Daemon & System Controls",
+        badge="v2.4.0",
+    )
     palette = (
         "[bold #818cf8]┌─ 🟢 Market Desk ──────────────┬─ 📊 Quant & Execution ──────────┐[/bold #818cf8]\n"
         "[bold #818cf8]│[/bold #818cf8] [bold green]BBO[/bold green]   [dim][SYM][/dim] Consolidated NBBO [bold #818cf8]│[/bold #818cf8] [bold green]TCA[/bold green]   [dim][SYM][/dim] Best-Ex SEC 606   [bold #818cf8]│[/bold #818cf8]\n"
@@ -8267,24 +8570,27 @@ def cmd_shell(args=None, parser=None):
     except Exception:
         pass
 
-    console.print()
-    render_gemini_banner(console)
-    render_gemini_tips(console)
-
     db_path = getattr(args, "db", "data/mdrap.db") if args else "data/mdrap.db"
     _ensure_db_dir(db_path)
 
+    console.print()
+    render_brand_header(
+        console,
+        title="MDRAP INTERACTIVE SHELL",
+        subtitle="Wall Street & Quantitative Execution Terminal",
+        badge="ONLINE",
+        meta=f"db: {db_path}",
+    )
+    render_gemini_tips(console)
+
     while True:
-        render_gemini_box_top(console, db_path=db_path)
         try:
             prompt = console.input(
-                "[bold #818cf8]mdrap[/bold #818cf8][dim]>[/dim] "
+                "[bold cyan]mdrap[/bold cyan] [bold #818cf8]❯[/bold #818cf8] "
             ).strip()
         except (EOFError, KeyboardInterrupt):
             console.print("\n[dim]Exiting...[/dim]")
             break
-
-        render_gemini_box_bottom(console, db_path=db_path)
 
         if not prompt:
             continue

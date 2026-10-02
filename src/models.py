@@ -206,6 +206,7 @@ class CanonicalEvent:
     venue: str = "XNAS"
     currency: str = "USD"
     clock_source: str = "HOST_SYS_CLOCK"  # MiFID II RTS 25 timestamp traceability
+    source_kind: str = "LIVE"  # "LIVE", "SIMULATED", "HISTORICAL", "REPLAY"
 
     def dedup_key(self) -> tuple:
         """Construct a deterministic hashable key for duplicate detection.
@@ -268,6 +269,8 @@ class CanonicalEvent:
             "raw_id": self.raw_id,
             "venue": self.venue,
             "currency": self.currency,
+            "clock_source": self.clock_source,
+            "source_kind": self.source_kind,
             "asset_class": self.asset_class.value
             if hasattr(self.asset_class, "value")
             else str(self.asset_class),
@@ -330,6 +333,8 @@ class CanonicalEvent:
             raw_id=str(data.get("raw_id", "")),
             venue=str(data.get("venue", "XNAS")),
             currency=str(data.get("currency", "USD")),
+            clock_source=str(data.get("clock_source", "HOST_SYS_CLOCK")),
+            source_kind=str(data.get("source_kind", "LIVE")),
             asset_class=ac,
         )
 

@@ -453,9 +453,6 @@ class PortfolioTracker:
 
     @property
     def market_value(self) -> float:
-        # ponytail: cached FX rate conversion; live websocket rates when sub-second needed
-        from fx import convert_currency
-
         return sum(
             convert_currency(pos.market_value, pos.currency, self.base_currency)
             for pos in self._positions.values()
@@ -463,15 +460,11 @@ class PortfolioTracker:
 
     @property
     def total_equity(self) -> float:
-        from fx import convert_currency
-
         cash_in_base = convert_currency(self.cash, "USD", self.base_currency)
         return cash_in_base + self.market_value
 
     def total_equity_in(self, target_currency: str = "USD") -> float:
         """Converts cash and all position market values into target currency using live FX matrix."""
-        from fx import convert_currency
-
         total = convert_currency(self._cash, "USD", target_currency)
         for pos in self._positions.values():
             mv_converted = convert_currency(
@@ -482,8 +475,6 @@ class PortfolioTracker:
 
     @property
     def total_realized_pnl(self) -> float:
-        from fx import convert_currency
-
         return sum(
             convert_currency(pos.realized_pnl, pos.currency, self.base_currency)
             for pos in self._positions.values()
@@ -491,8 +482,6 @@ class PortfolioTracker:
 
     @property
     def total_unrealized_pnl(self) -> float:
-        from fx import convert_currency
-
         return sum(
             convert_currency(pos.unrealized_pnl, pos.currency, self.base_currency)
             for pos in self._positions.values()
@@ -500,8 +489,6 @@ class PortfolioTracker:
 
     def total_daily_borrow_cost(self) -> float:
         """Annualized borrow fee accrued on open short positions."""
-        from fx import convert_currency
-
         cost = 0.0
         for pos in self._positions.values():
             if pos.quantity < 0 and pos.borrow_rate_bps > 0:

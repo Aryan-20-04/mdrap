@@ -202,3 +202,62 @@ def test_ws_manager_lifecycle():
     events = list(manager.stream_events(limit=1, timeout_s=0.1))
     assert len(events) == 1
     assert events[0].source == "BINANCE"
+
+
+def test_binance_depth_frame_normalizes_and_evaluates():
+    """Verify Binance @depth5 frame without 'E' passes normalize and quality without SchemaError (Bug 1 regression)."""
+    from gateway import normalize
+    from quality import QualityEngine
+
+    frame = {
+        "lastUpdateId": 1234567,
+        "bids": [["65000.00", "1.500"], ["64995.00", "2.100"]],
+        "asks": [["65005.00", "0.800"], ["65010.00", "3.200"]],
+    }
+    raw = parse_binance_frame(frame, "BTC/USD")
+    assert raw is not None
+
+    canonical = normalize(raw)
+    assert canonical.instrument_id == "BTC/USD"
+    assert canonical.bid_price == 65000.0
+    assert canonical.ask_price == 65005.0
+    assert canonical.clock_source == "GATEWAY_RECV"
+    assert canonical.sequence_number is None
+
+    engine = QualityEngine()
+    evaluated = engine.evaluate(canonical)
+    assert evaluated is not None
+    assert evaluated.quality_status == QualityStatus.VALID
+
+
+def test_kraken_snapshot_normalizes_and_evaluates():
+    """Verify Kraken frame without sequence passes normalize and quality (Bug 1 regression)."""
+    from gateway import normalize
+    from quality import QualityEngine
+
+    import time
+
+    now = time.time()
+    frame = [
+        342,
+        {
+            "bs": [["65002.5", "1.500", str(now)]],
+            "as": [["65004.5", "2.300", str(now)]],
+        },
+        "book-10",
+        "XBT/USD",
+    ]
+    raw = parse_kraken_frame(frame, "BTC/USD")
+    assert raw is not None
+    assert raw.source == "KRAKEN"
+
+    canonical = normalize(raw)
+    assert canonical.instrument_id == "BTC/USD"
+    assert canonical.bid_price == 65002.5
+    assert canonical.ask_price == 65004.5
+    assert canonical.sequence_number is None
+
+    engine = QualityEngine()
+    evaluated = engine.evaluate(canonical)
+    assert evaluated is not None
+    assert evaluated.quality_status == QualityStatus.VALID

@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from typing import Any
 
 __stability__ = "beta"
 
@@ -22,17 +23,55 @@ logger = logging.getLogger("mdrap.gateway")
 
 
 class TCPGatewayServer:
-    def __init__(self, host: str = "127.0.0.1", port: int = 9000):
+    def __init__(
+        self,
+        host: str = "127.0.0.1",
+        port: int = 9000,
+        security_manager: Any = None,
+        ssl_context: Any = None,
+        require_auth: bool = False,
+    ):
         self.host = host
         self.port = port
+        self.security_manager = security_manager
+        self.ssl_context = ssl_context
+        self.require_auth = require_auth
         self.clients: set[asyncio.StreamWriter] = set()
         self.server: asyncio.AbstractServer | None = None
-        self._stats = {"sent": 0, "dropped": 0, "connected": 0}
+        self._stats = {"sent": 0, "dropped": 0, "connected": 0, "auth_failures": 0}
         self.running = False
 
     async def handle_client(
         self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
     ):
+        # Optional TLS / Auth gate
+        if self.require_auth and self.security_manager is not None:
+            try:
+                line = await asyncio.wait_for(reader.readline(), timeout=5.0)
+                if not line:
+                    writer.close()
+                    await writer.wait_closed()
+                    return
+                auth_msg = json.loads(line.decode("utf-8").strip())
+                token = auth_msg.get("token") or auth_msg.get("api_key")
+                ent = self.security_manager.get_entitlement(token, active_only=True)
+                if not ent:
+                    self._stats["auth_failures"] += 1
+                    err_msg = json.dumps({"type": "error", "message": "Unauthorized: invalid or inactive token"}) + "\n"
+                    writer.write(err_msg.encode("utf-8"))
+                    await writer.drain()
+                    writer.close()
+                    await writer.wait_closed()
+                    return
+            except Exception:
+                self._stats["auth_failures"] += 1
+                try:
+                    writer.close()
+                    await writer.wait_closed()
+                except Exception:
+                    pass
+                return
+
         self.clients.add(writer)
         self._stats["connected"] = len(self.clients)
 
@@ -99,9 +138,10 @@ class TCPGatewayServer:
     async def start(self):
         self.running = True
         self.server = await asyncio.start_server(
-            self.handle_client, self.host, self.port
+            self.handle_client, self.host, self.port, ssl=self.ssl_context
         )
-        logger.info(f"TCP Gateway listening on {self.host}:{self.port}")
+        proto = "TLS" if self.ssl_context else "TCP"
+        logger.info(f"{proto} Gateway listening on {self.host}:{self.port} (require_auth={self.require_auth})")
 
     async def stop(self):
         self.running = False

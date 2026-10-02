@@ -20,7 +20,7 @@ import time
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from gateway import normalize
-from models import CanonicalEvent, EventType, QualityStatus, Reason
+from models import CanonicalEvent, EventType, QualityStatus
 from quality import QualityConfig, QualityEngine
 from fastpath import FastQualityEngine, HAS_FASTPATH, _CFastEvent, _CFastResult
 from simulator import FeedSimulator, SimulatorConfig
@@ -28,7 +28,7 @@ from simulator import FeedSimulator, SimulatorConfig
 
 def _format_hex_dump(c_struct) -> str:
     raw_bytes = bytes(ctypes.string_at(ctypes.byref(c_struct), ctypes.sizeof(c_struct)))
-    return " ".join(f"{b:02X}" for b in raw_bytes)
+    return raw_bytes.hex(" ").upper()
 
 
 def run_seed_differential(

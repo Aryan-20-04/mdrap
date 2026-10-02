@@ -559,6 +559,8 @@ class WebSocketFeedManager:
             v: {"connected": False, "frames": 0, "reconnects": 0, "errors": 0}
             for v in self.venues
         }
+        self._drop_count: int = 0  # Total frames dropped due to backpressure
+        self._drop_counts: dict[str, int] = {v: 0 for v in self.venues}
         self._ssl_ctx = ssl.create_default_context()
 
     def start(self) -> None:
@@ -594,7 +596,12 @@ class WebSocketFeedManager:
         )
 
     def stats(self) -> dict[str, dict]:
-        return dict(self._stats)
+        result = dict(self._stats)
+        result["_drops"] = {
+            "total": self._drop_count,
+            "per_venue": dict(self._drop_counts),
+        }
+        return result
 
     def _run_async_loop(self) -> None:
         self._loop = asyncio.new_event_loop()
@@ -674,11 +681,21 @@ class WebSocketFeedManager:
                                     except queue.Empty:
                                         pass
                                     self._queue.put_nowait(raw)
+                                    self._drop_count += 1
+                                    self._drop_counts[venue] = self._drop_counts.get(venue, 0) + 1
+                                    if self._drop_count % 100 == 1:
+                                        logger.warning(
+                                            "[ws_feed] Backpressure drop #%d on %s (total: %d)",
+                                            self._drop_counts[venue], venue, self._drop_count,
+                                        )
                         except asyncio.TimeoutError:
                             # Send ping keepalive
                             await ws.ping()
-            except Exception:
+            except Exception as exc:
                 self._stats[venue]["errors"] += 1
+                logger.warning(
+                    "[ws_feed] %s connection error: %s", venue, repr(exc)[:200]
+                )
                 self._stats[venue]["connected"] = False
                 if self._stop_event.is_set():
                     break

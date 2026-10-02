@@ -12,6 +12,7 @@ import os
 import sys
 import threading
 import time
+import statistics
 from typing import Any
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -23,13 +24,10 @@ from term import Console, Table, Panel
 def percentile(vals: list[float], p: float) -> float:
     if not vals:
         return 0.0
-    s = sorted(vals)
-    k = (len(s) - 1) * (p / 100.0)
-    f = math.floor(k)
-    c = math.ceil(k)
-    if f == c:
-        return float(s[int(k)])
-    return float(s[int(f)] * (c - k) + s[int(c)] * (k - f))
+    if len(vals) < 2:
+        return float(vals[0])
+    idx = max(0, min(999, int(round(p * 10)) - 1))
+    return float(statistics.quantiles(vals, n=1000, method="inclusive")[idx])
 
 
 def run_locked_contention(
