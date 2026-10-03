@@ -238,7 +238,7 @@ def build_core(target_dir: Optional[str] = None, quiet: bool = False) -> bool:
     unique_incs = list(dict.fromkeys(inc_dirs))
 
     if compiler in ("gcc", "clang"):
-        cmd = [compiler, "-O3", "-march=native", "-mavx2"]
+        cmd = [compiler, "-O3", "-march=native", "-mavx2", "-D_GNU_SOURCE"]
         for inc in unique_incs:
             cmd.extend(["-I", inc])
         cmd.extend(["-o", out_bin, c_source])

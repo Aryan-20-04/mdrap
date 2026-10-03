@@ -1,3 +1,7 @@
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+
 /*
  * ============================================================================
  * MDRAP Native Core Daemon (mdrap-core) - T1 Latency Hot Path Executable
@@ -25,6 +29,8 @@
   #define WIN32_LEAN_AND_MEAN
   #include <windows.h>
 #else
+  #include <pthread.h>
+  #include <sched.h>
   #include <sys/mman.h>
   #include <sys/stat.h>
   #include <fcntl.h>
@@ -233,7 +239,7 @@ static int shm_init(ShmContext *ctx, const char *name, uint32_t slot_count) {
     if (!ctx->base_ptr) return -1;
 #else
     snprintf(ctx->name, sizeof(ctx->name), "/%s", name);
-    ctx->fd = shm_open(ctx->name, O_CREAT | O_RDWR, 0666);
+    ctx->fd = shm_open(ctx->name, O_CREAT | O_RDWR, 0600);
     if (ctx->fd < 0) return -1;
     if (ftruncate(ctx->fd, ctx->total_size) != 0) {
         close(ctx->fd);

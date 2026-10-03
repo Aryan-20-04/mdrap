@@ -10,6 +10,7 @@ Provides enterprise-grade, headless market data infrastructure:
 from __future__ import annotations
 
 import json
+import logging
 import os
 import queue
 import socket
@@ -18,6 +19,8 @@ import threading
 import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, Iterator, Optional, Set
+
+logger = logging.getLogger("mdrap.service")
 
 from bbo import BBOEngine
 from depth import ConsolidatedDepthEngine
@@ -181,12 +184,12 @@ class MarketDataDaemon:
         if self._server_sock:
             try:
                 self._server_sock.shutdown(socket.SHUT_RDWR)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("[service] Server socket shutdown error: %s", exc)
             try:
                 self._server_sock.close()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("[service] Server socket close error: %s", exc)
 
         if self._server_thread and self._server_thread.is_alive():
             self._server_thread.join(timeout=2.0)
@@ -196,16 +199,16 @@ class MarketDataDaemon:
                 sess.is_alive = False
                 try:
                     sess.queue.put_nowait(None)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("[service] Session queue put error: %s", exc)
                 try:
                     sess.sock.shutdown(socket.SHUT_RDWR)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("[service] Session sock shutdown error: %s", exc)
                 try:
                     sess.sock.close()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("[service] Session sock close error: %s", exc)
             self._sessions.clear()
             self._subscribers.clear()
             self._authenticated_clients.clear()
@@ -216,8 +219,8 @@ class MarketDataDaemon:
         if self.shm_writer:
             try:
                 self.shm_writer.close()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("[service] SHM writer close error: %s", exc)
             self.shm_writer = None
 
         if self.pipeline:
@@ -287,12 +290,12 @@ class MarketDataDaemon:
             sess.is_alive = False
             try:
                 sess.queue.put_nowait(None)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("[service] Client queue close error: %s", exc)
         try:
             client_sock.close()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("[service] Client socket close error: %s", exc)
 
     def _client_handler(self, client_sock: socket.socket) -> None:
         """Handle incoming command protocol from a connected client with safe byte buffering."""
@@ -309,7 +312,8 @@ class MarketDataDaemon:
                     line = line_bytes.decode("utf-8", errors="replace").strip()
                     if line:
                         self._handle_client_cmd(client_sock, line)
-            except Exception:
+            except Exception as exc:
+                logger.debug("[service] Client receive error: %s", exc)
                 break
 
         self._disconnect_client(client_sock)
@@ -331,7 +335,7 @@ class MarketDataDaemon:
             ask=msg_dict.get("ask"),
             bid_size=msg_dict.get("bid_size"),
             ask_size=msg_dict.get("ask_size"),
-            status=msg_dict.get("status", "VALID"),
+            status=msg_dict.get("status", "UNKNOWN"),
             is_crossed=bool(msg_dict.get("is_crossed", False)),
             exchange_ts=msg_dict.get("exchange_ts", 0.0),
             ingest_ts=msg_dict.get("ingest_ts", 0.0),
@@ -349,12 +353,12 @@ class MarketDataDaemon:
             try:
                 sess.queue.put(data, timeout=1.0)
                 return
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("[service] Response queue put error: %s", exc)
         try:
             client_sock.sendall(data)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("[service] Direct response send error: %s", exc)
 
     def _handle_client_cmd(self, client_sock: socket.socket, cmd_str: str) -> None:
         """Parse client command protocol."""
@@ -1018,12 +1022,13 @@ class StreamClient:
                     if not res:
                         raise ConnectionResetError("Socket closed by daemon")
                     return res
-                except Exception:
+                except Exception as exc:
+                    logger.debug("[service] Query send/recv error: %s", exc)
                     if self._query_sock:
                         try:
                             self._query_sock.close()
-                        except Exception:
-                            pass
+                        except Exception as close_exc:
+                            logger.debug("[service] Query sock close error: %s", close_exc)
                         self._query_sock = None
                     if attempt == 1:
                         return {}
@@ -1035,15 +1040,15 @@ class StreamClient:
             try:
                 self.sock.sendall(b"QUIT\n")
                 self.sock.close()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("[service] Socket close error: %s", exc)
             self.sock = None
         with self._query_lock:
             if self._query_sock:
                 try:
                     self._query_sock.close()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("[service] Query socket close error: %s", exc)
                 self._query_sock = None
 
     def get_status(self) -> dict:

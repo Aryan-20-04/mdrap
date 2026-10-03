@@ -118,7 +118,7 @@ def unpack_tick_payload(payload_bytes: bytes) -> dict:
         "seq": seq,
         "sym": symbol,
         "source": source,
-        "status": STATUS_MAP_FWD.get(st_code, "VALID"),
+        "status": STATUS_MAP_FWD.get(st_code, "UNKNOWN"),
         "is_crossed": is_crossed,
         "price": price if price > 0 else None,
         "size": size if size > 0 else None,

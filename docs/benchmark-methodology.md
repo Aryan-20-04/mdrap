@@ -73,7 +73,7 @@ python cli.py benchmark -e 100000 -s 42
 ```
 
 ### 3.5 Standalone Native Core Benchmark (T1 Hot Path)
-Measures out-of-process wire-to-SHM execution with zero Python interpreter frames:
+Measures out-of-process stream-to-SHM execution (synthetic stream to seqlock SHM ring buffer) with zero Python interpreter frames:
 ```bash
 python benchmarks/bench_mdrap_core.py
 ```

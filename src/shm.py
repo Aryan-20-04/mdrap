@@ -17,11 +17,14 @@ Key Architectural Guarantees:
 from __future__ import annotations
 
 from collections.abc import Generator
+import logging
 import os
 import secrets
 import struct
 import time
 from dataclasses import dataclass
+
+logger = logging.getLogger("mdrap.shm")
 
 try:
     from multiprocessing.shared_memory import SharedMemory
@@ -160,8 +163,8 @@ class SHMWriter:
                 self.shm.close()
                 try:
                     self.shm.unlink()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("[shm] Unlink existing segment error: %s", exc)
                 self.shm = SharedMemory(
                     name=self.name, create=True, size=self.total_size
                 )
@@ -294,8 +297,8 @@ class SHMWriter:
                 if (seq & 0x1FF) == 0 or (now - self._last_heartbeat) >= 0.1:
                     self.update_heartbeat()
                 return
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("[shm] Native write fallback: %s", exc)
 
         slot_idx = seq & self.mask
         offset = HEADER_SIZE + (slot_idx * SLOT_SIZE)
@@ -445,8 +448,8 @@ class SHMWriter:
             try:
                 self.shm.close()
                 self.shm.unlink()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("[shm] Error closing/unlinking shm: %s", exc)
             self.shm = None
 
 
@@ -618,8 +621,8 @@ class SHMReader:
             native_item = native_shm_read_slot(self.shm.buf, self.slot_count, seq)
             if native_item is not None:
                 return native_item
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("[shm] Native slot read fallback: %s", exc)
 
         slot_idx = seq & self.mask
         offset = HEADER_SIZE + (slot_idx * SLOT_SIZE)
@@ -732,8 +735,8 @@ class SHMReader:
             try:
                 new_epoch = struct.unpack_from("<Q", self.shm.buf, 16)[0]
                 self.epoch_id = new_epoch
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("[shm] Error reading new epoch: %s", exc)
             curr_seq = 0
             yield {"type": "EPOCH_CHANGE"}
 
@@ -746,8 +749,8 @@ class SHMReader:
                     curr_seq = 0
                     yield {"type": "EPOCH_CHANGE"}
                     continue
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("[shm] Error reading current epoch: %s", exc)
 
             head = struct.unpack_from("<Q", self.shm.buf, 24)[0]
             # Overrun check
@@ -774,8 +777,8 @@ class SHMReader:
                     try:
                         new_epoch = struct.unpack_from("<Q", self.shm.buf, 16)[0]
                         self.epoch_id = new_epoch
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("[shm] Error updating epoch during spin: %s", exc)
                     curr_seq = 0
                     yield {"type": "EPOCH_CHANGE"}
                     continue
@@ -809,6 +812,6 @@ class SHMReader:
         if self.shm:
             try:
                 self.shm.close()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("[shm] Error closing reader shm: %s", exc)
             self.shm = None

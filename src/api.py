@@ -58,6 +58,12 @@ from storage import Store
 from watchdog import SourceWatchdog
 from prometheus import global_prometheus_exporter
 
+try:
+    import __init__ as _pkg
+    __version__ = getattr(_pkg, "__version__", "2.4.2")
+except Exception:
+    __version__ = "2.4.2"
+
 __stability__ = "beta"
 
 logger = logging.getLogger("mdrap.api")
@@ -243,12 +249,12 @@ def create_app(
         if hasattr(app_state.store, "commit"):
             try:
                 app_state.store.commit()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("[api] Store commit error on shutdown: %s", exc)
 
     app = FastAPI(
         title="MDRAP Core Market Data Platform",
-        version="2.3.0",
+        version=__version__,
         description=(
             "Open-source REST and WebSocket API for the Market Data Reliability & Acceleration Platform. "
             "Delivers self-hosted market data quality validation, cross-feed reconciliation, "
@@ -377,7 +383,7 @@ def create_app(
 
         return HealthResponse(
             status="healthy",
-            version="2.2.0",
+            version=__version__,
             uptime_seconds=uptime,
             engine="running",
             active_feeds_count=len(st.active_feeds),
@@ -721,7 +727,7 @@ def create_app(
         st: AppState = request.app.state.mdrap
         return {
             "platform": "MDRAP Core",
-            "version": "2.2.0",
+            "version": __version__,
             "durability": getattr(st.store, "durability", "balanced"),
             "supported_venues": [
                 "BINANCE",

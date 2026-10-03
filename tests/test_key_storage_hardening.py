@@ -16,7 +16,7 @@ import sqlite3
 import tempfile
 import pytest
 
-from security import Role, SecurityManager
+from security import Role, SecurityManager, hash_api_key
 from storage import Store
 
 
@@ -51,19 +51,22 @@ def test_raw_key_never_stored_in_database():
         assert "role" in col_names
 
         # Inspect all cell contents in the database
-        expected_hash = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+        expected_hashes = {
+            hash_api_key(raw_token),
+            hashlib.sha256(raw_token.encode("utf-8")).hexdigest(),
+        }
         found_hash = False
         for row in rows:
             row_dict = dict(zip(col_names, row))
             # Verify the raw token string is NOT anywhere in any column
             for col, val in row_dict.items():
                 assert raw_token != str(val), f"Plaintext secret found in column {col}!"
-            if row_dict["token_hash"] == expected_hash:
+            if row_dict["token_hash"] in expected_hashes:
                 found_hash = True
                 assert row_dict["key_prefix"] == raw_token[:12] + "..."
                 assert row_dict["role"] == "ADMIN"
 
-        assert found_hash, "SHA-256 hash was not found in api_keys table"
+        assert found_hash, "Token hash was not found in api_keys table"
 
     finally:
         if store is not None:

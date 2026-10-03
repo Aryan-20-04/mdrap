@@ -1,7 +1,7 @@
 # Market Data Reliability & Acceleration Platform (MDRAP)
 ### Open-Source Self-Hosted Reliability, Reconciliation & Audit Infrastructure for Real-Time Financial Market Data
 
-[![Version](https://img.shields.io/badge/version-2.4.0-blue.svg)](pyproject.toml)
+[![Version](https://img.shields.io/badge/version-2.4.2-blue.svg)](pyproject.toml)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue.svg)](https://www.python.org/)
 [![Tests](https://img.shields.io/badge/tests-881%20passing%20(100%25)-brightgreen.svg)](tests/)
 [![Hot Path Latency](https://img.shields.io/badge/hot--path-47.0%20ns%20native%20%7C%201.90%20%C2%B5s%20python%20%7C%202.50%20%C2%B5s%20persist-orange.svg)](docs/benchmark-methodology.md)
@@ -15,7 +15,7 @@
 > **MDRAP DOES NOT PROVIDE, BROKER, OR RESELL MARKET DATA.**
 > Deploying users and organizations are solely responsible for obtaining and maintaining valid data licenses from their market data vendors (e.g., Polygon.io, Databento, CME, Nasdaq, OPRA). See the [Data Licensing Guide](docs/data-licensing.md) for full compliance information.
 
-MDRAP ingests multiple live market data feeds, cross-reconciles them in real time, flags anomalies with explainable reason codes, and produces a cryptographically auditable record of every data quality decision. It sits **before** your trading engine, database, or research code.
+MDRAP is an institutional market-data validation, normalization, reconciliation, and audit sidecar for millisecond-class pipelines. It ingests multiple market data feeds, cross-reconciles them in real time, flags anomalies with explainable reason codes, and produces a cryptographically auditable record of every data quality decision before feeds enter trading engines, risk models, or persistent analytical databases.
 
 ---
 
@@ -242,7 +242,7 @@ flowchart TD
 | Tier | Industry Scope & Technology | Representative Latency | MDRAP Implementation |
 |---|---|:---:|:---:|
 | **T0 — Baseline** | In-process Python/C pipeline, SQLite WAL persistence | ~15.3 µs in-memory, ~783.6 µs durable | **Shipped & Verified** |
-| **T1 — Good Software** | Standalone native core (`mdrap-core`), zero-lock SPSC shared memory ring, kernel bypass (`SO_TIMESTAMPING`/`io_uring`), core isolation | **44.8–61.3 ns** single-tick, **~1–5 µs** wire-to-SHM | **Shipped & Verified** (`mdrap-core`) |
+| **T1 — Good Software** | Standalone native core (`mdrap-core`), zero-lock SPSC shared memory ring, core isolation | **44.8–61.3 ns** single-tick kernel, **~1–5 µs** in-process stream-to-SHM | **Shipped & Verified** (`mdrap-core`) |
 | **T2 — Specialist Hardware** | Commercial FPGA tick-to-trade appliances | Sub-microsecond (~100 ns) | **Bounded Learning Spike** (`fpga/`, non-production) |
 | **T3 — Physical Infra** | Colocation, optical cross-connects, microwave/laser links | Sub-100 ns transport | **Out of Scope** (Real estate & capital budget) |
 
@@ -372,7 +372,7 @@ mdrap sub BTC/USD --json | jq '{bid: .bbo.bid, ask: .bbo.ask}'
 | `vwap` | `curve`, `slip` | Compute multi-venue real-time VWAP execution & slippage curves |
 | `export` | `exp`, `excel`, `xlsx` | Export market microstructure data to 5-tab Excel (.xlsx) or CSV package |
 | `bbo` | `nbbo` | Query Synthetic Consolidated Best Bid & Offer (NBBO) across 5 exchanges |
-| `core` | — | Execute standalone native C hot-path engine (`mdrap-core`) wire-to-SHM |
+| `core` | — | Execute standalone native C hot-path engine (`mdrap-core`) stream-to-SHM |
 | `edgar` | `research`, `events`, `filings`, `company`, `insiders` | SEC EDGAR Alternative Data: 8-K material events, Form 4 insider trades, XBRL GAAP facts |
 | `vessel` | `vessels`, `tankers`, `ships`, `ais`, `cargo` | Maritime Tanker & Cargo Tracking: Crude oil, LNG, bulk tracking & chokepoints |
 | `run` | `r` | Run validation pipeline against simulator (with live HUD, `--strict-sync`, `--no-sync`) |
@@ -586,7 +586,7 @@ mdrap/
 │   │   ├── databento_adapter.py # Databento binary DBN adapter
 │   │   └── polygon_adapter.py # Polygon.io feed adapter
 │   ├── rules.def              # Canonical X-Macro single source of truth (bits 0-63)
-│   ├── mdrap_core.c           # Standalone native C hot path executable (wire-to-SHM, T1)
+│   ├── mdrap_core.c           # Standalone native C hot path executable (stream-to-SHM, T1)
 │   ├── fastpath.c             # Native C hot path accelerator (GCC -O3 / Clang / MSVC)
 │   ├── fastpath.py            # C ctypes wrapper with JIT auto-compilation & Python fallback
 │   ├── config_loader.py       # Hierarchical configuration loader (defaults->venue->class->inst)
@@ -649,7 +649,7 @@ mdrap/
 │   ├── test_shm.py            # SHM writer, reader, and sub-microsecond stream test
 │   ├── test_shm_decoupled.py  # Decoupled SHM reader fault isolation & restart recovery
 │   ├── test_shm_fuzz.py       # Shared memory fuzzing, corruption & boundary tests
-│   └── ...                    # Full coverage across all 75 modules
+│   └── ...                    # Full coverage across all 78 modules
 │
 ├── docs/                      # Platform Architecture & Specifications
 │   ├── quickstart.md          # 5-minute containerized & CLI quickstart

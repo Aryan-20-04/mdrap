@@ -14,10 +14,11 @@ Tests:
 """
 
 import pytest
-from starlette.testclient import TestClient
 
 pytest.importorskip("fastapi")
 pytest.importorskip("starlette")
+
+from starlette.testclient import TestClient
 
 from api import AppState, create_app
 from security import SecurityManager, Role

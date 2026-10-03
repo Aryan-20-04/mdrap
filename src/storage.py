@@ -1562,7 +1562,9 @@ class Store:
         raw_token = getattr(ent, "token", "")
         token_hash = getattr(ent, "token_hash", "")
         if not token_hash and raw_token:
-            token_hash = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+            from security import hash_api_key
+
+            token_hash = hash_api_key(raw_token)
             ent.token_hash = token_hash
         if not token_hash:
             raise ValueError("Cannot persist API key without token or token_hash")

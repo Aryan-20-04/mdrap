@@ -10,10 +10,11 @@ Deterministic input produces identical, bit-for-bit verifiable output datasets.
 """
 
 import pytest
-from starlette.testclient import TestClient
 
 pytest.importorskip("fastapi")
 pytest.importorskip("starlette")
+
+from starlette.testclient import TestClient
 
 from api import AppState, create_app
 from pipeline import Pipeline

@@ -63,13 +63,14 @@ class TCPGatewayServer:
                     writer.close()
                     await writer.wait_closed()
                     return
-            except Exception:
+            except Exception as exc:
                 self._stats["auth_failures"] += 1
+                logger.debug("[gateway_tcp] Auth failure on client connect: %s", exc)
                 try:
                     writer.close()
                     await writer.wait_closed()
-                except Exception:
-                    pass
+                except Exception as close_exc:
+                    logger.debug("[gateway_tcp] Failed closing rejected client: %s", close_exc)
                 return
 
         self.clients.add(writer)
@@ -98,19 +99,19 @@ class TCPGatewayServer:
                             (json.dumps({"type": "pong"}) + "\n").encode("utf-8")
                         )
                         await writer.drain()
-                except json.JSONDecodeError:
-                    pass
+                except json.JSONDecodeError as jde:
+                    logger.debug("[gateway_tcp] JSON decode error: %s", jde)
 
-        except (asyncio.CancelledError, ConnectionResetError, BrokenPipeError):
-            pass
+        except (asyncio.CancelledError, ConnectionResetError, BrokenPipeError) as conn_err:
+            logger.debug("[gateway_tcp] Connection closed (%s)", conn_err)
         finally:
             self.clients.discard(writer)
             self._stats["connected"] = len(self.clients)
             try:
                 writer.close()
                 await writer.wait_closed()
-            except Exception:
-                pass
+            except Exception as close_exc:
+                logger.debug("[gateway_tcp] Error closing client writer: %s", close_exc)
 
     async def broadcast(self, payload: dict):
         """Broadcast any JSON-serializable dictionary to all connected TCP clients."""
@@ -123,16 +124,17 @@ class TCPGatewayServer:
                 writer.write(data)
                 await asyncio.wait_for(writer.drain(), timeout=0.05)
                 self._stats["sent"] += 1
-            except Exception:
+            except Exception as bcast_exc:
                 dead.append(writer)
                 self._stats["dropped"] += 1
+                logger.debug("[gateway_tcp] Broadcast failed, evicting client: %s", bcast_exc)
         for w in dead:
             self.clients.discard(w)
             try:
                 w.close()
                 await w.wait_closed()
-            except Exception:
-                pass
+            except Exception as close_exc:
+                logger.debug("[gateway_tcp] Error closing evicted client: %s", close_exc)
         self._stats["connected"] = len(self.clients)
 
     async def start(self):
@@ -152,6 +154,6 @@ class TCPGatewayServer:
             try:
                 w.close()
                 await w.wait_closed()
-            except Exception:
-                pass
+            except Exception as close_exc:
+                logger.debug("[gateway_tcp] Error closing client during shutdown: %s", close_exc)
         self.clients.clear()

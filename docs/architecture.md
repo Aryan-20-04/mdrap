@@ -149,7 +149,7 @@ The platform converts noisy, delayed, duplicated, and inconsistent market data f
   - **Quantitative & Options Kernels**: Binomial American options pricing (**64.1x faster**), Bollinger Bands rolling window (**51.6x faster**), Monte Carlo VaR simulation (**2.3x faster**), Wilder-smoothed RSI (**2.2x faster**), and FIX checksums (**3.1x faster**).
   - **Seamless Boundary Fallback**: Transparent pure-Python fallback ensuring 100% numerical parity and zero drops if C dynamic libraries are disabled (`MDRAP_DISABLE_FASTPATH=1`).
 - **V5 (T1 Standalone Zero-Lock Hot Path Architecture):**
-  - **Decoupled C Standalone Binary (`mdrap-core`)**: Operates wire-to-SHM completely out-of-process without Python runtime, CPython FFI, or GIL overhead, delivering **22.35 million events/second (44.8 nanoseconds/event)**.
+  - **Decoupled C Standalone Binary (`mdrap-core`)**: Operates stream-to-SHM completely out-of-process without Python runtime, CPython FFI, or GIL overhead, delivering **22.35 million events/second (44.8 nanoseconds/event)**.
   - **Zero-Lock SPSC Shared Memory Ring Buffer**: 128-byte cache-line aligned circular slot array with atomic release fences and two-phase commit protocol (`UNCOMMITTED` seq invalidation -> payload store -> commit sequence publication).
   - **Hardware Timestamping Diagnostics**: Integration of Linux `SO_TIMESTAMPING` and PTP Hardware Clock device detection with graceful fallback to software QPC on Windows.
   - **Single-Writer Lock-Free Ingestion**: Eliminates thread mutex convoying across multi-source feeds, maintaining flat p99.9 tail latency (0.30 µs at 8 sources).
@@ -160,7 +160,7 @@ The platform converts noisy, delayed, duplicated, and inconsistent market data f
   - **Batched Tamper-Evident Merkle Quarantine Log**: Pairwise SHA-256 tree root computation over quarantine batches (Format Version 3) off the hot path.
   - **SHM Backpressure Watermark**: Cache Line 2 header padding bitflag signals 80% ring buffer occupancy to consumers and watchdog telemetry.
 - **Final Version Production Architecture (The 3-Layer Performance Engine):**
-  - **Layer 1 (Native C Hot Path - Wire-to-SHM):**
+  - **Layer 1 (Native C Hot Path - Stream-to-SHM):**
     - Sub-50 ns per tick / >21.2M eps sustained throughput (`mdrap-core.exe`).
     - Invariant calibrated RDTSC timing (`CPUID.80000007H:EDX[8]`) with zero kernel clock-read overhead.
     - 256-bit AVX2 SIMD slot writing (`_mm256_storeu_si256`) writing 128-byte slots in four vector operations with `_mm_sfence`.

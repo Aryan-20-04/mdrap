@@ -1,66 +1,25 @@
 /*
  * ============================================================================
- *  MDRAP fastpath.c -- HARDENING PATCH SET  (drop-in replacement block)
+ * MDRAP Native C Fastpath Engine (fastpath.c) - Architecture & Core Routines
  * ============================================================================
  *
- *  WHAT THIS FILE IS
- *    A complete, compile-tested replacement for the region of src/fastpath.c
- *    that runs from the top of the file (the "MDRAP Native C Hot-Path ..."
- *    comment) through the end of `fastpath_shm_read_slot()` -- i.e. everything
- *    BEFORE the "Simple Binary Encoding (SBE)" section.  The SBE section needs
- *    only the four small edits listed in SBE_HUNKS.txt (they cannot be a
- *    whole-function replacement because upstream lines ~1000-1611 were not
- *    available for review).
+ * High-performance C hot-path kernel for market data validation, lock-free
+ * deduplication, rolling Welford price corridor detection, crossed quote detection,
+ * zero-copy SBE frame processing, and shared memory ring buffer IPC (SHM v3).
  *
- *  COMPATIBILITY
- *    * Every existing exported symbol keeps its name and signature.
- *    * FastEvent / FastResult keep size and field offsets (checked by
- *      _Static_assert).  `present_mask` lives in what used to be 4 bytes of
- *      implicit padding after `event_type`; an old ctypes wrapper that does not
- *      know the field simply leaves it 0 (= legacy "NaN means absent").
- *    * FastEngine is opaque to Python, so its layout is free to change.
- *    * New exports are additive (see the "NEW EXPORTS" list below).
- *
- *  BEFORE APPLYING: grep the untouched tail of fastpath.c (lines ~1000-1611)
- *  for any use of the fields/macros removed here:
- *      last_seq  last_ts  price_stats  dedup_occupied  dedup_keys
- *      FastRollingStats  compute_dedup_key  fnv1a_64
- *  `check_and_insert_dedup()` is kept as a compatibility shim.
- *
- *  PATCH INDEX
- *    C-0  portability + atomics shim, ABI static asserts
- *    C-1  exact sequence de-duplication (64-bit sliding bitmap per slot),
- *         two-generation sliding-window table for un-sequenced events,
- *         seeded word-at-a-time hash (replaces byte-wise FNV-1a),
- *         per-source epochs so a new exchange session can be started cleanly
- *    C-2  lazy slots + pooled rings:  ~277 MB eager  ->  ~25 MB virtual,
- *         RSS proportional to *active* (source, instrument) pairs
- *    C-3  price baseline: only clean events fold in, warm-up minimum sample
- *         count, sigma floor for tick-quantised prices, regime-shift re-seed,
- *         drift-free replace-update Welford, no sqrt / modulo / division
- *    C-4  presence mask, event-type + required-field validation, finite
- *         timestamps, size validation, optional negative prices
- *    C-5  watermark poisoning guards (future timestamp, huge sequence jump)
- *    C-6  replay: range clamp (fixes UINT64_MAX infinite loop), correct
- *         min/max bookkeeping, truncation flag in binary frames
- *    C-7  SHM: seqlock ordering fixed in legacy path; new v3 layout with
- *         aligned header, UNCOMMITTED marker, acquire/release atomics,
- *         length validation, presence + truncation flags
- *    C-8  thread safety: engine spin-lock on exported entry points,
- *         race-free default-engine creation
- *
- *  NEW EXPORTS (all additive)
- *    fastpath_engine_abi_version, fastpath_engine_configure,
- *    fastpath_engine_set_hash_seed, fastpath_engine_source_reset,
- *    fastpath_engine_evaluate_unlocked, fastpath_engine_eval_fast2,
- *    fastpath_engine_counters,
- *    fastpath_shm_init_v3, fastpath_shm_write_tick_v3,
- *    fastpath_shm_read_slot_v3, fastpath_shm_head_v3, fastpath_shm_epoch_v3
- *
- *  NEW REASON BIT (add to src/rules.def, then re-run tools/gen_reasons.py so
- *  Python and C stay in sync; pick the next free bit < 32 -- 24 is only a
- *  placeholder):
- *      RULE_DEF(TS_IMPLAUSIBLE, 24, "exchange timestamp implausibly ahead of receive time")
+ * Core Modules:
+ * - C-0: Portability, atomic primitives, and ABI static assertions.
+ * - C-1: Exact sequence deduplication (64-bit sliding bitmap per slot),
+ *        two-generation sliding-window dedup for unsequenced ticks,
+ *        seeded 64-bit hash with per-source epoch session resets.
+ * - C-2: Lazy slot allocations and pooled price rings (~25 MB virtual footprint).
+ * - C-3: Stateful price baseline: clean event filtering, warm-up sample minimums,
+ *        sigma floor for tick-quantized prices, regime-shift re-seeding.
+ * - C-4: Presence bitmask, schema and timestamp sanity validation.
+ * - C-5: Watermark poisoning guards (implausible future timestamps, sequence jumps).
+ * - C-6: Replay ring buffer with range clamping and binary serialization.
+ * - C-7: SHM v3 cache-line aligned two-phase commit ring buffer with seqlock.
+ * - C-8: Thread safety via fine-grained per-engine locking.
  * ============================================================================
  */
 #include <math.h>
@@ -1365,7 +1324,6 @@ EXPORT int32_t fastpath_sbe_unpack_tick(
 }
 
 
-/* >>> HUNK 1 (new helper, place above the stream function) <<< */
 static inline uint64_t sbe_dedup_key(const FastEngine *e, const SbeTickPayload *p) {
     uint64_t h = hcomb(e->hash_seed, 0x5be0ULL);
     h = hbytes(h, p->source, sizeof p->source);      /* was: key = p->seq  (collided across sources/symbols) */
@@ -1385,7 +1343,7 @@ static int32_t sbe_stream_impl(
 
     const SbeTickFrame *frames = (const SbeTickFrame *)sbe_buffer;
     int32_t valid_count = 0;
-    FastEngine *sbe_eng = get_default_engine();              /* >>> HUNK 3a: hoisted out of the loop <<< */
+    FastEngine *sbe_eng = get_default_engine();
     if (!sbe_eng) return 0;
 
     for (int32_t i = 0; i < count; ++i) {
@@ -1411,8 +1369,8 @@ static int32_t sbe_stream_impl(
 
         // 3. Deduplication Check
         if (p->seq > 0) {
-            uint64_t key = sbe_dedup_key(sbe_eng, p);            /* >>> HUNK 3b <<< */
-            if (dedup_check_insert(sbe_eng, key)) {              /* >>> HUNK 3c <<< */
+            uint64_t key = sbe_dedup_key(sbe_eng, p);
+            if (dedup_check_insert(sbe_eng, key)) {
                 status = STATUS_INVALID;
                 reason_mask |= REASON_DUPLICATE;
             }
@@ -1456,7 +1414,6 @@ static int32_t sbe_stream_impl(
 }
 
 
-/* >>> HUNK 4: exported entry points (place AFTER the closing brace of sbe_stream_impl) <<< */
 EXPORT int32_t fastpath_process_sbe_stream(const uint8_t *sbe_buffer, int32_t count, FastResult *out_results,
                                            uint8_t *shm_buffer, uint32_t shm_slot_count) {
     FastEngine *e = get_default_engine();

@@ -175,7 +175,7 @@ class _CFastReplayRecord(ctypes.Structure):
             "ask": a_px,
             "bid_size": b_sz,
             "ask_size": a_sz,
-            "status": st_map.get(self.status, "VALID"),
+            "status": st_map.get(self.status, "UNKNOWN"),
             "is_crossed": bool(self.is_crossed),
             "exchange_ts": self.exchange_ts,
             "ingest_ts": self.ingest_ts,
@@ -1263,7 +1263,48 @@ class FastQualityEngine:
         Throughput: >50,000,000 events/sec.
         """
         if not _NATIVE_LIB or not hasattr(_NATIVE_LIB, "fastpath_process_sbe_stream"):
-            return 0, []
+            from sbe import unpack_sbe_tick
+            results = (_CFastResult * count)()
+            valid_count = 0
+            seen_seqs: set[tuple[str, str, int]] = set()
+            for i in range(count):
+                offset = i * 128
+                frame = sbe_buffer[offset : offset + 128]
+                res = results[i]
+                if len(frame) < 128:
+                    res.status = 2
+                    res.reason_mask = 1 << 0
+                    continue
+                tick = unpack_sbe_tick(frame)
+                if tick is None:
+                    res.status = 2
+                    res.reason_mask = 1 << 0
+                    continue
+                st = 0
+                rm = 0
+                # 1. Numerical Validity Bounds
+                if (tick.price is not None and (math.isnan(tick.price) or tick.price < 0.0 or math.isinf(tick.price))) or \
+                   (tick.bid is not None and (math.isnan(tick.bid) or tick.bid < 0.0 or math.isinf(tick.bid))) or \
+                   (tick.ask is not None and (math.isnan(tick.ask) or tick.ask < 0.0 or math.isinf(tick.ask))):
+                    st = 2
+                    rm |= (1 << 0)
+                # 2. Crossed Quotes
+                if tick.bid is not None and tick.ask is not None and tick.bid > 0 and tick.ask > 0 and tick.bid > tick.ask:
+                    st = 2
+                    rm |= (1 << 6)
+                # 3. Deduplication Check
+                if tick.seq > 0:
+                    key = (tick.source, tick.symbol, tick.seq)
+                    if key in seen_seqs:
+                        st = 2
+                        rm |= (1 << 1)
+                    else:
+                        seen_seqs.add(key)
+                res.status = st
+                res.reason_mask = rm
+                if st == 0:
+                    valid_count += 1
+            return valid_count, results
 
         c_buf = (ctypes.c_uint8 * len(sbe_buffer)).from_buffer(sbe_buffer)
         results = (_CFastResult * count)()
@@ -1696,7 +1737,7 @@ def native_shm_read_slot(buf_ptr, slot_count: int, target_seq: int) -> dict | No
             "bid_size": b_sz,
             "ask_size": a_sz,
             "source": src,
-            "status": status_map.get(slot3.status, "VALID"),
+            "status": status_map.get(slot3.status, "UNKNOWN"),
             "is_crossed": bool(slot3.is_crossed),
             "exchange_ts": slot3.exchange_ts,
             "ingest_ts": slot3.ingest_ts,
@@ -1750,7 +1791,7 @@ def native_shm_read_slot(buf_ptr, slot_count: int, target_seq: int) -> dict | No
             "bid_size": slot.bid_sz,
             "ask_size": slot.ask_sz,
             "source": src,
-            "status": status_map.get(slot.status, "VALID"),
+            "status": status_map.get(slot.status, "UNKNOWN"),
             "is_crossed": bool(slot.is_crossed),
             "exchange_ts": slot.exchange_ts,
             "ingest_ts": slot.ingest_ts,

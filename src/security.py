@@ -31,6 +31,14 @@ from audit_format import audit_bytes_v1, audit_bytes_v2, compute_audit_hash
 __stability__ = "stable"
 
 
+API_KEY_SALT: str = os.environ.get("MDRAP_API_KEY_SALT", "mdrap_kdf_v1")
+
+
+def hash_api_key(token: str, salt: str = API_KEY_SALT) -> str:
+    """Cryptographically hash an API key using HMAC-SHA256 with key derivation salt."""
+    return hmac.new(salt.encode("utf-8"), token.encode("utf-8"), hashlib.sha256).hexdigest()
+
+
 class Role(str, enum.Enum):
     VIEWER = "VIEWER"  # Read BBO, candles, spreads, analytics, platform status
     OPERATOR = "OPERATOR"  # Run ingestion, live streaming, inspect quarantine
@@ -66,7 +74,7 @@ class ClientEntitlement:
 
     def __post_init__(self):
         if self.token and not self.token_hash:
-            self.token_hash = hashlib.sha256(self.token.encode("utf-8")).hexdigest()
+            self.token_hash = hash_api_key(self.token)
         if self.token and not self.key_prefix:
             self.key_prefix = (
                 self.token[:12] + "..." if len(self.token) > 12 else self.token
@@ -299,8 +307,11 @@ def _load_or_create_local_secrets() -> Dict[str, str]:
         try:
             with open(sec_file, "r", encoding="utf-8") as f:
                 return json.load(f)
-        except Exception:
-            pass
+        except Exception as exc:
+            raise RuntimeError(
+                f"[SECURITY ERROR] Found existing secrets file at '{sec_file}' but failed to load it: {exc}. "
+                f"Refusing to overwrite existing secrets to prevent silent HMAC verification failure across restarts."
+            ) from exc
     default_feeds = ["FEEDX", "FEEDY", "FEEDZ", "BINANCE", "COINBASE"]
     generated = {
         src: f"mdrap_{src.lower()}_{secrets.token_hex(16)}" for src in default_feeds
@@ -318,56 +329,68 @@ def _load_or_create_local_secrets() -> Dict[str, str]:
 
 
 class HashedKeyStore(dict):
-    """Dictionary mapping SHA-256 token hashes to ClientEntitlements.
+    """Dictionary mapping token hashes to ClientEntitlements.
 
     Prevents raw credential retention in memory while supporting transparent
-    constant-time lookups via either raw tokens or SHA-256 hashes.
+    constant-time lookups via either raw tokens or hashes (both salted and legacy unsalted).
     """
+
+    @staticmethod
+    def _hash_candidates(key: str) -> tuple[str, str]:
+        """Return (salted_hash, legacy_sha256_hash) for dual-lookups."""
+        return (hash_api_key(key), hashlib.sha256(key.encode("utf-8")).hexdigest())
 
     def __contains__(self, key: object) -> bool:
         if super().__contains__(key):
             return True
         if isinstance(key, str):
-            h = hashlib.sha256(key.encode("utf-8")).hexdigest()
-            return super().__contains__(h)
+            h_salted, h_legacy = self._hash_candidates(key)
+            return super().__contains__(h_salted) or super().__contains__(h_legacy)
         return False
 
     def __getitem__(self, key: str) -> ClientEntitlement:
         if super().__contains__(key):
             return super().__getitem__(key)
         if isinstance(key, str):
-            h = hashlib.sha256(key.encode("utf-8")).hexdigest()
-            if super().__contains__(h):
-                return super().__getitem__(h)
+            h_salted, h_legacy = self._hash_candidates(key)
+            if super().__contains__(h_salted):
+                return super().__getitem__(h_salted)
+            if super().__contains__(h_legacy):
+                return super().__getitem__(h_legacy)
         return super().__getitem__(key)
 
     def get(self, key: str, default: Any = None) -> Any:
         if super().__contains__(key):
             return super().get(key, default)
         if isinstance(key, str):
-            h = hashlib.sha256(key.encode("utf-8")).hexdigest()
-            if super().__contains__(h):
-                return super().get(h, default)
+            h_salted, h_legacy = self._hash_candidates(key)
+            if super().__contains__(h_salted):
+                return super().get(h_salted, default)
+            if super().__contains__(h_legacy):
+                return super().get(h_legacy, default)
         return default
 
     def pop(self, key: str, default: Any = None) -> Any:
         if super().__contains__(key):
             return super().pop(key, default)
         if isinstance(key, str):
-            h = hashlib.sha256(key.encode("utf-8")).hexdigest()
-            if super().__contains__(h):
-                return super().pop(h, default)
+            h_salted, h_legacy = self._hash_candidates(key)
+            if super().__contains__(h_salted):
+                return super().pop(h_salted, default)
+            if super().__contains__(h_legacy):
+                return super().pop(h_legacy, default)
         return default
 
     def get_by_token_or_hash(self, key: str) -> Optional[ClientEntitlement]:
         if not key:
             return None
-        # Check if key is raw token -> hash lookup
-        h = hashlib.sha256(key.encode("utf-8")).hexdigest()
-        ent = super().get(h)
+        h_salted, h_legacy = self._hash_candidates(key)
+        ent = super().get(h_salted)
         if ent is not None:
             return ent
-        # Check if key was already a hash
+        ent_legacy = super().get(h_legacy)
+        if ent_legacy is not None:
+            return ent_legacy
         return super().get(key)
 
 
@@ -436,7 +459,7 @@ class SecurityManager:
         self._api_keys: HashedKeyStore = HashedKeyStore()
         if is_demo:
             for tok, cfg in _DEMO_KEYS.items():
-                th = hashlib.sha256(tok.encode("utf-8")).hexdigest()
+                th = hash_api_key(tok)
                 self._api_keys[th] = ClientEntitlement(
                     token_hash=th,
                     client_id=cfg["client_id"],
@@ -449,7 +472,7 @@ class SecurityManager:
             if k.startswith("MDRAP_API_KEY_"):
                 suffix = k[len("MDRAP_API_KEY_") :].upper()
                 role_val = Role[suffix] if suffix in Role.__members__ else Role.VIEWER
-                th = hashlib.sha256(v.encode("utf-8")).hexdigest()
+                th = hash_api_key(v)
                 self._api_keys[th] = ClientEntitlement(
                     token_hash=th,
                     client_id=f"Env_Client_{suffix}",
@@ -728,7 +751,7 @@ class SecurityManager:
                     token = candidate
                     break
 
-        tok_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+        tok_hash = hash_api_key(token)
         key_prefix = token[:12] + "..." if len(token) > 12 else token
 
         ent = ClientEntitlement(

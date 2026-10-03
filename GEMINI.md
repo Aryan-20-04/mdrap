@@ -1,44 +1,39 @@
 # MDRAP Project Rules
 
 ## Project Context
-This is the **Market Data Reliability & Acceleration Platform** — a financial-market infrastructure system for converting noisy, delayed, duplicated, inconsistent market data from multiple sources into a fast, validated, canonical real-time data stream. The reference spec is `Market_Data_Reliability_Acceleration_Platform_Reference.docx`.
+This is the **Market Data Reliability & Acceleration Platform** — an institutional market-data validation, normalization, reconciliation, and audit sidecar designed to convert noisy, delayed, duplicated, and inconsistent market data from multiple feeds into a fast, validated, canonical stream. It sits before trading strategies, analytics, and downstream databases. The reference spec is `Market_Data_Reliability_Acceleration_Platform_Reference.docx`.
 
-## Architecture
-- **V1 baseline**: Single-process synchronous Python pipeline. No broker, no async, no web UI.
-- Entry point: `cli.py` → dispatches to `src/` modules.
-- Pipeline: `simulator → gateway.ingest → gateway.normalize → quality.evaluate → reconciler.reconcile → storage (SQLite, batched)`.
-- All modules are in `src/`. Tests in `tests/`. Benchmarks in `benchmarks/`.
+## Architecture & Tiers
+- **Pipeline Flow**: `feed/simulator → gateway.ingest → gateway.normalize → quality.evaluate → reconciler.reconcile → storage (SQLite, batched)`.
+- **Tiers & Acceleration**:
+  - Pure Python + stdlib baseline with 100% semantic parity across all platforms.
+  - Native C hot path kernel (`src/fastpath.c`, `src/mdrap_core.c`) for high-throughput SBE decoding, seqlock SHM ring buffers, and bounded-memory dedup.
+  - POSIX / Windows Shared Memory (`src/shm.py`) for low-latency IPC stream distribution.
+  - Optional API server (`src/api.py`) exposing REST & WebSocket endpoints via FastAPI/Uvicorn.
+  - CLI entry point (`cli.py`) orchestrating all subcommands.
+- All core engine modules reside in `src/`. Tests in `tests/`. Benchmarks in `benchmarks/`.
 
-## Design Principles (from spec section 26)
-1. **Correctness before optimization** — never assume faster is correct.
-2. **Measure before claiming** — every perf number must come from a timed run.
-3. **Never silently discard bad data** — quarantine, never drop.
-4. **Separate raw, processed, and derived data**.
-5. **Preserve lineage** — every canonical value traces back to source.
-6. **Tail latency matters** — report p50/p95/p99/p99.9, not just averages.
-7. **A real market anomaly is not automatically a data error** — SUSPICIOUS ≠ INVALID.
-8. **Every optimization must be regression-tested for correctness**.
-9. **Deterministic experiments** — fixed seeds, reproducible results.
-10. **Benchmark results decide the winning architecture**, not assumptions.
+## Design Principles
+1. **Correctness before optimization** — never sacrifice validation accuracy for speed.
+2. **Measure before claiming** — every benchmark number must trace to reproducible timed runs.
+3. **Never silently discard bad data** — quarantine INVALID events; record and expose drop/eviction counters.
+4. **Pure Python Fallback Parity** — pure Python must match native C validation outputs exactly.
+5. **Separate raw, processed, and derived data**.
+6. **Preserve lineage** — every canonical value traces back to its source.
+7. **Tail latency matters** — report p50/p95/p99/p99.9, not just averages.
+8. **A real market anomaly is not automatically a data error** — SUSPICIOUS ≠ INVALID.
+9. **Deterministic experiments** — fixed seeds (`seed=42`), reproducible results.
+10. **Quality status has strict priority**: INVALID > SUSPICIOUS > VALID. Never downgrade.
 
 ## Coding Standards
-- Pure Python, stdlib-only where possible. Only external dep: `rich` for terminal UI.
-- Dataclasses for models, no ORM, no framework.
-- Batch SQLite writes via `executemany` — per-row commits are the known bottleneck.
-- Use `itertools.count()` for IDs, not `uuid.uuid4()` (crypto entropy is too slow for hot paths).
-- Quality status has strict priority: INVALID > SUSPICIOUS > VALID. Never downgrade.
-- `Store` supports context manager (`with Store(...) as s:`). Always use `try/finally` for cleanup.
-- Type hints on public APIs. `list[str]` over `List[str]`.
+- Core engine is pure Python, stdlib-only where possible. Only external dependency for core CLI is `rich`.
+- Dataclasses for models, no ORM, no heavyweight framework in core.
+- Batch SQLite writes via `executemany` with WAL mode.
+- Use `itertools.count()` for monotonic IDs in hot paths, avoiding `uuid.uuid4()`.
+- Explicit error handling: never use bare `except: pass` in hot paths or network/IPC handlers — log debug/warning and update failure counters.
+- Type hints on public APIs (`list[str]`, `dict[str, Any]`).
 
-## Testing
-- `pytest tests/ -v` — must pass before any PR/commit.
-- Tests use `:memory:` SQLite and deterministic seeds.
-- Quality detection is scored against known ground truth from the simulator.
-- Every benchmark result is JSON and stored in `benchmarks/`.
-
-## What NOT to Do
-- Don't add async/threading to the pipeline — it's deliberately synchronous for V1 baseline measurement.
-- Don't add HTTP/REST/WebSocket — CLI-only for MVP; FastAPI is planned for later.
-- Don't add Kafka/Redpanda — that's V2.
-- Don't use `uuid.uuid4()` in hot paths.
-- Don't silently drop events — always quarantine INVALID events.
+## Testing & Quality Assurance
+- `pytest tests/ -v` must pass cleanly before any commit or release.
+- Tests support both native compiled C acceleration and `$env:MDRAP_DISABLE_FASTPATH="1"` pure-Python fallback.
+- Security defaults: permissions on SHM set to 0600, API keys hashed with salt, explicit exception raising when secrets cannot be loaded.

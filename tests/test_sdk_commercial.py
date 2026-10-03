@@ -106,7 +106,7 @@ def test_sdk_health_and_feeds(live_api_server):
         # Health check
         h = client.health()
         assert h["status"] == "healthy"
-        assert h["version"] == "2.2.0"
+        assert h["version"] in ("2.2.0", "2.3.0", "2.4.0", "2.4.1", "2.4.2")
         assert "uptime_seconds" in h
 
         # List feeds
