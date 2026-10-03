@@ -169,6 +169,14 @@ class SHMWriter:
                     name=self.name, create=True, size=self.total_size
                 )
 
+        if sys.platform != "win32":
+            shm_file = f"/dev/shm/{self.name}"
+            if os.path.exists(shm_file):
+                try:
+                    os.chmod(shm_file, 0o600)
+                except OSError as exc:
+                    logger.debug("[shm] chmod 0600 error: %s", exc)
+
         # Clear ring slots: write UNCOMMITTED into all commit_seq words
         for i in range(self.slot_count):
             struct.pack_into(
@@ -466,8 +474,8 @@ def _probe_active_epoch(name: str) -> int | None:
                 from multiprocessing import resource_tracker
 
                 resource_tracker.unregister(probe._name, "shared_memory")
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("[shm] Resource tracker unregister probe error: %s", exc)
         try:
             return struct.unpack_from("<Q", probe.buf, 16)[0]
         finally:
@@ -500,8 +508,8 @@ class SHMReader:
                 from multiprocessing import resource_tracker
 
                 resource_tracker.unregister(self.shm._name, "shared_memory")
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("[shm] Resource tracker unregister reader error: %s", exc)
 
         buf_len = len(self.shm.buf)
         if buf_len < HEADER_SIZE + 2 * SLOT_SIZE:

@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 from typing import Any
 
 __stability__ = "beta"
@@ -29,13 +30,20 @@ class TCPGatewayServer:
         port: int = 9000,
         security_manager: Any = None,
         ssl_context: Any = None,
-        require_auth: bool = False,
+        require_auth: bool | None = None,
     ):
         self.host = host
         self.port = port
         self.security_manager = security_manager
         self.ssl_context = ssl_context
-        self.require_auth = require_auth
+        if require_auth is not None:
+            self.require_auth = require_auth
+        else:
+            env_auth = os.environ.get("MDRAP_REQUIRE_AUTH")
+            if env_auth is not None:
+                self.require_auth = env_auth.lower() in ("1", "true", "yes")
+            else:
+                self.require_auth = (security_manager is not None)
         self.clients: set[asyncio.StreamWriter] = set()
         self.server: asyncio.AbstractServer | None = None
         self._stats = {"sent": 0, "dropped": 0, "connected": 0, "auth_failures": 0}
