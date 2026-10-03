@@ -356,11 +356,8 @@ class OrderFlowTracker:
             self.whale_trades += 1
 
         mpid_clean = broker.upper().strip() if broker else "UNKNOWN"
-        if not mpid_clean or mpid_clean == "UNKNOWN":
-            mpid_keys = list(KNOWN_MPIDS.keys())
-            mpid_clean = mpid_keys[
-                (self.total_trades + int(price * 10)) % len(mpid_keys)
-            ]
+        if not mpid_clean:
+            mpid_clean = "UNKNOWN"
 
         if mpid_clean not in self.participants:
             name = KNOWN_MPIDS.get(mpid_clean, f"Broker {mpid_clean}")

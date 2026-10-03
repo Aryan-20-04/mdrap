@@ -121,6 +121,20 @@ class BinaryJournal:
             if self._record_count > self._capacity_records:
                 self._record_count = self._capacity_records
                 self._write_header()
+
+            # Scan forward to recover any trailing slots written before an ungraceful crash
+            while self._record_count < self._capacity_records:
+                offset = JOURNAL_HEADER_SIZE + (self._record_count * SLOT_SIZE)
+                slot_seq = struct.unpack_from("<Q", self._mm, offset)[0]
+                if slot_seq == 0 or slot_seq == 0xFFFFFFFFFFFFFFFF:
+                    break
+                if self._record_count > 0 and slot_seq < self._last_seq:
+                    break
+                if self._record_count == 0:
+                    self._first_seq = slot_seq
+                self._last_seq = slot_seq
+                self._record_count += 1
+            self._write_header()
         else:
             # Create fresh journal
             os.makedirs(os.path.dirname(os.path.abspath(self.filepath)), exist_ok=True)
@@ -196,9 +210,8 @@ class BinaryJournal:
         self._last_seq = seq
         self._record_count += 1
 
-        # Periodically commit header
-        if (self._record_count & 0x7F) == 0:
-            self._write_header()
+        # Commit header on every append in mmap to guarantee crash consistency
+        self._write_header()
 
         return seq
 
@@ -274,6 +287,11 @@ class BinaryJournal:
         if self._mm and not self._closed:
             self._write_header()
             self._mm.flush()
+            if self._fd is not None:
+                try:
+                    os.fsync(self._fd)
+                except OSError:
+                    pass
 
     def close(self, truncate_to_used: bool = False) -> None:
         """Close journal mapping and file descriptor."""
@@ -290,6 +308,10 @@ class BinaryJournal:
                 if truncate_to_used:
                     used_bytes = JOURNAL_HEADER_SIZE + (self._record_count * SLOT_SIZE)
                     os.ftruncate(self._fd, used_bytes)
+                try:
+                    os.fsync(self._fd)
+                except OSError:
+                    pass
                 os.close(self._fd)
                 self._fd = None
         except Exception:

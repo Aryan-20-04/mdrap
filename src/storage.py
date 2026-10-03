@@ -28,6 +28,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 import hashlib
+import hmac
 import json
 import logging
 import os
@@ -446,14 +447,25 @@ class Store:
                     self.read_conn.execute("PRAGMA temp_store=MEMORY;")
                 except Exception:
                     self.read_conn = self.conn
+                    self._read_lock = self._lock
             else:
                 self.read_conn = self.conn
+                self._read_lock = self._lock
 
     @contextmanager
     def transaction(self):
         """Explicit transaction context manager: BEGIN IMMEDIATE, commit on success, rollback on error."""
+        retries = DEFAULT_SQLITE_RETRIES
         with self._lock:
-            self.conn.execute("BEGIN IMMEDIATE;")
+            while True:
+                try:
+                    self.conn.execute("BEGIN IMMEDIATE;")
+                    break
+                except sqlite3.OperationalError as exc:
+                    if "locked" not in str(exc).lower() or retries <= 0:
+                        raise
+                    retries -= 1
+                    time.sleep(SQLITE_RETRY_BACKOFF_WRITE_S)
             try:
                 yield self.conn
                 self.conn.commit()
@@ -1643,11 +1655,17 @@ class Store:
 
     @_synchronized
     def revoke_api_key(self, token_or_hash: str) -> bool:
-        """Mark an API key as inactive by token, token_hash, or key_prefix."""
-        tok_hash = hashlib.sha256(token_or_hash.encode("utf-8")).hexdigest()
+        """Mark an API key as inactive by token, salted token_hash, legacy sha256 hash, or key_prefix (SEC-03)."""
+        salt = os.environ.get("MDRAP_API_KEY_SALT", "mdrap_kdf_v1")
+        salted_hash = hmac.new(salt.encode("utf-8"), token_or_hash.encode("utf-8"), hashlib.sha256).hexdigest()
+        raw_sha256 = hashlib.sha256(token_or_hash.encode("utf-8")).hexdigest()
         cur = self.conn.execute(
-            "UPDATE api_keys SET is_active = 0 WHERE token_hash = ? OR token_hash = ? OR key_prefix = ?",
-            (tok_hash, token_or_hash, token_or_hash),
+            """UPDATE api_keys SET is_active = 0 
+               WHERE token_hash = ? 
+                  OR token_hash = ? 
+                  OR token_hash = ? 
+                  OR key_prefix = ?""",
+            (salted_hash, raw_sha256, token_or_hash, token_or_hash),
         )
         self.conn.commit()
         return cur.rowcount > 0

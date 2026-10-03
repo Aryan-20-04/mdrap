@@ -121,29 +121,45 @@ class TCPGatewayServer:
             except Exception as close_exc:
                 logger.debug("[gateway_tcp] Error closing client writer: %s", close_exc)
 
+    async def _send_to_client(self, writer: asyncio.StreamWriter, data: bytes) -> bool:
+        try:
+            writer.write(data)
+            await asyncio.wait_for(writer.drain(), timeout=0.05)
+            return True
+        except Exception as bcast_exc:
+            logger.debug("[gateway_tcp] Broadcast failed, evicting client: %s", bcast_exc)
+            return False
+
     async def broadcast(self, payload: dict):
-        """Broadcast any JSON-serializable dictionary to all connected TCP clients."""
+        """Broadcast any JSON-serializable dictionary to all connected TCP clients concurrently (CONC-02)."""
         if not self.clients:
             return
         data = (json.dumps(payload) + "\n").encode("utf-8")
+        clients_list = list(self.clients)
+        if not clients_list:
+            return
+
+        results = await asyncio.gather(
+            *(self._send_to_client(w, data) for w in clients_list),
+            return_exceptions=False,
+        )
+
         dead = []
-        for writer in list(self.clients):
-            try:
-                writer.write(data)
-                await asyncio.wait_for(writer.drain(), timeout=0.05)
+        for writer, ok in zip(clients_list, results):
+            if ok:
                 self._stats["sent"] += 1
-            except Exception as bcast_exc:
+            else:
                 dead.append(writer)
                 self._stats["dropped"] += 1
-                logger.debug("[gateway_tcp] Broadcast failed, evicting client: %s", bcast_exc)
-        for w in dead:
-            self.clients.discard(w)
-            try:
-                w.close()
-                await w.wait_closed()
-            except Exception as close_exc:
-                logger.debug("[gateway_tcp] Error closing evicted client: %s", close_exc)
-        self._stats["connected"] = len(self.clients)
+
+        if dead:
+            for w in dead:
+                self.clients.discard(w)
+                try:
+                    w.close()
+                except Exception as close_exc:
+                    logger.debug("[gateway_tcp] Error closing evicted client: %s", close_exc)
+            self._stats["connected"] = len(self.clients)
 
     async def start(self):
         self.running = True

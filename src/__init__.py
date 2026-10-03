@@ -10,7 +10,7 @@ from __future__ import annotations
 from client import Client, MDRAPClient, MarketEvent
 from models import CanonicalEvent, EventType, QualityStatus, Reason
 
-__version__ = "2.4.2"
+__version__ = "2.5.0"
 __stability__ = "stable"
 
 __all__ = [

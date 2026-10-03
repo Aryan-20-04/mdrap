@@ -567,18 +567,31 @@ class ConsolidatedDepthEngine:
         if not all_bids or not all_asks:
             return None
 
-        # Sort bids descending (highest bid first) and asks ascending (lowest ask first)
-        all_bids.sort(key=lambda x: x.price, reverse=True)
-        all_asks.sort(key=lambda x: x.price, reverse=False)
+        # Aggregate price rungs across all active venues before truncation (MIC-02)
+        agg_bids = _aggregate_levels(all_bids, is_descending=True)
+        agg_asks = _aggregate_levels(all_asks, is_descending=False)
 
-        merged_bids = all_bids[: self.max_levels_per_side]
-        merged_asks = all_asks[: self.max_levels_per_side]
+        if not agg_bids or not agg_asks:
+            return None
 
-        # Calculate Micro-Price (Volume-Weighted Mid-Price)
-        best_bid = merged_bids[0].price
-        best_bid_sz = merged_bids[0].size
-        best_ask = merged_asks[0].price
-        best_ask_sz = merged_asks[0].size
+        # Truncate aggregated ladders to max_levels_per_side distinct price rungs
+        agg_bids = agg_bids[: self.max_levels_per_side]
+        agg_asks = agg_asks[: self.max_levels_per_side]
+
+        # Filter venue bids/asks to those belonging to top distinct price levels
+        top_bid_prices = {lvl.price for lvl in agg_bids}
+        top_ask_prices = {lvl.price for lvl in agg_asks}
+
+        merged_bids = [b for b in all_bids if b.price in top_bid_prices]
+        merged_asks = [a for a in all_asks if a.price in top_ask_prices]
+        merged_bids.sort(key=lambda x: x.price, reverse=True)
+        merged_asks.sort(key=lambda x: x.price, reverse=False)
+
+        # Calculate Micro-Price (Volume-Weighted Mid-Price) using true consolidated top-of-book sizes
+        best_bid = agg_bids[0].price
+        best_bid_sz = agg_bids[0].total_size
+        best_ask = agg_asks[0].price
+        best_ask_sz = agg_asks[0].total_size
 
         if (best_bid_sz + best_ask_sz) > 0:
             micro_price = (best_bid * best_ask_sz + best_ask * best_bid_sz) / (
@@ -587,9 +600,9 @@ class ConsolidatedDepthEngine:
         else:
             micro_price = (best_bid + best_ask) / 2.0
 
-        # Calculate Static Book Imbalance Ratio across aggregated depth
-        tot_bid_vol = sum(b.size for b in merged_bids)
-        tot_ask_vol = sum(a.size for a in merged_asks)
+        # Calculate Static Book Imbalance Ratio across top aggregated depth
+        tot_bid_vol = sum(b.total_size for b in agg_bids)
+        tot_ask_vol = sum(a.total_size for a in agg_asks)
         if (tot_bid_vol + tot_ask_vol) > 0:
             imbalance = (tot_bid_vol - tot_ask_vol) / (tot_bid_vol + tot_ask_vol)
         else:
@@ -607,11 +620,11 @@ class ConsolidatedDepthEngine:
                 delta_w_b = -prev_bbs
 
             if best_ask < prev_ba:
-                delta_w_a = -best_ask_sz
+                delta_w_a = best_ask_sz
             elif best_ask == prev_ba:
                 delta_w_a = best_ask_sz - prev_bas
             else:
-                delta_w_a = prev_bas
+                delta_w_a = -prev_bas
 
             delta_ofi = delta_w_b - delta_w_a
         else:
@@ -644,14 +657,6 @@ class ConsolidatedDepthEngine:
         if is_crossed:
             self._crossed_depth_count += 1
         self._total_updates += 1
-
-        # Price-aggregated ladders (merges identical price rungs)
-        agg_bids = _aggregate_levels(all_bids, is_descending=True)[
-            : self.max_levels_per_side
-        ]
-        agg_asks = _aggregate_levels(all_asks, is_descending=False)[
-            : self.max_levels_per_side
-        ]
 
         tot_bid_notional = sum(b.price * b.size for b in all_bids)
         tot_ask_notional = sum(a.price * a.size for a in all_asks)

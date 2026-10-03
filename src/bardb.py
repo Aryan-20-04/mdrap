@@ -91,6 +91,7 @@ class BarAggregator:
         self._interval_s: float = interval_s
         # Map: instrument_id -> (bucket_start_epoch, {open, high, low, close, volume, trade_count, vwap_num})
         self._buckets: dict[str, tuple[float, dict[str, float]]] = {}
+        self.late_ticks_dropped: int = 0
 
     def observe(self, event: CanonicalEvent) -> Bar | None:
         """
@@ -142,7 +143,8 @@ class BarAggregator:
                 )
                 # Initialize new bucket below
             elif bucket_start < current_start:
-                # Late-arriving tick older than current bucket start; ignored to preserve linear monotonicity
+                # Late-arriving tick older than current bucket start; record drop (NUM-02)
+                self.late_ticks_dropped += 1
                 return None
 
         if (
@@ -423,17 +425,26 @@ class BarDatabase:
         return [self._row_to_bar(row) for row in cursor.fetchall()]
 
     def query_as_of(
-        self, instrument_id: str, interval: str, as_of_time: float
+        self,
+        instrument_id: str,
+        interval: str,
+        as_of_time: float,
+        completed_only: bool = True,
     ) -> Bar | None:
         """
         Return the most recent completed bar strictly on or prior to as_of_time.
 
-        Ensures zero-lookahead temporal integrity when backtesting or evaluating models.
+        Ensures zero-lookahead temporal integrity when backtesting or evaluating models
+        by requiring that the bar's bucket has fully closed on or before as_of_time
+        ((bucket_start + interval_s) <= as_of_time) when completed_only is True (default).
 
         Args:
             instrument_id: Target symbol.
             interval: Target timeframe code.
             as_of_time: Cutoff timestamp epoch.
+            completed_only: If True (default), enforce zero lookahead bias by requiring the bar
+                           to be fully closed on or before as_of_time. If False, allows
+                           in-progress bars where bucket_start <= as_of_time.
 
         Returns:
             Bar | None: The last bar at or before as_of_time, or None if no prior data exists.
@@ -442,10 +453,11 @@ class BarDatabase:
         if not interval_s:
             raise ValueError(f"Unknown interval: {interval}")
 
+        cond = "(bucket_start + interval_s) <= ?" if completed_only else "bucket_start <= ?"
         cursor = self._conn.execute(
-            """
+            f"""
             SELECT * FROM bars 
-            WHERE instrument_id = ? AND interval_s = ? AND bucket_start <= ?
+            WHERE instrument_id = ? AND interval_s = ? AND {cond}
             ORDER BY bucket_start DESC LIMIT 1
         """,
             (instrument_id, interval_s, as_of_time),

@@ -8,6 +8,7 @@ JSON float and string parsing overhead.
 
 from __future__ import annotations
 
+import math
 import struct
 from typing import List, Optional
 
@@ -19,6 +20,7 @@ VERSION = 1
 MSG_TYPE_TICK = 1
 MSG_TYPE_DEPTH = 2
 MSG_TYPE_PING = 3
+MSG_TYPE_TICK_V2 = 4
 
 TICK_PAYLOAD_SIZE = 80
 DEPTH_PAYLOAD_SIZE = 96
@@ -51,6 +53,11 @@ TICK_FRAME_LEN = HEADER_STRUCT.size + TICK_PAYLOAD_LEN  # 92 bytes
 DEPTH_STRUCT = struct.Struct("<QB3sfddddddddd8s8s")
 DEPTH_PAYLOAD_LEN = DEPTH_STRUCT.size  # 104 bytes
 DEPTH_FRAME_LEN = HEADER_STRUCT.size + DEPTH_PAYLOAD_LEN  # 108 bytes
+
+# TICK V2 (32-byte symbol, 16-byte source, 8-byte reason mask): 128 bytes payload
+TICK_V2_STRUCT = struct.Struct("<QBB2sfdddddddQ32s16s")
+TICK_V2_PAYLOAD_LEN = TICK_V2_STRUCT.size  # 128 bytes
+TICK_V2_FRAME_LEN = HEADER_STRUCT.size + TICK_V2_PAYLOAD_LEN  # 132 bytes
 
 STATUS_MAP_REV = {"VALID": 1, "SUSPICIOUS": 2, "INVALID": 3}
 STATUS_MAP_FWD = {1: "VALID", 2: "SUSPICIOUS", 3: "INVALID"}
@@ -120,10 +127,90 @@ def unpack_tick_payload(payload_bytes: bytes) -> dict:
         "source": source,
         "status": STATUS_MAP_FWD.get(st_code, "UNKNOWN"),
         "is_crossed": is_crossed,
-        "price": price if price > 0 else None,
-        "size": size if size > 0 else None,
-        "bid": bid if bid > 0 else None,
-        "ask": ask if ask > 0 else None,
+        "price": price if (price != 0.0 and math.isfinite(price)) else None,
+        "size": size if (size > 0 and math.isfinite(size)) else None,
+        "bid": bid if (bid != 0.0 and math.isfinite(bid)) else None,
+        "ask": ask if (ask != 0.0 and math.isfinite(ask)) else None,
+        "exchange_ts": ex_ts,
+        "ingest_ts": in_ts,
+        "broadcast_ts": bc_ts,
+        "engine_us": eng_us,
+    }
+
+
+def pack_tick_frame_v2(
+    seq: int,
+    symbol: str,
+    source: str,
+    price: Optional[float],
+    size: Optional[float],
+    bid: Optional[float],
+    ask: Optional[float],
+    status: str,
+    is_crossed: bool,
+    exchange_ts: float,
+    ingest_ts: float,
+    broadcast_ts: float,
+    engine_us: float,
+    reason_mask: int = 0,
+) -> bytes:
+    """Pack a normalized TICK event into a 132-byte MDRAP-BIN V2 frame supporting 32-byte symbols."""
+    st_code = STATUS_MAP_REV.get(status, 1)
+    sym_b = symbol.encode("ascii", errors="replace")[:32].ljust(32, b"\x00")
+    src_b = source.encode("ascii", errors="replace")[:16].ljust(16, b"\x00")
+
+    header = HEADER_STRUCT.pack(MAGIC, MSG_TYPE_TICK_V2, TICK_V2_PAYLOAD_LEN)
+    payload = TICK_V2_STRUCT.pack(
+        seq,
+        st_code,
+        1 if is_crossed else 0,
+        b"\x00\x00",
+        float(engine_us or 0.0),
+        float(exchange_ts or 0.0),
+        float(ingest_ts or 0.0),
+        float(broadcast_ts or 0.0),
+        float(price if price is not None else 0.0),
+        float(size if size is not None else 0.0),
+        float(bid if bid is not None else 0.0),
+        float(ask if ask is not None else 0.0),
+        int(reason_mask or 0),
+        sym_b,
+        src_b,
+    )
+    return header + payload
+
+
+def unpack_tick_payload_v2(payload_bytes: bytes) -> dict:
+    """Unpack a 128-byte TICK V2 payload into a dictionary."""
+    unpacked = TICK_V2_STRUCT.unpack(payload_bytes)
+    seq = unpacked[0]
+    st_code = unpacked[1]
+    is_crossed = bool(unpacked[2])
+    eng_us = unpacked[4]
+    ex_ts = unpacked[5]
+    in_ts = unpacked[6]
+    bc_ts = unpacked[7]
+    price = unpacked[8]
+    size = unpacked[9]
+    bid = unpacked[10]
+    ask = unpacked[11]
+    reason_mask = unpacked[12]
+    symbol = unpacked[13].rstrip(b"\x00").decode("ascii", errors="replace")
+    source = unpacked[14].rstrip(b"\x00").decode("ascii", errors="replace")
+
+    return {
+        "type": "TICK",
+        "version": 2,
+        "seq": seq,
+        "sym": symbol,
+        "source": source,
+        "status": STATUS_MAP_FWD.get(st_code, "UNKNOWN"),
+        "is_crossed": is_crossed,
+        "price": price if (price != 0.0 and math.isfinite(price)) else None,
+        "size": size if (size > 0 and math.isfinite(size)) else None,
+        "bid": bid if (bid != 0.0 and math.isfinite(bid)) else None,
+        "ask": ask if (ask != 0.0 and math.isfinite(ask)) else None,
+        "reason_mask": reason_mask,
         "exchange_ts": ex_ts,
         "ingest_ts": in_ts,
         "broadcast_ts": bc_ts,
@@ -231,13 +318,16 @@ class BinaryStreamParser:
                 continue
 
             magic, msg_type, payload_len = HEADER_STRUCT.unpack_from(self._buf, 0)
-            if msg_type not in (MSG_TYPE_TICK, MSG_TYPE_DEPTH):
+            if msg_type not in (MSG_TYPE_TICK, MSG_TYPE_DEPTH, MSG_TYPE_TICK_V2):
                 del self._buf[0]
                 continue
             if msg_type == MSG_TYPE_TICK and payload_len != TICK_PAYLOAD_LEN:
                 del self._buf[0]
                 continue
             if msg_type == MSG_TYPE_DEPTH and payload_len != DEPTH_PAYLOAD_LEN:
+                del self._buf[0]
+                continue
+            if msg_type == MSG_TYPE_TICK_V2 and payload_len != TICK_V2_PAYLOAD_LEN:
                 del self._buf[0]
                 continue
 
@@ -252,6 +342,8 @@ class BinaryStreamParser:
 
             if msg_type == MSG_TYPE_TICK:
                 events.append(unpack_tick_payload(payload_bytes))
+            elif msg_type == MSG_TYPE_TICK_V2:
+                events.append(unpack_tick_payload_v2(payload_bytes))
             elif msg_type == MSG_TYPE_DEPTH:
                 events.append(unpack_depth_payload(payload_bytes))
 

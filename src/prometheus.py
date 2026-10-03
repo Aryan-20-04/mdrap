@@ -12,6 +12,7 @@ Guarantees:
 
 from __future__ import annotations
 
+import threading
 import time
 from typing import Any, Dict, Tuple
 
@@ -21,7 +22,7 @@ __stability__ = "stable"
 class PrometheusExporter:
     """Manages and serializes MDRAP operational metrics into Prometheus exposition format."""
 
-    def __init__(self) -> None:
+    def __init__(self, audit_check_interval_s: float = 300.0) -> None:
         # API HTTP Metrics: (method, endpoint) -> count
         self._api_requests: Dict[Tuple[str, str], int] = {}
         self._api_errors: Dict[Tuple[str, str], int] = {}
@@ -32,9 +33,44 @@ class PrometheusExporter:
         self._custom_counters: Dict[str, float] = {}
         self._custom_gauges: Dict[str, float] = {}
 
-        # Audit cache to prevent re-hashing database on every scrape
+        # Audit cache to prevent re-hashing database on every scrape (OPS-02)
+        self.audit_check_interval_s: float = audit_check_interval_s
+        self._audit_lock = threading.Lock()
+        self._audit_check_in_progress: bool = False
         self._last_audit_check_ts: float = 0.0
         self._last_audit_status: int = 1
+
+    def _run_audit_check_async(self, store: Any) -> None:
+        """Execute audit verification asynchronously in background thread (OPS-02)."""
+        def _worker():
+            try:
+                res = store.verify_audit_integrity()
+                verified = res[0] if isinstance(res, (tuple, list)) else bool(res)
+                status = 1 if verified else 0
+            except Exception:
+                status = 0
+            with self._audit_lock:
+                self._last_audit_status = status
+                self._last_audit_check_ts = time.time()
+                self._audit_check_in_progress = False
+
+        t = threading.Thread(
+            target=_worker, name="prometheus-audit-verifier", daemon=True
+        )
+        t.start()
+
+    def verify_audit_sync(self, store: Any) -> int:
+        """Synchronously verify audit log integrity (for testing or explicit health checks)."""
+        try:
+            res = store.verify_audit_integrity()
+            verified = res[0] if isinstance(res, (tuple, list)) else bool(res)
+            status = 1 if verified else 0
+        except Exception:
+            status = 0
+        with self._audit_lock:
+            self._last_audit_status = status
+            self._last_audit_check_ts = time.time()
+        return status
 
     def record_api_request(
         self, method: str, endpoint: str, duration_s: float, status_code: int
@@ -143,11 +179,11 @@ class PrometheusExporter:
         # -------------------------------------------------------------------
         # 2. Feed Health, Disagreements & Watchdog
         # -------------------------------------------------------------------
-        uptime = (
-            (time.time() - state.start_time)
-            if state and hasattr(state, "start_time")
-            else 0.0
-        )
+        st_val = getattr(state, "start_time", None) if state else None
+        if isinstance(st_val, (int, float)):
+            uptime = max(0.0, time.time() - float(st_val))
+        else:
+            uptime = 0.0
         add_metric(
             "mdrap_feed_uptime_seconds",
             "gauge",
@@ -204,21 +240,19 @@ class PrometheusExporter:
         )
 
         # -------------------------------------------------------------------
-        # 3. Cryptographic Audit Chain Verification Status
+        # 3. Cryptographic Audit Chain Verification Status (OPS-02)
         # -------------------------------------------------------------------
-        now = time.time()
         store = getattr(state, "store", None) if state else None
         if store and hasattr(store, "verify_audit_integrity"):
-            # Cache verification status for 30s to avoid full-table verification on high scrape frequency
-            if now - self._last_audit_check_ts > 30.0:
-                try:
-                    res = store.verify_audit_integrity()
-                    verified = res[0] if isinstance(res, (tuple, list)) else bool(res)
-                    self._last_audit_status = 1 if verified else 0
-                except Exception:
-                    self._last_audit_status = 0
-                self._last_audit_check_ts = now
-            audit_status = self._last_audit_status
+            now = time.time()
+            with self._audit_lock:
+                if (
+                    not self._audit_check_in_progress
+                    and (now - self._last_audit_check_ts > self.audit_check_interval_s)
+                ):
+                    self._audit_check_in_progress = True
+                    self._run_audit_check_async(store)
+                audit_status = self._last_audit_status
         else:
             audit_status = int(self._custom_gauges.get("audit_status", 1))
 

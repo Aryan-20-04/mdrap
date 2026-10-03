@@ -430,8 +430,8 @@ def test_order_flow_imbalance_and_cvd_calculation():
 
     # Step 4: Ask updates after fill: Ask moves to 101.5 (size 3.0), Bid unchanged at 100.5 (size 6.0)
     # delta W_bid = 0
-    # delta W_ask = +4.0 (P_a > P_a_prev, previous ask size)
-    # OFI = 0 - 4.0 = -4.0
+    # delta W_ask = -prev_bas = -4.0 (P_a > P_a_prev, previous ask was lifted)
+    # OFI = delta_w_b - delta_w_a = 0 - (-4.0) = +4.0 (buying pressure)
     raw3 = RawEvent(
         source="BINANCE",
         payload={
@@ -445,8 +445,8 @@ def test_order_flow_imbalance_and_cvd_calculation():
     )
     ladder3 = engine.observe(raw3)
     assert ladder3 is not None
-    assert ladder3.ofi == -4.0
-    assert ladder3.cumulative_ofi == 2.0  # 6.0 + (-4.0)
+    assert ladder3.ofi == 4.0
+    assert ladder3.cumulative_ofi == 10.0  # 6.0 + 4.0
     assert ladder3.cvd == 2.5
 
 

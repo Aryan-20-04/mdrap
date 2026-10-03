@@ -1,0 +1,56 @@
+name: Safety & Sanitizers CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  sanitizers:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        sanitizer: [address, undefined, thread]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install System Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc gcc-multilib libasan8 libubsan1 libtsan2
+
+      - name: Install Python Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[all]"
+
+      - name: Compile C Hot Path with Sanitizers
+        run: |
+          mkdir -p build
+          if [ "${{ matrix.sanitizer }}" = "address" ]; then
+            gcc -fsanitize=address -O1 -g -fno-omit-frame-pointer -shared -fPIC -o src/libfastpath.so src/fastpath.c -lm
+            gcc -fsanitize=address -O1 -g -fno-omit-frame-pointer -o build/mdrap-core src/mdrap_core.c -lm
+          elif [ "${{ matrix.sanitizer }}" = "undefined" ]; then
+            gcc -fsanitize=undefined -O1 -g -shared -fPIC -o src/libfastpath.so src/fastpath.c -lm
+            gcc -fsanitize=undefined -O1 -g -o build/mdrap-core src/mdrap_core.c -lm
+          elif [ "${{ matrix.sanitizer }}" = "thread" ]; then
+            gcc -fsanitize=thread -O1 -g -shared -fPIC -o src/libfastpath.so src/fastpath.c -lm
+            gcc -fsanitize=thread -O1 -g -o build/mdrap-core src/mdrap_core.c -lm
+          fi
+
+      - name: Run Native Core Under Sanitizer
+        run: |
+          build/mdrap-core --events 100000 --quiet
+
+      - name: Run Test Suite Under Sanitizer
+        env:
+          LD_PRELOAD: /usr/lib/x86_64-linux-gnu/lib${{ matrix.sanitizer }}.so
+        run: |
+          pytest tests/test_fastpath.py tests/test_shm.py -v -q --timeout=60

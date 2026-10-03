@@ -30,10 +30,10 @@ __stability__ = "stable"
 @dataclass(slots=True)
 class ConsolidatedBBO:
     instrument_id: str
-    best_bid: float
+    best_bid: float | None
     best_bid_size: float
     best_bid_source: str
-    best_ask: float
+    best_ask: float | None
     best_ask_size: float
     best_ask_source: str
     spread: float | None
@@ -58,7 +58,6 @@ class ConsolidatedBBO:
             self.best_bid
             if (
                 self.best_bid is not None
-                and self.best_bid >= 0
                 and math.isfinite(self.best_bid)
             )
             else None
@@ -154,7 +153,7 @@ class BBOEngine:
                 self._current_bbos[inst].is_stale = True
             return None
 
-        best_bid = -1.0
+        best_bid = -float("inf")
         best_bid_size = 0.0
         best_bid_src = ""
         best_ask = float("inf")
@@ -163,7 +162,7 @@ class BBOEngine:
 
         for s, q in inst_book.items():
             bp = q.bid_price
-            if bp is not None:
+            if bp is not None and math.isfinite(bp):
                 if bp > best_bid or (
                     bp == best_bid and (q.bid_size or 0.0) > best_bid_size
                 ):
@@ -171,7 +170,7 @@ class BBOEngine:
                     best_bid_size = q.bid_size or 0.0
                     best_bid_src = s
             ap = q.ask_price
-            if ap is not None:
+            if ap is not None and math.isfinite(ap):
                 if ap < best_ask or (
                     ap == best_ask and (q.ask_size or 0.0) > best_ask_size
                 ):
@@ -179,7 +178,7 @@ class BBOEngine:
                     best_ask_size = q.ask_size or 0.0
                     best_ask_src = s
 
-        has_bid = best_bid >= 0 and math.isfinite(best_bid)
+        has_bid = math.isfinite(best_bid)
         has_ask = math.isfinite(best_ask)
         spread = (best_ask - best_bid) if (has_bid and has_ask) else None
         mid_price = (
@@ -192,10 +191,10 @@ class BBOEngine:
 
         bbo = ConsolidatedBBO(
             instrument_id=inst,
-            best_bid=best_bid,
+            best_bid=best_bid if has_bid else None,
             best_bid_size=best_bid_size,
             best_bid_source=best_bid_src,
-            best_ask=best_ask,
+            best_ask=best_ask if has_ask else None,
             best_ask_size=best_ask_size,
             best_ask_source=best_ask_src,
             spread=spread,
@@ -214,10 +213,12 @@ class BBOEngine:
             "symbol": inst,
             "bbo": {
                 "bid": bbo.best_bid
-                if (bbo.best_bid >= 0 and math.isfinite(bbo.best_bid))
+                if (bbo.best_bid is not None and math.isfinite(bbo.best_bid))
                 else None,
                 "bid_source": bbo.best_bid_source if bbo.best_bid_source else None,
-                "ask": bbo.best_ask if math.isfinite(bbo.best_ask) else None,
+                "ask": bbo.best_ask
+                if (bbo.best_ask is not None and math.isfinite(bbo.best_ask))
+                else None,
                 "ask_source": bbo.best_ask_source if bbo.best_ask_source else None,
                 "spread": bbo.spread
                 if (bbo.spread is not None and math.isfinite(bbo.spread))

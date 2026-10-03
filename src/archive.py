@@ -69,6 +69,21 @@ class RawArchive:
             for line in lines:
                 handle.write(line + "\n")
             handle.flush()
+            try:
+                os.fsync(handle.fileno())
+            except OSError:
+                pass
+
+        # Close stale file handles across date boundaries to prevent FD leak (OPS-03)
+        if len(self._file_handles) > 16:
+            active_keys = set(grouped.keys())
+            stale_keys = [k for k in self._file_handles if k not in active_keys]
+            for k in stale_keys:
+                try:
+                    self._file_handles[k].close()
+                except Exception:
+                    pass
+                del self._file_handles[k]
 
         self._buffer.clear()
 

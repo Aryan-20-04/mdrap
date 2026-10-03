@@ -1820,6 +1820,21 @@ def native_shm_write_tick(
     engine_us: float,
 ) -> bool:
     """Write an SHM tick slot using native C release semantics and atomic two-phase commit."""
+    st_code = 1 if status == "VALID" else (2 if status == "SUSPICIOUS" else (3 if status == "INVALID" else 0))
+    present = 0
+    if price is not None:
+        present |= 0x01
+    if size is not None:
+        present |= 0x02
+    if bid is not None:
+        present |= 0x04
+    if ask is not None:
+        present |= 0x08
+    if bid_sz is not None:
+        present |= 0x10
+    if ask_sz is not None:
+        present |= 0x20
+
     if _C_EXT and hasattr(_C_EXT, "shm_write_tick_v3"):
         try:
             return (
@@ -1835,8 +1850,9 @@ def native_shm_write_tick(
                     ask or 0.0,
                     bid_sz or 0.0,
                     ask_sz or 0.0,
-                    1 if status == "VALID" else (2 if status == "SUSPICIOUS" else (3 if status == "INVALID" else 0)),
+                    st_code,
                     1 if is_crossed else 0,
+                    present,
                     exchange_ts or 0.0,
                     ingest_ts or 0.0,
                     broadcast_ts or 0.0,
@@ -1844,28 +1860,14 @@ def native_shm_write_tick(
                 )
                 == 1
             )
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("[fastpath] C extension shm_write_tick_v3 failed: %s, falling back to ctypes", exc)
 
     if not has_native_shm() or not hasattr(_NATIVE_LIB, "fastpath_shm_write_tick_v3"):
         return False
 
     raw_addr = get_buffer_address(buf_ptr)
     total_len = 128 + slot_count * 128
-    st_code = 1 if status == "VALID" else (2 if status == "SUSPICIOUS" else (3 if status == "INVALID" else 0))
-    present = 0
-    if price is not None:
-        present |= 0x01
-    if size is not None:
-        present |= 0x02
-    if bid is not None:
-        present |= 0x04
-    if ask is not None:
-        present |= 0x08
-    if bid_sz is not None:
-        present |= 0x10
-    if ask_sz is not None:
-        present |= 0x20
 
     sym_bytes = (symbol or "").encode("ascii", errors="replace")[:16]
     src_bytes = (source or "").encode("ascii", errors="replace")[:8]

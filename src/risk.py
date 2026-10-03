@@ -194,10 +194,10 @@ class PortfolioRiskEngine:
         rng = random.Random(seed)
         simulated_returns = []
         for _ in range(n_simulations):
-            sim_ret = 0.0
+            val = 1.0
             for _ in range(horizon_days):
-                sim_ret += rng.gauss(mu, sigma)
-            simulated_returns.append(sim_ret)
+                val *= (1.0 + rng.gauss(mu, sigma))
+            simulated_returns.append(val - 1.0)
 
         simulated_returns.sort()
         idx = int((1.0 - conf) * len(simulated_returns))
@@ -251,7 +251,12 @@ class PortfolioRiskEngine:
         if len(returns) < 2:
             return 0.0
 
-        excess_returns = [r - risk_free_rate for r in returns]
+        rf_per_period = (
+            (1.0 + risk_free_rate) ** (1.0 / annualization_factor) - 1.0
+            if annualization_factor > 0
+            else risk_free_rate
+        )
+        excess_returns = [r - rf_per_period for r in returns]
         mean_excess = statistics.mean(excess_returns)
         stdev = statistics.stdev(returns)
 
@@ -267,10 +272,15 @@ class PortfolioRiskEngine:
         if len(returns) < 2:
             return 0.0
 
-        excess_returns = [r - risk_free_rate for r in returns]
+        rf_per_period = (
+            (1.0 + risk_free_rate) ** (1.0 / annualization_factor) - 1.0
+            if annualization_factor > 0
+            else risk_free_rate
+        )
+        excess_returns = [r - rf_per_period for r in returns]
         mean_excess = statistics.mean(excess_returns)
 
-        downside_returns = [min(0.0, r - risk_free_rate) for r in returns]
+        downside_returns = [min(0.0, r - rf_per_period) for r in returns]
         downside_variance = (
             sum(r**2 for r in downside_returns) / (len(downside_returns) - 1)
             if len(downside_returns) > 1

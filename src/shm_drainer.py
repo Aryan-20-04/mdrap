@@ -33,6 +33,7 @@ class DrainStats:
         self.laps_detected: int = 0
         self.last_drained_seq: int = 0
         self.batches_flushed: int = 0
+        self.store_errors: int = 0
         self.elapsed_sec: float = 0.0
 
     def to_dict(self) -> dict[str, Any]:
@@ -44,6 +45,7 @@ class DrainStats:
             "laps_detected": self.laps_detected,
             "last_drained_seq": self.last_drained_seq,
             "batches_flushed": self.batches_flushed,
+            "store_errors": self.store_errors,
             "elapsed_sec": round(self.elapsed_sec, 4),
             "drain_eps": round(self.drained_count / max(0.001, self.elapsed_sec), 1),
         }
@@ -192,15 +194,25 @@ class SHMDrainWorker:
 
         if self.store and self._pending_canonical:
             batch = self._pending_canonical
-            self._pending_canonical = []
             try:
                 if hasattr(self.store, "write_batches_atomic"):
                     self.store.write_batches_atomic(canonical=batch)
                 elif hasattr(self.store, "write_canonical_batch"):
                     self.store.write_canonical_batch(batch)
                     self.store.commit()
+                self._pending_canonical = []
             except Exception as exc:
+                self.stats.store_errors += 1
                 logger.error("Error writing batch to store: %s", exc)
+                # Keep _pending_canonical intact for retry on next flush cycle
+                max_pending = 50000
+                if len(self._pending_canonical) > max_pending:
+                    overflow = len(self._pending_canonical) - max_pending
+                    self._pending_canonical = self._pending_canonical[overflow:]
+                    logger.critical(
+                        "Store failure persisted; dropped %d oldest pending events to prevent OOM",
+                        overflow,
+                    )
 
         self.stats.batches_flushed += 1
         self.stats.elapsed_sec = time.time() - self._t_start

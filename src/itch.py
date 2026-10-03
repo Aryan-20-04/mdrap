@@ -337,9 +337,11 @@ class ITCHOrderBookTracker:
     Maintains an active order cache and computes Level-2 depth and BBO in real time.
     """
 
-    def __init__(self):
+    def __init__(self, session_midnight_epoch: float | None = None):
         # order_ref -> [stock, side, price, shares]
         self.orders: dict[int, list[Any]] = {}
+        # locate -> stock symbol
+        self.locate_to_stock: dict[int, str] = {}
         # symbol -> { "B": {price: total_shares}, "S": {price: total_shares} }
         self.depth: dict[str, dict[str, dict[float, int]]] = {}
         # Operational telemetry metrics
@@ -348,6 +350,22 @@ class ITCHOrderBookTracker:
         self.total_cancels = 0
         self.total_replaces = 0
         self.total_trades = 0
+        self._session_midnight = (
+            session_midnight_epoch
+            if session_midnight_epoch is not None
+            else float((int(time.time()) // 86400) * 86400)
+        )
+
+    def _convert_itch_timestamp(self, ts_ns: int) -> float:
+        """
+        Convert ITCH timestamp to Unix epoch seconds (CORR-05).
+        ITCH 5.0 timestamps represent nanoseconds since midnight EDT/EST.
+        If ts_ns is already full epoch nanoseconds (>= 1e17), divide by 1e9.
+        Otherwise, anchor to session midnight epoch.
+        """
+        if ts_ns >= 1e17:
+            return ts_ns / 1e9
+        return self._session_midnight + (ts_ns / 1e9)
 
     def _ensure_symbol(self, symbol: str) -> None:
         """Initialize empty bids and asks price ladders for a given symbol."""
@@ -357,6 +375,8 @@ class ITCHOrderBookTracker:
     def process_message(self, msg: ITCHMessage) -> CanonicalEvent | None:
         """Update internal MBO order books and optionally synthesize a CanonicalEvent."""
         t = msg.msg_type
+        if msg.locate and msg.stock:
+            self.locate_to_stock[msg.locate] = msg.stock
 
         # 1. Add Order (A or F)
         if t in ("A", "F"):
@@ -372,7 +392,24 @@ class ITCHOrderBookTracker:
             self.total_executes += 1
             ord_entry = self.orders.get(msg.order_ref)
             if not ord_entry:
-                return None
+                # CORR-01: Real trade execution occurred on exchange for untracked order
+                stock = msg.stock or self.locate_to_stock.get(msg.locate, f"LOCATE_{msg.locate}")
+                exec_price = msg.price if (t == "C" and msg.price > 0) else None
+                self.total_trades += 1
+                return CanonicalEvent(
+                    event_id=f"itch-e-{msg.match_number or msg.order_ref}",
+                    instrument_id=stock,
+                    event_type=EventType.TRADE,
+                    exchange_timestamp=self._convert_itch_timestamp(msg.timestamp_ns),
+                    receive_timestamp=time.time(),
+                    processing_timestamp=time.time(),
+                    source="NASDAQ_ITCH50",
+                    sequence_number=self.total_trades,
+                    price=exec_price,
+                    quantity=float(msg.shares),
+                    quality_status=QualityStatus.SUSPICIOUS if exec_price is None else QualityStatus.VALID,
+                    reasons=["EXECUTION_WITHOUT_LOCAL_ORDER_STATE"] if exec_price is None else [],
+                )
 
             stock, side, price, rem_shares = ord_entry
             exec_shares = min(msg.shares, rem_shares)
@@ -397,7 +434,7 @@ class ITCHOrderBookTracker:
                 event_id=f"itch-e-{msg.match_number or msg.order_ref}",
                 instrument_id=stock,
                 event_type=EventType.TRADE,
-                exchange_timestamp=msg.timestamp_ns / 1e9,
+                exchange_timestamp=self._convert_itch_timestamp(msg.timestamp_ns),
                 receive_timestamp=time.time(),
                 processing_timestamp=time.time(),
                 source="NASDAQ_ITCH50",
@@ -471,7 +508,7 @@ class ITCHOrderBookTracker:
                 event_id=f"itch-t-{msg.match_number or msg.order_ref}",
                 instrument_id=msg.stock,
                 event_type=EventType.TRADE,
-                exchange_timestamp=msg.timestamp_ns / 1e9,
+                exchange_timestamp=self._convert_itch_timestamp(msg.timestamp_ns),
                 receive_timestamp=time.time(),
                 processing_timestamp=time.time(),
                 source="NASDAQ_ITCH50",
@@ -480,6 +517,28 @@ class ITCHOrderBookTracker:
                 quantity=float(msg.shares),
                 quality_status=QualityStatus.VALID,
             )
+
+        # 7. Stock Trading Action (H) - Trading Halts (MIC-04)
+        elif t == "H":
+            stock = msg.stock or self.locate_to_stock.get(msg.locate)
+            state = (msg.details or {}).get("state", "")
+            if state in ("H", "P"):
+                # Halt / Pause: Clear book for this symbol to eliminate ghost orders
+                if stock and stock in self.depth:
+                    self.depth[stock] = {"B": {}, "S": {}}
+                    to_remove = [
+                        oref for oref, ord_info in self.orders.items() if ord_info[0] == stock
+                    ]
+                    for oref in to_remove:
+                        self.orders.pop(oref, None)
+            return None
+
+        # 8. System Event (S) - Session Boundaries (MIC-04)
+        elif t == "S":
+            if msg.event_code in ("C", "E"):  # End of Day / End of System Hours
+                self.orders.clear()
+                self.depth.clear()
+            return None
 
         return None
 

@@ -82,7 +82,12 @@ enum ReasonBits {
   #define MD_FENCE_ACQUIRE()      _ReadWriteBarrier()
   #define MD_STORE_REL_U64(p, v)  do { _ReadWriteBarrier(); *(volatile uint64_t *)(p) = (uint64_t)(v); } while (0)
   #define MD_STORE_RLX_U64(p, v)  (*(volatile uint64_t *)(p) = (uint64_t)(v))
-  #define MD_LOAD_ACQ_U64(p)      (_ReadWriteBarrier(), *(volatile const uint64_t *)(p))
+  static inline uint64_t md_load_acq_u64_msvc(volatile const uint64_t *p) {
+      uint64_t v = *p;
+      _ReadWriteBarrier();
+      return v;
+  }
+  #define MD_LOAD_ACQ_U64(p)      md_load_acq_u64_msvc((volatile const uint64_t *)(p))
   #define MD_LOAD_RLX_U64(p)      (*(volatile const uint64_t *)(p))
   #define MD_LOCK(l)              do { while (_InterlockedExchange((volatile long *)(l), 1)) { _mm_pause(); } } while (0)
   #define MD_UNLOCK(l)            do { _ReadWriteBarrier(); *(volatile long *)(l) = 0; } while (0)
@@ -353,13 +358,13 @@ static inline void mark(FastResult *res, int32_t status, uint64_t reason) {
 static double *ring_alloc(FastEngine *e) {
     if (e->ring_chunk_count == 0 || e->ring_in_chunk >= RING_CHUNK_RINGS) {
         if (e->ring_chunk_count >= RING_CHUNK_MAX) return NULL;
-        double *c = (double *)malloc(sizeof(double) * (size_t)RING_CHUNK_RINGS * (size_t)e->price_window);
+        double *c = (double *)malloc(sizeof(double) * (size_t)RING_CHUNK_RINGS * (size_t)MAX_WINDOW);
         if (!c) return NULL;
         e->ring_chunk[e->ring_chunk_count++] = c;
         e->ring_in_chunk = 0;
     }
     double *base = e->ring_chunk[e->ring_chunk_count - 1];
-    return base + (size_t)(e->ring_in_chunk++) * (size_t)e->price_window;
+    return base + (size_t)(e->ring_in_chunk++) * (size_t)MAX_WINDOW;
 }
 static inline double *slot_ring(FastEngine *e, FastSlot *sl) {
     if (sl->ring) return sl->ring;
@@ -1388,25 +1393,43 @@ static int32_t sbe_stream_impl(
 
         // 4. Zero-Copy Shared Memory Write
         if (shm_buffer && shm_slot_count > 0 && status != STATUS_INVALID) {
-            fastpath_shm_write_tick(
-                shm_buffer,
-                shm_slot_count,
-                p->seq,
-                p->symbol,
-                p->source,
-                p->price,
-                p->size,
-                p->bid,
-                p->ask,
-                p->bid_size,
-                p->ask_size,
-                (uint8_t)status,
-                p->is_crossed,
-                p->exchange_ts,
-                p->ingest_ts,
-                p->broadcast_ts,
-                p->engine_us
-            );
+            if (memcmp(shm_buffer, "MDRP", 4) == 0) {
+                uint8_t present = 0;
+                if (!isnan(p->price)) present |= SHM3_PRESENT_PRICE;
+                if (!isnan(p->size)) present |= SHM3_PRESENT_SIZE;
+                if (!isnan(p->bid)) present |= SHM3_PRESENT_BID;
+                if (!isnan(p->ask)) present |= SHM3_PRESENT_ASK;
+                if (!isnan(p->bid_size)) present |= SHM3_PRESENT_BSZ;
+                if (!isnan(p->ask_size)) present |= SHM3_PRESENT_ASZ;
+                size_t total_buf_len = 128u + (size_t)shm_slot_count * 128u;
+                fastpath_shm_write_tick_v3(
+                    shm_buffer, total_buf_len, shm_slot_count, p->seq,
+                    p->symbol, p->source,
+                    p->price, p->size, p->bid, p->ask, p->bid_size, p->ask_size,
+                    (uint8_t)(status + 1), p->is_crossed, present,
+                    p->exchange_ts, p->ingest_ts, p->broadcast_ts, p->engine_us
+                );
+            } else {
+                fastpath_shm_write_tick(
+                    shm_buffer,
+                    shm_slot_count,
+                    p->seq,
+                    p->symbol,
+                    p->source,
+                    p->price,
+                    p->size,
+                    p->bid,
+                    p->ask,
+                    p->bid_size,
+                    p->ask_size,
+                    (uint8_t)status,
+                    p->is_crossed,
+                    p->exchange_ts,
+                    p->ingest_ts,
+                    p->broadcast_ts,
+                    p->engine_us
+                );
+            }
         }
     }
 
@@ -1995,11 +2018,11 @@ EXPORT double fastpath_monte_carlo_var(
     if (rng.s[0] == 0 && rng.s[1] == 0) rng.s[0] = 1ULL;
 
     for (int32_t i = 0; i < n_simulations; ++i) {
-        double sim_ret = 0.0;
+        double val = 1.0;
         for (int32_t d = 0; d < horizon_days; ++d) {
-            sim_ret += _rng_gauss(&rng, mean, std_dev);
+            val *= (1.0 + _rng_gauss(&rng, mean, std_dev));
         }
-        sims[i] = sim_ret;
+        sims[i] = val - 1.0;
     }
 
     qsort(sims, n_simulations, sizeof(double), _cmp_doubles);

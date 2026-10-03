@@ -600,18 +600,24 @@ class Pipeline:
             valid_events.append(event)
 
         # Batch quality evaluation across all valid normalized events
+        evaluated_pairs: list[tuple[int, CanonicalEvent]] = []
         if valid_events:
             if hasattr(self.quality, "evaluate_batch"):
-                self.quality.evaluate_batch(valid_events)
+                batch_res = self.quality.evaluate_batch(valid_events)
+                for valid_idx, ev in zip(valid_indices, batch_res):
+                    if ev is not None:
+                        evaluated_pairs.append((valid_idx, ev))
             else:
-                for ev in valid_events:
-                    self.quality.evaluate(ev)
+                for valid_idx, ev in zip(valid_indices, valid_events):
+                    res = self.quality.evaluate(ev)
+                    if res is not None:
+                        evaluated_pairs.append((valid_idx, res))
             t_qual_end_ns = time.perf_counter_ns() if _do_timing else 0
         else:
             t_qual_end_ns = 0
 
         # Downstream sequential reconciliation & persistence, strictly in arrival order (A5)
-        for valid_idx, event in zip(valid_indices, valid_events):
+        for valid_idx, event in evaluated_pairs:
             t_start_ns = start_times_ns[valid_idx]
             t_norm_ns = norm_times_ns[valid_idx]
             raw = raw_events[valid_idx]

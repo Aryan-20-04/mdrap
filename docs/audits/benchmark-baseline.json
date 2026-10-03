@@ -1,0 +1,41 @@
+{
+  "baseline_commit": "c902900cf652b6ee15099950b7e93a226160c6a8",
+  "baseline_tag": "v2.4.2-audit-baseline",
+  "baseline_date": "2026-10-03T23:00:00Z",
+  "benchmarks": {
+    "synthetic_native_core": {
+      "command": "python benchmarks/bench_mdrap_core.py",
+      "executable": "mdrap-core.exe",
+      "events_per_run": 1000000,
+      "runs": 5,
+      "throughput_eps_median": 17873802,
+      "latency_ns_per_tick_median": 55.9,
+      "nature": "In-process memory-to-memory synthetic loop. No network, no feed decoding, no persistence."
+    },
+    "python_pipeline_baseline": {
+      "command": "python cli.py benchmark -e 10000 -s 42",
+      "total_events": 10000,
+      "processed_events": 5000,
+      "elapsed_seconds": 0.3713,
+      "throughput_eps": 13467.8,
+      "processing_latency_us": {
+        "p50": 27.5,
+        "p95": 62.6,
+        "p99": 153.7,
+        "max": 2794.4
+      },
+      "end_to_end_durable_latency_us": {
+        "p50": 782.4,
+        "p95": 1767.7,
+        "p99": 2162.5,
+        "p999": 2569.9,
+        "max": 2725.8
+      },
+      "wal_storage_flush_us": {
+        "p50": 33560.7,
+        "p95": 188680.5,
+        "p99": 202468.9
+      }
+    }
+  }
+}

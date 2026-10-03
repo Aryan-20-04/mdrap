@@ -114,13 +114,20 @@ def parse_polygon_quote(item: dict) -> Optional[RawEvent]:
 
         source = f"POLYGON-{a_venue}" if a_venue else "POLYGON"
 
+        # CORR-04: Preserve upstream sequence if present; do not fabricate monotonic counter
+        seq_raw = item.get("s") or item.get("sequence") or item.get("seq")
+        try:
+            seq_val = int(seq_raw) if seq_raw is not None else None
+        except (ValueError, TypeError):
+            seq_val = None
+
         return RawEvent(
             source=source,
             payload={
                 "instrument": sym,
                 "event_type": "QUOTE",
                 "exchange_ts": exchange_ts,
-                "sequence": next(_seq_counter),
+                "sequence": seq_val,
                 "bid": bp,
                 "ask": ap,
                 "bid_size": bs,
@@ -189,13 +196,20 @@ def parse_polygon_trade(item: dict) -> Optional[RawEvent]:
         venue = POLYGON_EXCHANGE_MAP.get(x_code, str(x_code) if x_code else "SIP")
         trade_id = str(item.get("i", next(_raw_counter)))
 
+        # CORR-04: Preserve upstream sequence if present; do not fabricate monotonic counter
+        seq_raw = item.get("sequence") or item.get("seq")
+        try:
+            seq_val = int(seq_raw) if seq_raw is not None else None
+        except (ValueError, TypeError):
+            seq_val = None
+
         return RawEvent(
             source=f"POLYGON-{venue}",
             payload={
                 "instrument": sym,
                 "event_type": "TRADE",
                 "exchange_ts": exchange_ts,
-                "sequence": next(_seq_counter),
+                "sequence": seq_val,
                 "price": p,
                 "quantity": s,
                 "trade_id": trade_id,
@@ -258,7 +272,7 @@ def parse_polygon_aggregate(item: dict) -> Optional[RawEvent]:
                 "instrument": sym,
                 "event_type": "TRADE",
                 "exchange_ts": exchange_ts,
-                "sequence": next(_seq_counter),
+                "sequence": item.get("sequence") or item.get("seq"),
                 "price": c,
                 "quantity": v,
                 "open": float(item.get("o", c)),

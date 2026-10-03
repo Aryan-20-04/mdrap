@@ -1,0 +1,35 @@
+finding_id,severity,phase,component,source_location,title,status,target_release
+MEM-01,CRITICAL,Phase 2,Native C Hot Path,src/fastpath.c:353,Dynamic Window Heap Buffer Overflow,RESOLVED,v2.5
+MEM-02,CRITICAL,Phase 3,C-Python Extension,src/_fastpath_c.c:250,Python Object Reference Count Leak,RESOLVED,v2.5
+MEM-03,HIGH,Phase 4,Native Dispatch,src/fastpath.py:1826,C-API Argument Mismatch Swallowing Native Acceleration,RESOLVED,v2.5
+MEM-04,HIGH,Phase 5,Atomics Shim,src/fastpath.c:85,Inverted Compiler Barrier in MSVC Atomics Shim,RESOLVED,v2.5
+CONC-01,CRITICAL,Phase 5,Shared Memory IPC,src/shm.py:331,Total Memory Ordering Failure on ARM Architectures,RESOLVED,v2.5
+CONC-02,CRITICAL,Phase 13,TCP Distribution,src/gateway_tcp.py:130,Sequential Head-of-Line Blocking in Client Broadcast,RESOLVED,v2.5
+CONC-03,HIGH,Phase 11,Storage Engine,src/storage.py:450,In-Memory SQLite Read-Write Lock Inversion Race,RESOLVED,v2.5
+CONC-04,HIGH,Phase 6,Service Daemon,src/service.py:137,Unused Replay Lock Concurrency Race,RESOLVED,v2.5
+CORR-01,CRITICAL,Phase 8,NASDAQ ITCH Feed,src/itch.py:373,Silent Dropping of Real Trade Executions on Untracked Orders,RESOLVED,v2.5
+CORR-02,CRITICAL,Phase 9,Batch Pipeline,src/pipeline.py:607,Silent Duplicate Event Dispatch and Double Insertion,RESOLVED,v2.5
+CORR-03,CRITICAL,Phase 6,Binary Wire Protocol,src/protocol.py:76,Symbol Truncation to 8 Bytes Causing Collisions and Provenance Loss,RESOLVED,v2.5
+CORR-04,HIGH,Phase 7,Ingress Adapters,src/polygon_feed.py:123,Global Sequence Fabrication Masking Upstream Network Loss,RESOLVED,v2.5
+CORR-05,HIGH,Phase 8,NASDAQ ITCH Feed,src/itch.py:100,Nanoseconds Since Midnight Epoch Mismatch Causing 100% Stale Quarantine,RESOLVED,v2.5
+SEC-01,CRITICAL,Phase 10,Security & Auth,src/security.py:384,Authentication Bypass via Direct Token Hash Submission,RESOLVED,v2.5
+SEC-02,HIGH,Phase 10,Rate Limiter,src/security.py:152,Rate Limit Bypass via Source-Name Eviction Reset,RESOLVED,v2.5
+SEC-03,HIGH,Phase 10,Security Storage,src/storage.py:1645,Database API Key Revocation Fails Silently via Hash Algorithm Mismatch,RESOLVED,v2.5
+SEC-04,HIGH,Phase 10,Alerting Sinks,src/alert_sinks.py:179,Server-Side Request Forgery (SSRF) in Outbound Webhook Delivery,RESOLVED,v2.5
+NUM-01,CRITICAL,Phase 14,Bar Database,src/bardb.py:446,Temporal Lookahead Bias in BarDB As-Of Historical Queries,RESOLVED,v2.5
+NUM-02,HIGH,Phase 14,Bar Database,src/bardb.py:144,Silent Dropping of Out-of-Order Ticks in Bar Roll-Up,RESOLVED,v2.5
+NUM-03,HIGH,Phase 14,Risk Engine,src/risk.py:198,Additive Return Compounding Defect in Monte Carlo VaR,RESOLVED,v2.5
+NUM-04,HIGH,Phase 14,Risk Engine,src/risk.py:254,Unit Mismatch in Sharpe and Sortino Ratios (Annualized vs Daily RF),RESOLVED,v2.5
+MIC-01,HIGH,Phase 15,Venues Registry,src/venues.py:510,Midnight-Crossing Trading Session Schedule Bug Evaluating Exchanges Closed,RESOLVED,v2.5
+MIC-02,HIGH,Phase 15,Depth Engine,src/depth.py:574,L2 Depth Premature Truncation Distorting Consolidated Ladders,RESOLVED,v2.5
+MIC-03,HIGH,Phase 15,Depth Engine,src/depth.py:600,Spurious Spikes in Level-1 Order Flow Imbalance,RESOLVED,v2.5
+MIC-04,HIGH,Phase 15,NASDAQ ITCH Feed,src/itch.py:276,Missing Order Book Resets and Ghost Orders Across Halts and Sessions,RESOLVED,v2.5
+MIC-05,HIGH,Phase 15,Flow Tracker,src/flow_tracker.py:358,Pseudorandom Broker MPID Fabrication for Public Trades,RESOLVED,v2.5
+MIC-06,HIGH,Phase 15,Multicast Arbitrator,src/multicast_arbitrator.py:182,Synchronous TCP Replay Round-Trip Blocking UDP Multicast Receive Loop,RESOLVED,v2.5
+MIC-07,MEDIUM,Phase 7,BBO Engine,src/bbo.py:157,Negative Bid Price Rejection Generating Incomplete BBO,RESOLVED,v2.5
+OPS-01,CRITICAL,Phase 12,Watchdog Subsystem,src/watchdog.py:60,Passive Watchdog Inoperable During Total Feed Silence,RESOLVED,v2.5
+OPS-02,HIGH,Phase 19,Prometheus Metrics,src/prometheus.py:212,Full-Table Merkle Re-Hashing on Every Scrape Causing CPU DoS,RESOLVED,v2.5
+OPS-03,HIGH,Phase 19,Raw Archive,src/archive.py:65,File Descriptor Leak Across Date Boundaries Hitting OS EMFILE Limits,RESOLVED,v2.5
+STOR-01,HIGH,Phase 11,Binary Journal,src/journal.py:200,Binary Journal 128-Tick Overwrite and Truncation on Restart,RESOLVED,v2.5
+STOR-02,HIGH,Phase 11,SHM Drainer,src/shm_drainer.py:194,Silent Data Discard on SQLite Storage Exceptions in Drain Worker,RESOLVED,v2.5
+STOR-03,MEDIUM,Phase 11,Persistence Sinks,src/archive.py:71,Missing os.fsync on RawArchive and Journal Flush Paths,RESOLVED,v2.5

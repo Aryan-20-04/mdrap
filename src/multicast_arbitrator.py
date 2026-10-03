@@ -24,9 +24,11 @@ Network Transport Architecture:
 from __future__ import annotations
 
 import collections
+import concurrent.futures
 from dataclasses import dataclass
 import logging
 import random
+import threading
 import time
 from typing import Callable
 
@@ -102,10 +104,20 @@ class ABFeedArbitrator:
         tcp_replay_client: Callable[[str, int, int], list[UDPPacket]] | None = None,
         max_gap_buffer_size: int = 10000,
         initial_seq: int = 1,
+        async_tcp_replay: bool = False,
     ):
         self.tcp_replay_client = tcp_replay_client
         self.max_gap_buffer_size = max_gap_buffer_size
         self.initial_seq = initial_seq
+        self.async_tcp_replay = async_tcp_replay
+        self._lock = threading.RLock()
+        self._replay_pool: concurrent.futures.ThreadPoolExecutor | None = (
+            concurrent.futures.ThreadPoolExecutor(max_workers=2, thread_name_prefix="arb-replay")
+            if async_tcp_replay
+            else None
+        )
+
+        self._pending_replays: set[tuple[str, int]] = set()
 
         # Channel State: channel_id -> expected monotonic sequence number
         self._expected_seq: dict[str, int] = {}
@@ -117,11 +129,54 @@ class ABFeedArbitrator:
 
         self.metrics = ArbitratorMetrics()
 
+    def __enter__(self) -> ABFeedArbitrator:
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        self.close()
+
+    def close(self) -> None:
+        """Shut down background TCP replay pool."""
+        with self._lock:
+            if self._replay_pool is not None:
+                self._replay_pool.shutdown(wait=True)
+                self._replay_pool = None
+
     def get_expected_seq(self, channel_id: str) -> int:
-        return self._expected_seq.get(channel_id, self.initial_seq)
+        with self._lock:
+            return self._expected_seq.get(channel_id, self.initial_seq)
 
     def set_expected_seq(self, channel_id: str, seq: int) -> None:
-        self._expected_seq[channel_id] = seq
+        with self._lock:
+            self._expected_seq[channel_id] = seq
+
+    def _run_replay(self, ch: str, start: int, end: int) -> None:
+        if not self.tcp_replay_client:
+            return
+        try:
+            replayed = self.tcp_replay_client(ch, start, end)
+            with self._lock:
+                gap_buf = self._gap_buffers[ch]
+                expected = self._expected_seq.get(ch, self.initial_seq)
+                for r_pkt in replayed:
+                    if (
+                        r_pkt.sequence_num not in gap_buf
+                        and r_pkt.sequence_num >= expected
+                    ):
+                        gap_buf[r_pkt.sequence_num] = r_pkt
+                        self.metrics.tcp_packets_recovered += 1
+        except Exception as ex:
+            logger.error(
+                "Async TCP replay failed for %s [%d-%d]: %s",
+                ch,
+                start,
+                end,
+                ex,
+            )
+        finally:
+            with self._lock:
+                for s in range(start, end + 1):
+                    self._pending_replays.discard((ch, s))
 
     def on_packet(self, packet: UDPPacket) -> list[UDPPacket]:
         """
@@ -131,97 +186,114 @@ class ABFeedArbitrator:
         ready for downstream processing. Returns empty list if packet was duplicate
         or buffered pending gap resolution.
         """
-        ch = packet.channel_id
-        seq = packet.sequence_num
+        with self._lock:
+            ch = packet.channel_id
+            seq = packet.sequence_num
 
-        # Update ingress metrics
-        if packet.feed_id == "A":
-            self.metrics.feed_a_packets += 1
-        elif packet.feed_id == "B":
-            self.metrics.feed_b_packets += 1
-        else:
-            self.metrics.tcp_packets += 1
-
-        if ch not in self._expected_seq:
-            self._expected_seq[ch] = self.initial_seq
-
-        expected = self._expected_seq[ch]
-
-        # -------------------------------------------------------------
-        # 1. DUPLICATE CHECK: O(1) Fast Rejection
-        # -------------------------------------------------------------
-        if seq < expected:
-            # Already processed and dispatched downstream
-            self.metrics.dedup_dropped += 1
-            return []
-
-        # -------------------------------------------------------------
-        # 2. SEQUENCE GAP DETECTED (seq > expected)
-        # -------------------------------------------------------------
-        if seq > expected:
-            gap_buf = self._gap_buffers[ch]
-
-            # Store in gap buffer if not already present
-            if seq not in gap_buf:
-                if len(gap_buf) >= self.max_gap_buffer_size:
-                    self.metrics.gap_buffer_overflows += 1
-                    logger.warning(
-                        "Gap buffer overflow on channel %s (%d packets). Dropping seq %d",
-                        ch,
-                        len(gap_buf),
-                        seq,
-                    )
-                    return []
-                gap_buf[seq] = packet
+            # Update ingress metrics
+            if packet.feed_id == "A":
+                self.metrics.feed_a_packets += 1
+            elif packet.feed_id == "B":
+                self.metrics.feed_b_packets += 1
             else:
+                self.metrics.tcp_packets += 1
+
+            if ch not in self._expected_seq:
+                self._expected_seq[ch] = self.initial_seq
+
+            expected = self._expected_seq[ch]
+
+            # -------------------------------------------------------------
+            # 1. DUPLICATE CHECK: O(1) Fast Rejection
+            # -------------------------------------------------------------
+            if seq < expected:
+                # Already processed and dispatched downstream
                 self.metrics.dedup_dropped += 1
+                return []
 
-            self.metrics.gaps_detected += 1
+            # -------------------------------------------------------------
+            # 2. SEQUENCE GAP DETECTED (seq > expected)
+            # -------------------------------------------------------------
+            if seq > expected:
+                gap_buf = self._gap_buffers[ch]
 
-            # Trigger TCP Replay if handler configured
-            if self.tcp_replay_client:
-                missing_start = expected
-                missing_end = seq - 1
-                self.metrics.tcp_replays_requested += 1
-                try:
-                    replayed = self.tcp_replay_client(ch, missing_start, missing_end)
-                    for r_pkt in replayed:
-                        if (
-                            r_pkt.sequence_num not in gap_buf
-                            and r_pkt.sequence_num >= expected
-                        ):
-                            gap_buf[r_pkt.sequence_num] = r_pkt
-                            self.metrics.tcp_packets_recovered += 1
-                except Exception as ex:
-                    logger.error(
-                        "TCP replay failed for %s [%d-%d]: %s",
-                        ch,
-                        missing_start,
-                        missing_end,
-                        ex,
-                    )
+                # Store in gap buffer if not already present
+                if seq not in gap_buf:
+                    if len(gap_buf) >= self.max_gap_buffer_size:
+                        self.metrics.gap_buffer_overflows += 1
+                        logger.warning(
+                            "Gap buffer overflow on channel %s (%d packets). Dropping seq %d",
+                            ch,
+                            len(gap_buf),
+                            seq,
+                        )
+                        return []
+                    gap_buf[seq] = packet
+                else:
+                    self.metrics.dedup_dropped += 1
 
-            # Check if gap was resolved by TCP replay
-            if expected in gap_buf:
-                dispatched = self._drain_gap_buffer(ch)
-                self.metrics.in_order_dispatched += len(dispatched)
-                return dispatched
+                self.metrics.gaps_detected += 1
 
-            return []
+                # Trigger TCP Replay if handler configured
+                if self.tcp_replay_client:
+                    missing_start = expected
+                    missing_end = seq - 1
+                    needed = [
+                        s
+                        for s in range(missing_start, missing_end + 1)
+                        if s not in gap_buf and (ch, s) not in self._pending_replays
+                    ]
+                    if needed:
+                        req_start = min(needed)
+                        req_end = max(needed)
+                        self.metrics.tcp_replays_requested += 1
+                        if self.async_tcp_replay and self._replay_pool:
+                            for s in range(req_start, req_end + 1):
+                                self._pending_replays.add((ch, s))
+                            self._replay_pool.submit(
+                                self._run_replay, ch, req_start, req_end
+                            )
+                            return []
+                        else:
+                            try:
+                                replayed = self.tcp_replay_client(ch, req_start, req_end)
+                                for r_pkt in replayed:
+                                    if (
+                                        r_pkt.sequence_num not in gap_buf
+                                        and r_pkt.sequence_num >= expected
+                                    ):
+                                        gap_buf[r_pkt.sequence_num] = r_pkt
+                                        self.metrics.tcp_packets_recovered += 1
+                            except Exception as ex:
+                                logger.error(
+                                    "TCP replay failed for %s [%d-%d]: %s",
+                                    ch,
+                                    req_start,
+                                    req_end,
+                                    ex,
+                                )
 
-        # -------------------------------------------------------------
-        # 3. IN-ORDER PACKET ARRIVAL (seq == expected)
-        # -------------------------------------------------------------
-        dispatched = [packet]
-        self._expected_seq[ch] = expected + 1
+                # Check if gap was resolved by TCP replay
+                if expected in gap_buf:
+                    dispatched = self._drain_gap_buffer(ch)
+                    self.metrics.in_order_dispatched += len(dispatched)
+                    return dispatched
 
-        # Check if following contiguous packets are waiting in the gap buffer
-        gap_buf = self._gap_buffers[ch]
-        if gap_buf and self._expected_seq[ch] in gap_buf:
-            dispatched.extend(self._drain_gap_buffer(ch))
+                return []
 
-        self.metrics.in_order_dispatched += len(dispatched)
-        return dispatched
+            # -------------------------------------------------------------
+            # 3. IN-ORDER PACKET ARRIVAL (seq == expected)
+            # -------------------------------------------------------------
+            dispatched = [packet]
+            self._expected_seq[ch] = expected + 1
+
+            # Check if following contiguous packets are waiting in the gap buffer
+            gap_buf = self._gap_buffers[ch]
+            if gap_buf and self._expected_seq[ch] in gap_buf:
+                dispatched.extend(self._drain_gap_buffer(ch))
+
+            self.metrics.in_order_dispatched += len(dispatched)
+            return dispatched
 
     def _drain_gap_buffer(self, channel_id: str) -> list[UDPPacket]:
         """Drain contiguous packets from the gap buffer starting at expected_seq."""
@@ -237,23 +309,41 @@ class ABFeedArbitrator:
         self._expected_seq[channel_id] = curr
         return dispatched
 
+    def drain(self, channel_id: str | None = None) -> list[UDPPacket]:
+        """Drain contiguous packets from the gap buffer for one or all channels."""
+        with self._lock:
+            dispatched: list[UDPPacket] = []
+            if channel_id is not None:
+                channels = [channel_id] if channel_id in self._expected_seq else []
+            else:
+                channels = list(self._expected_seq.keys())
+
+            for ch in channels:
+                if self._expected_seq[ch] in self._gap_buffers[ch]:
+                    d = self._drain_gap_buffer(ch)
+                    self.metrics.in_order_dispatched += len(d)
+                    dispatched.extend(d)
+            return dispatched
+
     def reset_channel(self, channel_id: str, new_expected_seq: int = 1) -> None:
         """Reset sequence tracker and clear gap buffer for a channel."""
-        self._expected_seq[channel_id] = new_expected_seq
-        self._gap_buffers[channel_id].clear()
+        with self._lock:
+            self._expected_seq[channel_id] = new_expected_seq
+            self._gap_buffers[channel_id].clear()
 
     def stats(self) -> dict:
         """Return arbitrator metrics and channel statuses."""
-        return {
-            "metrics": self.metrics.to_dict(),
-            "channels": {
-                ch: {
-                    "expected_seq": self._expected_seq[ch],
-                    "gap_buffer_size": len(self._gap_buffers[ch]),
-                }
-                for ch in self._expected_seq
-            },
-        }
+        with self._lock:
+            return {
+                "metrics": self.metrics.to_dict(),
+                "channels": {
+                    ch: {
+                        "expected_seq": self._expected_seq[ch],
+                        "gap_buffer_size": len(self._gap_buffers[ch]),
+                    }
+                    for ch in self._expected_seq
+                },
+            }
 
 
 class MulticastFeedSimulator:

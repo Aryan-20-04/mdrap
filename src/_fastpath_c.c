@@ -250,38 +250,40 @@ static PyObject *py_shm_read_slot_v3(PyObject *self, PyObject *const *args, Py_s
     PyObject *dict = PyDict_New();
     if (!dict) return NULL;
 
-    PyDict_SetItem(dict, str_seq, PyLong_FromUnsignedLongLong(slot.commit_seq));
-    PyDict_SetItem(dict, str_sym, PyUnicode_FromString(sym_str));
-    PyDict_SetItem(dict, str_source, PyUnicode_FromString(src_str));
+    #define SET_NEW_ITEM(k, v) do { PyObject *_val = (v); if (_val) { PyDict_SetItem(dict, (k), _val); Py_DECREF(_val); } } while (0)
+
+    SET_NEW_ITEM(str_seq, PyLong_FromUnsignedLongLong(slot.commit_seq));
+    SET_NEW_ITEM(str_sym, PyUnicode_FromString(sym_str));
+    SET_NEW_ITEM(str_source, PyUnicode_FromString(src_str));
     PyDict_SetItem(dict, str_status, st_val);
     PyDict_SetItem(dict, str_is_crossed, slot.is_crossed ? Py_True : Py_False);
-    PyDict_SetItem(dict, str_exchange_ts, PyFloat_FromDouble(slot.exchange_ts));
-    PyDict_SetItem(dict, str_ingest_ts, PyFloat_FromDouble(slot.ingest_ts));
-    PyDict_SetItem(dict, str_broadcast_ts, PyFloat_FromDouble(slot.broadcast_ts));
-    PyDict_SetItem(dict, str_engine_us, PyFloat_FromDouble((double)slot.engine_us));
+    SET_NEW_ITEM(str_exchange_ts, PyFloat_FromDouble(slot.exchange_ts));
+    SET_NEW_ITEM(str_ingest_ts, PyFloat_FromDouble(slot.ingest_ts));
+    SET_NEW_ITEM(str_broadcast_ts, PyFloat_FromDouble(slot.broadcast_ts));
+    SET_NEW_ITEM(str_engine_us, PyFloat_FromDouble((double)slot.engine_us));
 
-    if (slot.present & SHM3_PRESENT_PRICE) PyDict_SetItem(dict, str_price, PyFloat_FromDouble(slot.price));
+    if (slot.present & SHM3_PRESENT_PRICE) SET_NEW_ITEM(str_price, PyFloat_FromDouble(slot.price));
     else PyDict_SetItem(dict, str_price, Py_None);
 
-    if (slot.present & SHM3_PRESENT_SIZE) PyDict_SetItem(dict, str_size, PyFloat_FromDouble(slot.size));
+    if (slot.present & SHM3_PRESENT_SIZE) SET_NEW_ITEM(str_size, PyFloat_FromDouble(slot.size));
     else PyDict_SetItem(dict, str_size, Py_None);
 
-    if (slot.present & SHM3_PRESENT_BID) PyDict_SetItem(dict, str_bid, PyFloat_FromDouble(slot.bid));
+    if (slot.present & SHM3_PRESENT_BID) SET_NEW_ITEM(str_bid, PyFloat_FromDouble(slot.bid));
     else PyDict_SetItem(dict, str_bid, Py_None);
 
-    if (slot.present & SHM3_PRESENT_ASK) PyDict_SetItem(dict, str_ask, PyFloat_FromDouble(slot.ask));
+    if (slot.present & SHM3_PRESENT_ASK) SET_NEW_ITEM(str_ask, PyFloat_FromDouble(slot.ask));
     else PyDict_SetItem(dict, str_ask, Py_None);
 
-    if (slot.present & SHM3_PRESENT_BSZ) PyDict_SetItem(dict, str_bid_size, PyFloat_FromDouble(slot.bid_sz));
+    if (slot.present & SHM3_PRESENT_BSZ) SET_NEW_ITEM(str_bid_size, PyFloat_FromDouble(slot.bid_sz));
     else PyDict_SetItem(dict, str_bid_size, Py_None);
 
-    if (slot.present & SHM3_PRESENT_ASZ) PyDict_SetItem(dict, str_ask_size, PyFloat_FromDouble(slot.ask_sz));
+    if (slot.present & SHM3_PRESENT_ASZ) SET_NEW_ITEM(str_ask_size, PyFloat_FromDouble(slot.ask_sz));
     else PyDict_SetItem(dict, str_ask_size, Py_None);
 
     if (slot.event_type == 2) {
         PyDict_SetItem(dict, str_type, val_depth);
-        PyDict_SetItem(dict, str_micro_price, PyFloat_FromDouble(slot.price));
-        PyDict_SetItem(dict, str_ofi, PyFloat_FromDouble(slot.size));
+        SET_NEW_ITEM(str_micro_price, PyFloat_FromDouble(slot.price));
+        SET_NEW_ITEM(str_ofi, PyFloat_FromDouble(slot.size));
 
         PyObject *bid_item = Py_BuildValue("[dds]", slot.bid, slot.bid_sz, "AGG");
         PyObject *bids_list = PyList_New(1);
@@ -298,6 +300,7 @@ static PyObject *py_shm_read_slot_v3(PyObject *self, PyObject *const *args, Py_s
         PyDict_SetItem(dict, str_type, val_tick);
     }
 
+    #undef SET_NEW_ITEM
     return dict;
 }
 

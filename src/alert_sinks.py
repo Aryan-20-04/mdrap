@@ -65,6 +65,49 @@ class RateLimiter:
             return False
 
 
+def validate_webhook_url(url: str) -> None:
+    """Validate webhook URL against SSRF attacks (SEC-04)."""
+    import ipaddress
+    import urllib.parse
+    import socket
+
+    allow_internal = os.environ.get("MDRAP_ALLOW_INTERNAL_WEBHOOKS", "0").lower() in ("1", "true", "yes")
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError(f"SSRF Protection: Scheme '{parsed.scheme}' not allowed. Only http and https are permitted.")
+    host = parsed.hostname
+    if not host:
+        raise ValueError("SSRF Protection: Webhook destination requires a valid host.")
+    if allow_internal:
+        return
+
+    # Check IP literal
+    try:
+        ip = ipaddress.ip_address(host)
+        if ip.is_loopback or ip.is_private or ip.is_link_local or ip.is_reserved or ip.is_multicast:
+            raise ValueError(f"SSRF Protection: Webhook destination '{host}' is in a private/restricted address range.")
+        return
+    except ValueError as e:
+        if "SSRF Protection" in str(e):
+            raise
+
+    # Check dangerous hostnames
+    if host.lower() in ("localhost", "metadata.google.internal", "instance-data"):
+        raise ValueError(f"SSRF Protection: Webhook destination '{host}' is a restricted hostname.")
+
+    # DNS resolution check
+    try:
+        addrs = socket.getaddrinfo(host, None)
+        for _, _, _, _, sockaddr in addrs:
+            ip_str = sockaddr[0]
+            ip = ipaddress.ip_address(ip_str)
+            if ip.is_loopback or ip.is_private or ip.is_link_local or ip.is_reserved or ip.is_multicast:
+                raise ValueError(f"SSRF Protection: Host '{host}' resolves to restricted IP {ip_str}.")
+    except socket.gaierror:
+        # Allow non-resolvable mock domain names in offline/unit-test environments
+        pass
+
+
 class BaseHttpAlertSink:
     """Base class for HTTP-based alert notification sinks."""
 
@@ -81,6 +124,7 @@ class BaseHttpAlertSink:
         dead_letter_path: Optional[str] = "data/deadletter/alerts.jsonl",
     ) -> None:
         self.name = name
+        validate_webhook_url(endpoint_url)
         self.endpoint_url = endpoint_url
         self.security_manager = security_manager
         self.signing_secret_key = signing_secret_key

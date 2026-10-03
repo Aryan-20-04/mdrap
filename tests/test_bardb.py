@@ -119,16 +119,30 @@ class TestBarDatabase(unittest.TestCase):
                 db.observe(_make_trade(ts=float(i), price=float(i)))
             db.flush()
 
-            # Buckets are at 0, 60, 120, 180
-            # as_of = 100 -> should return bucket 60
-            bar = db.query_as_of("AAPL", "1m", 100.0)
+            # Buckets are at 0, 60, 120, 180 (interval = 60s)
+            # as_of = 120 -> bucket 60 ended at 120, so returns bucket 60
+            bar = db.query_as_of("AAPL", "1m", 120.0)
             self.assertIsNotNone(bar)
             self.assertEqual(bar.bucket_start, 60.0)
 
-            # as_of = 30 -> should return bucket 0
-            bar2 = db.query_as_of("AAPL", "1m", 30.0)
+            # as_of = 100 -> bucket 60 has not closed yet, so zero-lookahead returns bucket 0
+            bar_100 = db.query_as_of("AAPL", "1m", 100.0)
+            self.assertIsNotNone(bar_100)
+            self.assertEqual(bar_100.bucket_start, 0.0)
+
+            # completed_only=False -> returns open bucket 60 (bucket_start <= 100)
+            bar_legacy = db.query_as_of("AAPL", "1m", 100.0, completed_only=False)
+            self.assertIsNotNone(bar_legacy)
+            self.assertEqual(bar_legacy.bucket_start, 60.0)
+
+            # as_of = 60 -> bucket 0 closed at 60, so returns bucket 0
+            bar2 = db.query_as_of("AAPL", "1m", 60.0)
             self.assertIsNotNone(bar2)
             self.assertEqual(bar2.bucket_start, 0.0)
+
+            # as_of = 30 -> bucket 0 has not closed yet, so zero-lookahead returns None
+            bar_incomplete = db.query_as_of("AAPL", "1m", 30.0)
+            self.assertIsNone(bar_incomplete)
 
             # as_of = -10 -> None
             bar3 = db.query_as_of("AAPL", "1m", -10.0)

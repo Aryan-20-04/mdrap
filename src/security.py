@@ -150,9 +150,18 @@ class TokenBucketRateLimiter:
             current_tokens = min(self.capacity, current_tokens + elapsed * self.rate)
 
             if len(self._buckets) > 1024 and source not in self._buckets:
-                # Evict oldest entry
-                oldest = min(self._buckets.items(), key=lambda item: item[1][1])[0]
-                self._buckets.pop(oldest, None)
+                # SEC-02: Only evict fully replenished (idle) buckets.
+                # Never evict depleted/throttled buckets, preventing eviction-based rate limit bypass.
+                idle_sources = [
+                    k for k, (toks, t) in self._buckets.items()
+                    if (toks + (now - t) * self.rate) >= self.capacity
+                ]
+                if idle_sources:
+                    for k in idle_sources[: len(self._buckets) - 1024 + 1]:
+                        self._buckets.pop(k, None)
+                else:
+                    # All buckets active/depleted. New source gets baseline rate burst, not full capacity.
+                    current_tokens = min(self.rate, current_tokens)
 
             if current_tokens >= tokens:
                 self._buckets[source] = (current_tokens - tokens, now)
@@ -381,16 +390,23 @@ class HashedKeyStore(dict):
                 return super().pop(h_legacy, default)
         return default
 
-    def get_by_token_or_hash(self, key: str) -> Optional[ClientEntitlement]:
+    def get_by_token(self, key: str) -> Optional[ClientEntitlement]:
+        """Lookup entitlement strictly by hashing the raw secret token. Never matches on hash alone (SEC-01)."""
         if not key:
             return None
         h_salted, h_legacy = self._hash_candidates(key)
         ent = super().get(h_salted)
         if ent is not None:
             return ent
-        ent_legacy = super().get(h_legacy)
-        if ent_legacy is not None:
-            return ent_legacy
+        return super().get(h_legacy)
+
+    def get_by_token_or_hash(self, key: str) -> Optional[ClientEntitlement]:
+        """Lookup entitlement by token, salted/legacy hash, or direct hash (administrative use only)."""
+        if not key:
+            return None
+        ent = self.get_by_token(key)
+        if ent is not None:
+            return ent
         return super().get(key)
 
 
@@ -815,7 +831,7 @@ class SecurityManager:
         """Lookup entitlement by token or sha256 hash."""
         if not token:
             return None
-        ent = self._api_keys.get_by_token_or_hash(token)
+        ent = self._api_keys.get_by_token(token)
         if not ent:
             return None
         if active_only:

@@ -492,7 +492,11 @@ def get_session_phase(
 
     # Standard daytime market window in UTC (without crossing midnight)
     if open_h < close_h:
-        if pre_h is not None and pre_h <= hour_frac < open_h:
+        if pre_h is not None and (
+            (pre_h <= hour_frac < open_h)
+            if pre_h < open_h
+            else (hour_frac >= pre_h or hour_frac < open_h)
+        ):
             return False, MarketPhase.PRE_OPEN, "Pre-Open Call Auction"
         if close_auc_h is not None and close_auc_h <= hour_frac < close_h:
             return True, MarketPhase.CLOSING_AUCTION, "Closing Auction (Cross)"
@@ -503,11 +507,19 @@ def get_session_phase(
         return False, MarketPhase.CLOSED, "Closed"
     else:
         # Venue trading session wraps over UTC midnight (e.g. TSE pre-open at 23:00 UTC)
-        if pre_h is not None and (hour_frac >= pre_h or hour_frac < open_h):
+        if pre_h is not None and (
+            (pre_h <= hour_frac < open_h)
+            if pre_h < open_h
+            else (hour_frac >= pre_h or hour_frac < open_h)
+        ):
             return False, MarketPhase.PRE_OPEN, "Pre-Open Call Auction"
-        if close_auc_h is not None and close_auc_h <= hour_frac < close_h:
+        if close_auc_h is not None and (
+            (close_auc_h <= hour_frac < close_h)
+            if close_auc_h < close_h
+            else (hour_frac >= close_auc_h or hour_frac < close_h)
+        ):
             return True, MarketPhase.CLOSING_AUCTION, "Closing Auction (Itayose)"
-        if hour_frac >= open_h and hour_frac < close_h:
+        if hour_frac >= open_h or hour_frac < close_h:
             return True, MarketPhase.CONTINUOUS, "Open (Continuous Trading)"
         return False, MarketPhase.CLOSED, "Closed"
 

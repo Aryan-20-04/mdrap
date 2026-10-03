@@ -324,25 +324,26 @@ class MarketDataDaemon:
             return self._global_seq
 
     def _record_replay(self, msg_dict: dict) -> None:
-        self._replay_buffer.record(
-            seq=msg_dict.get("seq", 0),
-            symbol=msg_dict.get("sym", ""),
-            source=msg_dict.get("source", ""),
-            event_type=msg_dict.get("type", "TICK"),
-            price=msg_dict.get("price"),
-            size=msg_dict.get("size"),
-            bid=msg_dict.get("bid"),
-            ask=msg_dict.get("ask"),
-            bid_size=msg_dict.get("bid_size"),
-            ask_size=msg_dict.get("ask_size"),
-            status=msg_dict.get("status", "UNKNOWN"),
-            is_crossed=bool(msg_dict.get("is_crossed", False)),
-            exchange_ts=msg_dict.get("exchange_ts", 0.0),
-            ingest_ts=msg_dict.get("ingest_ts", 0.0),
-            broadcast_ts=msg_dict.get("broadcast_ts", 0.0),
-            engine_us=msg_dict.get("engine_us", 0.0),
-            raw_dict=msg_dict,
-        )
+        with self._replay_lock:
+            self._replay_buffer.record(
+                seq=msg_dict.get("seq", 0),
+                symbol=msg_dict.get("sym", ""),
+                source=msg_dict.get("source", ""),
+                event_type=msg_dict.get("type", "TICK"),
+                price=msg_dict.get("price"),
+                size=msg_dict.get("size"),
+                bid=msg_dict.get("bid"),
+                ask=msg_dict.get("ask"),
+                bid_size=msg_dict.get("bid_size"),
+                ask_size=msg_dict.get("ask_size"),
+                status=msg_dict.get("status", "UNKNOWN"),
+                is_crossed=bool(msg_dict.get("is_crossed", False)),
+                exchange_ts=msg_dict.get("exchange_ts", 0.0),
+                ingest_ts=msg_dict.get("ingest_ts", 0.0),
+                broadcast_ts=msg_dict.get("broadcast_ts", 0.0),
+                engine_us=msg_dict.get("engine_us", 0.0),
+                raw_dict=msg_dict,
+            )
 
     def _send_client_response(self, client_sock: socket.socket, resp: Any) -> None:
         """Route outbound client responses through dedicated session writer queue to prevent socket write race conditions."""
@@ -544,14 +545,15 @@ class MarketDataDaemon:
                     self._send_client_response(client_sock, resp)
                     return
 
-                if sess and sess.is_binary:
-                    bin_data = self._replay_buffer.replay_binary(
-                        from_seq, to_seq, sym_filter
-                    )
-                    self._send_client_response(client_sock, bin_data)
-                    return
+                with self._replay_lock:
+                    if sess and sess.is_binary:
+                        bin_data = self._replay_buffer.replay_binary(
+                            from_seq, to_seq, sym_filter
+                        )
+                        self._send_client_response(client_sock, bin_data)
+                        return
 
-                replayed = self._replay_buffer.replay(from_seq, to_seq, sym_filter)
+                    replayed = self._replay_buffer.replay(from_seq, to_seq, sym_filter)
                 resp = (
                     json.dumps(
                         {

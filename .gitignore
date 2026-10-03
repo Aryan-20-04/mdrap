@@ -93,6 +93,7 @@ data/reports/*
 !data/reports/.gitkeep
 *.xlsx
 *.csv
+!docs/audits/*.csv
 
 # Operating System Files
 .DS_Store
