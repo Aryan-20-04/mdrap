@@ -544,6 +544,7 @@ class SHMReader:
         self.watermark_pct = DEFAULT_SHM_WATERMARK_PCT
         self.watermark_slots = int(self.slot_count * self.watermark_pct)
         self.overrun_stats = SHMOverrunStats()
+        self._last_epoch_probe = 0.0
 
     def is_watermark_warning_set(self) -> bool:
         """Check if the watermark warning bitflag is set in Cache Line 2."""
@@ -575,11 +576,12 @@ class SHMReader:
         except Exception:
             return False
 
-    def check_epoch_valid(self) -> bool:
+    def check_epoch_valid(self, force_probe: bool = False) -> bool:
         """
         Verify that the writer epoch has not changed (i.e. daemon has not restarted).
         On POSIX, an unlinked segment remains mapped by old readers; probing the named
         segment ensures detection when a new writer creates a replacement segment.
+        External named segment probing is rate-limited to avoid syscall storms during tight polling.
         """
         if not self.shm:
             return False
@@ -587,9 +589,12 @@ class SHMReader:
             current_epoch = struct.unpack_from("<Q", self.shm.buf, 16)[0]
             if current_epoch != self.epoch_id:
                 return False
-            active_epoch = _probe_active_epoch(self.name)
-            if active_epoch is None or active_epoch != self.epoch_id:
-                return False
+            now = time.time()
+            if force_probe or (now - self._last_epoch_probe) >= 0.1:
+                self._last_epoch_probe = now
+                active_epoch = _probe_active_epoch(self.name)
+                if active_epoch is None or active_epoch != self.epoch_id:
+                    return False
             return True
         except Exception:
             return False
@@ -729,17 +734,32 @@ class SHMReader:
         start_seq: int | None = None,
         timeout: float | None = None,
         max_events: int | None = None,
+        writer_dead_timeout: float | None = None,
     ) -> Generator[dict, None, None]:
         """
         Stream market data frames directly from shared memory with sub-microsecond polling.
         Automatically catches up on overruns without blocking.
+        Detects publisher crash and deadlock when writer_dead_timeout is specified.
         """
         curr_seq = start_seq if start_seq is not None else self.read_latest_seq()
         count = 0
         t_start = time.time()
         spin_count = 0
 
-        # Initial epoch validation before streaming
+        # Initial publisher liveness and epoch validation before streaming
+        if writer_dead_timeout is not None and not self.is_writer_alive(
+            max_stale_s=writer_dead_timeout
+        ):
+            logger.warning(
+                "[shm] Publisher heartbeat stale > %.2fs on stream startup",
+                writer_dead_timeout,
+            )
+            yield {
+                "type": "PUBLISHER_DEAD",
+                "reason": f"Heartbeat stale > {writer_dead_timeout}s on startup",
+            }
+            return
+
         if not self.check_epoch_valid():
             try:
                 new_epoch = struct.unpack_from("<Q", self.shm.buf, 16)[0]
@@ -780,8 +800,21 @@ class SHMReader:
                     return
                 continue
 
-            # When caught up with writer or spinning, verify external epoch validity
-            if spin_count == 0 or (spin_count & 0xFF) == 0:
+            # When caught up with writer or spinning, verify writer liveness & external epoch validity
+            if spin_count == 0 or (spin_count & 0x3F) == 0:
+                if writer_dead_timeout is not None and not self.is_writer_alive(
+                    max_stale_s=writer_dead_timeout
+                ):
+                    logger.warning(
+                        "[shm] Publisher heartbeat stale > %.2fs during spin, exiting stream",
+                        writer_dead_timeout,
+                    )
+                    yield {
+                        "type": "PUBLISHER_DEAD",
+                        "reason": f"Heartbeat stale > {writer_dead_timeout}s",
+                    }
+                    return
+
                 if not self.check_epoch_valid():
                     try:
                         new_epoch = struct.unpack_from("<Q", self.shm.buf, 16)[0]

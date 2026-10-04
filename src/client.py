@@ -723,11 +723,23 @@ class MDRAPClient:
                 epoch_reset = False
 
                 try:
+                    w_dead_to = float(os.environ.get("MDRAP_SHM_WRITER_TIMEOUT", "4.0"))
                     for item in self.shm_reader.stream(
-                        timeout=rem_timeout, max_events=rem_events
+                        timeout=rem_timeout,
+                        max_events=rem_events,
+                        writer_dead_timeout=w_dead_to if w_dead_to > 0 else None,
                     ):
-                        # Detect publisher restart via epoch generation check
-                        if not self.shm_reader.check_epoch_valid():
+                        item_type = item.get("type")
+                        if item_type == "PUBLISHER_DEAD":
+                            logger.warning("[client] Publisher dead detected in SHM stream; breaking for fallback")
+                            try:
+                                self.shm_reader.close()
+                            except Exception:
+                                pass
+                            self.shm_reader = None
+                            break
+
+                        if item_type == "EPOCH_CHANGE" or not self.shm_reader.check_epoch_valid():
                             # Publisher restarted! Re-attach cleanly without crashing
                             try:
                                 self.shm_reader.close()
@@ -776,7 +788,15 @@ class MDRAPClient:
 
             if not self.shm_reader:
                 # Fallback to TCP if SHM degraded
-                self.connect()
+                if self.transport == "shm":
+                    return
+                try:
+                    self.connect()
+                except Exception:
+                    return
+
+        if not self.sock:
+            return
 
         # If streaming via Binary Wire Protocol
         if self.use_binary:

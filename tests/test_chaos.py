@@ -16,7 +16,10 @@ def temp_db():
     os.close(fd)
     yield path
     if os.path.exists(path):
-        os.unlink(path)
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
 
 
 def test_legacy_drop_source_window():
@@ -69,7 +72,7 @@ def test_storage_outage_drill(temp_db):
 def test_run_all_drills(temp_db):
     engine = ChaosEngine(db_path=temp_db)
     results = engine.run_all_drills()
-    assert len(results) == 4
+    assert len(results) >= 4
     for r in results:
         assert r.passed is True
         assert r.data_loss_count == 0

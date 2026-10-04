@@ -340,11 +340,14 @@ class BinaryStreamParser:
             payload_bytes = bytes(self._buf[HEADER_STRUCT.size : total_frame_len])
             del self._buf[:total_frame_len]
 
-            if msg_type == MSG_TYPE_TICK:
-                events.append(unpack_tick_payload(payload_bytes))
-            elif msg_type == MSG_TYPE_TICK_V2:
-                events.append(unpack_tick_payload_v2(payload_bytes))
-            elif msg_type == MSG_TYPE_DEPTH:
-                events.append(unpack_depth_payload(payload_bytes))
+            try:
+                if msg_type == MSG_TYPE_TICK:
+                    events.append(unpack_tick_payload(payload_bytes))
+                elif msg_type == MSG_TYPE_TICK_V2:
+                    events.append(unpack_tick_payload_v2(payload_bytes))
+                elif msg_type == MSG_TYPE_DEPTH:
+                    events.append(unpack_depth_payload(payload_bytes))
+            except (struct.error, ValueError, UnicodeDecodeError):
+                pass
 
         return events

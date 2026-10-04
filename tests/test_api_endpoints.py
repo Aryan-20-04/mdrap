@@ -68,7 +68,7 @@ def test_health_endpoint(api_env):
     assert r.status_code == 200
     data = r.json()
     assert data["status"] == "healthy"
-    assert data["version"] in ("2.2.0", "2.3.0", "2.4.0", "2.4.1", "2.4.2")
+    assert data["version"] in ("2.2.0", "2.3.0", "2.4.0", "2.4.1", "2.4.2", "2.5.0", "2.6.0")
     assert "uptime_seconds" in data
     assert "db" in data
     assert "watchdog" in data

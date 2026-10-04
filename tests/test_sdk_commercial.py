@@ -62,6 +62,7 @@ def live_api_server():
     )
     store.write_canonical_batch([ev])
     store.commit()
+    store.append_audit("SYSTEM", "ADMIN", "SDK_INIT", "SDK Commercial Test Initialization")
 
     state = AppState(db_path=db_path, store=store, security_manager=sec)
     app = create_app(state=state)
@@ -106,7 +107,7 @@ def test_sdk_health_and_feeds(live_api_server):
         # Health check
         h = client.health()
         assert h["status"] == "healthy"
-        assert h["version"] in ("2.2.0", "2.3.0", "2.4.0", "2.4.1", "2.4.2")
+        assert h["version"] in ("2.2.0", "2.3.0", "2.4.0", "2.4.1", "2.4.2", "2.5.0", "2.6.0")
         assert "uptime_seconds" in h
 
         # List feeds

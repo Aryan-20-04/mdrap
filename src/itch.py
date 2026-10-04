@@ -125,208 +125,211 @@ class ITCHParser:
     @staticmethod
     def parse_payload(msg_type_byte: bytes, body: bytes) -> ITCHMessage | None:
         """Parse the payload of an ITCH message (excluding the type byte)."""
-        if msg_type_byte == MSG_ADD_ORDER:
-            # A: locate(H), tracking(H), ts(6s), order_ref(Q), buy_sell(c), shares(I), stock(8s), price(I)
-            loc, trk, ts_b, o_ref, side, shs, stock, px = STRUCT_A.unpack(body)
-            return ITCHMessage(
-                msg_type="A",
-                locate=loc,
-                tracking=trk,
-                timestamp_ns=_decode_ts6(ts_b),
-                stock=stock.decode("ascii").strip(),
-                order_ref=o_ref,
-                side=side.decode("ascii"),
-                shares=shs,
-                price=px / PRICE_FACTOR_ITCH,
-            )
+        try:
+            if msg_type_byte == MSG_ADD_ORDER:
+                # A: locate(H), tracking(H), ts(6s), order_ref(Q), buy_sell(c), shares(I), stock(8s), price(I)
+                loc, trk, ts_b, o_ref, side, shs, stock, px = STRUCT_A.unpack(body)
+                return ITCHMessage(
+                    msg_type="A",
+                    locate=loc,
+                    tracking=trk,
+                    timestamp_ns=_decode_ts6(ts_b),
+                    stock=stock.decode("ascii", errors="replace").strip(),
+                    order_ref=o_ref,
+                    side=side.decode("ascii", errors="replace"),
+                    shares=shs,
+                    price=px / PRICE_FACTOR_ITCH,
+                )
 
-        elif msg_type_byte == MSG_ORDER_EXECUTED:
-            # E: locate(H), tracking(H), ts(6s), order_ref(Q), exec_shares(I), match_num(Q)
-            loc, trk, ts_b, o_ref, shs, match_num = STRUCT_E.unpack(body)
-            return ITCHMessage(
-                msg_type="E",
-                locate=loc,
-                tracking=trk,
-                timestamp_ns=_decode_ts6(ts_b),
-                order_ref=o_ref,
-                shares=shs,
-                match_number=match_num,
-            )
+            elif msg_type_byte == MSG_ORDER_EXECUTED:
+                # E: locate(H), tracking(H), ts(6s), order_ref(Q), exec_shares(I), match_num(Q)
+                loc, trk, ts_b, o_ref, shs, match_num = STRUCT_E.unpack(body)
+                return ITCHMessage(
+                    msg_type="E",
+                    locate=loc,
+                    tracking=trk,
+                    timestamp_ns=_decode_ts6(ts_b),
+                    order_ref=o_ref,
+                    shares=shs,
+                    match_number=match_num,
+                )
 
-        elif msg_type_byte == MSG_ORDER_CANCEL:
-            # X: locate(H), tracking(H), ts(6s), order_ref(Q), cancel_shares(I)
-            loc, trk, ts_b, o_ref, shs = STRUCT_X.unpack(body)
-            return ITCHMessage(
-                msg_type="X",
-                locate=loc,
-                tracking=trk,
-                timestamp_ns=_decode_ts6(ts_b),
-                order_ref=o_ref,
-                shares=shs,
-            )
+            elif msg_type_byte == MSG_ORDER_CANCEL:
+                # X: locate(H), tracking(H), ts(6s), order_ref(Q), cancel_shares(I)
+                loc, trk, ts_b, o_ref, shs = STRUCT_X.unpack(body)
+                return ITCHMessage(
+                    msg_type="X",
+                    locate=loc,
+                    tracking=trk,
+                    timestamp_ns=_decode_ts6(ts_b),
+                    order_ref=o_ref,
+                    shares=shs,
+                )
 
-        elif msg_type_byte == MSG_ORDER_DELETE:
-            # D: locate(H), tracking(H), ts(6s), order_ref(Q)
-            loc, trk, ts_b, o_ref = STRUCT_D.unpack(body)
-            return ITCHMessage(
-                msg_type="D",
-                locate=loc,
-                tracking=trk,
-                timestamp_ns=_decode_ts6(ts_b),
-                order_ref=o_ref,
-            )
+            elif msg_type_byte == MSG_ORDER_DELETE:
+                # D: locate(H), tracking(H), ts(6s), order_ref(Q)
+                loc, trk, ts_b, o_ref = STRUCT_D.unpack(body)
+                return ITCHMessage(
+                    msg_type="D",
+                    locate=loc,
+                    tracking=trk,
+                    timestamp_ns=_decode_ts6(ts_b),
+                    order_ref=o_ref,
+                )
 
-        elif msg_type_byte == MSG_ORDER_REPLACE:
-            # U: locate(H), tracking(H), ts(6s), orig_order_ref(Q), new_order_ref(Q), shares(I), price(I)
-            loc, trk, ts_b, orig_ref, new_ref, shs, px = STRUCT_U.unpack(body)
-            return ITCHMessage(
-                msg_type="U",
-                locate=loc,
-                tracking=trk,
-                timestamp_ns=_decode_ts6(ts_b),
-                order_ref=orig_ref,
-                new_order_ref=new_ref,
-                shares=shs,
-                price=px / PRICE_FACTOR_ITCH,
-            )
+            elif msg_type_byte == MSG_ORDER_REPLACE:
+                # U: locate(H), tracking(H), ts(6s), orig_order_ref(Q), new_order_ref(Q), shares(I), price(I)
+                loc, trk, ts_b, orig_ref, new_ref, shs, px = STRUCT_U.unpack(body)
+                return ITCHMessage(
+                    msg_type="U",
+                    locate=loc,
+                    tracking=trk,
+                    timestamp_ns=_decode_ts6(ts_b),
+                    order_ref=orig_ref,
+                    new_order_ref=new_ref,
+                    shares=shs,
+                    price=px / PRICE_FACTOR_ITCH,
+                )
 
-        elif msg_type_byte == MSG_TRADE_NON_CROSS:
-            # P: locate(H), tracking(H), ts(6s), order_ref(Q), buy_sell(c), shares(I), stock(8s), price(I), match_num(Q)
-            loc, trk, ts_b, o_ref, side, shs, stock, px, match_num = STRUCT_P.unpack(
-                body
-            )
-            return ITCHMessage(
-                msg_type="P",
-                locate=loc,
-                tracking=trk,
-                timestamp_ns=_decode_ts6(ts_b),
-                stock=stock.decode("ascii").strip(),
-                order_ref=o_ref,
-                side=side.decode("ascii"),
-                shares=shs,
-                price=px / PRICE_FACTOR_ITCH,
-                match_number=match_num,
-            )
+            elif msg_type_byte == MSG_TRADE_NON_CROSS:
+                # P: locate(H), tracking(H), ts(6s), order_ref(Q), buy_sell(c), shares(I), stock(8s), price(I), match_num(Q)
+                loc, trk, ts_b, o_ref, side, shs, stock, px, match_num = STRUCT_P.unpack(
+                    body
+                )
+                return ITCHMessage(
+                    msg_type="P",
+                    locate=loc,
+                    tracking=trk,
+                    timestamp_ns=_decode_ts6(ts_b),
+                    stock=stock.decode("ascii", errors="replace").strip(),
+                    order_ref=o_ref,
+                    side=side.decode("ascii", errors="replace"),
+                    shares=shs,
+                    price=px / PRICE_FACTOR_ITCH,
+                    match_number=match_num,
+                )
 
-        elif msg_type_byte == MSG_ADD_ORDER_MPID:
-            # F: locate(H), tracking(H), ts(6s), order_ref(Q), buy_sell(c), shares(I), stock(8s), price(I), mpid(4s)
-            loc, trk, ts_b, o_ref, side, shs, stock, px, mpid = STRUCT_F.unpack(body)
-            return ITCHMessage(
-                msg_type="F",
-                locate=loc,
-                tracking=trk,
-                timestamp_ns=_decode_ts6(ts_b),
-                stock=stock.decode("ascii").strip(),
-                order_ref=o_ref,
-                side=side.decode("ascii"),
-                shares=shs,
-                price=px / PRICE_FACTOR_ITCH,
-                mpid=mpid.decode("ascii").strip(),
-            )
+            elif msg_type_byte == MSG_ADD_ORDER_MPID:
+                # F: locate(H), tracking(H), ts(6s), order_ref(Q), buy_sell(c), shares(I), stock(8s), price(I), mpid(4s)
+                loc, trk, ts_b, o_ref, side, shs, stock, px, mpid = STRUCT_F.unpack(body)
+                return ITCHMessage(
+                    msg_type="F",
+                    locate=loc,
+                    tracking=trk,
+                    timestamp_ns=_decode_ts6(ts_b),
+                    stock=stock.decode("ascii", errors="replace").strip(),
+                    order_ref=o_ref,
+                    side=side.decode("ascii", errors="replace"),
+                    shares=shs,
+                    price=px / PRICE_FACTOR_ITCH,
+                    mpid=mpid.decode("ascii", errors="replace").strip(),
+                )
 
-        elif msg_type_byte == MSG_ORDER_EXECUTED_PRICE:
-            # C: locate(H), tracking(H), ts(6s), order_ref(Q), exec_shares(I), match_num(Q), printable(c), price(I)
-            loc, trk, ts_b, o_ref, shs, match_num, printable, px = STRUCT_C.unpack(body)
-            return ITCHMessage(
-                msg_type="C",
-                locate=loc,
-                tracking=trk,
-                timestamp_ns=_decode_ts6(ts_b),
-                order_ref=o_ref,
-                shares=shs,
-                match_number=match_num,
-                price=px / PRICE_FACTOR_ITCH,
-            )
+            elif msg_type_byte == MSG_ORDER_EXECUTED_PRICE:
+                # C: locate(H), tracking(H), ts(6s), order_ref(Q), exec_shares(I), match_num(Q), printable(c), price(I)
+                loc, trk, ts_b, o_ref, shs, match_num, printable, px = STRUCT_C.unpack(body)
+                return ITCHMessage(
+                    msg_type="C",
+                    locate=loc,
+                    tracking=trk,
+                    timestamp_ns=_decode_ts6(ts_b),
+                    order_ref=o_ref,
+                    shares=shs,
+                    match_number=match_num,
+                    price=px / PRICE_FACTOR_ITCH,
+                )
 
-        elif msg_type_byte == MSG_TRADE_CROSS:
-            # Q: locate(H), tracking(H), ts(6s), shares(Q), stock(8s), cross_price(I), match_num(Q), cross_type(c)
-            loc, trk, ts_b, shs, stock, px, match_num, c_type = STRUCT_Q.unpack(body)
-            return ITCHMessage(
-                msg_type="Q",
-                locate=loc,
-                tracking=trk,
-                timestamp_ns=_decode_ts6(ts_b),
-                stock=stock.decode("ascii").strip(),
-                shares=shs,
-                price=px / PRICE_FACTOR_ITCH,
-                match_number=match_num,
-                details={"cross_type": c_type.decode("ascii")},
-            )
+            elif msg_type_byte == MSG_TRADE_CROSS:
+                # Q: locate(H), tracking(H), ts(6s), shares(Q), stock(8s), cross_price(I), match_num(Q), cross_type(c)
+                loc, trk, ts_b, shs, stock, px, match_num, c_type = STRUCT_Q.unpack(body)
+                return ITCHMessage(
+                    msg_type="Q",
+                    locate=loc,
+                    tracking=trk,
+                    timestamp_ns=_decode_ts6(ts_b),
+                    stock=stock.decode("ascii", errors="replace").strip(),
+                    shares=shs,
+                    price=px / PRICE_FACTOR_ITCH,
+                    match_number=match_num,
+                    details={"cross_type": c_type.decode("ascii", errors="replace")},
+                )
 
-        elif msg_type_byte == MSG_SYSTEM_EVENT:
-            loc, trk, ts_b, code = STRUCT_S.unpack(body)
-            return ITCHMessage(
-                msg_type="S",
-                locate=loc,
-                tracking=trk,
-                timestamp_ns=_decode_ts6(ts_b),
-                event_code=code.decode("ascii"),
-            )
+            elif msg_type_byte == MSG_SYSTEM_EVENT:
+                loc, trk, ts_b, code = STRUCT_S.unpack(body)
+                return ITCHMessage(
+                    msg_type="S",
+                    locate=loc,
+                    tracking=trk,
+                    timestamp_ns=_decode_ts6(ts_b),
+                    event_code=code.decode("ascii", errors="replace"),
+                )
 
-        elif msg_type_byte == MSG_STOCK_DIRECTORY:
-            loc, trk, ts_b, stock, *_ = STRUCT_R.unpack(body)
-            return ITCHMessage(
-                msg_type="R",
-                locate=loc,
-                tracking=trk,
-                timestamp_ns=_decode_ts6(ts_b),
-                stock=stock.decode("ascii").strip(),
-            )
+            elif msg_type_byte == MSG_STOCK_DIRECTORY:
+                loc, trk, ts_b, stock, *_ = STRUCT_R.unpack(body)
+                return ITCHMessage(
+                    msg_type="R",
+                    locate=loc,
+                    tracking=trk,
+                    timestamp_ns=_decode_ts6(ts_b),
+                    stock=stock.decode("ascii", errors="replace").strip(),
+                )
 
-        elif msg_type_byte == MSG_STOCK_TRADING_ACTION:
-            loc, trk, ts_b, stock, state, _, reason = STRUCT_H.unpack(body)
-            return ITCHMessage(
-                msg_type="H",
-                locate=loc,
-                tracking=trk,
-                timestamp_ns=_decode_ts6(ts_b),
-                stock=stock.decode("ascii").strip(),
-                details={
-                    "state": state.decode("ascii"),
-                    "reason": reason.decode("ascii").strip(),
-                },
-            )
+            elif msg_type_byte == MSG_STOCK_TRADING_ACTION:
+                loc, trk, ts_b, stock, state, _, reason = STRUCT_H.unpack(body)
+                return ITCHMessage(
+                    msg_type="H",
+                    locate=loc,
+                    tracking=trk,
+                    timestamp_ns=_decode_ts6(ts_b),
+                    stock=stock.decode("ascii", errors="replace").strip(),
+                    details={
+                        "state": state.decode("ascii", errors="replace"),
+                        "reason": reason.decode("ascii", errors="replace").strip(),
+                    },
+                )
 
-        elif msg_type_byte == MSG_BROKEN_TRADE:
-            loc, trk, ts_b, match_num = STRUCT_B.unpack(body)
-            return ITCHMessage(
-                msg_type="B",
-                locate=loc,
-                tracking=trk,
-                timestamp_ns=_decode_ts6(ts_b),
-                match_number=match_num,
-            )
+            elif msg_type_byte == MSG_BROKEN_TRADE:
+                loc, trk, ts_b, match_num = STRUCT_B.unpack(body)
+                return ITCHMessage(
+                    msg_type="B",
+                    locate=loc,
+                    tracking=trk,
+                    timestamp_ns=_decode_ts6(ts_b),
+                    match_number=match_num,
+                )
 
-        elif msg_type_byte == MSG_NOII:
-            (
-                loc,
-                trk,
-                ts_b,
-                paired,
-                imb,
-                imb_dir,
-                stock,
-                far_px,
-                near_px,
-                ref_px,
-                c_type,
-                var_ind,
-            ) = STRUCT_I.unpack(body)
-            return ITCHMessage(
-                msg_type="I",
-                locate=loc,
-                tracking=trk,
-                timestamp_ns=_decode_ts6(ts_b),
-                stock=stock.decode("ascii").strip(),
-                shares=paired,
-                price=ref_px / PRICE_FACTOR_ITCH,
-                details={
-                    "imbalance_shares": imb,
-                    "imbalance_direction": imb_dir.decode("ascii"),
-                    "far_price": far_px / PRICE_FACTOR_ITCH,
-                    "near_price": near_px / PRICE_FACTOR_ITCH,
-                },
-            )
+            elif msg_type_byte == MSG_NOII:
+                (
+                    loc,
+                    trk,
+                    ts_b,
+                    paired,
+                    imb,
+                    imb_dir,
+                    stock,
+                    far_px,
+                    near_px,
+                    ref_px,
+                    c_type,
+                    var_ind,
+                ) = STRUCT_I.unpack(body)
+                return ITCHMessage(
+                    msg_type="I",
+                    locate=loc,
+                    tracking=trk,
+                    timestamp_ns=_decode_ts6(ts_b),
+                    stock=stock.decode("ascii", errors="replace").strip(),
+                    shares=paired,
+                    price=ref_px / PRICE_FACTOR_ITCH,
+                    details={
+                        "imbalance_shares": imb,
+                        "imbalance_direction": imb_dir.decode("ascii", errors="replace"),
+                        "far_price": far_px / PRICE_FACTOR_ITCH,
+                        "near_price": near_px / PRICE_FACTOR_ITCH,
+                    },
+                )
+        except (struct.error, ValueError, UnicodeDecodeError):
+            return None
 
         return None
 
