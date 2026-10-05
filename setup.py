@@ -1,7 +1,7 @@
 import os
 import glob
 import sys
-from setuptools import setup, find_packages
+from setuptools import setup, find_packages, Extension
 from setuptools.command.build_py import build_py
 from setuptools.command.develop import develop
 
@@ -82,13 +82,23 @@ py_modules = list(
     )
 )
 
+ext_modules = [
+    Extension(
+        "_fastpath_c",
+        sources=["src/_fastpath_c.c"],
+        include_dirs=["src"],
+        optional=True,
+    )
+]
+
 setup(
     name="mdrap",
-    version="2.4.1",
+    version="3.0.0",
     description="Market Data Reliability & Acceleration Platform",
     package_dir={"": "src"},
     packages=find_packages(where="src"),
     py_modules=py_modules,
+    ext_modules=ext_modules,
     package_data={
         "": [
             "fastpath.c",

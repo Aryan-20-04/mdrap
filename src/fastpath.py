@@ -218,7 +218,7 @@ def _load_native_lib():
             "fastpath.so",
         ]
     else:
-        candidates = ["_fastpath_native.so", "fastpath.so"]
+        candidates = ["_fastpath_native.so", "fastpath.so", "libfastpath.so"]
 
     dll_path = None
     for name in candidates:
@@ -1726,6 +1726,26 @@ def native_shm_read_slot(buf_ptr, slot_count: int, target_seq: int) -> dict | No
         a_px = slot3.ask if (slot3.present & 0x08) else None
         b_sz = slot3.bid_sz if (slot3.present & 0x10) else None
         a_sz = slot3.ask_sz if (slot3.present & 0x20) else None
+        if slot3.event_type == 2:  # DEPTH
+            return {
+                "type": "DEPTH",
+                "seq": slot3.commit_seq,
+                "sym": sym,
+                "micro_price": px,
+                "ofi": sz,
+                "bid": b_px,
+                "ask": a_px,
+                "bid_size": b_sz,
+                "ask_size": a_sz,
+                "bids": [[b_px, b_sz, "AGG"]] if b_px is not None else [],
+                "asks": [[a_px, a_sz, "AGG"]] if a_px is not None else [],
+                "is_crossed": bool(slot3.is_crossed),
+                "status": status_map.get(slot3.status, "UNKNOWN"),
+                "exchange_ts": slot3.exchange_ts,
+                "ingest_ts": slot3.ingest_ts,
+                "broadcast_ts": slot3.broadcast_ts,
+                "engine_us": slot3.engine_us,
+            }
         return {
             "type": "TICK",
             "seq": slot3.commit_seq,

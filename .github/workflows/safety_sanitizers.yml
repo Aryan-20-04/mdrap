@@ -36,12 +36,15 @@ jobs:
           mkdir -p build
           if [ "${{ matrix.sanitizer }}" = "address" ]; then
             gcc -fsanitize=address -O1 -g -fno-omit-frame-pointer -shared -fPIC -o src/libfastpath.so src/fastpath.c -lm
+            cp src/libfastpath.so src/_fastpath_native.so
             gcc -fsanitize=address -O1 -g -fno-omit-frame-pointer -o build/mdrap-core src/mdrap_core.c -lm
           elif [ "${{ matrix.sanitizer }}" = "undefined" ]; then
             gcc -fsanitize=undefined -O1 -g -shared -fPIC -o src/libfastpath.so src/fastpath.c -lm
+            cp src/libfastpath.so src/_fastpath_native.so
             gcc -fsanitize=undefined -O1 -g -o build/mdrap-core src/mdrap_core.c -lm
           elif [ "${{ matrix.sanitizer }}" = "thread" ]; then
             gcc -fsanitize=thread -O1 -g -shared -fPIC -o src/libfastpath.so src/fastpath.c -lm
+            cp src/libfastpath.so src/_fastpath_native.so
             gcc -fsanitize=thread -O1 -g -o build/mdrap-core src/mdrap_core.c -lm
           fi
 
