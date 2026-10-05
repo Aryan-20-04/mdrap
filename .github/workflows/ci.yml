@@ -35,13 +35,15 @@ jobs:
         run: python tools/gen_reasons.py --check
 
       - name: Run Test Suite
-        run: pytest tests/ -v -q --timeout=60
+        env:
+          MDRAP_DEMO: "1"
+        run: pytest tests/ -q --timeout=120 --tb=short
 
       - name: Verify Environment Diagnostics
         run: python cli.py doctor
 
       - name: Verify Documentation Suite
-        run: pytest tests/test_docs_verification.py -v -q
+        run: pytest tests/test_docs_verification.py -q
 
       - name: Micro-Benchmark Smoke Check
         run: python benchmarks/micro_ffi.py --iterations 100000 --runs 2

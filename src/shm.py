@@ -583,7 +583,32 @@ class SHMReader:
         except Exception:
             return False
 
-    def check_epoch_valid(self, force_probe: bool = False) -> bool:
+    def _reattach(self) -> bool:
+        """Re-attach to named shared memory segment following a publisher restart or epoch change."""
+        try:
+            if self.shm:
+                try:
+                    self.shm.close()
+                except Exception:
+                    pass
+            try:
+                self.shm = SharedMemory(name=self.name, create=False, track=False)
+            except TypeError:
+                self.shm = SharedMemory(name=self.name, create=False)
+                try:
+                    from multiprocessing import resource_tracker
+
+                    resource_tracker.unregister(self.shm._name, "shared_memory")
+                except Exception:
+                    pass
+            self.epoch_id = struct.unpack_from("<Q", self.shm.buf, 16)[0]
+            self._last_epoch_probe = time.time()
+            return True
+        except Exception as exc:
+            logger.debug("[shm] Failed to reattach to %s: %s", self.name, exc)
+            return False
+
+    def check_epoch_valid(self, force_probe: bool = True) -> bool:
         """
         Verify that the writer epoch has not changed (i.e. daemon has not restarted).
         On POSIX, an unlinked segment remains mapped by old readers; probing the named
@@ -597,7 +622,7 @@ class SHMReader:
             if current_epoch != self.epoch_id:
                 return False
             now = time.time()
-            if force_probe or (now - self._last_epoch_probe) >= 0.1:
+            if force_probe or (now - self._last_epoch_probe) >= 0.05:
                 self._last_epoch_probe = now
                 active_epoch = _probe_active_epoch(self.name)
                 if active_epoch is None or active_epoch != self.epoch_id:
@@ -770,8 +795,12 @@ class SHMReader:
 
         if not self.check_epoch_valid():
             try:
-                new_epoch = struct.unpack_from("<Q", self.shm.buf, 16)[0]
-                self.epoch_id = new_epoch
+                active_epoch = _probe_active_epoch(self.name)
+                if active_epoch is not None and active_epoch != self.epoch_id:
+                    self._reattach()
+                else:
+                    new_epoch = struct.unpack_from("<Q", self.shm.buf, 16)[0]
+                    self.epoch_id = new_epoch
             except Exception as exc:
                 logger.debug("[shm] Error reading new epoch: %s", exc)
             curr_seq = 0
@@ -823,10 +852,14 @@ class SHMReader:
                     }
                     return
 
-                if not self.check_epoch_valid():
+                if not self.check_epoch_valid(force_probe=False):
                     try:
-                        new_epoch = struct.unpack_from("<Q", self.shm.buf, 16)[0]
-                        self.epoch_id = new_epoch
+                        active_epoch = _probe_active_epoch(self.name)
+                        if active_epoch is not None and active_epoch != self.epoch_id:
+                            self._reattach()
+                        else:
+                            new_epoch = struct.unpack_from("<Q", self.shm.buf, 16)[0]
+                            self.epoch_id = new_epoch
                     except Exception as exc:
                         logger.debug("[shm] Error updating epoch during spin: %s", exc)
                     curr_seq = 0
