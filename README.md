@@ -1,9 +1,9 @@
 # Market Data Reliability & Acceleration Platform (MDRAP)
 ### Open-Source Self-Hosted Reliability, Reconciliation & Audit Infrastructure for Real-Time Financial Market Data
 
-[![Version](https://img.shields.io/badge/version-2.4.2-blue.svg)](pyproject.toml)
+[![Version](https://img.shields.io/badge/version-3.0.0-blue.svg)](pyproject.toml)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue.svg)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-881%20passing%20(100%25)-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-973%20passing%20(100%25)-brightgreen.svg)](tests/)
 [![Hot Path Latency](https://img.shields.io/badge/hot--path-47.0%20ns%20native%20%7C%201.90%20%C2%B5s%20python%20%7C%202.50%20%C2%B5s%20persist-orange.svg)](docs/benchmark-methodology.md)
 [![Architecture](https://img.shields.io/badge/architecture-Layer%201%20Native%20%7C%20Layer%202%20C--API%20%7C%20Layer%203%20Decoupled-purple.svg)](docs/architecture.md)
 [![Manual](https://img.shields.io/badge/manual-Operator%20%26%20User%20Guide-teal.svg)](docs/USER_GUIDE.md)

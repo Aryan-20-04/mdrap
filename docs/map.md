@@ -1,12 +1,12 @@
 # MDRAP Architecture Map
 
-This document serves as the canonical architectural map and reference for the module layout of the Market Data Reliability & Acceleration Platform (MDRAP). MDRAP employs a flat `src/` layout consisting of 75 Python modules (alongside native C acceleration sources and definition files). All Python modules import directly from one another (for example, `from models import CanonicalEvent` or `from storage import Store`) without nested namespace packages or heavyweight ORM/web frameworks. The platform adheres to strict data segregation across Raw, Canonical, Quarantined, and Derived analytics tiers, enforces an immutable quarantine-never-drop policy, prioritizes quality status evaluation (`INVALID` > `SUSPICIOUS` > `VALID`), and relies on deterministic monotonic identifiers generated via `itertools.count()`.
+This document serves as the canonical architectural map and reference for the module layout of the Market Data Reliability & Acceleration Platform (MDRAP). MDRAP employs a flat `src/` layout consisting of 82 Python modules (alongside native C acceleration sources and definition files). All Python modules import directly from one another (for example, `from models import CanonicalEvent` or `from storage import Store`) without nested namespace packages or heavyweight ORM/web frameworks. The platform adheres to strict data segregation across Raw, Canonical, Quarantined, and Derived analytics tiers, enforces an immutable quarantine-never-drop policy, prioritizes quality status evaluation (`INVALID` > `SUSPICIOUS` > `VALID`), and relies on deterministic monotonic identifiers generated via `itertools.count()`.
 
 ---
 
 ## Module Layers
 
-The 75 Python modules in `src/` are structured across 12 distinct functional layers, categorized from low-level data ingest and canonical pipeline processing to analytical engines, delivery fabrics, and client interfaces.
+The 82 Python modules in `src/` are structured across 12 distinct functional layers, categorized from low-level data ingest and canonical pipeline processing to analytical engines, delivery fabrics, and client interfaces.
 
 ### Core Pipeline (stable)
 
@@ -29,6 +29,7 @@ The 75 Python modules in `src/` are structured across 12 distinct functional lay
 | Module | Purpose | Key Exports | Stability |
 |---|---|---|---|
 | [`storage.py`](../src/storage.py) | SQLite persistence engine | `Store` | `stable` |
+| [`historical.py`](../src/historical.py) | Columnar Parquet & DuckDB storage | `HistoricalStorageEngine`, `PartitionWriter` | `stable` |
 | [`columnar.py`](../src/columnar.py) | DuckDB analytical queries | `ColumnarStore` | `beta` |
 | [`archive.py`](../src/archive.py) | Raw event archival | `RawArchive`, `replay` | `stable` |
 | [`bardb.py`](../src/bardb.py) | Bar/candle database | `BarDatabase` | `beta` |
@@ -42,6 +43,8 @@ The 75 Python modules in `src/` are structured across 12 distinct functional lay
 | [`adapters/__init__.py`](../src/adapters/__init__.py) | FeedAdapter Protocol + entry_point discovery | `FeedAdapter`, discovery functions | `stable` |
 | [`adapters/template.py`](../src/adapters/template.py) | Template adapter implementation | Example adapter implementation | `stable` |
 | [`feed_handler.py`](../src/feed_handler.py) | Streaming feed supervisor | `StreamingFeedSupervisor` | `stable` |
+| [`recovery.py`](../src/recovery.py) | Feed recovery state machine & gap stitching | `FeedRecoveryEngine`, `RecoveryState` | `stable` |
+| [`pcap.py`](../src/pcap.py) | PCAP 2.4 & MoldUDP64 packet dissector | `PCAPReader`, `MoldUDP64Dissector` | `stable` |
 | [`simulator.py`](../src/simulator.py) | Synthetic feed simulator | `FeedSimulator`, `SimulatorConfig` | `stable` |
 | [`ws_feed.py`](../src/ws_feed.py) | WebSocket feed manager for crypto venues | `WebSocketFeedManager` | `beta` |
 | [`polygon_feed.py`](../src/polygon_feed.py) | Polygon.io feed manager | `PolygonFeedManager` | `beta` |
@@ -85,6 +88,7 @@ The 75 Python modules in `src/` are structured across 12 distinct functional lay
 | [`backtest.py`](../src/backtest.py) | Backtesting engine | `BacktestEngine` | `beta` |
 | [`tca.py`](../src/tca.py) | Transaction cost analysis | `TCAEngine`, `TCAMetrics`, `ExecutionRecord` | `experimental` ⚠️ |
 | [`portfolio.py`](../src/portfolio.py) | Portfolio tracking | `PortfolioTracker` | `beta` |
+| [`replay.py`](../src/replay.py) | Deterministic historical replay engine | `HistoricalReplayEngine`, `ReplayConfig` | `stable` |
 
 > ⚠️ **`tca.py` compliance notice:** this module implements metrics shaped around SEC Rule 605/606 and MiFID II RTS 27/28 concepts (execution quality, price improvement, venue routing statistics). It has **not been reviewed by a securities compliance professional or counsel**. If you're building a real best-execution or regulatory reporting product on top of it, get that review before relying on its output for any compliance, audit, or regulatory-filing purpose — treat it as a starting implementation of the *shape* of these metrics, not a validated compliance engine.
 
@@ -147,6 +151,7 @@ The 75 Python modules in `src/` are structured across 12 distinct functional lay
 | [`itch.py`](../src/itch.py) | ITCH 5.0 parser | `ITCHParser`, `ITCHOrderBookTracker` | `beta` |
 | [`fix_engine.py`](../src/fix_engine.py) | FIX protocol engine | `FIXSession`, `FIXEngineServer` | `experimental` |
 | [`mbo.py`](../src/mbo.py) | Market-by-Order book | `OrderBookMBO` | `beta` |
+| [`failover.py`](../src/failover.py) | Active-passive failover & DR clustering | `ClusterManager`, `FailoverEngine`, `ClusterNode` | `stable` |
 
 ---
 
