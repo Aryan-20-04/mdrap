@@ -1270,6 +1270,25 @@ def cmd_keys(args):
                 f"[bold red]Error:[/bold red] API token/prefix not found: {token}"
             )
 
+    elif action == "rotate":
+        token = getattr(args, "token", "")
+        grace = getattr(args, "grace", 3600.0)
+        if not token:
+            console.print("[bold red]Error:[/bold red] API token must be specified for rotation (use --token <key>).")
+            store.close()
+            return
+        new_ent, old_ent = sec.rotate_api_key(token, grace_period_s=grace)
+        store.commit()
+        console.print(
+            Panel.fit(
+                f"[bold green]✔ API Key Rotated Successfully![/bold green]\n\n"
+                f"Client ID: [bold cyan]{new_ent.client_id}[/bold cyan]\n"
+                f"New Active Token: [bold green]{new_ent.token}[/bold green]\n"
+                f"Old Token Expires At: [yellow]{old_ent.expires_at}[/yellow] (grace: {grace}s)",
+                border_style="green",
+            )
+        )
+
     store.close()
 
 
@@ -1332,6 +1351,22 @@ def cmd_audit(args):
                     border_style="red",
                 )
             )
+        store.close()
+        return
+
+    if getattr(args, "anchor_batch", False):
+        batch_sz = getattr(args, "batch_size", 100) or 100
+        root = sec.anchor_audit_batch(batch_size=batch_sz)
+        store.commit()
+        console.print(
+            Panel.fit(
+                f"[bold green]✔ MERKLE BATCH ANCHOR GENERATED[/bold green]\n\n"
+                f"Batch Size: [bold cyan]{batch_sz}[/bold cyan]\n"
+                f"Root Hash: [bold green]{root}[/bold green]\n"
+                f"Anchored in persistent audit log.",
+                border_style="green",
+            )
+        )
         store.close()
         return
 
@@ -1697,9 +1732,57 @@ def cmd_query(args):
 
 
 def cmd_replay(args):
-    """Replay archived raw events through the pipeline."""
-    from archive import replay as archive_replay
+    """Replay market events deterministically through pipeline or pacer."""
+    from replay import HistoricalReplayEngine, ReplayStats
     from analytics import MarketAnalytics
+
+    speed = getattr(args, "speed", None)
+    from_sqlite = getattr(args, "from_sqlite", None)
+    from_journal = getattr(args, "from_journal", None)
+    symbol = getattr(args, "symbol", None)
+    limit = getattr(args, "limit", None)
+
+    engine = HistoricalReplayEngine(speed_factor=speed, sync_virtual_clock=True)
+    events = []
+
+    if from_sqlite:
+        events = engine.load_from_sqlite(from_sqlite, symbol=symbol, limit=limit)
+    elif from_journal:
+        events = engine.load_from_journal(from_journal, limit=limit)
+    else:
+        db_path = getattr(args, "db", "data/mdrap.db")
+        if os.path.exists(db_path) and not getattr(args, "date", None) and not getattr(args, "source", None):
+            try:
+                events = engine.load_from_sqlite(db_path, symbol=symbol, limit=limit)
+            except Exception:
+                pass
+
+    if events:
+        console = Console()
+        _ensure_db_dir(getattr(args, "db", "data/mdrap_replay.db"))
+        store = Store(getattr(args, "db", "data/mdrap_replay.db"))
+        analytics = MarketAnalytics()
+        pipeline = Pipeline(store, analytics=analytics)
+
+        stats = engine.replay_to_pipeline(pipeline, events, pacing=(speed is not None))
+        pipeline.finish()
+        store.commit()
+        store.close()
+
+        console.print(
+            Panel.fit(
+                f"[bold green]✔ Deterministic Historical Replay Complete[/bold green]\n\n"
+                f"Events Replayed: [bold cyan]{stats.events_replayed:,}[/bold cyan] / {stats.total_events:,}\n"
+                f"Wall Time: [yellow]{stats.wall_elapsed_s:.3f}s[/yellow] | Virtual Time: [yellow]{stats.virtual_elapsed_s:.3f}s[/yellow]\n"
+                f"Rate: [bold green]{stats.rate_eps:,.1f} eps[/bold green]\n"
+                f"Max Jitter: [dim]{stats.max_jitter_us:.1f}µs[/dim] | Avg Drift: [dim]{stats.avg_drift_us:.1f}µs[/dim]",
+                border_style="green",
+            )
+        )
+        return
+
+    # Fallback to legacy raw archive replay
+    from archive import replay as archive_replay
 
     _ensure_db_dir(args.db)
     store = Store(args.db)
@@ -1720,6 +1803,108 @@ def cmd_replay(args):
     print(f"[replay] Replayed {count:,} events from {args.base_dir}")
     print(json.dumps(pipeline.metrics.summary(), indent=2))
     store.close()
+
+
+def cmd_failover(args):
+    """Active-Passive cluster failover coordinator."""
+    from failover import FailoverNode, NodeState, HeartbeatMessage
+
+    console = Console()
+    action = getattr(args, "action", "status") or "status"
+    node_id = getattr(args, "node_id", "node-local")
+    cluster_id = getattr(args, "cluster", "mdrap-cluster")
+
+    node = FailoverNode(node_id=node_id, cluster_id=cluster_id)
+
+    if action == "status":
+        stats = node.stats()
+        console.print(
+            Panel.fit(
+                f"[bold cyan]Node ID:[/bold cyan] {stats['node_id']}\n"
+                f"[bold cyan]Cluster:[/bold cyan] {stats['cluster_id']}\n"
+                f"[bold yellow]State:[/bold yellow] [bold green]{stats['state']}[/bold green]\n"
+                f"[bold cyan]Epoch / Fencing Token:[/bold cyan] {stats['epoch']}\n"
+                f"[bold cyan]Failovers Count:[/bold cyan] {stats['failover_count']}\n"
+                f"[bold cyan]State Duration:[/bold cyan] {stats['state_duration_s']}s",
+                title="MDRAP High Availability Cluster Node Status",
+                border_style="cyan",
+            )
+        )
+    elif action == "promote":
+        node.promote(reason=getattr(args, "reason", "Operator manual promotion"))
+        console.print(
+            Panel.fit(
+                f"[bold green]✔ Node {node.node_id} successfully promoted to PRIMARY![/bold green]\nNew Epoch: {node.epoch}",
+                border_style="green",
+            )
+        )
+    elif action == "demote":
+        node.demote(reason=getattr(args, "reason", "Operator manual demotion"))
+        console.print(
+            Panel.fit(
+                f"[bold yellow]Node {node.node_id} transitioned to STANDBY.[/bold yellow]",
+                border_style="yellow",
+            )
+        )
+    elif action == "heartbeat":
+        hb = node.send_heartbeat(last_committed_seq=getattr(args, "seq", 0))
+        console.print(json.dumps(hb.to_dict(), indent=2))
+
+
+def cmd_historical(args):
+    """Manage partitioned historical market data store."""
+    from historical import HistoricalPartitioner, HistoricalCatalog, RetentionPolicy
+
+    console = Console()
+    action = getattr(args, "action", "catalog") or "catalog"
+    base_dir = getattr(args, "base_dir", "data/historical")
+
+    if action == "partition":
+        partitioner = HistoricalPartitioner(base_dir=base_dir)
+        db_path = getattr(args, "from_db", "data/mdrap.db")
+        fmt = getattr(args, "format", "auto")
+        sym = getattr(args, "symbol", None)
+        if not os.path.exists(db_path):
+            console.print(f"[bold red]Error: Database '{db_path}' not found.[/bold red]")
+            return
+        res = partitioner.partition_from_sqlite(db_path=db_path, fmt=fmt, symbol=sym)
+        console.print(
+            Panel.fit(
+                f"[bold green]✔ Historical Partitioning Complete[/bold green]\n"
+                f"Rows Partitioned: {res['rows_added']:,}\n"
+                f"Bytes Written: {res['bytes_added']:,} bytes\n"
+                f"Files Created: {len(res['written_files'])}\n"
+                f"Partitions: {len(res['partitions_updated'])}",
+                border_style="green",
+            )
+        )
+    elif action == "query":
+        catalog = HistoricalCatalog(base_dir=base_dir)
+        sym = getattr(args, "symbol", None)
+        limit = getattr(args, "limit", 20)
+        rows = catalog.query_range(symbol=sym, limit=limit)
+        console.print(f"[bold cyan]Found {len(rows)} events in historical catalog for {sym or 'ALL'}:[/bold cyan]")
+        console.print(json.dumps(rows[:5], indent=2))
+        if len(rows) > 5:
+            console.print(f"[dim]... and {len(rows) - 5} more records[/dim]")
+    elif action == "retention":
+        ret = RetentionPolicy(base_dir=base_dir)
+        days = getattr(args, "days", 30)
+        dry = getattr(args, "dry_run", False)
+        summary = ret.apply_retention(max_age_days=days, dry_run=dry)
+        console.print(
+            Panel.fit(
+                f"[bold yellow]Retention Policy Summary ({days} days max age)[/bold yellow]\n"
+                f"Pruned Partitions: {summary['pruned_partitions']}\n"
+                f"Deleted Files: {summary['deleted_files']}\n"
+                f"Reclaimed Bytes: {summary['reclaimed_bytes']:,}\n"
+                f"Dry Run: {summary['dry_run']}",
+                border_style="yellow",
+            )
+        )
+    else:
+        catalog = HistoricalCatalog(base_dir=base_dir)
+        console.print(json.dumps(catalog.manifest, indent=2))
 
 
 def cmd_archive(args):
@@ -6996,7 +7181,7 @@ def build_parser() -> argparse.ArgumentParser:
         "action",
         nargs="?",
         default="list",
-        choices=["list", "create", "revoke"],
+        choices=["list", "create", "revoke", "rotate"],
         help="Action to perform (default: list)",
     )
     p_keys.add_argument(
@@ -7013,8 +7198,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_keys.add_argument(
         "--rate", type=float, default=None, help="Custom rate limit eps"
     )
-    p_keys.add_argument("--token", default="", help="API key token (for revoke)")
+    p_keys.add_argument("--token", default="", help="API key token (for revoke or rotate)")
     p_keys.add_argument("--prefix", default="", help="API key prefix (for revoke)")
+    p_keys.add_argument("--grace", type=float, default=3600.0, help="Rotation grace period in seconds (default: 3600)")
 
     # API & WebSocket Production Server
     p_serve = _sub(
@@ -7062,6 +7248,17 @@ def build_parser() -> argparse.ArgumentParser:
         "--verify-proof",
         metavar="FILE",
         help="Independently verify a standalone JSON audit proof without database access",
+    )
+    p_audit.add_argument(
+        "--anchor-batch",
+        action="store_true",
+        help="Generate and anchor a Merkle root batch over recent audit log entries",
+    )
+    p_audit.add_argument(
+        "--batch-size",
+        type=int,
+        default=100,
+        help="Batch size for Merkle audit root anchoring (default: 100)",
     )
     _add_limit_arg(p_audit, default=20, help_text="Number of audit records to show")
 
@@ -7123,6 +7320,21 @@ def build_parser() -> argparse.ArgumentParser:
     p_replay.add_argument(
         "-s", "--source", default=None, help="Replay only a specific source"
     )
+    p_replay.add_argument(
+        "--speed", type=float, default=None, help="Replay speed factor (1.0=realtime, 10.0=10x, 0=unthrottled)"
+    )
+    p_replay.add_argument(
+        "--symbol", default=None, help="Filter replay by instrument symbol"
+    )
+    p_replay.add_argument(
+        "--limit", type=int, default=None, help="Limit number of replayed events"
+    )
+    p_replay.add_argument(
+        "--from-sqlite", default=None, help="Load replay events from SQLite database path"
+    )
+    p_replay.add_argument(
+        "--from-journal", default=None, help="Load replay events from binary journal (.dbn) path"
+    )
 
     p_archive = _sub(
         "archive", cmd_archive, "Show raw event archive statistics", ["arc"]
@@ -7155,6 +7367,45 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Execute full SQLite VACUUM to reclaim filesystem disk space",
     )
+
+    p_failover = _sub(
+        "failover",
+        cmd_failover,
+        "Active-Passive cluster failover coordinator",
+        ["fo"],
+    )
+    p_failover.add_argument(
+        "action",
+        nargs="?",
+        default="status",
+        choices=["status", "promote", "demote", "heartbeat"],
+        help="Failover command action",
+    )
+    p_failover.add_argument("--node-id", default="node-local", help="Cluster node ID")
+    p_failover.add_argument("--cluster", default="mdrap-cluster", help="Cluster name")
+    p_failover.add_argument("--reason", default="Manual operator request", help="Transition reason")
+    p_failover.add_argument("--seq", type=int, default=0, help="Heartbeat sequence number")
+
+    p_lake = _sub(
+        "lake",
+        cmd_historical,
+        "Manage partitioned historical market data store",
+        ["partitions", "store-hist"],
+    )
+    p_lake.add_argument(
+        "action",
+        nargs="?",
+        default="catalog",
+        choices=["catalog", "partition", "query", "retention"],
+        help="Historical store action",
+    )
+    p_lake.add_argument("--base-dir", default="data/historical", help="Historical base storage directory")
+    p_lake.add_argument("--from-db", default="data/mdrap.db", help="Source SQLite DB for partitioning")
+    p_lake.add_argument("--format", default="auto", choices=["auto", "jsonl.gz", "csv.gz", "parquet"], help="Partition storage format")
+    p_lake.add_argument("--symbol", default=None, help="Filter by symbol")
+    p_lake.add_argument("--limit", type=int, default=20, help="Query row limit")
+    p_lake.add_argument("--days", type=int, default=30, help="Retention max age in days")
+    p_lake.add_argument("--dry-run", action="store_true", help="Retention dry run without deletion")
 
     # V3: Analytics commands
     p_analytics = _sub(
@@ -8429,6 +8680,10 @@ MNEMONIC_MAP = {
     "exit": "exit",
     "quit": "exit",
     "q": "query",
+    "fo": "failover",
+    "failover": "failover",
+    "lake": "lake",
+    "partitions": "lake",
 }
 
 QUICK_ACTIONS = {
@@ -8445,6 +8700,8 @@ QUICK_ACTIONS = {
 }
 
 ALL_CANONICAL_COMMANDS = [
+    "failover",
+    "lake",
     "historical",
     "status",
     "run",

@@ -17,6 +17,7 @@ import hashlib
 import hmac
 import json
 import math
+import ipaddress
 import os
 import re
 import secrets
@@ -24,7 +25,7 @@ import sys
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Sequence, Tuple
 
 from audit_format import audit_bytes_v1, audit_bytes_v2, compute_audit_hash
 
@@ -71,6 +72,8 @@ class ClientEntitlement:
     created_at: float = field(default_factory=time.time)
     expires_at: Optional[float] = None
     is_active: bool = True
+    allowed_cidrs: list[str] = field(default_factory=list)
+    is_rotating: bool = False
 
     def __post_init__(self):
         if self.token and not self.token_hash:
@@ -96,6 +99,8 @@ class ClientEntitlement:
             "created_at": self.created_at,
             "expires_at": self.expires_at,
             "is_active": self.is_active,
+            "allowed_cidrs": list(self.allowed_cidrs),
+            "is_rotating": self.is_rotating,
         }
 
     @classmethod
@@ -114,6 +119,8 @@ class ClientEntitlement:
             if data.get("expires_at") is not None
             else None,
             is_active=bool(data.get("is_active", True)),
+            allowed_cidrs=list(data.get("allowed_cidrs", [])),
+            is_rotating=bool(data.get("is_rotating", False)),
         )
 
 
@@ -125,6 +132,115 @@ class AccessDenied(builtins.PermissionError):
 
 # Backward-compatible alias
 PermissionError = AccessDenied
+
+
+class CIDRFilter:
+    """
+    Validates IPv4 and IPv6 client network addresses against allowed CIDR blocks.
+    Enforces perimeter access control for high-privilege operator and admin roles.
+    """
+
+    def __init__(self, allowed_cidrs: Optional[Iterable[str]] = None):
+        self.networks: list[ipaddress.IPv4Network | ipaddress.IPv6Network] = []
+        if allowed_cidrs:
+            for cidr in allowed_cidrs:
+                cidr_str = str(cidr).strip()
+                if not cidr_str:
+                    continue
+                try:
+                    self.networks.append(ipaddress.ip_network(cidr_str, strict=False))
+                except ValueError:
+                    pass
+
+    def matches(self, ip_str: str) -> bool:
+        """Check if an IP string is within any configured network block."""
+        if not self.networks:
+            return True  # Open if no restrictions specified
+        if not ip_str:
+            return False
+        try:
+            ip_obj = ipaddress.ip_address(str(ip_str).strip())
+        except ValueError:
+            return False
+        return any(ip_obj in net for net in self.networks)
+
+
+class MerkleAuditTree:
+    """
+    Cryptographic Binary Merkle Tree with RFC 6962 Domain Separation.
+    Enables zero-knowledge inclusion proofs and tamper-evident audit batch anchoring.
+    """
+
+    @staticmethod
+    def hash_leaf(data: str) -> str:
+        """Leaf hash with 0x00 domain separator prefix."""
+        return hashlib.sha256(b"\x00" + data.encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def hash_node(left_hex: str, right_hex: str) -> str:
+        """Internal node hash with 0x01 domain separator prefix."""
+        return hashlib.sha256(
+            b"\x01" + bytes.fromhex(left_hex) + bytes.fromhex(right_hex)
+        ).hexdigest()
+
+    @classmethod
+    def compute_root(cls, leaf_data_list: Sequence[str]) -> str:
+        """Compute the Merkle root hash of a sequence of leaf strings."""
+        if not leaf_data_list:
+            return hashlib.sha256(b"").hexdigest()
+
+        current_level = [cls.hash_leaf(x) for x in leaf_data_list]
+        while len(current_level) > 1:
+            next_level = []
+            for i in range(0, len(current_level), 2):
+                if i + 1 < len(current_level):
+                    next_level.append(cls.hash_node(current_level[i], current_level[i + 1]))
+                else:
+                    # Odd single node promoted
+                    next_level.append(current_level[i])
+            current_level = next_level
+        return current_level[0]
+
+    @classmethod
+    def generate_proof(cls, leaf_data_list: Sequence[str], leaf_index: int) -> list[tuple[str, str]]:
+        """
+        Generate an audit inclusion proof for the leaf at leaf_index.
+        Returns a list of tuples: (sibling_hash_hex, 'L' or 'R').
+        """
+        if not (0 <= leaf_index < len(leaf_data_list)):
+            raise IndexError(f"Leaf index out of bounds: {leaf_index}")
+
+        proof: list[tuple[str, str]] = []
+        current_level = [cls.hash_leaf(x) for x in leaf_data_list]
+        idx = leaf_index
+
+        while len(current_level) > 1:
+            next_level = []
+            for i in range(0, len(current_level), 2):
+                if i + 1 < len(current_level):
+                    if i == idx:
+                        proof.append((current_level[i + 1], "R"))
+                    elif i + 1 == idx:
+                        proof.append((current_level[i], "L"))
+                    next_level.append(cls.hash_node(current_level[i], current_level[i + 1]))
+                else:
+                    # Odd single node promoted
+                    next_level.append(current_level[i])
+            idx = idx // 2
+            current_level = next_level
+
+        return proof
+
+    @classmethod
+    def verify_proof(cls, leaf_data: str, proof: list[tuple[str, str]], expected_root: str) -> bool:
+        """Verify that a leaf belongs to the tree represented by expected_root."""
+        curr = cls.hash_leaf(leaf_data)
+        for sibling_hex, position in proof:
+            if position == "R":
+                curr = cls.hash_node(curr, sibling_hex)
+            else:
+                curr = cls.hash_node(sibling_hex, curr)
+        return hmac.compare_digest(curr, expected_root)
 
 
 class TokenBucketRateLimiter:
@@ -467,6 +583,15 @@ class SecurityManager:
             )
 
         self.rate_limiter = TokenBucketRateLimiter(rate=rate_limit)
+        self.role_rate_limits: dict[Role, float] = {
+            Role.VIEWER: 1_000.0,
+            Role.OPERATOR: 10_000.0,
+            Role.ADMIN: 50_000.0,
+        }
+        self._role_rate_limiters: dict[Role, TokenBucketRateLimiter] = {
+            r: TokenBucketRateLimiter(rate=lim, capacity=lim * 2.0)
+            for r, lim in self.role_rate_limits.items()
+        }
         self.sanitizer = InputSanitizer()
         self._verified_count = 0
         self._tampered_count = 0
@@ -856,3 +981,147 @@ class SecurityManager:
             "api_keys_active": sum(1 for k in unique.values() if k.is_active),
             "api_keys_total": len(unique),
         }
+
+    def allow_for_role(
+        self, role: Role | str, actor: str = "default", tokens: float = 1.0
+    ) -> bool:
+        """Enforce role-tiered token bucket rate limits."""
+        r = Role[str(role).upper()] if str(role).upper() in Role.__members__ else Role.VIEWER
+        limiter = self._role_rate_limiters.get(r)
+        if limiter is None:
+            return True
+        allowed = limiter.allow(actor, tokens=tokens)
+        if not allowed:
+            self._rate_limited_count += 1
+        return allowed
+
+    def authenticate_request(
+        self, token: str, client_ip: Optional[str] = None
+    ) -> ClientEntitlement:
+        """
+        Authenticate an API token and enforce client IP network allowlist (CIDR).
+        Raises AccessDenied if token is invalid, expired, or client IP is restricted.
+        """
+        if not token:
+            raise AccessDenied("Authentication failed: Missing API token")
+
+        ent = self.get_entitlement(token, active_only=True)
+        if not ent:
+            self.log_audit(
+                action="AUTH_FAILED",
+                actor="unknown_token",
+                role=Role.VIEWER,
+                details=f"Invalid or expired token from IP {client_ip or 'unknown'}",
+            )
+            raise AccessDenied("Authentication failed: Invalid or expired API token")
+
+        if client_ip and ent.allowed_cidrs:
+            cidr_filter = CIDRFilter(ent.allowed_cidrs)
+            if not cidr_filter.matches(client_ip):
+                self.log_audit(
+                    action="IP_RESTRICTED",
+                    actor=ent.client_id,
+                    role=ent.role,
+                    details=f"IP {client_ip} denied by CIDR allowlist {ent.allowed_cidrs}",
+                )
+                raise AccessDenied(
+                    f"Access denied: Client IP '{client_ip}' is not permitted for client '{ent.client_id}'"
+                )
+
+        return ent
+
+    def rotate_api_key(
+        self,
+        token_or_client_id: str,
+        new_token: Optional[str] = None,
+        grace_period_s: float = 3600.0,
+    ) -> tuple[ClientEntitlement, ClientEntitlement]:
+        """
+        Rotate an active API key with an overlapping grace period for zero downtime.
+        Returns (new_entitlement, old_entitlement).
+        """
+        old_ent: Optional[ClientEntitlement] = None
+        # Try lookup by token or token_hash
+        old_ent = self._api_keys.get_by_token_or_hash(token_or_client_id)
+        if not old_ent:
+            # Try lookup by client_id
+            for ent in self._api_keys.values():
+                if ent.client_id == token_or_client_id and ent.is_active:
+                    old_ent = ent
+                    break
+
+        if not old_ent:
+            raise KeyError(f"No active API key found for identifier: {token_or_client_id}")
+
+        # Mark old key as rotating with expiration at now + grace_period_s
+        now = time.time()
+        old_ent.is_rotating = True
+        old_ent.expires_at = now + max(1.0, grace_period_s)
+
+        # Register new key with identical role and permissions
+        new_ent = self.register_api_key(
+            client_id=old_ent.client_id,
+            role=old_ent.role,
+            token=new_token,
+        )
+        new_ent.allowed_cidrs = list(old_ent.allowed_cidrs)
+
+        # Persist changes to storage if store is available
+        if self.store and hasattr(self.store, "save_api_key"):
+            try:
+                self.store.save_api_key(old_ent)
+                self.store.save_api_key(new_ent)
+            except Exception:
+                pass
+
+        self.log_audit(
+            action="API_KEY_ROTATED",
+            actor=old_ent.client_id,
+            role=old_ent.role,
+            details=f"Rotated key. Old expires at {old_ent.expires_at} (grace {grace_period_s}s)",
+        )
+
+        return new_ent, old_ent
+
+    def cleanup_expired_rotated_keys(self) -> int:
+        """Deactivate expired keys whose rotation grace period has elapsed."""
+        now = time.time()
+        revoked_count = 0
+        for ent in list(self._api_keys.values()):
+            if ent.is_active and ent.expires_at is not None and now > ent.expires_at:
+                ent.is_active = False
+                ent.is_rotating = False
+                revoked_count += 1
+                if self.store and hasattr(self.store, "revoke_api_key"):
+                    try:
+                        self.store.revoke_api_key(ent.token_hash or ent.token)
+                    except Exception:
+                        pass
+        return revoked_count
+
+    def anchor_audit_batch(self, batch_size: int = 100) -> str:
+        """
+        Anchor the most recent batch of audit entries into a cryptographic Merkle root.
+        Records an audit entry with the Merkle root to seal the batch.
+        """
+        entry_hashes: list[str] = []
+        if self.store and hasattr(self.store, "query_audit_log"):
+            entries = self.store.query_audit_log(limit=batch_size)
+            entry_hashes = [r["entry_hash"] for r in entries if "entry_hash" in r]
+
+        if not entry_hashes:
+            latest = (
+                self.store.get_latest_audit_hash()
+                if (self.store and hasattr(self.store, "get_latest_audit_hash"))
+                else "GENESIS_EMPTY"
+            )
+            entry_hashes = [latest]
+
+        root = MerkleAuditTree.compute_root(entry_hashes)
+        self.log_audit(
+            action="MERKLE_BATCH_ANCHOR",
+            actor="security_subsystem",
+            role=Role.ADMIN,
+            details=f"count={len(entry_hashes)} root={root}",
+        )
+        return root
