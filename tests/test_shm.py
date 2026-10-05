@@ -203,11 +203,11 @@ def test_mdrap_client_with_shm_end_to_end():
 
     fd, db_path = tempfile.mkstemp(suffix=".db")
     os.close(fd)
-    shm_name = "test_e2e_shm"
+    shm_name = f"test_e2e_shm_{os.getpid()}_{time.time_ns()}"
 
     daemon = MarketDataDaemon(
         host="127.0.0.1",
-        port=39876,
+        port=0,
         db_path=db_path,
         use_live=False,
         sim_speed_eps=10000.0,
@@ -219,7 +219,7 @@ def test_mdrap_client_with_shm_end_to_end():
 
     client = MDRAPClient(
         host="127.0.0.1",
-        port=39876,
+        port=daemon.port,
         use_shm=True,
         shm_name=shm_name,
     )

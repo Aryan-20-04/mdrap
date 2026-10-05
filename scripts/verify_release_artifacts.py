@@ -14,6 +14,8 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import subprocess
+import sys
 import tarfile
 import zipfile
 from pathlib import Path
@@ -50,12 +52,21 @@ def main() -> None:
     print("MDRAP RELEASE ARTIFACT VERIFICATION (PHASE 27)".center(72))
     print("=" * 72)
 
-    assert _DIST_DIR.exists(), f"Distribution directory not found: {_DIST_DIR}"
+    _DIST_DIR.mkdir(parents=True, exist_ok=True)
 
     sdist_name = f"mdrap-{_TARGET_VERSION}.tar.gz"
     sdist_path = _DIST_DIR / sdist_name
 
     wheels = sorted(_DIST_DIR.glob(f"mdrap-{_TARGET_VERSION}-*.whl"))
+    if not sdist_path.exists() or len(wheels) == 0:
+        print("\n[0/5] Missing release artifacts in dist/; building via python -m build...")
+        subprocess.run(
+            [sys.executable, "-m", "build", "--no-isolation"],
+            cwd=str(_REPO_ROOT),
+            check=True,
+        )
+        wheels = sorted(_DIST_DIR.glob(f"mdrap-{_TARGET_VERSION}-*.whl"))
+
     assert sdist_path.exists(), f"Missing sdist: {sdist_path}"
     assert len(wheels) > 0, (
         f"Missing wheel matching mdrap-{_TARGET_VERSION}-*.whl in {_DIST_DIR}"

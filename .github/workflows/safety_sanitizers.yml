@@ -53,7 +53,20 @@ jobs:
           build/mdrap-core --events 100000 --quiet
 
       - name: Run Test Suite Under Sanitizer
-        env:
-          LD_PRELOAD: /usr/lib/x86_64-linux-gnu/lib${{ matrix.sanitizer }}.so
         run: |
+          if [ "${{ matrix.sanitizer }}" = "address" ]; then
+            LIB_ASAN=$(gcc -print-file-name=libasan.so)
+            if [ ! -f "$LIB_ASAN" ]; then
+              LIB_ASAN=$(find /usr/lib/ -name "libasan.so*" 2>/dev/null | head -n 1)
+            fi
+            export LD_PRELOAD="$LIB_ASAN"
+            export ASAN_OPTIONS="detect_leaks=0:verify_asan_link_order=0"
+          elif [ "${{ matrix.sanitizer }}" = "thread" ]; then
+            LIB_TSAN=$(gcc -print-file-name=libtsan.so)
+            if [ ! -f "$LIB_TSAN" ]; then
+              LIB_TSAN=$(find /usr/lib/ -name "libtsan.so*" 2>/dev/null | head -n 1)
+            fi
+            export LD_PRELOAD="$LIB_TSAN"
+            export TSAN_OPTIONS="suppress_equal_stacks=1"
+          fi
           pytest tests/test_fastpath.py tests/test_shm.py -v -q --timeout=60

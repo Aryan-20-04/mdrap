@@ -161,5 +161,6 @@ show_error_codes = true
 
 [tool.cibuildwheel]
 build-verbosity = 1
-skip = ["pp*"]
+archs = ["auto64"]
+skip = ["pp*", "*i686", "*musllinux*"]
 
