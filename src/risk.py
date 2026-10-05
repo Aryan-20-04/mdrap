@@ -196,7 +196,7 @@ class PortfolioRiskEngine:
         for _ in range(n_simulations):
             val = 1.0
             for _ in range(horizon_days):
-                val *= (1.0 + rng.gauss(mu, sigma))
+                val *= 1.0 + rng.gauss(mu, sigma)
             simulated_returns.append(val - 1.0)
 
         simulated_returns.sort()

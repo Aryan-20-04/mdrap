@@ -193,8 +193,8 @@ class ITCHParser:
 
             elif msg_type_byte == MSG_TRADE_NON_CROSS:
                 # P: locate(H), tracking(H), ts(6s), order_ref(Q), buy_sell(c), shares(I), stock(8s), price(I), match_num(Q)
-                loc, trk, ts_b, o_ref, side, shs, stock, px, match_num = STRUCT_P.unpack(
-                    body
+                loc, trk, ts_b, o_ref, side, shs, stock, px, match_num = (
+                    STRUCT_P.unpack(body)
                 )
                 return ITCHMessage(
                     msg_type="P",
@@ -211,7 +211,9 @@ class ITCHParser:
 
             elif msg_type_byte == MSG_ADD_ORDER_MPID:
                 # F: locate(H), tracking(H), ts(6s), order_ref(Q), buy_sell(c), shares(I), stock(8s), price(I), mpid(4s)
-                loc, trk, ts_b, o_ref, side, shs, stock, px, mpid = STRUCT_F.unpack(body)
+                loc, trk, ts_b, o_ref, side, shs, stock, px, mpid = STRUCT_F.unpack(
+                    body
+                )
                 return ITCHMessage(
                     msg_type="F",
                     locate=loc,
@@ -227,7 +229,9 @@ class ITCHParser:
 
             elif msg_type_byte == MSG_ORDER_EXECUTED_PRICE:
                 # C: locate(H), tracking(H), ts(6s), order_ref(Q), exec_shares(I), match_num(Q), printable(c), price(I)
-                loc, trk, ts_b, o_ref, shs, match_num, printable, px = STRUCT_C.unpack(body)
+                loc, trk, ts_b, o_ref, shs, match_num, printable, px = STRUCT_C.unpack(
+                    body
+                )
                 return ITCHMessage(
                     msg_type="C",
                     locate=loc,
@@ -241,7 +245,9 @@ class ITCHParser:
 
             elif msg_type_byte == MSG_TRADE_CROSS:
                 # Q: locate(H), tracking(H), ts(6s), shares(Q), stock(8s), cross_price(I), match_num(Q), cross_type(c)
-                loc, trk, ts_b, shs, stock, px, match_num, c_type = STRUCT_Q.unpack(body)
+                loc, trk, ts_b, shs, stock, px, match_num, c_type = STRUCT_Q.unpack(
+                    body
+                )
                 return ITCHMessage(
                     msg_type="Q",
                     locate=loc,
@@ -323,7 +329,9 @@ class ITCHParser:
                     price=ref_px / PRICE_FACTOR_ITCH,
                     details={
                         "imbalance_shares": imb,
-                        "imbalance_direction": imb_dir.decode("ascii", errors="replace"),
+                        "imbalance_direction": imb_dir.decode(
+                            "ascii", errors="replace"
+                        ),
                         "far_price": far_px / PRICE_FACTOR_ITCH,
                         "near_price": near_px / PRICE_FACTOR_ITCH,
                     },
@@ -396,7 +404,9 @@ class ITCHOrderBookTracker:
             ord_entry = self.orders.get(msg.order_ref)
             if not ord_entry:
                 # CORR-01: Real trade execution occurred on exchange for untracked order
-                stock = msg.stock or self.locate_to_stock.get(msg.locate, f"LOCATE_{msg.locate}")
+                stock = msg.stock or self.locate_to_stock.get(
+                    msg.locate, f"LOCATE_{msg.locate}"
+                )
                 exec_price = msg.price if (t == "C" and msg.price > 0) else None
                 self.total_trades += 1
                 return CanonicalEvent(
@@ -410,8 +420,12 @@ class ITCHOrderBookTracker:
                     sequence_number=self.total_trades,
                     price=exec_price,
                     quantity=float(msg.shares),
-                    quality_status=QualityStatus.SUSPICIOUS if exec_price is None else QualityStatus.VALID,
-                    reasons=["EXECUTION_WITHOUT_LOCAL_ORDER_STATE"] if exec_price is None else [],
+                    quality_status=QualityStatus.SUSPICIOUS
+                    if exec_price is None
+                    else QualityStatus.VALID,
+                    reasons=["EXECUTION_WITHOUT_LOCAL_ORDER_STATE"]
+                    if exec_price is None
+                    else [],
                 )
 
             stock, side, price, rem_shares = ord_entry
@@ -530,7 +544,9 @@ class ITCHOrderBookTracker:
                 if stock and stock in self.depth:
                     self.depth[stock] = {"B": {}, "S": {}}
                     to_remove = [
-                        oref for oref, ord_info in self.orders.items() if ord_info[0] == stock
+                        oref
+                        for oref, ord_info in self.orders.items()
+                        if ord_info[0] == stock
                     ]
                     for oref in to_remove:
                         self.orders.pop(oref, None)

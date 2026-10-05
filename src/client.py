@@ -23,6 +23,8 @@ import urllib.request
 
 __stability__ = "beta"
 
+logger = logging.getLogger("mdrap.client")
+
 
 @dataclass
 class MarketEvent:
@@ -731,7 +733,9 @@ class MDRAPClient:
                     ):
                         item_type = item.get("type")
                         if item_type == "PUBLISHER_DEAD":
-                            logger.warning("[client] Publisher dead detected in SHM stream; breaking for fallback")
+                            logger.warning(
+                                "[client] Publisher dead detected in SHM stream; breaking for fallback"
+                            )
                             try:
                                 self.shm_reader.close()
                             except Exception:
@@ -739,7 +743,10 @@ class MDRAPClient:
                             self.shm_reader = None
                             break
 
-                        if item_type == "EPOCH_CHANGE" or not self.shm_reader.check_epoch_valid():
+                        if (
+                            item_type == "EPOCH_CHANGE"
+                            or not self.shm_reader.check_epoch_valid()
+                        ):
                             # Publisher restarted! Re-attach cleanly without crashing
                             try:
                                 self.shm_reader.close()

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import collections
 import ctypes
+import logging
 import math
 import os
 import sys
@@ -22,6 +23,8 @@ from models import CanonicalEvent, EventType, QualityStatus, Reason
 from quality import QualityConfig, QualityEngine
 
 __stability__ = "stable"
+
+logger = logging.getLogger("mdrap.fastpath")
 
 # Phase 3: Native C-API Extension Module
 _C_EXT = None
@@ -1145,11 +1148,19 @@ class FastQualityEngine:
     def _evaluate_batch_unlocked(
         self, events: list[CanonicalEvent]
     ) -> list[CanonicalEvent]:
-        has_c_batch = bool(self._engine_ptr_c and _C_EXT and hasattr(_C_EXT, "engine_evaluate_batch"))
-        has_dll_batch = bool(_NATIVE_LIB and (
-            (self._engine_ptr and hasattr(_NATIVE_LIB, "fastpath_engine_evaluate_batch"))
-            or hasattr(_NATIVE_LIB, "fastpath_evaluate_batch")
-        ))
+        has_c_batch = bool(
+            self._engine_ptr_c and _C_EXT and hasattr(_C_EXT, "engine_evaluate_batch")
+        )
+        has_dll_batch = bool(
+            _NATIVE_LIB
+            and (
+                (
+                    self._engine_ptr
+                    and hasattr(_NATIVE_LIB, "fastpath_engine_evaluate_batch")
+                )
+                or hasattr(_NATIVE_LIB, "fastpath_evaluate_batch")
+            )
+        )
         if not (has_c_batch or has_dll_batch):
             for ev in events:
                 self._evaluate_unlocked(ev)
@@ -1200,7 +1211,11 @@ class FastQualityEngine:
             c_ev.ask_size = ev.ask_size if ev.ask_size is not None else _NAN
 
         try:
-            if self._engine_ptr_c and _C_EXT and hasattr(_C_EXT, "engine_evaluate_batch"):
+            if (
+                self._engine_ptr_c
+                and _C_EXT
+                and hasattr(_C_EXT, "engine_evaluate_batch")
+            ):
                 _C_EXT.engine_evaluate_batch(
                     self._engine_ptr_c,
                     ctypes.addressof(c_events),
@@ -1264,6 +1279,7 @@ class FastQualityEngine:
         """
         if not _NATIVE_LIB or not hasattr(_NATIVE_LIB, "fastpath_process_sbe_stream"):
             from sbe import unpack_sbe_tick
+
             results = (_CFastResult * count)()
             valid_count = 0
             seen_seqs: set[tuple[str, str, int]] = set()
@@ -1283,21 +1299,50 @@ class FastQualityEngine:
                 st = 0
                 rm = 0
                 # 1. Numerical Validity Bounds
-                if (tick.price is not None and (math.isnan(tick.price) or tick.price < 0.0 or math.isinf(tick.price))) or \
-                   (tick.bid is not None and (math.isnan(tick.bid) or tick.bid < 0.0 or math.isinf(tick.bid))) or \
-                   (tick.ask is not None and (math.isnan(tick.ask) or tick.ask < 0.0 or math.isinf(tick.ask))):
+                if (
+                    (
+                        tick.price is not None
+                        and (
+                            math.isnan(tick.price)
+                            or tick.price < 0.0
+                            or math.isinf(tick.price)
+                        )
+                    )
+                    or (
+                        tick.bid is not None
+                        and (
+                            math.isnan(tick.bid)
+                            or tick.bid < 0.0
+                            or math.isinf(tick.bid)
+                        )
+                    )
+                    or (
+                        tick.ask is not None
+                        and (
+                            math.isnan(tick.ask)
+                            or tick.ask < 0.0
+                            or math.isinf(tick.ask)
+                        )
+                    )
+                ):
                     st = 2
-                    rm |= (1 << 0)
+                    rm |= 1 << 0
                 # 2. Crossed Quotes
-                if tick.bid is not None and tick.ask is not None and tick.bid > 0 and tick.ask > 0 and tick.bid > tick.ask:
+                if (
+                    tick.bid is not None
+                    and tick.ask is not None
+                    and tick.bid > 0
+                    and tick.ask > 0
+                    and tick.bid > tick.ask
+                ):
                     st = 2
-                    rm |= (1 << 6)
+                    rm |= 1 << 6
                 # 3. Deduplication Check
                 if tick.seq > 0:
                     key = (tick.source, tick.symbol, tick.seq)
                     if key in seen_seqs:
                         st = 2
-                        rm |= (1 << 1)
+                        rm |= 1 << 1
                     else:
                         seen_seqs.add(key)
                 res.status = st
@@ -1840,7 +1885,11 @@ def native_shm_write_tick(
     engine_us: float,
 ) -> bool:
     """Write an SHM tick slot using native C release semantics and atomic two-phase commit."""
-    st_code = 1 if status == "VALID" else (2 if status == "SUSPICIOUS" else (3 if status == "INVALID" else 0))
+    st_code = (
+        1
+        if status == "VALID"
+        else (2 if status == "SUSPICIOUS" else (3 if status == "INVALID" else 0))
+    )
     present = 0
     if price is not None:
         present |= 0x01
@@ -1881,7 +1930,10 @@ def native_shm_write_tick(
                 == 1
             )
         except Exception as exc:
-            logger.debug("[fastpath] C extension shm_write_tick_v3 failed: %s, falling back to ctypes", exc)
+            logger.debug(
+                "[fastpath] C extension shm_write_tick_v3 failed: %s, falling back to ctypes",
+                exc,
+            )
 
     if not has_native_shm() or not hasattr(_NATIVE_LIB, "fastpath_shm_write_tick_v3"):
         return False

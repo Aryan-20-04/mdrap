@@ -453,7 +453,11 @@ class BarDatabase:
         if not interval_s:
             raise ValueError(f"Unknown interval: {interval}")
 
-        cond = "(bucket_start + interval_s) <= ?" if completed_only else "bucket_start <= ?"
+        cond = (
+            "(bucket_start + interval_s) <= ?"
+            if completed_only
+            else "bucket_start <= ?"
+        )
         cursor = self._conn.execute(
             f"""
             SELECT * FROM bars 

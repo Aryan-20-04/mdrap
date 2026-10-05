@@ -60,6 +60,7 @@ from prometheus import global_prometheus_exporter
 
 try:
     import __init__ as _pkg
+
     __version__ = getattr(_pkg, "__version__", "2.4.2")
 except Exception:
     __version__ = "2.4.2"
@@ -539,7 +540,9 @@ def create_app(
     def get_event_by_id(
         event_id: str,
         request: Request,
-        include_lineage: bool = Query(True, description="Include lineage decision record"),
+        include_lineage: bool = Query(
+            True, description="Include lineage decision record"
+        ),
         _auth: ClientEntitlement = Depends(require_role(Role.VIEWER)),
     ):
         st: AppState = request.app.state.mdrap

@@ -112,7 +112,9 @@ class ABFeedArbitrator:
         self.async_tcp_replay = async_tcp_replay
         self._lock = threading.RLock()
         self._replay_pool: concurrent.futures.ThreadPoolExecutor | None = (
-            concurrent.futures.ThreadPoolExecutor(max_workers=2, thread_name_prefix="arb-replay")
+            concurrent.futures.ThreadPoolExecutor(
+                max_workers=2, thread_name_prefix="arb-replay"
+            )
             if async_tcp_replay
             else None
         )
@@ -256,7 +258,9 @@ class ABFeedArbitrator:
                             return []
                         else:
                             try:
-                                replayed = self.tcp_replay_client(ch, req_start, req_end)
+                                replayed = self.tcp_replay_client(
+                                    ch, req_start, req_end
+                                )
                                 for r_pkt in replayed:
                                     if (
                                         r_pkt.sequence_num not in gap_buf

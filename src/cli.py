@@ -1274,7 +1274,9 @@ def cmd_keys(args):
         token = getattr(args, "token", "")
         grace = getattr(args, "grace", 3600.0)
         if not token:
-            console.print("[bold red]Error:[/bold red] API token must be specified for rotation (use --token <key>).")
+            console.print(
+                "[bold red]Error:[/bold red] API token must be specified for rotation (use --token <key>)."
+            )
             store.close()
             return
         new_ent, old_ent = sec.rotate_api_key(token, grace_period_s=grace)
@@ -1733,7 +1735,7 @@ def cmd_query(args):
 
 def cmd_replay(args):
     """Replay market events deterministically through pipeline or pacer."""
-    from replay import HistoricalReplayEngine, ReplayStats
+    from replay import HistoricalReplayEngine
     from analytics import MarketAnalytics
 
     speed = getattr(args, "speed", None)
@@ -1751,7 +1753,11 @@ def cmd_replay(args):
         events = engine.load_from_journal(from_journal, limit=limit)
     else:
         db_path = getattr(args, "db", "data/mdrap.db")
-        if os.path.exists(db_path) and not getattr(args, "date", None) and not getattr(args, "source", None):
+        if (
+            os.path.exists(db_path)
+            and not getattr(args, "date", None)
+            and not getattr(args, "source", None)
+        ):
             try:
                 events = engine.load_from_sqlite(db_path, symbol=symbol, limit=limit)
             except Exception:
@@ -1807,7 +1813,7 @@ def cmd_replay(args):
 
 def cmd_failover(args):
     """Active-Passive cluster failover coordinator."""
-    from failover import FailoverNode, NodeState, HeartbeatMessage
+    from failover import FailoverNode
 
     console = Console()
     action = getattr(args, "action", "status") or "status"
@@ -1865,7 +1871,9 @@ def cmd_historical(args):
         fmt = getattr(args, "format", "auto")
         sym = getattr(args, "symbol", None)
         if not os.path.exists(db_path):
-            console.print(f"[bold red]Error: Database '{db_path}' not found.[/bold red]")
+            console.print(
+                f"[bold red]Error: Database '{db_path}' not found.[/bold red]"
+            )
             return
         res = partitioner.partition_from_sqlite(db_path=db_path, fmt=fmt, symbol=sym)
         console.print(
@@ -1883,7 +1891,9 @@ def cmd_historical(args):
         sym = getattr(args, "symbol", None)
         limit = getattr(args, "limit", 20)
         rows = catalog.query_range(symbol=sym, limit=limit)
-        console.print(f"[bold cyan]Found {len(rows)} events in historical catalog for {sym or 'ALL'}:[/bold cyan]")
+        console.print(
+            f"[bold cyan]Found {len(rows)} events in historical catalog for {sym or 'ALL'}:[/bold cyan]"
+        )
         console.print(json.dumps(rows[:5], indent=2))
         if len(rows) > 5:
             console.print(f"[dim]... and {len(rows) - 5} more records[/dim]")
@@ -7198,9 +7208,16 @@ def build_parser() -> argparse.ArgumentParser:
     p_keys.add_argument(
         "--rate", type=float, default=None, help="Custom rate limit eps"
     )
-    p_keys.add_argument("--token", default="", help="API key token (for revoke or rotate)")
+    p_keys.add_argument(
+        "--token", default="", help="API key token (for revoke or rotate)"
+    )
     p_keys.add_argument("--prefix", default="", help="API key prefix (for revoke)")
-    p_keys.add_argument("--grace", type=float, default=3600.0, help="Rotation grace period in seconds (default: 3600)")
+    p_keys.add_argument(
+        "--grace",
+        type=float,
+        default=3600.0,
+        help="Rotation grace period in seconds (default: 3600)",
+    )
 
     # API & WebSocket Production Server
     p_serve = _sub(
@@ -7321,7 +7338,10 @@ def build_parser() -> argparse.ArgumentParser:
         "-s", "--source", default=None, help="Replay only a specific source"
     )
     p_replay.add_argument(
-        "--speed", type=float, default=None, help="Replay speed factor (1.0=realtime, 10.0=10x, 0=unthrottled)"
+        "--speed",
+        type=float,
+        default=None,
+        help="Replay speed factor (1.0=realtime, 10.0=10x, 0=unthrottled)",
     )
     p_replay.add_argument(
         "--symbol", default=None, help="Filter replay by instrument symbol"
@@ -7330,10 +7350,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--limit", type=int, default=None, help="Limit number of replayed events"
     )
     p_replay.add_argument(
-        "--from-sqlite", default=None, help="Load replay events from SQLite database path"
+        "--from-sqlite",
+        default=None,
+        help="Load replay events from SQLite database path",
     )
     p_replay.add_argument(
-        "--from-journal", default=None, help="Load replay events from binary journal (.dbn) path"
+        "--from-journal",
+        default=None,
+        help="Load replay events from binary journal (.dbn) path",
     )
 
     p_archive = _sub(
@@ -7383,8 +7407,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_failover.add_argument("--node-id", default="node-local", help="Cluster node ID")
     p_failover.add_argument("--cluster", default="mdrap-cluster", help="Cluster name")
-    p_failover.add_argument("--reason", default="Manual operator request", help="Transition reason")
-    p_failover.add_argument("--seq", type=int, default=0, help="Heartbeat sequence number")
+    p_failover.add_argument(
+        "--reason", default="Manual operator request", help="Transition reason"
+    )
+    p_failover.add_argument(
+        "--seq", type=int, default=0, help="Heartbeat sequence number"
+    )
 
     p_lake = _sub(
         "lake",
@@ -7399,13 +7427,28 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["catalog", "partition", "query", "retention"],
         help="Historical store action",
     )
-    p_lake.add_argument("--base-dir", default="data/historical", help="Historical base storage directory")
-    p_lake.add_argument("--from-db", default="data/mdrap.db", help="Source SQLite DB for partitioning")
-    p_lake.add_argument("--format", default="auto", choices=["auto", "jsonl.gz", "csv.gz", "parquet"], help="Partition storage format")
+    p_lake.add_argument(
+        "--base-dir",
+        default="data/historical",
+        help="Historical base storage directory",
+    )
+    p_lake.add_argument(
+        "--from-db", default="data/mdrap.db", help="Source SQLite DB for partitioning"
+    )
+    p_lake.add_argument(
+        "--format",
+        default="auto",
+        choices=["auto", "jsonl.gz", "csv.gz", "parquet"],
+        help="Partition storage format",
+    )
     p_lake.add_argument("--symbol", default=None, help="Filter by symbol")
     p_lake.add_argument("--limit", type=int, default=20, help="Query row limit")
-    p_lake.add_argument("--days", type=int, default=30, help="Retention max age in days")
-    p_lake.add_argument("--dry-run", action="store_true", help="Retention dry run without deletion")
+    p_lake.add_argument(
+        "--days", type=int, default=30, help="Retention max age in days"
+    )
+    p_lake.add_argument(
+        "--dry-run", action="store_true", help="Retention dry run without deletion"
+    )
 
     # V3: Analytics commands
     p_analytics = _sub(

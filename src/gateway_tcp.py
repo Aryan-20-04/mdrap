@@ -43,7 +43,7 @@ class TCPGatewayServer:
             if env_auth is not None:
                 self.require_auth = env_auth.lower() in ("1", "true", "yes")
             else:
-                self.require_auth = (security_manager is not None)
+                self.require_auth = security_manager is not None
         self.clients: set[asyncio.StreamWriter] = set()
         self.server: asyncio.AbstractServer | None = None
         self._stats = {"sent": 0, "dropped": 0, "connected": 0, "auth_failures": 0}
@@ -65,7 +65,15 @@ class TCPGatewayServer:
                 ent = self.security_manager.get_entitlement(token, active_only=True)
                 if not ent:
                     self._stats["auth_failures"] += 1
-                    err_msg = json.dumps({"type": "error", "message": "Unauthorized: invalid or inactive token"}) + "\n"
+                    err_msg = (
+                        json.dumps(
+                            {
+                                "type": "error",
+                                "message": "Unauthorized: invalid or inactive token",
+                            }
+                        )
+                        + "\n"
+                    )
                     writer.write(err_msg.encode("utf-8"))
                     await writer.drain()
                     writer.close()
@@ -78,7 +86,9 @@ class TCPGatewayServer:
                     writer.close()
                     await writer.wait_closed()
                 except Exception as close_exc:
-                    logger.debug("[gateway_tcp] Failed closing rejected client: %s", close_exc)
+                    logger.debug(
+                        "[gateway_tcp] Failed closing rejected client: %s", close_exc
+                    )
                 return
 
         self.clients.add(writer)
@@ -110,7 +120,11 @@ class TCPGatewayServer:
                 except json.JSONDecodeError as jde:
                     logger.debug("[gateway_tcp] JSON decode error: %s", jde)
 
-        except (asyncio.CancelledError, ConnectionResetError, BrokenPipeError) as conn_err:
+        except (
+            asyncio.CancelledError,
+            ConnectionResetError,
+            BrokenPipeError,
+        ) as conn_err:
             logger.debug("[gateway_tcp] Connection closed (%s)", conn_err)
         finally:
             self.clients.discard(writer)
@@ -127,7 +141,9 @@ class TCPGatewayServer:
             await asyncio.wait_for(writer.drain(), timeout=0.05)
             return True
         except Exception as bcast_exc:
-            logger.debug("[gateway_tcp] Broadcast failed, evicting client: %s", bcast_exc)
+            logger.debug(
+                "[gateway_tcp] Broadcast failed, evicting client: %s", bcast_exc
+            )
             return False
 
     async def broadcast(self, payload: dict):
@@ -158,7 +174,9 @@ class TCPGatewayServer:
                 try:
                     w.close()
                 except Exception as close_exc:
-                    logger.debug("[gateway_tcp] Error closing evicted client: %s", close_exc)
+                    logger.debug(
+                        "[gateway_tcp] Error closing evicted client: %s", close_exc
+                    )
             self._stats["connected"] = len(self.clients)
 
     async def start(self):
@@ -167,7 +185,9 @@ class TCPGatewayServer:
             self.handle_client, self.host, self.port, ssl=self.ssl_context
         )
         proto = "TLS" if self.ssl_context else "TCP"
-        logger.info(f"{proto} Gateway listening on {self.host}:{self.port} (require_auth={self.require_auth})")
+        logger.info(
+            f"{proto} Gateway listening on {self.host}:{self.port} (require_auth={self.require_auth})"
+        )
 
     async def stop(self):
         self.running = False
@@ -179,5 +199,7 @@ class TCPGatewayServer:
                 w.close()
                 await w.wait_closed()
             except Exception as close_exc:
-                logger.debug("[gateway_tcp] Error closing client during shutdown: %s", close_exc)
+                logger.debug(
+                    "[gateway_tcp] Error closing client during shutdown: %s", close_exc
+                )
         self.clients.clear()

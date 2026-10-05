@@ -502,9 +502,7 @@ class OptionsChain:
             vol = strike_vols.get(K, volatility) if strike_vols else volatility
             for opt_type in (OptionType.CALL, OptionType.PUT):
                 contract = OptionContract(self.underlying, K, expiry_days, opt_type)
-                price_info = price_option(
-                    contract, self.spot, self.risk_free_rate, vol
-                )
+                price_info = price_option(contract, self.spot, self.risk_free_rate, vol)
 
                 self._chain.append(
                     {

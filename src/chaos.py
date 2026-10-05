@@ -15,7 +15,6 @@ from dataclasses import dataclass
 import os
 import sqlite3
 import threading
-import time
 from typing import Iterator, List
 
 from models import RawEvent, Reason
@@ -281,7 +280,10 @@ class ChaosEngine:
         )
 
     def run_burst_packet_loss_drill(
-        self, target_source: str = "FEEDX", total_events: int = 1000, loss_size: int = 50
+        self,
+        target_source: str = "FEEDX",
+        total_events: int = 1000,
+        loss_size: int = 50,
     ) -> ChaosDrillResult:
         """
         Drill 5: Burst Packet Loss & State Machine Gap Stitching.
@@ -376,7 +378,10 @@ class ChaosEngine:
         )
 
     def run_sequence_reversal_drill(
-        self, target_source: str = "FEEDY", total_events: int = 500, window_size: int = 10
+        self,
+        target_source: str = "FEEDY",
+        total_events: int = 500,
+        window_size: int = 10,
     ) -> ChaosDrillResult:
         """
         Drill 6: Sequence Reversals & Inverted Window Buffering.
@@ -385,7 +390,9 @@ class ChaosEngine:
         """
         store = Store(self.db_path)
         pipeline = Pipeline(store=store)
-        sim = FeedSimulator(SimulatorConfig(seed=46, num_events=total_events, missing_rate=0.0))
+        sim = FeedSimulator(
+            SimulatorConfig(seed=46, num_events=total_events, missing_rate=0.0)
+        )
 
         raw_events = [raw for raw, _ in sim.generate()]
 
@@ -406,7 +413,9 @@ class ChaosEngine:
         pipeline.finish()
         store.close()
 
-        passed = (pipeline.metrics.dropped == 0) and (pipeline.metrics.processed >= total_events)
+        passed = (pipeline.metrics.dropped == 0) and (
+            pipeline.metrics.processed >= total_events
+        )
 
         return ChaosDrillResult(
             drill_name="Sequence Reversal & Reorder Buffering",
@@ -422,7 +431,9 @@ class ChaosEngine:
             ),
         )
 
-    def run_sqlite_locked_backoff_drill(self, total_events: int = 200) -> ChaosDrillResult:
+    def run_sqlite_locked_backoff_drill(
+        self, total_events: int = 200
+    ) -> ChaosDrillResult:
         """
         Drill 7: SQLite Busy Lock & Exponential Backoff Retry.
         Simulates concurrent database lock via external connection holding an exclusive transaction.
@@ -470,7 +481,9 @@ class ChaosEngine:
             pipeline.finish()
             store.close()
 
-        passed = pipeline.metrics.dropped == 0 and pipeline.metrics.processed >= total_events
+        passed = (
+            pipeline.metrics.dropped == 0 and pipeline.metrics.processed >= total_events
+        )
 
         return ChaosDrillResult(
             drill_name="SQLite Locked & Exponential Backoff",
@@ -487,7 +500,10 @@ class ChaosEngine:
         )
 
     def run_network_partition_drill(
-        self, primary_source: str = "FEEDX", secondary_source: str = "FEEDY", total_events: int = 1500
+        self,
+        primary_source: str = "FEEDX",
+        secondary_source: str = "FEEDY",
+        total_events: int = 1500,
     ) -> ChaosDrillResult:
         """
         Drill 8: Complete Network Partition & BBO Arbitrage Failover.
@@ -498,7 +514,9 @@ class ChaosEngine:
         rel = ReliabilityTracker()
         watchdog = SourceWatchdog(reliability=rel, silence_threshold_s=0.5)
         pipeline = Pipeline(store=store, reliability=rel, watchdog=watchdog)
-        sim = FeedSimulator(SimulatorConfig(seed=48, num_events=total_events, missing_rate=0.0))
+        sim = FeedSimulator(
+            SimulatorConfig(seed=48, num_events=total_events, missing_rate=0.0)
+        )
 
         events_processed = 0
         partition_active = False
@@ -517,7 +535,10 @@ class ChaosEngine:
             pipeline.process_one(raw)
 
             if partition_active and not partition_detected:
-                if watchdog.source_states().get(primary_source) == SourceState.SILENT.value:
+                if (
+                    watchdog.source_states().get(primary_source)
+                    == SourceState.SILENT.value
+                ):
                     partition_detected = True
 
         pipeline.finish()

@@ -56,10 +56,7 @@ class ConsolidatedBBO:
         )
         best_bid_val = (
             self.best_bid
-            if (
-                self.best_bid is not None
-                and math.isfinite(self.best_bid)
-            )
+            if (self.best_bid is not None and math.isfinite(self.best_bid))
             else None
         )
         best_ask_val = (

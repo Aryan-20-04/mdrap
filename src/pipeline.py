@@ -577,7 +577,9 @@ class Pipeline:
                             "quarantined (security: HMAC verification failed)",
                             Reason.SECURITY_REJECT.value,
                         )
-                        norm_times_ns.append(time.perf_counter_ns() if _do_timing else 0)
+                        norm_times_ns.append(
+                            time.perf_counter_ns() if _do_timing else 0
+                        )
                         continue
 
             raw = ingest(raw)
@@ -668,7 +670,7 @@ class Pipeline:
         if self._canonical_batch or self._quarantine_batch or self._lineage_batch:
             now = time.time()
             if now - self._last_flush_ts >= self.flush_interval_s:
-                self.flush(wait=False)
+                self.flush(wait=True)
 
     def _spill_dead_letter(self, canon: list, quar: list, lin: list) -> None:
         """Spill unwritten batches to fsync'd JSONL under data/deadletter/ on storage failure."""

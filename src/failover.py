@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import enum
 import time
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
 __stability__ = "stable"
@@ -32,11 +32,13 @@ class NodeState(str, enum.Enum):
 
 class StaleEpochError(RuntimeError):
     """Raised when an operation is attempted with an expired fencing token or epoch."""
+
     pass
 
 
 class SplitBrainDetected(RuntimeError):
     """Raised when concurrent nodes assert primary status within the same cluster."""
+
     pass
 
 
@@ -58,7 +60,9 @@ class HeartbeatMessage:
             "node_id": self.node_id,
             "cluster_id": self.cluster_id,
             "epoch": self.epoch,
-            "state": self.state.value if hasattr(self.state, "value") else str(self.state),
+            "state": self.state.value
+            if hasattr(self.state, "value")
+            else str(self.state),
             "last_committed_seq": self.last_committed_seq,
             "timestamp": self.timestamp,
             "health_score": round(self.health_score, 4),
@@ -98,9 +102,13 @@ class FailoverNode:
         self._heartbeats_received: int = 0
         self._failover_count: int = 0
         self._last_state_change: float = time.time()
-        self._on_state_change_callback: Optional[Callable[[NodeState, NodeState], None]] = None
+        self._on_state_change_callback: Optional[
+            Callable[[NodeState, NodeState], None]
+        ] = None
 
-    def set_state_change_callback(self, cb: Callable[[NodeState, NodeState], None]) -> None:
+    def set_state_change_callback(
+        self, cb: Callable[[NodeState, NodeState], None]
+    ) -> None:
         self._on_state_change_callback = cb
 
     def _transition_to(self, new_state: NodeState, reason: str = "") -> None:
@@ -154,7 +162,9 @@ class FailoverNode:
             self.fencing_token = hb.fencing_token
             if self.state == NodeState.PRIMARY and hb.state == NodeState.PRIMARY:
                 # Demote self: higher epoch wins
-                self._transition_to(NodeState.STANDBY, reason="Higher epoch primary discovered")
+                self._transition_to(
+                    NodeState.STANDBY, reason="Higher epoch primary discovered"
+                )
                 return True
 
         # Stale heartbeat from old epoch
@@ -163,11 +173,17 @@ class FailoverNode:
             return False
 
         # Split-brain resolution: both assert PRIMARY at same epoch
-        if self.state == NodeState.PRIMARY and hb.state == NodeState.PRIMARY and hb.epoch == self.epoch:
+        if (
+            self.state == NodeState.PRIMARY
+            and hb.state == NodeState.PRIMARY
+            and hb.epoch == self.epoch
+        ):
             # Deterministic tie-breaker:
             # Node with lower node_id remains PRIMARY; higher node_id yields to STANDBY
             if self.node_id > hb.node_id:
-                self._transition_to(NodeState.STANDBY, reason="Split-brain tie-breaker lost")
+                self._transition_to(
+                    NodeState.STANDBY, reason="Split-brain tie-breaker lost"
+                )
                 self._last_primary_hb_time = hb.timestamp
                 self._primary_node_id = hb.node_id
                 self._primary_last_seq = hb.last_committed_seq
@@ -205,11 +221,15 @@ class FailoverNode:
         # Primary timeout detected! Check sequence catch-up
         if local_seq < self._primary_last_seq:
             # Local node is behind, enter SYNCING state to drain backlog
-            self._transition_to(NodeState.SYNCING, reason="Catching up to last primary sequence")
+            self._transition_to(
+                NodeState.SYNCING, reason="Catching up to last primary sequence"
+            )
             return False
 
         # Sequence is caught up (or equal/greater). Promote to PRIMARY
-        self.promote(reason=f"Primary '{self._primary_node_id}' timed out after {age:.2f}s")
+        self.promote(
+            reason=f"Primary '{self._primary_node_id}' timed out after {age:.2f}s"
+        )
         return True
 
     def promote(self, reason: str = "manual") -> None:
@@ -242,13 +262,17 @@ class FailoverNode:
         return {
             "node_id": self.node_id,
             "cluster_id": self.cluster_id,
-            "state": self.state.value if hasattr(self.state, "value") else str(self.state),
+            "state": self.state.value
+            if hasattr(self.state, "value")
+            else str(self.state),
             "epoch": self.epoch,
             "fencing_token": self.fencing_token,
             "heartbeats_sent": self._heartbeats_sent,
             "heartbeats_received": self._heartbeats_received,
             "failover_count": self._failover_count,
             "last_primary_node_id": self._primary_node_id,
-            "last_primary_age_s": round(age_primary, 3) if age_primary is not None else None,
+            "last_primary_age_s": round(age_primary, 3)
+            if age_primary is not None
+            else None,
             "state_duration_s": round(time.time() - self._last_state_change, 2),
         }

@@ -25,7 +25,7 @@ Guarantees:
 from __future__ import annotations
 
 import collections
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 import logging
 import threading
@@ -192,7 +192,11 @@ class FeedRecoveryEngine:
             seq = packet.sequence_num
 
             # 1. Non-live states cannot dispatch packets directly
-            if self._state not in (FeedState.LIVE, FeedState.RECOVERING, FeedState.GAP_DETECTED):
+            if self._state not in (
+                FeedState.LIVE,
+                FeedState.RECOVERING,
+                FeedState.GAP_DETECTED,
+            ):
                 logger.debug(
                     "[%s] Dropping packet seq %d while in non-live state %s",
                     self.channel_id,
@@ -325,4 +329,3 @@ class FeedRecoveryEngine:
 
 # Backwards compatibility alias
 FeedRecoveryStateMachine = FeedRecoveryEngine
-

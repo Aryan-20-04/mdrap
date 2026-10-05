@@ -25,7 +25,7 @@ import sys
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional, Sequence, Tuple
+from typing import Any, Dict, Iterable, Optional, Sequence, Tuple
 
 from audit_format import audit_bytes_v1, audit_bytes_v2, compute_audit_hash
 
@@ -37,7 +37,9 @@ API_KEY_SALT: str = os.environ.get("MDRAP_API_KEY_SALT", "mdrap_kdf_v1")
 
 def hash_api_key(token: str, salt: str = API_KEY_SALT) -> str:
     """Cryptographically hash an API key using HMAC-SHA256 with key derivation salt."""
-    return hmac.new(salt.encode("utf-8"), token.encode("utf-8"), hashlib.sha256).hexdigest()
+    return hmac.new(
+        salt.encode("utf-8"), token.encode("utf-8"), hashlib.sha256
+    ).hexdigest()
 
 
 class Role(str, enum.Enum):
@@ -194,7 +196,9 @@ class MerkleAuditTree:
             next_level = []
             for i in range(0, len(current_level), 2):
                 if i + 1 < len(current_level):
-                    next_level.append(cls.hash_node(current_level[i], current_level[i + 1]))
+                    next_level.append(
+                        cls.hash_node(current_level[i], current_level[i + 1])
+                    )
                 else:
                     # Odd single node promoted
                     next_level.append(current_level[i])
@@ -202,7 +206,9 @@ class MerkleAuditTree:
         return current_level[0]
 
     @classmethod
-    def generate_proof(cls, leaf_data_list: Sequence[str], leaf_index: int) -> list[tuple[str, str]]:
+    def generate_proof(
+        cls, leaf_data_list: Sequence[str], leaf_index: int
+    ) -> list[tuple[str, str]]:
         """
         Generate an audit inclusion proof for the leaf at leaf_index.
         Returns a list of tuples: (sibling_hash_hex, 'L' or 'R').
@@ -222,7 +228,9 @@ class MerkleAuditTree:
                         proof.append((current_level[i + 1], "R"))
                     elif i + 1 == idx:
                         proof.append((current_level[i], "L"))
-                    next_level.append(cls.hash_node(current_level[i], current_level[i + 1]))
+                    next_level.append(
+                        cls.hash_node(current_level[i], current_level[i + 1])
+                    )
                 else:
                     # Odd single node promoted
                     next_level.append(current_level[i])
@@ -232,7 +240,9 @@ class MerkleAuditTree:
         return proof
 
     @classmethod
-    def verify_proof(cls, leaf_data: str, proof: list[tuple[str, str]], expected_root: str) -> bool:
+    def verify_proof(
+        cls, leaf_data: str, proof: list[tuple[str, str]], expected_root: str
+    ) -> bool:
         """Verify that a leaf belongs to the tree represented by expected_root."""
         curr = cls.hash_leaf(leaf_data)
         for sibling_hex, position in proof:
@@ -269,7 +279,8 @@ class TokenBucketRateLimiter:
                 # SEC-02: Only evict fully replenished (idle) buckets.
                 # Never evict depleted/throttled buckets, preventing eviction-based rate limit bypass.
                 idle_sources = [
-                    k for k, (toks, t) in self._buckets.items()
+                    k
+                    for k, (toks, t) in self._buckets.items()
                     if (toks + (now - t) * self.rate) >= self.capacity
                 ]
                 if idle_sources:
@@ -882,9 +893,7 @@ class SecurityManager:
             role_clean = Role.VIEWER
 
         if not token:
-            existing_prefixes = {
-                k.key_prefix for k in self._api_keys.values()
-            }
+            existing_prefixes = {k.key_prefix for k in self._api_keys.values()}
             while True:
                 candidate = f"mdrap_live_{secrets.token_urlsafe(24)}"
                 cand_pfx = candidate[:12] + "..." if len(candidate) > 12 else candidate
@@ -929,7 +938,11 @@ class SecurityManager:
                     break
         if not ent:
             # Fall back to key_prefix match (low entropy, kept for backward compat)
-            matching = [v for v in self._api_keys.values() if v.key_prefix == token and v.is_active]
+            matching = [
+                v
+                for v in self._api_keys.values()
+                if v.key_prefix == token and v.is_active
+            ]
             if matching:
                 matching.sort(key=lambda x: getattr(x, "created_at", 0.0), reverse=True)
                 ent = matching[0]
@@ -940,7 +953,7 @@ class SecurityManager:
                         break
         if ent:
             ent.is_active = False
-            if self.store and hasattr(self.store, 'revoke_api_key'):
+            if self.store and hasattr(self.store, "revoke_api_key"):
                 try:
                     self.store.revoke_api_key(ent.token_hash or token)
                 except Exception as exc:
@@ -986,7 +999,11 @@ class SecurityManager:
         self, role: Role | str, actor: str = "default", tokens: float = 1.0
     ) -> bool:
         """Enforce role-tiered token bucket rate limits."""
-        r = Role[str(role).upper()] if str(role).upper() in Role.__members__ else Role.VIEWER
+        r = (
+            Role[str(role).upper()]
+            if str(role).upper() in Role.__members__
+            else Role.VIEWER
+        )
         limiter = self._role_rate_limiters.get(r)
         if limiter is None:
             return True
@@ -1051,7 +1068,9 @@ class SecurityManager:
                     break
 
         if not old_ent:
-            raise KeyError(f"No active API key found for identifier: {token_or_client_id}")
+            raise KeyError(
+                f"No active API key found for identifier: {token_or_client_id}"
+            )
 
         # Mark old key as rotating with expiration at now + grace_period_s
         now = time.time()

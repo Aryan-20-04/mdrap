@@ -682,11 +682,15 @@ class WebSocketFeedManager:
                                         pass
                                     self._queue.put_nowait(raw)
                                     self._drop_count += 1
-                                    self._drop_counts[venue] = self._drop_counts.get(venue, 0) + 1
+                                    self._drop_counts[venue] = (
+                                        self._drop_counts.get(venue, 0) + 1
+                                    )
                                     if self._drop_count % 100 == 1:
                                         logger.warning(
                                             "[ws_feed] Backpressure drop #%d on %s (total: %d)",
-                                            self._drop_counts[venue], venue, self._drop_count,
+                                            self._drop_counts[venue],
+                                            venue,
+                                            self._drop_count,
                                         )
                         except asyncio.TimeoutError:
                             # Send ping keepalive

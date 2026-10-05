@@ -9,12 +9,10 @@ Implements standard Libpcap 2.4 file format reader, writer, and stream dissector
 
 from __future__ import annotations
 
-import io
-import os
 import struct
 import time
 from dataclasses import dataclass
-from typing import BinaryIO, Generator, Iterator
+from typing import BinaryIO, Iterator
 
 __stability__ = "stable"
 
@@ -30,7 +28,9 @@ PACKET_HEADER_STRUCT = struct.Struct("<IIII")
 ETH_HEADER_STRUCT = struct.Struct("!6s6sH")
 IPV4_HEADER_STRUCT = struct.Struct("!BBHHHBBH4s4s")
 UDP_HEADER_STRUCT = struct.Struct("!HHHH")
-MOLDUDP64_HEADER_STRUCT = struct.Struct("!10sQH")  # Session (10s), Seq (Q), MsgCount (H)
+MOLDUDP64_HEADER_STRUCT = struct.Struct(
+    "!10sQH"
+)  # Session (10s), Seq (Q), MsgCount (H)
 
 
 @dataclass(slots=True)
@@ -97,13 +97,13 @@ class PcapWriter:
         ip_total_len = 20 + len(udp_datagram)
         ip_hdr = IPV4_HEADER_STRUCT.pack(
             0x45,  # Version 4, IHL 5
-            0,     # DSCP/ECN
+            0,  # DSCP/ECN
             ip_total_len,
-            12345, # Identification
-            0x4000,# Flags (Don't fragment)
-            64,    # TTL
-            17,    # UDP Protocol
-            0,     # Checksum
+            12345,  # Identification
+            0x4000,  # Flags (Don't fragment)
+            64,  # TTL
+            17,  # UDP Protocol
+            0,  # Checksum
             src_ip_bytes,
             dst_ip_bytes,
         )
@@ -174,7 +174,9 @@ class PcapReader:
             raise ValueError(f"Invalid PCAP magic: 0x{magic:08x}")
 
         if self.linktype != LINKTYPE_ETHERNET:
-            raise ValueError(f"Unsupported linktype {self.linktype}; expected Ethernet (1)")
+            raise ValueError(
+                f"Unsupported linktype {self.linktype}; expected Ethernet (1)"
+            )
 
     def packets(self) -> Iterator[CapturedPacket]:
         """Iterate over dissected UDP frames in the capture file."""

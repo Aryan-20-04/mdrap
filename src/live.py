@@ -845,8 +845,12 @@ class LiveConnector:
             spread_offset = max(0.01, round(price * 0.0005, 2))
             raw_bid = live_meta.get("bid")
             raw_ask = live_meta.get("ask")
-            bid_p = round(float(raw_bid if raw_bid is not None else price - spread_offset), 2)
-            ask_p = round(float(raw_ask if raw_ask is not None else price + spread_offset), 2)
+            bid_p = round(
+                float(raw_bid if raw_bid is not None else price - spread_offset), 2
+            )
+            ask_p = round(
+                float(raw_ask if raw_ask is not None else price + spread_offset), 2
+            )
 
             bids_l2 = [
                 [round(bid_p - i * spread_offset, 2), float(100 * (i + 1))]
@@ -878,10 +882,10 @@ class LiveConnector:
                 RawEvent(
                     source=source,
                     payload=q_payload,
-                        receive_timestamp=t_recv,
-                        raw_id=f"live-equities-quote-{next(_raw_counter)}",
-                    )
+                    receive_timestamp=t_recv,
+                    raw_id=f"live-equities-quote-{next(_raw_counter)}",
                 )
+            )
 
             t_payload = {
                 "instrument": canon_sym,
@@ -921,7 +925,9 @@ class LiveConnector:
         """Fetch historical OHLCV candles for equity symbols."""
         resolved = self.probe_or_resolve_equity(symbol)
         mapping = resolve_venue_symbols(symbol)
-        ticker = resolved[0] if resolved else (mapping.get("yahoo") or mapping["canonical"])
+        ticker = (
+            resolved[0] if resolved else (mapping.get("yahoo") or mapping["canonical"])
+        )
         url = YAHOO_CHART_URL.format(symbol=ticker)
         data = self._get_json(url)
         if not data or not data.get("chart", {}).get("result"):

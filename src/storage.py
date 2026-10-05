@@ -1657,7 +1657,9 @@ class Store:
     def revoke_api_key(self, token_or_hash: str) -> bool:
         """Mark an API key as inactive by token, salted token_hash, legacy sha256 hash, or key_prefix (SEC-03)."""
         salt = os.environ.get("MDRAP_API_KEY_SALT", "mdrap_kdf_v1")
-        salted_hash = hmac.new(salt.encode("utf-8"), token_or_hash.encode("utf-8"), hashlib.sha256).hexdigest()
+        salted_hash = hmac.new(
+            salt.encode("utf-8"), token_or_hash.encode("utf-8"), hashlib.sha256
+        ).hexdigest()
         raw_sha256 = hashlib.sha256(token_or_hash.encode("utf-8")).hexdigest()
         cur = self.conn.execute(
             """UPDATE api_keys SET is_active = 0 

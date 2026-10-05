@@ -13,13 +13,28 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import tarfile
 import zipfile
 from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _DIST_DIR = _REPO_ROOT / "dist"
-_TARGET_VERSION = "2.4.1"
+
+
+def _get_target_version() -> str:
+    init_path = _REPO_ROOT / "src" / "__init__.py"
+    if init_path.exists():
+        match = re.search(
+            r'__version__\s*=\s*["\']([^"\']+)["\']',
+            init_path.read_text(encoding="utf-8"),
+        )
+        if match:
+            return match.group(1)
+    return "3.0.0"
+
+
+_TARGET_VERSION = _get_target_version()
 
 
 def sha256_file(filepath: Path) -> str:
@@ -38,13 +53,16 @@ def main() -> None:
     assert _DIST_DIR.exists(), f"Distribution directory not found: {_DIST_DIR}"
 
     sdist_name = f"mdrap-{_TARGET_VERSION}.tar.gz"
-    wheel_name = f"mdrap-{_TARGET_VERSION}-py3-none-any.whl"
-
     sdist_path = _DIST_DIR / sdist_name
-    wheel_path = _DIST_DIR / wheel_name
 
+    wheels = sorted(_DIST_DIR.glob(f"mdrap-{_TARGET_VERSION}-*.whl"))
     assert sdist_path.exists(), f"Missing sdist: {sdist_path}"
-    assert wheel_path.exists(), f"Missing wheel: {wheel_path}"
+    assert len(wheels) > 0, (
+        f"Missing wheel matching mdrap-{_TARGET_VERSION}-*.whl in {_DIST_DIR}"
+    )
+
+    wheel_path = wheels[0]
+    wheel_name = wheel_path.name
 
     print("\n[1/5] Verifying Artifact Existence:")
     print(f"  SDist: {sdist_name} ({sdist_path.stat().st_size:,} bytes)")

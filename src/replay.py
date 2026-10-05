@@ -14,12 +14,10 @@ and configurable speed multipliers (0.1x to 100x or max unthrottled).
 from __future__ import annotations
 
 import contextlib
-import math
-import os
 import sqlite3
 import time
-from dataclasses import dataclass, field
-from typing import Any, Callable, Generator, Iterable, Iterator, Optional, Union
+from dataclasses import dataclass
+from typing import Any, Generator, Iterable, Optional
 
 from models import CanonicalEvent, EventType, QualityStatus
 from journal import BinaryJournalReader
@@ -54,7 +52,9 @@ class VirtualClock:
     def advance(self, delta_seconds: float) -> float:
         """Advance virtual time monotonically by delta seconds."""
         if delta_seconds < 0:
-            raise ValueError(f"Virtual clock cannot step backward: delta={delta_seconds}")
+            raise ValueError(
+                f"Virtual clock cannot step backward: delta={delta_seconds}"
+            )
         self._current_time += delta_seconds
         return self._current_time
 
@@ -84,7 +84,9 @@ class ReplayPacer:
     """
 
     def __init__(self, speed_factor: Optional[float] = 1.0):
-        self.speed_factor: Optional[float] = speed_factor if speed_factor and speed_factor > 0 else None
+        self.speed_factor: Optional[float] = (
+            speed_factor if speed_factor and speed_factor > 0 else None
+        )
         self._prev_event_ts: Optional[float] = None
         self._prev_wall_perf: Optional[float] = None
         self._total_drift_us: float = 0.0
@@ -130,7 +132,6 @@ class ReplayPacer:
                 time.sleep(sleep_needed - 0.001)
 
             # High-precision spin loop for remainder to avoid OS scheduling quantization
-            spin_start = time.perf_counter()
             while (time.perf_counter() - now_perf) < sleep_needed:
                 pass
 
@@ -149,7 +150,9 @@ class ReplayPacer:
 
     @property
     def avg_drift_us(self) -> float:
-        return (self._total_drift_us / self._pace_count) if self._pace_count > 0 else 0.0
+        return (
+            (self._total_drift_us / self._pace_count) if self._pace_count > 0 else 0.0
+        )
 
     @property
     def max_jitter_us(self) -> float:
@@ -260,26 +263,45 @@ class HistoricalReplayEngine:
                 if reasons_val:
                     try:
                         import json
-                        reasons_list = json.loads(reasons_val) if isinstance(reasons_val, str) else list(reasons_val)
+
+                        reasons_list = (
+                            json.loads(reasons_val)
+                            if isinstance(reasons_val, str)
+                            else list(reasons_val)
+                        )
                     except Exception:
                         reasons_list = [str(reasons_val)]
 
                 ev = CanonicalEvent(
                     event_id=row["event_id"],
                     instrument_id=row["instrument_id"],
-                    event_type=EventType(row["event_type"]) if row["event_type"] in EventType.__members__ else EventType.TRADE,
+                    event_type=EventType(row["event_type"])
+                    if row["event_type"] in EventType.__members__
+                    else EventType.TRADE,
                     exchange_timestamp=float(row["exchange_timestamp"] or 0.0),
                     receive_timestamp=float(row["receive_timestamp"] or 0.0),
                     processing_timestamp=float(row["processing_timestamp"] or 0.0),
                     source=row["source"] or "SQLITE",
                     sequence_number=row["sequence_number"],
                     price=float(row["price"]) if row["price"] is not None else None,
-                    quantity=float(row["quantity"]) if row["quantity"] is not None else None,
-                    bid_price=float(row["bid_price"]) if row["bid_price"] is not None else None,
-                    bid_size=float(row["bid_size"]) if row["bid_size"] is not None else None,
-                    ask_price=float(row["ask_price"]) if row["ask_price"] is not None else None,
-                    ask_size=float(row["ask_size"]) if row["ask_size"] is not None else None,
-                    quality_status=QualityStatus(row["quality_status"]) if row["quality_status"] in QualityStatus.__members__ else QualityStatus.VALID,
+                    quantity=float(row["quantity"])
+                    if row["quantity"] is not None
+                    else None,
+                    bid_price=float(row["bid_price"])
+                    if row["bid_price"] is not None
+                    else None,
+                    bid_size=float(row["bid_size"])
+                    if row["bid_size"] is not None
+                    else None,
+                    ask_price=float(row["ask_price"])
+                    if row["ask_price"] is not None
+                    else None,
+                    ask_size=float(row["ask_size"])
+                    if row["ask_size"] is not None
+                    else None,
+                    quality_status=QualityStatus(row["quality_status"])
+                    if row["quality_status"] in QualityStatus.__members__
+                    else QualityStatus.VALID,
                     reasons=reasons_list,
                     raw_id=row["raw_id"] or "",
                     source_kind="REPLAY",
@@ -303,7 +325,11 @@ class HistoricalReplayEngine:
                     break
                 ev_type = EventType.DEPTH if rec["type"] == "DEPTH" else EventType.TRADE
                 qs_str = rec.get("status", "VALID")
-                qs = QualityStatus[qs_str] if qs_str in QualityStatus.__members__ else QualityStatus.VALID
+                qs = (
+                    QualityStatus[qs_str]
+                    if qs_str in QualityStatus.__members__
+                    else QualityStatus.VALID
+                )
 
                 ev = CanonicalEvent(
                     event_id=f"jnl-{rec['seq']}",

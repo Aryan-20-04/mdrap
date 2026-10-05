@@ -172,6 +172,7 @@ def cmd_risk(args: argparse.Namespace) -> None:
     if symbol and os.path.exists(db_path):
         try:
             from bardb import BarDatabase
+
             bardb = BarDatabase(db_path)
             bars = bardb.get_bars(symbol, timeframe="1d", limit=252)
             if bars and len(bars) >= 30:

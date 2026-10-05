@@ -71,10 +71,16 @@ def validate_webhook_url(url: str) -> None:
     import urllib.parse
     import socket
 
-    allow_internal = os.environ.get("MDRAP_ALLOW_INTERNAL_WEBHOOKS", "0").lower() in ("1", "true", "yes")
+    allow_internal = os.environ.get("MDRAP_ALLOW_INTERNAL_WEBHOOKS", "0").lower() in (
+        "1",
+        "true",
+        "yes",
+    )
     parsed = urllib.parse.urlparse(url)
     if parsed.scheme not in ("http", "https"):
-        raise ValueError(f"SSRF Protection: Scheme '{parsed.scheme}' not allowed. Only http and https are permitted.")
+        raise ValueError(
+            f"SSRF Protection: Scheme '{parsed.scheme}' not allowed. Only http and https are permitted."
+        )
     host = parsed.hostname
     if not host:
         raise ValueError("SSRF Protection: Webhook destination requires a valid host.")
@@ -84,8 +90,16 @@ def validate_webhook_url(url: str) -> None:
     # Check IP literal
     try:
         ip = ipaddress.ip_address(host)
-        if ip.is_loopback or ip.is_private or ip.is_link_local or ip.is_reserved or ip.is_multicast:
-            raise ValueError(f"SSRF Protection: Webhook destination '{host}' is in a private/restricted address range.")
+        if (
+            ip.is_loopback
+            or ip.is_private
+            or ip.is_link_local
+            or ip.is_reserved
+            or ip.is_multicast
+        ):
+            raise ValueError(
+                f"SSRF Protection: Webhook destination '{host}' is in a private/restricted address range."
+            )
         return
     except ValueError as e:
         if "SSRF Protection" in str(e):
@@ -93,7 +107,9 @@ def validate_webhook_url(url: str) -> None:
 
     # Check dangerous hostnames
     if host.lower() in ("localhost", "metadata.google.internal", "instance-data"):
-        raise ValueError(f"SSRF Protection: Webhook destination '{host}' is a restricted hostname.")
+        raise ValueError(
+            f"SSRF Protection: Webhook destination '{host}' is a restricted hostname."
+        )
 
     # DNS resolution check
     try:
@@ -101,8 +117,16 @@ def validate_webhook_url(url: str) -> None:
         for _, _, _, _, sockaddr in addrs:
             ip_str = sockaddr[0]
             ip = ipaddress.ip_address(ip_str)
-            if ip.is_loopback or ip.is_private or ip.is_link_local or ip.is_reserved or ip.is_multicast:
-                raise ValueError(f"SSRF Protection: Host '{host}' resolves to restricted IP {ip_str}.")
+            if (
+                ip.is_loopback
+                or ip.is_private
+                or ip.is_link_local
+                or ip.is_reserved
+                or ip.is_multicast
+            ):
+                raise ValueError(
+                    f"SSRF Protection: Host '{host}' resolves to restricted IP {ip_str}."
+                )
     except socket.gaierror:
         # Allow non-resolvable mock domain names in offline/unit-test environments
         pass

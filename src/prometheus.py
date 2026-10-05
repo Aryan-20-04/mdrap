@@ -42,6 +42,7 @@ class PrometheusExporter:
 
     def _run_audit_check_async(self, store: Any) -> None:
         """Execute audit verification asynchronously in background thread (OPS-02)."""
+
         def _worker():
             try:
                 res = store.verify_audit_integrity()
@@ -246,9 +247,8 @@ class PrometheusExporter:
         if store and hasattr(store, "verify_audit_integrity"):
             now = time.time()
             with self._audit_lock:
-                if (
-                    not self._audit_check_in_progress
-                    and (now - self._last_audit_check_ts > self.audit_check_interval_s)
+                if not self._audit_check_in_progress and (
+                    now - self._last_audit_check_ts > self.audit_check_interval_s
                 ):
                     self._audit_check_in_progress = True
                     self._run_audit_check_async(store)

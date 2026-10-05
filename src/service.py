@@ -20,8 +20,6 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, Iterator, Optional, Set
 
-logger = logging.getLogger("mdrap.service")
-
 from bbo import BBOEngine
 from depth import ConsolidatedDepthEngine
 from fastpath import NativeReplayBuffer
@@ -35,6 +33,8 @@ from storage import Store
 from watchdog import SourceWatchdog
 
 __stability__ = "stable"
+
+logger = logging.getLogger("mdrap.service")
 
 
 @dataclass
@@ -1030,7 +1030,9 @@ class StreamClient:
                         try:
                             self._query_sock.close()
                         except Exception as close_exc:
-                            logger.debug("[service] Query sock close error: %s", close_exc)
+                            logger.debug(
+                                "[service] Query sock close error: %s", close_exc
+                            )
                         self._query_sock = None
                     if attempt == 1:
                         return {}

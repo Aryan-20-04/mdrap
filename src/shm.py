@@ -234,10 +234,16 @@ class SHMWriter:
         except Exception:
             return False
 
-    def update_reader_seq(self, read_seq: int, reader_id: str | int = "default") -> None:
+    def update_reader_seq(
+        self, read_seq: int, reader_id: str | int = "default"
+    ) -> None:
         """Update reader sequence and compute true slowest known reader sequence (min of active reader cursors)."""
-        self._reader_cursors[reader_id] = max(self._reader_cursors.get(reader_id, 0), read_seq)
-        oldest_consumer = min(self._reader_cursors.values()) if self._reader_cursors else read_seq
+        self._reader_cursors[reader_id] = max(
+            self._reader_cursors.get(reader_id, 0), read_seq
+        )
+        oldest_consumer = (
+            min(self._reader_cursors.values()) if self._reader_cursors else read_seq
+        )
         self._last_known_read_seq = oldest_consumer
         occupancy = self._write_seq - oldest_consumer
         if occupancy >= self.watermark_slots:
@@ -282,6 +288,7 @@ class SHMWriter:
         # Native acquire/release atomic publication fast path
         try:
             from fastpath import native_shm_write_tick
+
             if native_shm_write_tick(
                 self.shm.buf,
                 self.slot_count,
@@ -632,6 +639,7 @@ class SHMReader:
         # Native acquire/release atomic slot read fast path
         try:
             from fastpath import native_shm_read_slot
+
             native_item = native_shm_read_slot(self.shm.buf, self.slot_count, seq)
             if native_item is not None:
                 return native_item

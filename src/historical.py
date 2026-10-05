@@ -15,17 +15,14 @@ from __future__ import annotations
 import csv
 import datetime
 import gzip
-import io
 import json
 import os
 import shutil
 import sqlite3
-import tempfile
 import time
-from dataclasses import asdict, dataclass, field
-from typing import Any, Generator, Iterable, Iterator, Optional, Sequence
+from typing import Any, Generator, Iterable, Optional, Sequence
 
-from models import CanonicalEvent, EventType, QualityStatus
+from models import CanonicalEvent
 
 __stability__ = "stable"
 
@@ -33,6 +30,7 @@ __stability__ = "stable"
 try:
     import pyarrow as pa
     import pyarrow.parquet as pq
+
     HAS_PYARROW = True
 except ImportError:
     pa = None
@@ -66,11 +64,17 @@ CANONICAL_COLUMNS = [
 def _event_to_dict(event: CanonicalEvent | dict) -> dict[str, Any]:
     if isinstance(event, CanonicalEvent):
         reasons_raw = event.reasons
-        reasons_str = json.dumps(reasons_raw) if isinstance(reasons_raw, list) else str(reasons_raw or "[]")
+        reasons_str = (
+            json.dumps(reasons_raw)
+            if isinstance(reasons_raw, list)
+            else str(reasons_raw or "[]")
+        )
         return {
             "event_id": event.event_id,
             "instrument_id": event.instrument_id,
-            "event_type": event.event_type.value if hasattr(event.event_type, "value") else str(event.event_type),
+            "event_type": event.event_type.value
+            if hasattr(event.event_type, "value")
+            else str(event.event_type),
             "exchange_timestamp": float(event.exchange_timestamp or 0.0),
             "receive_timestamp": float(event.receive_timestamp or 0.0),
             "processing_timestamp": float(event.processing_timestamp or 0.0),
@@ -82,7 +86,9 @@ def _event_to_dict(event: CanonicalEvent | dict) -> dict[str, Any]:
             "bid_size": event.bid_size,
             "ask_price": event.ask_price,
             "ask_size": event.ask_size,
-            "quality_status": event.quality_status.value if hasattr(event.quality_status, "value") else str(event.quality_status),
+            "quality_status": event.quality_status.value
+            if hasattr(event.quality_status, "value")
+            else str(event.quality_status),
             "reasons": reasons_str,
             "raw_id": str(event.raw_id or ""),
         }
@@ -125,7 +131,9 @@ class HistoricalPartitioner:
     @staticmethod
     def _partition_key(ts: float, symbol: str) -> str:
         dt = datetime.datetime.fromtimestamp(ts, tz=datetime.timezone.utc)
-        return f"year={dt.year:04d}/month={dt.month:02d}/day={dt.day:02d}/symbol={symbol}"
+        return (
+            f"year={dt.year:04d}/month={dt.month:02d}/day={dt.day:02d}/symbol={symbol}"
+        )
 
     def partition_events(
         self,
@@ -166,22 +174,29 @@ class HistoricalPartitioner:
             part_dir = os.path.join(self.base_dir, key)
             os.makedirs(part_dir, exist_ok=True)
 
-            existing_part = partitions_dict.get(key, {
-                "files": [],
-                "format": selected_fmt,
-                "row_count": 0,
-                "min_exchange_ts": float("inf"),
-                "max_exchange_ts": float("-inf"),
-                "min_seq": None,
-                "max_seq": None,
-                "size_bytes": 0,
-            })
+            existing_part = partitions_dict.get(
+                key,
+                {
+                    "files": [],
+                    "format": selected_fmt,
+                    "row_count": 0,
+                    "min_exchange_ts": float("inf"),
+                    "max_exchange_ts": float("-inf"),
+                    "min_seq": None,
+                    "max_seq": None,
+                    "size_bytes": 0,
+                },
+            )
 
             # Chunk records
             for i in range(0, len(records), chunk_size):
                 chunk = records[i : i + chunk_size]
                 chunk_id = len(existing_part["files"]) + 1
-                ext = "parquet" if selected_fmt == "parquet" else ("csv.gz" if selected_fmt == "csv.gz" else "jsonl.gz")
+                ext = (
+                    "parquet"
+                    if selected_fmt == "parquet"
+                    else ("csv.gz" if selected_fmt == "csv.gz" else "jsonl.gz")
+                )
                 fname = f"part_{chunk_id:04d}.{ext}"
                 target_path = os.path.join(part_dir, fname)
                 tmp_path = target_path + ".tmp"
@@ -215,12 +230,24 @@ class HistoricalPartitioner:
                 # Update bounds
                 for r in chunk:
                     ts = float(r.get("exchange_timestamp") or 0.0)
-                    existing_part["min_exchange_ts"] = min(existing_part["min_exchange_ts"], ts)
-                    existing_part["max_exchange_ts"] = max(existing_part["max_exchange_ts"], ts)
+                    existing_part["min_exchange_ts"] = min(
+                        existing_part["min_exchange_ts"], ts
+                    )
+                    existing_part["max_exchange_ts"] = max(
+                        existing_part["max_exchange_ts"], ts
+                    )
                     seq = r.get("sequence_number")
                     if seq is not None and isinstance(seq, int):
-                        existing_part["min_seq"] = seq if existing_part["min_seq"] is None else min(existing_part["min_seq"], seq)
-                        existing_part["max_seq"] = seq if existing_part["max_seq"] is None else max(existing_part["max_seq"], seq)
+                        existing_part["min_seq"] = (
+                            seq
+                            if existing_part["min_seq"] is None
+                            else min(existing_part["min_seq"], seq)
+                        )
+                        existing_part["max_seq"] = (
+                            seq
+                            if existing_part["max_seq"] is None
+                            else max(existing_part["max_seq"], seq)
+                        )
 
                 existing_part["row_count"] += len(chunk)
                 existing_part["size_bytes"] += file_bytes
@@ -259,8 +286,12 @@ class HistoricalPartitioner:
             query += " ORDER BY exchange_timestamp ASC, rowid ASC"
 
             cursor = conn.execute(query, params)
-            buffer = []
-            total_stats = {"written_files": [], "rows_added": 0, "bytes_added": 0, "partitions_updated": []}
+            total_stats = {
+                "written_files": [],
+                "rows_added": 0,
+                "bytes_added": 0,
+                "partitions_updated": [],
+            }
 
             while True:
                 rows = cursor.fetchmany(chunk_size)
@@ -355,7 +386,9 @@ class HistoricalCatalog:
                     continue
 
                 if rel_file.endswith(".parquet") and HAS_PYARROW:
-                    table = pq.read_table(abs_path, columns=list(columns) if columns else None)
+                    table = pq.read_table(
+                        abs_path, columns=list(columns) if columns else None
+                    )
                     for row in table.to_pylist():
                         ts = float(row.get("exchange_timestamp") or 0.0)
                         if start_ts is not None and ts < start_ts:
@@ -403,7 +436,9 @@ class HistoricalCatalog:
     ) -> list[dict[str, Any]]:
         """Collect matching events into memory up to limit."""
         results: list[dict[str, Any]] = []
-        for rec in self.scan(symbol=symbol, start_ts=start_ts, end_ts=end_ts, columns=columns):
+        for rec in self.scan(
+            symbol=symbol, start_ts=start_ts, end_ts=end_ts, columns=columns
+        ):
             results.append(rec)
             if limit and len(results) >= limit:
                 break
@@ -419,7 +454,9 @@ class RetentionPolicy:
         self.base_dir = os.path.abspath(base_dir)
         self.partitioner = HistoricalPartitioner(base_dir=self.base_dir)
 
-    def apply_retention(self, max_age_days: int, dry_run: bool = False) -> dict[str, Any]:
+    def apply_retention(
+        self, max_age_days: int, dry_run: bool = False
+    ) -> dict[str, Any]:
         """
         Delete partitions whose max_exchange_ts is older than max_age_days.
         """
@@ -463,8 +500,12 @@ class RetentionPolicy:
                     partitions.pop(key, None)
 
         if not dry_run and pruned_keys:
-            manifest["total_rows"] = max(0, manifest.get("total_rows", 0) - rows_removed)
-            manifest["total_bytes"] = max(0, manifest.get("total_bytes", 0) - reclaimed_bytes)
+            manifest["total_rows"] = max(
+                0, manifest.get("total_rows", 0) - rows_removed
+            )
+            manifest["total_bytes"] = max(
+                0, manifest.get("total_bytes", 0) - reclaimed_bytes
+            )
             self.partitioner._save_manifest(manifest)
 
         return {
