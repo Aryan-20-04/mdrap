@@ -668,7 +668,7 @@ class Pipeline:
         if self._canonical_batch or self._quarantine_batch or self._lineage_batch:
             now = time.time()
             if now - self._last_flush_ts >= self.flush_interval_s:
-                self.flush(wait=True)
+                self.flush(wait=False)
 
     def _spill_dead_letter(self, canon: list, quar: list, lin: list) -> None:
         """Spill unwritten batches to fsync'd JSONL under data/deadletter/ on storage failure."""
@@ -719,7 +719,17 @@ class Pipeline:
                 self._sync_flush(canon, quar, lin, health_rows)
 
         if wait and self._async_writer_enabled and hasattr(self, "_write_queue"):
-            self._write_queue.join()
+            with self._write_queue.all_tasks_done:
+                deadline = time.time() + 5.0
+                while self._write_queue.unfinished_tasks:
+                    remaining = deadline - time.time()
+                    if remaining <= 0:
+                        logger.warning(
+                            "[pipeline] Timed out waiting for write queue to drain (%d tasks remaining)",
+                            self._write_queue.unfinished_tasks,
+                        )
+                        break
+                    self._write_queue.all_tasks_done.wait(timeout=remaining)
             if self._last_writer_exc is not None:
                 exc = self._last_writer_exc
                 self._last_writer_exc = None
