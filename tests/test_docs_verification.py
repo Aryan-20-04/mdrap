@@ -59,7 +59,7 @@ def test_public_sdk_imports_match_documentation():
     assert QualityStatus is not None
     assert Reason is not None
     assert hasattr(mdrap, "__version__")
-    assert mdrap.__version__ in ("2.3.0", "2.4.0", "2.4.1", "2.4.2")
+    assert mdrap.__version__ in ("2.3.0", "2.4.0", "2.4.1", "2.4.2", "3.0.0")
 
 
 def test_feed_adapter_documented_imports():

@@ -700,15 +700,26 @@ class Pipeline:
             for c in canon:
                 data = c.to_dict() if hasattr(c, "to_dict") else dict(c)
                 f.write(
-                    json.dumps({"_kind": "canonical", "data": data}, default=str) + "\n"
+                    json.dumps(
+                        {"type": "canonical", "_kind": "canonical", "data": data},
+                        default=str,
+                    )
+                    + "\n"
                 )
             for q in quar:
                 f.write(
-                    json.dumps({"_kind": "quarantine", "row": q}, default=str) + "\n"
+                    json.dumps(
+                        {"type": "quarantine", "_kind": "quarantine", "row": q},
+                        default=str,
+                    )
+                    + "\n"
                 )
             for lineage_row in lin:
                 f.write(
-                    json.dumps({"_kind": "lineage", "row": lineage_row}, default=str)
+                    json.dumps(
+                        {"type": "lineage", "_kind": "lineage", "row": lineage_row},
+                        default=str,
+                    )
                     + "\n"
                 )
             f.flush()
