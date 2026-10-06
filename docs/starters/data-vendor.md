@@ -67,18 +67,18 @@ flowchart TD
 
 | Component | Module | Role in Data Vendor Platform |
 |---|---|---|
-| **Feed Adapter Infrastructure** | [`adapters/__init__.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/adapters/__init__.py), [`feed_handler.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/feed_handler.py) | Dynamic [`FeedAdapter`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/adapters/__init__.py) discovery via standard library entry points (`mdrap.adapters`) and feed life-cycle supervision. |
-| **Exchange Feed Managers** | [`ws_feed.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/ws_feed.py), [`polygon_feed.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/polygon_feed.py), [`databento_feed.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/databento_feed.py) | Connectors handling vendor-specific handshakes, subscriptions, reconnects, and message normalization. |
-| **Reconciliation & Consensus** | [`reconciliation.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/reconciliation.py), [`bbo.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/bbo.py), [`depth.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/depth.py) | Multi-venue best bid/offer synthesis, source reliability scoring ([`ReliabilityTracker`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/reconciliation.py)), and consolidated Level-2 order books. |
-| **Commercial API Service** | [`api.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/api.py) | Enterprise FastAPI application exposing authenticated REST endpoints and WebSocket broadcast distribution. |
-| **Security & Entitlements** | [`security.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/security.py) | Token management, client provisioning, token bucket rate limiting (20,000 eps/client), and RBAC (`VIEWER`, `OPERATOR`, `ADMIN`). |
-| **Cryptographic Audit Trail** | [`storage.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/storage.py), [`audit_format.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/audit_format.py) | Merkle-tree rooted hash chaining for non-repudiation of every published quote and trade. |
+| **Feed Adapter Infrastructure** | [`adapters/__init__.py`](src/adapters/__init__.py), [`feed_handler.py`](src/feed_handler.py) | Dynamic [`FeedAdapter`](src/adapters/__init__.py) discovery via standard library entry points (`mdrap.adapters`) and feed life-cycle supervision. |
+| **Exchange Feed Managers** | [`ws_feed.py`](src/ws_feed.py), [`polygon_feed.py`](src/polygon_feed.py), [`databento_feed.py`](src/databento_feed.py) | Connectors handling vendor-specific handshakes, subscriptions, reconnects, and message normalization. |
+| **Reconciliation & Consensus** | [`reconciliation.py`](src/reconciliation.py), [`bbo.py`](src/bbo.py), [`depth.py`](src/depth.py) | Multi-venue best bid/offer synthesis, source reliability scoring ([`ReliabilityTracker`](src/reconciliation.py)), and consolidated Level-2 order books. |
+| **Commercial API Service** | [`api.py`](src/api.py) | Enterprise FastAPI application exposing authenticated REST endpoints and WebSocket broadcast distribution. |
+| **Security & Entitlements** | [`security.py`](src/security.py) | Token management, client provisioning, token bucket rate limiting (20,000 eps/client), and RBAC (`VIEWER`, `OPERATOR`, `ADMIN`). |
+| **Cryptographic Audit Trail** | [`storage.py`](src/storage.py), [`audit_format.py`](src/audit_format.py) | Merkle-tree rooted hash chaining for non-repudiation of every published quote and trade. |
 
 ---
 
 ## 3. Containerized Deployment (Docker)
 
-Deploying MDRAP as a self-hosted vendor hub is managed using the multi-stage [`Dockerfile`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/Dockerfile) and Docker Compose:
+Deploying MDRAP as a self-hosted vendor hub is managed using the multi-stage [`Dockerfile`](Dockerfile) and Docker Compose:
 
 ### `docker-compose.yml`
 
@@ -242,7 +242,7 @@ curl -X GET "http://localhost:8000/v1/audit/proofs?from_seq=1000&to_seq=2000" \
 
 As an external vendor and redistribution service, your architecture does not require execution-specific components:
 
-- **No Local Shared Memory Ring Buffer ([`shm.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/shm.py))**: Clients connect over network boundaries via HTTP/WebSocket, not through local POSIX shared memory pointers.
-- **No Native C Fastpath Accelerator ([`fastpath.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/fastpath.py), [`fastpath.c`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/fastpath.c))**: While supported, pure Python quality evaluation (~1.2 µs) is well within public cloud and internet distribution network latency budgets (1–20 ms).
-- **No Backtest Engine or Strategy SDK ([`backtest.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/backtest.py), [`strategy_sdk.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/strategy_sdk.py))**: Vendors sell clean market data; strategies run on customer infrastructure.
-- **No Derivatives Pricing Engines ([`options.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/options.py))**: Avoid computing Greeks on the ingest server unless specifically offering implied volatility derivative feeds.
+- **No Local Shared Memory Ring Buffer ([`shm.py`](src/shm.py))**: Clients connect over network boundaries via HTTP/WebSocket, not through local POSIX shared memory pointers.
+- **No Native C Fastpath Accelerator ([`fastpath.py`](src/fastpath.py), [`fastpath.c`](src/fastpath.c))**: While supported, pure Python quality evaluation (~1.2 µs) is well within public cloud and internet distribution network latency budgets (1–20 ms).
+- **No Backtest Engine or Strategy SDK ([`backtest.py`](src/backtest.py), [`strategy_sdk.py`](src/strategy_sdk.py))**: Vendors sell clean market data; strategies run on customer infrastructure.
+- **No Derivatives Pricing Engines ([`options.py`](src/options.py))**: Avoid computing Greeks on the ingest server unless specifically offering implied volatility derivative feeds.

@@ -9,7 +9,6 @@ services:
     # run: docker compose --profile production up -d (Caddy terminates TLS on 80/443).
     ports:
       - "127.0.0.1:8000:8000"   # REST & WebSocket API (Local loopback bind)
-      - "127.0.0.1:9001:9001"   # Ultra-low-latency TCP wire protocol (Local loopback bind)
     security_opt:
       - no-new-privileges:true
     environment:

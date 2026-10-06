@@ -220,37 +220,56 @@ class Pipeline:
             )
             self._writer_thread.start()
 
+    def _ensure_writer_alive(self):
+        """Supervisor check: ensure the asynchronous background writer thread is running."""
+        if not self._async_writer_enabled or self._writer_stop.is_set():
+            return
+        if self._writer_thread is None or not self._writer_thread.is_alive():
+            logger.warning(
+                "[pipeline] Storage writer thread was dead; supervisor reviving it"
+            )
+            self._writer_thread = threading.Thread(
+                target=self._writer_loop, daemon=True, name="mdrap-writer"
+            )
+            self._writer_thread.start()
+
     def _writer_loop(self):
         """Dedicated background writer loop executing atomic batches off the tick loop."""
         while not self._writer_stop.is_set():
             try:
-                item = self._write_queue.get(timeout=0.1)
-            except queue.Empty:
-                continue
-            if item is None:
-                self._write_queue.task_done()
-                break
-            canon, quar, lin, health = item
-            t_flush_start = time.perf_counter()
-            try:
-                if hasattr(self.store, "write_batches_atomic"):
-                    self.store.write_batches_atomic(canon, quar, lin, health)
-                else:
-                    self.store.write_canonical_batch(canon)
-                    self.store.write_quarantine_batch(quar)
-                    self.store.write_lineage_batch(lin)
-                    self.store.upsert_source_health(health)
-                    self.store.commit()
-                if self.metrics:
-                    self.metrics.record_flush(time.perf_counter() - t_flush_start)
-            except Exception as exc:
-                self._last_writer_exc = exc
-                self._spill_dead_letter(canon, quar, lin)
+                try:
+                    item = self._write_queue.get(timeout=0.1)
+                except queue.Empty:
+                    continue
+                if item is None:
+                    self._write_queue.task_done()
+                    break
+                canon, quar, lin, health = item
+                t_flush_start = time.perf_counter()
+                try:
+                    if hasattr(self.store, "write_batches_atomic"):
+                        self.store.write_batches_atomic(canon, quar, lin, health)
+                    else:
+                        self.store.write_canonical_batch(canon)
+                        self.store.write_quarantine_batch(quar)
+                        self.store.write_lineage_batch(lin)
+                        self.store.upsert_source_health(health)
+                        self.store.commit()
+                    if self.metrics:
+                        self.metrics.record_flush(time.perf_counter() - t_flush_start)
+                except Exception as exc:
+                    self._last_writer_exc = exc
+                    self._spill_dead_letter(canon, quar, lin)
+                    logger.error(
+                        "Async storage writer error, spilled to dead letter: %s", exc
+                    )
+                finally:
+                    self._write_queue.task_done()
+            except Exception as thread_exc:
                 logger.error(
-                    "Async storage writer error, spilled to dead letter: %s", exc
+                    "[pipeline] Unexpected error in storage writer thread: %s",
+                    thread_exc,
                 )
-            finally:
-                self._write_queue.task_done()
 
     def _enqueue_canonical(self, event: CanonicalEvent) -> None:
         self._canonical_batch.append(event)
@@ -673,28 +692,31 @@ class Pipeline:
                 self.flush(wait=True)
 
     def _spill_dead_letter(self, canon: list, quar: list, lin: list) -> None:
-        """Spill unwritten batches to fsync'd JSONL under data/deadletter/ on storage failure."""
-        dl_dir = os.path.join("data", "deadletter")
+        """Spill unwritten batches to fsync'd JSONL under dead-letter dir on storage failure."""
+        dl_dir = get_dead_letter_dir()
         os.makedirs(dl_dir, exist_ok=True)
         fname = os.path.join(dl_dir, f"spill-{time.time_ns()}.jsonl")
         with open(fname, "w", encoding="utf-8") as f:
             for c in canon:
+                data = c.to_dict() if hasattr(c, "to_dict") else dict(c)
                 f.write(
-                    json.dumps(c.to_dict() if hasattr(c, "to_dict") else str(c)) + "\n"
+                    json.dumps({"_kind": "canonical", "data": data}, default=str) + "\n"
                 )
             for q in quar:
                 f.write(
-                    json.dumps({"type": "quarantine", "row": q}, default=str) + "\n"
+                    json.dumps({"_kind": "quarantine", "row": q}, default=str) + "\n"
                 )
             for lineage_row in lin:
                 f.write(
-                    json.dumps({"type": "lineage", "row": lineage_row}, default=str)
+                    json.dumps({"_kind": "lineage", "row": lineage_row}, default=str)
                     + "\n"
                 )
             f.flush()
             os.fsync(f.fileno())
 
     def flush(self, wait: bool = True):
+        if self._async_writer_enabled:
+            self._ensure_writer_alive()
         if self._canonical_batch or self._quarantine_batch or self._lineage_batch:
             self._last_flush_ts = time.time()
             canon, quar, lin = (
@@ -754,7 +776,7 @@ class Pipeline:
             self._spill_dead_letter(canon, quar, lin)
             raise
 
-    def finish(self):
+    def finish(self, allow_conflicts: bool = False):
         if hasattr(self.quality, "drain_expired"):
             for d_ev in self.quality.drain_expired(force=True):
                 self._dispatch_evaluated(d_ev)
@@ -773,10 +795,114 @@ class Pipeline:
         if self.bbo:
             self.store.write_bbo_batch(list(self.bbo.all_bbos().values()))
             self.store.commit()
+        if hasattr(self.store, "conflicts") and self.metrics:
+            self.metrics.storage_conflicts = self.store.conflicts
         self.metrics.finish()
+        if not allow_conflicts and not getattr(self, "allow_storage_conflicts", False):
+            conflicts = getattr(self.store, "conflicts", 0)
+            if conflicts > 0:
+                from storage import StorageConflictError
+
+                raise StorageConflictError(
+                    f"Storage conflicts detected: {conflicts} records dropped due to primary key collision"
+                )
 
     def __enter__(self):
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.finish()
+
+
+def get_dead_letter_dir() -> str:
+    """Return absolute path to dead-letter directory, respecting MDRAP_DEAD_LETTER_DIR."""
+    return os.environ.get("MDRAP_DEAD_LETTER_DIR") or os.path.abspath(
+        os.path.join("data", "deadletter")
+    )
+
+
+def replay_dead_letter_spills(store, dead_letter_dir: str | None = None) -> dict:
+    """Replay spilled dead-letter JSONL files back into the persistent Store."""
+    dl_dir = dead_letter_dir or get_dead_letter_dir()
+    if not os.path.exists(dl_dir):
+        return {
+            "files_processed": 0,
+            "canonical_replayed": 0,
+            "quarantine_replayed": 0,
+            "lineage_replayed": 0,
+        }
+
+    files = sorted(
+        [
+            f
+            for f in os.listdir(dl_dir)
+            if f.startswith("spill-") and f.endswith(".jsonl")
+        ]
+    )
+    stats = {
+        "files_processed": 0,
+        "canonical_replayed": 0,
+        "quarantine_replayed": 0,
+        "lineage_replayed": 0,
+    }
+
+    for fname in files:
+        fpath = os.path.join(dl_dir, fname)
+        canon_batch = []
+        quar_batch = []
+        lin_batch = []
+        with open(fpath, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    obj = json.loads(line)
+                except Exception:
+                    continue
+                kind = obj.get("_kind") or obj.get("type")
+                if kind == "canonical":
+                    d = obj.get("data", obj)
+                    try:
+                        from models import CanonicalEvent
+
+                        canon_batch.append(CanonicalEvent.from_dict(d))
+                    except Exception:
+                        pass
+                elif kind == "quarantine":
+                    row = obj.get("row")
+                    if row:
+                        quar_batch.append(tuple(row))
+                elif kind == "lineage":
+                    row = obj.get("row")
+                    if row:
+                        lin_batch.append(tuple(row))
+                else:
+                    try:
+                        from models import CanonicalEvent
+
+                        canon_batch.append(CanonicalEvent.from_dict(obj))
+                    except Exception:
+                        pass
+
+        if canon_batch:
+            store.write_canonical_batch(canon_batch)
+            stats["canonical_replayed"] += len(canon_batch)
+        if quar_batch:
+            store.write_quarantine_batch(quar_batch)
+            stats["quarantine_replayed"] += len(quar_batch)
+        if lin_batch:
+            store.write_lineage_batch(lin_batch)
+            stats["lineage_replayed"] += len(lin_batch)
+        store.commit()
+
+        stats["files_processed"] += 1
+        replayed_path = fpath + ".replayed"
+        try:
+            if os.path.exists(replayed_path):
+                os.remove(replayed_path)
+            os.rename(fpath, replayed_path)
+        except OSError:
+            pass
+
+    return stats

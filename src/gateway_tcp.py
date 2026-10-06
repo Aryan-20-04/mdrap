@@ -44,6 +44,10 @@ class TCPGatewayServer:
                 self.require_auth = env_auth.lower() in ("1", "true", "yes")
             else:
                 self.require_auth = security_manager is not None
+
+        if self.require_auth and self.security_manager is None:
+            raise ValueError("require_auth=True requires a valid security_manager")
+
         self.clients: set[asyncio.StreamWriter] = set()
         self.server: asyncio.AbstractServer | None = None
         self._stats = {"sent": 0, "dropped": 0, "connected": 0, "auth_failures": 0}
@@ -53,7 +57,14 @@ class TCPGatewayServer:
         self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
     ):
         # Optional TLS / Auth gate
-        if self.require_auth and self.security_manager is not None:
+        if self.require_auth:
+            if self.security_manager is None:
+                logger.error(
+                    "Auth required but security manager is None; rejecting connection"
+                )
+                writer.close()
+                await writer.wait_closed()
+                return
             try:
                 line = await asyncio.wait_for(reader.readline(), timeout=5.0)
                 if not line:

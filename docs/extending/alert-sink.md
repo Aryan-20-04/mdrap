@@ -2,13 +2,13 @@
 
 The Market Data Reliability & Acceleration Platform (MDRAP) monitors data feed health, pipeline anomalies, quality status breaches, and cross-feed reconciliations. When anomalies occur, the alert subsystem coordinates notification delivery through decoupled, rate-limited, and retry-resilient alert sinks.
 
-Custom notification channels (PagerDuty, Slack, OpsGenie, Microsoft Teams, incident management systems, or custom HTTP webhooks) integrate via the [`AlertSink`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/protocols.py) protocol.
+Custom notification channels (PagerDuty, Slack, OpsGenie, Microsoft Teams, incident management systems, or custom HTTP webhooks) integrate via the [`AlertSink`](src/protocols.py) protocol.
 
 ---
 
 ## The AlertSink Protocol
 
-Defined in [`src/protocols.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/protocols.py):
+Defined in [`src/protocols.py`](src/protocols.py):
 
 ```python
 from typing import Any, Protocol, runtime_checkable
@@ -79,14 +79,14 @@ flowchart TD
 
 ## Built-In Alert Sinks
 
-MDRAP includes ready-to-use production alert sinks in [`src/alert_sinks.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/alert_sinks.py):
+MDRAP includes ready-to-use production alert sinks in [`src/alert_sinks.py`](src/alert_sinks.py):
 
 | Sink Class | Protocol | Destination | Key Features |
 |---|---|---|---|
-| [`WebhookAlertSink`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/alert_sinks.py) | `AlertSink` | Generic HTTP(S) Webhook | HMAC-SHA256 signature headers, configurable HTTP headers, custom JSON payloads. |
-| [`SlackAlertSink`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/alert_sinks.py) | `AlertSink` | Slack Incoming Webhook | Formatted Slack Block Kit cards with severity indicators and timestamp metadata. |
-| [`PagerDutyAlertSink`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/alert_sinks.py) | `AlertSink` | PagerDuty Events API v2 | Deduplication key mapping, routing key authorization, and event action dispatch. |
-| [`MockAlertSink`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/alert_sinks.py) | `AlertSink` | In-Memory / Test Double | Configurable artificial latency, simulated failure rates, and recorded delivery histories for unit testing. |
+| [`WebhookAlertSink`](src/alert_sinks.py) | `AlertSink` | Generic HTTP(S) Webhook | HMAC-SHA256 signature headers, configurable HTTP headers, custom JSON payloads. |
+| [`SlackAlertSink`](src/alert_sinks.py) | `AlertSink` | Slack Incoming Webhook | Formatted Slack Block Kit cards with severity indicators and timestamp metadata. |
+| [`PagerDutyAlertSink`](src/alert_sinks.py) | `AlertSink` | PagerDuty Events API v2 | Deduplication key mapping, routing key authorization, and event action dispatch. |
+| [`MockAlertSink`](src/alert_sinks.py) | `AlertSink` | In-Memory / Test Double | Configurable artificial latency, simulated failure rates, and recorded delivery histories for unit testing. |
 
 ---
 

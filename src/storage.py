@@ -43,6 +43,13 @@ __stability__ = "stable"
 
 logger = logging.getLogger("mdrap.storage")
 
+
+class StorageConflictError(RuntimeError):
+    """Raised when database inserts suffer unhandled primary key conflicts."""
+
+    pass
+
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS canonical_events (
     event_id TEXT PRIMARY KEY,
@@ -222,6 +229,12 @@ CREATE TABLE IF NOT EXISTS quarantine_merkle_log (
     format_version INTEGER NOT NULL DEFAULT 3
 );
 CREATE INDEX IF NOT EXISTS idx_quarantine_merkle_ts ON quarantine_merkle_log(timestamp);
+
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    version INTEGER PRIMARY KEY,
+    applied_at REAL NOT NULL,
+    description TEXT NOT NULL
+);
 """
 
 
@@ -237,6 +250,7 @@ DEFAULT_SQLITE_MMAP_MB: int = 64  # 64 MB mmap
 DEFAULT_SQLITE_CACHE_MB: int = 16  # 16 MB dedicated cache
 BYTES_PER_MB: int = 1024 * 1024
 PAGE_CACHE_KIB_PER_MB: int = 1000
+CURRENT_SCHEMA_VERSION: int = 3
 
 
 def _compute_merkle_root(leaf_hashes: list[bytes]) -> str:
@@ -352,8 +366,27 @@ class Store:
             self.conn.execute(f"PRAGMA mmap_size={mmap_bytes};")
             self.conn.execute(f"PRAGMA cache_size=-{cache_kib};")
             self.conn.execute("PRAGMA temp_store=MEMORY;")
-            self.conn.execute("PRAGMA user_version = 2;")
+
+            cur_ver_row = self.conn.execute("PRAGMA user_version;").fetchone()
+            db_version = cur_ver_row[0] if cur_ver_row else 0
+            if db_version > CURRENT_SCHEMA_VERSION:
+                raise RuntimeError(
+                    f"Unsupported database schema version {db_version} (current platform version is {CURRENT_SCHEMA_VERSION}). "
+                    f"Please upgrade MDRAP to access this database."
+                )
+
             self.conn.executescript(SCHEMA)
+
+            for v, desc in [
+                (1, "Baseline institutional market data schema"),
+                (2, "Format versioning and Merkle audit log"),
+                (3, "Quarantine Merkle log and API key SHA-256 hash storage"),
+            ]:
+                self.conn.execute(
+                    "INSERT OR IGNORE INTO schema_migrations (version, applied_at, description) VALUES (?, ?, ?)",
+                    (v, time.time(), desc),
+                )
+            self.conn.execute(f"PRAGMA user_version = {CURRENT_SCHEMA_VERSION};")
             try:
                 self.conn.execute(
                     "ALTER TABLE audit_log ADD COLUMN format_version INTEGER NOT NULL DEFAULT 2"
@@ -599,20 +632,28 @@ class Store:
                 if ins < len(canonical):
                     self.conflicts += len(canonical) - ins
             if quarantine:
+                c_before_q = self.conn.total_changes
                 self.conn.executemany(
                     """INSERT INTO quarantine VALUES
                        (?,?,?,?,?,?,?)
                        ON CONFLICT(event_id) DO NOTHING""",
                     quarantine,
                 )
+                ins_q = self.conn.total_changes - c_before_q
+                if ins_q < len(quarantine):
+                    self.conflicts += len(quarantine) - ins_q
                 self._append_quarantine_merkle_batch_in_tx(quarantine)
             if lineage:
+                c_before_l = self.conn.total_changes
                 self.conn.executemany(
                     """INSERT INTO lineage VALUES
                        (?,?,?,?,?,?,?,?,?,?,?)
                        ON CONFLICT(event_id) DO NOTHING""",
                     lineage,
                 )
+                ins_l = self.conn.total_changes - c_before_l
+                if ins_l < len(lineage):
+                    self.conflicts += len(lineage) - ins_l
             if source_health:
                 self.conn.executemany(
                     "INSERT OR REPLACE INTO source_health VALUES (?,?,?,?,?,?,?,?,?)",
@@ -1422,6 +1463,79 @@ class Store:
             f"Cryptographic audit chain verified ({len(rows)} entries intact)",
             len(rows),
         )
+
+    @_synchronized
+    def get_audit_anchor(self) -> tuple[int, str]:
+        """Return the current audit log anchor: (entry_count, head_hash)."""
+        cur = self.conn.execute(
+            "SELECT count(*), COALESCE((SELECT entry_hash FROM audit_log ORDER BY entry_id DESC LIMIT 1), 'GENESIS_0000000000000000000000000000000000000000000000000000000000000000') FROM audit_log"
+        )
+        row = cur.fetchone()
+        return (
+            (row[0], row[1])
+            if row
+            else (
+                0,
+                "GENESIS_0000000000000000000000000000000000000000000000000000000000000000",
+            )
+        )
+
+    @_synchronized
+    def sign_audit_checkpoint(self, secret_key: bytes | str | None = None) -> dict:
+        """Sign current audit log state with HMAC-SHA256."""
+        import hashlib
+        import hmac
+
+        if secret_key is None:
+            secret_key = os.environ.get("MDRAP_AUDIT_KEY", "")
+        if isinstance(secret_key, str):
+            secret_key = secret_key.encode("utf-8")
+        if not secret_key:
+            raise ValueError(
+                "MDRAP_AUDIT_KEY or secret_key required for audit checkpoint signing"
+            )
+        count, head = self.get_audit_anchor()
+        msg = f"{count}:{head}".encode("utf-8")
+        sig = hmac.new(secret_key, msg, hashlib.sha256).hexdigest()
+        return {"count": count, "head": head, "signature": sig}
+
+    @staticmethod
+    def verify_audit_checkpoint(
+        checkpoint: dict, secret_key: bytes | str | None = None
+    ) -> bool:
+        """Verify HMAC-SHA256 signature on an audit checkpoint."""
+        import hashlib
+        import hmac
+
+        if secret_key is None:
+            secret_key = os.environ.get("MDRAP_AUDIT_KEY", "")
+        if isinstance(secret_key, str):
+            secret_key = secret_key.encode("utf-8")
+        if not secret_key:
+            return False
+        count = checkpoint.get("count", 0)
+        head = checkpoint.get("head", "")
+        expected_sig = checkpoint.get("signature", "")
+        msg = f"{count}:{head}".encode("utf-8")
+        computed_sig = hmac.new(secret_key, msg, hashlib.sha256).hexdigest()
+        return hmac.compare_digest(computed_sig, expected_sig)
+
+    @_synchronized
+    def get_schema_version(self) -> int:
+        """Return current database schema version from PRAGMA user_version."""
+        row = self.conn.execute("PRAGMA user_version;").fetchone()
+        return row[0] if row else 0
+
+    @_synchronized
+    def get_applied_migrations(self) -> list[dict]:
+        """Return list of applied schema migrations."""
+        cur = self.conn.execute(
+            "SELECT version, applied_at, description FROM schema_migrations ORDER BY version ASC"
+        )
+        return [
+            {"version": r[0], "applied_at": r[1], "description": r[2]}
+            for r in cur.fetchall()
+        ]
 
     @_synchronized
     def export_audit_proof(self, output_file: str | None = None) -> dict:

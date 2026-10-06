@@ -451,7 +451,7 @@ Implemented three remaining spec milestones in dependency order. Test suite expa
 - Added asset-class override resolution (`crypto` vs `equities`).
 
 ### 3. Cryptographic Merkle Audit Specification & Standalone Verifier
-- Published formal ledger specification: [`docs/audit-log-format.md`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/docs/audit-log-format.md).
+- Published formal ledger specification: [`docs/audit-log-format.md`](docs/audit-log-format.md).
 - Added `Store.export_audit_proof()` and `Store.verify_standalone_proof()`.
 - Added CLI subcommands `mdrap audit --export-proof <file>` and `mdrap audit --verify-proof <file>`.
 

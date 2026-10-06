@@ -240,6 +240,20 @@ class PrometheusExporter:
             disagreement_count,
         )
 
+        # Storage conflicts (Card #1)
+        store = getattr(state, "store", None) if state else None
+        storage_conflicts = (
+            getattr(store, "conflicts", 0)
+            if store
+            else int(self._custom_counters.get("storage_conflicts", 0))
+        )
+        add_metric(
+            "mdrap_storage_conflicts_total",
+            "counter",
+            "Total count of unhandled primary key insert collisions",
+            storage_conflicts,
+        )
+
         # -------------------------------------------------------------------
         # 3. Cryptographic Audit Chain Verification Status (OPS-02)
         # -------------------------------------------------------------------

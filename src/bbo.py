@@ -129,7 +129,11 @@ class BBOEngine:
 
         # If source is currently eligible, update its quote
         if self._is_source_eligible(src):
-            inst_book[src] = event
+            existing = inst_book.get(src)
+            if existing is None or (event.exchange_timestamp or 0.0) >= (
+                existing.exchange_timestamp or 0.0
+            ):
+                inst_book[src] = event
         else:
             # Source was degraded/silent/blocked, evict its quote
             inst_book.pop(src, None)
@@ -148,6 +152,7 @@ class BBOEngine:
         if not inst_book:
             if inst in self._current_bbos:
                 self._current_bbos[inst].is_stale = True
+            self._cached_bbo_json.pop(inst, None)
             return None
 
         best_bid = -float("inf")

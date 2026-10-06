@@ -1335,10 +1335,40 @@ def cmd_audit(args):
         store.close()
         return
 
+    if getattr(args, "print_anchor", False):
+        count, head = store.get_audit_anchor()
+        console.print(f"{count}:{head}")
+        store.close()
+        return
+
+    if getattr(args, "sign_checkpoint", False):
+        try:
+            import json
+
+            cp = store.sign_audit_checkpoint()
+            console.print(json.dumps(cp, indent=2))
+        except Exception as exc:
+            console.print(f"[bold red]✖ Checkpoint signing error: {exc}[/bold red]")
+        store.close()
+        return
+
     sec = SecurityManager(store=store)
 
-    if getattr(args, "verify", False):
-        valid, msg, count = sec.verify_audit_trail()
+    anchor_arg = getattr(args, "anchor", None)
+    anchor_tuple = None
+    if anchor_arg:
+        parts = anchor_arg.split(":", 1)
+        if len(parts) == 2 and parts[0].isdigit():
+            anchor_tuple = (int(parts[0]), parts[1])
+        else:
+            console.print(
+                "[bold red]✖ Invalid anchor format. Expected <count>:<head_hash>[/bold red]"
+            )
+            store.close()
+            return
+
+    if getattr(args, "verify", False) or anchor_tuple is not None:
+        valid, msg, count = sec.verify_audit_trail(anchor=anchor_tuple)
         if valid:
             console.print(
                 Panel.fit(
@@ -1410,6 +1440,78 @@ def cmd_audit(args):
     color = "green" if valid else "red"
     console.print(f"[dim]Chain Integrity: [{color}]{msg}[/{color}][/dim]\n")
     store.close()
+
+
+def cmd_deadletter(args):
+    """Inspect and replay uncommitted dead-letter transaction logs."""
+    from pipeline import get_dead_letter_dir, replay_dead_letter_spills
+    from storage import Store
+
+    console = Console()
+    dl_dir = getattr(args, "dir", None) or get_dead_letter_dir()
+
+    if getattr(args, "action", "") == "replay":
+        store = Store(args.db)
+        stats = replay_dead_letter_spills(store, dead_letter_dir=dl_dir)
+        store.close()
+        console.print(
+            Panel.fit(
+                f"[bold green]✔ DEAD-LETTER REPLAY COMPLETED[/bold green]\n"
+                f"Files processed: {stats['files_processed']}\n"
+                f"Canonical events replayed: {stats['canonical_replayed']}\n"
+                f"Quarantine records replayed: {stats['quarantine_replayed']}\n"
+                f"Lineage records replayed: {stats['lineage_replayed']}",
+                border_style="green",
+            )
+        )
+        return
+
+    # Default action: list
+    if not os.path.exists(dl_dir):
+        console.print(
+            f"[dim]Dead-letter directory '{dl_dir}' does not exist (no spills).[/dim]"
+        )
+        return
+
+    files = [
+        f for f in os.listdir(dl_dir) if f.startswith("spill-") and f.endswith(".jsonl")
+    ]
+    if not files:
+        console.print(f"[green]✔ No pending dead-letter spills in '{dl_dir}'.[/green]")
+        return
+
+    table = Table(title=f"Pending Dead-Letter Spills ({len(files)} files)")
+    table.add_column("Filename", style="cyan")
+    table.add_column("Size (bytes)", justify="right", style="magenta")
+    for f in sorted(files):
+        sz = os.path.getsize(os.path.join(dl_dir, f))
+        table.add_row(f, str(sz))
+    console.print(table)
+
+
+def cmd_plugins(args):
+    """List installed plugins and extension entry points."""
+    from plugins import discover_all_plugins
+
+    console = Console()
+    all_plugins = discover_all_plugins()
+
+    table = Table(title="MDRAP Extension Points & Installed Plugins")
+    table.add_column("Plugin Group", style="cyan")
+    table.add_column("Plugin Name", style="bold white")
+    table.add_column("Target Object / Factory", style="green")
+
+    total_count = 0
+    for grp, plugins in all_plugins.items():
+        if not plugins:
+            table.add_row(grp, "[dim](none installed)[/dim]", "[dim]-[/dim]")
+        else:
+            for name, obj in plugins.items():
+                total_count += 1
+                table.add_row(grp, name, repr(obj))
+
+    console.print(table)
+    console.print(f"[dim]Total plugins discovered: {total_count}[/dim]\n")
 
 
 def cmd_chaos(args):
@@ -7277,7 +7379,49 @@ def build_parser() -> argparse.ArgumentParser:
         default=100,
         help="Batch size for Merkle audit root anchoring (default: 100)",
     )
+    p_audit.add_argument(
+        "--anchor",
+        metavar="COUNT:HEAD",
+        help="Verify audit trail against an external anchor (format: <count>:<head_hash>)",
+    )
+    p_audit.add_argument(
+        "--print-anchor",
+        action="store_true",
+        help="Print current audit anchor (<count>:<head_hash>) for external witnessing",
+    )
+    p_audit.add_argument(
+        "--sign-checkpoint",
+        action="store_true",
+        help="Generate HMAC-SHA256 signed audit checkpoint using MDRAP_AUDIT_KEY",
+    )
     _add_limit_arg(p_audit, default=20, help_text="Number of audit records to show")
+
+    # Dead-Letter Spill & Replay
+    p_deadletter = _sub(
+        "deadletter",
+        cmd_deadletter,
+        "Inspect and replay uncommitted dead-letter transaction logs",
+        db=True,
+    )
+    p_deadletter.add_argument(
+        "action",
+        nargs="?",
+        default="list",
+        choices=["list", "replay"],
+        help="Action: list pending files or replay into database",
+    )
+    p_deadletter.add_argument(
+        "--dir",
+        metavar="PATH",
+        help="Custom dead-letter spill directory path",
+    )
+
+    # Installed Plugins & Extension Points
+    _sub(
+        "plugins",
+        cmd_plugins,
+        "List installed plugins and extension entry points",
+    )
 
     # Query
     p_query = _sub(
@@ -8811,6 +8955,8 @@ ALL_CANONICAL_COMMANDS = [
     "config",
     "core",
     "doctor",
+    "deadletter",
+    "plugins",
     "demo",
     "completion",
 ]
@@ -8822,7 +8968,7 @@ def render_command_palette(console: Console) -> None:
         console,
         title="MDRAP PLATFORM COMMAND MATRIX",
         subtitle="Market Desk, Quant, Daemon & System Controls",
-        badge="v2.4.0",
+        badge="v3.0.0",
     )
     palette = (
         "[bold #818cf8]┌─ 🟢 Market Desk ──────────────┬─ 📊 Quant & Execution ──────────┐[/bold #818cf8]\n"

@@ -1,12 +1,12 @@
 # Implementing Custom Feed Adapters
 
-Market data originates from diverse sources: binary multicast lines (NASDAQ ITCH, CME SBE), FIX streams, WebSockets, and REST endpoints. MDRAP standardizes ingestion via the [`FeedAdapter`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/adapters/__init__.py) protocol.
+Market data originates from diverse sources: binary multicast lines (NASDAQ ITCH, CME SBE), FIX streams, WebSockets, and REST endpoints. MDRAP standardizes ingestion via the [`FeedAdapter`](src/adapters/__init__.py) protocol.
 
 ---
 
 ## The FeedAdapter Protocol
 
-Defined in [`src/adapters/__init__.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/adapters/__init__.py):
+Defined in [`src/adapters/__init__.py`](src/adapters/__init__.py):
 
 ```python
 from typing import Iterator, Protocol, runtime_checkable
@@ -36,9 +36,9 @@ flowchart LR
 
 ## 1. Implementing the Protocol
 
-Adapters yield [`RawEvent`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/models.py) objects. Raw payloads are dictionaries capturing native feed fields. MDRAP's normalization gateway automatically maps common key variants (`symbol` / `instrument`, `qty` / `quantity`, `bid_sz` / `bid_size`).
+Adapters yield [`RawEvent`](src/models.py) objects. Raw payloads are dictionaries capturing native feed fields. MDRAP's normalization gateway automatically maps common key variants (`symbol` / `instrument`, `qty` / `quantity`, `bid_sz` / `bid_size`).
 
-Reference implementation based on [`src/adapters/template.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/adapters/template.py):
+Reference implementation based on [`src/adapters/template.py`](src/adapters/template.py):
 
 ```python
 from __future__ import annotations
@@ -105,7 +105,7 @@ class ExchangeTcpAdapter:
 
 ## 2. Registration via Entry Points
 
-MDRAP discovers installed adapters via `mdrap.adapters` using [`discover_adapters()`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/adapters/__init__.py#L33-L56).
+MDRAP discovers installed adapters via `mdrap.adapters` using [`discover_adapters()`](src/adapters/__init__.py#L33-L56).
 
 Register your adapter in `pyproject.toml`:
 
@@ -168,7 +168,7 @@ def test_pipeline_integration():
 
 ## Source References
 
-- [`src/adapters/__init__.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/adapters/__init__.py): Protocol definition and `discover_adapters()`.
-- [`src/adapters/template.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/adapters/template.py): Reference custom venue template.
-- [`src/models.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/models.py): [`RawEvent`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/models.py) and [`CanonicalEvent`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/models.py) models.
-- [`src/gateway.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/gateway.py): Feed ingestion normalization rules.
+- [`src/adapters/__init__.py`](src/adapters/__init__.py): Protocol definition and `discover_adapters()`.
+- [`src/adapters/template.py`](src/adapters/template.py): Reference custom venue template.
+- [`src/models.py`](src/models.py): [`RawEvent`](src/models.py) and [`CanonicalEvent`](src/models.py) models.
+- [`src/gateway.py`](src/gateway.py): Feed ingestion normalization rules.

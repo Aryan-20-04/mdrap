@@ -14,6 +14,8 @@ import struct
 import time
 from typing import Generator
 
+__stability__ = "stable"
+
 from shm import (
     SLOT_SIZE,
     SLOT_STRUCT,

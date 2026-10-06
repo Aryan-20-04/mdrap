@@ -20,7 +20,7 @@ Attempting to register a rule outside `32..63` raises `ValueError`.
 
 ## Quality Evaluation Lifecycle
 
-User rules are evaluated post-native pass in [`evaluate_user_rules()`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/rules.py#L81-L103):
+User rules are evaluated post-native pass in [`evaluate_user_rules()`](src/rules.py#L81-L103):
 
 ```mermaid
 flowchart TD
@@ -45,7 +45,7 @@ An event marked `INVALID` by an upstream check can never be downgraded to `SUSPI
 
 ## 1. Writing a Quality Rule Function
 
-A rule function receives a [`CanonicalEvent`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/models.py) and returns `True` if a violation occurred, or `False` if the tick passed:
+A rule function receives a [`CanonicalEvent`](src/models.py) and returns `True` if a violation occurred, or `False` if the tick passed:
 
 ```python
 from models import CanonicalEvent
@@ -63,7 +63,7 @@ def detect_fat_finger(event: CanonicalEvent) -> bool:
 
 ## 2. Registration via Decorator
 
-Use [`@register_rule`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/rules.py#L28-L60) to register within application code:
+Use [`@register_rule`](src/rules.py#L28-L60) to register within application code:
 
 ```python
 from models import CanonicalEvent, QualityStatus
@@ -123,7 +123,7 @@ def register_compliance_rules():
 
 ## 4. Error Handling & Fault Isolation
 
-User quality rules execute within a defensive `try / except` block inside [`evaluate_user_rules()`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/rules.py#L86-L103). If a user rule raises an uncaught exception (e.g. `ZeroDivisionError`, `AttributeError`):
+User quality rules execute within a defensive `try / except` block inside [`evaluate_user_rules()`](src/rules.py#L86-L103). If a user rule raises an uncaught exception (e.g. `ZeroDivisionError`, `AttributeError`):
 - The pipeline **never crashes**.
 - The event is preserved and tagged with `USER_RULE_ERROR` in `event.reasons`.
 - The event routes to evidentiary quarantine for operator inspection.
@@ -132,7 +132,7 @@ User quality rules execute within a defensive `try / except` block inside [`eval
 
 ## 5. Unit Testing Quality Rules
 
-MDRAP provides [`unregister_rule()`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/rules.py#L63-L68) and [`clear_user_rules()`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/rules.py#L70-L74) for clean test fixtures:
+MDRAP provides [`unregister_rule()`](src/rules.py#L63-L68) and [`clear_user_rules()`](src/rules.py#L70-L74) for clean test fixtures:
 
 ```python
 import pytest
@@ -171,6 +171,6 @@ def test_user_rule_escalation():
 
 ## Source References
 
-- [`src/rules.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/rules.py): Implementation of [`@register_rule`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/rules.py) and [`evaluate_user_rules()`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/rules.py).
-- [`src/models.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/models.py): [`QualityStatus`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/models.py) and [`CanonicalEvent`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/models.py) domain definitions.
-- [`src/quality.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/quality.py): Core platform rules (bits 0..15).
+- [`src/rules.py`](src/rules.py): Implementation of [`@register_rule`](src/rules.py) and [`evaluate_user_rules()`](src/rules.py).
+- [`src/models.py`](src/models.py): [`QualityStatus`](src/models.py) and [`CanonicalEvent`](src/models.py) domain definitions.
+- [`src/quality.py`](src/quality.py): Core platform rules (bits 0..15).

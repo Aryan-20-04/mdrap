@@ -61,9 +61,9 @@ from prometheus import global_prometheus_exporter
 try:
     import __init__ as _pkg
 
-    __version__ = getattr(_pkg, "__version__", "2.4.2")
+    __version__ = getattr(_pkg, "__version__", "3.0.0")
 except Exception:
-    __version__ = "2.4.2"
+    __version__ = "3.0.0"
 
 __stability__ = "beta"
 
@@ -311,14 +311,33 @@ def create_app(
         # to prevent raw secret leakage in access logs, proxies, referers, and browser histories.
         return None
 
+    _FAILED_AUTH_ATTEMPTS: dict[str, tuple[int, float]] = {}
+    _AUTH_LOCKOUT_MAX_ATTEMPTS = 10
+    _AUTH_LOCKOUT_DURATION_S = 60.0
+
     def require_role(required_role: Role):
-        """FastAPI dependency enforcing RBAC hierarchy (VIEWER <= OPERATOR <= ADMIN)."""
+        """FastAPI dependency enforcing RBAC hierarchy (VIEWER <= OPERATOR <= ADMIN) and rate limiting."""
 
         def dependency(
             request: Request,
             token: Optional[str] = Depends(get_token_from_request),
         ) -> ClientEntitlement:
             sec_mgr: SecurityManager = request.app.state.mdrap.security_manager
+            client_ip = request.client.host if request.client else "unknown"
+
+            # Check for IP lockout after repeated failed authentications
+            fail_rec = _FAILED_AUTH_ATTEMPTS.get(client_ip)
+            if fail_rec:
+                cnt, last_t = fail_rec
+                if cnt >= _AUTH_LOCKOUT_MAX_ATTEMPTS:
+                    if time.time() - last_t < _AUTH_LOCKOUT_DURATION_S:
+                        raise HTTPException(
+                            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                            detail="Too many failed authentication attempts. Client IP temporarily locked out.",
+                        )
+                    else:
+                        _FAILED_AUTH_ATTEMPTS.pop(client_ip, None)
+
             if not token:
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
@@ -327,10 +346,15 @@ def create_app(
 
             ent = sec_mgr.get_entitlement(token, active_only=True)
             if not ent:
+                cnt, _ = _FAILED_AUTH_ATTEMPTS.get(client_ip, (0, 0.0))
+                _FAILED_AUTH_ATTEMPTS[client_ip] = (cnt + 1, time.time())
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     detail="Invalid or inactive API key",
                 )
+
+            # Successful auth: reset client IP lockout counter
+            _FAILED_AUTH_ATTEMPTS.pop(client_ip, None)
 
             actor_role = ent.role if isinstance(ent.role, Role) else Role[str(ent.role)]
             if _ROLE_HIERARCHY.get(actor_role, 0) < _ROLE_HIERARCHY.get(
@@ -343,6 +367,14 @@ def create_app(
                         f"but your key has role '{actor_role.value}'"
                     ),
                 )
+
+            # Enforce role-tiered token bucket rate limits
+            if not sec_mgr.allow_for_role(actor_role, actor=ent.client_id):
+                raise HTTPException(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    detail=f"Rate limit exceeded for role '{actor_role.value}'",
+                )
+
             return ent
 
         return dependency

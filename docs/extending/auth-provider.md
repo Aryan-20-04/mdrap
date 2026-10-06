@@ -1,12 +1,12 @@
 # Implementing Custom Auth Providers
 
-MDRAP secures market data streams, operational APIs, and administration consoles using Role-Based Access Control (RBAC) and cryptographically chained audit trails ([`SecurityManager`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/security.py)). For enterprise single sign-on (SSO), OAuth2/OIDC, or active directory integration, implement [`AuthProvider`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/protocols.py).
+MDRAP secures market data streams, operational APIs, and administration consoles using Role-Based Access Control (RBAC) and cryptographically chained audit trails ([`SecurityManager`](src/security.py)). For enterprise single sign-on (SSO), OAuth2/OIDC, or active directory integration, implement [`AuthProvider`](src/protocols.py).
 
 ---
 
 ## The AuthProvider Protocol
 
-Defined in [`src/protocols.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/protocols.py):
+Defined in [`src/protocols.py`](src/protocols.py):
 
 ```python
 from typing import Any, Protocol, runtime_checkable
@@ -46,7 +46,7 @@ Any role at level $N$ possesses all permissions of levels $< N$.
 
 ## Integration with FastAPI (`api.py`)
 
-In [`src/api.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/api.py), the [`require_role`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/api.py) dependency resolves incoming client identity from two standard HTTP header carriers:
+In [`src/api.py`](src/api.py), the [`require_role`](src/api.py) dependency resolves incoming client identity from two standard HTTP header carriers:
 1. `X-API-Key: <token>` header
 2. `Authorization: Bearer <token>` header
 
@@ -166,7 +166,7 @@ class OAuth2AuthProvider:
 
 ## Source References
 
-- [`src/protocols.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/protocols.py): [`AuthProvider`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/protocols.py) protocol definition.
-- [`src/security.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/security.py): Core [`SecurityManager`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/security.py), [`Role`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/security.py), and [`ClientEntitlement`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/security.py).
-- [`src/api.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/api.py): FastAPI security dependencies ([`require_role`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/api.py#L272)).
-- [`src/audit_format.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/audit_format.py): Cryptographic hash chain formatting.
+- [`src/protocols.py`](src/protocols.py): [`AuthProvider`](src/protocols.py) protocol definition.
+- [`src/security.py`](src/security.py): Core [`SecurityManager`](src/security.py), [`Role`](src/security.py), and [`ClientEntitlement`](src/security.py).
+- [`src/api.py`](src/api.py): FastAPI security dependencies ([`require_role`](src/api.py#L272)).
+- [`src/audit_format.py`](src/audit_format.py): Cryptographic hash chain formatting.

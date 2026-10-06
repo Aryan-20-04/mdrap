@@ -520,11 +520,13 @@ class ConsolidatedDepthEngine:
         inst_books = self._venue_books.setdefault(inst, {})
         self._last_seen[inst] = t_event  # ponytail: track for LRU eviction
         if bids_raw or asks_raw:
-            inst_books[src] = {
-                "bids": bids_raw,
-                "asks": asks_raw,
-                "updated_at": t_event,
-            }
+            existing = inst_books.get(src)
+            if existing is None or t_event >= existing.get("updated_at", 0.0):
+                inst_books[src] = {
+                    "bids": bids_raw,
+                    "asks": asks_raw,
+                    "updated_at": t_event,
+                }
         self._evict_stale()  # ponytail: cap memory on long daemons
 
         # Prune expired or inactive venue books

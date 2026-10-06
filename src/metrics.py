@@ -142,6 +142,7 @@ class RunMetrics:
     end_time: Optional[float] = None
     processed: int = 0
     dropped: int = 0  # events that raised an unrecoverable error (rare; schema failures are INVALID, not dropped)
+    storage_conflicts: int = 0
     quality_counts: Dict[str, int] = field(
         default_factory=lambda: {"VALID": 0, "SUSPICIOUS": 0, "INVALID": 0}
     )
@@ -297,6 +298,7 @@ class RunMetrics:
         result = {
             "processed": self.processed,
             "dropped": self.dropped,
+            "storage_conflicts": self.storage_conflicts,
             "elapsed_s": round(self.elapsed_s(), 4),
             "throughput_eps": round(self.throughput(), 1),
             "quality_counts": self.quality_counts,

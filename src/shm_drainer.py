@@ -21,6 +21,8 @@ from models import CanonicalEvent, EventType, QualityStatus
 
 logger = logging.getLogger("mdrap.shm_drainer")
 
+__stability__ = "stable"
+
 
 class DrainStats:
     """Telemetry counters for SHMDrainWorker."""

@@ -12,7 +12,9 @@ set is known ground truth for quality-engine scoring.
 from __future__ import annotations
 
 import itertools
+import os
 import random
+import secrets
 from dataclasses import dataclass, field
 from typing import Iterator, List, Optional
 
@@ -167,6 +169,7 @@ class FeedSimulator:
         }
         t = 1_700_000_000.0  # arbitrary fixed epoch start -> fully deterministic
         pending_duplicate: Optional[tuple] = None
+        _run_id = os.environ.get("MDRAP_RUN_ID", secrets.token_hex(8))
         _id_counter = itertools.count(1)
 
         emitted = 0
@@ -254,7 +257,7 @@ class FeedSimulator:
                 source=source,
                 payload=payload,
                 receive_timestamp=receive_ts,
-                raw_id=f"sim-{next(_id_counter)}",
+                raw_id=f"sim-{_run_id}-{next(_id_counter)}",
             )
             yield raw, label
             emitted += 1
@@ -265,7 +268,7 @@ class FeedSimulator:
                     source=source,
                     payload=dict(payload),
                     receive_timestamp=receive_ts + 0.0001,
-                    raw_id=f"sim-{next(_id_counter)}",
+                    raw_id=f"sim-{_run_id}-{next(_id_counter)}",
                 )
                 pending_duplicate = (dup_raw, "duplicate")
                 self.injected["duplicate"] += 1

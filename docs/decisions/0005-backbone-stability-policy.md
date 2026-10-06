@@ -9,7 +9,7 @@
 
 ## 1. Context & Problem Statement
 
-MDRAP has expanded from a lightweight, single-process market data pipeline into a multi-layered ecosystem comprising 72 Python modules, native C acceleration primitives, and multiple domain-specific engines across 12 architectural layers (detailed in [`docs/map.md`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/docs/map.md)).
+MDRAP has expanded from a lightweight, single-process market data pipeline into a multi-layered ecosystem comprising 72 Python modules, native C acceleration primitives, and multiple domain-specific engines across 12 architectural layers (detailed in [`docs/map.md`](docs/map.md)).
 
 These modules span a wide spectrum of maturity:
 1. **Core Infrastructure**: Battle-tested pipeline components, quality validators, storage engines, and binary protocols with zero tolerance for breaking changes.
@@ -51,26 +51,26 @@ The three tiers are defined as follows:
 - **Definition**: Mission-critical platform backbone. The public API surface (exported classes, method signatures, parameter names, return types) is frozen.
 - **Breaking Changes**: Strictly prohibited in patch releases. Any breaking alteration requires a formal deprecation period lasting at least one minor release cycle (`vX.Y -> vX.Y+1`) where a runtime `DeprecationWarning` is emitted before removal.
 - **Covered Modules**:
-  - Core Pipeline: [`models.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/models.py), [`gateway.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/gateway.py), [`quality.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/quality.py), [`reconciliation.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/reconciliation.py), [`pipeline.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/pipeline.py), [`metrics.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/metrics.py), [`config.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/config.py), [`rules.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/rules.py).
-  - Storage & Audit: [`storage.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/storage.py), [`archive.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/archive.py), [`security.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/security.py), [`audit_format.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/audit_format.py).
-  - Delivery Protocols: [`shm.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/shm.py), [`protocol.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/protocol.py), [`service.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/service.py).
-  - Native Hot Path: [`fastpath.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/fastpath.py), [`fastpath.c`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/fastpath.c).
-  - Extension Interfaces: [`adapters/__init__.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/adapters/__init__.py), [`protocols.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/protocols.py).
+  - Core Pipeline: [`models.py`](src/models.py), [`gateway.py`](src/gateway.py), [`quality.py`](src/quality.py), [`reconciliation.py`](src/reconciliation.py), [`pipeline.py`](src/pipeline.py), [`metrics.py`](src/metrics.py), [`config.py`](src/config.py), [`rules.py`](src/rules.py).
+  - Storage & Audit: [`storage.py`](src/storage.py), [`archive.py`](src/archive.py), [`security.py`](src/security.py), [`audit_format.py`](src/audit_format.py).
+  - Delivery Protocols: [`shm.py`](src/shm.py), [`protocol.py`](src/protocol.py), [`service.py`](src/service.py).
+  - Native Hot Path: [`fastpath.py`](src/fastpath.py), [`fastpath.c`](src/fastpath.c).
+  - Extension Interfaces: [`adapters/__init__.py`](src/adapters/__init__.py), [`protocols.py`](src/protocols.py).
 
 ### 2.2 `beta` Tier
 - **Definition**: Production-grade and covered by comprehensive automated tests, but subject to ergonomic refinements or protocol adjustments across minor versions.
-- **Breaking Changes**: Permitted across minor version bumps (`v2.1 -> v2.2`), provided all changes are thoroughly documented in [`CHANGELOG.md`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/CHANGELOG.md).
+- **Breaking Changes**: Permitted across minor version bumps (`v2.1 -> v2.2`), provided all changes are thoroughly documented in [`CHANGELOG.md`](CHANGELOG.md).
 - **Covered Modules**:
-  - Analytics & Quantitative: [`analytics.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/analytics.py), [`depth.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/depth.py), [`columnar.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/columnar.py), [`backtest.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/backtest.py), [`features.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/features.py), [`options.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/options.py), [`risk.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/risk.py).
-  - Feeds & Ingestion: [`ws_feed.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/ws_feed.py), [`polygon_feed.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/polygon_feed.py), [`databento_feed.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/databento_feed.py), [`live.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/live.py).
-  - Client & Server Interfaces: [`api.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/api.py), [`client.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/client.py), [`cli.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/cli.py), [`navigator.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/navigator.py).
+  - Analytics & Quantitative: [`analytics.py`](src/analytics.py), [`depth.py`](src/depth.py), [`columnar.py`](src/columnar.py), [`backtest.py`](src/backtest.py), [`features.py`](src/features.py), [`options.py`](src/options.py), [`risk.py`](src/risk.py).
+  - Feeds & Ingestion: [`ws_feed.py`](src/ws_feed.py), [`polygon_feed.py`](src/polygon_feed.py), [`databento_feed.py`](src/databento_feed.py), [`live.py`](src/live.py).
+  - Client & Server Interfaces: [`api.py`](src/api.py), [`client.py`](src/client.py), [`cli.py`](src/cli.py), [`navigator.py`](src/navigator.py).
 
 ### 2.3 `experimental` Tier
 - **Definition**: Exploratory prototypes, cutting-edge research modules, and incubating features under active design.
 - **Breaking Changes**: No guarantees whatsoever. Classes, functions, or entire modules may be renamed, restructured, or eliminated without notice between any release.
 - **Covered Modules**:
-  - Alternative Data: [`research.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/research.py) (SEC EDGAR), [`news.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/news.py), [`vessel.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/vessel.py) (AIS tracking).
-  - Advanced Trading Tools: [`tca.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/tca.py), [`strategy_sdk.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/strategy_sdk.py), [`trading_cli.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/trading_cli.py).
+  - Alternative Data: [`research.py`](src/research.py) (SEC EDGAR), [`news.py`](src/news.py), [`vessel.py`](src/vessel.py) (AIS tracking).
+  - Advanced Trading Tools: [`tca.py`](src/tca.py), [`strategy_sdk.py`](src/strategy_sdk.py), [`trading_cli.py`](src/trading_cli.py).
 
 ---
 
@@ -116,5 +116,5 @@ stateDiagram-v2
 
 ### Governance in Contribution Workflow
 - All new modules submitted via Pull Requests must declare the `__stability__` attribute.
-- Documented in [`CONTRIBUTING.md`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/CONTRIBUTING.md).
-- Architectural layer mapping documented and maintained in [`docs/map.md`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/docs/map.md).
+- Documented in [`CONTRIBUTING.md`](CONTRIBUTING.md).
+- Architectural layer mapping documented and maintained in [`docs/map.md`](docs/map.md).

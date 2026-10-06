@@ -23,14 +23,26 @@ Architectural Context (MDRAP Spec §11 & §26):
 from __future__ import annotations
 
 import itertools
+import os
+import secrets
 import time
 
 from models import CanonicalEvent, EventType, RawEvent
 
 __stability__ = "stable"
 
-# Fast lock-free monotonic counter for hot-path ID generation
+# Fast lock-free monotonic counter with random 64-bit run identifier
+# Prevents primary key collisions on process restart (S0 Card #1)
+_RUN_ID: str = os.environ.get("MDRAP_RUN_ID", secrets.token_hex(8))
 _gateway_id_counter = itertools.count(1)
+
+
+def reset_gateway_ids(run_id: str | None = None) -> None:
+    """Reset run_id and counter (for test reproducibility or isolation)."""
+    global _RUN_ID, _gateway_id_counter
+    _RUN_ID = run_id or secrets.token_hex(8)
+    _gateway_id_counter = itertools.count(1)
+
 
 # Hot-path metadata cache mapping instrument_id -> (venue_mic, currency)
 _symbol_metadata_cache: dict[str, tuple[str, str]] = {}
@@ -56,7 +68,7 @@ def ingest(raw: RawEvent) -> RawEvent:
     payloads can be written ahead to the archive storage in their exact received state.
     """
     if not raw.raw_id:
-        raw.raw_id = f"raw-{next(_gateway_id_counter)}"
+        raw.raw_id = f"raw-{_RUN_ID}-{next(_gateway_id_counter)}"
     if not raw.receive_timestamp:
         raw.receive_timestamp = time.time()
     return raw
@@ -129,7 +141,7 @@ def normalize(raw: RawEvent) -> CanonicalEvent:
         i_id = _INSTRUMENT_ID_MAP[instrument] = len(_INSTRUMENT_ID_MAP)
 
     event = CanonicalEvent(
-        event_id=f"evt-{next(_gateway_id_counter)}",
+        event_id=f"evt-{_RUN_ID}-{next(_gateway_id_counter)}",
         instrument_id=instrument,
         event_type=_EVENT_TYPE_TRADE
         if event_type_raw == "TRADE"

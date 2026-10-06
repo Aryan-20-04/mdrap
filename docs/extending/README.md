@@ -53,12 +53,12 @@ MDRAP provides 6 primary extension points:
 
 | # | Extension Point | Protocol / Decorator | Entry Point Group | Description | Sub-Guide |
 |---|-----------------|----------------------|-------------------|-------------|-----------|
-| 1 | **Feed Adapter** | [`FeedAdapter`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/adapters/__init__.py) | `mdrap.adapters` | Connects exchange feeds, multicast lines, and proprietary binary sockets to emit [`RawEvent`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/models.py). | [Feed Adapter Guide](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/docs/extending/feed-adapter.md) |
-| 2 | **Storage Backend** | [`StorageBackend`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/protocols.py) | Custom factory | Swappable persistence engine for canonical ticks, quarantine records, lineage trails, and BBO snapshots. | [Storage Backend Guide](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/docs/extending/storage-backend.md) |
-| 3 | **Quality Rules** | [`@register_rule`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/rules.py) | `mdrap.quality_rules` | Custom user-defined quality checks in bitmask range `32..63` executed post-native pass. | [Quality Rules Guide](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/docs/extending/quality-rules.md) |
-| 4 | **Auth Provider** | [`AuthProvider`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/protocols.py) | Custom factory | Pluggable authentication, RBAC enforcement (`VIEWER` < `OPERATOR` < `ADMIN`), and tamper-evident audit logging. | [Auth Provider Guide](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/docs/extending/auth-provider.md) |
-| 5 | **Output Sink** | [`OutputSink`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/protocols.py) | `mdrap.output_sinks` | Real-time fanout sink for downstream distribution across messaging buses (Kafka, RabbitMQ, ZeroMQ, SHM). | [Output Sink Guide](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/docs/extending/output-sink.md) |
-| 6 | **Alert Sink** | [`AlertSink`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/protocols.py) | `mdrap.alert_sinks` | Resilient external notifications to Webhooks, Slack, and PagerDuty with rate limiting, retries, and DLQ. | [Alert Sink Guide](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/docs/extending/alert-sink.md) |
+| 1 | **Feed Adapter** | [`FeedAdapter`](src/adapters/__init__.py) | `mdrap.adapters` | Connects exchange feeds, multicast lines, and proprietary binary sockets to emit [`RawEvent`](src/models.py). | [Feed Adapter Guide](docs/extending/feed-adapter.md) |
+| 2 | **Storage Backend** | [`StorageBackend`](src/protocols.py) | Custom factory | Swappable persistence engine for canonical ticks, quarantine records, lineage trails, and BBO snapshots. | [Storage Backend Guide](docs/extending/storage-backend.md) |
+| 3 | **Quality Rules** | [`@register_rule`](src/rules.py) | `mdrap.quality_rules` | Custom user-defined quality checks in bitmask range `32..63` executed post-native pass. | [Quality Rules Guide](docs/extending/quality-rules.md) |
+| 4 | **Auth Provider** | [`AuthProvider`](src/protocols.py) | Custom factory | Pluggable authentication, RBAC enforcement (`VIEWER` < `OPERATOR` < `ADMIN`), and tamper-evident audit logging. | [Auth Provider Guide](docs/extending/auth-provider.md) |
+| 5 | **Output Sink** | [`OutputSink`](src/protocols.py) | `mdrap.output_sinks` | Real-time fanout sink for downstream distribution across messaging buses (Kafka, RabbitMQ, ZeroMQ, SHM). | [Output Sink Guide](docs/extending/output-sink.md) |
+| 6 | **Alert Sink** | [`AlertSink`](src/protocols.py) | `mdrap.alert_sinks` | Resilient external notifications to Webhooks, Slack, and PagerDuty with rate limiting, retries, and DLQ. | [Alert Sink Guide](docs/extending/alert-sink.md) |
 
 ---
 
@@ -102,7 +102,7 @@ rule_volume_spike = "my_package.rules:register_volume_rules"
 
 ## Flat Module Structure
 
-MDRAP uses a flat module layout under [`src/`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/). Never import from nested package paths like `mdrap.core.models`. All extensions and scripts import directly from the top-level modules:
+MDRAP uses a flat module layout under [`src/`](src/). Never import from nested package paths like `mdrap.core.models`. All extensions and scripts import directly from the top-level modules:
 
 ```python
 # Correct
@@ -119,12 +119,12 @@ from mdrap.core.models import CanonicalEvent  # Do not use!
 
 ## Key Source Code References
 
-- [`src/adapters/__init__.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/adapters/__init__.py): [`FeedAdapter`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/adapters/__init__.py) protocol definition and discovery routine.
-- [`src/adapters/template.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/adapters/template.py): Reference implementation of a custom venue feed adapter.
-- [`src/protocols.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/protocols.py): Protocol definitions for [`StorageBackend`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/protocols.py), [`AuthProvider`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/protocols.py), [`QualityEvaluator`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/protocols.py), and [`OutputSink`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/protocols.py).
-- [`src/rules.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/rules.py): User quality rule registry and [`@register_rule`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/rules.py) decorator.
-- [`src/models.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/models.py): Canonical domain types ([`RawEvent`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/models.py), [`CanonicalEvent`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/models.py), [`QualityStatus`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/models.py), [`Reason`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/models.py)).
-- [`src/pipeline.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/pipeline.py): Core [`Pipeline`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/pipeline.py) orchestrator and flush lifecycle.
-- [`src/storage.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/storage.py): Default SQLite persistence engine implementation [`Store`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/storage.py).
-- [`src/security.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/security.py): Cryptographic [`SecurityManager`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/security.py) and RBAC role definitions.
-- [`src/service.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/service.py): Background daemon [`MarketDataDaemon`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/service.py) coordinating broadcast distribution.
+- [`src/adapters/__init__.py`](src/adapters/__init__.py): [`FeedAdapter`](src/adapters/__init__.py) protocol definition and discovery routine.
+- [`src/adapters/template.py`](src/adapters/template.py): Reference implementation of a custom venue feed adapter.
+- [`src/protocols.py`](src/protocols.py): Protocol definitions for [`StorageBackend`](src/protocols.py), [`AuthProvider`](src/protocols.py), [`QualityEvaluator`](src/protocols.py), and [`OutputSink`](src/protocols.py).
+- [`src/rules.py`](src/rules.py): User quality rule registry and [`@register_rule`](src/rules.py) decorator.
+- [`src/models.py`](src/models.py): Canonical domain types ([`RawEvent`](src/models.py), [`CanonicalEvent`](src/models.py), [`QualityStatus`](src/models.py), [`Reason`](src/models.py)).
+- [`src/pipeline.py`](src/pipeline.py): Core [`Pipeline`](src/pipeline.py) orchestrator and flush lifecycle.
+- [`src/storage.py`](src/storage.py): Default SQLite persistence engine implementation [`Store`](src/storage.py).
+- [`src/security.py`](src/security.py): Cryptographic [`SecurityManager`](src/security.py) and RBAC role definitions.
+- [`src/service.py`](src/service.py): Background daemon [`MarketDataDaemon`](src/service.py) coordinating broadcast distribution.

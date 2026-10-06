@@ -230,8 +230,12 @@ def _load_native_lib():
             dll_path = p
             break
 
-    # If missing, attempt JIT compilation on first run (git clone or pip install without prebuilt binary)
-    if dll_path is None:
+    # If missing, attempt JIT compilation only if explicitly requested via MDRAP_AUTO_COMPILE
+    if dll_path is None and os.environ.get("MDRAP_AUTO_COMPILE", "").lower() in (
+        "1",
+        "true",
+        "yes",
+    ):
         c_source = os.path.join(src_dir, "fastpath.c")
         if os.path.isfile(c_source):
             try:

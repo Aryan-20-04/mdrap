@@ -40,3 +40,7 @@ class TemplateCustomVenueAdapter:
 
     def close(self) -> None:
         self._is_open = False
+
+
+# Backward-compatible entry-point alias
+TemplateAdapter = TemplateCustomVenueAdapter

@@ -26,7 +26,7 @@ FROM python:3.12-slim-bookworm AS runner
 
 LABEL maintainer="MDRAP Platform Engineering" \
       description="Market Data Reliability & Acceleration Platform (Self-Hosted)" \
-      version="2.4.0"
+      version="3.0.0"
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -65,7 +65,7 @@ VOLUME ["/data"]
 
 USER mdrap
 
-EXPOSE 8000 9001
+EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD curl -f http://127.0.0.1:8000/v1/health || exit 1

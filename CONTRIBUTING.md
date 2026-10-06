@@ -85,7 +85,7 @@ Every contribution, whether submitted by core maintainers or external contributo
 2. **Every feature begins in its own branch.** Branch naming convention: `feature/<topic>`, `fix/<issue>`, or `release/<version>`.
 3. **Every feature must have tests.** Untested code is dead code.
 4. **Existing tests must continue to pass.** Zero test regressions allowed across the 800+ suite.
-5. **New functionality must not silently change existing public APIs.** Adhere to [`docs/API_STABILITY.md`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/docs/API_STABILITY.md).
+5. **New functionality must not silently change existing public APIs.** Adhere to [`docs/API_STABILITY.md`](docs/API_STABILITY.md).
 6. **Security-sensitive changes require explicit security testing.**
 7. **Performance-sensitive changes require benchmarks.** Measure before claiming; record JSON outputs under `benchmarks/`.
 8. **Native code requires sanitizer testing.** C fastpath hot paths require memory safety verification.
@@ -175,24 +175,24 @@ If any check fails, the script exits immediately with code `1`. **Nothing procee
 
 ## Public API & Extension Development
 
-Consult [`docs/API_STABILITY.md`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/docs/API_STABILITY.md) for stability contracts (`STABLE`, `BETA`, `EXPERIMENTAL`, `INTERNAL`).
+Consult [`docs/API_STABILITY.md`](docs/API_STABILITY.md) for stability contracts (`STABLE`, `BETA`, `EXPERIMENTAL`, `INTERNAL`).
 
 MDRAP provides standardized extension interfaces for integrating external venues, custom validation logic, and alternate persistence engines:
 
 ### 1. Adding a New Feed Adapter
-Exchange and venue integrations implement the [`FeedAdapter`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/protocols.py) protocol (`open()`, `__iter__()`, `close()`) and emit standardized [`RawEvent`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/models.py) objects.
-- Guide: [Feed Adapter Development](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/docs/extending/feed-adapter.md)
+Exchange and venue integrations implement the [`FeedAdapter`](src/protocols.py) protocol (`open()`, `__iter__()`, `close()`) and emit standardized [`RawEvent`](src/models.py) objects.
+- Guide: [Feed Adapter Development](docs/extending/feed-adapter.md)
 
 ### 2. Adding a Custom Quality Rule
-User-defined validation rules are registered in the user bitmask range (bits 32–63) using the [`@register_rule`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/rules.py) decorator from [`src/rules.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/rules.py). User rules run post-native evaluation and cannot crash the pipeline or downgrade existing anomaly statuses.
-- Guide: [Custom Quality Rules](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/docs/extending/quality-rules.md)
+User-defined validation rules are registered in the user bitmask range (bits 32–63) using the [`@register_rule`](src/rules.py) decorator from [`src/rules.py`](src/rules.py). User rules run post-native evaluation and cannot crash the pipeline or downgrade existing anomaly statuses.
+- Guide: [Custom Quality Rules](docs/extending/quality-rules.md)
 
 ### 3. Implementing a Storage Backend
-Custom persistence engines implement the [`StorageBackend`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/protocols.py) protocol defined in [`src/protocols.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/protocols.py).
-- Guide: [Storage Backend Implementation](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/docs/extending/storage-backend.md)
+Custom persistence engines implement the [`StorageBackend`](src/protocols.py) protocol defined in [`src/protocols.py`](src/protocols.py).
+- Guide: [Storage Backend Implementation](docs/extending/storage-backend.md)
 
 ---
 
 ## Baseline Verification Report
 
-For the frozen system baseline data, host specifications, and full module catalog, see [`docs/development/baseline.md`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/docs/development/baseline.md).
+For the frozen system baseline data, host specifications, and full module catalog, see [`docs/development/baseline.md`](docs/development/baseline.md).

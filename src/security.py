@@ -592,6 +592,18 @@ class SecurityManager:
             raise ValueError(
                 "MDRAP_REQUIRE_ENV_SECRETS enabled but no MDRAP_SECRET_* variables defined"
             )
+        if mandate_env and "MDRAP_API_KEY_SALT" not in os.environ:
+            raise ValueError(
+                "MDRAP_REQUIRE_ENV_SECRETS enabled but MDRAP_API_KEY_SALT is not set in environment"
+            )
+        if (
+            not is_demo
+            and os.environ.get("MDRAP_STRICT_SECURITY") == "1"
+            and "MDRAP_API_KEY_SALT" not in os.environ
+        ):
+            raise ValueError(
+                "MDRAP_STRICT_SECURITY enabled but custom MDRAP_API_KEY_SALT is not set in environment"
+            )
 
         self.rate_limiter = TokenBucketRateLimiter(rate=rate_limit)
         self.role_rate_limits: dict[Role, float] = {
@@ -868,11 +880,13 @@ class SecurityManager:
 
         return entry_hash
 
-    def verify_audit_trail(self) -> Tuple[bool, str, int]:
-        """Validate entire audit trail integrity from genesis to the latest entry."""
+    def verify_audit_trail(
+        self, anchor: Optional[Tuple[int, str]] = None
+    ) -> Tuple[bool, str, int]:
+        """Validate entire audit trail integrity from genesis to the latest entry, optionally against an external anchor."""
         if not self.store or not hasattr(self.store, "verify_audit_integrity"):
             return False, "No persistent store configured for audit validation", 0
-        return self.store.verify_audit_integrity()
+        return self.store.verify_audit_integrity(anchor=anchor)
 
     def register_api_key(
         self,
@@ -952,7 +966,6 @@ class SecurityManager:
                         ent = v
                         break
         if ent:
-            ent.is_active = False
             if self.store and hasattr(self.store, "revoke_api_key"):
                 try:
                     self.store.revoke_api_key(ent.token_hash or token)
@@ -960,6 +973,7 @@ class SecurityManager:
                     raise RuntimeError(
                         f"Failed to persist API key revocation to storage: {exc}"
                     ) from exc
+            ent.is_active = False
             return True
         return False
 

@@ -19,18 +19,17 @@ import math
 import os
 import shutil
 import tempfile
-import time
 import pytest
 
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from archive import RawArchive, replay
+from archive import replay
 from bbo import BBOEngine
 from columnar import ColumnarStore
-from dashboard import Dashboard, render
-from depth import ConsolidatedDepthEngine, DepthLevel
+from dashboard import render
+from depth import ConsolidatedDepthEngine
 from fastpath import FastQualityEngine, _NATIVE_LIB
 from models import CanonicalEvent, EventType, QualityStatus, RawEvent, Reason
 from pipeline import Pipeline
@@ -39,7 +38,7 @@ from security import SecurityManager
 from storage import Store
 
 try:
-    import duckdb
+    import duckdb  # noqa: F401
 
     HAS_DUCKDB = True
 except ImportError:
@@ -476,3 +475,143 @@ def test_terminal_dashboard_render():
     rendered = render(pipeline, target_events=10)
     assert rendered is not None
     store.close()
+
+
+# ---------------------------------------------------------------------------
+# Track 7: BBO and Depth Stale Overwrite Protection (Audits Phase 2-3)
+# ---------------------------------------------------------------------------
+
+
+def test_bbo_engine_stale_quote_not_overwritten():
+    """Verify BBOEngine does not overwrite active top-of-book with out-of-order stale quotes."""
+    engine = BBOEngine()
+    ev1 = CanonicalEvent(
+        event_id="q1",
+        instrument_id="AAPL",
+        event_type=EventType.QUOTE,
+        exchange_timestamp=100.0,
+        receive_timestamp=100.001,
+        processing_timestamp=100.002,
+        source="FEED_A",
+        sequence_number=1,
+        bid_price=150.0,
+        bid_size=100.0,
+        ask_price=151.0,
+        ask_size=100.0,
+        quality_status=QualityStatus.VALID,
+    )
+    bbo1 = engine.observe(ev1)
+    assert bbo1 is not None
+    assert bbo1.best_bid == 150.0
+
+    # Stale quote arriving later with older exchange timestamp
+    ev2 = CanonicalEvent(
+        event_id="q2",
+        instrument_id="AAPL",
+        event_type=EventType.QUOTE,
+        exchange_timestamp=90.0,
+        receive_timestamp=101.001,
+        processing_timestamp=101.002,
+        source="FEED_A",
+        sequence_number=2,
+        bid_price=140.0,
+        bid_size=100.0,
+        ask_price=141.0,
+        ask_size=100.0,
+        quality_status=QualityStatus.VALID,
+    )
+    bbo2 = engine.observe(ev2)
+    assert bbo2 is not None
+    assert bbo2.best_bid == 150.0
+
+
+def test_bbo_engine_cached_json_evicted_on_expiry():
+    """Verify BBOEngine clears cached wire JSON when top quotes expire or source becomes ineligible."""
+
+    class MockWatchdog:
+        def __init__(self):
+            self.active = True
+
+        def is_source_active(self, source: str) -> bool:
+            return self.active
+
+    watchdog = MockWatchdog()
+    engine = BBOEngine(quote_ttl_s=1.0, watchdog=watchdog)
+    ev1 = CanonicalEvent(
+        event_id="q1",
+        instrument_id="AAPL",
+        event_type=EventType.QUOTE,
+        exchange_timestamp=100.0,
+        receive_timestamp=100.001,
+        processing_timestamp=100.002,
+        source="FEED_A",
+        sequence_number=1,
+        bid_price=150.0,
+        bid_size=100.0,
+        ask_price=151.0,
+        ask_size=100.0,
+        quality_status=QualityStatus.VALID,
+    )
+    engine.observe(ev1)
+    assert engine.get_bbo_wire_bytes("AAPL") is not None
+
+    # Watchdog reports FEED_A is now degraded/inactive
+    watchdog.active = False
+    ev_late = CanonicalEvent(
+        event_id="q2",
+        instrument_id="AAPL",
+        event_type=EventType.QUOTE,
+        exchange_timestamp=105.0,
+        receive_timestamp=105.001,
+        processing_timestamp=105.002,
+        source="FEED_A",
+        sequence_number=2,
+        bid_price=150.0,
+        bid_size=100.0,
+        ask_price=151.0,
+        ask_size=100.0,
+        quality_status=QualityStatus.VALID,
+    )
+    bbo_result = engine.observe(ev_late)
+    assert bbo_result is None
+    # Cached wire json should be evicted from active quotes, returning bbo: null
+    assert "AAPL" not in engine._cached_bbo_json
+    wire = json.loads(engine.get_bbo_wire_bytes("AAPL").decode("utf-8"))
+    assert wire["bbo"] is None
+
+
+def test_depth_engine_stale_update_not_overwritten():
+    """Verify ConsolidatedDepthEngine does not overwrite order book with stale updates."""
+    engine = ConsolidatedDepthEngine(depth_ttl_s=5.0)
+    raw1 = RawEvent(
+        source="FEED_A",
+        payload={
+            "instrument": "AAPL",
+            "event_type": "QUOTE",
+            "exchange_ts": 100.0,
+            "bids": [[150.0, 10.0]],
+            "asks": [[151.0, 10.0]],
+        },
+        receive_timestamp=100.001,
+        raw_id="r1",
+    )
+    snap1 = engine.observe(raw1)
+    assert snap1 is not None
+    assert snap1.bids[0].price == 150.0
+
+    # Stale depth event with older exchange timestamp
+    raw2 = RawEvent(
+        source="FEED_A",
+        payload={
+            "instrument": "AAPL",
+            "event_type": "QUOTE",
+            "exchange_ts": 95.0,
+            "bids": [[140.0, 5.0]],
+            "asks": [[141.0, 5.0]],
+        },
+        receive_timestamp=101.001,
+        raw_id="r2",
+    )
+    snap2 = engine.observe(raw2)
+    assert snap2 is not None
+    assert snap2.bids[0].price == 150.0

@@ -1,12 +1,12 @@
 # Implementing Custom Output Sinks
 
-MDRAP delivers validated canonical market data and consolidated top-of-book quotes across multiple high-throughput distribution channels. Custom messaging fabrics (Apache Kafka, RabbitMQ, ZeroMQ, AWS Kinesis) integrate via [`OutputSink`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/protocols.py).
+MDRAP delivers validated canonical market data and consolidated top-of-book quotes across multiple high-throughput distribution channels. Custom messaging fabrics (Apache Kafka, RabbitMQ, ZeroMQ, AWS Kinesis) integrate via [`OutputSink`](src/protocols.py).
 
 ---
 
 ## The OutputSink Protocol
 
-Defined in [`src/protocols.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/protocols.py):
+Defined in [`src/protocols.py`](src/protocols.py):
 
 ```python
 from typing import Any, Protocol, runtime_checkable
@@ -40,9 +40,9 @@ flowchart TD
 
 | Channel | Module | Wire Format | Target Audience / Use Case |
 |---------|--------|-------------|----------------------------|
-| **Shared Memory (SHM)** | [`src/shm.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/shm.py) | 128-byte cache-line aligned C-structs | Co-located algorithmic trading bots (< 1 µs latency). Lock-free single-producer multi-consumer. |
-| **Streaming TCP** | [`src/service.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/service.py) / [`src/protocol.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/protocol.py) | MDRAP-BIN v1 (92B tick, 108B depth) or JSON | High-throughput institutional LAN distribution and Unix command-line pipes. |
-| **WebSocket** | [`src/api.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/api.py) / [`src/ws_feed.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/ws_feed.py) | JSON text frames | Web UIs, trading dashboards, and browser charting engines (`/v1/stream`). |
+| **Shared Memory (SHM)** | [`src/shm.py`](src/shm.py) | 128-byte cache-line aligned C-structs | Co-located algorithmic trading bots (< 1 µs latency). Lock-free single-producer multi-consumer. |
+| **Streaming TCP** | [`src/service.py`](src/service.py) / [`src/protocol.py`](src/protocol.py) | MDRAP-BIN v1 (92B tick, 108B depth) or JSON | High-throughput institutional LAN distribution and Unix command-line pipes. |
+| **WebSocket** | [`src/api.py`](src/api.py) / [`src/ws_feed.py`](src/ws_feed.py) | JSON text frames | Web UIs, trading dashboards, and browser charting engines (`/v1/stream`). |
 
 ---
 
@@ -127,7 +127,7 @@ class KafkaOutputSink:
 
 ## Integrating Custom Sinks into the Service
 
-To attach custom output sinks to [`MarketDataDaemon`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/service.py#L51-L135), register the sink in daemon broadcast dispatch:
+To attach custom output sinks to [`MarketDataDaemon`](src/service.py#L51-L135), register the sink in daemon broadcast dispatch:
 
 ```python
 from service import MarketDataDaemon
@@ -148,8 +148,8 @@ daemon.start(blocking=True)
 
 ## Source References
 
-- [`src/protocols.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/protocols.py): [`OutputSink`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/protocols.py) protocol definition.
-- [`src/shm.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/shm.py): Zero-copy shared memory publisher (`SHMWriter`).
-- [`src/service.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/service.py): Streaming TCP daemon and binary frame packager.
-- [`src/protocol.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/protocol.py): MDRAP-BIN v1 ultra-fast fixed-width binary wire format.
-- [`src/api.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/api.py): FastAPI WebSocket broadcasting on `/v1/stream`.
+- [`src/protocols.py`](src/protocols.py): [`OutputSink`](src/protocols.py) protocol definition.
+- [`src/shm.py`](src/shm.py): Zero-copy shared memory publisher (`SHMWriter`).
+- [`src/service.py`](src/service.py): Streaming TCP daemon and binary frame packager.
+- [`src/protocol.py`](src/protocol.py): MDRAP-BIN v1 ultra-fast fixed-width binary wire format.
+- [`src/api.py`](src/api.py): FastAPI WebSocket broadcasting on `/v1/stream`.
