@@ -37,12 +37,13 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
-    # MDRAP is 100% runnable on pure Python standard library.
-    # Optional styling library:
-    "rich>=13.0.0",
+    # MDRAP core platform has zero mandatory external dependencies (pure Python stdlib).
 ]
 
 [project.optional-dependencies]
+ui = [
+    "rich>=13.0.0",
+]
 chd = [
     "pyarrow>=20.0.0",
     "zstandard>=0.21.0",

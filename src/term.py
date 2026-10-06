@@ -6,14 +6,114 @@ from typing import Any, Optional, Sequence, Dict
 from io import StringIO
 
 
-from rich import box
-from rich.console import Console as _RichConsole
-from rich.table import Table as _RichTable
-from rich.panel import Panel
+try:
+    from rich import box
+    from rich.console import Console as _RichConsole
+    from rich.panel import Panel as _RichPanel
+    from rich.table import Table as _RichTable
+
+    _HAS_RICH = True
+except ImportError:
+    _HAS_RICH = False
+
+    class _BoxStyle:
+        ROUNDED = "ROUNDED"
+        SIMPLE = "SIMPLE"
+        HEAVY = "HEAVY"
+        MINIMAL = "MINIMAL"
+
+    box = _BoxStyle()  # type: ignore[assignment,misc]
+
+    class _RichConsole:  # type: ignore[no-redef]
+        def __init__(self, *args: Any, file: Any = None, **kwargs: Any) -> None:
+            self.file = file or sys.stdout
+            self.width = 80
+
+        def print(self, *args: Any, **kwargs: Any) -> None:
+            out = []
+            for a in args:
+                if isinstance(a, (_StdlibTableFallback, _StdlibPanelFallback)):
+                    out.append(str(a))
+                else:
+                    out.append(strip_tags(str(a)))
+            sep = kwargs.get("sep", " ")
+            end = kwargs.get("end", "\n")
+            target = kwargs.get("file", self.file)
+            print(*out, sep=sep, end=end, file=target)
+
+    class _StdlibTableFallback:
+        def __init__(self, title: str | None = None, *args: Any, **kwargs: Any) -> None:
+            self.title = title
+            self.columns: list[str] = []
+            self.rows: list[list[str]] = []
+
+        def add_column(self, header: str = "", *args: Any, **kwargs: Any) -> None:
+            self.columns.append(strip_tags(header))
+
+        def add_row(self, *items: Any, **kwargs: Any) -> None:
+            self.rows.append([strip_tags(str(x)) for x in items])
+
+        def __str__(self) -> str:
+            lines = []
+            if self.title:
+                lines.append(f"=== {strip_tags(self.title)} ===")
+            if self.columns:
+                col_widths = [len(c) for c in self.columns]
+                for r in self.rows:
+                    for i, cell in enumerate(r):
+                        if i < len(col_widths):
+                            col_widths[i] = max(col_widths[i], len(cell))
+                hdr = " | ".join(
+                    c.ljust(col_widths[i]) for i, c in enumerate(self.columns)
+                )
+                sep = "-+-".join("-" * col_widths[i] for i in range(len(self.columns)))
+                lines.append(hdr)
+                lines.append(sep)
+                for r in self.rows:
+                    padded = [
+                        (r[i] if i < len(r) else "").ljust(col_widths[i])
+                        for i in range(len(self.columns))
+                    ]
+                    lines.append(" | ".join(padded))
+            else:
+                for r in self.rows:
+                    lines.append(" | ".join(r))
+            return "\n".join(lines)
+
+    class _StdlibPanelFallback:
+        def __init__(
+            self, renderable: Any, title: str = "", *args: Any, **kwargs: Any
+        ) -> None:
+            self.renderable = renderable
+            self.title = title
+
+        def __str__(self) -> str:
+            content = strip_tags(str(self.renderable))
+            lines = content.splitlines()
+            width = max((len(line) for line in lines), default=40)
+            if self.title:
+                clean_title = strip_tags(self.title)
+                top = (
+                    f"┌─ {clean_title} "
+                    + "─" * max(0, width - len(clean_title) - 4)
+                    + "┐"
+                )
+            else:
+                top = "┌" + "─" * (width + 2) + "┐"
+            bot = "└" + "─" * (width + 2) + "┘"
+            mid = [f"│ {line.ljust(width)} │" for line in lines]
+            return "\n".join([top] + mid + [bot])
+
+    _RichTable = _StdlibTableFallback  # type: ignore[assignment,misc]
+    _RichPanel = _StdlibPanelFallback  # type: ignore[assignment,misc]
 
 __stability__ = "stable"
 
 _TAG_RE = re.compile(r"\[/?[a-zA-Z0-9_# =,-]+\]")
+
+
+def strip_tags(text: Any) -> str:
+    return _TAG_RE.sub("", str(text))
 
 
 def is_no_color_active() -> bool:
@@ -22,25 +122,26 @@ def is_no_color_active() -> bool:
 
 
 class Console(_RichConsole):
-    """Rich Console that automatically suppresses ANSI styling when NO_COLOR is active."""
+    """Console that automatically suppresses ANSI styling when NO_COLOR is active or rich is absent."""
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         if is_no_color_active():
-            kwargs.setdefault("color_system", None)
-            kwargs.setdefault("no_color", True)
+            if _HAS_RICH:
+                kwargs.setdefault("color_system", None)
+                kwargs.setdefault("no_color", True)
         super().__init__(*args, **kwargs)
 
 
 class Table(_RichTable):
-    """Rich Table with standard institutional rounded box border across MDRAP."""
+    """Table with standard institutional rounded box border across MDRAP."""
 
-    def __init__(self, *args, **kwargs):
-        kwargs.setdefault("box", box.ROUNDED)
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        if _HAS_RICH:
+            kwargs.setdefault("box", box.ROUNDED)
         super().__init__(*args, **kwargs)
 
 
-def strip_tags(text: Any) -> str:
-    return _TAG_RE.sub("", str(text))
+Panel = _RichPanel
 
 
 def poll_keypress() -> Optional[str]:

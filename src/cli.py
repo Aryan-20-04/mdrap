@@ -42,13 +42,13 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "src
 
 from benchmark import run_benchmark, save_result  # noqa: E402
 from pipeline import Pipeline  # noqa: E402
-from rich import box  # noqa: E402
 from simulator import FeedSimulator, SimulatorConfig  # noqa: E402
 from storage import Store  # noqa: E402
 from term import (  # noqa: E402
     Console,
     Table,
     Panel,
+    box,
     format_status,
     format_latency,
     format_rate,

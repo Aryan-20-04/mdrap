@@ -3,6 +3,32 @@
 All notable changes to MDRAP are documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.0] - 2026-10-07
+
+### Added
+- **Phase 1: Event Identity Decoupling (Card #1)**: Decoupled monotonic event identity from deduplication using `{run_id}-{n}` run-scoped prefixes, eliminating primary key collisions across restarts. Added observable SQLite conflict metrics (`mdrap_storage_conflicts_total`) and `StorageConflictError` on unhandled collisions.
+- **Phase 1: Cryptographic Audit Checkpoints (Card #5)**: Added `Store.get_audit_anchor()` and CLI `--anchor` flag for off-box head hash verification. Implemented HMAC-SHA256 signed audit checkpoints (`--sign-checkpoint`) to prevent ledger splicing and forging.
+- **Phase 2: Database Schema Migrations (Card #8)**: Added ordered, idempotent `schema_migrations` tracking table. Engine strictly rejects opening databases created with future schema versions.
+- **Phase 3: Storage Writer Supervisor & Dead-Letter Replay (Card #9)**: Built writer thread supervisor (`_ensure_writer_alive()`) to revive crashed storage threads, configured absolute dead-letter spill directories, and added `mdrap deadletter replay` CLI command.
+- **Phase 5: Central Plugin Registry & Conformance Kit (Card #4)**: Built `PluginRegistry` with entry-point discovery, parameter signature checking, and version-handshake validation (`__min_mdrap_version__`). Added `Pipeline` pre-evaluate and post-evaluate hooks. Created institutional plugin conformance test kit (`tests/test_plugin_conformance.py`).
+- **Phase 6: API Stability Contracts & Deprecation (Card #10)**: Enforced `__stability__` across all modules in `src/`. Added standard `@deprecated` decorator emitting `DeprecationWarning` with semantic version tracking. Added public API surface snapshot preservation tests.
+
+### Fixed
+- **Phase 1: Honest Feed Ingestion & Ports (Card #3)**: Removed unserved port 9001 and phantom simulator active feed; `POST /v1/feeds` now honestly reports `"REGISTERED_NOT_RUNNING"`.
+- **Phase 1: Security Hardening (Card #6)**: TCP gateway fails closed when `require_auth=True` without a security manager. API key revocation persists to storage before mutating memory. Enforced mandatory `MDRAP_API_KEY_SALT` outside demo mode.
+- **Phase 3: Native Delivery Safety (Card #7)**: Gated automatic C compilation behind `MDRAP_AUTO_COMPILE=1` without compile-on-import races.
+- **Phase 6: Strict Boolean Numeric Rejection (Card H)**: Fixed Python `bool` numeric subclass trap in `models.py` and `gateway.py`; booleans are strictly rejected for prices, quantities, bids, asks, sequence numbers, and timestamps.
+- **Phase 6: Monotonic Watchdog Silence Detection (Card H)**: Replaced wall-clock `time.time()` with monotonic clock (`time.monotonic()`) in `watchdog.py` to eliminate false silence alerts during NTP clock adjustments.
+- **Phase 6: Eradication of Silent Exception Swallows (Card H)**: Converted silent `except Exception: pass` handlers in `security.py`, `storage.py`, `journal.py`, `ws_feed.py`, and `adapters` to explicit exception types with structured logging.
+- **Phase 6: Test Loopback Isolation (Card H)**: Gated `"testclient"` loopback authentication bypass in `api.py` strictly behind test environments.
+
+### Changed
+- **Phase 2: Single Source of Truth Versioning (Card #2)**: Synchronized version `3.0.0` platform-wide across CLI, API, Docker, gateway, and metadata.
+- **Phase 3: Vectorized Ingestion Performance (Card P)**: Defaulted pipeline execution to `process_batch` with sampled metrics timing masks, reducing tail flush blocking.
+- **Phase 5: Storage Interface Segregation (Card #4)**: Split `StorageBackend` into `AppendStorageSink` (ingest write path) and `QueryStorageStore` (query path), while keeping `StorageBackend` as composite interface for 100% backward compatibility.
+- **Phase 6: Zero Mandatory Dependencies (Card H / Card #2)**: Provided graceful pure-Python stdlib fallback in `term.py` and `cli.py`, making `rich` an optional extra (`.[ui]`) and enabling `mdrap` core to run with zero external runtime dependencies.
+- **Supply Chain Hardening (Card H)**: Purged test dependencies (`pytest`) from production `.[all]` optional extras.
+
 ## [2.4.1] - 2026-10-02
 
 ### Added
