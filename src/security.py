@@ -18,6 +18,7 @@ import hmac
 import json
 import math
 import ipaddress
+import logging
 import os
 import re
 import secrets
@@ -30,6 +31,8 @@ from typing import Any, Dict, Iterable, Optional, Sequence, Tuple
 from audit_format import audit_bytes_v1, audit_bytes_v2, compute_audit_hash
 
 __stability__ = "stable"
+
+logger = logging.getLogger("mdrap.security")
 
 
 API_KEY_SALT: str = os.environ.get("MDRAP_API_KEY_SALT", "mdrap_kdf_v1")
@@ -459,8 +462,8 @@ def _load_or_create_local_secrets() -> Dict[str, str]:
         fd = os.open(sec_file, flags, mode)
         with open(fd, "w", encoding="utf-8") as f:
             json.dump(generated, f, indent=2)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Failed to write generated credentials to %s: %s", sec_file, exc)
     return generated
 
 
@@ -709,8 +712,10 @@ class SecurityManager:
                     role=Role.VIEWER,
                     details=details or reason,
                 )
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning(
+                    "Failed to log audit for feed reject (%s): %s", reason, exc
+                )
         return False
 
     def _signing_bytes(self, payload: dict) -> bytes:
@@ -1104,8 +1109,8 @@ class SecurityManager:
             try:
                 self.store.save_api_key(old_ent)
                 self.store.save_api_key(new_ent)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("Failed to persist rotated API keys to storage: %s", exc)
 
         self.log_audit(
             action="API_KEY_ROTATED",
@@ -1128,8 +1133,10 @@ class SecurityManager:
                 if self.store and hasattr(self.store, "revoke_api_key"):
                     try:
                         self.store.revoke_api_key(ent.token_hash or ent.token)
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.warning(
+                            "Failed to persist expired key deactivation: %s", exc
+                        )
         return revoked_count
 
     def anchor_audit_batch(self, batch_size: int = 100) -> str:

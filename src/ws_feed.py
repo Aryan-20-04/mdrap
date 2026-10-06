@@ -615,8 +615,8 @@ class WebSocketFeedManager:
             self._loop.run_until_complete(
                 asyncio.gather(*tasks, return_exceptions=True)
             )
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("[ws_feed] Worker loop stopped: %s", exc)
         finally:
             try:
                 pending = [t for t in asyncio.all_tasks(self._loop) if not t.done()]
@@ -626,12 +626,12 @@ class WebSocketFeedManager:
                     self._loop.run_until_complete(
                         asyncio.gather(*pending, return_exceptions=True)
                     )
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("[ws_feed] Task cancellation cleanup: %s", exc)
             try:
                 self._loop.run_until_complete(self._loop.shutdown_asyncgens())
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("[ws_feed] Shutdown asyncgens note: %s", exc)
             self._loop.close()
 
     async def _venue_worker(self, venue: str, symbol: str) -> None:

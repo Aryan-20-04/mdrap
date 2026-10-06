@@ -6,7 +6,6 @@ discovery via standard library `importlib.metadata.entry_points(group="mdrap.ada
 
 from __future__ import annotations
 
-import sys
 from typing import Protocol, runtime_checkable
 
 from models import CanonicalEvent, RawEvent
@@ -66,26 +65,13 @@ class FeedAdapter(Protocol):
 
 def discover_adapters() -> dict[str, type[FeedAdapter]]:
     """Discover third-party feed adapters registered under the entrypoint 'mdrap.adapters'."""
+    from plugins import registry
+
+    discovered = registry.discover("mdrap.adapters", validate=True)
     adapters: dict[str, type[FeedAdapter]] = {}
-    try:
-        if sys.version_info >= (3, 10):
-            from importlib.metadata import entry_points
-
-            eps = entry_points(group="mdrap.adapters")
-        else:
-            import importlib_metadata  # type: ignore
-
-            eps = importlib_metadata.entry_points().get("mdrap.adapters", [])
-
-        for ep in eps:
-            try:
-                adapter_cls = ep.load()
-                if isinstance(adapter_cls, type) and issubclass(
-                    adapter_cls, FeedAdapter
-                ):
-                    adapters[ep.name] = adapter_cls
-            except Exception:
-                pass
-    except Exception:
-        pass
+    for name, obj in discovered.items():
+        if isinstance(obj, type) and issubclass(obj, FeedAdapter):
+            adapters[name] = obj
+        elif not isinstance(obj, type) and isinstance(obj, FeedAdapter):
+            adapters[name] = obj.__class__  # type: ignore[assignment]
     return adapters

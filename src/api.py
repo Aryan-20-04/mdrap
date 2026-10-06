@@ -1053,7 +1053,13 @@ def create_app(
         else:
             client_host = peer_host
 
-        is_loopback = client_host in ("127.0.0.1", "::1", "localhost", "testclient")
+        loopback_hosts = {"127.0.0.1", "::1", "localhost"}
+        if (
+            os.environ.get("PYTEST_CURRENT_TEST")
+            or os.environ.get("MDRAP_ENV") == "test"
+        ):
+            loopback_hosts.add("testclient")
+        is_loopback = client_host in loopback_hosts
 
         if metrics_auth_required and not is_loopback:
             token = get_token_from_request(

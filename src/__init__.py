@@ -8,7 +8,7 @@ validated, canonical real-time data stream.
 from __future__ import annotations
 
 from client import Client, MDRAPClient, MarketEvent
-from models import CanonicalEvent, EventType, QualityStatus, Reason
+from models import CanonicalEvent, EventType, QualityStatus, Reason, deprecated
 
 __version__ = "3.0.0"
 __stability__ = "stable"
@@ -23,4 +23,5 @@ __all__ = [
     "EventType",
     "QualityStatus",
     "Reason",
+    "deprecated",
 ]

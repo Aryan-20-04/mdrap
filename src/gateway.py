@@ -121,12 +121,14 @@ def normalize(raw: RawEvent) -> CanonicalEvent:
     if exchange_ts is None:
         exchange_ts = raw.receive_timestamp
         clock_source = "GATEWAY_RECV"
-    elif not isinstance(exchange_ts, (int, float)):
+    elif isinstance(exchange_ts, bool) or not isinstance(exchange_ts, (int, float)):
         raise SchemaError(f"exchange_ts not numeric: {exchange_ts!r}")
 
     # sequence: optional for feeds that don't provide monotonic sequence numbers
     sequence = p.get("sequence")
-    if sequence is not None and not isinstance(sequence, int):
+    if sequence is not None and (
+        isinstance(sequence, bool) or not isinstance(sequence, int)
+    ):
         raise SchemaError(f"sequence not an int: {sequence!r}")
 
     instrument = p["instrument"]
@@ -179,19 +181,30 @@ def normalize(raw: RawEvent) -> CanonicalEvent:
 
     if event_type_raw == "TRADE":
         price, qty = p["price"], p["quantity"]
-        if not isinstance(price, (int, float)) or price <= 0:
+        if isinstance(price, bool) or not isinstance(price, (int, float)) or price <= 0:
             raise SchemaError(f"invalid price: {price!r}")
-        if not isinstance(qty, (int, float)) or qty <= 0:
+        if isinstance(qty, bool) or not isinstance(qty, (int, float)) or qty <= 0:
             raise SchemaError(f"invalid quantity: {qty!r}")
         event.price = float(price)
         event.quantity = float(qty)
     else:
         bid, ask = p["bid"], p["ask"]
-        if not isinstance(bid, (int, float)) or not isinstance(ask, (int, float)):
+        if (
+            isinstance(bid, bool)
+            or isinstance(ask, bool)
+            or not isinstance(bid, (int, float))
+            or not isinstance(ask, (int, float))
+        ):
             raise SchemaError("bid/ask not numeric")
         event.bid_price = float(bid)
         event.ask_price = float(ask)
-        event.bid_size = float(p.get("bid_size", 0) or 0)
-        event.ask_size = float(p.get("ask_size", 0) or 0)
+        bid_sz = p.get("bid_size", 0) or 0
+        ask_sz = p.get("ask_size", 0) or 0
+        if isinstance(bid_sz, bool) or not isinstance(bid_sz, (int, float)):
+            raise SchemaError("bid_size not numeric")
+        if isinstance(ask_sz, bool) or not isinstance(ask_sz, (int, float)):
+            raise SchemaError("ask_size not numeric")
+        event.bid_size = float(bid_sz)
+        event.ask_size = float(ask_sz)
 
     return event

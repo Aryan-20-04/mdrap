@@ -29,6 +29,8 @@ from models import CanonicalEvent
 __stability__ = "stable"
 
 __all__ = [
+    "AppendStorageSink",
+    "QueryStorageStore",
     "StorageBackend",
     "AuthProvider",
     "QualityEvaluator",
@@ -39,21 +41,12 @@ __all__ = [
 
 
 @runtime_checkable
-class StorageBackend(Protocol):
-    """Protocol for persistent event storage engines.
+class AppendStorageSink(Protocol):
+    """Protocol for write-side event storage sinks (ingest and persistence).
 
     The pipeline calls ``write_batches_atomic()`` on every flush cycle
     (default: every 2000 events or 1 second). Implementations must handle
     batched writes atomically — either all rows commit or none do.
-
-    The default implementation is ``Store`` in storage.py (SQLite with WAL mode).
-    Alternative implementations could target PostgreSQL, DuckDB, Parquet files,
-    or cloud-native time-series databases.
-
-    Minimum Viable Implementation:
-        For pipeline integration, implement at minimum:
-        ``write_batches_atomic``, ``commit``, and ``close``.
-        Query methods are only needed if the API or CLI is used.
     """
 
     def write_canonical_batch(self, events: list[CanonicalEvent]) -> None:
@@ -110,6 +103,15 @@ class StorageBackend(Protocol):
         """Flush pending writes to durable storage."""
         ...
 
+    def close(self) -> None:
+        """Release all resources and connections."""
+        ...
+
+
+@runtime_checkable
+class QueryStorageStore(Protocol):
+    """Protocol for query-side event storage engines (API, CLI, analytics)."""
+
     def query_events(
         self, instrument_id: str | None = None, limit: int = 1000
     ) -> list[dict]:
@@ -135,6 +137,17 @@ class StorageBackend(Protocol):
     def close(self) -> None:
         """Release all resources and connections."""
         ...
+
+
+@runtime_checkable
+class StorageBackend(AppendStorageSink, QueryStorageStore, Protocol):
+    """Composite protocol for persistent event storage engines.
+
+    Inherits both AppendStorageSink (write path) and QueryStorageStore (query path)
+    maintaining 100% backward compatibility with all existing StorageBackend implementations.
+    """
+
+    ...
 
 
 @runtime_checkable

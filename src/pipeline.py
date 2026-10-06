@@ -36,7 +36,7 @@ import queue
 import subprocess
 import threading
 import time
-from typing import Any, TYPE_CHECKING
+from typing import Any, Callable, TYPE_CHECKING
 
 from gateway import SchemaError, ingest, normalize
 from metrics import RunMetrics
@@ -53,7 +53,7 @@ if TYPE_CHECKING:
     from bbo import BBOEngine
     from watchdog import SourceWatchdog
     from security import SecurityManager
-    from protocols import StorageBackend, QualityEvaluator
+    from protocols import AppendStorageSink, StorageBackend, QualityEvaluator
 
 __stability__ = "stable"
 
@@ -154,7 +154,7 @@ class Pipeline:
 
     def __init__(
         self,
-        store: Store | StorageBackend,
+        store: Store | StorageBackend | AppendStorageSink,
         quality: QualityEngine | QualityEvaluator | None = None,
         reliability: ReliabilityTracker | None = None,
         archive: RawArchive | None = None,
@@ -165,8 +165,14 @@ class Pipeline:
         flush_interval_s: float = DEFAULT_FLUSH_INTERVAL_S,
         async_writer: bool | None = None,
         timing_sample_mask: int | None = None,
+        pre_evaluate_hook: Callable[[CanonicalEvent], CanonicalEvent | None]
+        | None = None,
+        post_evaluate_hook: Callable[[CanonicalEvent], CanonicalEvent | None]
+        | None = None,
     ):
         self.store = store
+        self.pre_evaluate_hook = pre_evaluate_hook
+        self.post_evaluate_hook = post_evaluate_hook
         if quality is not None:
             self.quality = quality
         else:
@@ -410,8 +416,18 @@ class Pipeline:
         t_norm_ns = time.perf_counter_ns() if _do_timing else 0
         self._pending_raw_payloads[str(event.raw_id)] = raw.payload
 
+        if self.pre_evaluate_hook is not None:
+            hook_ev = self.pre_evaluate_hook(event)
+            if hook_ev is None:
+                self._maybe_flush()
+                return None
+            event = hook_ev
+
         event = self.quality.evaluate(event)
         t_qual_ns = time.perf_counter_ns() if _do_timing else 0
+
+        if event is not None and self.post_evaluate_hook is not None:
+            event = self.post_evaluate_hook(event)
 
         res_event = None
         if event is not None:
@@ -621,18 +637,35 @@ class Pipeline:
             valid_events.append(event)
 
         # Batch quality evaluation across all valid normalized events
+        if self.pre_evaluate_hook is not None:
+            pre_filtered_events: list[CanonicalEvent] = []
+            pre_filtered_indices: list[int] = []
+            for v_idx, v_ev in zip(valid_indices, valid_events):
+                h_ev = self.pre_evaluate_hook(v_ev)
+                if h_ev is not None:
+                    pre_filtered_events.append(h_ev)
+                    pre_filtered_indices.append(v_idx)
+            valid_events = pre_filtered_events
+            valid_indices = pre_filtered_indices
+
         evaluated_pairs: list[tuple[int, CanonicalEvent]] = []
         if valid_events:
             if hasattr(self.quality, "evaluate_batch"):
                 batch_res = self.quality.evaluate_batch(valid_events)
                 for valid_idx, ev in zip(valid_indices, batch_res):
                     if ev is not None:
-                        evaluated_pairs.append((valid_idx, ev))
+                        if self.post_evaluate_hook is not None:
+                            ev = self.post_evaluate_hook(ev)
+                        if ev is not None:
+                            evaluated_pairs.append((valid_idx, ev))
             else:
                 for valid_idx, ev in zip(valid_indices, valid_events):
                     res = self.quality.evaluate(ev)
                     if res is not None:
-                        evaluated_pairs.append((valid_idx, res))
+                        if self.post_evaluate_hook is not None:
+                            res = self.post_evaluate_hook(res)
+                        if res is not None:
+                            evaluated_pairs.append((valid_idx, res))
             t_qual_end_ns = time.perf_counter_ns() if _do_timing else 0
         else:
             t_qual_end_ns = 0

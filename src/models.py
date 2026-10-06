@@ -19,10 +19,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
+import functools
 import json
 import math
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
+import warnings
 
 __stability__ = "stable"
 
@@ -497,6 +499,8 @@ class DepthEvent(MarketEvent):
 
 
 def _safe_float(val: Any, default: float = 0.0) -> float:
+    if isinstance(val, bool):
+        return default
     try:
         f = float(val)
         return f if math.isfinite(f) else default
@@ -505,6 +509,8 @@ def _safe_float(val: Any, default: float = 0.0) -> float:
 
 
 def _safe_int(val: Any) -> Optional[int]:
+    if isinstance(val, bool):
+        return None
     try:
         if isinstance(val, float) and not math.isfinite(val):
             return None
@@ -657,3 +663,35 @@ def safe_parse_market_event(data: Any) -> Tuple[Optional[MarketEvent], List[str]
             return ev, errors
     except Exception as exc:
         return None, [f"Unexpected parse exception safely intercepted: {exc}"]
+
+
+def deprecated(
+    since: str = "",
+    removal: str = "",
+    replacement: str = "",
+    message: str = "",
+) -> Callable:
+    """Decorator marking APIs as deprecated, emitting a standard DeprecationWarning (Card #10)."""
+
+    def decorator(func: Callable) -> Callable:
+        parts = [f"'{func.__name__}' is deprecated"]
+        if since:
+            parts.append(f"since v{since}")
+        if removal:
+            parts.append(f"and scheduled for removal in v{removal}")
+        if replacement:
+            parts.append(f"(use '{replacement}' instead)")
+        if message:
+            parts.append(f"— {message}")
+        full_msg = " ".join(parts) + "."
+
+        @functools.wraps(func)
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
+            warnings.warn(full_msg, category=DeprecationWarning, stacklevel=2)
+            return func(*args, **kwargs)
+
+        wrapper.__deprecated__ = True  # type: ignore[attr-defined]
+        wrapper.__deprecation_message__ = full_msg  # type: ignore[attr-defined]
+        return wrapper
+
+    return decorator

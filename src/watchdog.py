@@ -83,7 +83,7 @@ class SourceWatchdog:
                 self._tick_counts[source_in] = 1
 
             self._last_seen[event.source] = event.exchange_timestamp
-            self._last_seen_wall[event.source] = time.time()
+            self._last_seen_wall[event.source] = time.monotonic()
         if event.source not in self._source_states:
             self._source_states[event.source] = SourceState.HEALTHY
 
@@ -192,7 +192,8 @@ class SourceWatchdog:
         """
         with self._lock:
             use_wall = current_time is None
-            now_val = time.time() if use_wall else current_time
+            now_val = time.monotonic() if use_wall else current_time
+            now_wall_clock = time.time()
             new_alerts = []
 
             for source, state in list(self._source_states.items()):
@@ -210,7 +211,7 @@ class SourceWatchdog:
                     alert = WatchdogAlert(
                         source=source,
                         alert_type="SILENCE",
-                        timestamp=now_val,
+                        timestamp=now_wall_clock if use_wall else now_val,
                         details=f"Source {source} silent for > {self.silence_threshold_s:.2f}s (active heartbeat check)",
                         action_taken="Marked SILENT, initiating failover",
                     )

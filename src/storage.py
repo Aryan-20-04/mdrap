@@ -391,8 +391,11 @@ class Store:
                 self.conn.execute(
                     "ALTER TABLE audit_log ADD COLUMN format_version INTEGER NOT NULL DEFAULT 2"
                 )
-            except Exception:
+            except sqlite3.OperationalError:
+                # Column format_version already exists
                 pass
+            except Exception as exc:
+                logger.debug("Migration format_version note: %s", exc)
 
             # Auto-migration for api_keys schema (from legacy 'token' column to 'token_hash' + 'role' + 'key_prefix')
             try:
@@ -836,8 +839,8 @@ class Store:
         ):
             try:
                 self.read_conn.close()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Error closing read_conn: %s", exc)
             self.read_conn = None
         if hasattr(self, "conn") and self.conn:
             self.conn.commit()
@@ -893,14 +896,16 @@ class Store:
                 "DELETE FROM watchdog_alerts WHERE timestamp < ?", (cutoff,)
             )
             self.conn.commit()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Optional table retention pruning skipped: %s", exc)
 
         # Reclaim disk: checkpoint WAL then truncate
         try:
             self.conn.execute("PRAGMA wal_checkpoint(TRUNCATE);")
-        except Exception:
+        except sqlite3.OperationalError:
             pass  # :memory: or non-WAL mode
+        except Exception as exc:
+            logger.debug("WAL checkpoint truncate skipped: %s", exc)
         return {
             "deleted_canonical": deleted_canonical,
             "deleted_quarantine": deleted_quarantine,

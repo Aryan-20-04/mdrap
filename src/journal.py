@@ -8,13 +8,12 @@ Uses 128-byte fixed-size binary records matching the SHM Slot V3 architecture (S
 
 from __future__ import annotations
 
+import logging
 import mmap
 import os
 import struct
 import time
 from typing import Generator
-
-__stability__ = "stable"
 
 from shm import (
     SLOT_SIZE,
@@ -30,6 +29,10 @@ from shm import (
     EVENT_TYPE_TICK,
     EVENT_TYPE_DEPTH,
 )
+
+__stability__ = "stable"
+
+logger = logging.getLogger("mdrap.journal")
 
 JOURNAL_MAGIC = b"MDBJ"
 JOURNAL_VERSION = 1
@@ -316,8 +319,8 @@ class BinaryJournal:
                     pass
                 os.close(self._fd)
                 self._fd = None
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Error during journal close: %s", exc)
 
     @property
     def record_count(self) -> int:
@@ -495,14 +498,14 @@ class BinaryJournalReader:
         if self._mm:
             try:
                 self._mm.close()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Error closing journal reader mmap: %s", exc)
             self._mm = None
         if self._fd is not None:
             try:
                 os.close(self._fd)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Error closing journal reader fd: %s", exc)
             self._fd = None
 
     def __enter__(self) -> BinaryJournalReader:
