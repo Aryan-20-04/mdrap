@@ -19,7 +19,11 @@ from .models import (
     Reason,
     deprecated,
 )
+from .clock import Clock, FixedClock, SystemClock
+from .engine import Engine as CoreEngine, EngineDecision, EngineState
+from .ingestlog import IngestLog
 from .pipeline import Pipeline
+from .projection import SQLiteProjection
 from .storage import Store
 
 __all__ = [
@@ -33,6 +37,14 @@ __all__ = [
     "QualityStatus",
     "Reason",
     "deprecated",
+    "Clock",
+    "FixedClock",
+    "SystemClock",
+    "IngestLog",
+    "CoreEngine",
+    "EngineDecision",
+    "EngineState",
+    "SQLiteProjection",
     "Pipeline",
     "Store",
     "Engine",

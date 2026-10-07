@@ -1,14 +1,14 @@
 {
-  "timestamp": 1791386195.8819075,
+  "timestamp": 1791390428.3492064,
   "single_event": {
     "num_events": 30000,
     "mode": "single",
     "batch_size": 1,
-    "elapsed_s": 11.1309,
-    "events_per_second": 2695.2,
-    "rss_mb_before": 32.32,
-    "rss_mb_after": 58.13,
-    "rss_mb_growth": 25.81,
+    "elapsed_s": 4.9022,
+    "events_per_second": 6119.7,
+    "rss_mb_before": 32.45,
+    "rss_mb_after": 62.67,
+    "rss_mb_growth": 30.22,
     "e2e_latency_us": {
       "p50": 795.1,
       "p95": 1785.0,
@@ -17,10 +17,10 @@
       "max": 3094.9
     },
     "processing_latency_us": {
-      "p50": 145.9,
-      "p95": 425.1,
-      "p99": 2226.3,
-      "max": 361534.2
+      "p50": 107.3,
+      "p95": 249.5,
+      "p99": 480.9,
+      "max": 7904.6
     },
     "quality_counts": {
       "VALID": 29865,
@@ -35,11 +35,11 @@
     "num_events": 30000,
     "mode": "batch",
     "batch_size": 1024,
-    "elapsed_s": 14.1244,
-    "events_per_second": 2124.0,
-    "rss_mb_before": 39.55,
-    "rss_mb_after": 59.56,
-    "rss_mb_growth": 20.01,
+    "elapsed_s": 5.0561,
+    "events_per_second": 5933.4,
+    "rss_mb_before": 43.06,
+    "rss_mb_after": 61.12,
+    "rss_mb_growth": 18.06,
     "e2e_latency_us": {
       "p50": 795.1,
       "p95": 1785.0,
@@ -48,10 +48,10 @@
       "max": 3094.9
     },
     "processing_latency_us": {
-      "p50": 119977.9,
-      "p95": 674195.9,
-      "p99": 928599.6,
-      "max": 1059251.6
+      "p50": 77609.8,
+      "p95": 173917.3,
+      "p99": 224436.8,
+      "max": 250876.3
     },
     "quality_counts": {
       "VALID": 29865,
@@ -66,7 +66,7 @@
     "journal_events": 20000,
     "recovered_events": 20000,
     "journal_size_mb": 8.83,
-    "recovery_time_s": 2.2489,
-    "recovery_rate_eps": 8893.1
+    "recovery_time_s": 0.9138,
+    "recovery_rate_eps": 21886.7
   }
 }

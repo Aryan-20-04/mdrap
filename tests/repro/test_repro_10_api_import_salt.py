@@ -20,10 +20,6 @@ import sys
 import pytest
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="Importing mdrap.api crashes with ValueError outside demo mode because app=create_app() runs at module top level (Finding 10)",
-)
 def test_import_mdrap_api_without_salt_or_demo_does_not_crash():
     # Run in an isolated subprocess with clean environment (no MDRAP_DEMO, no MDRAP_API_KEY_SALT)
     proc = subprocess.run(

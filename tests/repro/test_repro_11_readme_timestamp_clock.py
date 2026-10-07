@@ -17,10 +17,6 @@ from __future__ import annotations
 import pytest
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="Clock abstraction (FixedClock/SystemClock) is not yet implemented or injectable into Pipeline/QualityEngine (Finding 11 / Clock)",
-)
 def test_clock_injection_in_pipeline_and_quality(tmp_path):
     # This must import Clock, FixedClock, SystemClock from mdrap.clock
     from mdrap.clock import FixedClock

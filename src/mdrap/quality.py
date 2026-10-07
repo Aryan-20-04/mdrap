@@ -230,7 +230,7 @@ class QualityEngine:
         QualityStatus.INVALID: 2,
     }
 
-    def __init__(self, config: QualityConfig | None = None):
+    def __init__(self, config: QualityConfig | None = None, clock: Any = None):
         if config is None:
             try:
                 from .config import load_config
@@ -240,6 +240,9 @@ class QualityEngine:
                 self.cfg = QualityConfig()
         else:
             self.cfg = config
+
+        from .clock import SystemClock
+        self.clock = clock if clock is not None else SystemClock()
 
         self._slots: dict[tuple[str, str], _SlotState] = {}
         self._cfg_cache: dict[str, QualityConfig] = {}

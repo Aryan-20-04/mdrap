@@ -1186,5 +1186,9 @@ def create_app(
     return app
 
 
-# Module-level default application instance for ASGI servers (e.g. uvicorn api:app)
-app = create_app()
+# Lazy application instantiation for ASGI servers (e.g. uvicorn api:app)
+def __getattr__(name: str) -> Any:
+    if name == "app":
+        return create_app()
+    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
+

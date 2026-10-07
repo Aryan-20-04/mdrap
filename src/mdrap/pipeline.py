@@ -35,8 +35,10 @@ import queue
 import subprocess
 import threading
 import time
+import warnings
 from typing import Any, Callable, TYPE_CHECKING
 
+from .clock import Clock, SystemClock
 from .gateway import SchemaError, ingest, normalize
 from .metrics import RunMetrics
 from .models import CanonicalEvent, EventType, QualityStatus, RawEvent, Reason
@@ -179,8 +181,15 @@ class Pipeline:
         | None = None,
         journal: bool | str | None = None,
         durability_policy: str = "fail_closed",
+        clock: Clock | None = None,
     ):
+        warnings.warn(
+            "Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self.store = store
+        self.clock = clock if clock is not None else SystemClock()
         self.durability_policy: str = (
             durability_policy
             if durability_policy is not None
@@ -199,14 +208,14 @@ class Pipeline:
                 from .fastpath import FastQualityEngine, is_available
 
                 self.quality = (
-                    FastQualityEngine() if is_available() else QualityEngine()
+                    FastQualityEngine(clock=self.clock) if is_available() else QualityEngine(clock=self.clock)
                 )
             except Exception as exc:
                 logger.warning(
                     "Fast quality engine initialization failed; using Python engine: %s",
                     exc,
                 )
-                self.quality = QualityEngine()
+                self.quality = QualityEngine(clock=self.clock)
         self.reliability = reliability or ReliabilityTracker()
         self.reconciler = Reconciler(self.reliability)
         self.metrics = RunMetrics()
