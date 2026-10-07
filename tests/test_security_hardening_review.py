@@ -151,20 +151,17 @@ def test_rest_endpoints_reject_query_string_token(auth_app_and_keys):
 
 
 def test_websocket_rejects_query_token_and_requires_bearer_or_frame(auth_app_and_keys):
-    """WebSocket handshake rejects ?token= completely and requires Authorization header or first-frame auth."""
+    """WebSocket handshake rejects unauthenticated connections before accept with code 1008."""
     from starlette.websockets import WebSocketDisconnect
 
     app, admin_ent, viewer_ent, store = auth_app_and_keys
     client = TestClient(app)
 
-    # 1. Query parameter ?token= must be REJECTED with error frame and WS 1008
-    with client.websocket_connect(f"/v1/events/stream?token={viewer_ent.token}") as ws:
-        err = ws.receive_json()
-        assert err["type"] == "ERROR"
-        assert "Query-parameter ?token= is not supported" in err["error"]
-        with pytest.raises(WebSocketDisconnect) as exc:
-            ws.receive_json()
-        assert exc.value.code == 1008
+    # 1. Query parameter ?token= must be REJECTED before accept with WS 1008
+    with pytest.raises(WebSocketDisconnect) as exc:
+        with client.websocket_connect(f"/v1/events/stream?token={viewer_ent.token}"):
+            pass
+    assert exc.value.code == 1008
 
     # 2. Authorization: Bearer handshake header -> Accepted
     with client.websocket_connect(
@@ -173,11 +170,11 @@ def test_websocket_rejects_query_token_and_requires_bearer_or_frame(auth_app_and
         init_frame = ws.receive_json()
         assert init_frame["type"] in ("ACK", "SUBSCRIPTION_STATUS")
 
-    # 3. First-frame JSON authentication -> Accepted
-    with client.websocket_connect("/v1/events/stream") as ws:
-        ws.send_json({"action": "authenticate", "token": viewer_ent.token})
-        init_frame = ws.receive_json()
-        assert init_frame["type"] in ("ACK", "SUBSCRIPTION_STATUS")
+    # 3. Missing handshake authentication -> Rejected before accept with WS 1008
+    with pytest.raises(WebSocketDisconnect) as exc:
+        with client.websocket_connect("/v1/events/stream"):
+            pass
+    assert exc.value.code == 1008
 
 
 def test_key_prefix_length_aligned_to_documented_spec(tmp_path):

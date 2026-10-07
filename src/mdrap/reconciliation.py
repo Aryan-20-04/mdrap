@@ -23,6 +23,7 @@ Architectural Objectives (MDRAP Spec §12 & §26):
 
 from __future__ import annotations
 
+from collections import OrderedDict
 from dataclasses import dataclass, field
 
 from .models import CanonicalEvent, QualityStatus, Reason
@@ -198,6 +199,7 @@ class Reconciler:
         reliability: ReliabilityTracker | None = None,
         config: ReliabilityConfig | None = None,
         cfg: ReliabilityConfig | None = None,
+        max_instruments: int = 100_000,
     ):
         resolved_cfg = cfg or config or ReliabilityConfig()
         self.cfg = resolved_cfg
@@ -206,8 +208,9 @@ class Reconciler:
             if reliability is not None
             else ReliabilityTracker(config=resolved_cfg)
         )
+        self.max_instruments = max_instruments
         # instrument_id -> source -> (event, exchange_timestamp)
-        self._latest: dict[str, dict[str, tuple[CanonicalEvent, float]]] = {}
+        self._latest: OrderedDict[str, dict[str, tuple[CanonicalEvent, float]]] = OrderedDict()
         self._blocked_sources: set[str] = set()
 
     def block_source(self, source: str) -> None:
@@ -233,7 +236,11 @@ class Reconciler:
         market_now = event.exchange_timestamp
         per_instrument = self._latest.get(event.instrument_id)
         if per_instrument is None:
+            if len(self._latest) >= self.max_instruments:
+                self._latest.popitem(last=False)
             per_instrument = self._latest[event.instrument_id] = {}
+        else:
+            self._latest.move_to_end(event.instrument_id)
         per_instrument[event.source] = (event, market_now)
 
         # Fast path: multi-feed quorum cannot be established with < 2 feeds

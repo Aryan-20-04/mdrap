@@ -47,7 +47,9 @@ from pydantic import BaseModel, Field
 # Ensure src is in python path
 from .bbo import BBOEngine
 from .depth import ConsolidatedDepthEngine
+from .fastpath import FastQualityEngine, is_available
 from .pipeline import Pipeline
+from .quality import QualityConfig, QualityEngine
 from .reconciliation import ReliabilityTracker
 from .security import (
     ClientEntitlement,
@@ -196,18 +198,29 @@ class AppState:
         )
         self.bbo = BBOEngine(quote_ttl_s=10.0, watchdog=self.watchdog)
         self.depth = ConsolidatedDepthEngine(depth_ttl_s=10.0, watchdog=self.watchdog)
+        qc = QualityConfig(
+            staleness_threshold_s=float(os.environ.get("MDRAP_API_STALENESS_S", "2.0"))
+        )
+        quality_engine = (
+            FastQualityEngine(config=qc) if is_available() else QualityEngine(config=qc)
+        )
         self.pipeline = Pipeline(
             store=self.store,
+            quality=quality_engine,
             reliability=self.reliability,
             bbo=self.bbo,
             watchdog=self.watchdog,
+            security=self.security_manager,
         )
 
         self.start_time = time.time()
         self.active_feeds: Dict[str, Dict[str, Any]] = {}
 
-        # WebSocket subscribers: socket -> set of uppercase symbols (empty set = ALL)
+        # WebSocket subscribers & bounded subscriber queues for slow client isolation
         self.subscribers: Dict[WebSocket, Set[str]] = {}
+        self.subscriber_queues: Dict[WebSocket, asyncio.Queue] = {}
+        self.subscriber_drops: Dict[WebSocket, int] = {}
+        self.subscriber_tasks: Dict[WebSocket, asyncio.Task] = {}
         self._lock = asyncio.Lock()
 
         # Decoupled downstream sinks for operational observability
@@ -234,18 +247,33 @@ class AppState:
         ).upper()
         dead_sockets = []
 
-        # Copy keys to avoid mutation during iteration
-        sockets = list(self.subscribers.keys())
-        for ws in sockets:
-            sub_syms = self.subscribers.get(ws, set())
+        # Deliver to subscriber queues without blocking ingestion pipeline
+        for ws, sub_syms in list(self.subscribers.items()):
             if not sub_syms or "ALL" in sub_syms or sym in sub_syms:
-                try:
-                    await ws.send_json(event_data)
-                except Exception:
-                    dead_sockets.append(ws)
+                q = self.subscriber_queues.get(ws)
+                if q is not None:
+                    try:
+                        q.put_nowait(event_data)
+                    except asyncio.QueueFull:
+                        self.subscriber_drops[ws] = self.subscriber_drops.get(ws, 0) + 1
+                        if self.subscriber_drops[ws] % 100 == 1:
+                            logger.warning(
+                                "[api] WebSocket subscriber queue full, dropped message #%d",
+                                self.subscriber_drops[ws],
+                            )
+                else:
+                    try:
+                        await ws.send_json(event_data)
+                    except Exception:
+                        dead_sockets.append(ws)
 
         for ws in dead_sockets:
             self.subscribers.pop(ws, None)
+            self.subscriber_queues.pop(ws, None)
+            self.subscriber_drops.pop(ws, None)
+            task = self.subscriber_tasks.pop(ws, None)
+            if task:
+                task.cancel()
 
 
 # ---------------------------------------------------------------------------
@@ -611,6 +639,10 @@ def create_app(
         )
         return {"status": "ok", "message": f"Feed '{src}' blocked successfully"}
 
+    MAX_REQUEST_BODY_BYTES: int = 5 * 1024 * 1024  # 5 MB
+    MAX_BATCH_SIZE: int = 10_000
+    MAX_RECORD_BYTES: int = 64 * 1024  # 64 KB
+
     # 2b. Ingestion Route (C4: Feed Ingestion & Live Broadcaster)
     @router.post("/ingest", tags=["Ingestion"])
     async def ingest_events(
@@ -619,25 +651,91 @@ def create_app(
     ):
         """Ingest raw market data events into pipeline and broadcast over WebSocket (C4)."""
         st: AppState = request.app.state.mdrap
-        body = await request.json()
+
+        # 1. Enforce maximum request body size
+        content_length = request.headers.get("content-length")
+        if content_length and int(content_length) > MAX_REQUEST_BODY_BYTES:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail=f"Request body exceeds maximum size of {MAX_REQUEST_BODY_BYTES} bytes",
+            )
+
+        raw_body = await request.body()
+        if len(raw_body) > MAX_REQUEST_BODY_BYTES:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail=f"Request body exceeds maximum size of {MAX_REQUEST_BODY_BYTES} bytes",
+            )
+
+        try:
+            body = json.loads(raw_body)
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid JSON payload: {exc}",
+            )
+
         items = body if isinstance(body, list) else [body]
+
+        # 2. Enforce maximum batch size
+        if len(items) > MAX_BATCH_SIZE:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail=f"Batch size {len(items)} exceeds maximum batch limit of {MAX_BATCH_SIZE}",
+            )
+
         from .models import RawEvent
 
-        raw_events = [
-            RawEvent(
-                source=str(it.get("source", "UNKNOWN")),
-                payload=it.get("payload", {}),
-                receive_timestamp=float(it.get("receive_timestamp", time.time())),
-                raw_id=str(it.get("raw_id", "")),
+        server_ts = time.time()
+        raw_events: list[RawEvent] = []
+
+        # 3. Validate each item against max record size and allowed sources
+        for it in items:
+            if not isinstance(it, dict):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Batch items must be JSON objects",
+                )
+            rec_bytes = len(json.dumps(it))
+            if rec_bytes > MAX_RECORD_BYTES:
+                raise HTTPException(
+                    status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                    detail=f"Record size {rec_bytes} bytes exceeds maximum allowed {MAX_RECORD_BYTES} bytes",
+                )
+
+            src = str(it.get("source", "UNKNOWN"))
+            if not st.security_manager.check_source_allowed(_auth, src):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"Client '{_auth.client_id}' is not authorized to ingest for source '{src}'",
+                )
+
+            client_raw_id = str(it.get("raw_id", ""))
+            namespaced_raw_id = (
+                f"client_{_auth.client_id}:{client_raw_id}"
+                if client_raw_id
+                else ""
             )
-            for it in items
-        ]
-        results = st.pipeline.process_batch(raw_events)
+
+            raw_events.append(
+                RawEvent(
+                    source=src,
+                    payload=it.get("payload", {}),
+                    receive_timestamp=server_ts,  # Always override with trusted server timestamp
+                    raw_id=namespaced_raw_id,
+                )
+            )
+
+        # 4. Offload synchronous pipeline batch processing to worker thread pool
+        results = await asyncio.to_thread(st.pipeline.process_batch, raw_events)
+
+        # 5. Record feed telemetry and broadcast to WebSocket subscribers
         for ev in results:
             st.record_feed_event(ev.source)
             if ev.source.upper() in st.active_feeds:
                 st.active_feeds[ev.source.upper()]["status"] = "ACTIVE"
             await st.broadcast_event(ev.to_dict())
+
         return {
             "status": "ok",
             "ingested": len(raw_events),
@@ -996,20 +1094,13 @@ def create_app(
     # -----------------------------------------------------------------------
     @app.websocket("/v1/events/stream")
     async def websocket_events_stream(websocket: WebSocket):
-        await websocket.accept()
         st: AppState = websocket.app.state.mdrap
 
-        # 1. Authenticate WebSocket Connection
-        # Deprecated query parameter ?token= is STRICTLY PROHIBITED to prevent credential leakage in logs.
-        # Permitted authentication channels:
-        #   A) HTTP handshake header: 'Authorization: Bearer <token>' or 'X-API-Key: <token>'
-        #   B) First-frame authentication JSON message: {"action": "authenticate", "token": "..."}
+        # 1. Authenticate WebSocket Connection before accept
+        # Enforce authenticate -> authorize -> accept.
+        # Unauthenticated connections are rejected immediately before accept (WS 1008).
         client_ent = None
-
-        # Check HTTP handshake headers
-        auth_hdr = websocket.headers.get("authorization") or websocket.headers.get(
-            "Authorization"
-        )
+        auth_hdr = websocket.headers.get("authorization") or websocket.headers.get("Authorization")
         if auth_hdr and auth_hdr.lower().startswith("bearer "):
             token = auth_hdr[7:].strip()
             client_ent = st.security_manager.get_entitlement(token, active_only=True)
@@ -1017,43 +1108,32 @@ def create_app(
             token = websocket.headers["x-api-key"].strip()
             client_ent = st.security_manager.get_entitlement(token, active_only=True)
 
-        # If not authenticated via handshake headers, expect first-frame auth message
         if not client_ent:
-            try:
-                init_msg = await asyncio.wait_for(websocket.receive_text(), timeout=5.0)
-                auth_data = {}
-                try:
-                    auth_data = json.loads(init_msg)
-                except Exception:
-                    if init_msg.startswith("AUTH "):
-                        auth_data = {"token": init_msg.split()[1]}
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Unauthorized")
+            return
 
-                tok = auth_data.get("token") or auth_data.get("auth")
-                if tok:
-                    client_ent = st.security_manager.get_entitlement(
-                        tok, active_only=True
-                    )
+        # 2. Accept connection once authenticated
+        await websocket.accept()
+
+        # 3. Register Client Subscription and Bounded Queue
+        subscribed_symbols: Set[str] = set()
+        queue: asyncio.Queue = asyncio.Queue(maxsize=1000)
+        st.subscribers[websocket] = subscribed_symbols
+        st.subscriber_queues[websocket] = queue
+        st.subscriber_drops[websocket] = 0
+
+        async def _sender():
+            try:
+                while True:
+                    msg = await queue.get()
+                    await websocket.send_json(msg)
+                    queue.task_done()
             except Exception:
                 pass
 
-        if not client_ent:
-            await websocket.send_json(
-                {
-                    "type": "ERROR",
-                    "error": (
-                        "Unauthorized: Missing or invalid API key. Supply 'Authorization: Bearer <token>' "
-                        "in handshake headers or send a first-frame JSON message: "
-                        '{"action": "authenticate", "token": "..."}. '
-                        "Query-parameter ?token= is not supported."
-                    ),
-                }
-            )
-            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
-            return
+        sender_task = asyncio.create_task(_sender())
+        st.subscriber_tasks[websocket] = sender_task
 
-        # 2. Register Client Subscription
-        subscribed_symbols: Set[str] = set()
-        st.subscribers[websocket] = subscribed_symbols
         await websocket.send_json(
             {
                 "type": "ACK",
@@ -1127,6 +1207,11 @@ def create_app(
             pass
         finally:
             st.subscribers.pop(websocket, None)
+            st.subscriber_queues.pop(websocket, None)
+            st.subscriber_drops.pop(websocket, None)
+            task = st.subscriber_tasks.pop(websocket, None)
+            if task:
+                task.cancel()
 
     @app.middleware("http")
     async def metrics_middleware(request: Request, call_next):

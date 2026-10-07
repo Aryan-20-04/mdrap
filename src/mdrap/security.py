@@ -83,6 +83,7 @@ class ClientEntitlement:
     expires_at: Optional[float] = None
     is_active: bool = True
     allowed_cidrs: list[str] = field(default_factory=list)
+    allowed_sources: list[str] = field(default_factory=list)
     is_rotating: bool = False
 
     def __post_init__(self):
@@ -110,6 +111,7 @@ class ClientEntitlement:
             "expires_at": self.expires_at,
             "is_active": self.is_active,
             "allowed_cidrs": list(self.allowed_cidrs),
+            "allowed_sources": list(self.allowed_sources),
             "is_rotating": self.is_rotating,
         }
 
@@ -130,6 +132,7 @@ class ClientEntitlement:
             else None,
             is_active=bool(data.get("is_active", True)),
             allowed_cidrs=list(data.get("allowed_cidrs", [])),
+            allowed_sources=list(data.get("allowed_sources", [])),
             is_rotating=bool(data.get("is_rotating", False)),
         )
 
@@ -788,6 +791,13 @@ class SecurityManager:
         return self._fail(
             "HMAC_SIGNATURE_INVALID", src, "Payload HMAC signature mismatch"
         )
+
+    def check_source_allowed(self, entitlement: ClientEntitlement, source: str) -> bool:
+        """Verify whether an entitlement is permitted to publish for the given source."""
+        if not entitlement.allowed_sources:
+            return True
+        return source.upper() in [s.upper() for s in entitlement.allowed_sources]
+
 
     def authorize(
         self, actor_or_token: Any, required_role: Role, action_name: str = ""

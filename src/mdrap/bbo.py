@@ -17,6 +17,7 @@ Mathematical & Microstructure Formulations:
 
 from __future__ import annotations
 
+from collections import OrderedDict
 from dataclasses import dataclass
 import json
 import math
@@ -84,11 +85,17 @@ class ConsolidatedBBO:
 class BBOEngine:
     """Multi-Venue Consolidated Order Book Engine."""
 
-    def __init__(self, quote_ttl_s: float = 2.0, watchdog: Any | None = None):
+    def __init__(
+        self,
+        quote_ttl_s: float = 2.0,
+        watchdog: Any | None = None,
+        max_instruments: int = 100_000,
+    ):
         self.quote_ttl_s = quote_ttl_s
         self.watchdog = watchdog
+        self.max_instruments = max_instruments
         # _books[instrument_id][source] = CanonicalEvent
-        self._books: dict[str, dict[str, CanonicalEvent]] = {}
+        self._books: OrderedDict[str, dict[str, CanonicalEvent]] = OrderedDict()
         # Latest consolidated top of book per instrument
         self._current_bbos: dict[str, ConsolidatedBBO] = {}
         # Pre-serialized wire JSON byte buffers per instrument (zero-allocation fastpath)
@@ -125,7 +132,15 @@ class BBOEngine:
         src = event.source
         market_now = event.exchange_timestamp
 
-        inst_book = self._books.setdefault(inst, {})
+        inst_book = self._books.get(inst)
+        if inst_book is None:
+            if len(self._books) >= self.max_instruments:
+                old_inst, _ = self._books.popitem(last=False)
+                self._current_bbos.pop(old_inst, None)
+                self._cached_bbo_json.pop(old_inst, None)
+            inst_book = self._books[inst] = {}
+        else:
+            self._books.move_to_end(inst)
 
         # If source is currently eligible, update its quote
         if self._is_source_eligible(src):

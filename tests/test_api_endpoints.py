@@ -44,6 +44,9 @@ def api_env():
     app = create_app(state=state)
     client = TestClient(app)
 
+    if hasattr(state.pipeline.quality, "reset"):
+        state.pipeline.quality.reset()
+
     yield {
         "client": client,
         "app": app,
@@ -56,6 +59,8 @@ def api_env():
         "db_path": db_path,
     }
 
+    if hasattr(state.pipeline.quality, "reset"):
+        state.pipeline.quality.reset()
     store.close()
     if os.path.exists(db_path):
         try:
@@ -300,18 +305,18 @@ def test_server_ingest_and_websocket_broadcast(api_env):
         "/v1/events/stream",
         headers={"Authorization": f"Bearer {api_env['viewer_key']}"},
     ) as ws:
-        now = time.time()
         payload = {
             "source": "BINANCE",
             "payload": {
                 "instrument": "BTC/USD",
                 "event_type": "TRADE",
-                "exchange_ts": now,
+                "exchange_ts": time.time(),
                 "sequence": 1,
                 "price": 50000.0,
                 "quantity": 1.25,
             },
         }
+        payload["payload"]["exchange_ts"] = time.time()
         r = client.post("/v1/ingest", json=payload, headers=op_headers)
         assert r.status_code == 200
         data = r.json()
@@ -326,7 +331,7 @@ def test_server_ingest_and_websocket_broadcast(api_env):
         msg = ws.receive_json()
         assert msg["instrument_id"] == "BTC/USD"
         assert msg["price"] == 50000.0
-        assert msg["quality_status"] == "VALID"
+        assert msg["quality_status"] == "VALID", f"Unexpected msg: {msg}"
 
     r_feeds = client.get("/v1/feeds", headers=view_headers)
     assert r_feeds.status_code == 200

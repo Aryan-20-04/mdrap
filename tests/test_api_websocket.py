@@ -58,7 +58,7 @@ def ws_env():
             pass
 
 
-def test_websocket_auth_via_headers_and_first_frame(ws_env):
+def test_websocket_auth_via_headers(ws_env):
     client = ws_env["client"]
     token = ws_env["token"]
 
@@ -83,37 +83,30 @@ def test_websocket_auth_via_headers_and_first_frame(ws_env):
         ack = ws.receive_json()
         assert ack["type"] == "ACK"
 
-    # 3. First-frame JSON authentication
-    with client.websocket_connect("/v1/events/stream") as ws:
-        ws.send_json({"action": "authenticate", "token": token})
-        ack = ws.receive_json()
-        assert ack["type"] == "ACK"
-        assert "Connected" in ack["message"]
-
 
 def test_websocket_rejects_unauthenticated(ws_env):
     client = ws_env["client"]
     token = ws_env["token"]
 
-    # Query param ?token= is rejected
-    with client.websocket_connect(f"/v1/events/stream?token={token}") as ws:
-        err = ws.receive_json()
-        assert err["type"] == "ERROR"
-        assert "Query-parameter ?token= is not supported" in err["error"]
-        with pytest.raises(WebSocketDisconnect) as exc:
-            ws.receive_json()
-        assert exc.value.code == 1008
+    # Missing auth headers is rejected before accept with 1008
+    with pytest.raises(WebSocketDisconnect) as exc:
+        with client.websocket_connect("/v1/events/stream"):
+            pass
+    assert exc.value.code == 1008
 
-    # Invalid Bearer header is rejected
-    with client.websocket_connect(
-        "/v1/events/stream", headers={"Authorization": "Bearer invalid_token_123"}
-    ) as ws:
-        err = ws.receive_json()
-        assert err["type"] == "ERROR"
-        assert "Unauthorized" in err["error"]
-        with pytest.raises(WebSocketDisconnect) as exc:
-            ws.receive_json()
-        assert exc.value.code == 1008
+    # Query param ?token= is rejected before accept with 1008
+    with pytest.raises(WebSocketDisconnect) as exc:
+        with client.websocket_connect(f"/v1/events/stream?token={token}"):
+            pass
+    assert exc.value.code == 1008
+
+    # Invalid Bearer header is rejected before accept with 1008
+    with pytest.raises(WebSocketDisconnect) as exc:
+        with client.websocket_connect(
+            "/v1/events/stream", headers={"Authorization": "Bearer invalid_token_123"}
+        ):
+            pass
+    assert exc.value.code == 1008
 
 
 def test_websocket_subscription_and_unsubscription(ws_env):
