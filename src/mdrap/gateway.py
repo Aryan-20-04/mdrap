@@ -23,6 +23,7 @@ Architectural Context (MDRAP Spec §11 & §26):
 from __future__ import annotations
 
 import itertools
+import math
 import os
 import secrets
 import time
@@ -103,6 +104,9 @@ def normalize(raw: RawEvent) -> CanonicalEvent:
                      or numeric fields cannot be cast to floating point numbers.
     """
     p = raw.payload
+    if not isinstance(p, dict):
+        raise SchemaError(f"payload must be a dict, got {type(p).__name__}")
+
     event_type_raw = p.get("event_type")
     if event_type_raw not in ("TRADE", "QUOTE"):
         raise SchemaError(f"unknown or missing event_type: {event_type_raw!r}")
@@ -123,13 +127,16 @@ def normalize(raw: RawEvent) -> CanonicalEvent:
         clock_source = "GATEWAY_RECV"
     elif isinstance(exchange_ts, bool) or not isinstance(exchange_ts, (int, float)):
         raise SchemaError(f"exchange_ts not numeric: {exchange_ts!r}")
+    elif not math.isfinite(exchange_ts):
+        raise SchemaError(f"exchange_ts not finite: {exchange_ts!r}")
 
-    # sequence: optional for feeds that don't provide monotonic sequence numbers
+    # sequence: optional for feeds that don't provide monotonic sequence numbers (bounded to signed int64)
     sequence = p.get("sequence")
-    if sequence is not None and (
-        isinstance(sequence, bool) or not isinstance(sequence, int)
-    ):
-        raise SchemaError(f"sequence not an int: {sequence!r}")
+    if sequence is not None:
+        if isinstance(sequence, bool) or not isinstance(sequence, int):
+            raise SchemaError(f"sequence not an int: {sequence!r}")
+        if sequence < -9223372036854775808 or sequence > 9223372036854775807:
+            raise SchemaError(f"sequence integer out of int64 range: {sequence!r}")
 
     instrument = p["instrument"]
     if not isinstance(instrument, str) or not instrument:
@@ -181,9 +188,19 @@ def normalize(raw: RawEvent) -> CanonicalEvent:
 
     if event_type_raw == "TRADE":
         price, qty = p["price"], p["quantity"]
-        if isinstance(price, bool) or not isinstance(price, (int, float)) or price <= 0:
+        if (
+            isinstance(price, bool)
+            or not isinstance(price, (int, float))
+            or not math.isfinite(price)
+            or price <= 0
+        ):
             raise SchemaError(f"invalid price: {price!r}")
-        if isinstance(qty, bool) or not isinstance(qty, (int, float)) or qty <= 0:
+        if (
+            isinstance(qty, bool)
+            or not isinstance(qty, (int, float))
+            or not math.isfinite(qty)
+            or qty <= 0
+        ):
             raise SchemaError(f"invalid quantity: {qty!r}")
         event.price = float(price)
         event.quantity = float(qty)
@@ -194,8 +211,10 @@ def normalize(raw: RawEvent) -> CanonicalEvent:
             or isinstance(ask, bool)
             or not isinstance(bid, (int, float))
             or not isinstance(ask, (int, float))
+            or not math.isfinite(bid)
+            or not math.isfinite(ask)
         ):
-            raise SchemaError("bid/ask not numeric")
+            raise SchemaError("bid/ask not numeric or not finite")
         event.bid_price = float(bid)
         event.ask_price = float(ask)
         bid_sz = p.get("bid_size", 0) or 0

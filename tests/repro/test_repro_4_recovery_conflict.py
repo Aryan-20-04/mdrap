@@ -22,10 +22,6 @@ from mdrap.pipeline import Pipeline
 from mdrap.storage import Store
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="Crash recovery increments store.conflicts on idempotent replay, causing Pipeline.finish to raise StorageConflictError (Finding 4)",
-)
 def test_idempotent_recovery_does_not_trigger_finish_storage_conflict_error(tmp_path):
     db_path = str(tmp_path / "events.db")
     journal_path = f"{db_path}.journal"

@@ -87,6 +87,7 @@ CREATE TABLE IF NOT EXISTS quarantine (
     receive_timestamp REAL
 );
 CREATE INDEX IF NOT EXISTS idx_quarantine_recv_ts ON quarantine(receive_timestamp);
+CREATE VIEW IF NOT EXISTS quarantine_events AS SELECT * FROM quarantine;
 
 CREATE TABLE IF NOT EXISTS lineage (
     event_id TEXT PRIMARY KEY,
@@ -321,6 +322,7 @@ class Store:
         if self.durability not in ("fast", "balanced", "compliance"):
             self.durability = "balanced"
         self.conflicts: int = 0
+        self.recovery_conflicts: int = 0
         self._lock = threading.RLock()
         self._read_lock = threading.RLock()
         with self._lock:
@@ -499,36 +501,67 @@ class Store:
         """Recover unprojected transactions from write-ahead journal after an ungraceful crash (Audit C1)."""
         if not os.path.exists(journal_path) or os.path.getsize(journal_path) == 0:
             return
-        from .models import CanonicalEvent
+        from .models import CanonicalEvent, QualityStatus
 
         canon: list[CanonicalEvent] = []
         quar: list[tuple] = []
         lin: list[tuple] = []
+        has_corrupted_records = False
+        recovery_succeeded = False
         try:
             with open(journal_path, "r", encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if not line:
+                for line_idx, line in enumerate(f):
+                    raw_line = line.strip()
+                    if not raw_line:
                         continue
                     try:
-                        obj = json.loads(line)
-                    except Exception:
-                        continue
-                    entry_type = obj.get("type")
-                    payload = obj.get("payload")
-                    if entry_type == "canonical" and isinstance(payload, dict):
-                        canon.append(CanonicalEvent.from_dict(payload))
-                    elif entry_type == "quarantine" and isinstance(
-                        payload, (list, tuple)
-                    ):
-                        quar.append(tuple(payload))
-                    elif entry_type == "lineage" and isinstance(payload, (list, tuple)):
-                        lin.append(tuple(payload))
+                        obj = json.loads(raw_line)
+                        if not isinstance(obj, dict):
+                            raise ValueError(
+                                f"Journal line is not a JSON object: {type(obj).__name__}"
+                            )
+                        entry_type = obj.get("type")
+                        payload = obj.get("payload")
+                        if entry_type == "canonical" and isinstance(payload, dict):
+                            canon.append(CanonicalEvent.from_dict(payload))
+                        elif entry_type == "quarantine" and isinstance(
+                            payload, (list, tuple)
+                        ):
+                            quar.append(tuple(payload))
+                        elif entry_type == "lineage" and isinstance(
+                            payload, (list, tuple)
+                        ):
+                            lin.append(tuple(payload))
+                        else:
+                            raise ValueError(
+                                f"Invalid or unrecognized journal entry: type={entry_type!r}"
+                            )
+                    except Exception as parse_exc:
+                        has_corrupted_records = True
+                        logger.error(
+                            "[storage] Malformed journal entry at line %d in %s: %s",
+                            line_idx + 1,
+                            journal_path,
+                            parse_exc,
+                        )
+                        corrupt_id = f"corrupt_jrn_{int(time.time() * 1e6)}_{line_idx}"
+                        q_row = (
+                            corrupt_id,
+                            "UNKNOWN",
+                            "JOURNAL_RECOVERY",
+                            QualityStatus.INVALID.value,
+                            json.dumps(["MALFORMED_JOURNAL_RECORD"]),
+                            json.dumps({"raw_line": raw_line, "error": str(parse_exc)}),
+                            time.time(),
+                        )
+                        quar.append(q_row)
+
             if canon or quar or lin:
                 self.write_batches_atomic(
                     canonical=canon or None,
                     quarantine=quar or None,
                     lineage=lin or None,
+                    is_recovery=True,
                 )
                 self.commit()
                 logger.info(
@@ -538,16 +571,25 @@ class Store:
                     len(lin),
                     journal_path,
                 )
+            recovery_succeeded = True
         except Exception as exc:
             logger.warning(
                 "[storage] Error recovering from journal %s: %s", journal_path, exc
             )
         finally:
-            try:
-                with open(journal_path, "w", encoding="utf-8"):
+            if not has_corrupted_records and recovery_succeeded:
+                try:
+                    with open(journal_path, "w", encoding="utf-8"):
+                        pass
+                except Exception:
                     pass
-            except Exception:
-                pass
+            else:
+                logger.warning(
+                    "[storage] Preserving crash journal %s due to malformed or unrecovered records (corrupted=%s, succeeded=%s)",
+                    journal_path,
+                    has_corrupted_records,
+                    recovery_succeeded,
+                )
 
     @contextmanager
     def transaction(self):
@@ -660,6 +702,7 @@ class Store:
         quarantine: list[tuple] | None = None,
         lineage: list[tuple] | None = None,
         source_health: list[tuple] | None = None,
+        is_recovery: bool = False,
     ) -> None:
         """Atomic multi-batch write in a single BEGIN IMMEDIATE transaction."""
         with self.transaction():
@@ -694,7 +737,10 @@ class Store:
                 )
                 ins = self.conn.total_changes - c_before
                 if ins < len(canonical):
-                    self.conflicts += len(canonical) - ins
+                    if is_recovery:
+                        self.recovery_conflicts += len(canonical) - ins
+                    else:
+                        self.conflicts += len(canonical) - ins
             if quarantine:
                 c_before_q = self.conn.total_changes
                 self.conn.executemany(
@@ -705,7 +751,10 @@ class Store:
                 )
                 ins_q = self.conn.total_changes - c_before_q
                 if ins_q < len(quarantine):
-                    self.conflicts += len(quarantine) - ins_q
+                    if is_recovery:
+                        self.recovery_conflicts += len(quarantine) - ins_q
+                    else:
+                        self.conflicts += len(quarantine) - ins_q
                 self._append_quarantine_merkle_batch_in_tx(quarantine)
             if lineage:
                 c_before_l = self.conn.total_changes
@@ -717,7 +766,10 @@ class Store:
                 )
                 ins_l = self.conn.total_changes - c_before_l
                 if ins_l < len(lineage):
-                    self.conflicts += len(lineage) - ins_l
+                    if is_recovery:
+                        self.recovery_conflicts += len(lineage) - ins_l
+                    else:
+                        self.conflicts += len(lineage) - ins_l
             if source_health:
                 self.conn.executemany(
                     "INSERT OR REPLACE INTO source_health VALUES (?,?,?,?,?,?,?,?,?)",

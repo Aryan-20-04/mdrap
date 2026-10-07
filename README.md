@@ -71,7 +71,7 @@ The default pytest configuration excludes tests marked `slow` and `network`; run
 
 ## Engineering status
 
-See [the audit revalidation](docs/verified-gap-report.md) and [the roadmap](MDRAP%20v3.0.0%20Ruthless%20Audit%20and%20Roadmap.md). The repository is being migrated incrementally. Durability, security hardening, portability, end-to-end feed operation, and reproducible performance still require separate implementation and evidence.
+See [the audit revalidation](docs/verified-gap-report.md) and [the roadmap](docs/audits/2026-10-06-MDRAP_v3.0.0_Ruthless_Audit_and_Roadmap.md). The repository is being migrated incrementally. Durability, security hardening, portability, end-to-end feed operation, and reproducible performance still require separate implementation and evidence.
 
 ## License
 

@@ -23,10 +23,6 @@ from mdrap.models import CanonicalEvent, EventType, QualityStatus
 from mdrap.storage import Store
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="Store._recover_from_journal does not quarantine malformed journal records and truncates in finally (Finding 3)",
-)
 def test_recovery_quarantines_malformed_records_and_preserves_journal(tmp_path):
     db_path = str(tmp_path / "events.db")
     journal_path = f"{db_path}.journal"

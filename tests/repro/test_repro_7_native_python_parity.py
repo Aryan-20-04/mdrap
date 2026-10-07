@@ -22,21 +22,20 @@ from mdrap.models import CanonicalEvent, EventType, QualityStatus, Reason
 from mdrap.quality import QualityConfig, QualityEngine
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="Native fastpath and Python quality engine disagree on lateness evaluation under per-instrument configuration (Finding 7)",
-)
 def test_native_and_python_agree_on_per_instrument_lateness_configuration():
     from mdrap.fastpath import FastQualityEngine, is_available
 
     if not is_available():
         pytest.skip("Native fastpath not available in current environment")
 
-    # Instrument config with generous staleness threshold (500ms)
-    custom_cfg = QualityConfig(staleness_threshold_s=0.5)
+    # Instrument config with generous staleness threshold (500ms for crypto)
+    custom_cfg = QualityConfig(
+        staleness_threshold_s=0.1,
+        asset_classes={"crypto": {"staleness_threshold_s": 0.5}},
+    )
 
     py_engine = QualityEngine(config=custom_cfg)
-    native_engine = FastQualityEngine(staleness_threshold_s=0.1)  # Default global fastpath config
+    native_engine = FastQualityEngine(config=custom_cfg, staleness_threshold_s=0.1)  # Default global fastpath config
 
     # Event with 200ms network delay (receive_ts - exchange_ts = 0.200s)
     # Under custom_cfg (0.5s), this event is NOT stale.

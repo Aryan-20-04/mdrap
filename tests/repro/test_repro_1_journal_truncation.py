@@ -19,10 +19,6 @@ from mdrap.pipeline import Pipeline
 from mdrap.storage import Store
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="Pipeline.close() blindly truncates the durability journal on exception in with-block (Finding 1)",
-)
 def test_exception_in_pipeline_with_block_preserves_journal(tmp_path):
     db_path = str(tmp_path / "events.db")
     journal_path = f"{db_path}.journal"

@@ -175,9 +175,9 @@ class CanonicalEvent:
     event_type: EventType
     exchange_timestamp: float
     receive_timestamp: float
-    processing_timestamp: float
-    source: str
-    sequence_number: int | None
+    processing_timestamp: float = 0.0
+    source: str = ""
+    sequence_number: int | None = None
     price: float | None = None
     quantity: float | None = None
     bid_price: float | None = None

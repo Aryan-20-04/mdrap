@@ -24,10 +24,6 @@ from mdrap.pipeline import Pipeline
 from mdrap.storage import Store
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="Non-dict payloads (None, [], [1], 'x') cause unhandled AttributeError in gateway.normalize and crash the pipeline (Finding 6)",
-)
 @pytest.mark.parametrize("bad_payload", [None, [], [1], "x", 12345])
 def test_non_dict_payload_quarantines_safely_without_crashing(tmp_path, bad_payload):
     db_path = str(tmp_path / "events.db")

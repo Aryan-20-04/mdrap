@@ -21,10 +21,6 @@ from mdrap.pipeline import Pipeline
 from mdrap.storage import Store
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="Poison integer (sequence = 2**70) escapes gateway and crashes entire batch, killing neighbors (Finding 5)",
-)
 def test_poison_integer_quarantined_and_neighbors_survive(tmp_path):
     db_path = str(tmp_path / "events.db")
     store = Store(db_path)
@@ -42,6 +38,7 @@ def test_poison_integer_quarantined_and_neighbors_survive(tmp_path):
                 "exchange_ts": 1700000000.0,
                 "sequence": 1,
             },
+            receive_timestamp=1700000000.001,
         ),
         # Record 1: Poison integer (exceeds signed int64, 2**70)
         RawEvent(
@@ -54,6 +51,7 @@ def test_poison_integer_quarantined_and_neighbors_survive(tmp_path):
                 "exchange_ts": 1700000001.0,
                 "sequence": 2**70,
             },
+            receive_timestamp=1700000001.001,
         ),
         # Record 2: Healthy
         RawEvent(
@@ -64,8 +62,9 @@ def test_poison_integer_quarantined_and_neighbors_survive(tmp_path):
                 "price": 151.0,
                 "quantity": 20.0,
                 "exchange_ts": 1700000002.0,
-                "sequence": 3,
+                "sequence": 2,
             },
+            receive_timestamp=1700000002.001,
         ),
     ]
 

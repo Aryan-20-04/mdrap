@@ -79,6 +79,10 @@ class WriterFailure(RuntimeError):
     """Raised when storage and its dead-letter fallback both fail."""
 
 
+class JournalWriteError(RuntimeError):
+    """Raised when writing to the write-ahead journal fails under fail_closed policy."""
+
+
 # Precomputed immutable JSON strings: eliminates per-event serialization overhead
 _VALIDATIONS_RUN_JSON = json.dumps(
     [
@@ -174,8 +178,18 @@ class Pipeline:
         post_evaluate_hook: Callable[[CanonicalEvent], CanonicalEvent | None]
         | None = None,
         journal: bool | str | None = None,
+        durability_policy: str = "fail_closed",
     ):
         self.store = store
+        self.durability_policy: str = (
+            durability_policy
+            if durability_policy is not None
+            else os.environ.get("MDRAP_DURABILITY_POLICY", "fail_closed")
+        ).lower()
+        if self.durability_policy not in ("fail_closed", "fail_open_loudly"):
+            raise ValueError(f"Invalid durability_policy: {self.durability_policy}")
+        self.is_degraded: bool = False
+        self.journal_failures: int = 0
         self.pre_evaluate_hook = pre_evaluate_hook
         self.post_evaluate_hook = post_evaluate_hook
         if quality is not None:
@@ -282,7 +296,15 @@ class Pipeline:
             self._journal_file.write(line + "\n")
             self._journal_file.flush()
         except Exception as exc:
-            logger.debug("[pipeline] Failed to write journal record: %s", exc)
+            self.journal_failures += 1
+            self.is_degraded = True
+            logger.error(
+                "[pipeline] Failed to write journal record (policy=%s): %s",
+                self.durability_policy,
+                exc,
+            )
+            if self.durability_policy == "fail_closed":
+                raise JournalWriteError(f"Journal write failed: {exc}") from exc
 
     def _ensure_writer_alive(self):
         """Supervisor check: ensure the asynchronous background writer thread is running."""
@@ -805,7 +827,25 @@ class Pipeline:
         evaluated_pairs: list[tuple[int, CanonicalEvent]] = []
         if valid_events:
             if hasattr(self.quality, "evaluate_batch"):
-                batch_res = self.quality.evaluate_batch(valid_events)
+                try:
+                    batch_res = self.quality.evaluate_batch(valid_events)
+                except Exception as batch_exc:
+                    logger.warning(
+                        "[pipeline] evaluate_batch failed, falling back to sequential bisection: %s",
+                        batch_exc,
+                    )
+                    batch_res = []
+                    for ev in valid_events:
+                        try:
+                            batch_res.append(self.quality.evaluate(ev))
+                        except Exception as ev_exc:
+                            logger.error(
+                                "[pipeline] Poison event quarantined during bisection: %s",
+                                ev_exc,
+                            )
+                            ev.quality_status = QualityStatus.INVALID
+                            ev.reasons.append(Reason.MALFORMED.value)
+                            batch_res.append(ev)
                 for valid_idx, ev in zip(valid_indices, batch_res):
                     if ev is not None:
                         if self.post_evaluate_hook is not None:
@@ -1040,7 +1080,23 @@ class Pipeline:
                 raise StorageConflictError(
                     f"Storage conflicts detected: {conflicts} records dropped due to primary key collision"
                 )
+        self._checkpoint_journal()
         self.close()
+
+    def _checkpoint_journal(self) -> None:
+        """Truncate journal only after verified storage commit has succeeded (Spec §14)."""
+        if (
+            getattr(self, "_journal_file", None) is not None
+            and self._journal_path
+            and os.path.exists(self._journal_path)
+        ):
+            if self.journal_failures == 0:
+                try:
+                    self._journal_file.flush()
+                    self._journal_file.seek(0)
+                    self._journal_file.truncate(0)
+                except Exception as exc:
+                    logger.warning("[pipeline] Could not checkpoint journal: %s", exc)
 
     def __enter__(self):
         return self
@@ -1052,16 +1108,15 @@ class Pipeline:
             self.finish()
 
     def close(self) -> None:
-        """Close pipeline, drain writer, and release journal resources."""
+        """Close pipeline, drain writer, and release journal resources without destroying uncommitted data."""
         if getattr(self, "_journal_file", None) is not None:
             try:
+                self._journal_file.flush()
                 self._journal_file.close()
-                self._journal_file = None
-                if self._journal_path and os.path.exists(self._journal_path):
-                    with open(self._journal_path, "w", encoding="utf-8"):
-                        pass
             except Exception as exc:
                 logger.debug("[pipeline] Error closing journal: %s", exc)
+            finally:
+                self._journal_file = None
 
     def __del__(self) -> None:
         if getattr(self, "_journal_file", None) is not None:

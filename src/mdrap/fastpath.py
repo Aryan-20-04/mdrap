@@ -829,7 +829,13 @@ class FastQualityEngine:
     Drop-in replacement for QualityEngine backed by compiled C shared library.
     """
 
-    def __init__(self, config: QualityConfig | None = None, thread_safe: bool = False):
+    def __init__(
+        self,
+        config: QualityConfig | None = None,
+        thread_safe: bool = False,
+        staleness_threshold_s: float | None = None,
+        **kwargs: Any,
+    ):
         if config is None:
             try:
                 from .config import load_config
@@ -839,6 +845,12 @@ class FastQualityEngine:
                 self.cfg = QualityConfig()
         else:
             self.cfg = config
+        if staleness_threshold_s is not None:
+            self.cfg.staleness_threshold_s = staleness_threshold_s
+        for k, v in kwargs.items():
+            if hasattr(self.cfg, k):
+                setattr(self.cfg, k, v)
+
         self.counts = {"VALID": 0, "SUSPICIOUS": 0, "INVALID": 0}
         self.reason_counts: dict[str, int] = {}
         self._source_map = dict(_SOURCE_ID_MAP)
@@ -1022,6 +1034,24 @@ class FastQualityEngine:
             if i_id is None:
                 i_id = self._inst_map[event.instrument_id] = len(self._inst_map)
             event.instrument_id_int = i_id
+
+        # Fallback if instrument has custom overrides (such as crypto asset-class overrides in asset_classes)
+        # that diverge from the global C kernel scalar configuration (Finding 7).
+        if getattr(self.cfg, "asset_classes", None):
+            inst = event.instrument_id.upper()
+            if (
+                any(c in inst for c in ("BTC", "ETH", "SOL", "DOGE", "XRP", "ADA", "USDT"))
+                and "crypto" in self.cfg.asset_classes
+            ):
+                if not self._fallback_engine:
+                    self._fallback_engine = QualityEngine(self.cfg)
+                res = self._fallback_engine.evaluate(event)
+                self.counts[res.quality_status.value] = (
+                    self.counts.get(res.quality_status.value, 0) + 1
+                )
+                for r in res.reasons:
+                    self.reason_counts[r] = self.reason_counts.get(r, 0) + 1
+                return res
 
         # Graceful fallback: C static tables have MAX_SOURCES=32, MAX_INSTRUMENTS=8192.
         # If the number of unique sources or instruments exceeds C bounds, evaluate with Python engine.

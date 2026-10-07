@@ -22,10 +22,6 @@ from mdrap.pipeline import Pipeline
 from mdrap.storage import Store
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="Pipeline._journal_append swallows journal write failure with logger.debug and falsely acks (Finding 2)",
-)
 def test_journal_write_failure_fails_closed_and_logs_error(tmp_path, caplog):
     db_path = str(tmp_path / "events.db")
     journal_path = f"{db_path}.journal"
