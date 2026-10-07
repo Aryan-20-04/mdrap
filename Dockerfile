@@ -3,7 +3,8 @@ FROM python:3.12-slim-bookworm AS builder
 WORKDIR /build
 COPY pyproject.toml README.md LICENSE ./
 COPY src/ ./src/
-RUN python -m pip wheel --wheel-dir /wheels ".[api]"
+RUN python -m pip install --no-cache-dir --upgrade pip build && \
+    python -m pip wheel --wheel-dir /wheels ".[api,ui]"
 
 FROM python:3.12-slim-bookworm AS runner
 
@@ -14,7 +15,8 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     MDRAP_HOST=0.0.0.0 \
     MDRAP_PORT=8000 \
-    MDRAP_DB_PATH=/data/mdrap.db
+    MDRAP_DB_PATH=/data/mdrap.db \
+    MDRAP_API_KEY_SALT=docker_default_salt_change_in_production
 
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \

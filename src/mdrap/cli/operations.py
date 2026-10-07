@@ -35,7 +35,7 @@ def cmd_serve(args):
             border_style="cyan",
         )
     )
-    uvicorn.run("api:app", host=host, port=port, reload=reload)
+    uvicorn.run("mdrap.api:app", host=host, port=port, reload=reload)
 
 
 def cmd_chaos(args):

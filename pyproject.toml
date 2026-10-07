@@ -89,6 +89,9 @@ dev = [
 #   - mdrap.output_sinks: Event delivery sinks implementing OutputSink
 #   - mdrap.alert_sinks: Alert delivery sinks implementing AlertSink
 
+[project.scripts]
+mdrap = "mdrap.cli:main"
+
 [project.entry-points."mdrap.adapters"]
 template = "mdrap.adapters.template:TemplateAdapter"
 
@@ -121,7 +124,7 @@ version = {attr = "mdrap._version.__version__"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["mdrap", "mdrap.adapters"]
+include = ["mdrap", "mdrap.*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

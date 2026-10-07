@@ -292,19 +292,41 @@ def build_core(target_dir: Optional[str] = None, quiet: bool = False) -> bool:
         return False
 
 
+def find_extension_source_file(custom_dir: Optional[str] = None) -> Optional[str]:
+    """Locate _fastpath_c.c in the project hierarchy."""
+    candidates = []
+    if custom_dir:
+        candidates.append(os.path.join(custom_dir, "_fastpath_c.c"))
+        candidates.append(os.path.join(custom_dir, "src", "mdrap", "_fastpath_c.c"))
+
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    candidates.extend(
+        [
+            os.path.join(base_dir, "src", "mdrap", "_fastpath_c.c"),
+            os.path.join(base_dir, "_fastpath_c.c"),
+            os.path.abspath("src/mdrap/_fastpath_c.c"),
+            os.path.abspath("_fastpath_c.c"),
+        ]
+    )
+
+    for path in candidates:
+        if os.path.isfile(path):
+            return os.path.normpath(path)
+    return None
+
+
 def build_extension(target_dir: Optional[str] = None, quiet: bool = False) -> bool:
     """
     Compile src/_fastpath_c.c into native Python C-API extension module (_fastpath_c.pyd / .so).
     Returns True on success, False otherwise.
     """
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    src_dir = os.path.join(base_dir, "src", "mdrap")
-    c_source = os.path.join(src_dir, "_fastpath_c.c")
-    if not os.path.isfile(c_source):
+    c_source = find_extension_source_file(target_dir)
+    if not c_source or not os.path.isfile(c_source):
         if not quiet:
-            print(f"[build] Notice: _fastpath_c.c not found at {c_source}")
+            print("[build] Error: Could not locate _fastpath_c.c")
         return False
 
+    src_dir = os.path.dirname(os.path.abspath(c_source))
     if target_dir is None:
         target_dir = src_dir
     os.makedirs(target_dir, exist_ok=True)

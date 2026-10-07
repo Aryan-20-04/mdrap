@@ -16,15 +16,43 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: pypa/cibuildwheel@v2.22.0
+      - name: Build wheels
+        uses: pypa/cibuildwheel@v2.22.0
+        env:
+          CIBW_TEST_COMMAND: "python -c \"import mdrap; from mdrap.engine import Engine; from mdrap.ingestlog import IngestLog; print('Wheel test passed')\""
 
       - uses: actions/upload-artifact@v4
         with:
           name: cibw-wheels-${{ matrix.os }}
           path: ./wheelhouse/*.whl
 
-  publish:
+  smoke_tests:
     needs: [build_wheels]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-14]
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: cibw-wheels-${{ matrix.os }}
+          path: dist
+
+      - name: Install and smoke test wheel in clean environment
+        shell: bash
+        run: |
+          python -m venv .venv-test
+          source .venv-test/bin/activate || source .venv-test/Scripts/activate
+          pip install dist/*.whl
+          python -c "import mdrap; from mdrap.engine import Engine; from mdrap.ingestlog import IngestLog; from mdrap.projection import SQLiteProjection; print('Smoke test verified on', '${{ matrix.os }}')"
+          mdrap --help
+
+  publish:
+    needs: [build_wheels, smoke_tests]
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
@@ -37,4 +65,3 @@ jobs:
           merge-multiple: true
 
       - uses: pypa/gh-action-pypi-publish@release/v1
-        continue-on-error: true
