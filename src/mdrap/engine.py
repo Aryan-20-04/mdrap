@@ -12,16 +12,31 @@ from __future__ import annotations
 import copy
 from dataclasses import dataclass, field
 import json
+import logging
 import math
 import os
 from pathlib import Path
+import threading
 import warnings
 from typing import Any
 
 from .clock import Clock, SystemClock
 from .models import CanonicalEvent, EventType, QualityStatus, RawEvent, Reason
 
+logger = logging.getLogger(__name__)
+
 __stability__ = "stable"
+
+
+def _is_finite_num(val: Any) -> bool:
+    """Safe check if value is a finite number, protecting against huge ints that raise OverflowError."""
+    if isinstance(val, bool):
+        return False
+    if isinstance(val, int):
+        return val.bit_length() <= 1024
+    if isinstance(val, float):
+        return math.isfinite(val)
+    return False
 
 
 DEFAULT_STALENESS_THRESHOLD_S: float = 0.05
@@ -154,6 +169,7 @@ class Engine:
         self._projections: list[Any] = []
         self._default_sqlite_proj: Any = None
         self.log: Any = None
+        self._lock = threading.RLock()
 
         if path is not None:
             from .ingestlog import IngestLog
@@ -220,21 +236,34 @@ class Engine:
 
     def subscribe(self, projection: Any, from_offset: int = 0) -> None:
         """Register a projection consumer and catch up from log offset."""
-        if projection not in self._projections:
-            self._projections.append(projection)
+        with self._lock:
+            if projection not in self._projections:
+                self._projections.append(projection)
 
-        # Catch up projection from from_offset if log exists
-        if self.log is not None and self.log.next_offset > from_offset:
-            batch = []
-            replay_state = self.create_initial_state()
-            for off, raw in self.log.iter_from(0):
-                if off < from_offset:
-                    replay_state, _ = self.step(replay_state, raw, self.clock, offset=off)
-                else:
-                    replay_state, dec = self.step(replay_state, raw, self.clock, offset=off)
-                    batch.append(dec)
-            if batch:
-                projection.apply(batch, batch[-1].offset)
+            start_off = from_offset
+            if hasattr(projection, "checkpoint"):
+                try:
+                    cp = projection.checkpoint()
+                    if cp >= 0 and start_off <= cp:
+                        start_off = cp + 1
+                except Exception:
+                    pass
+
+            # Catch up projection from start_off if log exists
+            if self.log is not None and self.log.next_offset > start_off:
+                batch = []
+                replay_state = self.create_initial_state()
+                for off, raw in self.log.iter_from(0):
+                    if off < start_off:
+                        replay_state, _ = self.step(replay_state, raw, self.clock, offset=off)
+                    else:
+                        replay_state, dec = self.step(replay_state, raw, self.clock, offset=off)
+                        batch.append(dec)
+                        if len(batch) >= 2000:
+                            projection.apply(batch, batch[-1].offset)
+                            batch = []
+                if batch:
+                    projection.apply(batch, batch[-1].offset)
 
     def submit(
         self, events: RawEvent | list[RawEvent]
@@ -254,28 +283,36 @@ class Engine:
         if not event_list:
             return [] if not is_single else None  # type: ignore[return-value]
 
-        decisions: list[EngineDecision] = []
-        offsets: list[int] = []
+        with self._lock:
+            decisions: list[EngineDecision] = []
+            offsets: list[int] = []
 
-        for raw in event_list:
-            if self.log is not None:
-                offset = self.log.append(raw)
-            else:
-                offset = self.state.event_count
+            for raw in event_list:
+                # Stamp receive timestamp before append to ensure deterministic replay (C2)
+                if not raw.receive_timestamp:
+                    raw.receive_timestamp = self.clock.now()
 
-            offsets.append(offset)
-            self.state, dec = self.step(self.state, raw, self.clock, offset=offset)
-            decisions.append(dec)
+                if self.log is not None:
+                    offset = self.log.append(raw)
+                else:
+                    offset = self.state.event_count
 
-        # Dispatch to subscribed projections atomically
-        if self._projections and decisions:
-            last_offset = offsets[-1]
-            for proj in self._projections:
-                proj.apply(decisions, last_offset)
+                if not raw.raw_id:
+                    raw.raw_id = f"raw_{raw.source}_{offset}"
 
-        if is_single:
-            return decisions[0]
-        return decisions
+                offsets.append(offset)
+                self.state, dec = self.step(self.state, raw, self.clock, offset=offset)
+                decisions.append(dec)
+
+            # Dispatch to subscribed projections atomically
+            if self._projections and decisions:
+                last_offset = offsets[-1]
+                for proj in self._projections:
+                    proj.apply(decisions, last_offset)
+
+            if is_single:
+                return decisions[0]
+            return decisions
 
     def replay(
         self,
@@ -404,6 +441,42 @@ class Engine:
         offset: int | None = None,
     ) -> tuple[EngineState, EngineDecision]:
         """Apply a single deterministic state transition: (state, raw_event, clock) -> (state', decision)."""
+        try:
+            return self._step_internal(state, raw_event, clock, offset=offset)
+        except Exception as exc:
+            logger.warning("[engine] Exception in step safely caught: %s", exc)
+            if offset is None:
+                offset = state.event_count
+            state.event_count += 1
+            state.counts["INVALID"] += 1
+            now_ts = clock.now()
+            recv_ts = getattr(raw_event, "receive_timestamp", None) or now_ts
+            src = getattr(raw_event, "source", "UNKNOWN")
+            event_id = f"q_{src}_{offset}"
+            q_row = (
+                event_id,
+                "MALFORMED",
+                src,
+                QualityStatus.INVALID.value,
+                json.dumps([f"Unhandled engine exception: {type(exc).__name__}: {exc}"]),
+                json.dumps(str(getattr(raw_event, "payload", ""))),
+                recv_ts,
+            )
+            return state, EngineDecision(
+                offset=offset,
+                event_id=event_id,
+                quality_status=QualityStatus.INVALID,
+                reasons=[Reason.SCHEMA_VIOLATION.value],
+                quarantine_row=q_row,
+            )
+
+    def _step_internal(
+        self,
+        state: EngineState,
+        raw_event: RawEvent,
+        clock: Clock,
+        offset: int | None = None,
+    ) -> tuple[EngineState, EngineDecision]:
         if offset is None:
             offset = state.event_count
 
@@ -429,7 +502,7 @@ class Engine:
                 offset=offset,
                 event_id=event_id,
                 quality_status=QualityStatus.INVALID,
-                reasons=["SCHEMA_VIOLATION"],
+                reasons=[Reason.SCHEMA_VIOLATION.value],
                 quarantine_row=q_row,
             )
             return state, decision
@@ -445,7 +518,7 @@ class Engine:
                 raw_event.source,
                 QualityStatus.INVALID.value,
                 json.dumps(["Missing or invalid instrument string"]),
-                json.dumps(payload),
+                json.dumps(payload, default=str),
                 recv_ts,
             )
             state.counts["INVALID"] += 1
@@ -453,14 +526,14 @@ class Engine:
                 offset=offset,
                 event_id=event_id,
                 quality_status=QualityStatus.INVALID,
-                reasons=["SCHEMA_VIOLATION"],
+                reasons=[Reason.SCHEMA_VIOLATION.value],
                 quarantine_row=q_row,
             )
 
         # Sequence validation (signed int64)
         seq = payload.get("sequence")
         if seq is not None:
-            if not isinstance(seq, int) or not (-9223372036854775808 <= seq <= 9223372036854775807):
+            if not isinstance(seq, int) or isinstance(seq, bool) or not (-9223372036854775808 <= seq <= 9223372036854775807):
                 event_id = f"q_{raw_event.source}_{offset}"
                 q_row = (
                     event_id,
@@ -468,7 +541,7 @@ class Engine:
                     raw_event.source,
                     QualityStatus.INVALID.value,
                     json.dumps([f"Sequence number out of range: {seq}"]),
-                    json.dumps(payload),
+                    json.dumps(payload, default=str),
                     recv_ts,
                 )
                 state.counts["INVALID"] += 1
@@ -476,7 +549,7 @@ class Engine:
                     offset=offset,
                     event_id=event_id,
                     quality_status=QualityStatus.INVALID,
-                    reasons=["INVALID_SEQUENCE"],
+                    reasons=[Reason.SCHEMA_VIOLATION.value],
                     quarantine_row=q_row,
                 )
 
@@ -484,7 +557,7 @@ class Engine:
         exch_ts = payload.get("exchange_ts")
         if exch_ts is None:
             exch_ts = recv_ts
-        elif not isinstance(exch_ts, (int, float)) or not math.isfinite(exch_ts):
+        elif not _is_finite_num(exch_ts):
             event_id = f"q_{raw_event.source}_{offset}"
             q_row = (
                 event_id,
@@ -492,7 +565,7 @@ class Engine:
                 raw_event.source,
                 QualityStatus.INVALID.value,
                 json.dumps([f"Exchange timestamp not finite: {exch_ts}"]),
-                json.dumps(payload),
+                json.dumps(payload, default=str),
                 recv_ts,
             )
             state.counts["INVALID"] += 1
@@ -500,14 +573,14 @@ class Engine:
                 offset=offset,
                 event_id=event_id,
                 quality_status=QualityStatus.INVALID,
-                reasons=["SCHEMA_VIOLATION"],
+                reasons=[Reason.SCHEMA_VIOLATION.value],
                 quarantine_row=q_row,
             )
 
         # Numeric field finite validation
         for num_field in ("price", "quantity", "bid", "ask", "bid_size", "ask_size"):
             val = payload.get(num_field)
-            if val is not None and (not isinstance(val, (int, float)) or not math.isfinite(val)):
+            if val is not None and not _is_finite_num(val):
                 event_id = f"q_{raw_event.source}_{offset}"
                 q_row = (
                     event_id,
@@ -515,7 +588,7 @@ class Engine:
                     raw_event.source,
                     QualityStatus.INVALID.value,
                     json.dumps([f"Field {num_field} not a finite number: {val}"]),
-                    json.dumps(payload),
+                    json.dumps(payload, default=str),
                     recv_ts,
                 )
                 state.counts["INVALID"] += 1
@@ -523,7 +596,7 @@ class Engine:
                     offset=offset,
                     event_id=event_id,
                     quality_status=QualityStatus.INVALID,
-                    reasons=["SCHEMA_VIOLATION"],
+                    reasons=[Reason.SCHEMA_VIOLATION.value],
                     quarantine_row=q_row,
                 )
 
@@ -553,14 +626,14 @@ class Engine:
                     reasons.append(Reason.DUPLICATE.value)
                 elif seq < last_seq:
                     status = QualityStatus.SUSPICIOUS
-                    reasons.append(Reason.SEQUENCE_OUT_OF_ORDER.value)
+                    reasons.append(Reason.OUT_OF_ORDER.value)
                 elif seq > last_seq + 1:
                     status = QualityStatus.SUSPICIOUS
                     reasons.append(Reason.SEQUENCE_GAP.value)
             state.sequence_state[slot_key] = max(last_seq if last_seq is not None else -1, seq)
         else:
             # Unsequenced deduplication window
-            dedup_fingerprint = f"{instrument}:{exch_ts}:{payload.get('price')}:{payload.get('bid')}:{payload.get('ask')}"
+            dedup_fingerprint = f"{raw_event.source}:{instrument}:{event_type_str}:{exch_ts}:{payload.get('price')}:{payload.get('quantity')}:{payload.get('bid')}:{payload.get('ask')}"
             if dedup_fingerprint in state.dedup_set:
                 is_duplicate = True
                 status = QualityStatus.INVALID
@@ -584,7 +657,7 @@ class Engine:
         ask = payload.get("ask")
         if bid is not None and ask is not None and bid > ask:
             status = QualityStatus.INVALID
-            reasons.append(Reason.CROSSED_MARKET.value)
+            reasons.append(Reason.CROSSED_QUOTE.value)
 
         # Price sanity check (Welford / rolling price corridor)
         price = payload.get("price")
@@ -599,18 +672,19 @@ class Engine:
                 if effective_std > 0 and abs(price - mean) > (DEFAULT_PRICE_STDDEV * effective_std):
                     if status == QualityStatus.VALID:
                         status = QualityStatus.SUSPICIOUS
-                    reasons.append(Reason.PRICE_OUT_OF_BOUNDS.value)
+                    reasons.append(Reason.PRICE_ANOMALY.value)
             prices.append(price)
             if len(prices) > DEFAULT_PRICE_WINDOW:
                 prices.pop(0)
 
-        # Update BBO state
+        # Update BBO state per source
         if bid is not None or ask is not None:
-            curr_bbo = state.bbo_state.setdefault(instrument, {"bid": 0.0, "ask": float("inf")})
-            if bid is not None and bid > curr_bbo.get("bid", 0.0):
-                curr_bbo["bid"] = bid
-            if ask is not None and ask < curr_bbo.get("ask", float("inf")):
-                curr_bbo["ask"] = ask
+            source_quotes = state.bbo_state.setdefault(instrument, {})
+            current_src = source_quotes.setdefault(raw_event.source, {})
+            if bid is not None:
+                current_src["bid"] = float(bid)
+            if ask is not None:
+                current_src["ask"] = float(ask)
 
         # Cross-feed reconciliation
         disagreement = False
@@ -628,6 +702,28 @@ class Engine:
                         status = QualityStatus.SUSPICIOUS
 
         state.counts[status.name] += 1
+
+        if status == QualityStatus.INVALID:
+            q_row = (
+                event_id,
+                instrument,
+                raw_event.source,
+                QualityStatus.INVALID.value,
+                json.dumps(reasons),
+                json.dumps(payload, default=str),
+                recv_ts,
+            )
+            decision = EngineDecision(
+                offset=offset,
+                event_id=event_id,
+                quality_status=status,
+                reasons=reasons,
+                canonical_event=None,
+                quarantine_row=q_row,
+                is_duplicate=is_duplicate,
+                disagreement=disagreement,
+            )
+            return state, decision
 
         try:
             ev_type = EventType(event_type_str)
@@ -660,6 +756,7 @@ class Engine:
             quality_status=status,
             reasons=reasons,
             canonical_event=canonical_event,
+            quarantine_row=None,
             is_duplicate=is_duplicate,
             disagreement=disagreement,
         )
@@ -675,3 +772,20 @@ class Engine:
         """Restore state from snapshot bytes."""
         data = json.loads(snapshot_bytes.decode("utf-8"))
         return EngineState.from_dict(data)
+
+    def create_snapshot(self) -> bytes:
+        """Create a deterministic byte snapshot of the current engine state."""
+        with self._lock:
+            return self.snapshot(self.state)
+
+    def restore_snapshot(self, snapshot_bytes: bytes) -> None:
+        """Restore engine state from snapshot bytes."""
+        with self._lock:
+            self.state = self.restore(snapshot_bytes)
+
+    def delete_segments_before(self, offset: int) -> int:
+        """Prune segments in the backing IngestLog strictly before offset."""
+        with self._lock:
+            if self.log is not None and hasattr(self.log, "delete_segments_before"):
+                return self.log.delete_segments_before(offset)
+            return 0

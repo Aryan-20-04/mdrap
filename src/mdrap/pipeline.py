@@ -346,9 +346,17 @@ class Pipeline:
         """Dedicated background writer loop executing atomic batches off the tick loop."""
         while not self._writer_stop.is_set():
             try:
+                timeout_s = min(0.1, max(0.01, self.flush_interval_s))
                 try:
-                    item = self._write_queue.get(timeout=0.1)
+                    item = self._write_queue.get(timeout=timeout_s)
                 except queue.Empty:
+                    now = time.time()
+                    if (
+                        self._canonical_batch
+                        or self._quarantine_batch
+                        or self._lineage_batch
+                    ) and (now - self._last_flush_ts >= self.flush_interval_s):
+                        self.flush(wait=False)
                     continue
                 if item is None:
                     self._write_queue.task_done()
@@ -433,6 +441,8 @@ class Pipeline:
         record_lineage: bool = True,
     ) -> CanonicalEvent:
         """Helper to create and record a fully evidentiary quarantine event (Invariant A6)."""
+        if not raw.raw_id:
+            raw = ingest(raw)
         instrument = (
             str(raw.payload.get("instrument", instrument_fallback))
             if isinstance(raw.payload, dict)
@@ -442,7 +452,7 @@ class Pipeline:
             reason_code.value if isinstance(reason_code, Reason) else str(reason_code)
         )
         fake = CanonicalEvent(
-            event_id=raw.raw_id,
+            event_id=raw.raw_id or f"q_{raw.source}_{time.time_ns()}",
             instrument_id=instrument,
             event_type=EventType.UNKNOWN,
             exchange_timestamp=raw.receive_timestamp if raw.receive_timestamp else 0.0,
@@ -542,6 +552,8 @@ class Pipeline:
         self._event_counter += 1
         _do_timing = (self._event_counter & self._timing_sample_mask) == 0
         t_start_ns = time.perf_counter_ns() if _do_timing else 0
+        # Ingest: assign deterministic raw_id and receive_timestamp before archiving and security checks
+        raw = ingest(raw)
         # Write-ahead: archive raw event BEFORE any processing or security decisions (P1)
         if self.archive:
             self.archive.write(raw)
@@ -578,8 +590,6 @@ class Pipeline:
                         "quarantined (security: HMAC verification failed)",
                         Reason.SECURITY_REJECT.value,
                     )
-
-        raw = ingest(raw)
 
         try:
             event = normalize(raw)
@@ -765,6 +775,8 @@ class Pipeline:
         for idx, raw in enumerate(raw_events):
             t_start = time.perf_counter_ns() if _do_timing else 0
             start_times_ns.append(t_start)
+            # Ingest: assign deterministic raw_id and receive_timestamp before archiving and security checks
+            raw = ingest(raw)
 
             # Write-ahead: archive raw event BEFORE any processing or security decisions (P1)
             if self.archive:
@@ -811,8 +823,6 @@ class Pipeline:
                             time.perf_counter_ns() if _do_timing else 0
                         )
                         continue
-
-            raw = ingest(raw)
 
             try:
                 event = normalize(raw)
@@ -1135,6 +1145,16 @@ class Pipeline:
             and self._journal_path
             and os.path.exists(self._journal_path)
         ):
+            if (
+                self._async_writer_enabled
+                and hasattr(self, "_write_queue")
+                and self._write_queue.unfinished_tasks > 0
+            ):
+                logger.warning(
+                    "[pipeline] Skipping journal checkpoint: write queue has %d pending tasks",
+                    self._write_queue.unfinished_tasks,
+                )
+                return
             if self.journal_failures == 0:
                 try:
                     self._journal_file.flush()
@@ -1173,9 +1193,12 @@ class Pipeline:
 
 def get_dead_letter_dir() -> str:
     """Return absolute path to dead-letter directory, respecting MDRAP_DEAD_LETTER_DIR."""
-    return os.environ.get("MDRAP_DEAD_LETTER_DIR") or os.path.abspath(
-        os.path.join("data", "deadletter")
-    )
+    env_dir = os.environ.get("MDRAP_DEAD_LETTER_DIR")
+    if env_dir:
+        return os.path.abspath(env_dir)
+    # Default to repo root data/deadletter regardless of current working directory
+    base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    return os.path.join(base_dir, "data", "deadletter")
 
 
 def replay_dead_letter_spills(store, dead_letter_dir: str | None = None) -> dict:
@@ -1219,24 +1242,32 @@ def replay_dead_letter_spills(store, dead_letter_dir: str | None = None) -> dict
                     raise RuntimeError(
                         f"Invalid dead-letter JSON in {fpath}: {exc}"
                     ) from exc
-                kind = obj.get("_kind") or obj.get("type")
-                if kind == "canonical":
-                    d = obj.get("data", obj)
-                    from .models import CanonicalEvent
+                try:
+                    kind = obj.get("_kind") or obj.get("type")
+                    if kind == "canonical":
+                        d = obj.get("data", obj)
+                        from .models import CanonicalEvent
 
-                    canon_batch.append(CanonicalEvent.from_dict(d))
-                elif kind == "quarantine":
-                    row = obj.get("row")
-                    if row:
-                        quar_batch.append(tuple(row))
-                elif kind == "lineage":
-                    row = obj.get("row")
-                    if row:
-                        lin_batch.append(tuple(row))
-                else:
-                    from .models import CanonicalEvent
+                        canon_batch.append(CanonicalEvent.from_dict(d))
+                    elif kind == "quarantine":
+                        row = obj.get("row")
+                        if row:
+                            quar_batch.append(tuple(row))
+                    elif kind == "lineage":
+                        row = obj.get("row")
+                        if row:
+                            lin_batch.append(tuple(row))
+                    else:
+                        from .models import CanonicalEvent
 
-                    canon_batch.append(CanonicalEvent.from_dict(obj))
+                        canon_batch.append(CanonicalEvent.from_dict(obj))
+                except Exception as exc:
+                    logger.warning(
+                        "[pipeline] Could not parse dead-letter item in %s: %s (skipping line)",
+                        fpath,
+                        exc,
+                    )
+                    continue
 
         if canon_batch:
             store.write_canonical_batch(canon_batch)

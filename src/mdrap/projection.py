@@ -18,7 +18,7 @@ import threading
 import time
 from typing import Any, Protocol
 
-from .models import CanonicalEvent
+from .models import CanonicalEvent, QualityStatus
 from .engine import EngineDecision
 
 __stability__ = "stable"
@@ -137,7 +137,7 @@ class SQLiteProjection:
 
                 for item in batch:
                     if isinstance(item, EngineDecision):
-                        if item.canonical_event:
+                        if item.canonical_event and item.quality_status != QualityStatus.INVALID:
                             ev = item.canonical_event
                             canonical_rows.append(
                                 (
@@ -160,14 +160,15 @@ class SQLiteProjection:
                                     str(ev.raw_id) if ev.raw_id is not None else None,
                                 )
                             )
-                        elif item.quarantine_row:
+                        if item.quarantine_row:
                             quarantine_rows.append(item.quarantine_row)
                     elif isinstance(item, CanonicalEvent):
-                        canonical_rows.append(
-                            (
-                                item.event_id,
-                                item.instrument_id,
-                                item.event_type.value if hasattr(item.event_type, "value") else str(item.event_type),
+                        if item.quality_status != QualityStatus.INVALID:
+                            canonical_rows.append(
+                                (
+                                    item.event_id,
+                                    item.instrument_id,
+                                    item.event_type.value if hasattr(item.event_type, "value") else str(item.event_type),
                                 item.exchange_timestamp,
                                 item.receive_timestamp,
                                 item.processing_timestamp,
@@ -184,6 +185,17 @@ class SQLiteProjection:
                                 str(item.raw_id) if item.raw_id is not None else None,
                             )
                         )
+                        else:
+                            q_row = (
+                                item.event_id,
+                                item.instrument_id,
+                                item.source,
+                                QualityStatus.INVALID.value,
+                                json.dumps(item.reasons),
+                                json.dumps({"raw_id": item.raw_id}),
+                                item.receive_timestamp,
+                            )
+                            quarantine_rows.append(q_row)
                     elif isinstance(item, tuple):
                         # Assume quarantine or canonical row based on length
                         if len(item) == 7:

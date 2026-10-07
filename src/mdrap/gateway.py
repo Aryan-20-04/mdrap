@@ -118,7 +118,7 @@ class Gateway:
             clock_source = "GATEWAY_RECV"
         elif isinstance(exchange_ts, bool) or not isinstance(exchange_ts, (int, float)):
             raise SchemaError(f"exchange_ts not numeric: {exchange_ts!r}")
-        elif not math.isfinite(exchange_ts):
+        elif (isinstance(exchange_ts, int) and exchange_ts.bit_length() > 1024) or not math.isfinite(exchange_ts):
             raise SchemaError(f"exchange_ts not finite: {exchange_ts!r}")
 
         # sequence: optional for feeds that don't provide monotonic sequence numbers (bounded to signed int64)
@@ -182,6 +182,7 @@ class Gateway:
             if (
                 isinstance(price, bool)
                 or not isinstance(price, (int, float))
+                or (isinstance(price, int) and price.bit_length() > 1024)
                 or not math.isfinite(price)
                 or price <= 0
             ):
@@ -189,6 +190,7 @@ class Gateway:
             if (
                 isinstance(qty, bool)
                 or not isinstance(qty, (int, float))
+                or (isinstance(qty, int) and qty.bit_length() > 1024)
                 or not math.isfinite(qty)
                 or qty <= 0
             ):
@@ -202,6 +204,8 @@ class Gateway:
                 or isinstance(ask, bool)
                 or not isinstance(bid, (int, float))
                 or not isinstance(ask, (int, float))
+                or (isinstance(bid, int) and bid.bit_length() > 1024)
+                or (isinstance(ask, int) and ask.bit_length() > 1024)
                 or not math.isfinite(bid)
                 or not math.isfinite(ask)
             ):

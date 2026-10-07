@@ -218,9 +218,11 @@ class AppState:
 
         # WebSocket subscribers & bounded subscriber queues for slow client isolation
         self.subscribers: Dict[WebSocket, Set[str]] = {}
+        self.subscriber_tokens: Dict[WebSocket, str] = {}
         self.subscriber_queues: Dict[WebSocket, asyncio.Queue] = {}
         self.subscriber_drops: Dict[WebSocket, int] = {}
         self.subscriber_tasks: Dict[WebSocket, asyncio.Task] = {}
+        self.pipeline_lock = threading.Lock()
         self._lock = asyncio.Lock()
 
         # Decoupled downstream sinks for operational observability
@@ -249,6 +251,12 @@ class AppState:
 
         # Deliver to subscriber queues without blocking ingestion pipeline
         for ws, sub_syms in list(self.subscribers.items()):
+            # Revocation check during stream broadcast
+            tok = self.subscriber_tokens.get(ws)
+            if tok and not self.security_manager.get_entitlement(tok, active_only=True):
+                dead_sockets.append(ws)
+                continue
+
             if not sub_syms or "ALL" in sub_syms or sym in sub_syms:
                 q = self.subscriber_queues.get(ws)
                 if q is not None:
@@ -269,11 +277,16 @@ class AppState:
 
         for ws in dead_sockets:
             self.subscribers.pop(ws, None)
+            self.subscriber_tokens.pop(ws, None)
             self.subscriber_queues.pop(ws, None)
             self.subscriber_drops.pop(ws, None)
             task = self.subscriber_tasks.pop(ws, None)
             if task:
                 task.cancel()
+            try:
+                await ws.close(code=status.WS_1008_POLICY_VIOLATION, reason="API key revoked")
+            except Exception:
+                pass
 
 
 # ---------------------------------------------------------------------------
@@ -381,7 +394,7 @@ def create_app(
         # to prevent raw secret leakage in access logs, proxies, referers, and browser histories.
         return None
 
-    _FAILED_AUTH_ATTEMPTS: OrderedDict[tuple[str, str], tuple[int, float]] = (
+    _FAILED_AUTH_ATTEMPTS: OrderedDict[str, tuple[int, float]] = (
         OrderedDict()
     )
     _FAILED_AUTH_LOCK = threading.Lock()
@@ -408,26 +421,23 @@ def create_app(
             ent = sec_mgr.get_entitlement(token, active_only=True)
             if not ent:
                 now = time.monotonic()
-                key_prefix = token[:12] if token else "<missing>"
-                fail_key = (client_ip, key_prefix)
                 with _FAILED_AUTH_LOCK:
-                    expired = [
-                        key
-                        for key, (_, seen_at) in _FAILED_AUTH_ATTEMPTS.items()
-                        if now - seen_at >= _AUTH_LOCKOUT_DURATION_S
-                    ]
-                    for key in expired:
-                        _FAILED_AUTH_ATTEMPTS.pop(key, None)
-                    cnt, _ = _FAILED_AUTH_ATTEMPTS.get(fail_key, (0, 0.0))
+                    while _FAILED_AUTH_ATTEMPTS:
+                        oldest_key, (_, oldest_seen) = next(iter(_FAILED_AUTH_ATTEMPTS.items()))
+                        if now - oldest_seen >= _AUTH_LOCKOUT_DURATION_S:
+                            _FAILED_AUTH_ATTEMPTS.popitem(last=False)
+                        else:
+                            break
+                    cnt, _ = _FAILED_AUTH_ATTEMPTS.get(client_ip, (0, 0.0))
                     cnt += 1
-                    _FAILED_AUTH_ATTEMPTS[fail_key] = (cnt, now)
-                    _FAILED_AUTH_ATTEMPTS.move_to_end(fail_key)
+                    _FAILED_AUTH_ATTEMPTS[client_ip] = (cnt, now)
+                    _FAILED_AUTH_ATTEMPTS.move_to_end(client_ip)
                     while len(_FAILED_AUTH_ATTEMPTS) > _MAX_TRACKED_AUTH_FAILURES:
                         _FAILED_AUTH_ATTEMPTS.popitem(last=False)
                 if cnt >= _AUTH_LOCKOUT_MAX_ATTEMPTS:
                     raise HTTPException(
                         status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                        detail="Too many failed attempts for this client and key prefix.",
+                        detail="Too many failed attempts for this client IP.",
                     )
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
@@ -436,9 +446,8 @@ def create_app(
 
             # Validate credentials before applying any failure lockout. A valid
             # credential therefore cannot be denied by failures for another key.
-            fail_key = (client_ip, token[:12])
             with _FAILED_AUTH_LOCK:
-                _FAILED_AUTH_ATTEMPTS.pop(fail_key, None)
+                _FAILED_AUTH_ATTEMPTS.pop(client_ip, None)
 
             actor_role = ent.role if isinstance(ent.role, Role) else Role[str(ent.role)]
             if _ROLE_HIERARCHY.get(actor_role, 0) < _ROLE_HIERARCHY.get(
@@ -726,8 +735,12 @@ def create_app(
                 )
             )
 
+        def _process_batch_locked(batch: list[RawEvent]):
+            with st.pipeline_lock:
+                return st.pipeline.process_batch(batch)
+
         # 4. Offload synchronous pipeline batch processing to worker thread pool
-        results = await asyncio.to_thread(st.pipeline.process_batch, raw_events)
+        results = await asyncio.to_thread(_process_batch_locked, raw_events)
 
         # 5. Record feed telemetry and broadcast to WebSocket subscribers
         for ev in results:
@@ -1119,6 +1132,7 @@ def create_app(
         subscribed_symbols: Set[str] = set()
         queue: asyncio.Queue = asyncio.Queue(maxsize=1000)
         st.subscribers[websocket] = subscribed_symbols
+        st.subscriber_tokens[websocket] = token
         st.subscriber_queues[websocket] = queue
         st.subscriber_drops[websocket] = 0
 
@@ -1168,14 +1182,22 @@ def create_app(
                     syms = cmd_data.get("symbols", [])
                     if isinstance(syms, str):
                         syms = [syms]
-                    for s in syms:
-                        subscribed_symbols.add(s.upper())
-                    await websocket.send_json(
-                        {
-                            "type": "SUBSCRIPTION_UPDATE",
-                            "subscribed": list(subscribed_symbols),
-                        }
-                    )
+                    if len(subscribed_symbols) + len(syms) > 500:
+                        await websocket.send_json(
+                            {
+                                "type": "ERROR",
+                                "error": "Subscription limit exceeded (max 500 symbols per connection)",
+                            }
+                        )
+                    else:
+                        for s in syms:
+                            subscribed_symbols.add(s.upper())
+                        await websocket.send_json(
+                            {
+                                "type": "SUBSCRIPTION_UPDATE",
+                                "subscribed": list(subscribed_symbols),
+                            }
+                        )
 
                 elif action in ("UNSUB", "UNSUBSCRIBE"):
                     syms = cmd_data.get("symbols", [])
@@ -1207,6 +1229,7 @@ def create_app(
             pass
         finally:
             st.subscribers.pop(websocket, None)
+            st.subscriber_tokens.pop(websocket, None)
             st.subscriber_queues.pop(websocket, None)
             st.subscriber_drops.pop(websocket, None)
             task = st.subscriber_tasks.pop(websocket, None)

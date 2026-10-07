@@ -103,16 +103,22 @@ class IngestLog:
                 self._rotate_to_new_segment(0)
                 return
 
-            last_start_offset, last_filepath = segments[-1]
-            # Recover all segments, finding the maximum valid offset across all segments
+            valid_segments = []
             highest_offset = -1
             for start_off, path in segments:
                 highest_in_seg = self._verify_and_repair_segment(path)
+                if os.path.exists(path) and os.path.getsize(path) >= SEGMENT_HEADER_SIZE:
+                    valid_segments.append((start_off, path))
                 if highest_in_seg > highest_offset:
                     highest_offset = highest_in_seg
 
             self._next_offset = highest_offset + 1 if highest_offset >= 0 else 0
 
+            if not valid_segments:
+                self._rotate_to_new_segment(self._next_offset)
+                return
+
+            last_start_offset, last_filepath = valid_segments[-1]
             # Open last segment in append/update mode
             self._current_segment_start_offset = last_start_offset
             self._current_filename = last_filepath
@@ -129,10 +135,13 @@ class IngestLog:
 
         size = os.path.getsize(filepath)
         if size < SEGMENT_HEADER_SIZE:
-            # File smaller than header -> torn header, truncate to 0 or remove
-            logger.warning("Segment file %s smaller than header (%d < %d); truncating", filepath, size, SEGMENT_HEADER_SIZE)
-            with open(filepath, "wb") as f:
-                f.truncate(0)
+            # File smaller than header -> torn header, remove file so it is not reopened headerless
+            logger.warning("Segment file %s smaller than header (%d < %d); removing torn segment", filepath, size, SEGMENT_HEADER_SIZE)
+            try:
+                os.remove(filepath)
+            except OSError:
+                with open(filepath, "wb") as f:
+                    f.truncate(0)
             return -1
 
         highest_offset = -1
@@ -153,7 +162,7 @@ class IngestLog:
                     # Clean EOF
                     break
                 if len(frame_hdr_bytes) < FRAME_HEADER_SIZE:
-                    # Torn tail during frame header write!
+                    # Torn tail during frame header write at EOF!
                     logger.warning("Torn tail detected in %s at pos %d (< frame header); truncating", filepath, pos)
                     f.seek(valid_pos)
                     f.truncate(valid_pos)
@@ -162,16 +171,23 @@ class IngestLog:
 
                 f_magic, _, offset, f_ts, length, expected_crc = struct.unpack(FRAME_HEADER_FORMAT, frame_hdr_bytes)
                 if f_magic != FRAME_MAGIC:
-                    # Check if torn or corrupted
-                    logger.warning("Invalid frame magic 0x%04x at pos %d in %s; truncating torn tail", f_magic, pos, filepath)
-                    f.seek(valid_pos)
-                    f.truncate(valid_pos)
-                    f.flush()
-                    break
+                    # Check if this is zero-padded tail at EOF or mid-segment corruption
+                    f.seek(0, os.SEEK_END)
+                    is_at_end = (f.tell() <= pos + FRAME_HEADER_SIZE)
+                    if is_at_end and frame_hdr_bytes == b"\x00" * FRAME_HEADER_SIZE:
+                        logger.warning("Zeroed tail frame detected at pos %d in %s; truncating torn tail", pos, filepath)
+                        f.seek(valid_pos)
+                        f.truncate(valid_pos)
+                        f.flush()
+                        break
+                    else:
+                        raise IngestLogCorruptError(
+                            f"Invalid frame magic 0x{f_magic:04x} in {filepath} at pos {pos} (offset={offset}): corrupted segment"
+                        )
 
                 payload_bytes = f.read(length)
                 if len(payload_bytes) < length:
-                    # Incomplete final frame!
+                    # Incomplete final frame at EOF!
                     logger.warning("Incomplete payload (%d < %d) at pos %d in %s; truncating torn frame", len(payload_bytes), length, pos, filepath)
                     f.seek(valid_pos)
                     f.truncate(valid_pos)
@@ -238,18 +254,21 @@ class IngestLog:
         """
         with self._lock:
             if isinstance(raw, RawEvent):
+                recv_ts = raw.receive_timestamp if raw.receive_timestamp else time.time()
                 record = {
                     "raw_id": raw.raw_id,
                     "source": raw.source,
                     "payload": raw.payload,
-                    "receive_timestamp": raw.receive_timestamp,
+                    "receive_timestamp": recv_ts,
                 }
             elif isinstance(raw, dict):
-                record = raw
+                record = dict(raw)
+                if not record.get("receive_timestamp"):
+                    record["receive_timestamp"] = time.time()
             else:
                 raise TypeError(f"Expected RawEvent or dict, got {type(raw).__name__}")
 
-            payload_bytes = json.dumps(record, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+            payload_bytes = json.dumps(record, separators=(",", ":"), ensure_ascii=False).encode("utf-8", errors="replace")
             payload_len = len(payload_bytes)
             crc = zlib.crc32(payload_bytes) & 0xFFFFFFFF
 
@@ -369,7 +388,7 @@ class IngestLog:
                             raw_evt = RawEvent(
                                 source=rec.get("source", ""),
                                 payload=rec.get("payload", {}),
-                                receive_timestamp=rec.get("receive_timestamp", ts),
+                                receive_timestamp=rec.get("receive_timestamp") or ts,
                                 raw_id=rec.get("raw_id"),
                             )
                             yield offset, raw_evt

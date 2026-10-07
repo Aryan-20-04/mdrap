@@ -125,24 +125,41 @@ reason_registry: ReasonRegistry = ReasonRegistry()
 
 
 class ReasonType(EnumMeta):
-    """Metaclass allowing dynamic attribute access and membership for registered Reason codes."""
+    """Metaclass allowing attribute access and membership for registered Reason codes."""
 
     def __getattr__(cls, name: str) -> Any:
         if not name.startswith("_"):
-            return cls(name.upper())
+            clean = name.upper()
+            if clean in cls._value2member_map_:
+                return cls._value2member_map_[clean]
+            if clean in ReasonRegistry._ALL_REGISTERED_REASONS:
+                obj = str.__new__(cls, clean)
+                obj._value_ = clean
+                obj._name_ = clean
+                cls._value2member_map_[clean] = obj
+                return obj
+            raise AttributeError(f"type object 'Reason' has no attribute '{name}'")
         return super().__getattr__(name)
 
     def __getitem__(cls, name: str) -> Any:
         try:
             return super().__getitem__(name)
         except KeyError:
-            return cls(name.upper())
+            clean = name.upper()
+            if clean in ReasonRegistry._ALL_REGISTERED_REASONS:
+                obj = str.__new__(cls, clean)
+                obj._value_ = clean
+                obj._name_ = clean
+                cls._value2member_map_[clean] = obj
+                return obj
+            raise KeyError(name)
 
     def __contains__(cls, item: Any) -> bool:
         if isinstance(item, str):
             clean = item.upper()
             return clean in ReasonRegistry._ALL_REGISTERED_REASONS or clean in cls._value2member_map_
         return super().__contains__(item)
+
 
 
 # Reason codes attached to SUSPICIOUS or INVALID events. Kept as short,
@@ -185,11 +202,12 @@ class Reason(str, Enum, metaclass=ReasonType):
     def _missing_(cls, value: object) -> Any:
         if isinstance(value, str):
             code = value.upper()
-            obj = str.__new__(cls, code)
-            obj._value_ = code
-            obj._name_ = code
-            reason_registry.register(code)
-            return obj
+            if code in ReasonRegistry._ALL_REGISTERED_REASONS or code in cls._value2member_map_:
+                obj = str.__new__(cls, code)
+                obj._value_ = code
+                obj._name_ = code
+                cls._value2member_map_[code] = obj
+                return obj
         return super()._missing_(value)
 
 
@@ -401,6 +419,19 @@ class CanonicalEvent:
             "asset_class": self.asset_class.value
             if hasattr(self.asset_class, "value")
             else str(self.asset_class),
+            "expiry_date": self.expiry_date,
+            "contract_size": self.contract_size,
+            "underlying_id": self.underlying_id,
+            "open_interest": self.open_interest,
+            "strike": self.strike,
+            "put_call": self.put_call,
+            "implied_vol": self.implied_vol,
+            "delta": self.delta,
+            "gamma": self.gamma,
+            "coupon": self.coupon,
+            "maturity_date": self.maturity_date,
+            "yield_to_worst": self.yield_to_worst,
+            "duration": self.duration,
         }
 
     def to_json(self) -> str:
@@ -436,6 +467,14 @@ class CanonicalEvent:
             except (ValueError, TypeError):
                 seq_num = None
 
+        raw_reasons = data.get("reasons")
+        if isinstance(raw_reasons, str):
+            reasons_list = [raw_reasons]
+        elif isinstance(raw_reasons, (list, tuple, set)):
+            reasons_list = [str(r) for r in raw_reasons]
+        else:
+            reasons_list = []
+
         return cls(
             event_id=str(data.get("event_id", "")),
             instrument_id=str(data.get("instrument_id", "")),
@@ -462,13 +501,26 @@ class CanonicalEvent:
             if data.get("ask_size") is not None
             else None,
             quality_status=qs,
-            reasons=list(data.get("reasons", [])),
+            reasons=reasons_list,
             raw_id=str(data.get("raw_id", "")),
             venue=str(data.get("venue", "XNAS")),
             currency=str(data.get("currency", "USD")),
             clock_source=str(data.get("clock_source", "HOST_SYS_CLOCK")),
             source_kind=str(data.get("source_kind", "LIVE")),
             asset_class=ac,
+            expiry_date=data.get("expiry_date"),
+            contract_size=float(data["contract_size"]) if data.get("contract_size") is not None else None,
+            underlying_id=data.get("underlying_id"),
+            open_interest=float(data["open_interest"]) if data.get("open_interest") is not None else None,
+            strike=float(data["strike"]) if data.get("strike") is not None else None,
+            put_call=data.get("put_call"),
+            implied_vol=float(data["implied_vol"]) if data.get("implied_vol") is not None else None,
+            delta=float(data["delta"]) if data.get("delta") is not None else None,
+            gamma=float(data["gamma"]) if data.get("gamma") is not None else None,
+            coupon=float(data["coupon"]) if data.get("coupon") is not None else None,
+            maturity_date=data.get("maturity_date"),
+            yield_to_worst=float(data["yield_to_worst"]) if data.get("yield_to_worst") is not None else None,
+            duration=float(data["duration"]) if data.get("duration") is not None else None,
         )
 
     @classmethod
@@ -711,10 +763,13 @@ def safe_parse_market_event(data: Any) -> Tuple[Optional[MarketEvent], List[str]
     # Dispatch to specialized event subtype
     try:
         if raw_et in ("QUOTE", "BBO"):
+            if data.get("bid_price") is None and data.get("bid") is None and data.get("ask_price") is None and data.get("ask") is None:
+                errors.append("Missing required quote bid/ask prices")
             bp = _safe_float(data.get("bid_price", data.get("bid", 0.0)))
             bs = _safe_float(data.get("bid_size", data.get("bsize", 0.0)))
             ap = _safe_float(data.get("ask_price", data.get("ask", 0.0)))
             asize = _safe_float(data.get("ask_size", data.get("asize", 0.0)))
+            sub_status = QualityStatus.INVALID if errors else QualityStatus.VALID
             ev = QuoteEvent(
                 event_id=event_id,
                 instrument_id=instrument_id,
@@ -728,7 +783,7 @@ def safe_parse_market_event(data: Any) -> Tuple[Optional[MarketEvent], List[str]
                 bid_size=bs,
                 ask_price=ap,
                 ask_size=asize,
-                quality_status=status,
+                quality_status=sub_status,
                 reasons=list(errors),
             )
             return ev, errors
@@ -752,6 +807,7 @@ def safe_parse_market_event(data: Any) -> Tuple[Optional[MarketEvent], List[str]
                         s_val = _safe_float(a[1], -1.0)
                         if p_val >= 0 and s_val >= 0:
                             clean_asks.append((p_val, s_val))
+            sub_status = QualityStatus.INVALID if errors else QualityStatus.VALID
             ev = DepthEvent(
                 event_id=event_id,
                 instrument_id=instrument_id,
@@ -764,15 +820,20 @@ def safe_parse_market_event(data: Any) -> Tuple[Optional[MarketEvent], List[str]
                 bids=clean_bids,
                 asks=clean_asks,
                 is_snapshot=bool(data.get("is_snapshot", True)),
-                quality_status=status,
+                quality_status=sub_status,
                 reasons=list(errors),
             )
             return ev, errors
 
         else:
+            if data.get("price") is None:
+                errors.append("Missing required field 'price'")
+            if data.get("quantity") is None and data.get("size") is None:
+                errors.append("Missing required field 'quantity'")
             p = _safe_float(data.get("price", 0.0))
             q = _safe_float(data.get("quantity", data.get("size", 0.0)))
             side = str(data.get("side", "UNKNOWN")).upper()
+            sub_status = QualityStatus.INVALID if errors else QualityStatus.VALID
             ev = TradeEvent(
                 event_id=event_id,
                 instrument_id=instrument_id,
@@ -788,7 +849,7 @@ def safe_parse_market_event(data: Any) -> Tuple[Optional[MarketEvent], List[str]
                 trade_id=str(data.get("trade_id", ""))
                 if data.get("trade_id")
                 else None,
-                quality_status=status,
+                quality_status=sub_status,
                 reasons=list(errors),
             )
             return ev, errors

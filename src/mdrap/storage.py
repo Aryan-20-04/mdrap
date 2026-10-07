@@ -320,7 +320,9 @@ class Store:
         self.durability = (durability or "balanced").lower()
         self._on_close: list = []
         if self.durability not in ("fast", "balanced", "compliance"):
-            self.durability = "balanced"
+            raise ValueError(
+                f"Invalid durability mode: {durability!r}. Must be one of ('fast', 'balanced', 'compliance')"
+            )
         self.conflicts: int = 0
         self.recovery_conflicts: int = 0
         self._lock = threading.RLock()
@@ -586,7 +588,7 @@ class Store:
                             journal_path,
                             parse_exc,
                         )
-                        corrupt_id = f"corrupt_jrn_{int(time.time() * 1e6)}_{line_idx}"
+                        corrupt_id = f"corrupt_jrn_{hashlib.sha256(raw_line.encode('utf-8')).hexdigest()[:16]}_{line_idx}"
                         q_row = (
                             corrupt_id,
                             "UNKNOWN",
@@ -619,15 +621,20 @@ class Store:
                 "[storage] Error recovering from journal %s: %s", journal_path, exc
             )
         finally:
-            if not has_corrupted_records and recovery_succeeded:
+            if recovery_succeeded and not has_corrupted_records:
                 try:
                     with open(journal_path, "w", encoding="utf-8"):
                         pass
                 except Exception:
                     pass
+            elif has_corrupted_records:
+                logger.warning(
+                    "[storage] Preserving crash journal %s due to malformed records",
+                    journal_path,
+                )
             else:
                 logger.warning(
-                    "[storage] Preserving crash journal %s due to malformed or unrecovered records (corrupted=%s, succeeded=%s)",
+                    "[storage] Preserving crash journal %s due to failed recovery (corrupted=%s, succeeded=%s)",
                     journal_path,
                     has_corrupted_records,
                     recovery_succeeded,
