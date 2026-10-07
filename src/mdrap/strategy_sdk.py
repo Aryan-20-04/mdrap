@@ -18,6 +18,7 @@ import json
 import math
 import os
 import time
+import warnings
 from collections import deque
 from dataclasses import dataclass, field
 from typing import Any
@@ -862,6 +863,11 @@ class Strategy:
         symbols: list[str] | None = None,
         risk_limits: RiskLimits | None = None,
     ):
+        warnings.warn(
+            "Strategy and algorithmic execution models in mdrap.strategy_sdk are deprecated and non-core to the market data engine.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self.name = name
         self.symbols = symbols or ["AAPL"]
         self.risk_manager = RiskManager(limits=risk_limits)

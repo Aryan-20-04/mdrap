@@ -6,6 +6,7 @@ order routing engine for institutional execution connectivity.
 It provides message parsing, serialization, and session state management.
 """
 
+import warnings
 from typing import Any
 from datetime import datetime, timezone
 
@@ -162,6 +163,11 @@ class FIXSession:
     def __init__(
         self, sender_comp_id: str, target_comp_id: str, fix_version: str = "FIX.4.2"
     ):
+        warnings.warn(
+            "FIXSession and mdrap.fix_engine are deprecated and non-core to the market data engine.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self.sender = sender_comp_id
         self.target = target_comp_id
         self.version = fix_version

@@ -4,17 +4,18 @@ Implements persistent watchlist manager and portfolio position/P&L tracker
 with multi-dimensional performance attribution.
 """
 
+import json
 import os
 import sqlite3
 import time
-import json
+import warnings
 from dataclasses import dataclass, field
 from typing import Any
 
 from .fx import convert_currency
 from .symbology import resolve_symbol
 
-__stability__ = "beta"
+__stability__ = "experimental"
 
 
 class _WatchlistSearchResult(str):
@@ -205,6 +206,11 @@ class PortfolioTracker:
         db_path: str | None = None,
         base_currency: str = "USD",
     ):
+        warnings.warn(
+            "PortfolioTracker and mdrap.portfolio are deprecated and non-core to the market data engine.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self.db_path = db_path
         self._initial_cash = initial_cash
         self._cash = initial_cash

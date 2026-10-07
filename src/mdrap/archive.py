@@ -9,6 +9,7 @@ partitioned by date and source.
 import json
 import os
 import time
+import warnings
 from typing import Iterator, Optional, Any
 
 from .models import RawEvent
@@ -18,6 +19,12 @@ __stability__ = "stable"
 
 class RawArchive:
     def __init__(self, base_dir: str = "data/raw_archive", buffer_size: int = 500):
+        warnings.warn(
+            "RawArchive in mdrap.archive is deprecated in MDRAP v3.0.0; "
+            "use IngestLog WAL as the mandatory durability boundary instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self.base_dir = base_dir
         self.buffer_size = buffer_size
         self._buffer: list[RawEvent] = []

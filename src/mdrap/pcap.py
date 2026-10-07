@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import struct
 import time
+import warnings
 from dataclasses import dataclass
 from typing import BinaryIO, Iterator
 
@@ -142,6 +143,11 @@ class PcapReader:
     """Reads Libpcap 2.4 files and dissects UDP market data frames."""
 
     def __init__(self, file_obj: BinaryIO | str) -> None:
+        warnings.warn(
+            "PcapReader and raw packet dissection in mdrap.pcap are deprecated and non-core to the market data engine.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         if isinstance(file_obj, str):
             self._file = open(file_obj, "rb")
             self._owns_file = True

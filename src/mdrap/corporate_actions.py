@@ -11,6 +11,7 @@ import enum
 import itertools
 import sqlite3
 import time
+import warnings
 from dataclasses import dataclass
 from typing import Any
 
@@ -69,6 +70,11 @@ class SymbolHistoryList(list):
 
 class CorporateActionsEngine:
     def __init__(self, db_path: str | None = None):
+        warnings.warn(
+            "CorporateActionsEngine and mdrap.corporate_actions are deprecated and non-core to the market data engine.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self.db_path = db_path
         self._conn = sqlite3.connect(self.db_path) if self.db_path else None
         self._action_id_gen = itertools.count(1)

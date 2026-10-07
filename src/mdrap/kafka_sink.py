@@ -24,6 +24,7 @@ import logging
 import os
 import threading
 import time
+import warnings
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Protocol, Tuple
 
@@ -188,6 +189,12 @@ class DurableKafkaSink:
         store: Any | None = None,
         producer: KafkaProducerClient | None = None,
     ) -> None:
+        warnings.warn(
+            "DurableKafkaSink in mdrap.kafka_sink is deprecated in MDRAP v3.0.0; "
+            "use SQLiteProjection or standard OutputSink extensions instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self.config = config or KafkaSinkConfig()
         self.store = store
         self.producer = producer or InMemoryKafkaProducer()

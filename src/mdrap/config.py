@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import os
 import sys
+import warnings
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
 
@@ -257,6 +258,12 @@ def load_config(config_path: Optional[str] = None) -> PlatformConfig:
     Load platform configuration from config.yaml or return defaults.
     Searches config_path, then current directory, then project root.
     """
+    warnings.warn(
+        "Loading configuration from config.yaml via mdrap.config is deprecated in MDRAP v3.0.0; "
+        "use mdrap.toml via mdrap.config_loader instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     candidates = []
     if config_path:
         candidates.append(config_path)

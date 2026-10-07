@@ -22,6 +22,7 @@ import json
 import math
 import statistics
 import time
+import warnings
 
 from .models import CanonicalEvent, EventType, QualityStatus
 from .strategy_sdk import PaperExecutor, Strategy, StrategyRunner
@@ -65,6 +66,11 @@ class BacktestEngine:
     def __init__(
         self, initial_capital: float = 100_000.0, benchmark_symbol: str | None = None
     ):
+        warnings.warn(
+            "BacktestEngine in mdrap.backtest is deprecated and non-core to the market data engine.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self.initial_capital = initial_capital
         self.benchmark_symbol = benchmark_symbol
 

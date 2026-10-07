@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 import math
 import re
 import time
+import warnings
 from typing import Any
 
 try:
@@ -822,6 +823,11 @@ class VesselTracker:
     """Maritime alternative data engine tracking commercial tanker & cargo movements."""
 
     def __init__(self, vessels: list[Vessel] | None = None):
+        warnings.warn(
+            "VesselTracker and AIS vessel intelligence in mdrap.vessel are deprecated and non-core to the market data engine.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self._vessels: dict[str, Vessel] = {}
         self._by_imo: dict[str, Vessel] = {}
         self._by_mmsi: dict[str, Vessel] = {}

@@ -30,9 +30,10 @@ import logging
 import random
 import threading
 import time
+import warnings
 from typing import Callable
 
-__stability__ = "beta"
+__stability__ = "experimental"
 
 logger = logging.getLogger(__name__)
 
@@ -106,6 +107,11 @@ class ABFeedArbitrator:
         initial_seq: int = 1,
         async_tcp_replay: bool = False,
     ):
+        warnings.warn(
+            "ABFeedArbitrator and mdrap.multicast_arbitrator are deprecated and non-core to the market data engine.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self.tcp_replay_client = tcp_replay_client
         self.max_gap_buffer_size = max_gap_buffer_size
         self.initial_seq = initial_seq

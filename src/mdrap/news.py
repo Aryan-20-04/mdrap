@@ -8,10 +8,11 @@ sentiment scoring, and price impact correlation for the MDRAP platform.
 import enum
 import time
 import re
+import warnings
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 
-__stability__ = "beta"
+__stability__ = "experimental"
 
 
 class SentimentScore(str, enum.Enum):
@@ -284,6 +285,11 @@ class NewsFeed:
     """Aggregates news from RSS/Atom feeds and manual entries."""
 
     def __init__(self) -> None:
+        warnings.warn(
+            "NewsFeed and sentiment analysis in mdrap.news are deprecated and non-core to the market data engine.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self._items: list[NewsItem] = []
         self._analyzer = FinancialSentimentAnalyzer()
         self._extractor = TickerExtractor()

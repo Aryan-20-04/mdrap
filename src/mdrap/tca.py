@@ -16,6 +16,7 @@ from dataclasses import dataclass
 import hashlib
 import math
 import time
+import warnings
 from typing import Any
 
 from .bbo import BBOEngine, ConsolidatedBBO
@@ -150,6 +151,11 @@ class TCAEngine:
     """
 
     def __init__(self, bbo_engine: BBOEngine | None = None):
+        warnings.warn(
+            "TCAEngine and mdrap.tca are deprecated and non-core to the market data engine.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self.bbo_engine = bbo_engine or BBOEngine()
         self.metrics_history: list[TCAMetrics] = []
 

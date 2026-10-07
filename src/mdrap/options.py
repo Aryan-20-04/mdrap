@@ -12,6 +12,8 @@ import statistics
 from dataclasses import dataclass
 from typing import Optional
 
+import warnings
+
 try:
     from . import fastpath
 except ImportError:
@@ -302,6 +304,11 @@ def price_option(
     Unified derivatives pricing entrypoint.
     Dispatches to closed-form BSM for European exercise, and CRR Binomial lattice for American contracts.
     """
+    warnings.warn(
+        "Derivatives pricing in mdrap.options is deprecated and non-core to the market data engine.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     T = contract.expiry_days / 365.0
     if contract.option_type == OptionType.CALL:
         intrinsic = max(0.0, spot - contract.strike)
@@ -485,6 +492,11 @@ class OptionsChain:
     """Represents a full options chain for a single underlying."""
 
     def __init__(self, underlying: str, spot: float, risk_free_rate: float = 0.05):
+        warnings.warn(
+            "OptionsChain in mdrap.options is deprecated and non-core to the market data engine.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self.underlying = underlying
         self.spot = spot
         self.risk_free_rate = risk_free_rate

@@ -7,9 +7,10 @@ and portfolio valuation normalization across INR, EUR, JPY, GBP, and USD.
 
 from __future__ import annotations
 
+import warnings
 from typing import Dict, Optional
 
-__stability__ = "beta"
+__stability__ = "experimental"
 
 
 class FXMatrix:
@@ -18,6 +19,11 @@ class FXMatrix:
     """
 
     def __init__(self, initial_rates: Optional[Dict[str, float]] = None):
+        warnings.warn(
+            "FXMatrix and mdrap.fx are deprecated and non-core to the market data engine.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         # Base rates against USD (amount of quote currency per 1 USD)
         self._usd_rates: Dict[str, float] = {
             "USD": 1.0,

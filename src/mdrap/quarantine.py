@@ -6,6 +6,7 @@ Strictly adheres to Design Principle 3: 'Never silently discard bad data — qua
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass, field
 from typing import Any, Optional
 from .models import CanonicalEvent, RawEvent
@@ -92,6 +93,11 @@ class QuarantineManager:
     """In-memory and persistent quarantine storage manager."""
 
     def __init__(self) -> None:
+        warnings.warn(
+            "QuarantineManager in mdrap.quarantine is deprecated; use SQLite quarantine storage and engine quarantine events directly.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self._records: dict[str, QuarantineRecord] = {}
         self._records_by_rule: dict[str, list[QuarantineRecord]] = {}
         self._records_by_source: dict[str, list[QuarantineRecord]] = {}

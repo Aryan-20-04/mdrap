@@ -12,6 +12,7 @@ from __future__ import annotations
 import csv
 import os
 import sys
+import warnings
 from datetime import datetime
 from typing import List, Optional
 
@@ -33,6 +34,12 @@ class MarketDataExporter:
     """
 
     def __init__(self, db_path: str = "data/mdrap.db"):
+        warnings.warn(
+            "MarketDataExporter in mdrap.exporter is deprecated in MDRAP v3.0.0; "
+            "use export_data() in mdrap.export for Parquet/CSV/JSON exports instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self.db_path = db_path
         self._ensure_data_dir()
 
