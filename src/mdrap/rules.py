@@ -14,7 +14,7 @@ import sys
 
 from dataclasses import dataclass
 from typing import Callable, Optional
-from .models import CanonicalEvent, QualityStatus, Reason
+from .models import CanonicalEvent, QualityStatus, Reason, reason_registry
 
 USER_BIT_MIN = 32
 USER_BIT_MAX = 63
@@ -205,6 +205,18 @@ def register_rule(
 
     def decorator(fn: Callable[[CanonicalEvent], bool]):
         if bit in _USER_RULES:
+            existing = _USER_RULES[bit]
+            if existing.name == clean_name:
+                rule = UserRule(
+                    bit=bit,
+                    name=clean_name,
+                    description=description,
+                    severity=severity,
+                    func=fn,
+                )
+                _USER_RULES[bit] = rule
+                reason_registry.register(clean_name, description=description, severity=severity)
+                return fn
             raise ValueError(
                 f"Rule bit {bit} is already registered to '{_USER_RULES[bit].name}'"
             )
@@ -220,6 +232,7 @@ def register_rule(
         )
         _USER_RULES[bit] = rule
         _USER_RULE_NAMES.add(clean_name)
+        reason_registry.register(clean_name, description=description, severity=severity)
         return fn
 
     return decorator

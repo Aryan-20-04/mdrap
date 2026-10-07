@@ -20,6 +20,7 @@ from typing import Any, Callable, Dict, Generator, List, Optional, Set
 import urllib.error
 import urllib.parse
 import urllib.request
+import warnings
 from ._version import __version__
 
 __stability__ = "beta"
@@ -196,6 +197,11 @@ class MDRAPClient:
         use_binary: bool = False,
         transport: str = "auto",  # 'auto', 'shm', 'binary', 'tcp'
     ):
+        warnings.warn(
+            "Client / MDRAPClient is deprecated in MDRAP v3.0.0; use Engine or streaming endpoints directly.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self.base_url = (base_url or os.environ.get("MDRAP_BASE_URL", "")).rstrip("/")
         self.host = host
         self.port = port

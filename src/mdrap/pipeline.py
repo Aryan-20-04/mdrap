@@ -243,6 +243,13 @@ class Pipeline:
             )
         self._event_counter: int = 0
 
+        if "MDRAP_ASYNC_WRITER" in os.environ:
+            warnings.warn(
+                "Environment variable 'MDRAP_ASYNC_WRITER' is deprecated in MDRAP v3.0.0. "
+                "Configure durability and write policy explicitly via IngestLog / Engine / SQLiteProjection configuration.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
         self._async_writer_enabled = (
             async_writer
             if async_writer is not None
@@ -260,6 +267,13 @@ class Pipeline:
             self._writer_thread.start()
 
         # Journal-first durability (Spec §14, §26; Audit C1)
+        if "MDRAP_DISABLE_JOURNAL" in os.environ:
+            warnings.warn(
+                "Environment variable 'MDRAP_DISABLE_JOURNAL' is deprecated in MDRAP v3.0.0. "
+                "IngestLog WAL is the mandatory durability boundary; use explicit configuration.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
         if journal is not None:
             self._journal_enabled = bool(journal)
             self._journal_path = journal if isinstance(journal, str) else None
@@ -724,7 +738,10 @@ class Pipeline:
         return event
 
     def process_batch(
-        self, raw_events: list[RawEvent], source_label: str | None = None
+        self,
+        raw_events: list[RawEvent],
+        source_label: str | None = None,
+        strict_align: bool = False,
     ) -> list[CanonicalEvent]:
         """
         Process a micro-batch of RawEvents with batched quality evaluation.
@@ -899,6 +916,25 @@ class Pipeline:
                 t_norm_ns=t_norm_ns,
                 t_qual_ns=t_qual_end_ns,
             )
+
+        if strict_align:
+            # Under strict alignment:
+            # 1. Background drain events are dispatched to storage but NEVER appended to returned results.
+            # 2. Every slot in results must be filled (quarantining any unexpected None).
+            if hasattr(self.quality, "drain_expired"):
+                for d_ev in self.quality.drain_expired():
+                    self._dispatch_evaluated(d_ev)
+
+            for idx in range(len(raw_events)):
+                if results[idx] is None:
+                    results[idx] = self._create_quarantined_event(
+                        raw_events[idx],
+                        "Processing error: unhandled event failure",
+                        "quarantined (unhandled pipeline failure)",
+                        Reason.MALFORMED.value,
+                    )
+            self._maybe_flush()
+            return [ev for ev in results if ev is not None]
 
         if hasattr(self.quality, "drain_expired"):
             for d_ev in self.quality.drain_expired():

@@ -13,6 +13,9 @@ import copy
 from dataclasses import dataclass, field
 import json
 import math
+import os
+from pathlib import Path
+import warnings
 from typing import Any
 
 from .clock import Clock, SystemClock
@@ -84,10 +87,274 @@ class EngineDecision:
 
 
 class Engine:
-    """Pure deterministic engine. Contains ZERO I/O (no SQLite, no disk, no network)."""
+    """Unified deterministic engine and streaming pipeline facade for MDRAP.
 
-    def __init__(self, staleness_threshold_s: float = DEFAULT_STALENESS_THRESHOLD_S) -> None:
+    Provides pure deterministic state transitions:
+        state, decision = engine.step(state, raw_event, clock)
+
+    As well as unified log-driven execution:
+        engine = Engine.open(wal_path)
+        engine.subscribe(projection)
+        decision = engine.submit(raw_event)
+    """
+
+    def __init__(
+        self,
+        path: str | Path | None = None,
+        staleness_threshold_s: float = DEFAULT_STALENESS_THRESHOLD_S,
+        clock: Clock | None = None,
+        db_path: str | None = None,
+        fsync_policy: str = "always",
+        max_segment_bytes: int = 10 * 1024 * 1024,
+        **kwargs: Any,
+    ) -> None:
+        # Check legacy environment variables (Finding 6)
+        if "MDRAP_ASYNC_WRITER" in os.environ:
+            warnings.warn(
+                "Environment variable 'MDRAP_ASYNC_WRITER' is deprecated in MDRAP v3.0.0. "
+                "Configure durability and write policy explicitly via IngestLog / Engine / SQLiteProjection configuration.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+        if "MDRAP_DISABLE_JOURNAL" in os.environ:
+            warnings.warn(
+                "Environment variable 'MDRAP_DISABLE_JOURNAL' is deprecated in MDRAP v3.0.0. "
+                "IngestLog WAL is the mandatory durability boundary; use explicit configuration.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+
+        # Disallow silent kwargs forwarding (Requirement 1)
+        valid_legacy_kwargs = {"durability", "quality", "async_writer", "journal"}
+        for k in kwargs:
+            if k not in valid_legacy_kwargs:
+                raise TypeError(f"Engine.__init__() got an unexpected keyword argument '{k}'")
+            else:
+                warnings.warn(
+                    f"Parameter '{k}' is deprecated in Engine; use explicit IngestLog and Projection configuration.",
+                    DeprecationWarning,
+                    stacklevel=2,
+                )
+
         self.staleness_threshold_s = staleness_threshold_s
+        self.clock = clock if clock is not None else SystemClock()
+        self.state = self.create_initial_state()
+        self._projections: list[Any] = []
+        self._default_sqlite_proj: Any = None
+        self.log: Any = None
+
+        if path is not None:
+            from .ingestlog import IngestLog
+
+            self.log = IngestLog(
+                str(path),
+                fsync_policy=fsync_policy,
+                max_segment_bytes=max_segment_bytes,
+            )
+            # Catch up state from existing log records
+            for off, raw in self.log.iter_from(0):
+                self.state, _ = self.step(self.state, raw, self.clock, offset=off)
+
+        if db_path is not None:
+            from .projection import SQLiteProjection
+
+            proj = SQLiteProjection(db_path)
+            self.subscribe(proj)
+            self._default_sqlite_proj = proj
+
+    @classmethod
+    def open(
+        cls,
+        path: str | Path,
+        config: Any | None = None,
+    ) -> Engine:
+        """Open a high-level Engine instance with durable IngestLog WAL at path."""
+        staleness = DEFAULT_STALENESS_THRESHOLD_S
+        clock = None
+        fsync_policy = "always"
+        max_segment_bytes = 10 * 1024 * 1024
+        db_path = None
+        projections = []
+
+        if config is not None:
+            if isinstance(config, dict):
+                staleness = config.get("staleness_threshold_s", staleness)
+                clock = config.get("clock", clock)
+                fsync_policy = config.get("fsync_policy", fsync_policy)
+                max_segment_bytes = config.get("max_segment_bytes", max_segment_bytes)
+                db_path = config.get("db_path", db_path)
+                projections = config.get("projections", [])
+            else:
+                staleness = getattr(config, "staleness_threshold_s", staleness)
+                clock = getattr(config, "clock", clock)
+                fsync_policy = getattr(config, "fsync_policy", fsync_policy)
+                max_segment_bytes = getattr(config, "max_segment_bytes", max_segment_bytes)
+                db_path = getattr(config, "db_path", db_path)
+                projections = getattr(config, "projections", [])
+
+        engine = cls(
+            path=path,
+            staleness_threshold_s=staleness,
+            clock=clock,
+            db_path=db_path,
+            fsync_policy=fsync_policy,
+            max_segment_bytes=max_segment_bytes,
+        )
+
+        for proj in projections:
+            engine.subscribe(proj)
+
+        return engine
+
+    def subscribe(self, projection: Any, from_offset: int = 0) -> None:
+        """Register a projection consumer and catch up from log offset."""
+        if projection not in self._projections:
+            self._projections.append(projection)
+
+        # Catch up projection from from_offset if log exists
+        if self.log is not None and self.log.next_offset > from_offset:
+            batch = []
+            replay_state = self.create_initial_state()
+            for off, raw in self.log.iter_from(0):
+                if off < from_offset:
+                    replay_state, _ = self.step(replay_state, raw, self.clock, offset=off)
+                else:
+                    replay_state, dec = self.step(replay_state, raw, self.clock, offset=off)
+                    batch.append(dec)
+            if batch:
+                projection.apply(batch, batch[-1].offset)
+
+    def submit(
+        self, events: RawEvent | list[RawEvent]
+    ) -> EngineDecision | list[EngineDecision]:
+        """Append raw event(s) to IngestLog, fold through state, dispatch to projections, and return aligned result(s)."""
+        if isinstance(events, RawEvent):
+            is_single = True
+            event_list = [events]
+        elif isinstance(events, (list, tuple)):
+            is_single = False
+            event_list = list(events)
+        else:
+            raise TypeError(
+                f"Expected RawEvent or list[RawEvent], got {type(events).__name__}"
+            )
+
+        if not event_list:
+            return [] if not is_single else None  # type: ignore[return-value]
+
+        decisions: list[EngineDecision] = []
+        offsets: list[int] = []
+
+        for raw in event_list:
+            if self.log is not None:
+                offset = self.log.append(raw)
+            else:
+                offset = self.state.event_count
+
+            offsets.append(offset)
+            self.state, dec = self.step(self.state, raw, self.clock, offset=offset)
+            decisions.append(dec)
+
+        # Dispatch to subscribed projections atomically
+        if self._projections and decisions:
+            last_offset = offsets[-1]
+            for proj in self._projections:
+                proj.apply(decisions, last_offset)
+
+        if is_single:
+            return decisions[0]
+        return decisions
+
+    def replay(
+        self,
+        from_offset: int = 0,
+        to_offset: int | None = None,
+        projection: Any | None = None,
+    ) -> list[EngineDecision]:
+        """Replay events from WAL from_offset up to to_offset."""
+        if self.log is None:
+            return []
+
+        decisions: list[EngineDecision] = []
+        replay_state = self.create_initial_state()
+
+        for off, raw in self.log.iter_from(0):
+            if off < from_offset:
+                replay_state, _ = self.step(replay_state, raw, self.clock, offset=off)
+                continue
+            if to_offset is not None and off > to_offset:
+                break
+            replay_state, dec = self.step(replay_state, raw, self.clock, offset=off)
+            decisions.append(dec)
+
+        if projection is not None and decisions:
+            projection.apply(decisions, decisions[-1].offset)
+
+        return decisions
+
+    def process(self, raw: RawEvent) -> CanonicalEvent | None:
+        """Process a single raw event through the validation pipeline."""
+        dec = self.submit(raw)
+        return dec.canonical_event if isinstance(dec, EngineDecision) else None
+
+    def process_one(self, raw: RawEvent) -> CanonicalEvent | None:
+        """Alias for process()."""
+        return self.process(raw)
+
+    def process_batch(self, raw_events: list[RawEvent]) -> list[CanonicalEvent]:
+        """Process a batch of raw events through the engine, returning strictly aligned canonical events."""
+        decisions = self.submit(raw_events)
+        if isinstance(decisions, list):
+            return [d.canonical_event for d in decisions if d.canonical_event is not None]
+        return []
+
+    def flush(self, wait: bool = True) -> None:
+        """Flush pending writes to persistent log and projections."""
+        if self.log is not None:
+            self.log.flush()
+
+    def query(self, instrument: str, limit: int = 100) -> list[dict]:
+        """Query recent canonical ticks for an instrument from attached SQLite projection."""
+        if self._default_sqlite_proj is not None:
+            with self._default_sqlite_proj._lock:
+                cur = self._default_sqlite_proj._conn.cursor()
+                cur.execute(
+                    "SELECT * FROM canonical_events WHERE instrument_id = ? ORDER BY exchange_timestamp DESC LIMIT ?;",
+                    (instrument, limit),
+                )
+                col_names = [desc[0] for desc in cur.description]
+                return [dict(zip(col_names, row)) for row in cur.fetchall()]
+        return []
+
+    def metrics(self) -> dict[str, Any]:
+        """Return engine state counts and throughput metrics."""
+        return {
+            "processed": self.state.event_count,
+            "counts": dict(self.state.counts),
+            "valid": self.state.counts.get("VALID", 0),
+            "suspicious": self.state.counts.get("SUSPICIOUS", 0),
+            "invalid": self.state.counts.get("INVALID", 0),
+        }
+
+    def close(self) -> None:
+        """Release WAL and projection resources."""
+        if self.log is not None:
+            self.log.close()
+            self.log = None
+        for proj in self._projections:
+            if hasattr(proj, "close"):
+                try:
+                    proj.close()
+                except Exception:
+                    pass
+        self._projections.clear()
+        self._default_sqlite_proj = None
+
+    def __enter__(self) -> Engine:
+        return self
+
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        self.close()
 
     def create_initial_state(self) -> EngineState:
         return EngineState(staleness_threshold_s=self.staleness_threshold_s)

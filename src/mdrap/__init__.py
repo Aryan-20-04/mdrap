@@ -8,6 +8,9 @@ from __future__ import annotations
 
 from typing import Any
 
+import os
+import warnings
+
 from ._version import __version__
 from .client import Client, MDRAPClient, MarketEvent
 
@@ -17,14 +20,35 @@ from .models import (
     QualityStatus,
     RawEvent,
     Reason,
+    ReasonRegistry,
+    reason_registry,
     deprecated,
 )
 from .clock import Clock, FixedClock, SystemClock
-from .engine import Engine as CoreEngine, EngineDecision, EngineState
+from .engine import Engine, EngineDecision, EngineState
 from .ingestlog import IngestLog
 from .pipeline import Pipeline
 from .projection import SQLiteProjection
 from .storage import Store
+
+# Backward-compatible alias for deterministic engine
+CoreEngine = Engine
+
+# Check legacy environment variables on package initialization
+if "MDRAP_ASYNC_WRITER" in os.environ:
+    warnings.warn(
+        "Environment variable 'MDRAP_ASYNC_WRITER' is deprecated in MDRAP v3.0.0. "
+        "Configure durability and write policy explicitly via IngestLog / Engine / SQLiteProjection configuration.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+if "MDRAP_DISABLE_JOURNAL" in os.environ:
+    warnings.warn(
+        "Environment variable 'MDRAP_DISABLE_JOURNAL' is deprecated in MDRAP v3.0.0. "
+        "IngestLog WAL is the mandatory durability boundary; use explicit configuration.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
 
 __all__ = [
     "__version__",
@@ -36,6 +60,8 @@ __all__ = [
     "EventType",
     "QualityStatus",
     "Reason",
+    "ReasonRegistry",
+    "reason_registry",
     "deprecated",
     "Clock",
     "FixedClock",
@@ -51,68 +77,3 @@ __all__ = [
 ]
 
 __stability__ = "stable"
-
-
-class Engine:
-    """Unified high-level facade for MDRAP ingestion, validation, and storage (Phase 7).
-
-    Provides an intuitive single entrypoint to initialize and run the MDRAP pipeline:
-        import mdrap
-
-        with mdrap.Engine(db_path=":memory:") as engine:
-            canon = engine.process(raw_event)
-            recent = engine.query("AAPL")
-    """
-
-    def __init__(
-        self,
-        db_path: str = ":memory:",
-        durability: str = "balanced",
-        quality: Any = None,
-        async_writer: bool | None = None,
-        journal: bool | str | None = None,
-        **kwargs: Any,
-    ):
-        self.store = Store(path=db_path, durability=durability)
-        self.pipeline = Pipeline(
-            store=self.store,
-            quality=quality,
-            async_writer=async_writer,
-            journal=journal,
-            **kwargs,
-        )
-
-    def process(self, raw: RawEvent) -> CanonicalEvent | None:
-        """Process a single raw event through the validation pipeline."""
-        return self.pipeline.process_one(raw)
-
-    def process_one(self, raw: RawEvent) -> CanonicalEvent | None:
-        """Alias for process()."""
-        return self.pipeline.process_one(raw)
-
-    def process_batch(self, raw_events: list[RawEvent]) -> list[CanonicalEvent]:
-        """Process a batch of raw events through the pipeline."""
-        return self.pipeline.process_batch(raw_events)
-
-    def flush(self, wait: bool = True) -> None:
-        """Flush pending batches to persistent storage."""
-        self.pipeline.flush(wait=wait)
-
-    def query(self, instrument: str, limit: int = 100) -> list[dict]:
-        """Query recent canonical ticks for an instrument."""
-        return self.store.latest(instrument, limit=limit)
-
-    def metrics(self) -> dict:
-        """Return pipeline performance metrics and health summary."""
-        return self.pipeline.metrics.summary()
-
-    def close(self) -> None:
-        """Finish processing and release storage and journal resources."""
-        self.pipeline.finish()
-        self.store.close()
-
-    def __enter__(self) -> Engine:
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
-        self.close()

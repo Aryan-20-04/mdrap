@@ -18,7 +18,7 @@ Architectural Principles (from MDRAP System Specification §26):
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import Enum, EnumMeta
 import functools
 import json
 import math
@@ -56,10 +56,99 @@ class QualityStatus(str, Enum):
     INVALID = "INVALID"
 
 
+_CANONICAL_REASONS = (
+    "SCHEMA_VIOLATION",
+    "DUPLICATE",
+    "SEQUENCE_GAP",
+    "OUT_OF_ORDER",
+    "STALE",
+    "PRICE_ANOMALY",
+    "CROSSED_QUOTE",
+    "CROSS_FEED_DISAGREEMENT",
+    "MALFORMED",
+    "CIRCUIT_FILTER_BREACH",
+    "VOLATILITY_INTERRUPTION",
+    "SPECIAL_QUOTE_INDICATION",
+    "TS_IMPLAUSIBLE",
+    "RATE_LIMITED",
+    "SECURITY_REJECT",
+    "HOOK_DROPPED",
+    "HOOK_ERROR",
+)
+
+
+class ReasonRegistry:
+    """Institutional dynamic reason registry for core, custom, and third-party anomaly codes."""
+
+    _ALL_REGISTERED_REASONS: set[str] = set(_CANONICAL_REASONS)
+
+    def __init__(self) -> None:
+        self._reasons: dict[str, str] = {r: r for r in _CANONICAL_REASONS}
+        self._descriptions: dict[str, str] = {}
+        self._severities: dict[str, QualityStatus] = {}
+
+    def register(
+        self,
+        code: str,
+        description: str = "",
+        severity: QualityStatus = QualityStatus.SUSPICIOUS,
+    ) -> str:
+        """Register a new reason code dynamically without modifying core models."""
+        clean = code.strip().upper()
+        self._reasons[clean] = clean
+        ReasonRegistry._ALL_REGISTERED_REASONS.add(clean)
+        if description:
+            self._descriptions[clean] = description
+        self._severities[clean] = severity
+        return clean
+
+    def has(self, code: str) -> bool:
+        return code.strip().upper() in self._reasons
+
+    def get(self, code: str, default: str | None = None) -> str | None:
+        return self._reasons.get(code.strip().upper(), default)
+
+    def describe(self, code: str) -> str:
+        return self._descriptions.get(code.strip().upper(), "")
+
+    def severity(self, code: str) -> QualityStatus:
+        return self._severities.get(code.strip().upper(), QualityStatus.SUSPICIOUS)
+
+    def all(self) -> dict[str, str]:
+        return dict(self._reasons)
+
+    def list(self) -> list[str]:
+        return list(self._reasons.keys())
+
+
+reason_registry: ReasonRegistry = ReasonRegistry()
+
+
+class ReasonType(EnumMeta):
+    """Metaclass allowing dynamic attribute access and membership for registered Reason codes."""
+
+    def __getattr__(cls, name: str) -> Any:
+        if not name.startswith("_"):
+            return cls(name.upper())
+        return super().__getattr__(name)
+
+    def __getitem__(cls, name: str) -> Any:
+        try:
+            return super().__getitem__(name)
+        except KeyError:
+            return cls(name.upper())
+
+    def __contains__(cls, item: Any) -> bool:
+        if isinstance(item, str):
+            clean = item.upper()
+            return clean in ReasonRegistry._ALL_REGISTERED_REASONS or clean in cls._value2member_map_
+        return super().__contains__(item)
+
+
 # Reason codes attached to SUSPICIOUS or INVALID events. Kept as short,
 # stable uppercase strings so they can be efficiently indexed, queried,
 # and aggregated in metrics and lineage records.
-class Reason(str, Enum):
+class Reason(str, Enum, metaclass=ReasonType):
     """Deterministic failure and anomaly reason codes."""
 
     SCHEMA_VIOLATION = (
@@ -91,6 +180,40 @@ class Reason(str, Enum):
     SECURITY_REJECT = "SECURITY_REJECT"  # Bit 14: Security gate rejection (sanitizer, HMAC, or auth failure)
     HOOK_DROPPED = "HOOK_DROPPED"  # Event was intentionally rejected by a pipeline hook
     HOOK_ERROR = "HOOK_ERROR"  # A pipeline hook raised or returned an invalid event
+
+    @classmethod
+    def _missing_(cls, value: object) -> Any:
+        if isinstance(value, str):
+            code = value.upper()
+            obj = str.__new__(cls, code)
+            obj._value_ = code
+            obj._name_ = code
+            reason_registry.register(code)
+            return obj
+        return super()._missing_(value)
+
+
+# Pre-register canonical reasons in reason_registry
+for _r in (
+    "SCHEMA_VIOLATION",
+    "DUPLICATE",
+    "SEQUENCE_GAP",
+    "OUT_OF_ORDER",
+    "STALE",
+    "PRICE_ANOMALY",
+    "CROSSED_QUOTE",
+    "CROSS_FEED_DISAGREEMENT",
+    "MALFORMED",
+    "CIRCUIT_FILTER_BREACH",
+    "VOLATILITY_INTERRUPTION",
+    "SPECIAL_QUOTE_INDICATION",
+    "TS_IMPLAUSIBLE",
+    "RATE_LIMITED",
+    "SECURITY_REJECT",
+    "HOOK_DROPPED",
+    "HOOK_ERROR",
+):
+    reason_registry.register(_r)
 
 
 class AssetClass(str, Enum):

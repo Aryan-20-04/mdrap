@@ -94,6 +94,22 @@ mdrap = "mdrap.cli:main"
 
 [project.entry-points."mdrap.adapters"]
 template = "mdrap.adapters.template:TemplateAdapter"
+reference = "mdrap.adapters.reference:ReferenceFeedAdapter"
+
+[project.entry-points."mdrap.quality_rules"]
+sample_rules = "mdrap.sample_plugins:register_sample_quality_rules"
+
+[project.entry-points."mdrap.storage_backends"]
+sample_memory = "mdrap.sample_plugins:SampleMemoryStorageBackend"
+
+[project.entry-points."mdrap.auth_providers"]
+sample_auth = "mdrap.sample_plugins:SampleAuthProvider"
+
+[project.entry-points."mdrap.output_sinks"]
+sample_sink = "mdrap.sample_plugins:SampleOutputSink"
+
+[project.entry-points."mdrap.alert_sinks"]
+sample_alert = "mdrap.sample_plugins:SampleAlertSink"
 
 [tool.setuptools]
 py-modules = []

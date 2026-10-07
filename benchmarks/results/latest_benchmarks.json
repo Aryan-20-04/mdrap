@@ -1,72 +1,72 @@
 {
-  "timestamp": 1791390428.3492064,
+  "timestamp": 1791398641.0002975,
   "single_event": {
-    "num_events": 30000,
+    "num_events": 10000,
     "mode": "single",
     "batch_size": 1,
-    "elapsed_s": 4.9022,
-    "events_per_second": 6119.7,
-    "rss_mb_before": 32.45,
-    "rss_mb_after": 62.67,
-    "rss_mb_growth": 30.22,
+    "elapsed_s": 1.6824,
+    "events_per_second": 5944.0,
+    "rss_mb_before": 32.43,
+    "rss_mb_after": 49.44,
+    "rss_mb_growth": 17.01,
     "e2e_latency_us": {
-      "p50": 795.1,
-      "p95": 1785.0,
-      "p99": 2184.9,
-      "p999": 2607.9,
-      "max": 3094.9
+      "p50": 783.6,
+      "p95": 1774.1,
+      "p99": 2179.8,
+      "p999": 2570.0,
+      "max": 2764.9
     },
     "processing_latency_us": {
-      "p50": 107.3,
-      "p95": 249.5,
-      "p99": 480.9,
-      "max": 7904.6
+      "p50": 108.8,
+      "p95": 252.1,
+      "p99": 455.2,
+      "max": 7270.6
     },
     "quality_counts": {
-      "VALID": 29865,
-      "SUSPICIOUS": 62,
-      "INVALID": 73
+      "VALID": 9951,
+      "SUSPICIOUS": 23,
+      "INVALID": 26
     },
     "dropped_events": 0,
     "hook_errors": 0,
     "writer_failures": 0
   },
   "batch": {
-    "num_events": 30000,
+    "num_events": 10000,
     "mode": "batch",
     "batch_size": 1024,
-    "elapsed_s": 5.0561,
-    "events_per_second": 5933.4,
-    "rss_mb_before": 43.06,
-    "rss_mb_after": 61.12,
-    "rss_mb_growth": 18.06,
+    "elapsed_s": 1.5569,
+    "events_per_second": 6422.8,
+    "rss_mb_before": 41.39,
+    "rss_mb_after": 50.35,
+    "rss_mb_growth": 8.96,
     "e2e_latency_us": {
-      "p50": 795.1,
-      "p95": 1785.0,
-      "p99": 2184.9,
-      "p999": 2607.9,
-      "max": 3094.9
+      "p50": 783.6,
+      "p95": 1774.1,
+      "p99": 2179.8,
+      "p999": 2570.0,
+      "max": 2764.9
     },
     "processing_latency_us": {
-      "p50": 77609.8,
-      "p95": 173917.3,
-      "p99": 224436.8,
-      "max": 250876.3
+      "p50": 54477.9,
+      "p95": 191490.6,
+      "p99": 236129.8,
+      "max": 255482.0
     },
     "quality_counts": {
-      "VALID": 29865,
-      "SUSPICIOUS": 62,
-      "INVALID": 73
+      "VALID": 9951,
+      "SUSPICIOUS": 23,
+      "INVALID": 26
     },
     "dropped_events": 0,
     "hook_errors": 0,
     "writer_failures": 0
   },
   "recovery": {
-    "journal_events": 20000,
-    "recovered_events": 20000,
-    "journal_size_mb": 8.83,
-    "recovery_time_s": 0.9138,
-    "recovery_rate_eps": 21886.7
+    "journal_events": 10000,
+    "recovered_events": 10000,
+    "journal_size_mb": 4.4,
+    "recovery_time_s": 0.4109,
+    "recovery_rate_eps": 24337.5
   }
 }

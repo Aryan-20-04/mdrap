@@ -50,6 +50,13 @@ __all__ = [
     "load_output_sinks",
     "load_alert_sinks",
     "load_quality_rules",
+    "get_plugin",
+    "get_adapter",
+    "get_quality_rule",
+    "get_storage_backend",
+    "get_auth_provider",
+    "get_output_sink",
+    "get_alert_sink",
 ]
 
 
@@ -360,3 +367,42 @@ def load_alert_sinks(validate: bool = True) -> dict[str, Any]:
 def load_quality_rules(validate: bool = True) -> dict[str, Any]:
     """Discover third-party quality rules."""
     return load_plugins("mdrap.quality_rules", validate=validate)
+
+
+def get_plugin(group: str, name: str, default: Any = None) -> Any:
+    """Retrieve a registered plugin by group and name, attempting discovery if not yet cached."""
+    p = registry.get(group, name)
+    if p is not None:
+        return p
+    plugins = registry.discover(group, validate=False)
+    return plugins.get(name, default)
+
+
+def get_adapter(name: str, default: Any = None) -> Any:
+    """Resolve feed adapter plugin by name."""
+    return get_plugin("mdrap.adapters", name, default=default)
+
+
+def get_quality_rule(name: str, default: Any = None) -> Any:
+    """Resolve custom quality rule plugin by name."""
+    return get_plugin("mdrap.quality_rules", name, default=default)
+
+
+def get_storage_backend(name: str, default: Any = None) -> Any:
+    """Resolve storage backend plugin by name."""
+    return get_plugin("mdrap.storage_backends", name, default=default)
+
+
+def get_auth_provider(name: str, default: Any = None) -> Any:
+    """Resolve authentication provider plugin by name."""
+    return get_plugin("mdrap.auth_providers", name, default=default)
+
+
+def get_output_sink(name: str, default: Any = None) -> Any:
+    """Resolve output sink plugin by name."""
+    return get_plugin("mdrap.output_sinks", name, default=default)
+
+
+def get_alert_sink(name: str, default: Any = None) -> Any:
+    """Resolve alert sink plugin by name."""
+    return get_plugin("mdrap.alert_sinks", name, default=default)

@@ -1,4 +1,4 @@
-﻿"""MDRAP Reason Generator and Synchronizer (Single Source of Truth).
+"""MDRAP Reason Generator and Synchronizer (Single Source of Truth).
 
 Reads `src/mdrap/rules.def` and ensures `src/mdrap/models.py` and `src/mdrap/fastpath.c` remain in
 perfect synchronization with the canonical X-macro definitions.
@@ -63,9 +63,12 @@ def check_sync(rules, repo_root: str) -> list[str]:
         with open(models_path, "r", encoding="utf-8") as f:
             content = f.read()
 
-        match = re.search(r"class Reason\(str,\s*Enum\):\s*(?:\"\"\"[^\"]*\"\"\"\s*)?([\s\S]*?)(?=\n\nclass|\Z)", content)
+        match = re.search(
+            r"class Reason\(str,\s*Enum(?:,\s*metaclass=[A-Za-z0-9_]+)?\):\s*(?:\"\"\"[^\"]*\"\"\"\s*)?([\s\S]*?)(?=\n\nclass|\Z)",
+            content,
+        )
         if not match:
-            errors.append("Could not locate `class Reason(str, Enum):` in models.py")
+            errors.append("Could not locate `class Reason` enum in models.py")
         else:
             enum_block = match.group(1)
             for name, bit, desc in rules:
@@ -90,11 +93,15 @@ def sync_models(rules, repo_root: str):
     with open(models_path, "r", encoding="utf-8") as f:
         content = f.read()
 
-    lines = ["class Reason(str, Enum):", '    """Deterministic failure and anomaly reason codes."""', ""]
+    lines = [
+        "class Reason(str, Enum, metaclass=ReasonType):",
+        '    """Deterministic failure and anomaly reason codes."""',
+        "",
+    ]
     for name, bit, desc in rules:
         lines.append(f'    {name} = "{name}"  # Bit {bit}: {desc}')
 
-    pattern = r"class Reason\(str,\s*Enum\):[\s\S]*?(?=\n\nclass|\Z)"
+    pattern = r"class Reason\(str,\s*Enum(?:,\s*metaclass=[A-Za-z0-9_]+)?\):[\s\S]*?(?=\n\nclass|\Z)"
     new_enum = "\n".join(lines)
     new_content = re.sub(pattern, new_enum, content)
 
