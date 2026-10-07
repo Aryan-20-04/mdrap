@@ -1,27 +1,47 @@
 include README.md
 include LICENSE
-include requirements.txt
 include pyproject.toml
-include setup.py
-include build_fastpath.py
-include config.yaml
-include pytest.ini
-include mdrap
-include mdrap.bat
-
-include mdrap.toml
-
-recursive-include src *.py *.c *.h *.def *.pyi py.typed
-recursive-include docs *.md
-recursive-include tests *.py
-recursive-include examples *.py *.ipynb
-recursive-include personas *.py
-recursive-include fuzz *.c *.py *.h
-
-global-exclude *.py[cod] __pycache__ *.o *.obj
-global-exclude *.prof *.pstats *.coverage *.tmp *.db *.duckdb *.parquet
-prune dist
-prune build
-prune scratch
-prune .pytest_cache
-
+recursive-exclude src *.py
+prune docs
+prune tests
+prune examples
+prune personas
+prune fuzz
+prune Microsoft
+exclude build_fastpath.py config.yaml mdrap.bat mdrap.toml pytest.ini requirements.txt
+include src/mdrap_build.py
+include src/mdrap/__init__.py
+include src/mdrap/_version.py
+include src/mdrap/analytics.py
+include src/mdrap/archive.py
+include src/mdrap/audit_format.py
+include src/mdrap/bbo.py
+include src/mdrap/client.py
+include src/mdrap/config.py
+include src/mdrap/fastpath.py
+include src/mdrap/gateway.py
+include src/mdrap/metrics.py
+include src/mdrap/models.py
+include src/mdrap/pipeline.py
+include src/mdrap/plugins.py
+include src/mdrap/protocol.py
+include src/mdrap/protocols.py
+include src/mdrap/quality.py
+include src/mdrap/quarantine.py
+include src/mdrap/reconciliation.py
+include src/mdrap/rules.py
+include src/mdrap/sbe.py
+include src/mdrap/security.py
+include src/mdrap/shm.py
+include src/mdrap/storage.py
+include src/mdrap/symbology.py
+include src/mdrap/watchdog.py
+include src/mdrap/_fastpath_c.c
+include src/mdrap/fastpath.c
+include src/mdrap/fastpath.pyi
+include src/mdrap/mdrap_core.c
+include src/mdrap/py.typed
+include src/mdrap/rules.def
+include src/mdrap/adapters/__init__.py
+include src/mdrap/adapters/reference.py
+include src/mdrap/adapters/template.py

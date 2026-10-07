@@ -32,7 +32,8 @@ def test_audit_append_and_verify(store):
     assert h1 != h2 != h3
     ok, msg, _ = store.verify_audit_integrity()
     assert ok is True
-    assert "Cryptographic audit chain verified (3 entries intact)" in msg
+    assert "Unanchored audit chain integrity verified (3 entries intact)" in msg
+    assert "historical authenticity is not established" in msg
 
 
 def test_audit_tamper_corrupt_entry_hash(store):
@@ -131,3 +132,49 @@ def test_audit_independent_proof_export_and_verify(store, tmp_path):
         or "mismatch" in msg_tampered.lower()
         or "tampered" in msg_tampered.lower()
     )
+
+
+def test_audit_external_checkpoint_export_and_verify(store, tmp_path):
+    """Signed audit checkpoints can be exported off-box and verified back against the DB."""
+    secret = "audit-vault-secret-99"
+    store.append_audit("admin", "operator", "EVENT_1", "init")
+    store.append_audit("admin", "operator", "EVENT_2", "run")
+
+    cp_file = str(tmp_path / "checkpoint.json")
+    cp = store.export_audit_checkpoint(cp_file, secret_key=secret)
+    assert cp["count"] == 2
+    assert "signature" in cp
+
+    # Verify against external checkpoint file
+    ok, msg = store.verify_external_checkpoint(cp_file, secret_key=secret)
+    assert ok is True
+    assert "verified against signed external checkpoint" in msg.lower()
+
+    # Appending more events later still preserves integrity against historical checkpoint
+    store.append_audit("admin", "operator", "EVENT_3", "extra")
+    ok, msg = store.verify_external_checkpoint(cp_file, secret_key=secret)
+    assert ok is True
+
+
+def test_audit_external_checkpoint_tamper_detection(store, tmp_path):
+    """Tampering with an external checkpoint or diverging history is caught."""
+    secret = "audit-vault-secret-99"
+    store.append_audit("admin", "operator", "EVENT_1", "init")
+    store.append_audit("admin", "operator", "EVENT_2", "run")
+
+    cp_file = str(tmp_path / "checkpoint.json")
+    store.export_audit_checkpoint(cp_file, secret_key=secret)
+
+    # 1. Wrong secret key fails signature check
+    ok, msg = store.verify_external_checkpoint(cp_file, secret_key="wrong-secret")
+    assert ok is False
+    assert "signature verification failed" in msg.lower()
+
+    # 2. Tampered history in DB fails prefix check against signed checkpoint
+    with store._lock:
+        store.conn.execute("UPDATE audit_log SET details = 'forged' WHERE entry_id = 2")
+        store.conn.commit()
+
+    ok, msg = store.verify_external_checkpoint(cp_file, secret_key=secret)
+    assert ok is False
+    assert "diverges from external checkpoint" in msg.lower()

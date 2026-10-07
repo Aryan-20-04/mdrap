@@ -47,7 +47,7 @@ def test_window_growth():
     # 2. Re-init direct C library with window 100 (previously would heap overflow)
     if fastpath._NATIVE_LIB:
         fastpath._NATIVE_LIB.fastpath_init(0.05, 6.0, 100)
-    
+
     cfg2 = QualityConfig(price_window=100)
     engine2 = FastQualityEngine(cfg2)
     for i in range(1, 150):

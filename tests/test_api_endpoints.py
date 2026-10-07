@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import os
 import tempfile
+import time
 import pytest
 
 pytest.importorskip("fastapi")
@@ -23,6 +24,7 @@ from api import AppState, create_app
 from models import CanonicalEvent, EventType, QualityStatus, RawEvent
 from security import SecurityManager
 from storage import Store
+from _version import __version__
 
 
 @pytest.fixture
@@ -68,7 +70,7 @@ def test_health_endpoint(api_env):
     assert r.status_code == 200
     data = r.json()
     assert data["status"] == "healthy"
-    assert data["version"] in ("2.2.0", "2.3.0", "2.4.0", "2.4.1", "2.4.2", "2.5.0", "2.6.0", "3.0.0")
+    assert data["version"] == __version__
     assert "uptime_seconds" in data
     assert "db" in data
     assert "watchdog" in data
@@ -82,7 +84,7 @@ def test_feeds_crud(api_env):
     # List feeds initially
     r_list = client.get("/v1/feeds", headers=view_headers)
     assert r_list.status_code == 200
-    assert len(r_list.json()) >= 1
+    assert r_list.json() == []
 
     # Register new feed (Admin)
     new_feed = {
@@ -94,12 +96,15 @@ def test_feeds_crud(api_env):
     r_create = client.post("/v1/feeds", json=new_feed, headers=adm_headers)
     assert r_create.status_code == 200
     assert r_create.json()["source"] == "POLYGON_EQUITIES"
-    assert r_create.json()["status"] == "ok"
+    assert r_create.json()["status"] == "REGISTERED_NOT_RUNNING"
+    assert "no feed runtime" in r_create.json()["message"]
 
     # List feeds again
     r_list2 = client.get("/v1/feeds", headers=view_headers)
     sources = [f["source"] for f in r_list2.json()]
     assert "POLYGON_EQUITIES" in sources
+    feed = next(f for f in r_list2.json() if f["source"] == "POLYGON_EQUITIES")
+    assert feed["status"] == "REGISTERED_NOT_RUNNING"
 
     # Delete feed (Admin)
     r_del = client.delete("/v1/feeds/POLYGON_EQUITIES", headers=adm_headers)
@@ -284,3 +289,58 @@ def test_keys_crud_lifecycle(api_env):
     # 5. Verify revoked key can no longer authenticate
     r_auth_rev = client.get("/v1/events", headers={"X-API-Key": raw_token})
     assert r_auth_rev.status_code == 401
+
+
+def test_server_ingest_and_websocket_broadcast(api_env):
+    client = api_env["client"]
+    op_headers = {"X-API-Key": api_env["operator_key"]}
+    view_headers = {"X-API-Key": api_env["viewer_key"]}
+
+    with client.websocket_connect(
+        "/v1/events/stream",
+        headers={"Authorization": f"Bearer {api_env['viewer_key']}"},
+    ) as ws:
+        now = time.time()
+        payload = {
+            "source": "BINANCE",
+            "payload": {
+                "instrument": "BTC/USD",
+                "event_type": "TRADE",
+                "exchange_ts": now,
+                "sequence": 1,
+                "price": 50000.0,
+                "quantity": 1.25,
+            },
+        }
+        r = client.post("/v1/ingest", json=payload, headers=op_headers)
+        assert r.status_code == 200
+        data = r.json()
+        assert data["status"] == "ok"
+        assert data["ingested"] == 1
+        assert len(data["canonical"]) == 1
+        assert data["canonical"][0]["price"] == 50000.0
+
+        ack = ws.receive_json()
+        assert ack["type"] == "ACK"
+
+        msg = ws.receive_json()
+        assert msg["instrument_id"] == "BTC/USD"
+        assert msg["price"] == 50000.0
+        assert msg["quality_status"] == "VALID"
+
+    r_feeds = client.get("/v1/feeds", headers=view_headers)
+    assert r_feeds.status_code == 200
+    feed_names = [f["source"] for f in r_feeds.json()]
+    assert "BINANCE" in feed_names
+
+
+def test_standard_error_schema_returned(api_env):
+    """Verify standard structured error response schema on 4xx/5xx (Phase 7)."""
+    client = api_env["client"]
+    r = client.get("/v1/feeds")
+    assert r.status_code == 401
+    body = r.json()
+    assert "error" in body
+    assert body["error"]["code"] == 401
+    assert "message" in body["error"]
+    assert "detail" in body

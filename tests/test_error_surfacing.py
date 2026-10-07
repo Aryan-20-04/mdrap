@@ -22,6 +22,7 @@ from config import load_config, QualityConfig
 from ws_feed import parse_binance_frame
 from polygon_feed import parse_polygon_trade
 from models import RawEvent
+from storage import Store
 
 
 class FailingStoreMock:
@@ -58,6 +59,22 @@ def test_security_revoke_api_key_db_failure_raises():
     sec.store = mock_store
     with pytest.raises(RuntimeError, match="Failed to persist API key revocation"):
         sec.revoke_api_key(token)
+
+
+def test_quarantine_reprocess_rejects_corrupt_payload_instead_of_empty_event():
+    store = Store(":memory:")
+    store.write_quarantine_batch(
+        [("bad-payload", "AAPL", "FEED", "INVALID", "[]", "{broken", 1.0)]
+    )
+    store.commit()
+
+    class MustNotProcess:
+        def process_one(self, raw):
+            raise AssertionError("Corrupt stored payload must not reach ingestion")
+
+    with pytest.raises(ValueError, match="stored payload is invalid JSON"):
+        store.reprocess_quarantine("bad-payload", MustNotProcess())
+    store.close()
 
 
 def test_daemon_stats_includes_shm_telemetry():

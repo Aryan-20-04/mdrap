@@ -291,6 +291,7 @@ def test_mic_05_flow_tracker_unknown_mpid():
 
 def test_mic_06_multicast_arbitrator_async_tcp_replay():
     """Verify MIC-06: Asynchronous TCP replay does not block the caller and recovers gaps."""
+
     # Replay client that sleeps 50ms to simulate network latency
     def slow_replay_client(ch: str, start: int, end: int) -> list[UDPPacket]:
         time.sleep(0.05)

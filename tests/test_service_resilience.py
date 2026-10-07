@@ -111,8 +111,9 @@ def test_offline_kraken_okx_bybit_parsers():
 # ---------------------------------------------------------------------------
 
 
-def test_daemon_client_connect_and_broadcast():
+def test_daemon_client_connect_and_broadcast(monkeypatch):
     """Verify StreamClient connects, authenticates, receives broadcast ticks, and closes cleanly."""
+    monkeypatch.setenv("MDRAP_DEMO", "1")
     port = 19877
     daemon = MarketDataDaemon(
         host="127.0.0.1",

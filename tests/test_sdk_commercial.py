@@ -34,6 +34,7 @@ from client import MDRAPClient
 from models import CanonicalEvent, EventType, QualityStatus
 from security import SecurityManager
 from storage import Store
+from _version import __version__
 
 
 @pytest.fixture(scope="module")
@@ -62,7 +63,9 @@ def live_api_server():
     )
     store.write_canonical_batch([ev])
     store.commit()
-    store.append_audit("SYSTEM", "ADMIN", "SDK_INIT", "SDK Commercial Test Initialization")
+    store.append_audit(
+        "SYSTEM", "ADMIN", "SDK_INIT", "SDK Commercial Test Initialization"
+    )
 
     state = AppState(db_path=db_path, store=store, security_manager=sec)
     app = create_app(state=state)
@@ -107,13 +110,12 @@ def test_sdk_health_and_feeds(live_api_server):
         # Health check
         h = client.health()
         assert h["status"] == "healthy"
-        assert h["version"] in ("2.2.0", "2.3.0", "2.4.0", "2.4.1", "2.4.2", "2.5.0", "2.6.0", "3.0.0")
+        assert h["version"] == __version__
         assert "uptime_seconds" in h
 
         # List feeds
         feeds = client.list_feeds()
-        assert isinstance(feeds, list)
-        assert len(feeds) >= 1
+        assert feeds == []
 
         # Register new feed
         reg = client.register_feed(
@@ -121,13 +123,14 @@ def test_sdk_health_and_feeds(live_api_server):
             provider="crypto",
             symbols=["BTC/USD", "ETH/USD"],
         )
-        assert reg["status"] == "ok"
+        assert reg["status"] == "REGISTERED_NOT_RUNNING"
         assert reg["source"] == "COINBASE_PRO"
 
         # List again
         feeds_after = client.list_feeds()
         sources = [f["source"] for f in feeds_after]
         assert "COINBASE_PRO" in sources
+        assert feeds_after[0]["status"] == "REGISTERED_NOT_RUNNING"
 
 
 def test_sdk_events_and_quality(live_api_server):

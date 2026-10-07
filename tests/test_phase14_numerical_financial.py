@@ -16,7 +16,9 @@ from models import CanonicalEvent, EventType, QualityStatus
 from risk import PortfolioRiskEngine, ReturnSeries
 
 
-def _make_trade(ts: float, price: float, qty: float = 100.0, symbol: str = "AAPL") -> CanonicalEvent:
+def _make_trade(
+    ts: float, price: float, qty: float = 100.0, symbol: str = "AAPL"
+) -> CanonicalEvent:
     return CanonicalEvent(
         event_id=f"t_{ts}",
         instrument_id=symbol,

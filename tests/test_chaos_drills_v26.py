@@ -37,7 +37,9 @@ def temp_db():
 def test_burst_packet_loss_drill(temp_db):
     """Verify burst packet loss detection, state machine replay request, and gap stitching."""
     engine = ChaosEngine(db_path=temp_db)
-    res = engine.run_burst_packet_loss_drill(target_source="FEEDX", total_events=1000, loss_size=50)
+    res = engine.run_burst_packet_loss_drill(
+        target_source="FEEDX", total_events=1000, loss_size=50
+    )
     assert res.passed is True
     assert res.data_loss_count == 0
     assert "stitched all 50 missing packets" in res.details
@@ -46,7 +48,9 @@ def test_burst_packet_loss_drill(temp_db):
 def test_sequence_reversal_drill(temp_db):
     """Verify scrambled/reversed arrival windows are ordered without drops."""
     engine = ChaosEngine(db_path=temp_db)
-    res = engine.run_sequence_reversal_drill(target_source="FEEDY", total_events=400, window_size=10)
+    res = engine.run_sequence_reversal_drill(
+        target_source="FEEDY", total_events=400, window_size=10
+    )
     assert res.passed is True
     assert res.data_loss_count == 0
     assert "zero drops" in res.details
@@ -64,7 +68,9 @@ def test_sqlite_locked_backoff_drill(temp_db):
 def test_network_partition_drill(temp_db):
     """Verify total venue network partition trips watchdog silence and routes secondary."""
     engine = ChaosEngine(db_path=temp_db)
-    res = engine.run_network_partition_drill(primary_source="FEEDX", secondary_source="FEEDY", total_events=1200)
+    res = engine.run_network_partition_drill(
+        primary_source="FEEDX", secondary_source="FEEDY", total_events=1200
+    )
     assert res.passed is True
     assert res.data_loss_count == 0
     assert "Zero dropped events: 0" in res.details
@@ -77,4 +83,6 @@ def test_complete_chaos_suite_v26(temp_db):
     assert len(results) == 8
     for r in results:
         assert r.passed is True, f"Drill {r.drill_name} failed: {r.details}"
-        assert r.data_loss_count == 0, f"Drill {r.drill_name} had data loss: {r.data_loss_count}"
+        assert r.data_loss_count == 0, (
+            f"Drill {r.drill_name} had data loss: {r.data_loss_count}"
+        )

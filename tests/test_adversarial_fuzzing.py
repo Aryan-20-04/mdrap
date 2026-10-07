@@ -111,20 +111,82 @@ class TestITCHParserAdversarialFuzzing:
 
         # Build baseline valid seed frames for all 14 types
         valid_seeds = [
-            (MSG_ADD_ORDER, STRUCT_A.pack(1, 1, b"\x00" * 6, 1001, b"B", 100, b"AAPL    ", 1500000)),
+            (
+                MSG_ADD_ORDER,
+                STRUCT_A.pack(1, 1, b"\x00" * 6, 1001, b"B", 100, b"AAPL    ", 1500000),
+            ),
             (MSG_ORDER_EXECUTED, STRUCT_E.pack(1, 1, b"\x00" * 6, 1001, 50, 9999)),
             (MSG_ORDER_CANCEL, STRUCT_X.pack(1, 1, b"\x00" * 6, 1001, 25)),
             (MSG_ORDER_DELETE, STRUCT_D.pack(1, 1, b"\x00" * 6, 1001)),
-            (MSG_ORDER_REPLACE, STRUCT_U.pack(1, 1, b"\x00" * 6, 1001, 1002, 100, 1510000)),
-            (MSG_TRADE_NON_CROSS, STRUCT_P.pack(1, 1, b"\x00" * 6, 1001, b"B", 100, b"AAPL    ", 1500000, 9999)),
-            (MSG_ADD_ORDER_MPID, STRUCT_F.pack(1, 1, b"\x00" * 6, 1001, b"B", 100, b"AAPL    ", 1500000, b"GSCO")),
-            (MSG_ORDER_EXECUTED_PRICE, STRUCT_C.pack(1, 1, b"\x00" * 6, 1001, 50, 9999, b"Y", 1500000)),
-            (MSG_TRADE_CROSS, STRUCT_Q.pack(1, 1, b"\x00" * 6, 500, b"AAPL    ", 1500000, 9999, b"O")),
+            (
+                MSG_ORDER_REPLACE,
+                STRUCT_U.pack(1, 1, b"\x00" * 6, 1001, 1002, 100, 1510000),
+            ),
+            (
+                MSG_TRADE_NON_CROSS,
+                STRUCT_P.pack(
+                    1, 1, b"\x00" * 6, 1001, b"B", 100, b"AAPL    ", 1500000, 9999
+                ),
+            ),
+            (
+                MSG_ADD_ORDER_MPID,
+                STRUCT_F.pack(
+                    1, 1, b"\x00" * 6, 1001, b"B", 100, b"AAPL    ", 1500000, b"GSCO"
+                ),
+            ),
+            (
+                MSG_ORDER_EXECUTED_PRICE,
+                STRUCT_C.pack(1, 1, b"\x00" * 6, 1001, 50, 9999, b"Y", 1500000),
+            ),
+            (
+                MSG_TRADE_CROSS,
+                STRUCT_Q.pack(1, 1, b"\x00" * 6, 500, b"AAPL    ", 1500000, 9999, b"O"),
+            ),
             (MSG_SYSTEM_EVENT, STRUCT_S.pack(1, 1, b"\x00" * 6, b"O")),
-            (MSG_STOCK_DIRECTORY, STRUCT_R.pack(1, 0, b"\x00" * 6, b"AAPL    ", b"Q", b"N", 100, b"N", b"C", b"  ", b"Y", b"N", b"N", b"N", b"N", 1, b"N")),
-            (MSG_STOCK_TRADING_ACTION, STRUCT_H.pack(1, 1, b"\x00" * 6, b"AAPL    ", b"T", b" ", b"    ")),
+            (
+                MSG_STOCK_DIRECTORY,
+                STRUCT_R.pack(
+                    1,
+                    0,
+                    b"\x00" * 6,
+                    b"AAPL    ",
+                    b"Q",
+                    b"N",
+                    100,
+                    b"N",
+                    b"C",
+                    b"  ",
+                    b"Y",
+                    b"N",
+                    b"N",
+                    b"N",
+                    b"N",
+                    1,
+                    b"N",
+                ),
+            ),
+            (
+                MSG_STOCK_TRADING_ACTION,
+                STRUCT_H.pack(1, 1, b"\x00" * 6, b"AAPL    ", b"T", b" ", b"    "),
+            ),
             (MSG_BROKEN_TRADE, STRUCT_B.pack(1, 1, b"\x00" * 6, 9999)),
-            (MSG_NOII, STRUCT_I.pack(1, 1, b"\x00" * 6, 1000, 200, b"B", b"AAPL    ", 1510000, 1500000, 1505000, b"O", b" ")),
+            (
+                MSG_NOII,
+                STRUCT_I.pack(
+                    1,
+                    1,
+                    b"\x00" * 6,
+                    1000,
+                    200,
+                    b"B",
+                    b"AAPL    ",
+                    1510000,
+                    1500000,
+                    1505000,
+                    b"O",
+                    b" ",
+                ),
+            ),
         ]
 
         # Run 30,000 mutations across ITCH message types
@@ -159,9 +221,52 @@ class TestBinaryStreamParserAdversarialFuzzing:
         parser = BinaryStreamParser()
 
         # Generate valid sample frames
-        v1_frame = pack_tick_frame(1, "BTC/USD", "BINANCE", 50000.0, 1.0, 49990.0, 50010.0, "VALID", False, 1000.0, 1000.001, 1000.002, 12.0)
-        v2_frame = pack_tick_frame_v2(2, "ETH/USDT", "KRAKEN", 3000.0, 2.0, 2999.0, 3001.0, "VALID", False, 1000.0, 1000.001, 1000.002, 8.0, 0)
-        depth_frame = pack_depth_frame(3, "SOL/USD", 150.0, 150.2, 10.0, 12.0, 150.1, 5.0, False, 1000.0, 1000.001, 1000.002, 15.0)
+        v1_frame = pack_tick_frame(
+            1,
+            "BTC/USD",
+            "BINANCE",
+            50000.0,
+            1.0,
+            49990.0,
+            50010.0,
+            "VALID",
+            False,
+            1000.0,
+            1000.001,
+            1000.002,
+            12.0,
+        )
+        v2_frame = pack_tick_frame_v2(
+            2,
+            "ETH/USDT",
+            "KRAKEN",
+            3000.0,
+            2.0,
+            2999.0,
+            3001.0,
+            "VALID",
+            False,
+            1000.0,
+            1000.001,
+            1000.002,
+            8.0,
+            0,
+        )
+        depth_frame = pack_depth_frame(
+            3,
+            "SOL/USD",
+            150.0,
+            150.2,
+            10.0,
+            12.0,
+            150.1,
+            5.0,
+            False,
+            1000.0,
+            1000.001,
+            1000.002,
+            15.0,
+        )
 
         seeds = [v1_frame, v2_frame, depth_frame]
 
@@ -203,7 +308,13 @@ class TestMoldUDP64DissectorAdversarialFuzzing:
         msg1 = b"A" + b"\x00" * 35
         msg2 = b"E" + b"\x00" * 30
         hdr = MOLDUDP64_HEADER_STRUCT.pack(sess, seq, count)
-        valid_packet = hdr + struct.pack("!H", len(msg1)) + msg1 + struct.pack("!H", len(msg2)) + msg2
+        valid_packet = (
+            hdr
+            + struct.pack("!H", len(msg1))
+            + msg1
+            + struct.pack("!H", len(msg2))
+            + msg2
+        )
 
         for _ in range(20_000):
             mutated = _mutate_bytes(valid_packet, rng)

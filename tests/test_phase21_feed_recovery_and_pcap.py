@@ -73,7 +73,9 @@ def test_feed_recovery_sequence_gap_and_replay_stitching():
     }
 
     def mock_replay_client(ch: str, start: int, end: int) -> list[FeedPacket]:
-        return [replayed_storage[s] for s in range(start, end + 1) if s in replayed_storage]
+        return [
+            replayed_storage[s] for s in range(start, end + 1) if s in replayed_storage
+        ]
 
     engine = FeedRecoveryEngine(
         channel_id="NASDAQ_CH1",

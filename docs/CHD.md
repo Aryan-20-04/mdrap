@@ -12,7 +12,7 @@ lineage, replay verification and price/VWAP charts.
 ## Quick start
 
 ```bash
-pip install -e '.[chd]'
+pip install mdrap-core 'mdrap-contrib[chd]'
 
 # No credentials needed for public access. For authenticated access, set
 # CRYPTOHFTDATA_API_KEY in your environment or secret manager.

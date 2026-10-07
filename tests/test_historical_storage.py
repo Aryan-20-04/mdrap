@@ -157,11 +157,14 @@ def test_partition_from_sqlite(temp_historical_dir):
             )
         """)
         ts = 1790856000.0
-        conn.execute("""
+        conn.execute(
+            """
             INSERT INTO canonical_events VALUES
             ('e1', 'GOOG', 'TRADE', ?, ?, ?, 'SRC', 1, 140.0, 50.0, NULL, NULL, NULL, NULL, 'VALID', '[]', 'r1'),
             ('e2', 'GOOG', 'TRADE', ?, ?, ?, 'SRC', 2, 141.0, 60.0, NULL, NULL, NULL, NULL, 'VALID', '[]', 'r2')
-        """, (ts, ts, ts, ts + 1, ts + 1, ts + 1))
+        """,
+            (ts, ts, ts, ts + 1, ts + 1, ts + 1),
+        )
         conn.commit()
         conn.close()
 

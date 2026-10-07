@@ -189,4 +189,3 @@ def test_shm_multi_reader_slowest_watermark():
         assert writer._last_known_read_seq == 12
     finally:
         writer.close()
-

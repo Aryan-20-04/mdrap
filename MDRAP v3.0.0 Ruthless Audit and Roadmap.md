@@ -1,0 +1,532 @@
+# MDRAP v3.0.0 - Ruthless Audit, Architecture Review and Execution Roadmap
+
+**Evidence labels:** **\[F\]** fact I verified by running or reading code. **\[I\]** inference from verified facts. **\[U\]** not verified; evidence missing is stated. **Scope note:** this is the second revision I have examined. I diffed it against the first, then re-ran every earlier reproduction against the new code instead of trusting the new changelog or the new tests. Measurements are from one x86 Linux VM (Python 3.12) and are baselines, not targets.
+
+---
+
+## 1. Executive Verdict
+
+**Not a foundation yet. A strong core wrapped in an unfinished system, and its self-description still outruns the code.**
+
+The author acted on the previous audit quickly and some fixes are excellent. The restart data-loss bug is genuinely fixed, dead-letter replay works end to end, the TCP gateway fails closed, revocation is durable, and the runtime now has zero mandatory dependencies. But the largest structural problems are untouched, several changelog entries describe fixes that do not exist in the code, and the new features introduced new defects.
+
+### Evidence ledger: every claim in the v3.0.0 changelog
+
+| Claim | Verdict | Evidence |
+| --- | --- | --- |
+| #1 run-scoped event IDs, no restart collisions | **VERIFIED** \[F\] | Two processes, same DB: 5,981 canonical / 6,000 lineage rows (exactly expected). Forced collision raises `StorageConflictError` (at `finish()` only). |
+| #3 `POST /v1/feeds` reports `REGISTERED_NOT_RUNNING`; phantom simulator feed removed | **FALSE** \[F\] | String appears nowhere in the code. Endpoint still returns "successfully registered and activated"; `GET /v1/feeds` still lists `SIMULATOR` as `ACTIVE`. |
+| #3 port 9001 removed | **PARTIAL** \[F\] | Removed from Dockerfile only. README line 43 and quickstart line 38 still advertise `tcp://localhost:9001`. |
+| #5 signed audit checkpoints | **PARTIAL, with a bug** \[F\] | HMAC over `(count, head)` exists. Anchor verification reports an honest append as "Tail truncation" and cannot distinguish it from forgery. Per-entry chain still unkeyed; forgery without an anchor still verifies. |
+| #6 gateway fails closed | **VERIFIED** \[F\] | `ValueError` at construction. |
+| #6 revocation persists before mutating memory | **VERIFIED** \[F\] | `revoke_api_key` raises and leaves memory untouched. |
+| #6 `MDRAP_API_KEY_SALT` mandatory outside demo | **FALSE** \[F\] | Enforced only if `MDRAP_REQUIRE_ENV_SECRETS=1` or `MDRAP_STRICT_SECURITY=1`. Default non-demo path still uses the public salt `mdrap_kdf_v1`. |
+| #8 ordered, idempotent migrations; rejects future DBs | **PARTIAL** \[F\] | Rejection works (via `PRAGMA user_version`). `schema_migrations` is a log that is never read; no per-version step functions; hard-coded `INSERT OR IGNORE` plus `ALTER … try/except` remain. |
+| #9 writer supervisor, absolute dead-letter dir, replay CLI | **MIXED** \[F\] | Replay works and is idempotent. But with DB and spill both failing, batches are dropped with only a log line. Default dir is cwd-derived. `kill -9` still loses \~9.7% of acknowledged events. |
+| #4 central plugin registry and hooks | **PARTIAL, with new defects** \[F\] | Registry validates and records errors, but only a CLI listing command calls it; `plugins.py` is not in the wheel. Hooks silently drop events, leak memory, and have no exception isolation. |
+| #7 no compile-on-import | **PARTIAL** \[F\] | Compile-on-import removed; `doctor` warns loudly. `-march=native -mavx2` unchanged; wheel still ships no native library; `shm.py` unfenced fallback untouched. |
+| #10 stability contracts | **WEAK** \[F\] | Tests check a `__stability__` string exists and that a hand-written name list is importable. No signature or baseline comparison. |
+| P vectorized ingestion, reduced tail blocking | **NOT SUPPORTED** \[F\] | 27k ev/s per-event and \~35k batched, same as before within noise. Max pause still \~35 ms. |
+| H bool rejection, monotonic watchdog, test-loopback gating | **UNVERIFIED** \[U\] | Not independently tested by me. |
+| H swallowed exceptions eradicated | **PARTIAL** \[F\] | 93 → 80 silent broad handlers. Targeted files are clean; `pipeline.py` now holds some. |
+| #2 single version source | **PARTIAL** \[F\] | Wheel reports 3.0.0, but `cli.py` still prints `2.2.0` in two places. Namespace collision unfixed (not claimed). |
+| Zero mandatory dependencies; pytest out of `.[all]` | **VERIFIED** \[F\] | Wheel `Requires-Dist` is empty; clean install pulls only mdrap. |
+
+**What changed in my assessment:** correctness of the core data path is now good. Trust in the project's own reporting is the problem. A foundation's documentation, changelog and stability tags are part of its API.
+
+---
+
+## 2. What This Project Actually Is
+
+- **Core purpose \[F\]:** a pure-Python (with optional C kernels) *market-data quality and reliability layer*: normalize raw vendor ticks into a canonical record, score each for quality (duplicates, out-of-order, price anomalies, staleness), reconcile across sources, and persist with lineage and a tamper-evident audit log.
+- **Who uses it:** quant/data engineers who want to quarantine bad ticks before research or trading.
+- **Core abstraction:** `RawEvent → CanonicalEvent(quality status + reasons) → lineage`. This is good.
+- **Core vs supporting:** only \~26% of the source is reachable from the reliability core (measured on the previous revision; module set unchanged except `plugins.py`) \[F\]. The rest is a CLI (9.6k lines), strategy SDK, portfolio, terminal UI, vessel tracker, FIX/ITCH decoders.
+- **Implemented and real:** normalization, quality engine (reference and fast engines agreed on all 17 adversarial inputs I tried), reconciliation, SQLite persistence, run-scoped IDs, dead-letter spill and replay, journal format, SHM ring (native), RBAC with throttling.
+- **Looks implemented but is not:** live ingestion through the server (no ingest endpoint; `broadcast_event` has no callers so the WebSocket cannot emit; `serve` opens no TCP port; `POST /v1/feeds` starts nothing), the plugin system's runtime use, anchored audit verification, "stable" API contracts.
+- **What a developer can build today:** a batch/replay quality pipeline in-process, importing `pipeline`, `quality`, `storage` from a source checkout. They cannot safely `pip install` it next to their own code (see §5).
+
+---
+
+## 3. Current Architecture
+
+```text
+ Vendor feeds / files / simulator
+        │  (adapters exist; NOT started by any server)
+        ▼
+ CLI commands (run / live / replay)  ← only path that ingests data
+        │
+        ▼
+ Pipeline (process_one / process_batch, in-process)
+   raw → [archive? optional] → normalize → pre-hook → quality → post-hook → reconcile → dispatch
+        │                                                     │
+        ├── bounded queue(128 batches) → writer thread ───────┴──► SQLite (WAL) ─► dead-letter files (spill)
+        ├── optional native SHM ring (C) / journal
+        ▼
+ REST + WebSocket server (`serve`)  ── READ-ONLY query layer over the same SQLite file
+   (26 operations; WS has no producer; no ingest route)
+```
+
+Everything lives in one flat top-level namespace (92 modules) inside one process and one SQLite file (market ticks, API keys, audit log, quarantine together).
+
+---
+
+## 4. Architecture Audit
+
+| Subsystem | Verdict | Reason |
+| --- | --- | --- |
+| Canonical record, quality engine, reconciliation | **KEEP** | Clear contract, differential agreement, 97-99% coverage on reconciliation/watchdog/BBO. |
+| Pipeline stages | **MODIFY** | Right shape; hooks and accounting must be rebuilt (§5). Per-event Python overhead caps throughput at \~30k/s. |
+| Run-scoped identity | **KEEP** | Fix is correct. |
+| Storage layer | **MODIFY** | Decorative migrations table; one file for ticks, keys, audit. REAL prices. |
+| Dead-letter | **KEEP** (+fix) | Replay works; make double-fault loud and path explicit. |
+| Journal / SHM ring | **KEEP** the concept; **MODIFY** delivery | Journal should be the source of truth, not optional. |
+| Audit chain | **REWRITE** (small) | Unkeyed per-entry hash; anchor semantics wrong. |
+| REST server | **MODIFY** | Auth/throttle exist now; lockout design is a DoS (§6). Handlers are closures in one 1,000-line factory. |
+| Server as a runtime | **ADD** | No ingest, feed supervisor, or broadcaster. |
+| Plugin system | **MODIFY then ADD wiring** | Registry exists; runtime does not consume it; not packaged. |
+| Package layout | **REWRITE** | 92 top-level modules, zero relative imports, `sys.path` hacks. |
+| `cli.py` (9.6k lines) | **REWRITE** (split) | Unreviewable monolith; also holds stale versions. |
+| Peripheral modules (portfolio, vessel, strategy SDK, terminal, FIX/ITCH, FPGA spike) | **REMOVE from core** | Different product; same compatibility promise. |
+| Native C layer | **MODIFY** | Portable flags, per-platform wheels, ARM CI; unfenced non-x86 fallback. |
+
+Dependency direction is flat: everything imports everything by bare name, so there are no enforced layers \[F\]. Components are testable in isolation only because the author wrote many tests; nothing in the structure enforces it.
+
+---
+
+## 5. Critical Problems
+
+Each: **Problem · Why it exists · Why it matters/severity · Production impact · Fix (type) · Dependencies · Tests.**
+
+**C1. Acknowledged events are lost on crash (CRITICAL).** \[F\] 20,000 events returned from `process_one`; after `kill -9`, 17,966 canonical + 91 quarantine rows were durable; \~1,943 (9.7%) gone. Identical in v1 and v2.
+
+- *Why:* the queue (128 batches) and open batch live only in memory; journal/archive is optional and off by default.
+- *Impact:* any OOM-kill, deploy, or node loss silently drops up to \~10% of in-flight data, undetectably.
+- *Fix (REWRITE write path):* acknowledge only after journal append; journal on by default; SQLite becomes a replayable projection. Depends on Phase 3.
+- *Tests:* randomized-point `kill -9` loop asserting `recovered ⊇ acknowledged`.
+
+**C2. Hooks introduce silent drops, a memory leak and no fault isolation (HIGH).** \[F\] A `pre_evaluate_hook` that returns `None`: 20,000 events in → `metrics.processed=7`, 0 rows stored/quarantined, **19,993 payloads retained** in `_pending_raw_payloads`. A hook that raises escapes into the ingest loop after 499 events.
+
+- *Why:* hook result is handled with a bare `return None` after the payload is registered.
+- *Fix (MODIFY):* a hook drop must create a quarantine/lineage record with reason `HOOK_DROPPED`, increment a counter, and free the payload; wrap hooks in try/except that quarantines with `HOOK_ERROR`.
+- *Tests:* drop-all hook accounts for every event; raising hook never aborts ingest; payload map empties.
+
+**C3. The package cannot coexist with application code (CRITICAL for a "foundation").** \[F\] Wheel installs **92 top-level entries** (`models`, `config`, `api`, `client`, `security`, `cli`…). An app with its own `models.py` gets `ImportError: cannot import name 'CanonicalEvent'`. `plugins.py` is not in `py-modules` so it is missing from the installed wheel; `src/__init__.py` is not a real package.
+
+- *Fix (REWRITE layout):* `mdrap/` package with relative imports; split `mdrap-core`/`mdrap-contrib`; shims only in a separate opt-in distribution.
+- *Tests:* clean-venv install; assert top-level names; collision script; import-graph.
+
+**C4. The server does not ingest (HIGH).** \[F\] No ingest route; `broadcast_event` has no callers in v2; `POST /v1/feeds` returns "registered and activated" and starts nothing; `GET /v1/feeds` lists a fake ACTIVE `SIMULATOR`. README/quickstart still advertise TCP 9001.
+
+- *Why:* scaffolding preceded the runtime.
+- *Fix (ADD runtime supervisor) and, now, honest docs/status (MODIFY).* Tests: boot `serve`, push data via a real adapter, assert WS receives events and ports match docs.
+
+**C5. Audit "anchors" misdiagnose growth as forgery (HIGH).** \[F\] Anchor verification demands exact entry count; honest append → "Tail truncation detected"; forgery → the *same* message. Without an anchor, a rewritten history still verifies.
+
+- *Fix (REWRITE verifier):* verify that entry #N has hash H (prefix check) and allow growth; per-entry HMAC or signed periodic checkpoints exported off-box. *Tests:* forge/truncate/splice/append matrix.
+
+**C6. Global lockout is a denial-of-service (HIGH).** \[F\] Ten bad tokens lock out a *valid* admin key for 60 s from that IP, and the check precedes token validation. Uses `request.client.host`, not the trusted-proxy resolver used for `/metrics`; uvicorn is launched with defaults \[I: behind the provided Caddy everyone shares one key; compose not run\]. The failure dict is never pruned except per returning IP (unbounded growth).
+
+- *Fix (MODIFY):* resolve client IP via trusted-proxy logic; key lockout on (IP, key-prefix); validate valid tokens regardless of lockout; bound/prune the map. *Tests:* proxy matrix; valid key unaffected by attacker failures.
+
+**C7. Writer double-fault drops batches (MEDIUM-HIGH).** \[F\] DB failing and spill failing: no exception reaches ingest, 10 error log lines, queue drained to zero. The "supervisor" is effectively dead code because the loop no longer dies.
+
+- *Fix (MODIFY):* on spill failure, mark the pipeline `degraded`, raise `WriterFailure` on next `process_*`, expose via `/ready`.
+
+**C8. Self-reported status is unreliable (HIGH, trust).** \[F\] See ledger: two changelog fixes absent, README ports wrong, stability tags unenforced, `cli.py` prints 2.2.0.
+
+- *Fix:* machine-checked claims (§21).
+
+---
+
+## 6. Security Audit
+
+| Sev | Finding | Exploitability / impact |
+| --- | --- | --- |
+| **HIGH** | Lockout DoS (C6) | Anyone who can send bad tokens denies service to a whole proxy IP. Trivial. |
+| **HIGH** | Audit chain forgeable without external anchor; anchor verifier misleading (C5) | Requires DB file write access (an insider or compromised host), which is exactly the audit threat model. |
+| **HIGH** | Default hash salt is the public constant; "mandatory salt" claim false | Fast hash of high-entropy generated keys is acceptable; weak operator-chosen env keys become rainbow-able. |
+| **MEDIUM** | Failure map unbounded (C6) | Slow memory growth with many source IPs. |
+| **MEDIUM** | `cleanup_expired_rotated_keys` mutates memory before persisting and only warns \[F\] | Low impact: `expires_at` still rejects after restart. |
+| **MEDIUM** | Revoke-by-prefix falls back to "newest key matching a 12-char prefix" \[F, read\] | All generated admin keys share the same prefix → can revoke the wrong key. |
+| **MEDIUM** | Gateway has no TLS by default; auth failures counted, not throttled \[F, v1\] | Cleartext tokens on the wire unless a TLS context is supplied. |
+| **MEDIUM** | Unauthenticated `/v1/health` exposes DB path and SHM name \[F, v1\] | Reconnaissance aid. |
+| **LOW** | Silent exception swallows remain (80), `/metrics` loopback bypass | Reduced; `testclient` gating **\[U\]**. |
+| **INFO** | Dependency scan: only dev-tool advisories (pytest) which are now out of `.[all]` | Good. |
+
+Fixed and verified: gateway fail-open, revocation persistence, REST throttling exists (not in the changelog). Not assessed: container hardening beyond reading the Dockerfile **\[U\]**.
+
+---
+
+## 7. Reliability Audit - Failure Matrix
+
+| Event | Behavior today | Verdict |
+| --- | --- | --- |
+| Process restart | Run-scoped IDs; no collision | **Good** \[F\] |
+| `kill -9` / OOM | \~9.7% of acknowledged events lost | **Bad** \[F\] |
+| DB down, spill OK | `finish()` raises; spill replayable; replay idempotent | **Good** \[F\] |
+| DB down and spill failing | Batches dropped, logged only, ingest unaware | **Bad** \[F\] |
+| Disk full | Same as double-fault \[I\] | **Bad** |
+| ID collision (forced) | `StorageConflictError` at `finish()` only; daemon sees it at shutdown; `/v1/health` shows counter | **Acceptable, late** \[F\] |
+| Hook returns None / raises | Silent drop + leak / ingest aborts | **Bad** \[F\] |
+| Newer DB schema | Refused (via `user_version`) | **Good** \[F\] |
+| Duplicate / out-of-order input | Handled by quality engine and reorder buffer | **Good** (tests) |
+| NTP step | Watchdog uses monotonic clock per changelog | **\[U\]** |
+| Native lib missing | Pure-Python fallback with doctor warning; unfenced SHM on non-x86 | **Warned but unsafe on ARM** \[I\] |
+| Feed disconnect | No supervised feeds exist in the server | **Not applicable / missing** |
+| Network partition, cache loss | No cache or distributed component | n/a |
+| Partial deploy | No migration framework to leave half-applied state; `ALTER` try/except | **Unknown** \[U\] |
+
+---
+
+## 8. Performance Audit
+
+Measured baselines (100k synthetic events, on-disk SQLite, one VM) \[F\]:
+
+| Path | Throughput | p50 | Tail |
+| --- | --- | --- | --- |
+| `process_one` | \~27k ev/s | 23 µs | p99.9 \~3-4 ms, max \~35 ms |
+| `process_batch(1024)` | \~35k ev/s | n/a (batch) | max \~0.1 ms per batch-average |
+| Native ring publish microbenchmark | \~26M ev/s (\~38 ns) |  | *Not* wire-to-SHM: one hard-coded instrument, no parsing |
+
+**Critical:** none from compute; the issue is claims. Headline "47 ns/21M eps" has no relationship to pipeline throughput (\~1,000× gap). **High-value:**
+
+1. Remove blocking flush waits from the ingest path (cause of the ms-scale tail) - measure p99.9 before/after.
+2. Cut per-event bookkeeping (8 metrics appends/event; \~20% of CPU in profile).
+3. Make `process_batch` the production path *and prove it with the harness* (claimed in v2, not measurable). **Useful:** reduce lineage row construction; sample timing masks. **Premature:** more native kernels; native quality engine gave no end-to-end gain \[F\]. SQLite is \~3% of CPU so do not replace it for speed. **Do-not-touch:** the reference/fast engine equivalence tests. **Benchmarks to create:** (a) end-to-end harness in `benchmarks/` replacing synthetic-only numbers, reporting events/s, p50/p99/p99.9/max, RSS; (b) crash-recovery time vs journal size; (c) writer backlog under slow disk; (d) ARM and x86 SHM torn-read stress.
+
+---
+
+## 9. Testing Audit
+
+\[F\] Suite: **973 passed, 1 failed, 16 skipped, 56 deselected**. Coverage **74%** (25,370 statements): pipeline 81, quality 82, storage 84, security 82, shm 80, gateway 92, gateway_tcp 61, plugins 55. `fastpath` 33% in my environment because native is not built; CI compiles it explicitly.
+
+**Problems:**
+
+- The one failure (`test_native_shm_write_tick_18_args`) **fails instead of skipping** when native is absent; 15 native tests (including parity/differential) **skip silently** by default. A developer who clones and runs `pytest` loses the native-vs-reference check without noticing.
+- The new card tests are thin and cannot catch the bugs found here: security hardening 3 tests/2 asserts; migrations 2 tests/3 asserts (no old-schema fixture, no crash case); stability "snapshot" is a hand-written name list; `test_docs_verification` did not catch README port 9001.
+- Suite and CI run with `MDRAP_DEMO=1`; only one test historically unset it.
+- The invariant test "no event silently dropped" has a 100-event tolerance and a vacuous `>= 0` assert (prior revision; not re-checked **\[U\]**).
+- No tests for: kill-9 durability, hook accounting, lockout behind proxy, anchor growth, ARM, Python 3.10.
+- Delete/rewrite: tests that assert string presence of `__stability__`; any assertion of `>= 0`.
+
+---
+
+## 10. API & Interface Audit
+
+- **Stable/typed:** `CanonicalEvent`, `RawEvent`, quality statuses: good.
+- **REST:** 26 operations, no ingest, versioned under `/v1`, role-based. `POST /v1/feeds` is misleading (C4). Error model: HTTP exceptions with free-text `detail`; no standard error schema **\[I\]**.
+- **Python API:** `import mdrap` exposes 8 names, but `Pipeline`, `Store`, hooks are reachable only by bare top-level imports (`from pipeline import Pipeline`) that collide with other packages.
+- **Hooks:** `Callable[[CanonicalEvent], CanonicalEvent | None]` with undefined semantics for `None` (silent drop today).
+- **Protocols:** `StorageBackend` split into `AppendStorageSink`/`QueryStorageStore` (per changelog **\[U\]**, not re-read); runtime-checkable only checks method presence.
+- **Versioning:** policy claims 41 "stable" modules; nothing compares signatures to a prior release.
+- **Recommendation:** publish one narrow facade (`mdrap.Engine`) as the only stable surface; everything else `_internal`.
+
+---
+
+## 11. Extensibility Audit
+
+> *If another developer built a new system on this, how hard?* Today: **hard**.
+
+- Add a source: adapter protocol exists; nothing in the server starts adapters.
+- Add a storage backend: protocol exists; 14 modules open raw SQLite directly, so a different backend would only cover the hot path.
+- Add rules: entry-point discovery exists in `rules.py`/`plugins.py`; runtime does not call it (only `mdrap plugins` lists).
+- Add integrations: possible through hooks, but hooks are unsafe (C2).
+- Needed: the runtime must consume the registry; one conformance kit per extension type; a documented lifecycle (start/stop/health) for sources.
+
+---
+
+## 12. Developer Experience Audit
+
+- Clone → `pytest`: works, but silently skips native checks and can fail one test.
+- Install → `import`: clean, zero deps (**good**), but name collisions (C3).
+- Run → `mdrap serve`: starts a healthy server that ingests nothing; quickstart implies otherwise.
+- `mdrap doctor` is a strong diagnostic (**keep**).
+- Repo hygiene: AI-agent working files (`GEMINI.md`, 88 KB `history.md`), a committed `.docx` reference, a duplicate `HFT_READINESS.md` at root and under `docs/audits/` live in the repo root.
+- A strong engineer **could not** understand the architecture without help: there is no layering to read and the docs mix real and aspirational features.
+
+---
+
+## 13. Dependency Audit
+
+- Runtime: **zero** mandatory dependencies \[F\]. Optional extras: API (FastAPI/uvicorn), UI (`rich`), others.
+- `tomli` is imported as a Python 3.10 fallback but not declared; Python 3.10 is declared supported but not in CI \[F, v1; CI unchanged\].
+- No lockfile; no SBOM; PyPI publish step has `continue-on-error` \[F, v1\].
+- Dev tools no longer in `.[all]` (**good**).
+- Native toolchain is an implicit dependency (gcc, `-march=native`).
+
+---
+
+## 14. REMOVE
+
+| What | Why | Risk of keeping | Migration | Replacement |
+| --- | --- | --- | --- | --- |
+| Fake `SIMULATOR` ACTIVE feed in `AppState` | Reports a feed that does not run | Operators trust false health | None | Empty feed list |
+| "registered and activated" message | Not true | False confidence | None | `REGISTERED_NOT_RUNNING` (claimed but absent) |
+| README/quickstart `tcp://…:9001` | No listener | Wasted integrator time | Update docs | None until TCP exists |
+| `mdrap gateway` demo emitting fake AAPL | Not a gateway | Mistaken for real | Move to examples | `examples/` |
+| Peripheral modules in core distribution (portfolio, vessel, navigator, strategy SDK, terminal, FIX/ITCH, FPGA spike) | 74% of code, different product | Compatibility promise over unrelated code | Move to `mdrap-contrib` | Separate repo/dist |
+| Root `GEMINI.md`, `history.md`, `.docx`, duplicate `HFT_READINESS.md` | Not product artifacts | Noise, confusion | `docs/dev/` | n/a |
+| Tautological stability tests | Cannot fail | False assurance | Replace | Signature-snapshot test |
+| `allow_for_role` dead-code history, `get_by_token_or_hash` legacy paths | Weak-hash fallbacks | Downgrade path | Hash migration | Single hash scheme |
+
+---
+
+## 15. ADD
+
+**Critical:** ingest runtime (supervisor for sources, writer, broadcaster); journal-first durability with acknowledgement contract; hook accounting and isolation; prefix-verifying audit anchors and off-box export; trusted-proxy-aware lockout. **High:** real migration mechanism (ordered step functions + fixtures); per-platform wheels and ARM/macOS/3.10 CI; claims-verification gate; mandatory salt/secrets in non-demo; crash and chaos tests. **Medium:** standard error schema; `mdrap.Engine` facade; fixed-point price representation in a v2 record; coverage gates by tier. **Low:** SBOM, lockfile, trusted publishing; structured logging with correlation IDs. **Future:** Postgres/ClickHouse sink; multi-process sharding.
+
+---
+
+## 16. MODIFY
+
+- Pipeline: account for every event (hook drops, writer failures), free payloads, degrade loudly.
+- Lockout: key on trusted client IP + key prefix; prune; do not block valid keys.
+- Migrations: make `schema_migrations` authoritative with step functions; keep `user_version` refusal.
+- Dead-letter: explicit configured directory; size cap; fail loudly on double fault.
+- Native build: portable baseline flags with runtime dispatch; refuse unfenced SHM fallback on non-x86.
+- Version handling: derive everywhere from package metadata; delete literals in `cli.py` and elsewhere.
+- Tests: make native tests skip cleanly; remove demo-mode default; raise assertion quality.
+
+---
+
+## 17. REWRITE
+
+| Component | Current | Why fundamentally wrong | New design | Migration | Risk | Complexity | Tests |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Package layout | Flat 92 modules, `sys.path` hacks | Cannot coexist with user code | `mdrap/{core,storage,server,adapters,cli,contrib}` | Codemod + opt-in shim dist for one release | Medium (mechanical, wide) | High | Collision, wheel-contents, import-graph |
+| Write path | Memory queue, optional archive | Acknowledged events lost on crash | Journal-first; projection workers | Dual-write behind flag, replay-compare, flip | Medium | High | kill-9 loop, replay equivalence |
+| Audit verifier | Exact-count anchor, unkeyed hashes | Cannot detect forgery usefully | Signed prefix checkpoints, optional per-entry HMAC | Keep old hash, add new column | Low | Medium | Forge/truncate/splice matrix |
+| `cli.py` | 9.6k-line module | Unreviewable, holds stale state | One module per command group | Move functions, keep entry point | Low | Medium | CLI smoke per command |
+| Server as runtime | Read-only query app | Does not do the advertised job | Supervisor owning sources, writer, broadcaster | Add alongside `serve` | Medium | High | End-to-end ingest to WS |
+
+Incremental changes are insufficient for the first two because the problem is a boundary, not a bug.
+
+---
+
+## 18. Proposed Target Architecture
+
+```text
+ Sources (adapters: plugin registry, supervised, health-reporting)
+        │
+        ▼
+ Ingest Runtime (supervisor: lifecycle, backpressure, reconnect, metrics)
+        │ acknowledge only after append
+        ▼
+ Durable Journal  (run_id + seq identity; the source of truth; fsync policy)
+        │
+        ▼
+ Core Pipeline  (pure stages: normalize → quality → reconcile; deterministic; hooks isolated + accounted)
+        │
+   ┌────┼──────────────┬───────────────┐
+   ▼    ▼              ▼               ▼
+ SQLite/Columnar   SHM ring        Sinks (Kafka, files)   Broadcaster → WebSocket
+ projection        (native)
+        ▲
+ Control Plane: REST (read + admin), AuthProvider, rate limiting, audit (signed checkpoints off-box)
+ Observability: one metric registry; /ready reflects writer+sources; counters for every drop/conflict/spill
+```
+
+**Must not exist in core:** portfolio, vessel tracking, strategy SDK, terminal UI, FPGA. **Why each component exists:** supervisor (someone must own lifecycle), journal (durability and replay), pure core (determinism and testability), projections (replaceable storage), control plane (separate from data plane so it cannot starve ingest).
+
+---
+
+## 19. Migration Strategy
+
+```text
+Current → Compatibility layer → New implementation → Migration → Validation → Old removed
+```
+
+1. **Layout:** create `mdrap/` and move modules; publish `mdrap-legacy-shims` (separate, opt-in) so existing top-level imports work for one release; remove next major.
+2. **Write path:** introduce journal behind a flag; dual-write; run replay-equivalence (DB rebuilt from journal == live DB); flip default; remove the in-memory-only path.
+3. **Audit:** add checkpoint/HMAC columns alongside the old hash; verifier accepts both; old format retired after one release.
+4. **Runtime:** add the supervisor as a new command; `serve` becomes read-only plus optional `--ingest`.
+5. **Plugins:** runtime reads the registry; keep constructor injection working.
+
+---
+
+## 20. Phase-by-Phase Roadmap
+
+Each phase lists Goal / Current / Changes / Files / Tasks / Deps / Tests / Benchmarks / Validation / Exit / Rollback.
+
+### Phase 0 - Baseline and Truth
+
+- **Goal:** the project's statements about itself are machine-checked.
+- **Current:** changelog claims absent fixes; README ports wrong; `cli.py` prints 2.2.0.
+- **Changes:** correct `CHANGELOG`, README, quickstart; remove phantom feed; implement `REGISTERED_NOT_RUNNING` or delete the claim.
+- **Files:** `CHANGELOG.md`, `README.md`, `docs/quickstart.md`, `src/api.py`, `src/cli.py`.
+- **Tasks:** (1) commit every audit reproduction script under `tests/repro/`; (2) add a docs-claims test (ports and endpoints vs OpenAPI); (3) single `__version__` from metadata; (4) CI matrix without `MDRAP_DEMO`.
+- **Deps:** none. **Tests:** repro scripts as T1 tests; claims test. **Benchmarks:** record baselines in §22. **Validation:** every changelog line maps to a test ID.
+- **Exit:** gate G0 (§21). **Rollback:** docs-only; revert commit.
+
+### Phase 1 - Correctness of New Code
+
+- **Goal:** no new feature can silently lose or leak data.
+- **Current:** hooks drop and leak; anchors misdiagnose; lockout DoS; double-fault drops.
+- **Changes/Tasks:** hook accounting (`HOOK_DROPPED`, `HOOK_ERROR`) and payload cleanup in `process_one` and `process_batch`; audit verifier prefix check; client-IP resolver reuse and bounded failure map; spill failure → degraded state + `WriterFailure`; salt enforcement outside demo; `cleanup_expired_rotated_keys` persist-first.
+- **Files:** `pipeline.py`, `storage.py`, `security.py`, `api.py`.
+- **Tests:** drop-all/raising hook; honest-append and forge matrix; shared-IP lockout test; double-fault test must raise.
+- **Benchmarks:** confirm no regression (>10%) in §22 baselines. **Validation:** T1 repros flip from fail to pass. **Exit:** G1. **Rollback:** per-fix revert; feature flag for hook strictness.
+
+### Phase 2 - Packaging and Core Architecture
+
+- **Goal:** installable next to anything; one clear core.
+- **Changes:** `mdrap/` package, relative imports, delete `sys.path` hacks and `import __init__`; ship `plugins`; split `mdrap-core`/`mdrap-contrib`; split `cli.py`.
+- **Files:** all of `src/`, `pyproject.toml`, `setup.py`, `MANIFEST.in`.
+- **Tasks:** codemod; shim dist; wheel-contents test; import-graph test; Python 3.10-3.13 matrix.
+- **Deps:** Phase 0. **Tests:** collision script, wheel top-level assertion, plugins importable from wheel. **Validation:** clean-venv install + example app with `models.py`. **Exit:** G2. **Rollback:** keep legacy layout tag; shim dist.
+
+### Phase 3 - Durability and Ingest Runtime
+
+- **Goal:** no acknowledged event is lost; the server actually ingests.
+- **Changes:** journal default and ack contract; projection workers; supervisor; broadcaster wired to WebSocket; honest `/v1/feeds`.
+- **Files:** `pipeline.py`, `journal.py`, `storage.py`, `api.py`, new `runtime/`.
+- **Tasks:** dual-write; replay-equivalence tool; kill-9 harness; adapter lifecycle (start/stop/health).
+- **Deps:** Phases 1-2. **Tests:** randomized `kill -9`; slow-disk; feed reconnect; end-to-end adapter → WS. **Benchmarks:** crash-recovery time; sustained throughput with journal fsync policies. **Validation:** recovered ⊇ acknowledged across 1,000 randomized kills. **Exit:** G3. **Rollback:** flag back to legacy write path for one release.
+
+### Phase 4 - Security
+
+- **Goal:** audit and auth claims hold under the stated threat model.
+- **Changes:** signed prefix checkpoints exported off-box; optional per-entry HMAC; TLS for gateway; fail-closed config validation for non-demo startup; revoke-by-prefix ambiguity error.
+- **Tests:** forgery/truncation/splice; startup refuses default salt; TLS handshake test. **Exit:** G4. **Rollback:** old verifier retained read-only.
+
+### Phase 5 - Performance
+
+- **Goal:** published numbers are end-to-end and reproducible.
+- **Changes:** non-blocking flush; metrics sampling; batch default proven; benchmark labels corrected.
+- **Benchmarks:** the four in §8. **Validation:** committed harness; per-release results file. **Exit:** G5. **Rollback:** revert per optimization.
+
+### Phase 6 - Testing and CI
+
+- **Goal:** tests prove behavior.
+- **Changes:** native tests skip cleanly; add ARM, macOS, 3.10; property tests for identity/idempotency; chaos (disk full, DB down, double fault); coverage gates by tier; delete tautological tests.
+- **Exit:** G6.
+
+### Phase 7 - Developer Experience
+
+- **Goal:** clone → run → ingest sample data in minutes with correct docs.
+- **Changes:** `mdrap.Engine` facade; runnable quickstart; docs generated from code; move AI working files out of root.
+- **Exit:** G7.
+
+### Phase 8 - Extensibility / Platformization
+
+- **Goal:** a stranger can publish an adapter, rule, or sink without reading source.
+- **Changes:** runtime consumes registry; conformance kit per extension type; versioned plugin handshake enforced; fixed-point price in a v2 record.
+- **Exit:** G8.
+
+---
+
+## 21. Phase Tests and Gates
+
+**G0** \[ \] every changelog line has a test ID \[ \] docs-claims test green \[ \] one version source \[ \] CI runs without demo mode → PASS to P1, FAIL back. **G1** \[ \] drop-all hook fully accounted \[ \] raising hook cannot abort ingest \[ \] payload map returns to 0 \[ \] anchor matrix correct \[ \] shared-IP lockout test green \[ \] double-fault raises. **G2** \[ \] wheel top-level == `mdrap` only \[ \] collision script passes \[ \] `plugins` importable from wheel \[ \] 3.10-3.13 import matrix. **G3** \[ \] 1,000 randomized kills: recovered ⊇ acknowledged \[ \] replay-equivalence holds \[ \] `serve` delivers an adapter's events to a WebSocket client \[ \] documented ports == listening ports. **G4** \[ \] forged history fails with a stored checkpoint \[ \] non-demo startup rejects default salt \[ \] no secret in logs (scan). **G5** \[ \] harness committed \[ \] no regression >10% vs baseline \[ \] p99.9 target set from measured data. **G6** \[ \] ARM + macOS + 3.10 green \[ \] no silent native skips \[ \] coverage gates enforced \[ \] chaos suite green. **G7** \[ \] new engineer completes quickstart unaided \[ \] docs claims checked in CI. **G8** \[ \] third-party example adapter installs and runs \[ \] conformance kit green.
+
+---
+
+## 22. Quantitative Success Criteria
+
+**Invariants (zero tolerance, not arbitrary):** acknowledged-event loss = 0 under `kill -9`; silent drops = 0 (every drop has a counter and a record); ID collisions without error = 0.
+
+**Baselines measured here (this VM; not targets):** per-event \~27k ev/s, p50 23 µs, p99.9 \~3-4 ms, max \~35 ms; batched \~35k ev/s; coverage 74%; kill-9 loss 9.7%.
+
+**Targets to be established, not invented:** run the Phase 5 harness on the intended production hardware with the real feed rate; set throughput and p99/p99.9 targets at the observed peak message rate plus headroom agreed with the user; until then the gate is "no regression greater than 10% against the recorded baseline". Recovery time: measure replay time per GB of journal and set a target from the business RTO. Coverage: stable-tier modules ≥ the policy's own 90% **only after** re-tiering honestly (24 of 38 stable modules are below 90% as of the previous revision).
+
+---
+
+## 23. Master Backlog
+
+| Pri | Task | Type | Component | Depends | Difficulty | Risk | Validation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| P0 | Account for hook drops/errors; free payloads | MODIFY | `pipeline.py` | none | Low | Low | Drop-all hook test |
+| P0 | Fix changelog/README/quickstart claims; remove phantom feed | DOCUMENTATION | api, docs | none | Low | Low | Docs-claims test |
+| P0 | Journal-first ack contract | REWRITE | write path | P1 fixes | High | Med | kill-9 loop |
+| P0 | Lockout via trusted proxy IP; prune map; valid key unaffected | SECURITY | `api.py` | none | Low | Low | Proxy test |
+| P0 | Audit verifier prefix semantics + off-box checkpoint | REWRITE | storage/security | none | Med | Low | Forge matrix |
+| P1 | `mdrap/` package, relative imports, shim dist | REWRITE | all | P0 docs | High | Med | Collision test |
+| P1 | Ship `plugins`; wheel-contents test | MODIFY | packaging | layout | Low | Low | Wheel test |
+| P1 | Writer double-fault → degraded + raise | MODIFY | pipeline | none | Low | Low | Double-fault test |
+| P1 | Mandatory salt/secrets in non-demo | SECURITY | security | none | Low | Low | Startup test |
+| P1 | Ingest runtime + WS broadcaster | ADD | runtime | journal | High | Med | E2E test |
+| P1 | CI matrix: ARM, macOS, 3.10, non-demo | INFRASTRUCTURE | CI | none | Med | Low | Green matrix |
+| P2 | Real migrations (step functions + fixtures) | REWRITE | storage | none | Med | Low | Upgrade fixtures |
+| P2 | Split `cli.py` | REWRITE | cli | layout | Med | Low | CLI smoke |
+| P2 | Native build: portable flags, wheels, fenced fallback | MODIFY | native | CI | Med | Med | qemu old-CPU + ARM stress |
+| P2 | Native tests skip cleanly | TEST | tests | none | Low | Low | Clean checkout run |
+| P2 | Move peripheral modules to contrib | REMOVE | packaging | layout | Med | Low | Import-graph |
+| P2 | Signature-level API snapshot vs last release | TEST | CI | layout | Med | Low | Remove symbol → fail |
+| P3 | Non-blocking flush; metrics sampling | PERFORMANCE | pipeline | harness | Med | Low | Benchmark |
+| P3 | Standard error schema; `mdrap.Engine` facade | MODIFY | API | layout | Med | Low | Contract tests |
+| P3 | Lockfile, SBOM, trusted publishing | INFRASTRUCTURE | release | none | Low | Low | Release dry-run |
+| P4 | Fixed-point price record v2 | MODIFY | models | layout | High | Med | Round-trip tests |
+| P4 | Postgres/ClickHouse sink | ADD | storage | conformance kit | High | Med | Kit passes |
+
+---
+
+## 24. Do Not Build Yet
+
+- **FPGA / hardware offload:** unproven need; software path is \~1,000× below the kernel number and not bottlenecked on compute.
+- **Distributed/sharded deployment:** single-writer durability is not yet correct.
+- **More native kernels:** native quality engine gave no end-to-end gain.
+- **Additional plugin groups** beyond adapters and rules until the runtime consumes the registry.
+- **New protocol decoders, strategy tooling, portfolio features:** different product.
+- **Grafana/web dashboard:** build after one metric registry exists.
+- **GraphQL/gRPC APIs:** REST is not yet complete.
+
+---
+
+## 25. Top 10 Risks (after the roadmap)
+
+| # | Risk | Prob. | Impact | Early warning | Mitigation |
+| --- | --- | --- | --- | --- | --- |
+| 1 | Claims drift from code again | High | High | Changelog line without test ID | Claims gate in CI |
+| 2 | Layout migration breaks downstream users | Med | High | Import errors in shim dist | One-release shim, codemod |
+| 3 | Journal-first slows ingest unacceptably | Med | Med | Throughput below baseline | Group commit, configurable fsync policy |
+| 4 | Dual-write divergence during migration | Med | High | Replay-equivalence mismatch | Block flip until zero diffs |
+| 5 | ARM correctness bugs surface late | Med | High | Torn reads in ARM stress | ARM CI before any release |
+| 6 | Single maintainer / AI-assisted authoring without review | High | High | Unreviewed large diffs | Review gate; smaller PRs |
+| 7 | SQLite single-writer ceiling | Med | Med | Writer backlog metric rising | Sink abstraction, columnar projection |
+| 8 | Float prices cause audit/equality drift | Low | High | Hash mismatch across platforms | Fixed-point v2 record |
+| 9 | Plugin ecosystem never forms | Med | Med | Zero external adapters | Conformance kit, examples |
+| 10 | Scope creep returns | High | Med | New top-level modules | Contrib split + module budget |
+
+---
+
+## 26. Final Brutal Verdict
+
+- **Is this project good today?** The core is good; the product is not. It is a promising pre-1.0 library, not a platform.
+- **Genuinely impressive:** the quality/reconciliation engines with differential agreement, `doctor`, dead-letter replay, how quickly confirmed defects get fixed, and honest fallback warnings.
+- **Merely average:** SQLite storage, REST layer, test volume (74% coverage), documentation volume.
+- **Weak:** packaging, ingest runtime, plugin wiring, audit verification, new tests' depth.
+- **Fundamentally broken:** crash durability (acknowledged data lost), installability beside other code, and the gap between claims and code.
+- **Is the architecture worth keeping?** The core pipeline: yes. The layout, write path and server role: no.
+- **Retained vs rewritten:** I cannot give an honest single percentage. Structurally, \~26% of the code is the core to keep as-is; the layout change touches every import but is mechanical; genuinely new logic is concentrated in four areas (write path, audit verifier, ingest runtime, hook accounting).
+- **Could this become a serious production-grade foundation?** **YES, BUT:** only after the journal-first write path, the package restructure, an ingest runtime, and a claims-verification gate. Evidence of capacity: the previous audit's top defect was fixed correctly within days.
+- **Could other developers build on it?** Not via `pip install` today; by vendoring the core from source, with effort.
+- **Single biggest blocker:** self-reported status that outruns the code (two changelog fixes absent, wrong ports in docs, tautological stability tests). Everything else is fixable; this decides whether anyone can believe the rest.
+- **Work on first:** Phase 0 and Phase 1 together, then the journal-first write path.
+
+---
+
+## 27. First 10 Things I Should Do
+
+1. Commit every reproduction from this audit as a failing test under `tests/repro/` (hook drop/leak, anchor growth, lockout, kill-9, collision wheel test, double-fault).
+2. Correct `CHANGELOG.md`: mark #3, salt and perf entries accurately; add a test ID next to every entry.
+3. Remove the phantom `SIMULATOR` feed; make `POST /v1/feeds` return `REGISTERED_NOT_RUNNING`.
+4. Delete the TCP 9001 lines from README and quickstart (or build the listener).
+5. Fix hook semantics: quarantine + count drops, isolate exceptions, free `_pending_raw_payloads`.
+6. Rewrite audit verification to check the entry at the anchored position and tolerate growth; add off-box checkpoint export.
+7. Make lockout trusted-proxy-aware, per (IP, key prefix), bounded, and never block a valid key.
+8. Raise on double-fault in the writer; mark the pipeline degraded and surface it on `/ready`.
+9. Add `plugins` to the wheel; add a wheel-contents test asserting only `mdrap` at top level (this will force the layout work).
+10. Design and prototype journal-first acknowledgement behind a flag and run the randomized `kill -9` harness against it.
+
+---
+
+### Not verified (evidence missing)
+
+- Behavior on ARM, macOS, Windows, and Python 3.10.
+- Whether bool rejection, monotonic watchdog and `testclient` gating work as stated (not independently tested).
+- Whether `AppendStorageSink`/`QueryStorageStore` are enforced anywhere beyond type hints.
+- Lockout behavior under the actual compose + Caddy deployment (inferred from uvicorn defaults).
+- ASan/TSan/fuzz of the C code; SHM torn-read behavior on weak-memory CPUs.
+- Long-run soak and memory growth.
+- Container hardening beyond reading the Dockerfile.

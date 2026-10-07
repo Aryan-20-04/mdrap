@@ -37,8 +37,9 @@ def test_device_result_percentiles_calculation():
     assert res.avg_ms == 50.5
 
 
-def test_concurrent_normal_and_fast_devices():
+def test_concurrent_normal_and_fast_devices(monkeypatch):
     """Verify simultaneous execution of Normal User and Fast-Paced Bot against live daemon."""
+    monkeypatch.setenv("MDRAP_DEMO", "1")
     port = 20881
     prom_port = 20111
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -122,8 +123,9 @@ def test_concurrent_normal_and_fast_devices():
             daemon.stop()
 
 
-def test_workload_simulator_tier_orchestration():
+def test_workload_simulator_tier_orchestration(monkeypatch):
     """Verify ConcurrentWorkloadSimulator runs a complete tier and renders reports."""
+    monkeypatch.setenv("MDRAP_DEMO", "1")
     port = 20882
     prom_port = 20112
     with tempfile.TemporaryDirectory() as tmpdir:

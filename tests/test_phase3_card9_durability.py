@@ -19,6 +19,7 @@ def test_dead_letter_spill_on_storage_failure():
 
     try:
         store = Store(db_path)
+
         # Mock a failing store that raises on batch write
         class FailingStore(Store):
             def write_batches_atomic(self, *args, **kwargs):
@@ -47,7 +48,11 @@ def test_dead_letter_spill_on_storage_failure():
 
         # Verify a spill file was created in dl_dir
         assert os.path.exists(dl_dir)
-        spill_files = [f for f in os.listdir(dl_dir) if f.startswith("spill-") and f.endswith(".jsonl")]
+        spill_files = [
+            f
+            for f in os.listdir(dl_dir)
+            if f.startswith("spill-") and f.endswith(".jsonl")
+        ]
         assert len(spill_files) == 1
 
         # Now test replaying into a working store!
@@ -71,6 +76,7 @@ def test_dead_letter_spill_on_storage_failure():
     finally:
         os.environ.pop("MDRAP_DEAD_LETTER_DIR", None)
         import shutil
+
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
 

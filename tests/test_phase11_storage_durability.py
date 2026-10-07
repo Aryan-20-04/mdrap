@@ -25,7 +25,7 @@ from models import RawEvent, CanonicalEvent, EventType, QualityStatus
 def test_stor_01_journal_partial_batch_reopen_no_overwrite():
     with tempfile.TemporaryDirectory() as tmpdir:
         jpath = os.path.join(tmpdir, "test.dbn")
-        
+
         # 1. Write 42 records (well under the old 128-record flush interval)
         j1 = BinaryJournal(jpath, initial_records=1024)
         for i in range(1, 43):
@@ -74,7 +74,7 @@ def test_stor_01_journal_partial_batch_reopen_no_overwrite():
 def test_stor_01_journal_scan_forward_crash_recovery():
     with tempfile.TemporaryDirectory() as tmpdir:
         jpath = os.path.join(tmpdir, "crash_test.dbn")
-        
+
         # Write 25 records
         j = BinaryJournal(jpath, initial_records=512)
         for i in range(1, 26):
@@ -90,7 +90,9 @@ def test_stor_01_journal_scan_forward_crash_recovery():
         # Deliberately corrupt the header record_count back to 0 (simulating crash before header sync)
         with open(jpath, "r+b") as f:
             hdr_bytes = f.read(128)
-            magic, ver, rec_sz, epoch, count, first_seq, last_seq, c_ts, u_ts, pad = JOURNAL_HDR_STRUCT.unpack(hdr_bytes)
+            magic, ver, rec_sz, epoch, count, first_seq, last_seq, c_ts, u_ts, pad = (
+                JOURNAL_HDR_STRUCT.unpack(hdr_bytes)
+            )
             # Overwrite count, first_seq, last_seq with 0
             tampered_hdr = JOURNAL_HDR_STRUCT.pack(
                 magic, ver, rec_sz, epoch, 0, 0, 0, c_ts, u_ts, pad
@@ -105,7 +107,9 @@ def test_stor_01_journal_scan_forward_crash_recovery():
         assert j_recovered.last_seq == 25
 
         # Further appends must resume at slot 26, not 0
-        j_recovered.append_tick(seq=26, symbol="MSFT", source="BATS", price=326.0, size=50.0)
+        j_recovered.append_tick(
+            seq=26, symbol="MSFT", source="BATS", price=326.0, size=50.0
+        )
         assert j_recovered.record_count == 26
         j_recovered.close(truncate_to_used=True)
 
@@ -120,7 +124,9 @@ def test_stor_02_shm_drainer_retains_batch_on_store_exception():
     with patch("shm_drainer.SHMReader"):
         worker = SHMDrainWorker(shm_name="dummy_shm", batch_size=10)
         mock_store = MagicMock()
-        mock_store.write_batches_atomic.side_effect = RuntimeError("SQLite database is locked")
+        mock_store.write_batches_atomic.side_effect = RuntimeError(
+            "SQLite database is locked"
+        )
         worker.store = mock_store
 
         event1 = CanonicalEvent(
@@ -159,7 +165,9 @@ def test_stor_03_fsync_durability_invocations():
         jpath = os.path.join(tmpdir, "fsync_journal.dbn")
         journal = BinaryJournal(jpath, initial_records=128)
         with patch("os.fsync") as mock_fsync:
-            journal.append_tick(seq=1, symbol="NVDA", source="NASDAQ", price=120.0, size=10.0)
+            journal.append_tick(
+                seq=1, symbol="NVDA", source="NASDAQ", price=120.0, size=10.0
+            )
             journal.flush()
             assert mock_fsync.called
         journal.close()
@@ -167,7 +175,12 @@ def test_stor_03_fsync_durability_invocations():
         # 2. Test RawArchive fsync on flush
         archive_dir = os.path.join(tmpdir, "archive")
         archive = RawArchive(base_dir=archive_dir, buffer_size=100)
-        raw = RawEvent(raw_id="r1", source="BINANCE", payload={"p": 1}, receive_timestamp=time.time())
+        raw = RawEvent(
+            raw_id="r1",
+            source="BINANCE",
+            payload={"p": 1},
+            receive_timestamp=time.time(),
+        )
         with patch("os.fsync") as mock_fsync:
             archive.write(raw)
             archive.flush()
@@ -183,6 +196,7 @@ def test_conc_03_in_memory_store_lock_unification():
 
         # Concurrently perform writes and reads across 6 threads
         errors = []
+
         def writer():
             try:
                 for i in range(20):

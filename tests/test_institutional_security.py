@@ -134,8 +134,12 @@ def test_anchor_audit_batch():
     sm = SecurityManager(store=store)
 
     # Log several actions
-    sm.log_audit("CONFIG_UPDATE", actor="admin", role=Role.ADMIN, details="param=buffer_size")
-    sm.log_audit("SOURCE_BLOCK", actor="operator", role=Role.OPERATOR, details="source=FEED_BAD")
+    sm.log_audit(
+        "CONFIG_UPDATE", actor="admin", role=Role.ADMIN, details="param=buffer_size"
+    )
+    sm.log_audit(
+        "SOURCE_BLOCK", actor="operator", role=Role.OPERATOR, details="source=FEED_BAD"
+    )
     store.commit()
 
     root = sm.anchor_audit_batch(batch_size=10)

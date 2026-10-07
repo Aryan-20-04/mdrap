@@ -410,11 +410,127 @@ def test_pipeline_pre_evaluate_hook_drop():
         },
     )
 
-    assert pipeline.process_one(raw_drop) is None
+    dropped_one = pipeline.process_one(raw_drop)
+    assert dropped_one is not None
+    assert dropped_one.quality_status == QualityStatus.INVALID
+    assert "HOOK_DROPPED" in dropped_one.reasons
+    assert pipeline.metrics.hook_dropped == 1
+    assert pipeline._pending_raw_payloads == {}
     assert pipeline.process_one(raw_keep) is not None
 
-    batch = pipeline.process_batch([raw_drop, raw_keep])
-    assert len(batch) == 1
-    assert batch[0].instrument_id == "BLUECHIP"
+    raw_drop_batch = RawEvent(
+        source="TEST",
+        payload={
+            "instrument": "PENNY",
+            "event_type": "TRADE",
+            "exchange_ts": now,
+            "sequence": 3,
+            "price": 5.0,
+            "quantity": 100.0,
+        },
+    )
+    raw_keep_batch = RawEvent(
+        source="TEST",
+        payload={
+            "instrument": "BLUECHIP",
+            "event_type": "TRADE",
+            "exchange_ts": now,
+            "sequence": 4,
+            "price": 500.0,
+            "quantity": 10.0,
+        },
+    )
+    batch = pipeline.process_batch([raw_drop_batch, raw_keep_batch])
+    assert len(batch) == 2
+    assert any("HOOK_DROPPED" in event.reasons for event in batch)
+    assert any(event.instrument_id == "BLUECHIP" for event in batch)
+    assert pipeline.metrics.hook_dropped == 2
+    pipeline.finish()
+    quarantined = store.conn.execute(
+        "SELECT reasons FROM quarantine ORDER BY rowid"
+    ).fetchall()
+    assert sum("hook dropped" in row[0].lower() for row in quarantined) == 2
 
     store.close()
+
+
+def test_hook_exceptions_are_quarantined_and_isolated():
+    """Hook exceptions become visible outcomes and do not abort later events."""
+    store = Store(":memory:")
+
+    def raising_hook(ev: CanonicalEvent) -> CanonicalEvent:
+        raise RuntimeError("hook failure")
+
+    pipeline = Pipeline(store=store, pre_evaluate_hook=raising_hook)
+    now = time.time()
+    raw_events = [
+        RawEvent(
+            source="TEST",
+            payload={
+                "instrument": f"SYMBOL{i}",
+                "event_type": "TRADE",
+                "exchange_ts": now,
+                "sequence": i + 1,
+                "price": 100.0 + i,
+                "quantity": 1.0,
+            },
+        )
+        for i in range(5)
+    ]
+
+    one = pipeline.process_one(raw_events[0])
+    batch = pipeline.process_batch(raw_events[1:])
+    assert one is not None and "HOOK_ERROR" in one.reasons
+    assert len(batch) == 4
+    assert all("HOOK_ERROR" in event.reasons for event in batch)
+    assert pipeline.metrics.hook_errors == 5
+    assert pipeline.metrics.processed == 5
+    assert pipeline._pending_raw_payloads == {}
+    pipeline.finish()
+    assert store.conn.execute("SELECT count(*) FROM quarantine").fetchone()[0] == 5
+    store.close()
+
+
+def test_post_hook_drop_and_exception_are_accounted():
+    now = time.time()
+    raw_events = [
+        RawEvent(
+            source="POST_TEST",
+            payload={
+                "instrument": f"POST{i}",
+                "event_type": "TRADE",
+                "exchange_ts": now,
+                "sequence": i + 1,
+                "price": 100.0 + i,
+                "quantity": 1.0,
+            },
+        )
+        for i in range(3)
+    ]
+
+    drop_store = Store(":memory:")
+    drop_pipeline = Pipeline(store=drop_store, post_evaluate_hook=lambda ev: None)
+    dropped = drop_pipeline.process_one(raw_events[0])
+    assert dropped is not None and "HOOK_DROPPED" in dropped.reasons
+    assert drop_pipeline.metrics.hook_dropped == 1
+    assert drop_pipeline._pending_raw_payloads == {}
+    drop_pipeline.finish()
+    assert drop_store.conn.execute("SELECT count(*) FROM quarantine").fetchone()[0] == 1
+    drop_store.close()
+
+    error_store = Store(":memory:")
+
+    def broken_post_hook(ev: CanonicalEvent) -> CanonicalEvent:
+        raise LookupError("post-hook failure")
+
+    error_pipeline = Pipeline(store=error_store, post_evaluate_hook=broken_post_hook)
+    outcomes = error_pipeline.process_batch(raw_events[1:])
+    assert len(outcomes) == 2
+    assert all("HOOK_ERROR" in event.reasons for event in outcomes)
+    assert error_pipeline.metrics.hook_errors == 2
+    assert error_pipeline._pending_raw_payloads == {}
+    error_pipeline.finish()
+    assert (
+        error_store.conn.execute("SELECT count(*) FROM quarantine").fetchone()[0] == 2
+    )
+    error_store.close()

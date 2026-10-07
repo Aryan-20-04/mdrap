@@ -13,7 +13,9 @@ from failover import (
 
 def test_failover_node_initialization_and_heartbeat():
     """Verify FailoverNode starts in STANDBY and emits well-formed HeartbeatMessage."""
-    node = FailoverNode("node-1", cluster_id="prod-cluster", initial_state=NodeState.STANDBY)
+    node = FailoverNode(
+        "node-1", cluster_id="prod-cluster", initial_state=NodeState.STANDBY
+    )
     assert node.state == NodeState.STANDBY
     assert node.epoch == 1
     assert node.fencing_token == 1
@@ -119,8 +121,12 @@ def test_failover_sequence_lag_enters_syncing_state():
 def test_split_brain_resolution_deterministic_tie_breaker():
     """Verify split-brain resolution when two nodes assert PRIMARY in same epoch."""
     # Node A ("node-alpha") and Node B ("node-beta")
-    node_alpha = FailoverNode("node-alpha", cluster_id="c1", initial_state=NodeState.PRIMARY, initial_epoch=1)
-    node_beta = FailoverNode("node-beta", cluster_id="c1", initial_state=NodeState.PRIMARY, initial_epoch=1)
+    node_alpha = FailoverNode(
+        "node-alpha", cluster_id="c1", initial_state=NodeState.PRIMARY, initial_epoch=1
+    )
+    node_beta = FailoverNode(
+        "node-beta", cluster_id="c1", initial_state=NodeState.PRIMARY, initial_epoch=1
+    )
 
     # Node Beta receives heartbeat from Node Alpha
     hb_alpha = node_alpha.send_heartbeat(last_committed_seq=1000)
@@ -133,7 +139,9 @@ def test_split_brain_resolution_deterministic_tie_breaker():
 
 def test_epoch_fencing_stale_primary_rejection():
     """Verify a node rejecting a heartbeat from a stale primary with lower epoch."""
-    active_primary = FailoverNode("node-2", cluster_id="c1", initial_state=NodeState.PRIMARY, initial_epoch=3)
+    active_primary = FailoverNode(
+        "node-2", cluster_id="c1", initial_state=NodeState.PRIMARY, initial_epoch=3
+    )
 
     # Zombie former primary sends heartbeat with epoch=1
     stale_hb = HeartbeatMessage(

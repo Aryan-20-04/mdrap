@@ -1,6 +1,6 @@
 ﻿"""MDRAP Reason Generator and Synchronizer (Single Source of Truth).
 
-Reads `src/rules.def` and ensures `src/models.py` and `src/fastpath.c` remain in
+Reads `src/mdrap/rules.def` and ensures `src/mdrap/models.py` and `src/mdrap/fastpath.c` remain in
 perfect synchronization with the canonical X-macro definitions.
 """
 import argparse
@@ -53,8 +53,8 @@ def parse_rules_def(rules_path: str):
 
 def check_sync(rules, repo_root: str) -> list[str]:
     errors = []
-    models_path = os.path.join(repo_root, "src", "models.py")
-    fastpath_c_path = os.path.join(repo_root, "src", "fastpath.c")
+    models_path = os.path.join(repo_root, "src", "mdrap", "models.py")
+    fastpath_c_path = os.path.join(repo_root, "src", "mdrap", "fastpath.c")
 
     # 1. Check models.py
     if not os.path.exists(models_path):
@@ -80,13 +80,13 @@ def check_sync(rules, repo_root: str) -> list[str]:
         with open(fastpath_c_path, "r", encoding="utf-8") as f:
             c_content = f.read()
         if '#include "rules.def"' not in c_content and '#include \"rules.def\"' not in c_content:
-            errors.append("src/fastpath.c does not #include \"rules.def\"")
+            errors.append("src/mdrap/fastpath.c does not #include \"rules.def\"")
 
     return errors
 
 
 def sync_models(rules, repo_root: str):
-    models_path = os.path.join(repo_root, "src", "models.py")
+    models_path = os.path.join(repo_root, "src", "mdrap", "models.py")
     with open(models_path, "r", encoding="utf-8") as f:
         content = f.read()
 
@@ -109,7 +109,7 @@ def main():
     args = parser.parse_args()
 
     repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-    rules_def_path = os.path.join(repo_root, "src", "rules.def")
+    rules_def_path = os.path.join(repo_root, "src", "mdrap", "rules.def")
 
     try:
         rules = parse_rules_def(rules_def_path)

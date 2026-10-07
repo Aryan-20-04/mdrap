@@ -20,14 +20,16 @@ async def test_conc_02_concurrent_broadcast_without_head_of_line_blocking():
 
     fast_writer1 = MagicMock(spec=asyncio.StreamWriter)
     fast_writer1.drain = AsyncMock(return_value=None)
-    
+
     fast_writer2 = MagicMock(spec=asyncio.StreamWriter)
     fast_writer2.drain = AsyncMock(return_value=None)
 
     # Slow writer that times out
     slow_writer = MagicMock(spec=asyncio.StreamWriter)
+
     async def slow_drain():
         await asyncio.sleep(0.5)
+
     slow_writer.drain = AsyncMock(side_effect=slow_drain)
 
     gw.clients.add(fast_writer1)
@@ -42,7 +44,9 @@ async def test_conc_02_concurrent_broadcast_without_head_of_line_blocking():
     elapsed = t1 - t0
     # The timeout in _send_to_client is 0.05s. With concurrent gather, the broadcast should complete
     # in ~0.05-0.10s, NOT sequential cumulative blocking (0.5s or sum of timeouts).
-    assert elapsed < 0.20, f"Broadcast took too long ({elapsed:.3f}s), indicating head-of-line blocking!"
+    assert elapsed < 0.20, (
+        f"Broadcast took too long ({elapsed:.3f}s), indicating head-of-line blocking!"
+    )
 
     # Both fast writers received data
     assert fast_writer1.write.called

@@ -29,20 +29,39 @@ def test_pipeline_processes_all_events_without_crashing():
 
 
 def test_no_event_is_silently_dropped():
-    """Every processed event should end up as VALID/SUSPICIOUS in the
-    canonical store, or as INVALID in quarantine -- never neither."""
-    pipeline, store = _run(5000)
-    canonical_total = sum(store.counts().values())
-    quarantine_rows = store.quarantine_sample(limit=100000)
-    invalid_only_in_quarantine = [
-        r for r in quarantine_rows if r["quality_status"] == "INVALID"
-    ]
-    # Every INVALID event lives in quarantine; canonical_total covers VALID+SUSPICIOUS
-    # (SUSPICIOUS also gets a quarantine copy, so quarantine count >= invalid count).
-    assert len(invalid_only_in_quarantine) >= 0
-    assert (
-        canonical_total + len(invalid_only_in_quarantine) >= 5000 - 100
-    )  # allow schema-failure edge cases
+    """Every generated raw ID must be persisted in canonical or quarantine with lineage."""
+    cfg = SimulatorConfig(seed=42, num_events=5000)
+    sim = FeedSimulator(cfg)
+    store = Store(":memory:")
+    pipeline = Pipeline(store)
+    expected_raw_ids = set()
+    for raw, _label in sim.generate():
+        pipeline.process_one(raw)
+        expected_raw_ids.add(raw.raw_id)
+    pipeline.finish()
+
+    canonical_raw_ids = {
+        row[0]
+        for row in store.conn.execute(
+            "SELECT raw_id FROM canonical_events WHERE raw_id != ''"
+        )
+    }
+    quarantined_raw_ids = {
+        row[0]
+        for row in store.conn.execute(
+            "SELECT lineage.raw_id FROM quarantine JOIN lineage USING (event_id)"
+        )
+    }
+    lineage_raw_ids = {
+        row[0] for row in store.conn.execute("SELECT raw_id FROM lineage")
+    }
+    accounted_raw_ids = canonical_raw_ids | quarantined_raw_ids
+
+    assert len(expected_raw_ids) == 5000
+    assert pipeline.metrics.processed == 5000
+    assert accounted_raw_ids == expected_raw_ids
+    assert lineage_raw_ids == expected_raw_ids
+    store.close()
 
 
 def test_replay_is_deterministic():

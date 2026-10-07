@@ -1,0 +1,2 @@
+include README.md
+include src/mdrap_contrib_build.py

@@ -119,14 +119,14 @@ python build_fastpath.py
 
 #### Option B: Install via Pip
 ```bash
-# Standard local install
-pip install .
+# Install the core package and CLI/peripheral add-on
+pip install . ./contrib
 
 # Editable development install
-pip install -e .
+pip install -e . -e ./contrib
 
 # Direct from GitHub repository
-pip install git+https://github.com/aryan-20-04/mdrap.git
+pip install "mdrap-core @ git+https://github.com/aryan-20-04/mdrap.git" "mdrap-contrib @ git+https://github.com/aryan-20-04/mdrap.git#subdirectory=contrib"
 ```
 
 > [!TIP]
@@ -1250,5 +1250,3 @@ To verify cycle-accurate bit-exact parity against Python and C software engines:
 pytest tests/test_fpga_parity.py -v
 ```
 See [FPGA Spike Findings](fpga-spike-findings.md) for timing closure, resource utilization, and the gap analysis to commercial hardware appliances.
-
-

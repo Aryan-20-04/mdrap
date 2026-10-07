@@ -218,8 +218,22 @@ def test_replay_engine_load_from_binary_journal():
 
     try:
         with BinaryJournal(jnl_path, initial_records=16) as jnl:
-            jnl.append_tick(seq=1, symbol="AAPL", source="FEEDX", price=150.25, size=100.0, exchange_ts=500.0)
-            jnl.append_tick(seq=2, symbol="AAPL", source="FEEDX", price=150.50, size=200.0, exchange_ts=501.0)
+            jnl.append_tick(
+                seq=1,
+                symbol="AAPL",
+                source="FEEDX",
+                price=150.25,
+                size=100.0,
+                exchange_ts=500.0,
+            )
+            jnl.append_tick(
+                seq=2,
+                symbol="AAPL",
+                source="FEEDX",
+                price=150.50,
+                size=200.0,
+                exchange_ts=501.0,
+            )
             jnl.flush()
 
         engine = HistoricalReplayEngine(speed_factor=None)

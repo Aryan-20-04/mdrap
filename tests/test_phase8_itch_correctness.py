@@ -22,7 +22,23 @@ def test_itch_untracked_order_execution_synthesis():
 
     # Register locate 123 -> TSLA via Stock Directory 'R' message
     r_payload = STRUCT_R.pack(
-        123, 0, ts_b, b"TSLA    ", b"Q", b"N", 100, b"N", b"C", b"  ", b"Y", b"N", b"N", b"N", b"N", 1, b"N"
+        123,
+        0,
+        ts_b,
+        b"TSLA    ",
+        b"Q",
+        b"N",
+        100,
+        b"N",
+        b"C",
+        b"  ",
+        b"Y",
+        b"N",
+        b"N",
+        b"N",
+        b"N",
+        1,
+        b"N",
     )
     r_msg = ITCHParser.parse_payload(MSG_STOCK_DIRECTORY, r_payload)
     assert r_msg is not None
@@ -40,7 +56,9 @@ def test_itch_untracked_order_execution_synthesis():
     assert "EXECUTION_WITHOUT_LOCAL_ORDER_STATE" in event.reasons
 
     # Execute untracked order with explicit price (C message)
-    pc = STRUCT_C.pack(123, 0, ts_b, 999998, 200, 88889, b"Y", int(250.75 * PRICE_FACTOR_ITCH))
+    pc = STRUCT_C.pack(
+        123, 0, ts_b, 999998, 200, 88889, b"Y", int(250.75 * PRICE_FACTOR_ITCH)
+    )
     msg_c = ITCHParser.parse_payload(MSG_ORDER_EXECUTED_PRICE, pc)
     event_c = tracker.process_message(msg_c)
 
@@ -65,12 +83,30 @@ def test_itch_epoch_timestamp_avoids_stale_quarantine():
 
     # Register locate
     r_payload = STRUCT_R.pack(
-        10, 0, ts_b, b"AAPL    ", b"Q", b"N", 100, b"N", b"C", b"  ", b"Y", b"N", b"N", b"N", b"N", 1, b"N"
+        10,
+        0,
+        ts_b,
+        b"AAPL    ",
+        b"Q",
+        b"N",
+        100,
+        b"N",
+        b"C",
+        b"  ",
+        b"Y",
+        b"N",
+        b"N",
+        b"N",
+        b"N",
+        1,
+        b"N",
     )
     tracker.process_message(ITCHParser.parse_payload(MSG_STOCK_DIRECTORY, r_payload))
 
     # Untracked execution with price
-    pc = STRUCT_C.pack(10, 0, ts_b, 5555, 100, 9999, b"Y", int(175.50 * PRICE_FACTOR_ITCH))
+    pc = STRUCT_C.pack(
+        10, 0, ts_b, 5555, 100, 9999, b"Y", int(175.50 * PRICE_FACTOR_ITCH)
+    )
     msg_c = ITCHParser.parse_payload(MSG_ORDER_EXECUTED_PRICE, pc)
     event = tracker.process_message(msg_c)
 
@@ -81,6 +117,7 @@ def test_itch_epoch_timestamp_avoids_stale_quarantine():
 
     # Pass through QualityEngine - must NOT be flagged as STALE_TIMESTAMP
     from quality import QualityConfig
+
     qe = QualityEngine(QualityConfig(staleness_threshold_s=10.0))
     result = qe.evaluate(event)
 

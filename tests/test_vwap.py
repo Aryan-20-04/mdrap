@@ -270,8 +270,9 @@ def test_daemon_vwap_command_and_client_query():
             os.unlink(db_path)
 
 
-def test_daemon_vwap_auth_guard():
+def test_daemon_vwap_auth_guard(monkeypatch):
     """Verify unauthenticated/invalid token is rejected while valid key queries VWAP curves."""
+    monkeypatch.setenv("MDRAP_DEMO", "1")
     fd, db_path = tempfile.mkstemp(suffix=".db")
     os.close(fd)
 

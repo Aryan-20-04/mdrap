@@ -353,7 +353,13 @@ def test_time_based_flush_for_low_volume_feeds():
     pipeline._maybe_flush()
 
     # Verify rows were flushed to SQLite without waiting for buffer to hit 2,000
-    rows = store.latest("MSFT", limit=10)
+    deadline = time.time() + 1.0
+    rows = []
+    while time.time() < deadline:
+        rows = store.latest("MSFT", limit=10)
+        if len(rows) == 3:
+            break
+        time.sleep(0.02)
     assert len(rows) == 3
 
     pipeline.finish()

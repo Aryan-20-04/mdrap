@@ -146,4 +146,9 @@ data/test_export.csv/
 
 # Agent & Session Metadata
 .system_generated/
+.pytest-tmp/
+Microsoft/
+*.journal
+data/*.journal
+
 

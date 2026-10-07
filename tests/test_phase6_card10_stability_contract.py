@@ -6,8 +6,10 @@ VALID_STABILITIES = {"stable", "beta", "experimental"}
 
 
 def test_all_src_modules_declare_valid_stability_contract():
-    src_dir = os.path.join(os.path.dirname(__file__), "..", "src")
-    py_files = sorted(glob.glob(os.path.join(src_dir, "*.py")))
+    package_dir = os.path.join(os.path.dirname(__file__), "..", "src", "mdrap")
+    py_files = sorted(
+        glob.glob(os.path.join(package_dir, "**", "*.py"), recursive=True)
+    )
 
     missing = []
     invalid = []
@@ -113,3 +115,27 @@ def test_public_api_surface_snapshot_preserved():
     assert not missing_symbols, (
         f"Breaking API changes detected: missing symbols: {missing_symbols}"
     )
+
+
+def test_public_api_signatures_snapshot():
+    """Verify that method signatures for stable public APIs do not regress."""
+    import inspect
+    from gateway import normalize, ingest
+    from storage import Store
+    from pipeline import Pipeline
+
+    # Normalize and ingest parameters
+    sig_norm = inspect.signature(normalize)
+    assert "raw" in sig_norm.parameters
+    sig_ingest = inspect.signature(ingest)
+    assert "raw" in sig_ingest.parameters
+
+    # Pipeline process methods
+    sig_p1 = inspect.signature(Pipeline.process_one)
+    assert "raw" in sig_p1.parameters
+    sig_pb = inspect.signature(Pipeline.process_batch)
+    assert "raw_events" in sig_pb.parameters
+
+    # Store batch write methods
+    sig_sc = inspect.signature(Store.write_canonical_batch)
+    assert "events" in sig_sc.parameters

@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mdrap-contrib"
+version = "3.0.0"
+description = "Optional MDRAP command line and peripheral integrations"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+dependencies = ["mdrap-core==3.0.0"]
+
+[project.scripts]
+mdrap = "mdrap.cli:main"
+
+[project.optional-dependencies]
+ui = ["rich>=13.0.0"]
+chd = ["pyarrow>=20.0.0", "zstandard>=0.21.0"]
+export = ["openpyxl>=3.1.0"]
+columnar = ["duckdb>=1.0.0", "pyarrow>=20.0.0"]
+stream = ["websockets>=12.0"]
+config = ["pyyaml>=6.0"]
+api = ["fastapi>=0.110.0", "uvicorn>=0.28.0", "httpx>=0.27.0"]
+all = [
+  "duckdb>=1.0.0", "pyarrow>=20.0.0", "zstandard>=0.21.0",
+  "rich>=13.0.0", "openpyxl>=3.1.0", "websockets>=12.0",
+  "pyyaml>=6.0", "fastapi>=0.110.0", "uvicorn>=0.28.0", "httpx>=0.27.0",
+]
+
+[tool.setuptools]
+py-modules = []
+package-dir = {"" = "src"}
+
+[tool.setuptools.cmdclass]
+build_py = "mdrap_contrib_build.ContribBuildPy"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["mdrap", "mdrap.*"]
+namespaces = true

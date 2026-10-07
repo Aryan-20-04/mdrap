@@ -9,8 +9,9 @@ from __future__ import annotations
 
 from client import Client, MDRAPClient, MarketEvent
 from models import CanonicalEvent, EventType, QualityStatus, Reason, deprecated
+from _version import __version__
+from mdrap import Engine
 
-__version__ = "3.0.0"
 __stability__ = "stable"
 
 __all__ = [
@@ -24,4 +25,5 @@ __all__ = [
     "QualityStatus",
     "Reason",
     "deprecated",
+    "Engine",
 ]

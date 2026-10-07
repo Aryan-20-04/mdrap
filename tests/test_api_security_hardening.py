@@ -20,7 +20,7 @@ pytest.importorskip("starlette")
 
 from starlette.testclient import TestClient
 
-from api import AppState, create_app
+from api import AppState, create_app, _resolve_client_ip
 from security import SecurityManager, Role
 from storage import Store
 
@@ -42,6 +42,7 @@ def api_client(tmp_path):
 
     yield {
         "client": client,
+        "state": state,
         "store": store,
         "sec": sec,
         "viewer_token": viewer.token,
@@ -67,6 +68,35 @@ def test_bearer_token_authentication(api_client):
     # 3. Valid Bearer token -> 200
     res_valid = client.get("/v1/feeds", headers={"Authorization": f"Bearer {token}"})
     assert res_valid.status_code == 200
+
+
+def test_invalid_key_burst_does_not_lock_out_a_valid_key(api_client):
+    """Lockout state is scoped to invalid key prefixes and never preempts valid auth."""
+    client = api_client["client"]
+    for _ in range(12):
+        response = client.get(
+            "/v1/feeds", headers={"X-API-Key": "attacker-key-prefix-invalid"}
+        )
+        assert response.status_code in (401, 429)
+
+    valid = client.get("/v1/feeds", headers={"X-API-Key": api_client["viewer_token"]})
+    assert valid.status_code == 200
+
+
+def test_forwarded_client_address_requires_trusted_proxy(monkeypatch):
+    from types import SimpleNamespace
+
+    request = SimpleNamespace(
+        client=SimpleNamespace(host="198.51.100.10"),
+        headers={"X-Forwarded-For": "203.0.113.8, 198.51.100.20"},
+    )
+    monkeypatch.delenv("MDRAP_TRUSTED_PROXY_IPS", raising=False)
+    assert _resolve_client_ip(request) == "198.51.100.10"
+
+    monkeypatch.setenv("MDRAP_TRUSTED_PROXY_IPS", "198.51.100.10")
+    assert _resolve_client_ip(request) == "203.0.113.8"
+    request.headers["X-Forwarded-For"] = "not-an-ip"
+    assert _resolve_client_ip(request) == "198.51.100.10"
 
 
 def test_query_param_token_rejected_on_rest(api_client):
@@ -101,6 +131,15 @@ def test_health_liveness_readiness_separation(api_client):
     assert client.get("/v1/health").status_code == 200
 
 
+def test_readiness_fails_when_pipeline_writer_is_degraded(api_client):
+    from pipeline import WriterFailure
+
+    api_client["state"].pipeline._writer_failure = WriterFailure("double fault")
+    response = api_client["client"].get("/readiness")
+    assert response.status_code == 503
+    assert "writer" in response.json()["detail"]["reason"].lower()
+
+
 def test_api_key_revocation_enforced(api_client):
     """Revoking an active API key immediately revokes access."""
     client = api_client["client"]
@@ -117,3 +156,17 @@ def test_api_key_revocation_enforced(api_client):
     # Immediately blocked
     res_revoked = client.get("/v1/feeds", headers={"Authorization": f"Bearer {token}"})
     assert res_revoked.status_code in (401, 403)
+
+
+def test_ambiguous_key_prefix_revocation_returns_conflict(api_client):
+    sec = api_client["sec"]
+    first = sec.register_api_key("prefix-one", role=Role.OPERATOR)
+    second = sec.register_api_key("prefix-two", role=Role.OPERATOR)
+    first.key_prefix = second.key_prefix = "ambiguous-prefix"
+
+    response = api_client["client"].delete(
+        "/v1/keys/ambiguous-prefix",
+        headers={"X-API-Key": api_client["admin_token"]},
+    )
+    assert response.status_code == 409
+    assert first.is_active and second.is_active

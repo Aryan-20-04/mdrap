@@ -17,14 +17,22 @@ from src.shm import SHMWriter, DEFAULT_SLOT_COUNT, SLOT_SIZE, HEADER_SIZE
 
 
 def test_native_shm_write_tick_18_args():
+    if not fastpath.has_native_shm():
+        pytest.skip("Native C SHM library not compiled or unavailable")
+
     # Create an in-memory buffer matching SHM layout
     total_size = HEADER_SIZE + (16 * SLOT_SIZE)
     buf = bytearray(total_size)
-    
+
     # Initialize SHM v3 header
     if fastpath._NATIVE_LIB and hasattr(fastpath._NATIVE_LIB, "fastpath_shm_init_v3"):
         raw_addr = fastpath.get_buffer_address(buf)
-        fastpath._NATIVE_LIB.fastpath_shm_init_v3(ctypes.c_void_p(raw_addr), ctypes.c_size_t(total_size), ctypes.c_uint32(16), ctypes.c_uint64(100))
+        fastpath._NATIVE_LIB.fastpath_shm_init_v3(
+            ctypes.c_void_p(raw_addr),
+            ctypes.c_size_t(total_size),
+            ctypes.c_uint32(16),
+            ctypes.c_uint64(100),
+        )
 
     # Write tick 0 using native_shm_write_tick
     ok = fastpath.native_shm_write_tick(
@@ -59,8 +67,12 @@ def test_native_shm_write_tick_18_args():
 
 
 def test_native_shm_read_refcount_stability():
+    if not fastpath.has_native_shm():
+        pytest.skip("Native C SHM library not compiled or unavailable")
+
     total_size = HEADER_SIZE + (16 * SLOT_SIZE)
     buf = bytearray(total_size)
+
     fastpath.native_shm_write_tick(
         buf_ptr=buf,
         slot_count=16,
@@ -83,7 +95,7 @@ def test_native_shm_read_refcount_stability():
 
     # Warm up gc
     gc.collect()
-    
+
     # Read 10,000 times
     # Prior to fix: leaked 10+ Python objects per read = 100,000+ objects
     initial_objects = len(gc.get_objects())
@@ -93,7 +105,9 @@ def test_native_shm_read_refcount_stability():
 
     gc.collect()
     final_objects = len(gc.get_objects())
-    
+
     # Object count should be stable (allow small variation for pytest internals)
     diff = abs(final_objects - initial_objects)
-    assert diff < 50, f"Python object count grew by {diff} across 10,000 reads (leak detected)"
+    assert diff < 50, (
+        f"Python object count grew by {diff} across 10,000 reads (leak detected)"
+    )

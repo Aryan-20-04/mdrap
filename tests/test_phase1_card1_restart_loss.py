@@ -120,7 +120,12 @@ def test_t3_collision_detection_raises_storage_conflict_error():
         p1 = Pipeline(store=store, flush_interval_s=0.01)
         raw1 = RawEvent(
             source="TEST",
-            payload={"instrument": "AAPL", "event_type": "TRADE", "price": 150.0, "quantity": 10},
+            payload={
+                "instrument": "AAPL",
+                "event_type": "TRADE",
+                "price": 150.0,
+                "quantity": 10,
+            },
             receive_timestamp=1000.0,
             raw_id="raw_1",
         )
@@ -133,7 +138,12 @@ def test_t3_collision_detection_raises_storage_conflict_error():
         p2 = Pipeline(store=store, flush_interval_s=0.01)
         raw2 = RawEvent(
             source="TEST",
-            payload={"instrument": "AAPL", "event_type": "TRADE", "price": 155.0, "quantity": 20},
+            payload={
+                "instrument": "AAPL",
+                "event_type": "TRADE",
+                "price": 155.0,
+                "quantity": 20,
+            },
             receive_timestamp=1001.0,
             raw_id="raw_1",
         )

@@ -37,11 +37,24 @@ def print_banner(text: str) -> None:
     print(f"\n{sep}\n{text.center(76)}\n{sep}")
 
 
+def _get_env() -> dict[str, str]:
+    env = os.environ.copy()
+    src_dir = os.path.join(_REPO_ROOT, "src")
+    contrib_dir = os.path.join(_REPO_ROOT, "contrib", "src")
+    existing_pp = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = (
+        f"{src_dir}{os.pathsep}{contrib_dir}{os.pathsep}{existing_pp}"
+        if existing_pp
+        else f"{src_dir}{os.pathsep}{contrib_dir}"
+    )
+    return env
+
+
 def run_gate(gate_num: int, name: str, cmd: list[str] | None = None, func=None) -> None:
     print(f"\n[RELEASE GATE {gate_num:02d}/14] {name}...")
     t0 = time.perf_counter()
     if cmd:
-        res = subprocess.run(cmd, cwd=_REPO_ROOT)
+        res = subprocess.run(cmd, cwd=_REPO_ROOT, env=_get_env())
         if res.returncode != 0:
             print(
                 f"\n[FAILED] Release Gate {gate_num} ({name}) failed with exit code {res.returncode}"
@@ -59,7 +72,7 @@ def run_gate(gate_num: int, name: str, cmd: list[str] | None = None, func=None) 
 
 def gate_rules_sync():
     res = subprocess.run(
-        [sys.executable, "tools/gen_reasons.py", "--check"], cwd=_REPO_ROOT
+        [sys.executable, "tools/gen_reasons.py", "--check"], cwd=_REPO_ROOT, env=_get_env()
     )
     if res.returncode != 0:
         raise RuntimeError("rules.def single-source-of-truth parity check failed")
@@ -92,8 +105,13 @@ def gate_dependency_hygiene():
 
 
 def gate_native_tests():
-    sys.path.insert(0, os.path.join(_REPO_ROOT, "src"))
-    import fastpath
+    src_dir = os.path.join(_REPO_ROOT, "src")
+    if src_dir not in sys.path:
+        sys.path.insert(0, src_dir)
+    try:
+        from mdrap import fastpath
+    except ImportError:
+        import fastpath
 
     assert fastpath.is_available(), "Native fastpath library not available"
     res = subprocess.run(
@@ -106,16 +124,19 @@ def gate_native_tests():
             "1",
         ],
         cwd=_REPO_ROOT,
+        env=_get_env(),
     )
     if res.returncode != 0:
         raise RuntimeError("Native micro-benchmark smoke check failed")
 
 
 def gate_docs_and_artifacts():
+    env = _get_env()
     # 1. Run documentation tests
     res_docs = subprocess.run(
         [sys.executable, "-m", "pytest", "tests/test_docs_verification.py", "-q"],
         cwd=_REPO_ROOT,
+        env=env,
     )
     if res_docs.returncode != 0:
         raise RuntimeError("Documentation links and snippet verification failed")
@@ -124,6 +145,7 @@ def gate_docs_and_artifacts():
     res_art = subprocess.run(
         [sys.executable, "scripts/verify_release_artifacts.py"],
         cwd=_REPO_ROOT,
+        env=env,
     )
     if res_art.returncode != 0:
         raise RuntimeError("Release artifact verification failed")
@@ -241,8 +263,8 @@ def main():
     # Gate 11: Platform Diagnostics & Doctor
     run_gate(
         11,
-        "Platform Diagnostics & Doctor (cli.py doctor)",
-        [sys.executable, "cli.py", "doctor"],
+        "Platform Diagnostics & Doctor",
+        [sys.executable, "-m", "mdrap.cli", "doctor", "--json"],
     )
 
     # Gate 12: Native Micro-Benchmark Smoke Check
@@ -264,7 +286,7 @@ def main():
 
     total_time = time.perf_counter() - start_time
     print_banner(
-        f"ALL 14 MDRAP RELEASE GATES PASSED IN {total_time:.2f}s! READY FOR PRODUCTION"
+        f"ALL CONFIGURED RELEASE GATES PASSED IN {total_time:.2f}s. This is not a production-readiness certification."
     )
     sys.exit(0)
 

@@ -25,7 +25,9 @@ def test_sec01_direct_hash_submission_auth_bypass_prevented():
 
     # Authenticating by submitting the leaked hash MUST FAIL (returns None)
     fake_ent = sec.get_entitlement(token_hash, active_only=True)
-    assert fake_ent is None, "Security bypass: Raw token hash was accepted as credential!"
+    assert fake_ent is None, (
+        "Security bypass: Raw token hash was accepted as credential!"
+    )
 
     with pytest.raises(Exception):
         sec.authorize(token_hash, "manage_keys")
@@ -47,7 +49,9 @@ def test_sec02_rate_limiter_eviction_reset_prevented():
         limiter.allow(f"flooder_{i}", 1.0)
 
     # "victim_feed" was throttled/depleted and must NOT have been evicted and reset to full 20 tokens!
-    assert limiter.allow("victim_feed", 1.0) is False, "Rate limit bypassed: Depleted bucket was evicted and reset to full capacity!"
+    assert limiter.allow("victim_feed", 1.0) is False, (
+        "Rate limit bypassed: Depleted bucket was evicted and reset to full capacity!"
+    )
 
 
 def test_sec03_database_api_key_revocation_salted_hash_match():
@@ -74,7 +78,9 @@ def test_sec03_database_api_key_revocation_salted_hash_match():
         refreshed_keys = store.load_api_keys()
         matching = [k for k in refreshed_keys if k.client_id == "ClientRevoke"]
         assert len(matching) == 1
-        assert matching[0].is_active is False, "Database record remained active due to hash algorithm mismatch!"
+        assert matching[0].is_active is False, (
+            "Database record remained active due to hash algorithm mismatch!"
+        )
 
         store.close()
     finally:

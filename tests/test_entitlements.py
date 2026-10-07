@@ -26,7 +26,9 @@ def temp_db():
 
 
 @pytest.fixture
-def auth_daemon(temp_db):
+def auth_daemon(temp_db, monkeypatch):
+    # These cases specifically exercise the documented demo-key authentication path.
+    monkeypatch.setenv("MDRAP_DEMO", "1")
     daemon = MarketDataDaemon(
         host="127.0.0.1",
         port=0,

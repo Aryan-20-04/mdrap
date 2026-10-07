@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mdrap-compat"
+version = "3.0.0"
+description = "Opt-in legacy top-level import shims for MDRAP 3.0"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+dependencies = ["mdrap-core==3.0.0", "mdrap-contrib==3.0.0"]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+py-modules = [
+  "_version", "alert_sinks", "alerts", "analytics", "api", "archive",
+  "audit_format", "backtest", "bardb", "bbo", "benchmark", "chaos",
+  "chd", "chd_history", "cli", "client", "columnar", "config",
+  "config_loader", "corporate_actions", "dashboard", "databento_feed",
+  "depth", "export", "exporter", "failover", "fastpath", "features",
+  "feed_handler", "fix_engine", "flow_tracker", "fx", "gateway",
+  "gateway_tcp", "historical", "itch", "journal", "kafka_sink", "live",
+  "manifest", "mbo", "metrics", "models", "multicast_arbitrator",
+  "navigator", "news", "options", "pcap", "pipeline", "plugins",
+  "polygon_feed", "portfolio", "prometheus", "protocol", "protocols",
+  "quality", "quarantine", "reconciliation", "recovery", "replay",
+  "research", "risk", "rules", "sbe", "scheduler", "security", "service",
+  "shm", "shm_drainer", "simulator", "storage", "strategy_sdk", "stresstest",
+  "symbology", "tca", "term", "terminal_display", "trading_cli", "venues",
+  "vessel", "watchdog", "workload_simulator", "ws_feed",
+]

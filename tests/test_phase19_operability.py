@@ -64,7 +64,11 @@ def test_ops_02_prometheus_audit_verification_non_blocking():
 def test_ops_02_prometheus_audit_verification_tamper_detection():
     """Verify OPS-02: Tampered audit log is accurately reflected in gauge."""
     mock_store = MagicMock()
-    mock_store.verify_audit_integrity.return_value = (False, "Hash mismatch at entry 42", 50)
+    mock_store.verify_audit_integrity.return_value = (
+        False,
+        "Hash mismatch at entry 42",
+        50,
+    )
 
     state = MagicMock()
     state.start_time = time.time() - 100.0

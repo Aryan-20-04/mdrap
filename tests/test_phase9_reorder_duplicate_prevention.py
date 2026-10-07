@@ -89,7 +89,9 @@ def test_batch_reorder_no_duplicate_dispatch():
         rows = store.query_events("AAPL")
         assert len(rows) == 3
         seqs = [r["sequence_number"] for r in rows]
-        assert sorted(seqs) == [1, 2, 3], f"Unexpected sequences or duplicates in store: {seqs}"
+        assert sorted(seqs) == [1, 2, 3], (
+            f"Unexpected sequences or duplicates in store: {seqs}"
+        )
 
         store.close()
     finally:

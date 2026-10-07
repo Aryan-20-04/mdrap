@@ -1,0 +1,72 @@
+{
+  "timestamp": 1791368184.674865,
+  "single_event": {
+    "num_events": 10000,
+    "mode": "single",
+    "batch_size": 1,
+    "elapsed_s": 1.4476,
+    "events_per_second": 6908.2,
+    "rss_mb_before": 32.5,
+    "rss_mb_after": 50.98,
+    "rss_mb_growth": 18.49,
+    "e2e_latency_us": {
+      "p50": 783.6,
+      "p95": 1774.1,
+      "p99": 2179.8,
+      "p999": 2570.0,
+      "max": 2764.9
+    },
+    "processing_latency_us": {
+      "p50": 91.9,
+      "p95": 213.7,
+      "p99": 380.9,
+      "max": 5063.4
+    },
+    "quality_counts": {
+      "VALID": 9951,
+      "SUSPICIOUS": 23,
+      "INVALID": 26
+    },
+    "dropped_events": 0,
+    "hook_errors": 0,
+    "writer_failures": 0
+  },
+  "batch": {
+    "num_events": 10000,
+    "mode": "batch",
+    "batch_size": 1024,
+    "elapsed_s": 1.1207,
+    "events_per_second": 8923.1,
+    "rss_mb_before": 43.09,
+    "rss_mb_after": 52.12,
+    "rss_mb_growth": 9.04,
+    "e2e_latency_us": {
+      "p50": 783.6,
+      "p95": 1774.1,
+      "p99": 2179.8,
+      "p999": 2570.0,
+      "max": 2764.9
+    },
+    "processing_latency_us": {
+      "p50": 43394.2,
+      "p95": 83344.1,
+      "p99": 92762.2,
+      "max": 98217.1
+    },
+    "quality_counts": {
+      "VALID": 9951,
+      "SUSPICIOUS": 23,
+      "INVALID": 26
+    },
+    "dropped_events": 0,
+    "hook_errors": 0,
+    "writer_failures": 0
+  },
+  "recovery": {
+    "journal_events": 10000,
+    "recovered_events": 10000,
+    "journal_size_mb": 4.4,
+    "recovery_time_s": 0.4546,
+    "recovery_rate_eps": 21996.7
+  }
+}
