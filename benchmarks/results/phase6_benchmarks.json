@@ -4,47 +4,47 @@
     "processor": "Intel64 Family 6 Model 154 Stepping 4, GenuineIntel",
     "cpu_count": 12,
     "python_version": "3.13.1",
-    "git_commit": "fd0009e1426e2c1fd3359cd3745767fada5577e8",
-    "timestamp": 1791401052.1891134
+    "git_commit": "8e8a5a27cad24a042e3f2294729c77c4a261e761",
+    "timestamp": 1791401593.5235596
   },
   "python_pipeline": {
     "num_events": 10000,
-    "elapsed_s": 0.3036,
-    "events_per_second": 32933.9,
-    "rss_mb_growth": 0.44,
+    "elapsed_s": 0.2873,
+    "events_per_second": 34804.9,
+    "rss_mb_growth": 0.52,
     "latencies_us": {
-      "p50": 16.0,
-      "p95": 35.2,
-      "p99": 69.9,
-      "p999": 180.1,
-      "max": 886.0
+      "p50": 13.8,
+      "p95": 29.5,
+      "p99": 65.5,
+      "p999": 174.9,
+      "max": 2620.2
     }
   },
   "native_pipeline": {
     "native_accelerated": false,
     "num_events": 10000,
-    "elapsed_s": 0.1708,
-    "events_per_second": 58545.3
+    "elapsed_s": 0.1956,
+    "events_per_second": 51121.7
   },
   "ingest_log": {
     "num_events": 10000,
-    "append_elapsed_s": 0.1951,
-    "append_rate_eps": 51265.8,
-    "recovery_elapsed_s": 0.1391,
-    "recovery_rate_eps": 71900.7
+    "append_elapsed_s": 0.2052,
+    "append_rate_eps": 48739.3,
+    "recovery_elapsed_s": 0.1554,
+    "recovery_rate_eps": 64345.0
   },
   "sqlite_projection": {
     "num_events": 10000,
     "batch_size": 500,
-    "elapsed_s": 0.1636,
-    "events_per_second": 61109.5
+    "elapsed_s": 0.1684,
+    "events_per_second": 59392.3
   },
   "end_to_end_engine": {
     "num_events": 10000,
     "batch_size": 500,
-    "elapsed_s": 0.7239,
-    "events_per_second": 13814.6,
-    "rss_mb_growth": 0.02,
+    "elapsed_s": 2.1421,
+    "events_per_second": 4668.3,
+    "rss_mb_growth": 0.0,
     "persisted_canonical_ticks": 1292,
     "log_head_offset": 10000,
     "projection_lag": 0,
