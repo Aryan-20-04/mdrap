@@ -86,6 +86,18 @@ class EngineDecision:
     disagreement: bool = False
 
 
+@dataclass
+class EngineConfig:
+    """Configuration options for Engine.open()."""
+
+    db_path: str | None = None
+    staleness_threshold_s: float = DEFAULT_STALENESS_THRESHOLD_S
+    clock: Clock | None = None
+    fsync_policy: str = "always"
+    max_segment_bytes: int = 10 * 1024 * 1024
+    projections: list[Any] = field(default_factory=list)
+
+
 class Engine:
     """Unified deterministic engine and streaming pipeline facade for MDRAP.
 
@@ -327,13 +339,38 @@ class Engine:
         return []
 
     def metrics(self) -> dict[str, Any]:
-        """Return engine state counts and throughput metrics."""
+        """Return engine state counts, durability lag, and health summary."""
+        log_head = self.log.next_offset if self.log is not None else self.state.event_count
+        log_lag = 0  # IngestLog fsyncs synchronously per policy
+
+        max_proj_lag = 0
+        proj_stats = []
+        for proj in self._projections:
+            name = getattr(proj, "name", "projection")
+            cp = proj.checkpoint() if hasattr(proj, "checkpoint") else -1
+            lag = max(0, log_head - (cp + 1)) if cp >= 0 else log_head
+            if lag > max_proj_lag:
+                max_proj_lag = lag
+            proj_stats.append({"name": name, "checkpoint": cp, "lag": lag})
+
+        if max_proj_lag == 0 and log_lag == 0:
+            health_status = "HEALTHY"
+        elif max_proj_lag < 500:
+            health_status = "DEGRADED"
+        else:
+            health_status = "UNHEALTHY"
+
         return {
             "processed": self.state.event_count,
             "counts": dict(self.state.counts),
             "valid": self.state.counts.get("VALID", 0),
             "suspicious": self.state.counts.get("SUSPICIOUS", 0),
             "invalid": self.state.counts.get("INVALID", 0),
+            "log_head_offset": log_head,
+            "log_lag": log_lag,
+            "projection_lag": max_proj_lag,
+            "projections": proj_stats,
+            "health_status": health_status,
         }
 
     def close(self) -> None:

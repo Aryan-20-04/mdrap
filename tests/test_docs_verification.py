@@ -136,3 +136,37 @@ def test_feed_registration_docs_describe_metadata_only_runtime():
     assert '"status": "REGISTERED_NOT_RUNNING"' in api_source
     assert "no feed runtime is configured" in api_source
     assert "There is no supervisor that owns adapter lifecycle" in readme
+
+
+def test_quickstart_canonical_engine_walkthrough(tmp_path):
+    """Verify that documented quickstart canonical engine code executes without errors."""
+    import tempfile
+    from mdrap import Engine, EngineConfig, RawEvent
+
+    wal_dir = str(tmp_path / "wal")
+    engine = Engine.open(wal_dir, config=EngineConfig(db_path=":memory:"))
+
+    raw = RawEvent(
+        source="EXAMPLE",
+        payload={
+            "instrument": "AAPL",
+            "event_type": "TRADE",
+            "exchange_ts": 1_800_000_000.0,
+            "sequence": 1,
+            "price": 200.0,
+            "quantity": 10.0,
+        },
+    )
+
+    decision = engine.submit(raw)
+    assert decision is not None
+    canonical = decision.canonical_event
+    assert canonical is not None
+    assert canonical.instrument_id == "AAPL"
+    assert canonical.price == 200.0
+
+    ticks = engine.query("AAPL", limit=10)
+    assert len(ticks) == 1
+    assert ticks[0]["price"] == 200.0
+    engine.close()
+

@@ -379,98 +379,140 @@ class Store:
                     f"Please upgrade MDRAP to access this database."
                 )
 
-            self.conn.executescript(SCHEMA)
+            # Forward-only schema migrations framework
+            self.conn.execute("""
+                CREATE TABLE IF NOT EXISTS schema_migrations (
+                    version INTEGER PRIMARY KEY,
+                    applied_at REAL NOT NULL,
+                    description TEXT NOT NULL
+                );
+            """)
+            applied_rows = self.conn.execute("SELECT version FROM schema_migrations;").fetchall()
+            applied_versions = {r[0] for r in applied_rows}
 
-            for v, desc in [
-                (1, "Baseline institutional market data schema"),
-                (2, "Format versioning and Merkle audit log"),
-                (3, "Quarantine Merkle log and API key SHA-256 hash storage"),
-            ]:
+            # Migration 1: Baseline institutional market data schema
+            if 1 not in applied_versions:
+                self.conn.executescript(SCHEMA)
                 self.conn.execute(
-                    "INSERT OR IGNORE INTO schema_migrations (version, applied_at, description) VALUES (?, ?, ?)",
-                    (v, time.time(), desc),
+                    "INSERT INTO schema_migrations (version, applied_at, description) VALUES (?, ?, ?)",
+                    (1, time.time(), "Baseline institutional market data schema"),
                 )
-            self.conn.execute(f"PRAGMA user_version = {CURRENT_SCHEMA_VERSION};")
-            try:
-                self.conn.execute(
-                    "ALTER TABLE audit_log ADD COLUMN format_version INTEGER NOT NULL DEFAULT 2"
-                )
-            except sqlite3.OperationalError:
-                # Column format_version already exists
-                pass
-            except Exception as exc:
-                logger.debug("Migration format_version note: %s", exc)
+                self.conn.execute("PRAGMA user_version = 1;")
+                applied_versions.add(1)
 
-            # Auto-migration for api_keys schema (from legacy 'token' column to 'token_hash' + 'role' + 'key_prefix')
-            try:
-                cur_cols = self.conn.execute("PRAGMA table_info(api_keys)").fetchall()
-                col_names = {c[1] for c in cur_cols}
-                if col_names and (
-                    "token_hash" not in col_names
-                    or "rate_limit_eps" in col_names
-                    or "tier" in col_names
-                ):
-                    # Legacy table exists with older columns
-                    self.conn.execute("ALTER TABLE api_keys RENAME TO api_keys_legacy")
-                    self.conn.execute("""
-                        CREATE TABLE api_keys (
-                            token_hash TEXT PRIMARY KEY,
-                            key_prefix TEXT NOT NULL DEFAULT '',
-                            client_id TEXT NOT NULL,
-                            role TEXT NOT NULL DEFAULT 'VIEWER',
-                            is_active INTEGER NOT NULL DEFAULT 1,
-                            created_at REAL NOT NULL,
-                            expires_at REAL
-                        )
-                    """)
+            # Migration 2: Format versioning and Merkle audit log
+            if 2 not in applied_versions:
+                try:
                     self.conn.execute(
-                        "CREATE INDEX IF NOT EXISTS idx_api_keys_client ON api_keys(client_id)"
+                        "ALTER TABLE audit_log ADD COLUMN format_version INTEGER NOT NULL DEFAULT 2"
                     )
-                    cur_legacy = self.conn.execute("SELECT * FROM api_keys_legacy")
-                    legacy_col_names = [d[0] for d in cur_legacy.description]
-                    legacy_rows = cur_legacy.fetchall()
-                    for r in legacy_rows:
-                        row_dict = dict(zip(legacy_col_names, r))
-                        raw_tok = str(row_dict.get("token") or "")
-                        tok_hash = str(row_dict.get("token_hash") or "")
-                        if not tok_hash and raw_tok:
-                            tok_hash = hashlib.sha256(
-                                raw_tok.encode("utf-8")
-                            ).hexdigest()
-                        if not tok_hash:
-                            continue
-                        pfx = str(row_dict.get("key_prefix") or "")
-                        if not pfx and raw_tok:
-                            pfx = raw_tok[:12] + "..." if len(raw_tok) > 12 else raw_tok
-                        elif not pfx:
-                            pfx = tok_hash[:10] + "..."
-                        client_id = str(row_dict.get("client_id") or "Migrated_Client")
-                        role = str(row_dict.get("role") or "VIEWER")
-                        active = int(row_dict.get("is_active", 1))
-                        created = float(row_dict.get("created_at") or time.time())
-                        expires = row_dict.get("expires_at")
-                        self.conn.execute(
-                            """INSERT OR REPLACE INTO api_keys
-                               (token_hash, key_prefix, client_id, role, is_active, created_at, expires_at)
-                               VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                            (tok_hash, pfx, client_id, role, active, created, expires),
-                        )
-                    self.conn.execute("DROP TABLE api_keys_legacy")
-                elif col_names:
-                    if "role" not in col_names:
-                        self.conn.execute(
-                            "ALTER TABLE api_keys ADD COLUMN role TEXT NOT NULL DEFAULT 'VIEWER'"
-                        )
-                    if "key_prefix" not in col_names:
-                        self.conn.execute(
-                            "ALTER TABLE api_keys ADD COLUMN key_prefix TEXT NOT NULL DEFAULT ''"
-                        )
-            except Exception as e:
-                import logging
+                except sqlite3.OperationalError:
+                    # Column format_version already exists
+                    pass
+                except Exception as exc:
+                    logger.debug("Migration format_version note: %s", exc)
 
-                logging.getLogger("mdrap.storage").warning(
-                    "Auto-migration notice: %s", e
+                self.conn.execute(
+                    "INSERT INTO schema_migrations (version, applied_at, description) VALUES (?, ?, ?)",
+                    (2, time.time(), "Format versioning and Merkle audit log"),
                 )
+                self.conn.execute("PRAGMA user_version = 2;")
+                applied_versions.add(2)
+
+            # Migration 3: Quarantine Merkle log and API key SHA-256 hash storage
+            if 3 not in applied_versions:
+                self.conn.execute("""
+                    CREATE TABLE IF NOT EXISTS quarantine_merkle_log (
+                        entry_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        timestamp REAL NOT NULL,
+                        entry_hash TEXT NOT NULL,
+                        prev_root TEXT NOT NULL,
+                        batch_root TEXT NOT NULL,
+                        batch_size INTEGER NOT NULL,
+                        format_version INTEGER NOT NULL DEFAULT 3
+                    );
+                """)
+                self.conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_quarantine_merkle_ts ON quarantine_merkle_log(timestamp);"
+                )
+
+                # Auto-migration for api_keys schema (from legacy 'token' column to 'token_hash' + 'role' + 'key_prefix')
+                try:
+                    cur_cols = self.conn.execute("PRAGMA table_info(api_keys)").fetchall()
+                    col_names = {c[1] for c in cur_cols}
+                    if col_names and (
+                        "token_hash" not in col_names
+                        or "rate_limit_eps" in col_names
+                        or "tier" in col_names
+                    ):
+                        # Legacy table exists with older columns
+                        self.conn.execute("ALTER TABLE api_keys RENAME TO api_keys_legacy")
+                        self.conn.execute("""
+                            CREATE TABLE api_keys (
+                                token_hash TEXT PRIMARY KEY,
+                                key_prefix TEXT NOT NULL DEFAULT '',
+                                client_id TEXT NOT NULL,
+                                role TEXT NOT NULL DEFAULT 'VIEWER',
+                                is_active INTEGER NOT NULL DEFAULT 1,
+                                created_at REAL NOT NULL,
+                                expires_at REAL
+                            )
+                        """)
+                        self.conn.execute(
+                            "CREATE INDEX IF NOT EXISTS idx_api_keys_client ON api_keys(client_id)"
+                        )
+                        cur_legacy = self.conn.execute("SELECT * FROM api_keys_legacy")
+                        legacy_col_names = [d[0] for d in cur_legacy.description]
+                        legacy_rows = cur_legacy.fetchall()
+                        for r in legacy_rows:
+                            row_dict = dict(zip(legacy_col_names, r))
+                            raw_tok = str(row_dict.get("token") or "")
+                            tok_hash = str(row_dict.get("token_hash") or "")
+                            if not tok_hash and raw_tok:
+                                tok_hash = hashlib.sha256(
+                                    raw_tok.encode("utf-8")
+                                ).hexdigest()
+                            if not tok_hash:
+                                continue
+                            pfx = str(row_dict.get("key_prefix") or "")
+                            if not pfx and raw_tok:
+                                pfx = raw_tok[:12] + "..." if len(raw_tok) > 12 else raw_tok
+                            elif not pfx:
+                                pfx = tok_hash[:10] + "..."
+                            client_id = str(row_dict.get("client_id") or "Migrated_Client")
+                            role = str(row_dict.get("role") or "VIEWER")
+                            active = int(row_dict.get("is_active", 1))
+                            created = float(row_dict.get("created_at") or time.time())
+                            expires = row_dict.get("expires_at")
+                            self.conn.execute(
+                                """INSERT OR REPLACE INTO api_keys
+                                   (token_hash, key_prefix, client_id, role, is_active, created_at, expires_at)
+                                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                                (tok_hash, pfx, client_id, role, active, created, expires),
+                            )
+                        self.conn.execute("DROP TABLE api_keys_legacy")
+                    elif col_names:
+                        if "role" not in col_names:
+                            self.conn.execute(
+                                "ALTER TABLE api_keys ADD COLUMN role TEXT NOT NULL DEFAULT 'VIEWER'"
+                            )
+                        if "key_prefix" not in col_names:
+                            self.conn.execute(
+                                "ALTER TABLE api_keys ADD COLUMN key_prefix TEXT NOT NULL DEFAULT ''"
+                            )
+                except Exception as e:
+                    import logging
+
+                    logging.getLogger("mdrap.storage").warning(
+                        "Auto-migration notice: %s", e
+                    )
+
+                self.conn.execute(
+                    "INSERT INTO schema_migrations (version, applied_at, description) VALUES (?, ?, ?)",
+                    (3, time.time(), "Quarantine Merkle log and API key SHA-256 hash storage"),
+                )
+                self.conn.execute(f"PRAGMA user_version = {CURRENT_SCHEMA_VERSION};")
+                applied_versions.add(3)
             self.conn.commit()
 
             if path != ":memory:":

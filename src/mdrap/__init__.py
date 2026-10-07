@@ -25,7 +25,7 @@ from .models import (
     deprecated,
 )
 from .clock import Clock, FixedClock, SystemClock
-from .engine import Engine, EngineDecision, EngineState
+from .engine import Engine, EngineConfig, EngineDecision, EngineState
 from .ingestlog import IngestLog
 from .pipeline import Pipeline
 from .projection import SQLiteProjection
@@ -74,6 +74,7 @@ __all__ = [
     "Pipeline",
     "Store",
     "Engine",
+    "EngineConfig",
 ]
 
 __stability__ = "stable"

@@ -273,30 +273,41 @@ class IngestLog:
                 if curr_size + FRAME_HEADER_SIZE + payload_len > self.max_segment_bytes:
                     self._rotate_to_new_segment(offset)
 
-            # Write frame
-            self._current_file.write(frame_hdr)
-            self._current_file.write(payload_bytes)
-            frame_total_len = FRAME_HEADER_SIZE + payload_len
-            self._bytes_since_fsync += frame_total_len
-            self._next_offset += 1
+            # Record write position for rollback on IO failure (e.g. disk full)
+            write_pos = self._current_file.tell()
+            try:
+                # Write frame
+                self._current_file.write(frame_hdr)
+                self._current_file.write(payload_bytes)
+                frame_total_len = FRAME_HEADER_SIZE + payload_len
+                self._bytes_since_fsync += frame_total_len
+                self._next_offset += 1
 
-            # Durability policy execution before ACK
-            if self.fsync_policy == "always":
-                self._current_file.flush()
-                os.fsync(self._current_file.fileno())
-                self._bytes_since_fsync = 0
-            elif self.fsync_policy == "grouped_by_size":
-                if self._bytes_since_fsync >= 64 * 1024:  # 64 KB threshold
+                # Durability policy execution before ACK
+                if self.fsync_policy == "always":
                     self._current_file.flush()
                     os.fsync(self._current_file.fileno())
                     self._bytes_since_fsync = 0
-            elif self.fsync_policy == "grouped_by_time":
-                now_ts = time.time()
-                if now_ts - self._last_fsync_ts >= 0.05:  # 50 ms
+                elif self.fsync_policy == "grouped_by_size":
+                    if self._bytes_since_fsync >= 64 * 1024:  # 64 KB threshold
+                        self._current_file.flush()
+                        os.fsync(self._current_file.fileno())
+                        self._bytes_since_fsync = 0
+                elif self.fsync_policy == "grouped_by_time":
+                    now_ts = time.time()
+                    if now_ts - self._last_fsync_ts >= 0.05:  # 50 ms
+                        self._current_file.flush()
+                        os.fsync(self._current_file.fileno())
+                        self._last_fsync_ts = now_ts
+                        self._bytes_since_fsync = 0
+            except Exception:
+                try:
+                    self._current_file.seek(write_pos)
+                    self._current_file.truncate(write_pos)
                     self._current_file.flush()
-                    os.fsync(self._current_file.fileno())
-                    self._last_fsync_ts = now_ts
-                    self._bytes_since_fsync = 0
+                except Exception:
+                    pass
+                raise
 
             return offset
 

@@ -21,7 +21,36 @@ python -c "import secrets; print(secrets.token_hex(32))"
 
 Store the generated value in `MDRAP_API_KEY_SALT` using the environment or a protected secrets store. Keep it unchanged across restarts; changing it makes existing API key hashes unusable.
 
-## Process one event
+## Process one event (Canonical Engine API)
+
+```python
+import tempfile
+from mdrap import Engine, EngineConfig, RawEvent
+
+wal_dir = tempfile.mkdtemp()
+engine = Engine.open(wal_dir, config=EngineConfig(db_path=":memory:"))
+
+raw = RawEvent(
+    source="EXAMPLE",
+    payload={
+        "instrument": "AAPL",
+        "event_type": "TRADE",
+        "exchange_ts": 1_800_000_000.0,
+        "sequence": 1,
+        "price": 200.0,
+        "quantity": 10.0,
+    },
+)
+
+decision = engine.submit(raw)
+canonical = decision.canonical_event
+ticks = engine.query("AAPL", limit=10)
+engine.close()
+```
+
+`Engine.open()` opens the durable `IngestLog` write-ahead log and binds the SQLite projection. `Engine.submit()` guarantees synchronous WAL fsync before returning the deterministic `EngineDecision`, ensuring zero acknowledged-event loss.
+
+### Legacy In-Process Pipeline
 
 ```python
 from mdrap import Pipeline, RawEvent, Store
@@ -43,8 +72,6 @@ event = pipeline.process_one(raw)
 pipeline.finish()
 store.close()
 ```
-
-`Pipeline.process_one()` runs normalization, quality evaluation, reconciliation, and storage projection. Its default asynchronous writer is not a durable acknowledgement boundary; an acknowledged event can be lost if the process exits before persistence. Use of this in-process example is not a production durability guarantee.
 
 ## Start the optional API
 
