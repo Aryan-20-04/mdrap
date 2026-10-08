@@ -27,6 +27,7 @@ import sys
 import threading
 import time
 from typing import Any, Dict, List, Optional, Set
+import warnings
 
 from fastapi import (
     APIRouter,
@@ -204,14 +205,55 @@ class AppState:
         quality_engine = (
             FastQualityEngine(config=qc) if is_available() else QualityEngine(config=qc)
         )
-        self.pipeline = Pipeline(
-            store=self.store,
-            quality=quality_engine,
-            reliability=self.reliability,
-            bbo=self.bbo,
-            watchdog=self.watchdog,
-            security=self.security_manager,
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            self.pipeline = Pipeline(
+                store=self.store,
+                quality=quality_engine,
+                reliability=self.reliability,
+                bbo=self.bbo,
+                watchdog=self.watchdog,
+                security=self.security_manager,
+            )
+
+        from .engine import Engine
+
+        self.wal_path = os.environ.get(
+            "MDRAP_WAL_PATH",
+            f"{self.db_path}.wal"
+            if self.db_path != ":memory:"
+            else None,
         )
+        try:
+            if self.wal_path:
+                self.engine = Engine.open(
+                    self.wal_path,
+                    config={
+                        "staleness_threshold_s": float(
+                            os.environ.get("MDRAP_API_STALENESS_S", "2.0")
+                        ),
+                    },
+                )
+            else:
+                self.engine = Engine(
+                    staleness_threshold_s=float(
+                        os.environ.get("MDRAP_API_STALENESS_S", "2.0")
+                    ),
+                )
+            if self.store:
+                self.engine.subscribe(self.store)
+        except Exception as exc:
+            logger.warning(
+                "Could not initialize Engine with WAL: %s; falling back to in-memory engine",
+                exc,
+            )
+            self.engine = Engine(
+                staleness_threshold_s=float(
+                    os.environ.get("MDRAP_API_STALENESS_S", "2.0")
+                ),
+            )
+            if self.store:
+                self.engine.subscribe(self.store)
 
         self.start_time = time.time()
         self.active_feeds: Dict[str, Dict[str, Any]] = {}
@@ -309,6 +351,11 @@ def create_app(
         yield
         # Shutdown logic
         logger.info("MDRAP Core Commercial API stopping...")
+        if hasattr(app_state, "engine") and app_state.engine is not None:
+            try:
+                app_state.engine.close()
+            except Exception as exc:
+                logger.debug("[api] Engine close error on shutdown: %s", exc)
         if hasattr(app_state.store, "commit"):
             try:
                 app_state.store.commit()

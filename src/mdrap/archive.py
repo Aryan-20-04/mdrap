@@ -8,6 +8,7 @@ partitioned by date and source.
 
 import json
 import os
+import re
 import time
 import warnings
 from typing import Iterator, Optional, Any
@@ -15,6 +16,18 @@ from typing import Iterator, Optional, Any
 from .models import RawEvent
 
 __stability__ = "stable"
+
+_SAFE_SOURCE_RE = re.compile(r"^[A-Za-z0-9_\-]+$")
+
+
+def _safe_source(source: str) -> str:
+    """Validate and sanitize source identifier to prevent path traversal (Finding M1)."""
+    if not source or not isinstance(source, str):
+        return "UNKNOWN"
+    base = os.path.basename(source.replace("\\", "/"))
+    if not _SAFE_SOURCE_RE.match(base) or base in (".", ".."):
+        base = re.sub(r"[^A-Za-z0-9_\-]", "_", base)
+    return base or "UNKNOWN"
 
 
 class RawArchive:
@@ -25,7 +38,7 @@ class RawArchive:
             DeprecationWarning,
             stacklevel=2,
         )
-        self.base_dir = base_dir
+        self.base_dir = os.path.abspath(base_dir)
         self.buffer_size = buffer_size
         self._buffer: list[RawEvent] = []
         self._file_handles: dict[str, Any] = {}
@@ -35,6 +48,7 @@ class RawArchive:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
+        return False
 
     def write(self, raw: RawEvent) -> None:
         self._buffer.append(raw)
@@ -47,10 +61,15 @@ class RawArchive:
 
         grouped: dict[str, list[str]] = {}
         for raw in self._buffer:
+            safe_src = _safe_source(raw.source)
             # Format receive_timestamp to YYYY-MM-DD for partitioning
             date_str = time.strftime("%Y-%m-%d", time.gmtime(raw.receive_timestamp))
             dir_path = os.path.join(self.base_dir, date_str)
-            file_path = os.path.join(dir_path, f"{raw.source}.jsonl")
+            file_path = os.path.abspath(os.path.join(dir_path, f"{safe_src}.jsonl"))
+
+            # Enforce destination stays strictly inside base_dir (Finding M1)
+            if not file_path.startswith(self.base_dir):
+                raise ValueError(f"Path traversal detected for source {raw.source!r}")
 
             os.makedirs(dir_path, exist_ok=True)
 
@@ -158,7 +177,8 @@ def replay(
         files = sorted([f for f in os.listdir(dir_path) if f.endswith(".jsonl")])
 
         if source:
-            target_file = f"{source}.jsonl"
+            safe_src = _safe_source(source)
+            target_file = f"{safe_src}.jsonl"
             files = [f for f in files if f == target_file]
 
         for file in files:

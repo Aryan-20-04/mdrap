@@ -89,6 +89,12 @@ CREATE TABLE IF NOT EXISTS quarantine (
 CREATE INDEX IF NOT EXISTS idx_quarantine_recv_ts ON quarantine(receive_timestamp);
 CREATE VIEW IF NOT EXISTS quarantine_events AS SELECT * FROM quarantine;
 
+CREATE TABLE IF NOT EXISTS projection_checkpoints (
+    name TEXT PRIMARY KEY,
+    last_offset INTEGER NOT NULL,
+    updated_at REAL NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS lineage (
     event_id TEXT PRIMARY KEY,
     instrument_id TEXT,
@@ -824,6 +830,108 @@ class Store:
                     "INSERT OR REPLACE INTO source_health VALUES (?,?,?,?,?,?,?,?,?)",
                     source_health,
                 )
+
+    @_synchronized
+    def checkpoint(self) -> int:
+        """Return highest committed WAL offset from projection_checkpoints, or -1."""
+        cur = self.conn.cursor()
+        try:
+            cur.execute("SELECT last_offset FROM projection_checkpoints WHERE name = 'store_canonical';")
+            row = cur.fetchone()
+            return row[0] if row else -1
+        except sqlite3.OperationalError:
+            return -1
+
+    @_synchronized
+    def apply(self, batch: list[Any], offset: int) -> None:
+        """Apply engine batch of decisions/events to store in a single atomic transaction."""
+        if not batch and offset < 0:
+            return
+
+        from .models import QualityStatus, CanonicalEvent
+        from .engine import EngineDecision
+
+        canonical_events: list[CanonicalEvent] = []
+        quarantine_rows: list[tuple] = []
+
+        for item in batch:
+            if isinstance(item, EngineDecision):
+                if item.canonical_event and item.quality_status != QualityStatus.INVALID:
+                    canonical_events.append(item.canonical_event)
+                if item.quarantine_row:
+                    quarantine_rows.append(item.quarantine_row)
+            elif isinstance(item, CanonicalEvent):
+                if item.quality_status != QualityStatus.INVALID:
+                    canonical_events.append(item)
+                else:
+                    q_row = (
+                        item.event_id,
+                        item.instrument_id,
+                        item.source,
+                        QualityStatus.INVALID.value,
+                        json.dumps(item.reasons),
+                        json.dumps({"raw_id": item.raw_id}),
+                        item.receive_timestamp,
+                    )
+                    quarantine_rows.append(q_row)
+            elif isinstance(item, tuple) and len(item) == 7:
+                quarantine_rows.append(item)
+
+        with self.transaction():
+            if canonical_events:
+                c_before = self.conn.total_changes
+                self.conn.executemany(
+                    """INSERT INTO canonical_events VALUES
+                       (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                       ON CONFLICT(event_id) DO NOTHING""",
+                    (
+                        (
+                            e.event_id,
+                            e.instrument_id,
+                            e.event_type.value,
+                            e.exchange_timestamp,
+                            e.receive_timestamp,
+                            e.processing_timestamp,
+                            e.source,
+                            e.sequence_number,
+                            e.price,
+                            e.quantity,
+                            e.bid_price,
+                            e.bid_size,
+                            e.ask_price,
+                            e.ask_size,
+                            e.quality_status.value,
+                            json.dumps(e.reasons) if e.reasons else "[]",
+                            e.raw_id,
+                        )
+                        for e in canonical_events
+                    ),
+                )
+                ins = self.conn.total_changes - c_before
+                if ins < len(canonical_events):
+                    self.conflicts += len(canonical_events) - ins
+
+            if quarantine_rows:
+                c_before_q = self.conn.total_changes
+                self.conn.executemany(
+                    """INSERT INTO quarantine VALUES
+                       (?,?,?,?,?,?,?)
+                       ON CONFLICT(event_id) DO NOTHING""",
+                    quarantine_rows,
+                )
+                ins_q = self.conn.total_changes - c_before_q
+                if ins_q < len(quarantine_rows):
+                    self.conflicts += len(quarantine_rows) - ins_q
+                self._append_quarantine_merkle_batch_in_tx(quarantine_rows)
+
+            cur = self.conn.cursor()
+            cur.execute(
+                """
+                INSERT OR REPLACE INTO projection_checkpoints (name, last_offset, updated_at)
+                VALUES ('store_canonical', ?, ?);
+                """,
+                (offset, time.time()),
+            )
 
     @_synchronized
     def commit(self):

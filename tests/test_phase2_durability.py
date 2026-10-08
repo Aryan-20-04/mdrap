@@ -45,6 +45,7 @@ def test_phase2_replay_determinism(tmp_path):
     for off, raw in log1.iter_from(0):
         state1, dec = engine1.step(state1, raw, clock1, offset=off)
         batch1.append(dec)
+    log1.close()
     proj1.apply(batch1, offset=24)
 
     # Pass 2
@@ -59,6 +60,7 @@ def test_phase2_replay_determinism(tmp_path):
     for off, raw in log2.iter_from(0):
         state2, dec = engine2.step(state2, raw, clock2, offset=off)
         batch2.append(dec)
+    log2.close()
     proj2.apply(batch2, offset=24)
 
     # Verify identical decisions and canonical records

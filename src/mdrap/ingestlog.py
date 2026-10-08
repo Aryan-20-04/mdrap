@@ -44,6 +44,10 @@ class IngestLogCorruptError(IngestLogError):
     """Raised when an unrecoverable bit-flip or corruption is detected in the log body."""
 
 
+class IngestLogLockedError(IngestLogError):
+    """Raised when IngestLog directory is already locked by another process or instance."""
+
+
 class IngestLog:
     """Segmented write-ahead log providing strictly framed event persistence."""
 
@@ -52,6 +56,7 @@ class IngestLog:
         log_dir: str,
         fsync_policy: str = "always",
         max_segment_bytes: int = DEFAULT_MAX_SEGMENT_BYTES,
+        lock: bool = True,
     ):
         self.log_dir = os.path.abspath(log_dir)
         os.makedirs(self.log_dir, exist_ok=True)
@@ -68,8 +73,59 @@ class IngestLog:
         self._current_segment_start_offset = 0
         self._bytes_since_fsync = 0
         self._last_fsync_ts = time.time()
+        self._is_poisoned: bool = False
+        self._lock_file = None
+
+        if lock:
+            self._acquire_process_lock()
 
         self._recover_and_open()
+
+    def _acquire_process_lock(self) -> None:
+        """Acquire an exclusive advisory lock on the log directory to prevent concurrent writers."""
+        lock_path = os.path.join(self.log_dir, ".lock")
+        try:
+            self._lock_file = open(lock_path, "a+b")
+            self._lock_file.seek(0, os.SEEK_END)
+            if self._lock_file.tell() == 0:
+                self._lock_file.write(b"MDRAP_LOCK\n")
+                self._lock_file.flush()
+            self._lock_file.seek(0)
+            if os.name == "nt":
+                import msvcrt
+                msvcrt.locking(self._lock_file.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(self._lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except (OSError, IOError) as exc:
+            if self._lock_file is not None:
+                try:
+                    self._lock_file.close()
+                except Exception:
+                    pass
+                self._lock_file = None
+            raise IngestLogLockedError(
+                f"IngestLog directory '{self.log_dir}' is locked by another process or instance"
+            ) from exc
+
+    def _release_process_lock(self) -> None:
+        """Release the exclusive advisory lock on the log directory."""
+        if self._lock_file is not None and not self._lock_file.closed:
+            try:
+                self._lock_file.seek(0)
+                if os.name == "nt":
+                    import msvcrt
+                    msvcrt.locking(self._lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+                else:
+                    import fcntl
+                    fcntl.flock(self._lock_file.fileno(), fcntl.LOCK_UN)
+            except Exception:
+                pass
+            try:
+                self._lock_file.close()
+            except Exception:
+                pass
+            self._lock_file = None
 
     @property
     def next_offset(self) -> int:
@@ -241,6 +297,15 @@ class IngestLog:
             f.flush()
             os.fsync(f.fileno())
 
+        # Durable directory sync on POSIX
+        if os.name != "nt":
+            try:
+                dir_fd = os.open(self.log_dir, os.O_RDONLY)
+                os.fsync(dir_fd)
+                os.close(dir_fd)
+            except Exception:
+                pass
+
         self._current_filename = filename
         self._current_segment_start_offset = start_offset
         self._current_file = open(filename, "a+b")
@@ -253,6 +318,11 @@ class IngestLog:
         Never ACK before the configured durability boundary is satisfied!
         """
         with self._lock:
+            if self._is_poisoned:
+                raise IngestLogError(
+                    "IngestLog is in a poisoned state due to unrecoverable I/O rollback failure; reopen required"
+                )
+
             if isinstance(raw, RawEvent):
                 recv_ts = raw.receive_timestamp if raw.receive_timestamp else time.time()
                 record = {
@@ -298,34 +368,35 @@ class IngestLog:
                 # Write frame
                 self._current_file.write(frame_hdr)
                 self._current_file.write(payload_bytes)
+                # Flush userspace stdio buffers to OS kernel on every append before ACK!
+                self._current_file.flush()
                 frame_total_len = FRAME_HEADER_SIZE + payload_len
                 self._bytes_since_fsync += frame_total_len
-                self._next_offset += 1
 
                 # Durability policy execution before ACK
                 if self.fsync_policy == "always":
-                    self._current_file.flush()
                     os.fsync(self._current_file.fileno())
                     self._bytes_since_fsync = 0
                 elif self.fsync_policy == "grouped_by_size":
                     if self._bytes_since_fsync >= 64 * 1024:  # 64 KB threshold
-                        self._current_file.flush()
                         os.fsync(self._current_file.fileno())
                         self._bytes_since_fsync = 0
                 elif self.fsync_policy == "grouped_by_time":
                     now_ts = time.time()
                     if now_ts - self._last_fsync_ts >= 0.05:  # 50 ms
-                        self._current_file.flush()
                         os.fsync(self._current_file.fileno())
                         self._last_fsync_ts = now_ts
                         self._bytes_since_fsync = 0
+
+                # Advance offset ONLY after successful write, flush, and fsync
+                self._next_offset += 1
             except Exception:
                 try:
                     self._current_file.seek(write_pos)
                     self._current_file.truncate(write_pos)
                     self._current_file.flush()
                 except Exception:
-                    pass
+                    self._is_poisoned = True
                 raise
 
             return offset
@@ -340,7 +411,7 @@ class IngestLog:
                 self._last_fsync_ts = time.time()
 
     def close(self) -> None:
-        """Close current active segment."""
+        """Close current active segment and release process lock."""
         with self._lock:
             if self._current_file and not self._current_file.closed:
                 try:
@@ -350,6 +421,19 @@ class IngestLog:
                 except Exception:
                     pass
                 self._current_file = None
+            self._release_process_lock()
+
+    def __enter__(self) -> IngestLog:
+        return self
+
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        self.close()
+
+    def __del__(self) -> None:
+        try:
+            self.close()
+        except Exception:
+            pass
 
     def iter_from(self, start_offset: int = 0) -> Iterator[tuple[int, RawEvent]]:
         """Iterate all events from start_offset across all segment files in order."""
@@ -421,3 +505,133 @@ class IngestLog:
                         logger.warning("Could not delete segment %s: %s", path, exc)
 
             return deleted_count
+
+    @classmethod
+    def salvage(cls, log_dir: str, backup: bool = True) -> dict[str, Any]:
+        """Salvage corrupted segments by extracting all recoverable frames.
+
+        Scans segment files in log_dir. If corruption or bit-flips are encountered,
+        all valid frames (matching FRAME_MAGIC and valid CRC32) are extracted and
+        written into clean segment files.
+        Original files are preserved with .bak extensions if backup is True.
+
+        Returns a summary dict with recovery telemetry.
+        """
+        abs_log_dir = os.path.abspath(log_dir)
+        if not os.path.exists(abs_log_dir):
+            return {
+                "scanned_segments": 0,
+                "corrupted_segments": 0,
+                "recovered_records": 0,
+                "repaired_files": [],
+            }
+
+        report: dict[str, Any] = {
+            "scanned_segments": 0,
+            "corrupted_segments": 0,
+            "recovered_records": 0,
+            "repaired_files": [],
+        }
+
+        seg_files = []
+        for fname in os.listdir(abs_log_dir):
+            if fname.startswith("segment_") and fname.endswith(".log"):
+                seg_files.append(os.path.join(abs_log_dir, fname))
+        seg_files.sort()
+
+        for s_path in seg_files:
+            report["scanned_segments"] += 1
+            s_size = os.path.getsize(s_path)
+            is_corrupt = False
+            recovered_in_file: list[tuple[bytes, bytes]] = []
+
+            if s_size < SEGMENT_HEADER_SIZE:
+                is_corrupt = True
+            else:
+                with open(s_path, "rb") as f:
+                    hdr_bytes = f.read(SEGMENT_HEADER_SIZE)
+                    if len(hdr_bytes) < SEGMENT_HEADER_SIZE:
+                        is_corrupt = True
+                    else:
+                        magic, ver, seg_start, ts, _ = struct.unpack(SEGMENT_HEADER_FORMAT, hdr_bytes)
+                        if magic != LOG_MAGIC or ver != LOG_VERSION:
+                            is_corrupt = True
+
+                        while True:
+                            pos = f.tell()
+                            frame_hdr_bytes = f.read(FRAME_HEADER_SIZE)
+                            if not frame_hdr_bytes:
+                                break
+                            if len(frame_hdr_bytes) < FRAME_HEADER_SIZE:
+                                is_corrupt = True
+                                break
+
+                            f_magic, _, offset, f_ts, length, expected_crc = struct.unpack(FRAME_HEADER_FORMAT, frame_hdr_bytes)
+                            if f_magic != FRAME_MAGIC or length > DEFAULT_MAX_SEGMENT_BYTES:
+                                is_corrupt = True
+                                f.seek(pos + 1)
+                                while True:
+                                    search_byte = f.read(1)
+                                    if not search_byte:
+                                        break
+                                    if search_byte == b"\xaa":
+                                        next_byte = f.read(1)
+                                        if next_byte == b"\x55":
+                                            f.seek(f.tell() - 2)
+                                            break
+                                        else:
+                                            f.seek(f.tell() - 1)
+                                continue
+
+                            payload_bytes = f.read(length)
+                            if len(payload_bytes) < length:
+                                is_corrupt = True
+                                break
+
+                            actual_crc = zlib.crc32(payload_bytes) & 0xFFFFFFFF
+                            if actual_crc != expected_crc:
+                                is_corrupt = True
+                                continue
+
+                            recovered_in_file.append((frame_hdr_bytes, payload_bytes))
+
+            if is_corrupt:
+                report["corrupted_segments"] += 1
+                if backup:
+                    import shutil
+                    bak_path = s_path + f".bak.{int(time.time())}"
+                    try:
+                        shutil.copy2(s_path, bak_path)
+                    except Exception as exc:
+                        logger.warning("Could not create backup %s: %s", bak_path, exc)
+
+                if recovered_in_file:
+                    first_hdr = recovered_in_file[0][0]
+                    _, _, start_off, first_ts, _, _ = struct.unpack(FRAME_HEADER_FORMAT, first_hdr)
+                    clean_hdr = struct.pack(
+                        SEGMENT_HEADER_FORMAT,
+                        LOG_MAGIC,
+                        LOG_VERSION,
+                        start_off,
+                        first_ts,
+                        b"\x00" * 6,
+                    )
+                    with open(s_path, "wb") as f_out:
+                        f_out.write(clean_hdr)
+                        for f_hdr, p_bytes in recovered_in_file:
+                            f_out.write(f_hdr)
+                            f_out.write(p_bytes)
+                        f_out.flush()
+                        os.fsync(f_out.fileno())
+                    report["repaired_files"].append(s_path)
+                    report["recovered_records"] += len(recovered_in_file)
+                else:
+                    try:
+                        os.remove(s_path)
+                    except OSError:
+                        pass
+            else:
+                report["recovered_records"] += len(recovered_in_file)
+
+        return report
+

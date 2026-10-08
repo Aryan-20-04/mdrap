@@ -110,6 +110,7 @@ class EngineConfig:
     clock: Clock | None = None
     fsync_policy: str = "always"
     max_segment_bytes: int = 10 * 1024 * 1024
+    max_payload_bytes: int = 1024 * 1024  # 1 MB boundary cap (Finding N4)
     projections: list[Any] = field(default_factory=list)
 
 
@@ -133,6 +134,7 @@ class Engine:
         db_path: str | None = None,
         fsync_policy: str = "always",
         max_segment_bytes: int = 10 * 1024 * 1024,
+        max_payload_bytes: int = 1024 * 1024,
         **kwargs: Any,
     ) -> None:
         # Check legacy environment variables (Finding 6)
@@ -165,6 +167,7 @@ class Engine:
 
         self.staleness_threshold_s = staleness_threshold_s
         self.clock = clock if clock is not None else SystemClock()
+        self.max_payload_bytes = max_payload_bytes
         self.state = self.create_initial_state()
         self._projections: list[Any] = []
         self._default_sqlite_proj: Any = None
@@ -201,6 +204,7 @@ class Engine:
         clock = None
         fsync_policy = "always"
         max_segment_bytes = 10 * 1024 * 1024
+        max_payload_bytes = 1024 * 1024
         db_path = None
         projections = []
 
@@ -210,6 +214,7 @@ class Engine:
                 clock = config.get("clock", clock)
                 fsync_policy = config.get("fsync_policy", fsync_policy)
                 max_segment_bytes = config.get("max_segment_bytes", max_segment_bytes)
+                max_payload_bytes = config.get("max_payload_bytes", max_payload_bytes)
                 db_path = config.get("db_path", db_path)
                 projections = config.get("projections", [])
             else:
@@ -217,6 +222,7 @@ class Engine:
                 clock = getattr(config, "clock", clock)
                 fsync_policy = getattr(config, "fsync_policy", fsync_policy)
                 max_segment_bytes = getattr(config, "max_segment_bytes", max_segment_bytes)
+                max_payload_bytes = getattr(config, "max_payload_bytes", max_payload_bytes)
                 db_path = getattr(config, "db_path", db_path)
                 projections = getattr(config, "projections", [])
 
@@ -227,6 +233,7 @@ class Engine:
             db_path=db_path,
             fsync_policy=fsync_policy,
             max_segment_bytes=max_segment_bytes,
+            max_payload_bytes=max_payload_bytes,
         )
 
         for proj in projections:
@@ -292,13 +299,44 @@ class Engine:
                 if not raw.receive_timestamp:
                     raw.receive_timestamp = self.clock.now()
 
-                if self.log is not None:
-                    offset = self.log.append(raw)
-                else:
-                    offset = self.state.event_count
-
+                # Determine offset before append so deterministic raw_id is stamped and persisted in WAL (N1)
+                offset = self.log.next_offset if self.log is not None else self.state.event_count
                 if not raw.raw_id:
                     raw.raw_id = f"raw_{raw.source}_{offset}"
+
+                # Enforce payload size limit at Engine boundary to protect WAL from stalling (N4)
+                if self.max_payload_bytes > 0:
+                    payload = raw.payload
+                    p_len = len(payload) if isinstance(payload, (str, bytes)) else (
+                        len(json.dumps(payload, default=str)) if isinstance(payload, dict) else len(str(payload))
+                    )
+                    if p_len > self.max_payload_bytes:
+                        q_id = f"q_{raw.source}_{offset}"
+                        q_row = (
+                            q_id,
+                            "OVERSIZE",
+                            raw.source,
+                            QualityStatus.INVALID.value,
+                            json.dumps([f"Payload size {p_len} bytes exceeds limit {self.max_payload_bytes} bytes"]),
+                            json.dumps({"size": p_len, "truncated": str(payload)[:256]}),
+                            raw.receive_timestamp,
+                        )
+                        self.state.event_count += 1
+                        self.state.counts["INVALID"] += 1
+                        dec = EngineDecision(
+                            offset=offset,
+                            event_id=q_id,
+                            quality_status=QualityStatus.INVALID,
+                            reasons=[Reason.SCHEMA_VIOLATION.value],
+                            quarantine_row=q_row,
+                        )
+                        decisions.append(dec)
+                        offsets.append(offset)
+                        continue
+
+                if self.log is not None:
+                    actual_offset = self.log.append(raw)
+                    assert actual_offset == offset, f"Offset mismatch: expected {offset}, got {actual_offset}"
 
                 offsets.append(offset)
                 self.state, dec = self.step(self.state, raw, self.clock, offset=offset)
@@ -430,6 +468,19 @@ class Engine:
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         self.close()
 
+    def __del__(self) -> None:
+        try:
+            self.close()
+        except Exception:
+            pass
+
+    @classmethod
+    def salvage(cls, wal_path: str | Path, backup: bool = True) -> dict[str, Any]:
+        """Salvage corrupted IngestLog segments at wal_path."""
+        from .ingestlog import IngestLog
+
+        return IngestLog.salvage(str(wal_path), backup=backup)
+
     def create_initial_state(self) -> EngineState:
         return EngineState(staleness_threshold_s=self.staleness_threshold_s)
 
@@ -441,18 +492,28 @@ class Engine:
         offset: int | None = None,
     ) -> tuple[EngineState, EngineDecision]:
         """Apply a single deterministic state transition: (state, raw_event, clock) -> (state', decision)."""
+        prev_event_count = state.event_count
+        state_backup = copy.deepcopy(state)
         try:
             return self._step_internal(state, raw_event, clock, offset=offset)
         except Exception as exc:
-            logger.warning("[engine] Exception in step safely caught: %s", exc)
-            if offset is None:
-                offset = state.event_count
-            state.event_count += 1
+            # Restore state from clean backup to prevent partial mutation state-inconsistency (N3)
+            state = state_backup
+            state.event_count = prev_event_count + 1
             state.counts["INVALID"] += 1
+            # Rate limit warnings to prevent log-flooding attack vectors
+            if state.counts["INVALID"] <= 10 or state.counts["INVALID"] % 1000 == 0:
+                logger.warning(
+                    "[engine] Unhandled exception in step safely quarantined (#%d): %s",
+                    state.counts["INVALID"],
+                    exc,
+                )
+            if offset is None:
+                offset = prev_event_count
             now_ts = clock.now()
             recv_ts = getattr(raw_event, "receive_timestamp", None) or now_ts
             src = getattr(raw_event, "source", "UNKNOWN")
-            event_id = f"q_{src}_{offset}"
+            event_id = getattr(raw_event, "raw_id", None) or f"q_{src}_{offset}"
             q_row = (
                 event_id,
                 "MALFORMED",
