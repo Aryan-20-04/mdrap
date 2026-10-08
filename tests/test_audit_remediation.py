@@ -1359,6 +1359,67 @@ def test_phase2_architectural_unification(tmp_path):
     store.close()
 
 
+def test_phase3_concurrency_and_reliability(tmp_path):
+    """Phase 3: Active watchdog background silence detection and zero-overhead Prometheus Engine metrics."""
+    from mdrap.reconciliation import ReliabilityTracker
+    from mdrap.watchdog import SourceWatchdog, SourceState
+    from mdrap.models import CanonicalEvent, EventType, QualityStatus, RawEvent
+    from mdrap.api import AppState
+    from mdrap.prometheus import global_prometheus_exporter
+
+    # 1. Background watchdog heartbeat triggers silence during complete feed outage
+    tracker = ReliabilityTracker()
+    dog = SourceWatchdog(reliability=tracker, silence_threshold_s=0.1)
+
+    t0 = time.time()
+    ev = CanonicalEvent(
+        event_id="e1",
+        instrument_id="BTC/USD",
+        event_type=EventType.TRADE,
+        exchange_timestamp=t0,
+        receive_timestamp=t0,
+        processing_timestamp=t0,
+        source="BINANCE",
+        quality_status=QualityStatus.VALID,
+    )
+    dog.observe(ev)
+    assert dog.source_states()["BINANCE"] == "HEALTHY"
+
+    # Start active background timer thread; do not send any more events
+    dog.start_heartbeat(interval_s=0.04)
+    time.sleep(0.25)
+    dog.stop_heartbeat()
+
+    assert dog.source_states()["BINANCE"] == SourceState.SILENT.value
+    alerts = dog.alerts()
+    assert any(a.source == "BINANCE" and a.alert_type == "SILENCE" for a in alerts)
+
+    # 2. Prometheus exporter reads Engine state in O(1) without touching legacy Pipeline
+    db_file = tmp_path / "prom_test.db"
+    wal_dir = tmp_path / "prom_test.wal"
+    state = AppState(db_path=str(db_file), wal_path=str(wal_dir))
+
+    # Ingest 3 events into Engine
+    raws = [
+        RawEvent(
+            source="COINBASE",
+            payload={"instrument": "ETH/USD", "price": 3000.0 + i, "quantity": 1.0, "sequence": i + 1, "exchange_ts": t0},
+            receive_timestamp=t0,
+        )
+        for i in range(3)
+    ]
+    state.engine.submit(raws)
+
+    assert state._pipeline is None, "Prometheus export must not eagerly instantiate Pipeline"
+    metrics_text = global_prometheus_exporter.render(state)
+    assert state._pipeline is None, "Pipeline must remain None after metric scrape"
+    assert "mdrap_events_processed_total 3" in metrics_text
+    assert 'mdrap_events_quality_total{status="VALID"} 3' in metrics_text
+
+    state.engine.close()
+
+
+
 
 
 

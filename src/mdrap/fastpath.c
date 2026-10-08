@@ -75,22 +75,46 @@ enum ReasonBits {
  * ==========================================================================*/
 #if defined(_MSC_VER) && !defined(__clang__)
   #include <intrin.h>
-  #if !defined(_M_X64) && !defined(_M_AMD64)
-    #error "fastpath: MSVC build supports x86-64 only (x86 TSO memory model is assumed)"
+  #if defined(_M_ARM64) || defined(_M_ARM64EC)
+    #define MD_FENCE_RELEASE()      __dmb(_ARM64_BARRIER_ISH)
+    #define MD_FENCE_ACQUIRE()      __dmb(_ARM64_BARRIER_ISH)
+    #define MD_STORE_REL_U64(p, v)  do { __dmb(_ARM64_BARRIER_ISH); *(volatile uint64_t *)(p) = (uint64_t)(v); } while (0)
+    #define MD_STORE_RLX_U64(p, v)  (*(volatile uint64_t *)(p) = (uint64_t)(v))
+    static inline uint64_t md_load_acq_u64_msvc(volatile const uint64_t *p) {
+        uint64_t v = *p;
+        __dmb(_ARM64_BARRIER_ISH);
+        return v;
+    }
+    #define MD_LOAD_ACQ_U64(p)      md_load_acq_u64_msvc((volatile const uint64_t *)(p))
+    #define MD_CPU_RELAX()          __yield()
+  #elif defined(_M_X64) || defined(_M_AMD64)
+    #define MD_FENCE_RELEASE()      _mm_sfence()
+    #define MD_FENCE_ACQUIRE()      _mm_lfence()
+    #define MD_STORE_REL_U64(p, v)  do { _mm_sfence(); *(volatile uint64_t *)(p) = (uint64_t)(v); } while (0)
+    #define MD_STORE_RLX_U64(p, v)  (*(volatile uint64_t *)(p) = (uint64_t)(v))
+    static inline uint64_t md_load_acq_u64_msvc(volatile const uint64_t *p) {
+        uint64_t v = *p;
+        _mm_lfence();
+        return v;
+    }
+    #define MD_LOAD_ACQ_U64(p)      md_load_acq_u64_msvc((volatile const uint64_t *)(p))
+    #define MD_CPU_RELAX()          _mm_pause()
+  #else
+    #define MD_FENCE_RELEASE()      _ReadWriteBarrier()
+    #define MD_FENCE_ACQUIRE()      _ReadWriteBarrier()
+    #define MD_STORE_REL_U64(p, v)  do { _ReadWriteBarrier(); *(volatile uint64_t *)(p) = (uint64_t)(v); } while (0)
+    #define MD_STORE_RLX_U64(p, v)  (*(volatile uint64_t *)(p) = (uint64_t)(v))
+    static inline uint64_t md_load_acq_u64_msvc(volatile const uint64_t *p) {
+        uint64_t v = *p;
+        _ReadWriteBarrier();
+        return v;
+    }
+    #define MD_LOAD_ACQ_U64(p)      md_load_acq_u64_msvc((volatile const uint64_t *)(p))
+    #define MD_CPU_RELAX()          _mm_pause()
   #endif
-  #define MD_FENCE_RELEASE()      _ReadWriteBarrier()
-  #define MD_FENCE_ACQUIRE()      _ReadWriteBarrier()
-  #define MD_STORE_REL_U64(p, v)  do { _ReadWriteBarrier(); *(volatile uint64_t *)(p) = (uint64_t)(v); } while (0)
-  #define MD_STORE_RLX_U64(p, v)  (*(volatile uint64_t *)(p) = (uint64_t)(v))
-  static inline uint64_t md_load_acq_u64_msvc(volatile const uint64_t *p) {
-      uint64_t v = *p;
-      _ReadWriteBarrier();
-      return v;
-  }
-  #define MD_LOAD_ACQ_U64(p)      md_load_acq_u64_msvc((volatile const uint64_t *)(p))
   #define MD_LOAD_RLX_U64(p)      (*(volatile const uint64_t *)(p))
-  #define MD_LOCK(l)              do { while (_InterlockedExchange((volatile long *)(l), 1)) { _mm_pause(); } } while (0)
-  #define MD_UNLOCK(l)            do { _ReadWriteBarrier(); *(volatile long *)(l) = 0; } while (0)
+  #define MD_LOCK(l)              do { while (_InterlockedExchange((volatile long *)(l), 1)) { MD_CPU_RELAX(); } } while (0)
+  #define MD_UNLOCK(l)            do { MD_FENCE_RELEASE(); *(volatile long *)(l) = 0; } while (0)
 #else
   #define MD_FENCE_RELEASE()      __atomic_thread_fence(__ATOMIC_RELEASE)
   #define MD_FENCE_ACQUIRE()      __atomic_thread_fence(__ATOMIC_ACQUIRE)

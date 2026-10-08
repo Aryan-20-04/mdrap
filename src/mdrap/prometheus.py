@@ -116,22 +116,49 @@ class PrometheusExporter:
         # -------------------------------------------------------------------
         # 1. Pipeline Throughput & Quality Metrics
         # -------------------------------------------------------------------
-        metrics = (
-            getattr(state.pipeline, "metrics", None)
-            if state and hasattr(state, "pipeline")
-            else None
-        )
+        processed = 0
+        dropped = int(self._custom_counters.get("dropped", 0))
+        valid_count = int(self._custom_counters.get("quality_valid", 0))
+        suspicious_count = int(self._custom_counters.get("quality_suspicious", 0))
+        invalid_count = int(self._custom_counters.get("quality_invalid", 0))
 
-        processed = (
-            getattr(metrics, "processed", 0)
-            if metrics
-            else int(self._custom_counters.get("processed", 0))
-        )
-        dropped = (
-            getattr(metrics, "dropped", 0)
-            if metrics
-            else int(self._custom_counters.get("dropped", 0))
-        )
+        # Check engine state first
+        engine = getattr(state, "engine", None) if state else None
+        if engine and hasattr(engine, "state"):
+            eng_st = getattr(engine, "state", None)
+            if eng_st and hasattr(eng_st, "event_count"):
+                ec = getattr(eng_st, "event_count", 0)
+                if isinstance(ec, (int, float)):
+                    processed += int(ec)
+                counts = getattr(eng_st, "counts", {})
+                if isinstance(counts, dict):
+                    valid_count += int(counts.get("VALID", 0))
+                    suspicious_count += int(counts.get("SUSPICIOUS", 0))
+                    invalid_count += int(counts.get("INVALID", 0))
+
+        # Check pipeline without eagerly creating it on AppState
+        pipeline = getattr(state, "_pipeline", None) if state else None
+        has_engine = bool(state and getattr(state, "engine", None) is not None)
+        if pipeline is None and not has_engine and state:
+            try:
+                pipeline = getattr(state, "pipeline", None)
+            except Exception:
+                pipeline = None
+
+        if pipeline and hasattr(pipeline, "metrics"):
+            p_metrics = getattr(pipeline, "metrics", None)
+            if p_metrics:
+                p_proc = getattr(p_metrics, "processed", 0)
+                if isinstance(p_proc, (int, float)):
+                    processed += int(p_proc)
+                p_drop = getattr(p_metrics, "dropped", 0)
+                if isinstance(p_drop, (int, float)):
+                    dropped += int(p_drop)
+                q_counts = getattr(p_metrics, "quality_counts", {})
+                if isinstance(q_counts, dict):
+                    valid_count += int(q_counts.get("VALID", 0))
+                    suspicious_count += int(q_counts.get("SUSPICIOUS", 0))
+                    invalid_count += int(q_counts.get("INVALID", 0))
 
         add_metric(
             "mdrap_events_processed_total",
@@ -144,17 +171,6 @@ class PrometheusExporter:
             "counter",
             "Total count of unrecoverable dropped events",
             dropped,
-        )
-
-        q_counts = getattr(metrics, "quality_counts", {}) if metrics else {}
-        valid_count = q_counts.get(
-            "VALID", int(self._custom_counters.get("quality_valid", 0))
-        )
-        suspicious_count = q_counts.get(
-            "SUSPICIOUS", int(self._custom_counters.get("quality_suspicious", 0))
-        )
-        invalid_count = q_counts.get(
-            "INVALID", int(self._custom_counters.get("quality_invalid", 0))
         )
 
         lines.append(
