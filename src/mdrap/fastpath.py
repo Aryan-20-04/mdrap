@@ -146,18 +146,18 @@ class _CFastReplayRecord(ctypes.Structure):
 
     def to_dict(self) -> dict:
         st_map = {1: "VALID", 2: "SUSPICIOUS", 3: "INVALID"}
-        px = self.price if not math.isnan(self.price) and self.price > 0 else None
-        sz = self.size if not math.isnan(self.size) and self.size > 0 else None
-        b_px = self.bid if not math.isnan(self.bid) and self.bid > 0 else None
-        a_px = self.ask if not math.isnan(self.ask) and self.ask > 0 else None
+        px = self.price if not math.isnan(self.price) and math.isfinite(self.price) else None
+        sz = self.size if not math.isnan(self.size) and self.size >= 0 else None
+        b_px = self.bid if not math.isnan(self.bid) and math.isfinite(self.bid) else None
+        a_px = self.ask if not math.isnan(self.ask) and math.isfinite(self.ask) else None
         b_sz = (
             self.bid_size
-            if not math.isnan(self.bid_size) and self.bid_size > 0
+            if not math.isnan(self.bid_size) and self.bid_size >= 0
             else None
         )
         a_sz = (
             self.ask_size
-            if not math.isnan(self.ask_size) and self.ask_size > 0
+            if not math.isnan(self.ask_size) and self.ask_size >= 0
             else None
         )
         ev_type = (
@@ -1361,8 +1361,8 @@ class FastQualityEngine:
                 if (
                     tick.bid is not None
                     and tick.ask is not None
-                    and tick.bid > 0
-                    and tick.ask > 0
+                    and math.isfinite(tick.bid)
+                    and math.isfinite(tick.ask)
                     and tick.bid > tick.ask
                 ):
                     st = 2

@@ -52,6 +52,7 @@ class MarketVenue:
     pre_open_utc_hour: Optional[float] = None
     closing_auction_utc_hour: Optional[float] = None
     circuit_limit_pct: float = 10.0  # Stock / index standard circuit band
+    is_24_7: bool = False  # Continuous 24/7 weekend trading (crypto / continuous FX)
 
 
 # ---------------------------------------------------------------------------
@@ -379,6 +380,55 @@ GLOBAL_VENUES: Dict[str, MarketVenue] = {
         tick_size_model=TickSizeModel.MIFID2_RTS28,
         circuit_limit_pct=8.0,
     ),
+    # 12. 24/7 Cryptocurrency Venues
+    "BINANCE": MarketVenue(
+        mic="BINANCE",
+        name="Binance",
+        country="GLOBAL",
+        flag="🌐",
+        currency="USDT",
+        currency_symbol="$",
+        timezone_name="UTC",
+        utc_offset_hours=0.0,
+        open_time_utc_hour=0.0,
+        close_time_utc_hour=0.0,
+        benchmark_index="BTCUSDT",
+        index_name="Bitcoin / USDT",
+        tick_size_model=TickSizeModel.FIXED_0_01,
+        is_24_7=True,
+    ),
+    "COINBASE": MarketVenue(
+        mic="COINBASE",
+        name="Coinbase Exchange",
+        country="US",
+        flag="🇺🇸",
+        currency="USD",
+        currency_symbol="$",
+        timezone_name="UTC",
+        utc_offset_hours=0.0,
+        open_time_utc_hour=0.0,
+        close_time_utc_hour=0.0,
+        benchmark_index="BTC-USD",
+        index_name="Bitcoin / USD",
+        tick_size_model=TickSizeModel.FIXED_0_01,
+        is_24_7=True,
+    ),
+    "KRAKEN": MarketVenue(
+        mic="KRAKEN",
+        name="Kraken",
+        country="US",
+        flag="🇺🇸",
+        currency="USD",
+        currency_symbol="$",
+        timezone_name="UTC",
+        utc_offset_hours=0.0,
+        open_time_utc_hour=0.0,
+        close_time_utc_hour=0.0,
+        benchmark_index="XBTUSD",
+        index_name="Bitcoin / USD",
+        tick_size_model=TickSizeModel.FIXED_0_01,
+        is_24_7=True,
+    ),
 }
 
 # Aliases mapping informal tags and country codes to canonical MICs
@@ -448,6 +498,11 @@ VENUE_ALIASES: Dict[str, str] = {
     "paris": "XPAR",
     "cac": "XPAR",
     "fr": "XPAR",
+    # Crypto
+    "binance": "BINANCE",
+    "coinbase": "COINBASE",
+    "kraken": "KRAKEN",
+    "crypto": "BINANCE",
 }
 
 
@@ -477,18 +532,30 @@ def get_session_phase(
     else:
         now_utc = datetime.datetime.fromtimestamp(timestamp, tz=datetime.timezone.utc)
 
-    # Weekend check: Saturday=5, Sunday=6
-    weekday = now_utc.weekday()
-    if weekday in (5, 6):
-        return False, MarketPhase.CLOSED, "Closed (Weekend)"
-
-    # Convert UTC time to fractional hour [0.0, 24.0)
-    hour_frac = now_utc.hour + now_utc.minute / 60.0 + now_utc.second / 3600.0
-
     open_h = venue.open_time_utc_hour
     close_h = venue.close_time_utc_hour
     pre_h = venue.pre_open_utc_hour
     close_auc_h = venue.closing_auction_utc_hour
+
+    # 1. Continuous 24/7 trading venues (crypto, continuous FX)
+    if getattr(venue, "is_24_7", False) or (open_h == 0.0 and close_h in (0.0, 24.0)):
+        return True, MarketPhase.CONTINUOUS, "Open (24/7 Continuous Trading)"
+
+    # Convert UTC time to fractional hour [0.0, 24.0)
+    hour_frac = now_utc.hour + now_utc.minute / 60.0 + now_utc.second / 3600.0
+    weekday = now_utc.weekday()
+
+    # 2. Weekend check with Sunday evening session roll (e.g. CME/NYMEX 23:00 UTC)
+    if weekday == 6:
+        # Sunday: check if session rolls open across midnight
+        if open_h > close_h and hour_frac >= open_h:
+            return True, MarketPhase.CONTINUOUS, "Open (Continuous Trading)"
+        if pre_h is not None and (hour_frac >= pre_h if pre_h > open_h else (pre_h <= hour_frac < open_h)):
+            return False, MarketPhase.PRE_OPEN, "Pre-Open Call Auction"
+        return False, MarketPhase.CLOSED, "Closed (Weekend)"
+
+    if weekday == 5:
+        return False, MarketPhase.CLOSED, "Closed (Weekend)"
 
     # Standard daytime market window in UTC (without crossing midnight)
     if open_h < close_h:

@@ -1419,6 +1419,130 @@ def test_phase3_concurrency_and_reliability(tmp_path):
     state.engine.close()
 
 
+def test_phase4_financial_microstructure_and_venues(tmp_path):
+    """Phase 4: BarDB late tick revision, negative commodity price BBO, and venue midnight session roll."""
+    from mdrap.bardb import BarDatabase, Bar
+    from mdrap.bbo import BBOEngine
+    from mdrap.venues import get_venue, get_session_phase, MarketPhase
+    import datetime
+
+    # 1. BarDB configurable revision window supports late ticks
+    with BarDatabase(str(tmp_path / "bars_rev.db"), intervals=["1m"], revision_window_s=120.0) as db:
+        # Initial bucket: t=10s, 70s (rollover closes bucket 0..60s)
+        ev1 = CanonicalEvent(
+            event_id="t1",
+            instrument_id="CL-202005",
+            event_type=EventType.TRADE,
+            exchange_timestamp=10.0,
+            receive_timestamp=10.0,
+            processing_timestamp=10.0,
+            source="NYMEX",
+            price=-37.0,
+            quantity=10.0,
+            quality_status=QualityStatus.VALID,
+        )
+        ev2 = CanonicalEvent(
+            event_id="t2",
+            instrument_id="CL-202005",
+            event_type=EventType.TRADE,
+            exchange_timestamp=70.0,
+            receive_timestamp=70.0,
+            processing_timestamp=70.0,
+            source="NYMEX",
+            price=-36.0,
+            quantity=10.0,
+            quality_status=QualityStatus.VALID,
+        )
+        db.observe(ev1)
+        db.observe(ev2)
+        agg_1m = db.aggregators["1m"]
+
+        # Bucket 0..60s has closed. Now send a late tick for t=30s (age = 40s < 120s revision window)
+        ev_late = CanonicalEvent(
+            event_id="t_late",
+            instrument_id="CL-202005",
+            event_type=EventType.TRADE,
+            exchange_timestamp=30.0,
+            receive_timestamp=75.0,
+            processing_timestamp=75.0,
+            source="NYMEX",
+            price=-38.0,
+            quantity=5.0,
+            quality_status=QualityStatus.VALID,
+        )
+        db.observe(ev_late)
+        assert agg_1m.late_ticks_revised == 1
+        assert agg_1m.late_ticks_dropped == 0
+
+        # Now send a super-stale tick older than 120s revision window
+        ev_ancient = CanonicalEvent(
+            event_id="t_ancient",
+            instrument_id="CL-202005",
+            event_type=EventType.TRADE,
+            exchange_timestamp=-200.0,
+            receive_timestamp=75.0,
+            processing_timestamp=75.0,
+            source="NYMEX",
+            price=-35.0,
+            quantity=5.0,
+            quality_status=QualityStatus.VALID,
+        )
+        db.observe(ev_ancient)
+        assert agg_1m.late_ticks_dropped == 1
+
+        db.flush()
+        bars = db.query_bars("CL-202005", "1m")
+        # First bar (bucket 0) must reflect the late tick: low updated to -38.0, volume = 15.0
+        bar0 = next(b for b in bars if b.bucket_start == 0.0)
+        assert bar0.low == -38.0
+        assert bar0.volume == 15.0
+
+    # 2. Negative Commodity Prices in BBO Engine (WTI Crude April 2020 scenario)
+    bbo = BBOEngine()
+    quote = CanonicalEvent(
+        event_id="q1",
+        instrument_id="CL-202005",
+        event_type=EventType.QUOTE,
+        exchange_timestamp=100.0,
+        receive_timestamp=100.0,
+        processing_timestamp=100.0,
+        source="NYMEX",
+        bid_price=-37.63,
+        bid_size=100.0,
+        ask_price=-37.00,
+        ask_size=50.0,
+        quality_status=QualityStatus.VALID,
+    )
+    res = bbo.observe(quote)
+    assert res is not None
+    assert res.best_bid == -37.63
+    assert res.best_ask == -37.00
+    assert abs(res.spread - 0.63) < 1e-6
+    assert abs(res.mid_price - (-37.315)) < 1e-6
+    assert not res.is_crossed
+    assert not res.is_locked
+
+    # 3. Venue registry midnight session roll (CME/NYMEX opens Sunday evening at 23:00 UTC)
+    nymex = get_venue("XNYM")
+    # Sunday 2026-09-13 at 23:30 UTC
+    sun_night = datetime.datetime(2026, 9, 13, 23, 30, tzinfo=datetime.timezone.utc).timestamp()
+    is_open, phase, desc = get_session_phase(nymex, sun_night)
+    assert is_open, f"NYMEX should be open Sunday evening: {desc}"
+    assert phase == MarketPhase.CONTINUOUS
+
+    # Saturday 2026-09-12 at 12:00 UTC -> closed
+    sat_noon = datetime.datetime(2026, 9, 12, 12, 0, tzinfo=datetime.timezone.utc).timestamp()
+    is_open_sat, phase_sat, _ = get_session_phase(nymex, sat_noon)
+    assert not is_open_sat
+    assert phase_sat == MarketPhase.CLOSED
+
+    # 4. Crypto continuous 24/7 venues (Binance, Coinbase, Kraken)
+    binance = get_venue("BINANCE")
+    is_open_crypto_sat, phase_crypto_sat, _ = get_session_phase(binance, sat_noon)
+    assert is_open_crypto_sat
+    assert phase_crypto_sat == MarketPhase.CONTINUOUS
+
+
 
 
 

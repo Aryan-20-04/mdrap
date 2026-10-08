@@ -92,10 +92,27 @@ class QualityConfig:
             )
         ):
             asset_type = "equities"
+        elif any(
+            c in inst
+            for c in (
+                "CL",
+                "WTI",
+                "NG",
+                "BRENT",
+                "CRUDE",
+                "OIL",
+                "GAS",
+                "COMMODITY",
+            )
+        ):
+            asset_type = "commodities"
         else:
             asset_type = "default"
 
-        overrides = self.asset_classes.get(asset_type, {})
+        overrides = dict(self.asset_classes.get(asset_type, {}))
+        if asset_type == "commodities" and "allow_negative" not in overrides:
+            overrides["allow_negative"] = True
+
         if not overrides:
             return self
 

@@ -1379,17 +1379,21 @@ static int32_t sbe_stream_impl(
         const SbeTickPayload *p = &frames[i].payload;
         int32_t status = STATUS_VALID;
         uint32_t reason_mask = REASON_NONE;
+        const int allow_neg = sbe_eng->allow_negative;
 
         // 1. Numerical Validity Bounds
-        if ((!isnan(p->price) && (isinf(p->price) || p->price < 0.0)) ||
-            (!isnan(p->bid) && (isinf(p->bid) || p->bid < 0.0)) ||
-            (!isnan(p->ask) && (isinf(p->ask) || p->ask < 0.0))) {
+        if ((!isnan(p->price) && num_bad(p->price, allow_neg)) ||
+            (!isnan(p->bid) && num_bad(p->bid, allow_neg)) ||
+            (!isnan(p->ask) && num_bad(p->ask, allow_neg)) ||
+            (!isnan(p->size) && num_bad(p->size, 0)) ||
+            (!isnan(p->bid_size) && num_bad(p->bid_size, 0)) ||
+            (!isnan(p->ask_size) && num_bad(p->ask_size, 0))) {
             status = STATUS_INVALID;
             reason_mask |= REASON_SCHEMA_VIOLATION;
         }
 
         // 2. Crossed Quotes
-        if (!isnan(p->bid) && !isnan(p->ask) && p->bid > 0.0 && p->ask > 0.0) {
+        if (!isnan(p->bid) && !isnan(p->ask) && isfinite(p->bid) && isfinite(p->ask)) {
             if (p->bid > p->ask) {
                 status = STATUS_INVALID;
                 reason_mask |= REASON_CROSSED_QUOTE;

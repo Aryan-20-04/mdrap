@@ -163,7 +163,11 @@ class ConsolidatedLadder:
         """
         best_bid = self.bids[0].price if self.bids else 0.0
         best_ask = self.asks[0].price if self.asks else 0.0
-        mid = (best_bid + best_ask) / 2.0 if (best_bid > 0 and best_ask > 0) else 0.0
+        mid = (
+            (best_bid + best_ask) / 2.0
+            if (self.bids and self.asks and math.isfinite(best_bid) and math.isfinite(best_ask))
+            else 0.0
+        )
         if mid <= 0.0:
             return (0.0, 0.0)
 
@@ -207,7 +211,7 @@ class ConsolidatedLadder:
         best_price = best_ask if side_norm == "BUY" else best_bid
         mid_price = (
             (best_bid + best_ask) / 2.0
-            if (best_bid > 0 and best_ask > 0)
+            if (self.bids and self.asks and math.isfinite(best_bid) and math.isfinite(best_ask))
             else best_price
         )
 
@@ -278,7 +282,9 @@ class ConsolidatedLadder:
         best_bid = self.bids[0].price if self.bids else 0.0
         best_ask = self.asks[0].price if self.asks else 0.0
         mid_price = (
-            (best_bid + best_ask) / 2.0 if (best_bid > 0 and best_ask > 0) else 0.0
+            (best_bid + best_ask) / 2.0
+            if (self.bids and self.asks and math.isfinite(best_bid) and math.isfinite(best_ask))
+            else 0.0
         )
 
         buy_slices = [self.compute_vwap("BUY", s) for s in sizes]

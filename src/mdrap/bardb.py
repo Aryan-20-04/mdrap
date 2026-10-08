@@ -81,17 +81,23 @@ class BarAggregator:
     a completed Bar object, and emitted.
     """
 
-    def __init__(self, interval_s: float = 60.0) -> None:
+    def __init__(self, interval_s: float = 60.0, revision_window_s: float = 0.0) -> None:
         """
         Initialize the single-interval candle aggregator.
 
         Args:
             interval_s: Fixed bucket duration in seconds (e.g. 60.0 for 1-minute bars).
+            revision_window_s: Maximum past window in seconds to allow revisions for late ticks.
         """
         self._interval_s: float = interval_s
+        self._revision_window_s: float = revision_window_s
         # Map: instrument_id -> (bucket_start_epoch, {open, high, low, close, volume, trade_count, vwap_num})
         self._buckets: dict[str, tuple[float, dict[str, float]]] = {}
+        # Recent finalized bars cached for in-memory revision
+        self._recent_bars: dict[str, dict[float, Bar]] = {}
+        self._last_revision_delta: Bar | None = None
         self.late_ticks_dropped: int = 0
+        self.late_ticks_revised: int = 0
 
     def observe(self, event: CanonicalEvent) -> Bar | None:
         """
@@ -106,6 +112,7 @@ class BarAggregator:
         Returns:
             Bar | None: A finalized Bar if an existing candle was closed, else None.
         """
+        self._last_revision_delta = None
         # Only TRADE events with valid non-null prices and quantities form candles
         if (
             event.event_type != EventType.TRADE
@@ -141,11 +148,70 @@ class BarAggregator:
                     trade_count=int(data["trade_count"]),
                     vwap=vwap,
                 )
+                if event.instrument_id not in self._recent_bars:
+                    self._recent_bars[event.instrument_id] = {}
+                self._recent_bars[event.instrument_id][current_start] = completed_bar
+                cutoff = current_start - max(self._interval_s * 5, self._revision_window_s)
+                self._recent_bars[event.instrument_id] = {
+                    bs: b
+                    for bs, b in self._recent_bars[event.instrument_id].items()
+                    if bs >= cutoff
+                }
                 # Initialize new bucket below
             elif bucket_start < current_start:
-                # Late-arriving tick older than current bucket start; record drop (NUM-02)
-                self.late_ticks_dropped += 1
-                return None
+                # Check if tick is within allowed revision window (MED-02)
+                if (
+                    self._revision_window_s > 0
+                    and (current_start - bucket_start) <= self._revision_window_s
+                    and event.instrument_id in self._recent_bars
+                    and bucket_start in self._recent_bars[event.instrument_id]
+                ):
+                    bar = self._recent_bars[event.instrument_id][bucket_start]
+                    new_high = max(bar.high, event.price)
+                    new_low = min(bar.low, event.price)
+                    new_vol = bar.volume + event.quantity
+                    new_count = bar.trade_count + 1
+                    old_vwap_num = (
+                        (bar.vwap * bar.volume)
+                        if bar.volume > 0
+                        else (bar.close * bar.volume)
+                    )
+                    new_vwap = (
+                        (old_vwap_num + (event.price * event.quantity)) / new_vol
+                        if new_vol > 0
+                        else event.price
+                    )
+                    revised_bar = Bar(
+                        instrument_id=bar.instrument_id,
+                        interval_s=bar.interval_s,
+                        bucket_start=bar.bucket_start,
+                        open=bar.open,
+                        high=new_high,
+                        low=new_low,
+                        close=bar.close,
+                        volume=new_vol,
+                        trade_count=new_count,
+                        vwap=new_vwap,
+                    )
+                    self._recent_bars[event.instrument_id][bucket_start] = revised_bar
+                    self._last_revision_delta = Bar(
+                        instrument_id=bar.instrument_id,
+                        interval_s=bar.interval_s,
+                        bucket_start=bar.bucket_start,
+                        open=event.price,
+                        high=event.price,
+                        low=event.price,
+                        close=bar.close,
+                        volume=event.quantity,
+                        trade_count=1,
+                        vwap=event.price,
+                    )
+                    self.late_ticks_revised += 1
+                    return revised_bar
+                else:
+                    # Late-arriving tick older than current bucket start; record drop (NUM-02)
+                    self.late_ticks_dropped += 1
+                    return None
 
         if (
             event.instrument_id not in self._buckets
@@ -218,7 +284,10 @@ class BarDatabase:
     """
 
     def __init__(
-        self, db_path: str = "data/bars.db", intervals: list[str] | None = None
+        self,
+        db_path: str = "data/bars.db",
+        intervals: list[str] | None = None,
+        revision_window_s: float = 0.0,
     ) -> None:
         """
         Initialize the bar database connection and internal aggregators.
@@ -226,8 +295,10 @@ class BarDatabase:
         Args:
             db_path: Path to the SQLite database file, or ':memory:' for transient storage.
             intervals: List of interval codes to track (defaults to all supported standard intervals).
+            revision_window_s: Maximum past window in seconds to allow revisions for late ticks.
         """
         self.db_path: str = db_path
+        self.revision_window_s: float = revision_window_s
         self._conn: sqlite3.Connection = sqlite3.connect(db_path)
         # Enable Write-Ahead Logging (WAL) for high-concurrency read/write operations
         try:
@@ -251,7 +322,7 @@ class BarDatabase:
             "1d",
         ]
         self.aggregators: dict[str, BarAggregator] = {
-            interval: BarAggregator(INTERVALS[interval])
+            interval: BarAggregator(INTERVALS[interval], revision_window_s=revision_window_s)
             for interval in self.intervals_config
             if interval in INTERVALS
         }
@@ -299,7 +370,12 @@ class BarDatabase:
         for agg in self.aggregators.values():
             bar = agg.observe(event)
             if bar:
-                self._pending_bars.append(bar)
+                delta = getattr(agg, "_last_revision_delta", None)
+                if delta is not None:
+                    self._pending_bars.append(delta)
+                    agg._last_revision_delta = None
+                else:
+                    self._pending_bars.append(bar)
 
         # Batch write threshold for amortizing transactional overhead
         if len(self._pending_bars) >= 1000:
