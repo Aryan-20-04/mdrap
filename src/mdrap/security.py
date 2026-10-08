@@ -491,34 +491,27 @@ class HashedKeyStore(dict):
         return (hash_api_key(key), hashlib.sha256(key.encode("utf-8")).hexdigest())
 
     def __contains__(self, key: object) -> bool:
-        if super().__contains__(key):
-            return True
         if isinstance(key, str):
-            h_salted, h_legacy = self._hash_candidates(key)
-            return super().__contains__(h_salted) or super().__contains__(h_legacy)
+            return self.get_by_token(key) is not None
         return False
 
     def __getitem__(self, key: str) -> ClientEntitlement:
-        if super().__contains__(key):
-            return super().__getitem__(key)
         if isinstance(key, str):
-            h_salted, h_legacy = self._hash_candidates(key)
-            if super().__contains__(h_salted):
-                return super().__getitem__(h_salted)
-            if super().__contains__(h_legacy):
-                return super().__getitem__(h_legacy)
-        return super().__getitem__(key)
+            ent = self.get_by_token(key)
+            if ent is not None:
+                return ent
+        raise KeyError(key)
 
     def get(self, key: str, default: Any = None) -> Any:
-        if super().__contains__(key):
-            return super().get(key, default)
         if isinstance(key, str):
-            h_salted, h_legacy = self._hash_candidates(key)
-            if super().__contains__(h_salted):
-                return super().get(h_salted, default)
-            if super().__contains__(h_legacy):
-                return super().get(h_legacy, default)
+            ent = self.get_by_token(key)
+            if ent is not None:
+                return ent
         return default
+
+    def get_by_hash(self, key_hash: str, default: Any = None) -> Any:
+        """Administrative lookup strictly by pre-computed hash."""
+        return super().get(key_hash, default)
 
     def pop(self, key: str, default: Any = None) -> Any:
         if super().__contains__(key):

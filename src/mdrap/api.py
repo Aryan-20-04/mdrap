@@ -368,9 +368,19 @@ def create_app(
     async def lifespan(app: FastAPI):
         # Startup logic
         logger.info("MDRAP Core Commercial API starting on %s", app_state.db_path)
+        if hasattr(app_state, "watchdog") and app_state.watchdog is not None:
+            try:
+                app_state.watchdog.start_heartbeat(interval_s=0.5)
+            except Exception as exc:
+                logger.debug("[api] Watchdog heartbeat start error: %s", exc)
         yield
         # Shutdown logic
         logger.info("MDRAP Core Commercial API stopping...")
+        if hasattr(app_state, "watchdog") and app_state.watchdog is not None:
+            try:
+                app_state.watchdog.stop_heartbeat()
+            except Exception as exc:
+                logger.debug("[api] Watchdog heartbeat stop error: %s", exc)
         if hasattr(app_state, "engine") and app_state.engine is not None:
             try:
                 app_state.engine.close()
@@ -585,7 +595,17 @@ def create_app(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail={"status": "not_ready", "reason": "Database unreachable"},
             )
-        if st.pipeline.degraded:
+        if hasattr(st, "engine") and st.engine is not None:
+            log_inst = getattr(st.engine, "log", None)
+            if log_inst and getattr(log_inst, "_is_poisoned", False):
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail={
+                        "status": "not_ready",
+                        "reason": "Engine IngestLog WAL is poisoned due to unrecoverable I/O failure",
+                    },
+                )
+        if hasattr(st, "pipeline") and st.pipeline.degraded:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail={
@@ -836,15 +856,18 @@ def create_app(
             )
 
         def _process_batch_locked(batch: list[RawEvent]):
-            with st.pipeline_lock:
-                res = st.pipeline.process_batch(batch)
             if hasattr(st, "engine") and st.engine is not None:
-                try:
-                    with st.engine._lock:
-                        st.engine.submit(batch)
-                except Exception as exc:
-                    logger.debug("[api] Engine WAL mirroring error: %s", exc)
-            return res
+                with st.engine._lock:
+                    decisions = st.engine.submit(batch)
+                if not isinstance(decisions, list):
+                    decisions = [decisions] if decisions is not None else []
+                return [
+                    d.canonical_event
+                    for d in decisions
+                    if d.canonical_event is not None
+                ]
+            with st.pipeline_lock:
+                return st.pipeline.process_batch(batch)
 
         # 4. Offload synchronous batch processing to worker thread pool
         results = await asyncio.to_thread(_process_batch_locked, raw_events)
