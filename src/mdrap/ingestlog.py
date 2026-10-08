@@ -132,6 +132,18 @@ class IngestLog:
         with self._lock:
             return self._next_offset
 
+    def _sync_dir(self) -> None:
+        """Durable directory sync ensuring newly created or rotated segment files are committed to disk metadata."""
+        if os.name != "nt":
+            try:
+                dir_fd = os.open(self.log_dir, os.O_RDONLY)
+                try:
+                    os.fsync(dir_fd)
+                finally:
+                    os.close(dir_fd)
+            except Exception as exc:
+                logger.debug("Directory fsync note on %s: %s", self.log_dir, exc)
+
     def _segment_filename(self, start_offset: int) -> str:
         return os.path.join(self.log_dir, f"segment_{start_offset:012d}.log")
 
@@ -205,9 +217,18 @@ class IngestLog:
 
         with open(filepath, "r+b") as f:
             header_bytes = f.read(SEGMENT_HEADER_SIZE)
-            magic, ver, seg_start, ts, _ = struct.unpack(SEGMENT_HEADER_FORMAT, header_bytes)
+            magic, ver, seg_start, ts, res = struct.unpack(SEGMENT_HEADER_FORMAT, header_bytes)
             if magic != LOG_MAGIC or ver != LOG_VERSION:
                 raise IngestLogCorruptError(f"Corrupt segment header in {filepath}: magic={magic!r}, ver={ver}")
+
+            if len(res) == 6:
+                crc32 = struct.unpack(">I", res[:4])[0]
+                if crc32 != 0:
+                    expected_crc = zlib.crc32(header_bytes[:26]) & 0xFFFFFFFF
+                    if crc32 != expected_crc:
+                        raise IngestLogCorruptError(
+                            f"Corrupt segment header CRC in {filepath}: expected {expected_crc:#010x}, got {crc32:#010x}"
+                        )
 
             valid_pos = SEGMENT_HEADER_SIZE
 
@@ -284,27 +305,25 @@ class IngestLog:
                 logger.debug("Closing previous segment raised: %s", exc)
 
         filename = self._segment_filename(start_offset)
+        now_ts = time.time()
+        partial_hdr = struct.pack(">8sHQd", LOG_MAGIC, LOG_VERSION, start_offset, now_ts)
+        hdr_crc = zlib.crc32(partial_hdr) & 0xFFFFFFFF
+        hdr_res = struct.pack(">I2s", hdr_crc, b"\x00\x00")
         hdr = struct.pack(
             SEGMENT_HEADER_FORMAT,
             LOG_MAGIC,
             LOG_VERSION,
             start_offset,
-            time.time(),
-            b"\x00" * 6,
+            now_ts,
+            hdr_res,
         )
         with open(filename, "wb") as f:
             f.write(hdr)
             f.flush()
             os.fsync(f.fileno())
 
-        # Durable directory sync on POSIX
-        if os.name != "nt":
-            try:
-                dir_fd = os.open(self.log_dir, os.O_RDONLY)
-                os.fsync(dir_fd)
-                os.close(dir_fd)
-            except Exception:
-                pass
+        # Durable directory sync
+        self._sync_dir()
 
         self._current_filename = filename
         self._current_segment_start_offset = start_offset
@@ -640,7 +659,7 @@ class IngestLog:
                     report["is_clean"] = False
                     report["errors"].append(f"{s_name}: Truncated segment header")
                     continue
-                magic, ver, seg_start, _, _ = struct.unpack(SEGMENT_HEADER_FORMAT, hdr_bytes)
+                magic, ver, seg_start, _, res = struct.unpack(SEGMENT_HEADER_FORMAT, hdr_bytes)
                 if magic != LOG_MAGIC:
                     report["corrupted_segments"] += 1
                     report["is_clean"] = False
@@ -651,6 +670,15 @@ class IngestLog:
                     report["is_clean"] = False
                     report["errors"].append(f"{s_name}: Unsupported segment version {ver}")
                     continue
+                if len(res) == 6:
+                    crc32 = struct.unpack(">I", res[:4])[0]
+                    if crc32 != 0:
+                        expected_crc = zlib.crc32(hdr_bytes[:26]) & 0xFFFFFFFF
+                        if crc32 != expected_crc:
+                            report["corrupted_segments"] += 1
+                            report["is_clean"] = False
+                            report["errors"].append(f"{s_name}: Corrupt segment header CRC")
+                            continue
 
                 seg_corrupt = False
                 while True:
@@ -794,13 +822,17 @@ class IngestLog:
                 if recovered_in_file:
                     first_hdr = recovered_in_file[0][0]
                     _, _, start_off, first_ts, _, _ = struct.unpack(FRAME_HEADER_FORMAT, first_hdr)
+                    clean_ts = first_ts if first_ts else time.time()
+                    partial = struct.pack(">8sHQd", LOG_MAGIC, LOG_VERSION, start_off, clean_ts)
+                    clean_crc = zlib.crc32(partial) & 0xFFFFFFFF
+                    clean_res = struct.pack(">I2s", clean_crc, b"\x00\x00")
                     clean_hdr = struct.pack(
                         SEGMENT_HEADER_FORMAT,
                         LOG_MAGIC,
                         LOG_VERSION,
                         start_off,
-                        first_ts,
-                        b"\x00" * 6,
+                        clean_ts,
+                        clean_res,
                     )
                     with open(s_path, "wb") as f_out:
                         f_out.write(clean_hdr)

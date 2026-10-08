@@ -1186,6 +1186,98 @@ def test_depth_ladder_nan_inf_immunity():
             ladder.compute_vwap("BUY", bad_size)
 
 
+def test_ingestlog_segment_header_crc_and_tamper_detection(tmp_path):
+    """Verify segment header CRC is verified and bit-flips in header are detected loudly."""
+    from mdrap.ingestlog import IngestLog, IngestLogCorruptError, SEGMENT_HEADER_SIZE, SEGMENT_HEADER_FORMAT
+    from mdrap.models import RawEvent
+
+    wal_dir = tmp_path / "crc_wal"
+    log = IngestLog(str(wal_dir))
+
+    # Append an event to force segment file creation
+    raw = RawEvent(source="BINANCE", payload={"instrument": "BTC/USD", "price": 50000.0, "quantity": 1.0})
+    log.append(raw)
+    log.flush()
+    log.close()
+
+    seg_files = list(wal_dir.glob("segment_*.log"))
+    assert len(seg_files) == 1
+    seg_path = seg_files[0]
+
+    # 1. Read segment header and verify CRC is non-zero and valid
+    with open(seg_path, "rb") as f:
+        hdr_bytes = f.read(SEGMENT_HEADER_SIZE)
+    magic, ver, seg_start, ts, res = struct.unpack(SEGMENT_HEADER_FORMAT, hdr_bytes)
+    hdr_crc = struct.unpack(">I", res[:4])[0]
+    assert hdr_crc != 0
+    expected_crc = zlib.crc32(hdr_bytes[:26]) & 0xFFFFFFFF
+    assert hdr_crc == expected_crc
+
+    # Verify log report is clean
+    report = IngestLog.verify(str(wal_dir))
+    assert report["is_clean"] is True
+
+    # 2. Tamper with a byte inside the header (timestamp / offset at byte 15)
+    with open(seg_path, "r+b") as f:
+        f.seek(15)
+        byte_val = f.read(1)[0]
+        f.seek(15)
+        f.write(bytes([byte_val ^ 0xFF]))
+        f.flush()
+
+    # Reopening or verifying log must detect the header corruption loudly
+    report_tampered = IngestLog.verify(str(wal_dir))
+    assert report_tampered["is_clean"] is False
+    assert any("Corrupt segment header CRC" in err for err in report_tampered["errors"])
+
+    with pytest.raises(IngestLogCorruptError) as exc:
+        IngestLog(str(wal_dir))
+    assert "Corrupt segment header CRC" in str(exc.value)
+
+
+def test_ingestlog_legacy_header_backward_compatibility(tmp_path):
+    """Verify legacy segment headers with zeroed reserved bytes remain 100% compatible."""
+    from mdrap.ingestlog import IngestLog, LOG_MAGIC, LOG_VERSION, SEGMENT_HEADER_FORMAT, FRAME_MAGIC, FRAME_HEADER_FORMAT
+    from mdrap.models import RawEvent
+
+    wal_dir = tmp_path / "legacy_wal"
+    wal_dir.mkdir(parents=True, exist_ok=True)
+
+    # Manually write a legacy segment file with b"\x00" * 6 reserved bytes
+    seg_path = wal_dir / "segment_000000000000.log"
+    legacy_hdr = struct.pack(
+        SEGMENT_HEADER_FORMAT,
+        LOG_MAGIC,
+        LOG_VERSION,
+        0,
+        1700000000.0,
+        b"\x00" * 6,
+    )
+    payload_bytes = json.dumps({"source": "TEST", "payload": {"instrument": "BTC/USD", "price": 100.0}}).encode("utf-8")
+    payload_crc = zlib.crc32(payload_bytes) & 0xFFFFFFFF
+    frame_hdr = struct.pack(
+        FRAME_HEADER_FORMAT,
+        FRAME_MAGIC,
+        0,
+        0,
+        1700000000.0,
+        len(payload_bytes),
+        payload_crc,
+    )
+    with open(seg_path, "wb") as f:
+        f.write(legacy_hdr)
+        f.write(frame_hdr)
+        f.write(payload_bytes)
+
+    # Legacy header must open and iterate cleanly without error
+    log = IngestLog(str(wal_dir))
+    records = list(log.iter_from(0))
+    assert len(records) == 1
+    assert records[0][0] == 0
+    assert records[0][1].source == "TEST"
+    log.close()
+
+
 
 
 
