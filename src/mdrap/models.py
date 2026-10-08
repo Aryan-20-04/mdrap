@@ -29,6 +29,28 @@ import warnings
 __stability__ = "stable"
 
 
+def _safe_float(val: Any, default: float = 0.0) -> float:
+    """Safely convert value to finite float without raising or accepting NaN/inf."""
+    if val is None:
+        return default
+    try:
+        f = float(val)
+        return f if math.isfinite(f) else default
+    except (ValueError, TypeError, OverflowError):
+        return default
+
+
+def _safe_optional_float(val: Any) -> Optional[float]:
+    """Safely convert value to finite float, returning None on invalid/NaN/inf/None."""
+    if val is None:
+        return None
+    try:
+        f = float(val)
+        return f if math.isfinite(f) else None
+    except (ValueError, TypeError, OverflowError):
+        return None
+
+
 class EventType(str, Enum):
     """Enumeration of market data event categories."""
 
@@ -475,31 +497,27 @@ class CanonicalEvent:
         else:
             reasons_list = []
 
+        raw_price = data.get("price")
+        parsed_price = _safe_optional_float(raw_price)
+        if raw_price is not None and parsed_price is None:
+            qs = QualityStatus.INVALID
+            reasons_list.append(Reason.SCHEMA_VIOLATION.value)
+
         return cls(
             event_id=str(data.get("event_id", "")),
             instrument_id=str(data.get("instrument_id", "")),
             event_type=et,
-            exchange_timestamp=float(data.get("exchange_timestamp", 0.0)),
-            receive_timestamp=float(data.get("receive_timestamp", 0.0)),
-            processing_timestamp=float(data.get("processing_timestamp", 0.0)),
+            exchange_timestamp=_safe_float(data.get("exchange_timestamp", 0.0)),
+            receive_timestamp=_safe_float(data.get("receive_timestamp", 0.0)),
+            processing_timestamp=_safe_float(data.get("processing_timestamp", 0.0)),
             source=str(data.get("source", "UNKNOWN")),
             sequence_number=seq_num,
-            price=float(data["price"]) if data.get("price") is not None else None,
-            quantity=float(data["quantity"])
-            if data.get("quantity") is not None
-            else None,
-            bid_price=float(data["bid_price"])
-            if data.get("bid_price") is not None
-            else None,
-            bid_size=float(data["bid_size"])
-            if data.get("bid_size") is not None
-            else None,
-            ask_price=float(data["ask_price"])
-            if data.get("ask_price") is not None
-            else None,
-            ask_size=float(data["ask_size"])
-            if data.get("ask_size") is not None
-            else None,
+            price=parsed_price,
+            quantity=_safe_optional_float(data.get("quantity")),
+            bid_price=_safe_optional_float(data.get("bid_price")),
+            bid_size=_safe_optional_float(data.get("bid_size")),
+            ask_price=_safe_optional_float(data.get("ask_price")),
+            ask_size=_safe_optional_float(data.get("ask_size")),
             quality_status=qs,
             reasons=reasons_list,
             raw_id=str(data.get("raw_id", "")),
@@ -509,18 +527,18 @@ class CanonicalEvent:
             source_kind=str(data.get("source_kind", "LIVE")),
             asset_class=ac,
             expiry_date=data.get("expiry_date"),
-            contract_size=float(data["contract_size"]) if data.get("contract_size") is not None else None,
+            contract_size=_safe_optional_float(data.get("contract_size")),
             underlying_id=data.get("underlying_id"),
-            open_interest=float(data["open_interest"]) if data.get("open_interest") is not None else None,
-            strike=float(data["strike"]) if data.get("strike") is not None else None,
+            open_interest=_safe_optional_float(data.get("open_interest")),
+            strike=_safe_optional_float(data.get("strike")),
             put_call=data.get("put_call"),
-            implied_vol=float(data["implied_vol"]) if data.get("implied_vol") is not None else None,
-            delta=float(data["delta"]) if data.get("delta") is not None else None,
-            gamma=float(data["gamma"]) if data.get("gamma") is not None else None,
-            coupon=float(data["coupon"]) if data.get("coupon") is not None else None,
+            implied_vol=_safe_optional_float(data.get("implied_vol")),
+            delta=_safe_optional_float(data.get("delta")),
+            gamma=_safe_optional_float(data.get("gamma")),
+            coupon=_safe_optional_float(data.get("coupon")),
             maturity_date=data.get("maturity_date"),
-            yield_to_worst=float(data["yield_to_worst"]) if data.get("yield_to_worst") is not None else None,
-            duration=float(data["duration"]) if data.get("duration") is not None else None,
+            yield_to_worst=_safe_optional_float(data.get("yield_to_worst")),
+            duration=_safe_optional_float(data.get("duration")),
         )
 
     @classmethod

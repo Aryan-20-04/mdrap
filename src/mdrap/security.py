@@ -536,7 +536,19 @@ class HashedKeyStore(dict):
         ent = super().get(h_salted)
         if ent is not None:
             return ent
-        return super().get(h_legacy)
+        legacy_ent = super().get(h_legacy)
+        if legacy_ent is not None:
+            # Audit M3: Transparently migrate legacy unsalted hash to modern salted hash
+            legacy_ent.token_hash = h_salted
+            legacy_ent.key_id = h_salted[:16]
+            super().__setitem__(h_salted, legacy_ent)
+            super().pop(h_legacy, None)
+            logger.info(
+                "[security] Seamlessly migrated legacy API key for client '%s' to modern salted hash",
+                legacy_ent.client_id,
+            )
+            return legacy_ent
+        return None
 
     def get_by_token_or_hash(self, key: str) -> Optional[ClientEntitlement]:
         """Lookup entitlement by token, salted/legacy hash, or direct hash (administrative use only)."""

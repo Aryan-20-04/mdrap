@@ -189,6 +189,7 @@ class AppState:
         db_path: Optional[str] = None,
         store: Optional[Store] = None,
         security_manager: Optional[SecurityManager] = None,
+        wal_path: Optional[str] = None,
     ):
         self.db_path = db_path or os.environ.get("MDRAP_DB_PATH", "data/mdrap.db")
         self.store = store or Store(self.db_path)
@@ -218,7 +219,7 @@ class AppState:
 
         from .engine import Engine
 
-        self.wal_path = os.environ.get(
+        self.wal_path = wal_path or os.environ.get(
             "MDRAP_WAL_PATH",
             f"{self.db_path}.wal"
             if self.db_path != ":memory:"
@@ -783,13 +784,30 @@ def create_app(
 
         def _process_batch_locked(batch: list[RawEvent]):
             with st.pipeline_lock:
-                return st.pipeline.process_batch(batch)
+                res = st.pipeline.process_batch(batch)
+            if hasattr(st, "engine") and st.engine is not None:
+                try:
+                    with st.engine._lock:
+                        st.engine.submit(batch)
+                except Exception as exc:
+                    logger.debug("[api] Engine WAL mirroring error: %s", exc)
+            return res
 
-        # 4. Offload synchronous pipeline batch processing to worker thread pool
+        # 4. Offload synchronous batch processing to worker thread pool
         results = await asyncio.to_thread(_process_batch_locked, raw_events)
 
-        # 5. Record feed telemetry and broadcast to WebSocket subscribers
+        # 5. Record feed telemetry, update BBO/watchdog, and broadcast to WebSocket subscribers
         for ev in results:
+            if hasattr(st, "bbo") and st.bbo is not None:
+                try:
+                    st.bbo.observe(ev)
+                except Exception:
+                    pass
+            if hasattr(st, "watchdog") and st.watchdog is not None:
+                try:
+                    st.watchdog.observe(ev)
+                except Exception:
+                    pass
             st.record_feed_event(ev.source)
             if ev.source.upper() in st.active_feeds:
                 st.active_feeds[ev.source.upper()]["status"] = "ACTIVE"

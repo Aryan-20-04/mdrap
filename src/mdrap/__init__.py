@@ -12,11 +12,12 @@ import os
 import warnings
 
 from ._version import __version__
-from .client import Client, MDRAPClient, MarketEvent
+from .client import Client, MDRAPClient, MarketEvent as ClientMarketEvent
 
 from .models import (
     CanonicalEvent,
     EventType,
+    MarketEvent,
     QualityStatus,
     RawEvent,
     Reason,
@@ -54,6 +55,7 @@ __all__ = [
     "__version__",
     "Client",
     "MDRAPClient",
+    "ClientMarketEvent",
     "MarketEvent",
     "RawEvent",
     "CanonicalEvent",

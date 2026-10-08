@@ -786,6 +786,158 @@ def test_phase3_engine_snapshot_bounded_startup(tmp_path):
     engine_reopened.close()
 
 
+def test_phase4_from_dict_bad_input_and_nan_safety():
+    """Phase 4: from_dict never raises on bad input and rejects NaN/inf without corrupting models."""
+    import math
+    from mdrap.models import CanonicalEvent, QualityStatus
+    from mdrap.client import MarketEvent as ClientMarketEvent
+
+    # 1. CanonicalEvent.from_dict with NaN price
+    nan_data = {
+        "event_id": "test_nan",
+        "instrument_id": "AAPL",
+        "price": float("nan"),
+        "exchange_timestamp": float("nan"),
+    }
+    ev = CanonicalEvent.from_dict(nan_data)
+    assert ev.price is None
+    assert ev.exchange_timestamp == 0.0
+    assert ev.quality_status == QualityStatus.INVALID
+    assert "SCHEMA_VIOLATION" in ev.reasons
+
+    # 2. CanonicalEvent.from_dict with invalid string price
+    bad_data = {
+        "event_id": "test_bad",
+        "instrument_id": "AAPL",
+        "price": "not_a_valid_float_price",
+    }
+    ev2 = CanonicalEvent.from_dict(bad_data)
+    assert ev2.price is None
+    assert ev2.quality_status == QualityStatus.INVALID
+
+    # 3. ClientMarketEvent.from_dict with NaN price
+    c_nan = ClientMarketEvent.from_dict({"sym": "BTC/USD", "price": float("nan"), "status": "VALID"})
+    assert c_nan.price is None
+    assert c_nan.status == "INVALID"
+
+    # 4. ClientMarketEvent.from_dict with string price
+    c_bad = ClientMarketEvent.from_dict({"sym": "BTC/USD", "price": "corrupt_data", "exchange_ts": "bad_ts"})
+    assert c_bad.price is None
+    assert c_bad.exchange_ts == 0.0
+    assert c_bad.status == "INVALID"
+
+
+def test_phase4_market_event_name_collision_resolved():
+    """Phase 4: mdrap exports models.MarketEvent as MarketEvent and client.MarketEvent as ClientMarketEvent."""
+    import mdrap
+    from mdrap.models import MarketEvent as CoreMarketEvent
+    from mdrap.client import MarketEvent as ClientStreamEvent
+
+    # mdrap.MarketEvent is the core models.MarketEvent
+    assert mdrap.MarketEvent is CoreMarketEvent
+    # mdrap.ClientMarketEvent is the client SDK streaming event
+    assert mdrap.ClientMarketEvent is ClientStreamEvent
+    assert mdrap.ClientMarketEvent is not mdrap.MarketEvent
+
+
+def test_phase4_hashedkeystore_legacy_unsalted_migration():
+    """Phase 4: HashedKeyStore transparently migrates legacy unsalted SHA-256 tokens to salted hashes."""
+    import hashlib
+    from mdrap.security import HashedKeyStore, ClientEntitlement, Role, hash_api_key
+
+    keystore = HashedKeyStore()
+    raw_token = "legacy_unsalted_test_token_123"
+    legacy_hash = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+
+    ent = ClientEntitlement(
+        token_hash=legacy_hash,
+        client_id="LegacyClient",
+        key_prefix=raw_token[:12] + "...",
+        key_id=legacy_hash[:16],
+        role=Role.OPERATOR,
+    )
+    # Store with legacy unsalted hash directly (simulating pre-v3.0.0 database)
+    dict.__setitem__(keystore, legacy_hash, ent)
+    assert legacy_hash in dict.keys(keystore)
+
+    # Lookup by token: must find, return, and seamlessly migrate to salted hash
+    retrieved = keystore.get_by_token(raw_token)
+    assert retrieved is not None
+    assert retrieved.client_id == "LegacyClient"
+
+    salted_hash = hash_api_key(raw_token)
+    assert salted_hash in dict.keys(keystore)
+    assert legacy_hash not in dict.keys(keystore)
+    assert retrieved.token_hash == salted_hash
+
+
+def test_phase4_api_ingest_durable_engine_wal_path(tmp_path):
+    """Phase 4: /v1/ingest persists incoming events directly to Engine IngestLog WAL before returning 200 OK."""
+    from starlette.testclient import TestClient
+    from mdrap.api import create_app, AppState
+    from mdrap.storage import Store
+    from mdrap.security import SecurityManager
+    from mdrap.ingestlog import IngestLog
+
+    db_file = tmp_path / "api_test.db"
+    wal_dir = tmp_path / "api_test.wal"
+
+    store = Store(str(db_file))
+    sec = SecurityManager(store=store)
+    op_ent = sec.register_api_key(client_id="OpClient", role="OPERATOR")
+    token = op_ent.token
+
+    state = AppState(db_path=str(db_file), store=store, security_manager=sec, wal_path=str(wal_dir))
+    app = create_app(state=state)
+    client = TestClient(app)
+
+    # Ingest event via API
+    payload = {
+        "source": "COINBASE",
+        "payload": {
+            "instrument": "BTC/USD",
+            "event_type": "TRADE",
+            "price": 62500.0,
+            "quantity": 0.5,
+            "sequence": 1,
+            "exchange_ts": time.time(),
+        },
+    }
+    r = client.post("/v1/ingest", json=payload, headers={"X-API-Key": token})
+    assert r.status_code == 200
+    res_data = r.json()
+    assert res_data["status"] == "ok"
+    assert res_data["ingested"] == 1
+    assert len(res_data["canonical"]) == 1
+    assert res_data["canonical"][0]["price"] == 62500.0
+
+    # Verify event was durably committed to Engine WAL on disk
+    assert state.engine is not None
+    assert state.engine.log is not None
+    # Close engine to release advisory process lock before opening inspection log
+    state.engine.close()
+    wal_records = list(IngestLog(str(wal_dir)).iter_from(0))
+    assert len(wal_records) >= 1
+    assert wal_records[0][1].source == "COINBASE"
+    assert wal_records[0][1].payload["price"] == 62500.0
+
+    store.close()
+
+
+def test_phase4_version_discipline_metadata():
+    """Phase 4: Version metadata exposes commit hash, segment version, and stability policy."""
+    import mdrap._version as v
+
+    assert v.__version__ == "3.1.0"
+    assert v.__segment_version__ == 1
+    assert v.__journal_version__ == 1
+    assert hasattr(v, "__commit__")
+    assert isinstance(v.__commit__, str)
+    assert len(v.__commit__) > 0
+    assert "Semantic Versioning" in v.__stability_policy__
+
+
+
 
 
 

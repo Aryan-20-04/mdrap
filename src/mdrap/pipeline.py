@@ -327,6 +327,10 @@ class Pipeline:
             line = json.dumps({"type": entry_type, "payload": payload}, default=str)
             self._journal_file.write(line + "\n")
             self._journal_file.flush()
+            try:
+                os.fsync(self._journal_file.fileno())
+            except (OSError, IOError):
+                pass
         except Exception as exc:
             self.journal_failures += 1
             self.is_degraded = True

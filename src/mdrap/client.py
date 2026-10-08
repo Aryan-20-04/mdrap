@@ -13,6 +13,7 @@ import asyncio
 from dataclasses import dataclass, field
 import json
 import logging
+import math
 import os
 import socket
 import time
@@ -26,6 +27,38 @@ from ._version import __version__
 __stability__ = "beta"
 
 logger = logging.getLogger("mdrap.client")
+
+
+def _safe_float(val: Any, default: float = 0.0) -> float:
+    """Safely convert value to finite float without raising or accepting NaN/inf."""
+    if val is None:
+        return default
+    try:
+        f = float(val)
+        return f if math.isfinite(f) else default
+    except (ValueError, TypeError, OverflowError):
+        return default
+
+
+def _safe_optional_float(val: Any) -> Optional[float]:
+    """Safely convert value to finite float, returning None on invalid/NaN/inf/None."""
+    if val is None:
+        return None
+    try:
+        f = float(val)
+        return f if math.isfinite(f) else None
+    except (ValueError, TypeError, OverflowError):
+        return None
+
+
+def _safe_int(val: Any, default: int = 0) -> int:
+    """Safely convert value to int without raising on invalid types."""
+    if val is None:
+        return default
+    try:
+        return int(val)
+    except (ValueError, TypeError, OverflowError):
+        return default
 
 
 @dataclass
@@ -103,30 +136,44 @@ class MarketEvent:
         sym = str(data.get("sym", ""))
 
         if ev_type == "VWAP":
-            curve = data.get("vwap_curve", {})
+            curve = data.get("vwap_curve", {}) if isinstance(data.get("vwap_curve"), dict) else {}
             return cls(
-                seq=int(data.get("seq", 0)),
+                seq=_safe_int(data.get("seq", 0)),
                 event_type="VWAP",
                 symbol=sym,
-                bid_price=curve.get("best_bid"),
-                ask_price=curve.get("best_ask"),
+                bid_price=_safe_optional_float(curve.get("best_bid")),
+                ask_price=_safe_optional_float(curve.get("best_ask")),
                 vwap_curve=curve,
-                exchange_ts=float(data.get("exchange_ts", 0.0)),
-                ingest_ts=float(data.get("ingest_ts", 0.0)),
-                broadcast_ts=float(data.get("broadcast_ts", 0.0)),
+                exchange_ts=_safe_float(data.get("exchange_ts", 0.0)),
+                ingest_ts=_safe_float(data.get("ingest_ts", 0.0)),
+                broadcast_ts=_safe_float(data.get("broadcast_ts", 0.0)),
                 recv_ts=recv,
-                engine_us=float(data.get("engine_us", data.get("proc_us", 0.0))),
+                engine_us=_safe_float(data.get("engine_us", data.get("proc_us", 0.0))),
             )
         elif ev_type == "DEPTH":
-            bids = data.get("bids", [])
-            asks = data.get("asks", [])
+            raw_bids = data.get("bids", []) if isinstance(data.get("bids"), list) else []
+            raw_asks = data.get("asks", []) if isinstance(data.get("asks"), list) else []
+            bids = []
+            for b in raw_bids:
+                if isinstance(b, (list, tuple)) and len(b) >= 2:
+                    p = _safe_optional_float(b[0])
+                    s = _safe_optional_float(b[1])
+                    if p is not None and s is not None:
+                        bids.append([p, s] + list(b[2:]))
+            asks = []
+            for a in raw_asks:
+                if isinstance(a, (list, tuple)) and len(a) >= 2:
+                    p = _safe_optional_float(a[0])
+                    s = _safe_optional_float(a[1])
+                    if p is not None and s is not None:
+                        asks.append([p, s] + list(a[2:]))
             best_bid = bids[0][0] if bids else None
             best_ask = asks[0][0] if asks else None
             bid_sz = bids[0][1] if bids else None
             ask_sz = asks[0][1] if asks else None
 
             return cls(
-                seq=int(data.get("seq", 0)),
+                seq=_safe_int(data.get("seq", 0)),
                 event_type="DEPTH",
                 symbol=sym,
                 bid_price=best_bid,
@@ -135,44 +182,51 @@ class MarketEvent:
                 ask_size=ask_sz,
                 bids=bids,
                 asks=asks,
-                aggregated_bids=data.get("aggregated_bids", []),
-                aggregated_asks=data.get("aggregated_asks", []),
-                vwap_curve=data.get("vwap_curve"),
-                total_bid_notional=data.get("total_bid_notional"),
-                total_ask_notional=data.get("total_ask_notional"),
-                micro_price=data.get("micro_price"),
-                ofi=data.get("ofi"),
+                aggregated_bids=data.get("aggregated_bids", []) if isinstance(data.get("aggregated_bids"), list) else [],
+                aggregated_asks=data.get("aggregated_asks", []) if isinstance(data.get("aggregated_asks"), list) else [],
+                vwap_curve=data.get("vwap_curve") if isinstance(data.get("vwap_curve"), dict) else None,
+                total_bid_notional=_safe_optional_float(data.get("total_bid_notional")),
+                total_ask_notional=_safe_optional_float(data.get("total_ask_notional")),
+                micro_price=_safe_optional_float(data.get("micro_price")),
+                ofi=_safe_optional_float(data.get("ofi")),
                 is_crossed=bool(data.get("is_crossed", False)),
-                arbitrage=data.get("arbitrage", []),
-                exchange_ts=float(data.get("exchange_ts", 0.0)),
-                ingest_ts=float(data.get("ingest_ts", 0.0)),
-                broadcast_ts=float(data.get("broadcast_ts", 0.0)),
+                arbitrage=data.get("arbitrage", []) if isinstance(data.get("arbitrage"), list) else [],
+                exchange_ts=_safe_float(data.get("exchange_ts", 0.0)),
+                ingest_ts=_safe_float(data.get("ingest_ts", 0.0)),
+                broadcast_ts=_safe_float(data.get("broadcast_ts", 0.0)),
                 recv_ts=recv,
-                engine_us=float(data.get("engine_us", data.get("proc_us", 0.0))),
+                engine_us=_safe_float(data.get("engine_us", data.get("proc_us", 0.0))),
             )
         else:
+            raw_p = data.get("price")
+            p = _safe_optional_float(raw_p)
+            status = str(data.get("status", "VALID"))
+            if raw_p is not None and p is None:
+                status = "INVALID"
+            b_info = data.get("bbo") if isinstance(data.get("bbo"), dict) else {}
             return cls(
-                seq=int(data.get("seq", 0)),
+                seq=_safe_int(data.get("seq", 0)),
                 event_type="TICK",
                 symbol=sym,
-                price=data.get("price"),
-                size=data.get("size"),
-                bid_price=data.get("bid"),
-                ask_price=data.get("ask"),
-                bid_size=data.get("bid_size"),
-                ask_size=data.get("ask_size"),
+                price=p,
+                size=_safe_optional_float(data.get("size")),
+                bid_price=_safe_optional_float(data.get("bid")),
+                ask_price=_safe_optional_float(data.get("ask")),
+                bid_size=_safe_optional_float(data.get("bid_size")),
+                ask_size=_safe_optional_float(data.get("ask_size")),
                 source=str(data.get("source", "")),
-                status=str(data.get("status", "VALID")),
-                bbo=data.get("bbo"),
-                is_crossed=bool(data.get("bbo", {}).get("crossed", False))
-                if data.get("bbo")
-                else False,
-                exchange_ts=float(data.get("exchange_ts", 0.0)),
-                ingest_ts=float(data.get("ingest_ts", 0.0)),
-                broadcast_ts=float(data.get("broadcast_ts", 0.0)),
+                status=status,
+                bbo=b_info if b_info else None,
+                is_crossed=bool(b_info.get("crossed", False)) if b_info else False,
+                exchange_ts=_safe_float(data.get("exchange_ts", 0.0)),
+                ingest_ts=_safe_float(data.get("ingest_ts", 0.0)),
+                broadcast_ts=_safe_float(data.get("broadcast_ts", 0.0)),
                 recv_ts=recv,
-                engine_us=float(data.get("engine_us", data.get("proc_us", 0.0))),
+                engine_us=_safe_float(data.get("engine_us", data.get("proc_us", 0.0))),
             )
+
+
+ClientMarketEvent = MarketEvent
 
 
 class MDRAPClient:
