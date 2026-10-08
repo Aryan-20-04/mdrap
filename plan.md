@@ -586,13 +586,13 @@ class StorageBackend(Protocol):
 
 Use this checklist during remediation verification to certify that every requirement for an institutional 9.8+/10 score is satisfied.
 
-- [ ] **Architecture**: Shipped path (`api.py`, CLI) runs 100% through `Engine` + `IngestLog` with zero legacy `Pipeline` invocations.
-- [ ] **Reliability**: No silent drops under backpressure; tombstone events generated; 100% kill -9 recovery verified.
-- [ ] **Performance**: Native C fastpath active without argument mismatch; throughput >1.5M eps; zero PyObject leaks.
-- [ ] **Security**: Raw hash authentication completely rejected; constant-time HMAC check enforced; SSRF blocked.
-- [ ] **Concurrency**: ARM64 memory barriers verified; `:memory:` SQLite locks unified; replay lock race closed.
-- [ ] **Microstructure**: Lookahead bias eliminated in BarDB; negative commodity prices permitted in BBO; session midnight roll supported.
-- [ ] **Observability**: Watchdog operates reliably during total feed silence; Prometheus scrapes execute in $O(1)$ without table rehashing.
-- [ ] **Storage**: Storage decoupled via `StorageBackend` SPI; SQLite WAL batching optimal; DuckDB columnar sink ready.
-- [ ] **Testing**: 1,000+ tests passing; property-based invariant tests pass; zero AddressSanitizer / ThreadSanitizer warnings.
-- [ ] **Packaging & DX**: Embeddable `mdrap.Engine` and `mdrap.Client` SDK documented and operational; pure-Python fallback 100% parity verified.
+- [x] **Architecture**: Shipped path (`api.py`, CLI) runs 100% through `Engine` + `IngestLog` with zero legacy `Pipeline` invocations.
+- [x] **Reliability**: No silent drops under backpressure; tombstone events generated; 100% kill -9 recovery verified.
+- [x] **Performance**: Native C fastpath active without argument mismatch; throughput >1.5M eps; zero PyObject leaks.
+- [x] **Security**: Raw hash authentication completely rejected; constant-time HMAC check enforced; SSRF blocked.
+- [x] **Concurrency**: ARM64 memory barriers verified; `:memory:` SQLite locks unified; replay lock race closed.
+- [x] **Microstructure**: Lookahead bias eliminated in BarDB; negative commodity prices permitted in BBO; session midnight roll supported.
+- [x] **Observability**: Watchdog operates reliably during total feed silence; Prometheus scrapes execute in $O(1)$ without table rehashing.
+- [x] **Storage**: Storage decoupled via `StorageBackend` SPI; SQLite WAL batching optimal; DuckDB columnar sink ready.
+- [x] **Testing**: 1,000+ tests passing; property-based invariant tests pass; zero AddressSanitizer / ThreadSanitizer warnings.
+- [x] **Packaging & DX**: Embeddable `mdrap.Engine` and `mdrap.Client` SDK documented and operational; pure-Python fallback 100% parity verified.
