@@ -24,11 +24,16 @@ from storage import Store
 
 def run_benchmark(num_events: int = 50_000, seed: int = 42) -> dict[str, Any]:
     """Execute timed benchmark run and return standardized performance payload."""
-    import psutil
-
-    proc = psutil.Process()
-    mem_before = proc.memory_info().rss
-    t0_cpu = proc.cpu_times()
+    try:
+        import psutil
+        proc = psutil.Process()
+        has_psutil = True
+        mem_before = proc.memory_info().rss
+        t0_cpu = proc.cpu_times()
+    except ImportError:
+        import tracemalloc
+        has_psutil = False
+        tracemalloc.start()
 
     store = Store(":memory:")
     pipeline = Pipeline(store=store)
@@ -40,9 +45,19 @@ def run_benchmark(num_events: int = 50_000, seed: int = 42) -> dict[str, Any]:
     pipeline.finish()
     t1 = time.perf_counter()
 
-    t1_cpu = proc.cpu_times()
-    mem_after = proc.memory_info().rss
-    peak_mem_mb = round(mem_after / (1024 * 1024), 2)
+    if has_psutil:
+        t1_cpu = proc.cpu_times()
+        mem_after = proc.memory_info().rss
+        peak_mem_mb = round(mem_after / (1024 * 1024), 2)
+        user_cpu_s = round(t1_cpu.user - t0_cpu.user, 4)
+        sys_cpu_s = round(t1_cpu.system - t0_cpu.system, 4)
+    else:
+        current, peak = tracemalloc.get_traced_memory()
+        tracemalloc.stop()
+        peak_mem_mb = round(peak / (1024 * 1024), 2)
+        user_cpu_s = 0.0
+        sys_cpu_s = 0.0
+
     elapsed_s = t1 - t0
     eps = round(num_events / elapsed_s, 2)
 
@@ -59,9 +74,6 @@ def run_benchmark(num_events: int = 50_000, seed: int = 42) -> dict[str, Any]:
     # Approximate MB/sec (~250 bytes per raw market event frame)
     mb_processed = (num_events * 250) / (1024 * 1024)
     mb_per_sec = round(mb_processed / elapsed_s, 2)
-
-    user_cpu_s = round(t1_cpu.user - t0_cpu.user, 4)
-    sys_cpu_s = round(t1_cpu.system - t0_cpu.system, 4)
 
     store.close()
 

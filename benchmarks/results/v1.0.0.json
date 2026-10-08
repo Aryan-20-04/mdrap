@@ -1,28 +1,28 @@
 {
-  "timestamp": 1790877790.6218147,
-  "num_events": 50000,
+  "timestamp": 1791496017.0859585,
+  "num_events": 20000,
   "seed": 42,
-  "elapsed_seconds": 2.5057,
+  "elapsed_seconds": 6.7968,
   "throughput": {
-    "events_per_second": 19954.71,
-    "mb_per_second": 4.76
+    "events_per_second": 2942.58,
+    "mb_per_second": 0.7
   },
   "latency_e2e_us": {
-    "p50": 795.1,
-    "p90": 1291.4,
-    "p95": 1787.7,
-    "p99": 2184.7,
-    "p99.9": 2649.1,
+    "p50": 790.8,
+    "p90": 1289.75,
+    "p95": 1788.7,
+    "p99": 2187.4,
+    "p99.9": 2608.0,
     "max": 3094.9
   },
   "resources": {
-    "rss_mb": 104.84,
-    "user_cpu_seconds": 2.1719,
-    "system_cpu_seconds": 0.3281
+    "rss_mb": 19.7,
+    "user_cpu_seconds": 0.0,
+    "system_cpu_seconds": 0.0
   },
   "invariants": {
     "dropped_events": 0,
-    "processed_events": 50000,
+    "processed_events": 20000,
     "zero_loss_verified": true
   }
 }
