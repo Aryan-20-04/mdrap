@@ -14,6 +14,7 @@ from __future__ import annotations
 import os
 import sys
 import time
+import warnings
 import webbrowser
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -349,6 +350,11 @@ class MDRAPNavigator:
     """Full-screen interactive keyboard desk managing tabs, grids, and safe execution."""
 
     def __init__(self, console: Console | None = None, db_path: str | None = None):
+        warnings.warn(
+            "MDRAPNavigator and mdrap.navigator are deprecated and non-core to the market data engine.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self.console = console or Console()
         self.db_path = db_path
         self.reader = KeyReader()

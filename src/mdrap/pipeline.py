@@ -327,10 +327,11 @@ class Pipeline:
             line = json.dumps({"type": entry_type, "payload": payload}, default=str)
             self._journal_file.write(line + "\n")
             self._journal_file.flush()
-            try:
-                os.fsync(self._journal_file.fileno())
-            except (OSError, IOError):
-                pass
+            if self.durability_policy == "strict_fsync":
+                try:
+                    os.fsync(self._journal_file.fileno())
+                except (OSError, IOError):
+                    pass
         except Exception as exc:
             self.journal_failures += 1
             self.is_degraded = True
@@ -1068,6 +1069,13 @@ class Pipeline:
                     )
             else:
                 self._sync_flush(canon, quar, lin, health_rows)
+
+        if self._journal_file is not None:
+            try:
+                self._journal_file.flush()
+                os.fsync(self._journal_file.fileno())
+            except (OSError, IOError):
+                pass
 
         if wait and self._async_writer_enabled and hasattr(self, "_write_queue"):
             with self._write_queue.all_tasks_done:

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import sys
 import time
+import warnings
 from typing import Any, Dict, Generator, List, Optional
 
 if sys.platform == "win32":
@@ -307,6 +308,11 @@ class LiveTickerDashboard:
         depth_engine: Optional[ConsolidatedDepthEngine] = None,
         candle_interval_s: float = 5.0,
     ):
+        warnings.warn(
+            "LiveTickerDashboard and mdrap.terminal_display are deprecated and non-core to the market data engine.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self.bbo_engine = bbo_engine or BBOEngine()
         self.depth_engine = depth_engine or ConsolidatedDepthEngine()
         self.analytics = OHLCVAggregator(interval_s=candle_interval_s)
