@@ -605,6 +605,28 @@ class Engine:
         # 2. Schema field validation
         instrument = payload.get("instrument")
         event_type_str = payload.get("event_type", "TRADE")
+        if (
+            payload.get("drop_reason") == "BACKPRESSURE_DROP"
+            or event_type_str == "TOMBSTONE_DROPPED"
+        ):
+            event_id = f"q_{raw_event.source}_{offset}"
+            q_row = (
+                event_id,
+                instrument or "UNKNOWN",
+                raw_event.source,
+                QualityStatus.INVALID.value,
+                json.dumps(["Event dropped due to ingress queue backpressure"]),
+                json.dumps(payload, default=str),
+                recv_ts,
+            )
+            state.counts["INVALID"] += 1
+            return state, EngineDecision(
+                offset=offset,
+                event_id=event_id,
+                quality_status=QualityStatus.INVALID,
+                reasons=[Reason.BACKPRESSURE_DROP.value],
+                quarantine_row=q_row,
+            )
         if not instrument or not isinstance(instrument, str):
             event_id = f"q_{raw_event.source}_{offset}"
             q_row = (

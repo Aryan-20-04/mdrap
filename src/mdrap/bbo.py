@@ -180,20 +180,20 @@ class BBOEngine:
         for s, q in inst_book.items():
             bp = q.bid_price
             if bp is not None and math.isfinite(bp):
-                if bp > best_bid or (
-                    bp == best_bid and (q.bid_size or 0.0) > best_bid_size
-                ):
-                    best_bid = bp
-                    best_bid_size = q.bid_size or 0.0
-                    best_bid_src = s
+                bsz = q.bid_size or 0.0
+                if bsz >= 0.0:
+                    if bp > best_bid or (bp == best_bid and bsz > best_bid_size):
+                        best_bid = bp
+                        best_bid_size = bsz
+                        best_bid_src = s
             ap = q.ask_price
             if ap is not None and math.isfinite(ap):
-                if ap < best_ask or (
-                    ap == best_ask and (q.ask_size or 0.0) > best_ask_size
-                ):
-                    best_ask = ap
-                    best_ask_size = q.ask_size or 0.0
-                    best_ask_src = s
+                asz = q.ask_size or 0.0
+                if asz >= 0.0:
+                    if ap < best_ask or (ap == best_ask and asz > best_ask_size):
+                        best_ask = ap
+                        best_ask_size = asz
+                        best_ask_src = s
 
         has_bid = math.isfinite(best_bid)
         has_ask = math.isfinite(best_ask)

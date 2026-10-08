@@ -17,6 +17,7 @@ and graceful fallback if websocket libraries are unavailable.
 from __future__ import annotations
 
 import asyncio
+import collections
 from collections.abc import Generator
 from datetime import datetime
 import itertools
@@ -27,7 +28,7 @@ import queue
 import ssl
 import threading
 import time
-from typing import Any
+from typing import Any, Callable
 import uuid
 
 from .live import resolve_venue_symbols
@@ -543,6 +544,7 @@ class WebSocketFeedManager:
         symbols: list[str],
         venues: list[str] | None = None,
         max_queue_size: int = 10000,
+        on_drop: Callable[[RawEvent], None] | None = None,
     ):
         self.symbols = symbols
         self.venues = (
@@ -552,6 +554,9 @@ class WebSocketFeedManager:
         )
         self.max_queue_size = max_queue_size
         self._queue: queue.Queue[RawEvent] = queue.Queue(maxsize=max_queue_size)
+        self._on_drop = on_drop
+        self._tombstones: collections.deque[RawEvent] = collections.deque(maxlen=1000)
+        self._tombstone_lock = threading.Lock()
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
@@ -562,6 +567,30 @@ class WebSocketFeedManager:
         self._drop_count: int = 0  # Total frames dropped due to backpressure
         self._drop_counts: dict[str, int] = {v: 0 for v in self.venues}
         self._ssl_ctx = ssl.create_default_context()
+
+    def _create_drop_tombstone(
+        self, venue: str, symbol: str, evicted: RawEvent | None = None
+    ) -> RawEvent:
+        """Create an explicit tombstone event representing dropped data under queue backpressure."""
+        return RawEvent(
+            source=venue,
+            payload={
+                "instrument": symbol,
+                "event_type": "TOMBSTONE_DROPPED",
+                "is_dropped": True,
+                "drop_reason": "BACKPRESSURE_DROP",
+                "drop_count": self._drop_count,
+                "venue": venue,
+                "evicted_raw_id": evicted.raw_id if evicted else None,
+            },
+            receive_timestamp=time.time(),
+            raw_id=f"ws-tombstone-{venue.lower()}-{self._drop_count}",
+        )
+
+    def get_dropped_tombstones(self) -> list[RawEvent]:
+        """Return recently recorded backpressure drop tombstone events."""
+        with self._tombstone_lock:
+            return list(self._tombstones)
 
     def start(self) -> None:
         """Start the background asynchronous WebSocket workers."""
@@ -676,8 +705,9 @@ class WebSocketFeedManager:
                                     self._queue.put_nowait(raw)
                                 except queue.Full:
                                     # Evict oldest frame to keep stream real-time
+                                    evicted: RawEvent | None = None
                                     try:
-                                        self._queue.get_nowait()
+                                        evicted = self._queue.get_nowait()
                                     except queue.Empty:
                                         pass
                                     self._queue.put_nowait(raw)
@@ -685,6 +715,19 @@ class WebSocketFeedManager:
                                     self._drop_counts[venue] = (
                                         self._drop_counts.get(venue, 0) + 1
                                     )
+                                    tombstone = self._create_drop_tombstone(
+                                        venue, canon, evicted
+                                    )
+                                    with self._tombstone_lock:
+                                        self._tombstones.append(tombstone)
+                                    if self._on_drop is not None:
+                                        try:
+                                            self._on_drop(tombstone)
+                                        except Exception as cb_exc:
+                                            logger.debug(
+                                                "[ws_feed] on_drop callback error: %s",
+                                                cb_exc,
+                                            )
                                     if self._drop_count % 100 == 1:
                                         logger.warning(
                                             "[ws_feed] Backpressure drop #%d on %s (total: %d)",

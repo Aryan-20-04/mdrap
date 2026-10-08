@@ -261,3 +261,70 @@ def test_kraken_snapshot_normalizes_and_evaluates():
     evaluated = engine.evaluate(canonical)
     assert evaluated is not None
     assert evaluated.quality_status == QualityStatus.VALID
+
+
+def test_no_silent_drops_under_backpressure():
+    """Verify that queue overflow creates explicit tombstone drop events and does not drop silently (CRIT-05)."""
+    import time
+    import queue
+    from mdrap.models import Reason
+    from mdrap.pipeline import Pipeline
+    from mdrap.storage import Store
+    from mdrap.engine import Engine
+
+    dropped_events = []
+
+    def on_drop(tombstone_ev):
+        dropped_events.append(tombstone_ev)
+
+    manager = WebSocketFeedManager(
+        symbols=["BTC/USD"],
+        venues=["BINANCE"],
+        max_queue_size=2,
+        on_drop=on_drop,
+    )
+
+    ev1 = RawEvent(source="BINANCE", payload={"instrument": "BTC/USD", "event_type": "QUOTE", "bid": 60000.0, "ask": 60001.0}, receive_timestamp=time.time(), raw_id="raw-1")
+    ev2 = RawEvent(source="BINANCE", payload={"instrument": "BTC/USD", "event_type": "QUOTE", "bid": 60001.0, "ask": 60002.0}, receive_timestamp=time.time(), raw_id="raw-2")
+    manager._queue.put(ev1)
+    manager._queue.put(ev2)
+
+    ev3 = RawEvent(source="BINANCE", payload={"instrument": "BTC/USD", "event_type": "QUOTE", "bid": 60002.0, "ask": 60003.0}, receive_timestamp=time.time(), raw_id="raw-3")
+
+    # Simulate backpressure eviction
+    try:
+        manager._queue.put_nowait(ev3)
+    except queue.Full:
+        evicted = manager._queue.get_nowait()
+        manager._queue.put_nowait(ev3)
+        manager._drop_count += 1
+        manager._drop_counts["BINANCE"] = manager._drop_counts.get("BINANCE", 0) + 1
+        tombstone = manager._create_drop_tombstone("BINANCE", "BTC/USD", evicted)
+        with manager._tombstone_lock:
+            manager._tombstones.append(tombstone)
+        if manager._on_drop:
+            manager._on_drop(tombstone)
+
+    assert manager._drop_count == 1
+    assert len(dropped_events) == 1
+    assert len(manager.get_dropped_tombstones()) == 1
+    tombstone = dropped_events[0]
+    assert tombstone.payload["event_type"] == "TOMBSTONE_DROPPED"
+    assert tombstone.payload["is_dropped"] is True
+    assert tombstone.payload["drop_reason"] == "BACKPRESSURE_DROP"
+    assert tombstone.payload["evicted_raw_id"] == "raw-1"
+
+    # Verify Pipeline quarantines the tombstone with Reason.BACKPRESSURE_DROP
+    store = Store(":memory:")
+    pipeline = Pipeline(store=store)
+    quar_event = pipeline.process_one(tombstone)
+    assert quar_event is not None
+    assert quar_event.quality_status == QualityStatus.INVALID
+    assert Reason.BACKPRESSURE_DROP.value in quar_event.reasons
+
+    # Verify Engine quarantines the tombstone with Reason.BACKPRESSURE_DROP
+    engine = Engine()
+    dec = engine.submit(tombstone)
+    assert dec.quality_status == QualityStatus.INVALID
+    assert Reason.BACKPRESSURE_DROP.value in dec.reasons
+

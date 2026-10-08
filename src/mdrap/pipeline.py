@@ -609,11 +609,23 @@ class Pipeline:
             event = normalize(raw)
         except SchemaError:
             # Structurally unparseable -- still classify + quarantine, never drop silently.
+            p_dict = raw.payload if isinstance(raw.payload, dict) else {}
+            is_bp_drop = (
+                p_dict.get("drop_reason") == "BACKPRESSURE_DROP"
+                or p_dict.get("event_type") == "TOMBSTONE_DROPPED"
+            )
+            r_val = Reason.BACKPRESSURE_DROP.value if is_bp_drop else Reason.SCHEMA_VIOLATION.value
+            desc = "Backpressure drop tombstone" if is_bp_drop else "Schema violation"
+            lineage_d = (
+                "quarantined (backpressure drop)"
+                if is_bp_drop
+                else "quarantined (schema error)"
+            )
             return self._create_quarantined_event(
                 raw,
-                "Schema violation",
-                "quarantined (schema error)",
-                Reason.SCHEMA_VIOLATION.value,
+                desc,
+                lineage_d,
+                r_val,
                 record_lineage=True,
             )
 

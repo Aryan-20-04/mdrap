@@ -916,13 +916,15 @@ class MarketDataDaemon:
                     )
                     else "DEFAULT"
                 )
-                role_breakdown[role_val] = role_breakdown.get(role_val, 0) + 1
+        with self._replay_lock:
+            replay_buf_size = len(self._replay_buffer)
+            replay_buf_stats = self._replay_buffer.stats()
         return {
             "uptime_s": round(uptime, 2),
             "total_broadcast": self._total_broadcast,
             "global_seq": self._global_seq,
-            "replay_buffer_size": len(self._replay_buffer),
-            "replay_buffer": self._replay_buffer.stats(),
+            "replay_buffer_size": replay_buf_size,
+            "replay_buffer": replay_buf_stats,
             "throughput_eps": round(eps, 1),
             "active_clients": client_count,
             "dropped_ticks": total_dropped,

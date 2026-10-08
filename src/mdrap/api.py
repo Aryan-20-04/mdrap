@@ -856,18 +856,15 @@ def create_app(
             )
 
         def _process_batch_locked(batch: list[RawEvent]):
-            if hasattr(st, "engine") and st.engine is not None:
-                with st.engine._lock:
-                    decisions = st.engine.submit(batch)
-                if not isinstance(decisions, list):
-                    decisions = [decisions] if decisions is not None else []
-                return [
-                    d.canonical_event
-                    for d in decisions
-                    if d.canonical_event is not None
-                ]
             with st.pipeline_lock:
-                return st.pipeline.process_batch(batch)
+                res = st.pipeline.process_batch(batch)
+            if hasattr(st, "engine") and st.engine is not None:
+                try:
+                    with st.engine._lock:
+                        st.engine.submit(batch)
+                except Exception as exc:
+                    logger.debug("[api] Engine WAL mirroring error: %s", exc)
+            return res
 
         # 4. Offload synchronous batch processing to worker thread pool
         results = await asyncio.to_thread(_process_batch_locked, raw_events)

@@ -149,6 +149,7 @@ _CANONICAL_REASONS = (
     "SECURITY_REJECT",
     "HOOK_DROPPED",
     "HOOK_ERROR",
+    "BACKPRESSURE_DROP",
 )
 
 
@@ -272,6 +273,7 @@ class Reason(str, Enum, metaclass=ReasonType):
     SECURITY_REJECT = "SECURITY_REJECT"  # Bit 14: Security gate rejection (sanitizer, HMAC, or auth failure)
     HOOK_DROPPED = "HOOK_DROPPED"  # Event was intentionally rejected by a pipeline hook
     HOOK_ERROR = "HOOK_ERROR"  # A pipeline hook raised or returned an invalid event
+    BACKPRESSURE_DROP = "BACKPRESSURE_DROP"  # Event was dropped due to ingress queue backpressure
 
     @classmethod
     def _missing_(cls, value: object) -> Any:

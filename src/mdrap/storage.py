@@ -335,8 +335,13 @@ class Store:
             )
         self.conflicts: int = 0
         self.recovery_conflicts: int = 0
+        is_mem = (
+            path == ":memory:"
+            or "mode=memory" in path
+            or path.startswith("file::memory:")
+        )
         self._lock = threading.RLock()
-        self._read_lock = threading.RLock()
+        self._read_lock = self._lock if is_mem else threading.RLock()
         with self._lock:
             if path != ":memory:" and not path.startswith("file:"):
                 dir_path = os.path.dirname(os.path.abspath(path))
@@ -543,7 +548,7 @@ class Store:
                 applied_versions.add(3)
             self.conn.commit()
 
-            if path != ":memory:":
+            if not is_mem:
                 try:
                     self.read_conn = sqlite3.connect(
                         path, timeout=DEFAULT_SQLITE_TIMEOUT_S, check_same_thread=False
