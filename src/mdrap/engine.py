@@ -475,6 +475,13 @@ class Engine:
             pass
 
     @classmethod
+    def verify(cls, wal_path: str | Path) -> dict[str, Any]:
+        """Verify integrity of IngestLog segments at wal_path."""
+        from .ingestlog import IngestLog
+
+        return IngestLog.verify(str(wal_path))
+
+    @classmethod
     def salvage(cls, wal_path: str | Path, backup: bool = True) -> dict[str, Any]:
         """Salvage corrupted IngestLog segments at wal_path."""
         from .ingestlog import IngestLog
@@ -693,8 +700,20 @@ class Engine:
                     reasons.append(Reason.SEQUENCE_GAP.value)
             state.sequence_state[slot_key] = max(last_seq if last_seq is not None else -1, seq)
         else:
-            # Unsequenced deduplication window
-            dedup_fingerprint = f"{raw_event.source}:{instrument}:{event_type_str}:{exch_ts}:{payload.get('price')}:{payload.get('quantity')}:{payload.get('bid')}:{payload.get('ask')}"
+            # Unsequenced deduplication window (N2)
+            # Check for business trade/message ID if present
+            biz_id = (
+                payload.get("trade_id")
+                or payload.get("msg_id")
+                or payload.get("message_id")
+                or payload.get("exec_id")
+                or payload.get("order_id")
+                or payload.get("id")
+            )
+            if biz_id is not None:
+                dedup_fingerprint = f"{raw_event.source}:{instrument}:{event_type_str}:id={biz_id}"
+            else:
+                dedup_fingerprint = f"{raw_event.source}:{instrument}:{event_type_str}:{exch_ts}:{payload.get('price')}:{payload.get('quantity')}:{payload.get('bid')}:{payload.get('ask')}"
             if dedup_fingerprint in state.dedup_set:
                 is_duplicate = True
                 status = QualityStatus.INVALID

@@ -1012,3 +1012,71 @@ Register-ArgumentCompleter -Native -CommandName mdrap -ScriptBlock {{
         return
 
     print(script, end="")
+
+
+def cmd_wal(args):
+    """Verify, inspect, or salvage IngestLog Write-Ahead Log segments."""
+    from ..ingestlog import IngestLog
+
+    action = getattr(args, "action", "verify") or "verify"
+    db_path = getattr(args, "db", "data/mdrap.db")
+    wal_path = getattr(args, "wal_path", None) or f"{db_path}.wal"
+
+    console = Console()
+
+    if action == "verify":
+        report = IngestLog.verify(wal_path)
+        if getattr(args, "json", False):
+            print(json.dumps(report, indent=2))
+            return
+        console.print()
+        console.print(
+            Panel.fit(
+                f"[bold cyan]MDRAP Write-Ahead Log (WAL) Verification[/bold cyan]\n"
+                f"Target Directory: [yellow]{report['wal_path']}[/yellow]\n"
+                f"Status: " + ("[bold green]CLEAN[/bold green]" if report["is_clean"] else "[bold red]CORRUPTED[/bold red]"),
+                title="WAL Verification",
+                border_style="cyan" if report["is_clean"] else "red",
+            )
+        )
+        t = Table(show_lines=True)
+        t.add_column("Metric", style="cyan")
+        t.add_column("Value", justify="right")
+        t.add_row("Total Segments", str(report["total_segments"]))
+        t.add_row("Valid Frames", f"[green]{report['valid_frames']:,}[/green]")
+        t.add_row("Corrupted Segments", f"[red]{report['corrupted_segments']}[/red]" if report['corrupted_segments'] else "0")
+        t.add_row("Corrupted Frames", f"[red]{report['corrupted_frames']}[/red]" if report['corrupted_frames'] else "0")
+        console.print(t)
+        if report["errors"]:
+            console.print("\n[bold red]Corruption Details:[/bold red]")
+            for err in report["errors"][:10]:
+                console.print(f"  [red]•[/red] {err}")
+            if len(report["errors"]) > 10:
+                console.print(f"  [dim]... and {len(report['errors']) - 10} more errors[/dim]")
+            console.print("\n[yellow]Tip:[/yellow] Run [cyan]mdrap wal salvage[/cyan] to recover valid frames.")
+
+    elif action == "salvage":
+        backup = getattr(args, "backup", True)
+        report = IngestLog.salvage(wal_path, backup=backup)
+        if getattr(args, "json", False):
+            print(json.dumps(report, indent=2))
+            return
+        console.print()
+        console.print(
+            Panel.fit(
+                f"[bold cyan]MDRAP Write-Ahead Log (WAL) Salvage & Repair[/bold cyan]\n"
+                f"Target Directory: [yellow]{wal_path}[/yellow]\n"
+                f"Backup Preserved: [blue]{backup}[/blue]",
+                title="WAL Salvage Tool",
+                border_style="green",
+            )
+        )
+        t = Table(show_lines=True)
+        t.add_column("Recovery Metric", style="cyan")
+        t.add_column("Result", justify="right")
+        t.add_row("Scanned Segments", str(report["scanned_segments"]))
+        t.add_row("Corrupted Segments Detected", str(report["corrupted_segments"]))
+        t.add_row("Recovered Valid Records", f"[bold green]{report['recovered_records']:,}[/bold green]")
+        t.add_row("Repaired Files", str(len(report["repaired_files"])))
+        console.print(t)
+

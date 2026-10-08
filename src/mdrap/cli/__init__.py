@@ -33,6 +33,7 @@ from .operations import cmd_gateway
 from .operations import cmd_config
 from .operations import cmd_doctor
 from .operations import cmd_completion
+from .operations import cmd_wal
 from .market import cmd_historical
 from .market import cmd_analytics
 from .market import cmd_watchdog
@@ -699,6 +700,33 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_archive.add_argument(
         "--base-dir", default="data/raw_archive", help="Archive directory"
+    )
+
+    p_wal = _sub(
+        "wal",
+        cmd_wal,
+        "Verify, inspect, or salvage IngestLog Write-Ahead Log segments",
+        ["log"],
+        db=True,
+    )
+    p_wal.add_argument(
+        "action",
+        nargs="?",
+        default="verify",
+        choices=["verify", "salvage"],
+        help="Action: verify (integrity check) or salvage (recover valid frames)",
+    )
+    p_wal.add_argument(
+        "--wal-path",
+        default=None,
+        help="Custom WAL directory path (defaults to <db>.wal)",
+    )
+    p_wal.add_argument(
+        "--no-backup",
+        dest="backup",
+        action="store_false",
+        default=True,
+        help="Do not create backup files during salvage",
     )
 
     p_ret = _sub(
@@ -2061,6 +2089,8 @@ MNEMONIC_MAP = {
     "failover": "failover",
     "lake": "lake",
     "partitions": "lake",
+    "wal": "wal",
+    "ingestlog": "wal",
 }
 
 QUICK_ACTIONS = {
@@ -2077,6 +2107,7 @@ QUICK_ACTIONS = {
 }
 
 ALL_CANONICAL_COMMANDS = [
+    "wal",
     "failover",
     "lake",
     "historical",

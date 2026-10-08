@@ -299,6 +299,15 @@ class Pipeline:
                 os.makedirs(
                     os.path.dirname(os.path.abspath(self._journal_path)), exist_ok=True
                 )
+                if os.path.exists(self._journal_path) and os.path.getsize(self._journal_path) > 0:
+                    try:
+                        with open(self._journal_path, "rb+") as f_chk:
+                            f_chk.seek(-1, os.SEEK_END)
+                            if f_chk.read(1) != b"\n":
+                                f_chk.write(b"\n")
+                                f_chk.flush()
+                    except Exception as chk_exc:
+                        logger.debug("[pipeline] Journal trailing newline check: %s", chk_exc)
                 self._journal_file = open(self._journal_path, "a", encoding="utf-8")
             except Exception as exc:
                 logger.warning(

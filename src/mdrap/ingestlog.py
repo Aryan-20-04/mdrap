@@ -338,6 +338,9 @@ class IngestLog:
             else:
                 raise TypeError(f"Expected RawEvent or dict, got {type(raw).__name__}")
 
+            # Architectural Decision (N5): RFC 3629 forbids UTF-8 encoding of lone surrogates
+            # (U+D800..U+DFFF). Using errors="replace" substitutes the Unicode Replacement Character
+            # (U+FFFD), preventing serialization crashes and ensuring log append durability.
             payload_bytes = json.dumps(record, separators=(",", ":"), ensure_ascii=False).encode("utf-8", errors="replace")
             payload_len = len(payload_bytes)
             crc = zlib.crc32(payload_bytes) & 0xFFFFFFFF
@@ -505,6 +508,103 @@ class IngestLog:
                         logger.warning("Could not delete segment %s: %s", path, exc)
 
             return deleted_count
+
+    @classmethod
+    def verify(cls, log_dir: str) -> dict[str, Any]:
+        """Verify integrity of all segment files in log_dir without modifying files.
+
+        Checks segment headers, frame magic, frame lengths, and CRC32 checksums.
+        Returns a detailed report dictionary.
+        """
+        abs_log_dir = os.path.abspath(log_dir)
+        report: dict[str, Any] = {
+            "wal_path": abs_log_dir,
+            "total_segments": 0,
+            "corrupted_segments": 0,
+            "valid_frames": 0,
+            "corrupted_frames": 0,
+            "is_clean": True,
+            "errors": [],
+        }
+        if not os.path.exists(abs_log_dir):
+            report["errors"].append(f"Directory does not exist: {abs_log_dir}")
+            report["is_clean"] = False
+            return report
+
+        seg_files = []
+        for fname in os.listdir(abs_log_dir):
+            if fname.startswith("segment_") and fname.endswith(".log"):
+                seg_files.append(os.path.join(abs_log_dir, fname))
+        seg_files.sort()
+        report["total_segments"] = len(seg_files)
+
+        for s_path in seg_files:
+            s_name = os.path.basename(s_path)
+            s_size = os.path.getsize(s_path)
+            if s_size < SEGMENT_HEADER_SIZE:
+                report["corrupted_segments"] += 1
+                report["is_clean"] = False
+                report["errors"].append(f"{s_name}: File size {s_size} < header size {SEGMENT_HEADER_SIZE}")
+                continue
+
+            with open(s_path, "rb") as f:
+                hdr_bytes = f.read(SEGMENT_HEADER_SIZE)
+                if len(hdr_bytes) < SEGMENT_HEADER_SIZE:
+                    report["corrupted_segments"] += 1
+                    report["is_clean"] = False
+                    report["errors"].append(f"{s_name}: Truncated segment header")
+                    continue
+                magic, ver, seg_start, _, _ = struct.unpack(SEGMENT_HEADER_FORMAT, hdr_bytes)
+                if magic != LOG_MAGIC:
+                    report["corrupted_segments"] += 1
+                    report["is_clean"] = False
+                    report["errors"].append(f"{s_name}: Invalid segment magic {magic:#x}")
+                    continue
+                if ver != LOG_VERSION:
+                    report["corrupted_segments"] += 1
+                    report["is_clean"] = False
+                    report["errors"].append(f"{s_name}: Unsupported segment version {ver}")
+                    continue
+
+                seg_corrupt = False
+                while True:
+                    frame_hdr_bytes = f.read(FRAME_HEADER_SIZE)
+                    if not frame_hdr_bytes:
+                        break
+                    if len(frame_hdr_bytes) < FRAME_HEADER_SIZE:
+                        report["corrupted_frames"] += 1
+                        seg_corrupt = True
+                        report["errors"].append(f"{s_name}: Torn frame header at pos {f.tell()}")
+                        break
+
+                    f_magic, _, offset, _, length, expected_crc = struct.unpack(FRAME_HEADER_FORMAT, frame_hdr_bytes)
+                    if f_magic != FRAME_MAGIC:
+                        report["corrupted_frames"] += 1
+                        seg_corrupt = True
+                        report["errors"].append(f"{s_name}: Invalid frame magic {f_magic:#x} at offset {offset}")
+                        break
+
+                    payload_bytes = f.read(length)
+                    if len(payload_bytes) < length:
+                        report["corrupted_frames"] += 1
+                        seg_corrupt = True
+                        report["errors"].append(f"{s_name}: Torn payload at offset {offset}")
+                        break
+
+                    actual_crc = zlib.crc32(payload_bytes) & 0xFFFFFFFF
+                    if actual_crc != expected_crc:
+                        report["corrupted_frames"] += 1
+                        seg_corrupt = True
+                        report["errors"].append(f"{s_name}: CRC32 mismatch at offset {offset}")
+                        continue
+
+                    report["valid_frames"] += 1
+
+                if seg_corrupt:
+                    report["corrupted_segments"] += 1
+                    report["is_clean"] = False
+
+        return report
 
     @classmethod
     def salvage(cls, log_dir: str, backup: bool = True) -> dict[str, Any]:

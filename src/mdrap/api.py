@@ -493,8 +493,7 @@ def create_app(
 
             # Validate credentials before applying any failure lockout. A valid
             # credential therefore cannot be denied by failures for another key.
-            with _FAILED_AUTH_LOCK:
-                _FAILED_AUTH_ATTEMPTS.pop(client_ip, None)
+            # (M2 Fix: Do not clear IP failed attempts here, so an attacker with one valid key cannot reset brute-force counters)
 
             actor_role = ent.role if isinstance(ent.role, Role) else Role[str(ent.role)]
             if _ROLE_HIERARCHY.get(actor_role, 0) < _ROLE_HIERARCHY.get(

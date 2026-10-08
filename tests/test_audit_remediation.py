@@ -19,6 +19,7 @@ import math
 import os
 import struct
 import zlib
+import time
 import pytest
 
 from mdrap.models import (
@@ -522,6 +523,171 @@ def test_cb_ingestlog_salvage_utility(tmp_path):
     repaired_events = list(log_repaired.iter_from(0))
     assert len(repaired_events) >= 9
     log_repaired.close()
+
+
+def test_cb_ingestlog_verify_utility(tmp_path):
+    """C-B: IngestLog.verify() detects clean logs and pinpoints corrupted segments and frames."""
+    from mdrap.ingestlog import IngestLog
+    from mdrap.engine import Engine
+
+    wal_dir = tmp_path / "verify_wal"
+    log = IngestLog(str(wal_dir))
+    for i in range(15):
+        log.append(RawEvent(source="COINBASE", payload={"instrument": "BTC/USD", "price": 50000.0 + i, "seq": i}))
+    log.close()
+
+    # 1. Clean verification check
+    clean_report = IngestLog.verify(str(wal_dir))
+    assert clean_report["is_clean"] is True
+    assert clean_report["total_segments"] == 1
+    assert clean_report["valid_frames"] == 15
+    assert clean_report["corrupted_frames"] == 0
+
+    # Also check through Engine.verify
+    engine_report = Engine.verify(str(wal_dir))
+    assert engine_report["is_clean"] is True
+
+    # 2. Corrupt a frame CRC in the segment
+    seg_files = list(wal_dir.glob("segment_*.log"))
+    assert len(seg_files) == 1
+    with open(seg_files[0], "r+b") as f:
+        f.seek(32 + (28 + 60) * 2 + 10)
+        b = f.read(1)
+        f.seek(-1, os.SEEK_CUR)
+        f.write(bytes([b[0] ^ 0xFF]))
+
+    corrupt_report = IngestLog.verify(str(wal_dir))
+    assert corrupt_report["is_clean"] is False
+    assert corrupt_report["corrupted_segments"] == 1
+    assert corrupt_report["corrupted_frames"] >= 1
+    assert len(corrupt_report["errors"]) >= 1
+
+
+def test_cli_wal_verify_and_salvage_commands(tmp_path, capsys):
+    """Phase 2: mdrap wal verify and salvage CLI subcommands operate accurately."""
+    from mdrap.cli.operations import cmd_wal
+    from mdrap.ingestlog import IngestLog
+    import argparse
+
+    wal_dir = tmp_path / "cli_wal"
+    log = IngestLog(str(wal_dir))
+    for i in range(5):
+        log.append(RawEvent(source="KRAKEN", payload={"instrument": "ETH/USD", "price": 3000.0 + i, "seq": i}))
+    log.close()
+
+    # 1. Test verify command with JSON output
+    args_verify = argparse.Namespace(
+        action="verify",
+        db=str(tmp_path / "dummy.db"),
+        wal_path=str(wal_dir),
+        json=True,
+    )
+    cmd_wal(args_verify)
+    out = capsys.readouterr().out
+    data = json.loads(out)
+    assert data["is_clean"] is True
+    assert data["valid_frames"] == 5
+
+    # 2. Test salvage command with JSON output
+    args_salvage = argparse.Namespace(
+        action="salvage",
+        db=str(tmp_path / "dummy.db"),
+        wal_path=str(wal_dir),
+        backup=True,
+        json=True,
+    )
+    cmd_wal(args_salvage)
+    out_salvage = capsys.readouterr().out
+    data_salvage = json.loads(out_salvage)
+    assert data_salvage["scanned_segments"] == 1
+    assert data_salvage["recovered_records"] == 5
+
+
+def test_pipeline_glued_record_bug_prevention(tmp_path):
+    """C-A: Incomplete crash fragments in journal do not fuse with fresh records on restart."""
+    from mdrap.pipeline import Pipeline
+    from mdrap.storage import Store
+
+    db_path = str(tmp_path / "glued_test.db")
+    jrn_path = f"{db_path}.journal"
+
+    # Simulate an abrupt crash that leaves an incomplete fragment without trailing newline
+    with open(jrn_path, "w", encoding="utf-8") as f:
+        f.write('{"type": "canonical", "payload": {"event_id": "ev_1", "instrument_id": "BTC/USD"}}\n')
+        f.write('{"type": "canonical", "payload": {"event_id": "ev_2"')  # Torn tail!
+
+    store = Store(db_path)
+    pipeline = Pipeline(store=store)
+
+    # Append fresh record
+    fresh_raw = RawEvent(
+        source="BINANCE",
+        payload={
+            "instrument": "ETH/USD",
+            "event_type": "TRADE",
+            "price": 2000.0,
+            "quantity": 1.0,
+            "sequence": 100,
+            "exchange_ts": time.time(),
+        },
+    )
+    ev = pipeline.process_one(fresh_raw)
+    assert ev is not None
+    assert ev.quality_status == QualityStatus.VALID
+    pipeline.close()
+    store.close()
+
+    # Read lines of the journal file
+    with open(jrn_path, "r", encoding="utf-8") as f:
+        lines = [line.strip() for line in f if line.strip()]
+
+    # Line 1 is ev_1
+    assert "ev_1" in lines[0]
+    # Line 2 is the torn tail
+    assert '{"type": "canonical", "payload": {"event_id": "ev_2"' == lines[1]
+    # Line 3 is the newly written record on its OWN line, NOT fused into Line 2!
+    assert len(lines) >= 3
+    parsed_fresh = json.loads(lines[2])
+    assert parsed_fresh["type"] == "canonical"
+    assert parsed_fresh["payload"]["instrument_id"] == "ETH/USD"
+
+
+def test_n2_unsequenced_business_id_dedup():
+    """N2: Unsequenced events without sequence and exchange_ts dedupe on trade/message IDs."""
+    from mdrap.engine import Engine
+
+    engine = Engine()
+
+    # Two exact retransmissions with missing sequence and missing exchange_ts
+    raw1 = RawEvent(
+        source="BINANCE",
+        payload={
+            "instrument": "SOL/USD",
+            "event_type": "TRADE",
+            "trade_id": "trd_98765",
+            "price": 140.50,
+            "quantity": 5.0,
+        },
+    )
+    raw2 = RawEvent(
+        source="BINANCE",
+        payload={
+            "instrument": "SOL/USD",
+            "event_type": "TRADE",
+            "trade_id": "trd_98765",  # Exact duplicate business ID!
+            "price": 140.50,
+            "quantity": 5.0,
+        },
+    )
+
+    dec1 = engine.submit(raw1)
+    assert dec1.quality_status == QualityStatus.VALID
+
+    # Second retransmit must be caught as DUPLICATE and quarantined as INVALID
+    dec2 = engine.submit(raw2)
+    assert dec2.quality_status == QualityStatus.INVALID
+    assert Reason.DUPLICATE.value in dec2.reasons
+
 
 
 
