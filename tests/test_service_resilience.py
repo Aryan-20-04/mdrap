@@ -14,9 +14,9 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from models import CanonicalEvent, EventType, QualityStatus, RawEvent
-from service import MarketDataDaemon, StreamClient
-from ws_feed import (
+from mdrap.models import CanonicalEvent, EventType, QualityStatus, RawEvent
+from mdrap.service import MarketDataDaemon, StreamClient
+from mdrap.ws_feed import (
     parse_binance_frame,
     parse_bybit_frame,
     parse_coinbase_frame,

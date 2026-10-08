@@ -16,8 +16,8 @@ import sqlite3
 import tempfile
 import pytest
 
-from security import Role, SecurityManager, hash_api_key
-from storage import Store
+from mdrap.security import Role, SecurityManager, hash_api_key
+from mdrap.storage import Store
 
 
 def test_raw_key_never_stored_in_database():

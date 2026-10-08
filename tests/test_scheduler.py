@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 import time
 import datetime
 import pytest
-from scheduler import Scheduler, ScheduledJob, CronParser
+from mdrap.scheduler import Scheduler, ScheduledJob, CronParser
 
 
 def test_cron_parser_hourly():

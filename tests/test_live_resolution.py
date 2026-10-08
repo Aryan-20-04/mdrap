@@ -15,8 +15,8 @@ from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from live import resolve_venue_symbols, LiveConnector, INTERNATIONAL_EXCHANGE_SUFFIXES
-from terminal_display import (
+from mdrap.live import resolve_venue_symbols, LiveConnector, INTERNATIONAL_EXCHANGE_SUFFIXES
+from mdrap.terminal_display import (
     get_currency_symbol,
     render_candlestick_chart,
     LiveTickerDashboard,
@@ -221,7 +221,7 @@ class TestMultiVenueEquityIntegration(unittest.TestCase):
 
     def test_trade_event_does_not_clobber_venue_quotes(self):
         """A subsequent TRADE event with zero bid/ask must not clobber existing venue quotes with dashes."""
-        from models import RawEvent
+        from mdrap.models import RawEvent
 
         dashboard = LiveTickerDashboard()
 

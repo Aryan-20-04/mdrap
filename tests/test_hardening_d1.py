@@ -3,8 +3,8 @@ import pytest
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
-from models import CanonicalEvent, EventType, QualityStatus
-from storage import Store
+from mdrap.models import CanonicalEvent, EventType, QualityStatus
+from mdrap.storage import Store
 
 
 def test_d1_evidence_tables_never_overwritten():

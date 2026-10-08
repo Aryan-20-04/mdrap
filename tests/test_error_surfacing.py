@@ -16,13 +16,13 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from security import SecurityManager
-from service import MarketDataDaemon
-from config import load_config, QualityConfig
-from ws_feed import parse_binance_frame
-from polygon_feed import parse_polygon_trade
-from models import RawEvent
-from storage import Store
+from mdrap.security import SecurityManager
+from mdrap.service import MarketDataDaemon
+from mdrap.config import load_config, QualityConfig
+from mdrap.ws_feed import parse_binance_frame
+from mdrap.polygon_feed import parse_polygon_trade
+from mdrap.models import RawEvent
+from mdrap.storage import Store
 
 
 class FailingStoreMock:

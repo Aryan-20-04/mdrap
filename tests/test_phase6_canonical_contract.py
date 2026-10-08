@@ -1,7 +1,7 @@
 import pytest
 import math
 import time
-from protocol import (
+from mdrap.protocol import (
     pack_tick_frame,
     unpack_tick_payload,
     pack_tick_frame_v2,

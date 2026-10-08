@@ -15,7 +15,7 @@ import pytest
 # Ensure src/ is importable as mdrap and direct
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from client import Client, MDRAPClient, MarketEvent
+from mdrap.client import Client, MDRAPClient, MarketEvent
 
 
 def test_public_sdk_imports():

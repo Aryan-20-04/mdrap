@@ -5,11 +5,11 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from bbo import BBOEngine, ConsolidatedBBO
-from models import CanonicalEvent, EventType, QualityStatus
-from storage import Store
-from pipeline import Pipeline
-from simulator import FeedSimulator, SimulatorConfig
+from mdrap.bbo import BBOEngine, ConsolidatedBBO
+from mdrap.models import CanonicalEvent, EventType, QualityStatus
+from mdrap.storage import Store
+from mdrap.pipeline import Pipeline
+from mdrap.simulator import FeedSimulator, SimulatorConfig
 
 
 def _make_quote(

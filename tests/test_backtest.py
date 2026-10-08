@@ -6,10 +6,10 @@ import math
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from backtest import BacktestEngine, BacktestResult, load_events_from_store
-from strategy_sdk import Strategy
-from models import CanonicalEvent, EventType, QualityStatus
-from storage import Store
+from mdrap.backtest import BacktestEngine, BacktestResult, load_events_from_store
+from mdrap.strategy_sdk import Strategy
+from mdrap.models import CanonicalEvent, EventType, QualityStatus
+from mdrap.storage import Store
 
 
 def _make_events(

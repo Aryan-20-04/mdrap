@@ -29,11 +29,11 @@ _SRC_DIR = os.path.join(_REPO_ROOT, "src")
 if _SRC_DIR not in sys.path:
     sys.path.insert(0, _SRC_DIR)
 
-from api import AppState, create_app
-from client import MDRAPClient
-from models import CanonicalEvent, EventType, QualityStatus
-from security import SecurityManager
-from storage import Store
+from mdrap.api import AppState, create_app
+from mdrap.client import MDRAPClient
+from mdrap.models import CanonicalEvent, EventType, QualityStatus
+from mdrap.security import SecurityManager
+from mdrap.storage import Store
 from _version import __version__
 
 

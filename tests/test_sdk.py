@@ -12,9 +12,9 @@ import time
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 import pytest
-from models import CanonicalEvent, EventType, QualityStatus
-from gateway_tcp import TCPGatewayServer
-from client import MDrapClient
+from mdrap.models import CanonicalEvent, EventType, QualityStatus
+from mdrap.gateway_tcp import TCPGatewayServer
+from mdrap.client import MDrapClient
 
 
 def test_gateway_connection_and_broadcast():

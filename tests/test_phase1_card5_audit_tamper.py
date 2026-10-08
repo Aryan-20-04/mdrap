@@ -5,8 +5,8 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from storage import Store
-from security import SecurityManager, Role
+from mdrap.storage import Store
+from mdrap.security import SecurityManager, Role
 
 
 def test_audit_anchor_detection_of_tail_truncation():
@@ -165,7 +165,7 @@ def test_audit_checkpoint_detects_prefix_rewrite_and_chain_splice():
 
 def test_unanchored_fully_rewritten_chain_is_not_detectable():
     """Document the verifier limit: unkeyed hashes cannot authenticate their own history."""
-    from audit_format import compute_audit_hash
+    from mdrap.audit_format import compute_audit_hash
 
     fd, db_path = tempfile.mkstemp(suffix=".db")
     os.close(fd)

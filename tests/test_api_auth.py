@@ -21,9 +21,9 @@ pytest.importorskip("starlette")
 
 from starlette.testclient import TestClient
 
-from api import AppState, create_app
-from security import SecurityManager
-from storage import Store
+from mdrap.api import AppState, create_app
+from mdrap.security import SecurityManager
+from mdrap.storage import Store
 
 
 @pytest.fixture

@@ -6,14 +6,14 @@ import os
 import tempfile
 import pytest
 
-from journal import (
+from mdrap.journal import (
     BinaryJournal,
     BinaryJournalReader,
     JOURNAL_MAGIC,
     JOURNAL_VERSION,
     JOURNAL_HEADER_SIZE,
 )
-from shm import SLOT_SIZE
+from mdrap.shm import SLOT_SIZE
 
 
 def test_journal_create_write_read():

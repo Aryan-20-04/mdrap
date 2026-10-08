@@ -7,9 +7,9 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from client import MarketEvent, MDRAPClient
-from service import MarketDataDaemon
-from protocol import (
+from mdrap.client import MarketEvent, MDRAPClient
+from mdrap.service import MarketDataDaemon
+from mdrap.protocol import (
     pack_tick_frame,
     unpack_tick_payload,
     pack_depth_frame,

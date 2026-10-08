@@ -4,7 +4,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from corporate_actions import CorporateActionsEngine, ActionType, load_well_known
+from mdrap.corporate_actions import CorporateActionsEngine, ActionType, load_well_known
 
 
 @pytest.fixture

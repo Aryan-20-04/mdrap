@@ -9,7 +9,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from ws_feed import (
+from mdrap.ws_feed import (
     parse_binance_frame,
     parse_coinbase_frame,
     parse_kraken_frame,
@@ -19,7 +19,7 @@ from ws_feed import (
     WebSocketFeedManager,
     HAS_WEBSOCKETS,
 )
-from models import EventType, QualityStatus, RawEvent
+from mdrap.models import EventType, QualityStatus, RawEvent
 
 
 def test_parse_binance_depth_frame():
@@ -206,8 +206,8 @@ def test_ws_manager_lifecycle():
 
 def test_binance_depth_frame_normalizes_and_evaluates():
     """Verify Binance @depth5 frame without 'E' passes normalize and quality without SchemaError (Bug 1 regression)."""
-    from gateway import normalize
-    from quality import QualityEngine
+    from mdrap.gateway import normalize
+    from mdrap.quality import QualityEngine
 
     frame = {
         "lastUpdateId": 1234567,
@@ -232,8 +232,8 @@ def test_binance_depth_frame_normalizes_and_evaluates():
 
 def test_kraken_snapshot_normalizes_and_evaluates():
     """Verify Kraken frame without sequence passes normalize and quality (Bug 1 regression)."""
-    from gateway import normalize
-    from quality import QualityEngine
+    from mdrap.gateway import normalize
+    from mdrap.quality import QualityEngine
 
     import time
 

@@ -4,9 +4,9 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 import pytest
-from models import CanonicalEvent, EventType, QualityStatus
-from fastpath import FastQualityEngine, HAS_FASTPATH
-from quality import QualityConfig
+from mdrap.models import CanonicalEvent, EventType, QualityStatus
+from mdrap.fastpath import FastQualityEngine, HAS_FASTPATH
+from mdrap.quality import QualityConfig
 
 pytestmark = pytest.mark.skipif(
     not HAS_FASTPATH, reason="Native fastpath library not available"

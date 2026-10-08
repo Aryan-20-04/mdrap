@@ -12,7 +12,7 @@ Tests:
 
 import os
 import pytest
-from storage import Store
+from mdrap.storage import Store
 
 
 @pytest.fixture

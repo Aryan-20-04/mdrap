@@ -8,7 +8,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 import math
 import pytest
-from features import (
+from mdrap.features import (
     sma,
     ema,
     rsi,
@@ -133,7 +133,7 @@ def test_feature_store_integration():
 
 
 def test_python_fallbacks_without_fastpath(monkeypatch):
-    import features
+    import mdrap.features as features
 
     monkeypatch.setattr(features, "fastpath", None)
 
@@ -163,7 +163,7 @@ def test_python_fallbacks_without_fastpath(monkeypatch):
 
 
 def test_features_empty_and_edge_cases():
-    import features
+    import mdrap.features as features
 
     # Empty inputs
     assert features.rsi([]) == []
@@ -185,7 +185,7 @@ def test_features_empty_and_edge_cases():
 
 
 def test_feature_registry_custom():
-    import features
+    import mdrap.features as features
 
     reg = features.FeatureRegistry()
     reg.register(

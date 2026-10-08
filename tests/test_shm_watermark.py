@@ -6,9 +6,9 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from shm import SHMWriter, SHMReader, HAS_SHM, SHM_FLAG_WATERMARK_WARNING
-from watchdog import SourceWatchdog
-from reconciliation import ReliabilityTracker
+from mdrap.shm import SHMWriter, SHMReader, HAS_SHM, SHM_FLAG_WATERMARK_WARNING
+from mdrap.watchdog import SourceWatchdog
+from mdrap.reconciliation import ReliabilityTracker
 
 
 @pytest.mark.skipif(not HAS_SHM, reason="SharedMemory not available")

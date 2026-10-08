@@ -6,8 +6,8 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from chaos import ChaosEngine, drop_source_window
-from simulator import FeedSimulator, SimulatorConfig
+from mdrap.chaos import ChaosEngine, drop_source_window
+from mdrap.simulator import FeedSimulator, SimulatorConfig
 
 
 @pytest.fixture

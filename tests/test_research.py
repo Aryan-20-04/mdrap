@@ -8,7 +8,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 import pytest
 
-from research import (
+from mdrap.research import (
     CompanyProfile,
     EdgarClient,
     EdgarError,
@@ -163,7 +163,7 @@ def test_insiders_and_facts_parsing(tmp_path):
 
 
 def test_decode_8k_items():
-    from research import decode_8k_items
+    from mdrap.research import decode_8k_items
 
     # Critical bankruptcy
     decoded, cat, urgency = decode_8k_items(["1.03"])
@@ -185,7 +185,7 @@ def test_decode_8k_items():
 
 
 def test_parse_form4_xml():
-    from research import parse_form4_xml
+    from mdrap.research import parse_form4_xml
 
     sample_xml = """<?xml version="1.0"?>
     <ownershipDocument>
@@ -245,7 +245,7 @@ def test_parse_form4_xml():
 
 
 def test_get_insider_trades_cached(tmp_path):
-    from research import EdgarClient
+    from mdrap.research import EdgarClient
 
     mock_submissions = {
         "filings": {

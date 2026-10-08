@@ -9,9 +9,9 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from depth import DepthLevel, ConsolidatedLadder, ConsolidatedDepthEngine
-from models import CanonicalEvent, EventType, QualityStatus, RawEvent
-from storage import Store
+from mdrap.depth import DepthLevel, ConsolidatedLadder, ConsolidatedDepthEngine
+from mdrap.models import CanonicalEvent, EventType, QualityStatus, RawEvent
+from mdrap.storage import Store
 
 
 def test_depth_level_dataclass():

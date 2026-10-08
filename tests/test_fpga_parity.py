@@ -13,10 +13,10 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from gateway import normalize
-from models import CanonicalEvent, QualityStatus
-from quality import QualityConfig, QualityEngine
-from simulator import FeedSimulator, SimulatorConfig
+from mdrap.gateway import normalize
+from mdrap.models import CanonicalEvent, QualityStatus
+from mdrap.quality import QualityConfig, QualityEngine
+from mdrap.simulator import FeedSimulator, SimulatorConfig
 
 
 class FpgaCrossedQuoteModel:

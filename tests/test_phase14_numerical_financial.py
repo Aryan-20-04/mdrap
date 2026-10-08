@@ -11,9 +11,9 @@ from datetime import datetime, timedelta
 import math
 import pytest
 
-from bardb import BarDatabase, BarAggregator
-from models import CanonicalEvent, EventType, QualityStatus
-from risk import PortfolioRiskEngine, ReturnSeries
+from mdrap.bardb import BarDatabase, BarAggregator
+from mdrap.models import CanonicalEvent, EventType, QualityStatus
+from mdrap.risk import PortfolioRiskEngine, ReturnSeries
 
 
 def _make_trade(

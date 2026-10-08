@@ -13,8 +13,8 @@ import time
 from typing import Any
 import pytest
 
-from models import CanonicalEvent, EventType, QualityStatus, RawEvent
-from protocols import (
+from mdrap.models import CanonicalEvent, EventType, QualityStatus, RawEvent
+from mdrap.protocols import (
     AppendStorageSink,
     QueryStorageStore,
     StorageBackend,
@@ -22,9 +22,9 @@ from protocols import (
 from adapters import FeedAdapter
 from adapters.reference import ReferenceFeedAdapter
 from adapters.template import TemplateCustomVenueAdapter
-from storage import Store
-from pipeline import Pipeline
-from plugins import (
+from mdrap.storage import Store
+from mdrap.pipeline import Pipeline
+from mdrap.plugins import (
     PluginRegistry,
     PluginValidationError,
     validate_plugin,

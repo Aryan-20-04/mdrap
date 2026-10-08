@@ -7,7 +7,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from symbology import get_native_currency, resolve_symbol
+from mdrap.symbology import get_native_currency, resolve_symbol
 
 
 def test_resolve_indian_equities():

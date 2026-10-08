@@ -3,7 +3,7 @@ import pytest
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
-from security import SecurityManager
+from mdrap.security import SecurityManager
 
 
 def test_s1_no_hardcoded_secrets_without_demo(monkeypatch, tmp_path):

@@ -7,8 +7,8 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from client import MarketEvent, MDRAPClient
-from service import MarketDataDaemon
+from mdrap.client import MarketEvent, MDRAPClient
+from mdrap.service import MarketDataDaemon
 
 
 @pytest.fixture

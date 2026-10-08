@@ -12,10 +12,10 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from exporter import MarketDataExporter
-from storage import Store
-from pipeline import Pipeline
-from simulator import FeedSimulator, SimulatorConfig
+from mdrap.exporter import MarketDataExporter
+from mdrap.storage import Store
+from mdrap.pipeline import Pipeline
+from mdrap.simulator import FeedSimulator, SimulatorConfig
 
 try:
     import openpyxl
@@ -185,7 +185,7 @@ def test_cli_export_command(temp_env):
 
 def test_export_data_json_and_sql_injection_defense(temp_env):
     """Verify export_data exports valid JSON and defends against SQL injection."""
-    from export import export_data
+    from mdrap.export import export_data
 
     # 1. Valid export to JSON
     json_out = os.path.join(temp_env["dir"], "valid.json")

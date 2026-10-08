@@ -6,7 +6,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from storage import Store, CURRENT_SCHEMA_VERSION
+from mdrap.storage import Store, CURRENT_SCHEMA_VERSION
 
 
 def test_schema_migrations_initialization():

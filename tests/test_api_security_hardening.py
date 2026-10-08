@@ -20,9 +20,9 @@ pytest.importorskip("starlette")
 
 from starlette.testclient import TestClient
 
-from api import AppState, create_app, _resolve_client_ip
-from security import SecurityManager, Role
-from storage import Store
+from mdrap.api import AppState, create_app, _resolve_client_ip
+from mdrap.security import SecurityManager, Role
+from mdrap.storage import Store
 
 
 @pytest.fixture
@@ -132,7 +132,7 @@ def test_health_liveness_readiness_separation(api_client):
 
 
 def test_readiness_fails_when_pipeline_writer_is_degraded(api_client):
-    from pipeline import WriterFailure
+    from mdrap.pipeline import WriterFailure
 
     api_client["state"].pipeline._writer_failure = WriterFailure("double fault")
     response = api_client["client"].get("/readiness")

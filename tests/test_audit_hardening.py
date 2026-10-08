@@ -25,17 +25,17 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from archive import replay
-from bbo import BBOEngine
-from columnar import ColumnarStore
-from dashboard import render
-from depth import ConsolidatedDepthEngine
-from fastpath import FastQualityEngine, _NATIVE_LIB
-from models import CanonicalEvent, EventType, QualityStatus, RawEvent, Reason
-from pipeline import Pipeline
-from quality import QualityEngine
-from security import SecurityManager
-from storage import Store
+from mdrap.archive import replay
+from mdrap.bbo import BBOEngine
+from mdrap.columnar import ColumnarStore
+from mdrap.dashboard import render
+from mdrap.depth import ConsolidatedDepthEngine
+from mdrap.fastpath import FastQualityEngine, _NATIVE_LIB
+from mdrap.models import CanonicalEvent, EventType, QualityStatus, RawEvent, Reason
+from mdrap.pipeline import Pipeline
+from mdrap.quality import QualityEngine
+from mdrap.security import SecurityManager
+from mdrap.storage import Store
 
 try:
     import duckdb  # noqa: F401

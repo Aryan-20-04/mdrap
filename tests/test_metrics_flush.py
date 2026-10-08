@@ -2,10 +2,10 @@
 Tests for RunMetrics flush duration recording and stages_us attribution (Gap 3).
 """
 
-from metrics import RunMetrics
-from pipeline import Pipeline
-from simulator import FeedSimulator, SimulatorConfig
-from storage import Store
+from mdrap.metrics import RunMetrics
+from mdrap.pipeline import Pipeline
+from mdrap.simulator import FeedSimulator, SimulatorConfig
+from mdrap.storage import Store
 
 
 def test_run_metrics_record_flush():

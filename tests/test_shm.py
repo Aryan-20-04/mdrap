@@ -6,7 +6,7 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from shm import (
+from mdrap.shm import (
     SHMWriter,
     SHMReader,
     MAGIC,
@@ -198,8 +198,8 @@ def test_shm_stream_generator_sub_microsecond():
 @pytest.mark.skipif(not HAS_SHM, reason="SharedMemory not available")
 def test_mdrap_client_with_shm_end_to_end():
     import tempfile
-    from service import MarketDataDaemon
-    from client import MDRAPClient
+    from mdrap.service import MarketDataDaemon
+    from mdrap.client import MDRAPClient
 
     fd, db_path = tempfile.mkstemp(suffix=".db")
     os.close(fd)

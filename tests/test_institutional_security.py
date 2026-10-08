@@ -4,7 +4,7 @@ Tests for Institutional Security, CIDR Filtering, Key Rotation, and Merkle Ancho
 
 import time
 import pytest
-from security import (
+from mdrap.security import (
     AccessDenied,
     CIDRFilter,
     ClientEntitlement,
@@ -12,7 +12,7 @@ from security import (
     Role,
     SecurityManager,
 )
-from storage import Store
+from mdrap.storage import Store
 
 
 def test_cidr_filter_ipv4_and_ipv6():

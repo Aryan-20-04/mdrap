@@ -3,7 +3,7 @@ Tests for Foreign Exchange (FX) Matrix and Currency Conversion Engine.
 """
 
 import pytest
-from fx import FXMatrix, convert_currency, GLOBAL_FX
+from mdrap.fx import FXMatrix, convert_currency, GLOBAL_FX
 
 
 def test_fx_identity():

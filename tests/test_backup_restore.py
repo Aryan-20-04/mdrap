@@ -22,11 +22,11 @@ _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-from models import CanonicalEvent, EventType, QualityStatus
+from mdrap.models import CanonicalEvent, EventType, QualityStatus
 from scripts.backup import backup_database
 from scripts.restore import restore_database
-from security import SecurityManager
-from storage import Store
+from mdrap.security import SecurityManager
+from mdrap.storage import Store
 
 
 @pytest.fixture

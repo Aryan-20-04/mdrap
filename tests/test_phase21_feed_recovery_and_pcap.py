@@ -21,19 +21,19 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from recovery import (
+from mdrap.recovery import (
     FeedRecoveryEngine,
     FeedState,
     FeedPacket,
 )
-from pcap import (
+from mdrap.pcap import (
     PcapWriter,
     PcapReader,
     CapturedPacket,
     MoldUDP64Dissector,
     MOLDUDP64_HEADER_STRUCT,
 )
-from itch import (
+from mdrap.itch import (
     ITCHParser,
     ITCHOrderBookTracker,
     STRUCT_A,

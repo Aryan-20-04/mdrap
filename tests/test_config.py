@@ -5,14 +5,14 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from config import (
+from mdrap.config import (
     PlatformConfig,
     QualityConfig,
     load_config,
     _simple_yaml_parse,
 )
-from models import CanonicalEvent, EventType
-from quality import QualityEngine
+from mdrap.models import CanonicalEvent, EventType
+from mdrap.quality import QualityEngine
 
 
 def test_default_config_creation():

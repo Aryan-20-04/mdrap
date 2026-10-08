@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 pytestmark = pytest.mark.slow  # ponytail: stress tests skip by default
 
 from cli import build_parser
-import stresstest
+import mdrap.stresstest as stresstest
 
 
 def test_get_rss_mb():

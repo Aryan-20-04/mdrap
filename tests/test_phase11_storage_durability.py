@@ -15,11 +15,11 @@ import time
 from unittest.mock import MagicMock, patch
 import pytest
 
-from journal import BinaryJournal, BinaryJournalReader, JOURNAL_HDR_STRUCT
-from archive import RawArchive
-from shm_drainer import SHMDrainWorker
-from storage import Store
-from models import RawEvent, CanonicalEvent, EventType, QualityStatus
+from mdrap.journal import BinaryJournal, BinaryJournalReader, JOURNAL_HDR_STRUCT
+from mdrap.archive import RawArchive
+from mdrap.shm_drainer import SHMDrainWorker
+from mdrap.storage import Store
+from mdrap.models import RawEvent, CanonicalEvent, EventType, QualityStatus
 
 
 def test_stor_01_journal_partial_batch_reopen_no_overwrite():

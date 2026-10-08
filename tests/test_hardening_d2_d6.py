@@ -2,8 +2,8 @@ import os
 import sqlite3
 import time
 import pytest
-from models import CanonicalEvent, EventType, QualityStatus
-from storage import Store
+from mdrap.models import CanonicalEvent, EventType, QualityStatus
+from mdrap.storage import Store
 
 
 def _make_event(

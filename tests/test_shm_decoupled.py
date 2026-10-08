@@ -25,7 +25,7 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from shm import (
+from mdrap.shm import (
     SHMWriter,
     SHMReader,
     SHMOverrunStats,
@@ -34,8 +34,8 @@ from shm import (
     SLOT_STRUCT,
     HAS_SHM,
 )
-from client import MDRAPClient, MarketEvent
-import fastpath
+from mdrap.client import MDRAPClient, MarketEvent
+import mdrap.fastpath as fastpath
 
 
 @pytest.mark.skipif(not HAS_SHM, reason="SharedMemory not available")

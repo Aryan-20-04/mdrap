@@ -3,7 +3,7 @@ Tests for Exchange Venue Registry, Market Schedules, and Microstructure.
 """
 
 import datetime
-from venues import (
+from mdrap.venues import (
     GLOBAL_VENUES,
     MarketPhase,
     TickSizeModel,

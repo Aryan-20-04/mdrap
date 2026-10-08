@@ -10,9 +10,9 @@ And ensures deterministic evaluation ordering and priority escalation:
 Schema -> Timestamp -> Sequence -> Price -> Size -> Book -> Statistical
 """
 
-from models import CanonicalEvent, EventType, QualityStatus, Reason
-from quality import QualityEngine, QualityConfig
-from rules import (
+from mdrap.models import CanonicalEvent, EventType, QualityStatus, Reason
+from mdrap.quality import QualityEngine, QualityConfig
+from mdrap.rules import (
     get_rule_by_id,
     get_rule_by_name,
     list_registered_definitions,

@@ -10,7 +10,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from polygon_feed import (
+from mdrap.polygon_feed import (
     parse_polygon_quote,
     parse_polygon_trade,
     parse_polygon_aggregate,
@@ -19,7 +19,7 @@ from polygon_feed import (
     PolygonFeedManager,
     POLYGON_EXCHANGE_MAP,
 )
-from models import RawEvent
+from mdrap.models import RawEvent
 
 
 def test_parse_polygon_quote():

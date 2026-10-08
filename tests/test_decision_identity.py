@@ -11,12 +11,12 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from config import QualityConfig
-from fastpath import FastQualityEngine
-from models import RawEvent
-from pipeline import Pipeline
-from quality import QualityEngine
-from storage import Store
+from mdrap.config import QualityConfig
+from mdrap.fastpath import FastQualityEngine
+from mdrap.models import RawEvent
+from mdrap.pipeline import Pipeline
+from mdrap.quality import QualityEngine
+from mdrap.storage import Store
 
 
 def _generate_synthetic_stream(count: int = 200) -> list[RawEvent]:
@@ -99,7 +99,7 @@ def test_decision_identity_engine_single_vs_batch():
     """
     Compare FastQualityEngine single vs evaluate_batch directly on normalized CanonicalEvents.
     """
-    from gateway import ingest, normalize
+    from mdrap.gateway import ingest, normalize
 
     raw_stream = _generate_synthetic_stream(300)
     canonical_single = []
@@ -204,7 +204,7 @@ def test_decision_identity_python_vs_c_fastpath():
     """
     Compare decisions between pure Python QualityEngine and FastQualityEngine (Invariant A4).
     """
-    from gateway import ingest, normalize
+    from mdrap.gateway import ingest, normalize
 
     raw_stream = _generate_synthetic_stream(200)
     py_engine = QualityEngine(QualityConfig())

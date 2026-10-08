@@ -9,16 +9,16 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from feed_handler import (
+from mdrap.feed_handler import (
     StreamingFeedSupervisor,
     FeedSupervisorConfig,
     FeedProvider,
 )
-from pipeline import Pipeline
-from storage import Store
-from bbo import BBOEngine
-from depth import ConsolidatedDepthEngine
-from models import RawEvent, QualityStatus
+from mdrap.pipeline import Pipeline
+from mdrap.storage import Store
+from mdrap.bbo import BBOEngine
+from mdrap.depth import ConsolidatedDepthEngine
+from mdrap.models import RawEvent, QualityStatus
 
 
 def test_supervisor_init_providers():

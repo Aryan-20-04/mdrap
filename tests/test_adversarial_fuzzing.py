@@ -24,7 +24,7 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from itch import (
+from mdrap.itch import (
     ITCHParser,
     ITCHOrderBookTracker,
     MSG_ADD_ORDER,
@@ -56,14 +56,14 @@ from itch import (
     STRUCT_B,
     STRUCT_I,
 )
-from protocol import (
+from mdrap.protocol import (
     BinaryStreamParser,
     pack_tick_frame,
     pack_tick_frame_v2,
     pack_depth_frame,
     MAGIC,
 )
-from pcap import MoldUDP64Dissector, MOLDUDP64_HEADER_STRUCT
+from mdrap.pcap import MoldUDP64Dissector, MOLDUDP64_HEADER_STRUCT
 
 
 def _mutate_bytes(data: bytes, rng: random.Random) -> bytes:

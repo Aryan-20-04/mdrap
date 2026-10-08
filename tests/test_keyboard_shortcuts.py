@@ -13,7 +13,7 @@ from cli import (
     ALL_CANONICAL_COMMANDS,
     build_parser,
 )
-from terminal_display import TerminalDisplay, poll_keypress
+from mdrap.terminal_display import TerminalDisplay, poll_keypress
 
 
 def test_known_symbols_has_equities_crypto_futures():

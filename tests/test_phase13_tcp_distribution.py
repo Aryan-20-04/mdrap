@@ -11,7 +11,7 @@ import json
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from gateway_tcp import TCPGatewayServer
+from mdrap.gateway_tcp import TCPGatewayServer
 
 
 @pytest.mark.asyncio

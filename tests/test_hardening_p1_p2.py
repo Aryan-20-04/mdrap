@@ -4,11 +4,11 @@ import sys
 import tempfile
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
-from archive import RawArchive
-from models import RawEvent, QualityStatus
-from pipeline import Pipeline
-from security import SecurityManager
-from storage import Store
+from mdrap.archive import RawArchive
+from mdrap.models import RawEvent, QualityStatus
+from mdrap.pipeline import Pipeline
+from mdrap.security import SecurityManager
+from mdrap.storage import Store
 
 
 def test_p1_archive_captures_all_events_before_security_gates(tmp_path):
@@ -40,7 +40,7 @@ def test_p1_archive_captures_all_events_before_security_gates(tmp_path):
 
     # The raw event MUST be in the archive even though it was rejected at the gate!
     archive.close()
-    from archive import replay
+    from mdrap.archive import replay
 
     raws = list(replay(archive_dir))
     assert len(raws) == 1

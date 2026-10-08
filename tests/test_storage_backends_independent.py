@@ -17,8 +17,8 @@ Exhaustively verifies:
 import os
 import sqlite3
 import threading
-from models import CanonicalEvent, EventType, QualityStatus
-from storage import Store
+from mdrap.models import CanonicalEvent, EventType, QualityStatus
+from mdrap.storage import Store
 
 
 def _make_event(event_id: str, seq: int, price: float = 150.0) -> CanonicalEvent:

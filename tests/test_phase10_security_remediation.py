@@ -4,9 +4,9 @@ import tempfile
 import time
 import pytest
 
-from security import SecurityManager, Role, TokenBucketRateLimiter, hash_api_key
-from storage import Store
-from alert_sinks import WebhookAlertSink, validate_webhook_url
+from mdrap.security import SecurityManager, Role, TokenBucketRateLimiter, hash_api_key
+from mdrap.storage import Store
+from mdrap.alert_sinks import WebhookAlertSink, validate_webhook_url
 
 
 def test_sec01_direct_hash_submission_auth_bypass_prevented():

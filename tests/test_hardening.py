@@ -23,15 +23,15 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from models import CanonicalEvent, EventType, QualityStatus, RawEvent, Reason
-from storage import Store
-from service import MarketDataDaemon, StreamClient
-from quality import QualityEngine, QualityConfig
-from fastpath import FastQualityEngine
-from reconciliation import ReliabilityTracker, SourceStats
-from pipeline import Pipeline
-from security import SecurityManager, TokenBucketRateLimiter
-from bbo import BBOEngine
+from mdrap.models import CanonicalEvent, EventType, QualityStatus, RawEvent, Reason
+from mdrap.storage import Store
+from mdrap.service import MarketDataDaemon, StreamClient
+from mdrap.quality import QualityEngine, QualityConfig
+from mdrap.fastpath import FastQualityEngine
+from mdrap.reconciliation import ReliabilityTracker, SourceStats
+from mdrap.pipeline import Pipeline
+from mdrap.security import SecurityManager, TokenBucketRateLimiter
+from mdrap.bbo import BBOEngine
 
 
 def _make_trade(
@@ -431,7 +431,7 @@ def test_bbo_staleness_guard():
 # 9. Cross-Feed Reconciliation Agreement Window Integrity
 # =========================================================================
 def test_out_of_order_event_not_treated_as_concurrent():
-    from reconciliation import CrossFeedReconciler, ReliabilityConfig
+    from mdrap.reconciliation import CrossFeedReconciler, ReliabilityConfig
 
     cfg = ReliabilityConfig(agreement_window_s=0.25)
     reconciler = CrossFeedReconciler(cfg=cfg)

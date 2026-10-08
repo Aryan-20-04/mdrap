@@ -6,16 +6,16 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from security import (
+from mdrap.security import (
     SecurityManager,
     Role,
     PermissionError,
     TokenBucketRateLimiter,
     InputSanitizer,
 )
-from storage import Store
-from pipeline import Pipeline
-from models import RawEvent, QualityStatus
+from mdrap.storage import Store
+from mdrap.pipeline import Pipeline
+from mdrap.models import RawEvent, QualityStatus
 
 
 @pytest.fixture

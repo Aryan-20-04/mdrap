@@ -6,8 +6,8 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from models import CanonicalEvent, EventType, QualityStatus, Reason
-from quality import QualityEngine, QualityConfig
+from mdrap.models import CanonicalEvent, EventType, QualityStatus, Reason
+from mdrap.quality import QualityEngine, QualityConfig
 
 
 def _make_event(

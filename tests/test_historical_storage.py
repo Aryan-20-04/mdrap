@@ -11,8 +11,8 @@ import tempfile
 import time
 
 import pytest
-from models import CanonicalEvent, EventType, QualityStatus
-from historical import (
+from mdrap.models import CanonicalEvent, EventType, QualityStatus
+from mdrap.historical import (
     HistoricalPartitioner,
     HistoricalCatalog,
     RetentionPolicy,

@@ -9,9 +9,9 @@ import time
 from unittest.mock import MagicMock
 
 import pytest
-from models import CanonicalEvent, EventType, QualityStatus
-from journal import BinaryJournal
-from replay import (
+from mdrap.models import CanonicalEvent, EventType, QualityStatus
+from mdrap.journal import BinaryJournal
+from mdrap.replay import (
     VirtualClock,
     ReplayPacer,
     HistoricalReplayEngine,

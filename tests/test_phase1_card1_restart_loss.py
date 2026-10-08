@@ -9,11 +9,11 @@ import os
 import tempfile
 import pytest
 
-from gateway import reset_gateway_ids
-from models import RawEvent
-from pipeline import Pipeline
-from simulator import FeedSimulator, SimulatorConfig
-from storage import Store, StorageConflictError
+from mdrap.gateway import reset_gateway_ids
+from mdrap.models import RawEvent
+from mdrap.pipeline import Pipeline
+from mdrap.simulator import FeedSimulator, SimulatorConfig
+from mdrap.storage import Store, StorageConflictError
 
 
 def _count_canonical(store: Store) -> int:

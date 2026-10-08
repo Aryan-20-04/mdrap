@@ -12,9 +12,9 @@ import time
 from unittest.mock import MagicMock
 import pytest
 
-from models import CanonicalEvent, EventType, QualityStatus
-from reconciliation import ReliabilityTracker
-from watchdog import SourceWatchdog, SourceState
+from mdrap.models import CanonicalEvent, EventType, QualityStatus
+from mdrap.reconciliation import ReliabilityTracker
+from mdrap.watchdog import SourceWatchdog, SourceState
 
 
 def _make_event(eid: str, source: str, ts: float) -> CanonicalEvent:

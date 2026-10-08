@@ -8,8 +8,8 @@ Tests:
 5. Non-interference: quarantine operations never alter or mutate accepted canonical state.
 """
 
-from models import CanonicalEvent, EventType, QualityStatus, RawEvent, Reason
-from quarantine import QuarantineManager, QuarantineRecord
+from mdrap.models import CanonicalEvent, EventType, QualityStatus, RawEvent, Reason
+from mdrap.quarantine import QuarantineManager, QuarantineRecord
 
 
 def test_quarantine_record_preservation():

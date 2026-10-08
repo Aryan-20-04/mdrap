@@ -13,12 +13,12 @@ import time
 import pytest
 from typing import Any, Iterator
 
-from models import CanonicalEvent, EventType, QualityStatus, RawEvent, Reason
-from protocols import StorageBackend, AuthProvider, QualityEvaluator, OutputSink
-from storage import Store
-from security import SecurityManager, Role, ClientEntitlement
-from quality import QualityEngine
-from rules import (
+from mdrap.models import CanonicalEvent, EventType, QualityStatus, RawEvent, Reason
+from mdrap.protocols import StorageBackend, AuthProvider, QualityEvaluator, OutputSink
+from mdrap.storage import Store
+from mdrap.security import SecurityManager, Role, ClientEntitlement
+from mdrap.quality import QualityEngine
+from mdrap.rules import (
     register_rule,
     unregister_rule,
     clear_user_rules,
@@ -265,7 +265,7 @@ def test_minimal_alternate_implementations_satisfy_protocols():
 
 def test_minimal_storage_pipeline_interop():
     """Verify Pipeline accepts and flushes to an alternate StorageBackend."""
-    from pipeline import Pipeline
+    from mdrap.pipeline import Pipeline
 
     alt_store = MinimalMemoryStorage()
     pipeline = Pipeline(store=alt_store)
@@ -296,7 +296,7 @@ def test_minimal_storage_pipeline_interop():
 
 def test_minimal_quality_evaluator_interop():
     """Verify Pipeline can use a custom QualityEvaluator."""
-    from pipeline import Pipeline
+    from mdrap.pipeline import Pipeline
 
     alt_store = MinimalMemoryStorage()
     alt_quality = MinimalQualityEvaluator()

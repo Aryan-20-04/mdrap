@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from risk import (
+from mdrap.risk import (
     ReturnSeries,
     PortfolioRiskEngine,
     CorrelationMatrix,

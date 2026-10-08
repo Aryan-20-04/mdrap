@@ -11,7 +11,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from itch import (
+from mdrap.itch import (
     ITCHParser,
     ITCHOrderBookTracker,
     ITCHSyntheticGenerator,
@@ -37,7 +37,7 @@ from itch import (
     MSG_ORDER_DELETE,
     MSG_ORDER_REPLACE,
 )
-from models import EventType
+from mdrap.models import EventType
 
 
 def test_itch_parser_add_order():

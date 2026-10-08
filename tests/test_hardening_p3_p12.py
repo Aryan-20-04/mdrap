@@ -7,15 +7,15 @@ import json
 import os
 import shutil
 import pytest
-from pipeline import (
+from mdrap.pipeline import (
     tuned_gc,
     _safe_payload_json,
     _code_version,
     Pipeline,
     replay_dead_letter_spills,
 )
-from storage import Store
-from models import RawEvent
+from mdrap.storage import Store
+from mdrap.models import RawEvent
 
 
 def test_safe_payload_json_truncation():
@@ -81,7 +81,7 @@ def test_flush_transactional_dead_letter_spill(tmp_path, monkeypatch):
 
 
 def test_storage_and_spill_double_failure_degrades_and_raises(monkeypatch):
-    from pipeline import WriterFailure
+    from mdrap.pipeline import WriterFailure
 
     class FailingStore:
         def write_batches_atomic(self, *args, **kwargs):
@@ -107,7 +107,7 @@ def test_storage_and_spill_double_failure_degrades_and_raises(monkeypatch):
 
 
 def test_async_writer_double_failure_is_visible_and_shutdown_is_clean():
-    from pipeline import WriterFailure
+    from mdrap.pipeline import WriterFailure
 
     class FailingStore:
         def write_batches_atomic(self, *args, **kwargs):

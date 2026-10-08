@@ -4,7 +4,7 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 import pytest
-from strategy_sdk import (
+from mdrap.strategy_sdk import (
     Order,
     OrderBook,
     OrderBookSnapshot,
@@ -21,7 +21,7 @@ from strategy_sdk import (
     WhaleMomentumStrategy,
     AvellanedaStoikovStrategy,
 )
-from models import CanonicalEvent, EventType, QualityStatus
+from mdrap.models import CanonicalEvent, EventType, QualityStatus
 
 
 def test_risk_manager_max_order_size():

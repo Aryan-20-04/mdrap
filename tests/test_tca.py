@@ -8,8 +8,8 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from bbo import ConsolidatedBBO
-from tca import ExecutionRecord, TCAEngine, TCAMetrics
+from mdrap.bbo import ConsolidatedBBO
+from mdrap.tca import ExecutionRecord, TCAEngine, TCAMetrics
 
 
 def test_tca_single_buy_price_improvement():

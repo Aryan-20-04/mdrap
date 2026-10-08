@@ -1,10 +1,10 @@
 import json
 import os
 import pytest
-from config import QualityConfig
-from fastpath import FastQualityEngine
-from models import CanonicalEvent, EventType, QualityStatus
-from quality import QualityEngine
+from mdrap.config import QualityConfig
+from mdrap.fastpath import FastQualityEngine
+from mdrap.models import CanonicalEvent, EventType, QualityStatus
+from mdrap.quality import QualityEngine
 
 
 def _to_canonical(v: dict) -> CanonicalEvent:

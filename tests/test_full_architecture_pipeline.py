@@ -16,11 +16,11 @@ pytest.importorskip("starlette")
 
 from starlette.testclient import TestClient
 
-from api import AppState, create_app
-from pipeline import Pipeline
-from security import SecurityManager, Role
-from simulator import FeedSimulator, SimulatorConfig
-from storage import Store
+from mdrap.api import AppState, create_app
+from mdrap.pipeline import Pipeline
+from mdrap.security import SecurityManager, Role
+from mdrap.simulator import FeedSimulator, SimulatorConfig
+from mdrap.storage import Store
 
 
 def test_full_system_end_to_end_pipeline(tmp_path):

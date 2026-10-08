@@ -38,7 +38,7 @@ def test_all_src_modules_declare_valid_stability_contract():
 
 
 def test_deprecated_decorator_emits_warning():
-    from models import deprecated
+    from mdrap.models import deprecated
 
     @deprecated(
         since="2.5.0", removal="3.1.0", replacement="new_func", message="legacy API"
@@ -55,12 +55,12 @@ def test_deprecated_decorator_emits_warning():
 def test_public_api_surface_snapshot_preserved():
     """Verify that public API surface contracts across stable core modules remain intact (Card #10)."""
     import mdrap
-    import models
-    import protocols
-    import pipeline
-    import gateway
-    import storage
-    import plugins
+    import mdrap.models as models
+    import mdrap.protocols as protocols
+    import mdrap.pipeline as pipeline
+    import mdrap.gateway as gateway
+    import mdrap.storage as storage
+    import mdrap.plugins as plugins
 
     expected_surfaces = {
         mdrap: [
@@ -120,9 +120,9 @@ def test_public_api_surface_snapshot_preserved():
 def test_public_api_signatures_snapshot():
     """Verify that method signatures for stable public APIs do not regress."""
     import inspect
-    from gateway import normalize, ingest
-    from storage import Store
-    from pipeline import Pipeline
+    from mdrap.gateway import normalize, ingest
+    from mdrap.storage import Store
+    from mdrap.pipeline import Pipeline
 
     # Normalize and ingest parameters
     sig_norm = inspect.signature(normalize)

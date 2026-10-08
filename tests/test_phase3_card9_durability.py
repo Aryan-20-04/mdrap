@@ -6,9 +6,9 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from models import CanonicalEvent, EventType, QualityStatus
-from storage import Store
-from pipeline import Pipeline, replay_dead_letter_spills, get_dead_letter_dir
+from mdrap.models import CanonicalEvent, EventType, QualityStatus
+from mdrap.storage import Store
+from mdrap.pipeline import Pipeline, replay_dead_letter_spills, get_dead_letter_dir
 
 
 def test_dead_letter_spill_on_storage_failure():

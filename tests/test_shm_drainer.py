@@ -7,10 +7,10 @@ import tempfile
 import time
 import pytest
 
-from shm import SHMWriter, HAS_SHM
-from shm_drainer import SHMDrainWorker
-from journal import BinaryJournalReader
-from storage import Store
+from mdrap.shm import SHMWriter, HAS_SHM
+from mdrap.shm_drainer import SHMDrainWorker
+from mdrap.journal import BinaryJournalReader
+from mdrap.storage import Store
 
 
 @pytest.mark.skipif(not HAS_SHM, reason="SharedMemory not available")

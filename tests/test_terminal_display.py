@@ -11,15 +11,15 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from terminal_display import (
+from mdrap.terminal_display import (
     render_sparkline,
     render_candlestick_chart,
     LiveTickerDashboard,
 )
-from models import CanonicalEvent, EventType, QualityStatus, RawEvent
-from storage import Store
-from pipeline import Pipeline
-from simulator import FeedSimulator, SimulatorConfig
+from mdrap.models import CanonicalEvent, EventType, QualityStatus, RawEvent
+from mdrap.storage import Store
+from mdrap.pipeline import Pipeline
+from mdrap.simulator import FeedSimulator, SimulatorConfig
 from cli import build_parser
 
 

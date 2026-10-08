@@ -10,7 +10,7 @@ Tests:
 
 from adapters import FeedAdapter
 from adapters.reference import ReferenceFeedAdapter
-from models import EventType, QualityStatus
+from mdrap.models import EventType, QualityStatus
 
 
 def test_reference_feed_adapter_implements_protocol():

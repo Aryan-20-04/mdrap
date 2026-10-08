@@ -32,21 +32,21 @@ pytest.importorskip("fastapi")
 
 from fastapi.testclient import TestClient
 
-from alerts import Alert, AlertEngine, AlertStatus, AlertType
-from alert_sinks import (
+from mdrap.alerts import Alert, AlertEngine, AlertStatus, AlertType
+from mdrap.alert_sinks import (
     AlertDeliveryWorker,
     BaseHttpAlertSink,
     MockAlertSink,
     SlackAlertSink,
     WebhookAlertSink,
 )
-from api import create_app
-from kafka_sink import DurableKafkaSink, InMemoryKafkaProducer, KafkaSinkConfig
-from models import CanonicalEvent, EventType, QualityStatus, RawEvent, Reason
-from pipeline import Pipeline
-from prometheus import PrometheusExporter, global_prometheus_exporter
-from security import Role, SecurityManager
-from storage import Store
+from mdrap.api import create_app
+from mdrap.kafka_sink import DurableKafkaSink, InMemoryKafkaProducer, KafkaSinkConfig
+from mdrap.models import CanonicalEvent, EventType, QualityStatus, RawEvent, Reason
+from mdrap.pipeline import Pipeline
+from mdrap.prometheus import PrometheusExporter, global_prometheus_exporter
+from mdrap.security import Role, SecurityManager
+from mdrap.storage import Store
 
 
 # ---------------------------------------------------------------------------

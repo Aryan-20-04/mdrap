@@ -13,7 +13,7 @@ Verifies:
 import math
 import time
 import pytest
-from models import (
+from mdrap.models import (
     AssetClass,
     BookEvent,
     CanonicalEvent,

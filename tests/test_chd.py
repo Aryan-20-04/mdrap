@@ -12,7 +12,7 @@ from urllib.parse import parse_qs, urlparse
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-from chd import (
+from mdrap.chd import (
     CHDClient,
     CHDError,
     HistoricalRequest,
@@ -22,7 +22,7 @@ from chd import (
     Partition,
     received_ns,
 )
-from chd_history import ingest_history, iter_events, timestamp_ns
+from mdrap.chd_history import ingest_history, iter_events, timestamp_ns
 
 pa = pytest.importorskip("pyarrow")
 pq = pytest.importorskip("pyarrow.parquet")
@@ -410,9 +410,9 @@ def test_pipeline_import_raw_replay_lineage_and_no_false_age(tmp_path, network):
     c = client_with_rows(tmp_path, network, [trade(1000), trade(2000, trade_id=99999)])
     out = tmp_path / "run"
     manifest = ingest_history(c, request(), out)
-    from storage import Store
-    from archive import replay
-    from pipeline import Pipeline
+    from mdrap.storage import Store
+    from mdrap.archive import replay
+    from mdrap.pipeline import Pipeline
 
     original = Store(str(out / "mdrap.db"))
     assert sum(original.counts().values()) == 2
@@ -513,7 +513,7 @@ def test_duplicate_trade_ids_quarantined_without_artificial_gaps(tmp_path, netwo
     out = tmp_path / "duplicates"
     manifest = ingest_history(c, request(), out)
     assert manifest["metrics"]["quality_counts"]["INVALID"] == 1
-    from storage import Store
+    from mdrap.storage import Store
 
     store = Store(str(out / "mdrap.db"))
     assert sum(store.counts().values()) == 2
@@ -608,7 +608,7 @@ def test_missing_receive_column_and_invalid_received_time(tmp_path, network):
 
 
 def test_http_redirects_never_forward_credentials():
-    from chd import _DownloadRedirects
+    from mdrap.chd import _DownloadRedirects
     from urllib.request import Request
 
     req = Request(
@@ -639,7 +639,7 @@ def test_empty_filtered_interval_never_publishes(tmp_path, network):
 
 
 def test_download_redirects_follow_https_without_origin_credentials():
-    from chd import _DownloadRedirects
+    from mdrap.chd import _DownloadRedirects
     from urllib.request import Request
 
     original = Request(
@@ -675,7 +675,7 @@ def test_download_redirects_follow_https_without_origin_credentials():
     ],
 )
 def test_download_redirects_reject_unsafe_targets(target):
-    from chd import _DownloadRedirects
+    from mdrap.chd import _DownloadRedirects
     from urllib.request import Request
 
     original = Request("https://api.cryptohftdata.com/v1/download")
@@ -687,7 +687,7 @@ def test_download_redirects_reject_unsafe_targets(target):
 
 
 def test_metadata_redirects_restrict_to_origin():
-    from chd import _DownloadRedirects
+    from mdrap.chd import _DownloadRedirects
     from urllib.request import Request
 
     handler = _DownloadRedirects()
@@ -737,7 +737,7 @@ def test_malformed_content_length_handled(tmp_path):
 def test_raw_native_is_json_serializable():
     from datetime import datetime, timezone
     from decimal import Decimal
-    from chd_history import _raw
+    from mdrap.chd_history import _raw
     import json
 
     rec = HistoricalRecord(
@@ -764,7 +764,7 @@ def test_raw_native_is_json_serializable():
 
 def test_orderbook_gap_detection_preserves_last_update_id_across_idless_messages():
     from datetime import datetime, timezone
-    from chd_history import OrderBook
+    from mdrap.chd_history import OrderBook
 
     book = OrderBook()
     # 1. Initial snapshot with final_update_id = 10

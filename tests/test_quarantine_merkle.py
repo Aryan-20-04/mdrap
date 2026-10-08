@@ -1,6 +1,6 @@
 import json
 import pytest
-from storage import Store, _compute_merkle_root
+from mdrap.storage import Store, _compute_merkle_root
 
 
 def test_merkle_root_computation_deterministic():

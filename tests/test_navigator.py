@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from navigator import (
+from mdrap.navigator import (
     ConfirmationTicket,
     DataGrid,
     GridColumn,
@@ -257,7 +257,7 @@ class TestNavigatorRenderingStability(unittest.TestCase):
 
 class TestLiveResilience(unittest.TestCase):
     def setUp(self):
-        from live import LiveConnector
+        from mdrap.live import LiveConnector
 
         self.conn = LiveConnector(timeout=1.0)
 

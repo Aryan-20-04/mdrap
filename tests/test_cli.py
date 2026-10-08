@@ -17,11 +17,11 @@ from cli import (
     cmd_bbo,
     cmd_live,
 )
-from storage import Store
-from pipeline import Pipeline
-from simulator import FeedSimulator, SimulatorConfig
-from analytics import MarketAnalytics
-from bbo import BBOEngine
+from mdrap.storage import Store
+from mdrap.pipeline import Pipeline
+from mdrap.simulator import FeedSimulator, SimulatorConfig
+from mdrap.analytics import MarketAnalytics
+from mdrap.bbo import BBOEngine
 
 
 @pytest.fixture
@@ -159,7 +159,7 @@ def test_cmd_live_dispatch(populated_db, capsys):
     args = parser.parse_args(["live", "BTC/USD", "-l", "2", "--db", populated_db])
 
     with mock.patch("live.LiveConnector.stream_ticks") as mock_stream:
-        from models import RawEvent
+        from mdrap.models import RawEvent
 
         mock_raw = RawEvent(
             source="BINANCE",
@@ -183,7 +183,7 @@ def test_cmd_live_dispatch(populated_db, capsys):
 
 
 def test_gemini_ui_components_render_cleanly(capsys):
-    from term import (
+    from mdrap.term import (
         render_gemini_banner,
         render_gemini_tips,
         render_gemini_box_top,
@@ -204,7 +204,7 @@ def test_gemini_ui_components_render_cleanly(capsys):
 
 
 def test_term_stdlib_fallback_renders_clean_text(capsys):
-    from term import _StdlibConsole, _StdlibTable, _StdlibPanel, strip_tags
+    from mdrap.term import _StdlibConsole, _StdlibTable, _StdlibPanel, strip_tags
 
     # 1. Test strip_tags removes rich markup
     assert strip_tags("[bold green]SUCCESS[/bold green]") == "SUCCESS"
@@ -234,8 +234,8 @@ def test_term_stdlib_fallback_renders_clean_text(capsys):
 
 
 def test_fastpath_resilience_on_fault():
-    from fastpath import FastQualityEngine
-    from models import CanonicalEvent, EventType
+    from mdrap.fastpath import FastQualityEngine
+    from mdrap.models import CanonicalEvent, EventType
 
     engine = FastQualityEngine()
     event = CanonicalEvent(
@@ -255,7 +255,7 @@ def test_fastpath_resilience_on_fault():
     assert res.quality_status.value in ("VALID", "SUSPICIOUS", "INVALID")
 
     # Simulate C function failure or unavailable fast eval
-    import fastpath
+    import mdrap.fastpath as fastpath
 
     orig_eval = fastpath._FAST_EVAL
     try:
@@ -317,7 +317,7 @@ def test_cmd_service_parser_dispatch():
 
 def test_ticker_first_and_mnemonic_dispatch():
     from cli import KNOWN_SYMBOLS, MNEMONIC_MAP, QUICK_ACTIONS, render_command_palette
-    from term import Console
+    from mdrap.term import Console
 
     # Verify symbol mappings
     assert KNOWN_SYMBOLS["BTC"] == "BTC/USD"
@@ -341,7 +341,7 @@ def test_ticker_first_and_mnemonic_dispatch():
 
 
 def test_cmd_throughput_dispatch(capsys):
-    from fastpath import is_available
+    from mdrap.fastpath import is_available
 
     if not is_available():
         pytest.skip("FastPath native library not available")
@@ -477,7 +477,7 @@ def test_cmd_run_duckdb_sync_error_handling(tmp_path, capsys, monkeypatch):
 
 
 def test_no_color_flag_and_environment(monkeypatch):
-    from term import is_no_color_active, Console
+    from mdrap.term import is_no_color_active, Console
     from cli import build_parser
 
     # 1. Environment variable test
@@ -501,7 +501,7 @@ def test_no_color_flag_and_environment(monkeypatch):
 
 
 def test_colorblind_safe_formatters():
-    from term import format_status, format_direction, format_num
+    from mdrap.term import format_status, format_direction, format_num
 
     # Status indicators: glyph + status
     val_status = format_status("VALID")

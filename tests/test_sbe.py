@@ -12,7 +12,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from sbe import (
+from mdrap.sbe import (
     HEADER_SIZE,
     TICK_TOTAL_FRAME_SIZE,
     BBO_TOTAL_FRAME_SIZE,

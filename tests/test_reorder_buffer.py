@@ -1,9 +1,9 @@
 import time
 import pytest
-from models import CanonicalEvent, EventType, QualityStatus, Reason, RawEvent
-from quality import QualityConfig, QualityEngine
-from pipeline import Pipeline
-from storage import Store
+from mdrap.models import CanonicalEvent, EventType, QualityStatus, Reason, RawEvent
+from mdrap.quality import QualityConfig, QualityEngine
+from mdrap.pipeline import Pipeline
+from mdrap.storage import Store
 
 
 def _create_event(

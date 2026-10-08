@@ -15,7 +15,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from options import (
+from mdrap.options import (
     ExerciseStyle,
     OptionContract,
     OptionPrice,
@@ -166,7 +166,7 @@ def test_options_chain_and_max_pain():
 
 
 def test_options_python_fallback(monkeypatch):
-    import options
+    import mdrap.options as options
 
     monkeypatch.setattr(options, "fastpath", None)
 

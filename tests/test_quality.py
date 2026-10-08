@@ -3,8 +3,8 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from models import CanonicalEvent, EventType, QualityStatus, Reason
-from quality import QualityConfig, QualityEngine
+from mdrap.models import CanonicalEvent, EventType, QualityStatus, Reason
+from mdrap.quality import QualityConfig, QualityEngine
 
 
 def make_event(**overrides):
@@ -115,8 +115,8 @@ def test_price_anomaly_is_per_source_not_shared_across_feeds():
 
 def test_schema_violation_routes_through_normalize():
     import pytest
-    from gateway import SchemaError, normalize
-    from models import RawEvent
+    from mdrap.gateway import SchemaError, normalize
+    from mdrap.models import RawEvent
 
     raw = RawEvent(
         source="FEEDX", payload={"event_type": "TRADE"}

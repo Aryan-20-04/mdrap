@@ -6,7 +6,7 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from ws_feed import (
+from mdrap.ws_feed import (
     parse_binance_frame,
     parse_coinbase_frame,
     parse_okx_frame,

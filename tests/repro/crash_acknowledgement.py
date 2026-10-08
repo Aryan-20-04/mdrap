@@ -27,9 +27,9 @@ CHILD = r"""
 import sys, time
 from pathlib import Path
 sys.path.insert(0, sys.argv[3])
-from models import RawEvent
-from pipeline import Pipeline
-from storage import Store
+from mdrap.models import RawEvent
+from mdrap.pipeline import Pipeline
+from mdrap.storage import Store
 
 db_path, ack_path, src_path = sys.argv[1:4]
 count = int(sys.argv[4])
@@ -58,7 +58,7 @@ def main() -> int:
         parser.error("--events must be from 1 to 1999 to stay below batch flush size")
 
     sys.path.insert(0, str(SRC))
-    from storage import Store
+    from mdrap.storage import Store
 
     with tempfile.TemporaryDirectory(prefix="mdrap-crash-repro-") as temp_dir:
         db_path = Path(temp_dir) / "events.db"

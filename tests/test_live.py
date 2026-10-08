@@ -6,11 +6,11 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from live import LiveConnector, normalize_symbol_pair, resolve_venue_symbols
-from models import EventType, QualityStatus, RawEvent
-from storage import Store
-from pipeline import Pipeline
-from bbo import BBOEngine
+from mdrap.live import LiveConnector, normalize_symbol_pair, resolve_venue_symbols
+from mdrap.models import EventType, QualityStatus, RawEvent
+from mdrap.storage import Store
+from mdrap.pipeline import Pipeline
+from mdrap.bbo import BBOEngine
 
 
 def test_symbol_normalization():

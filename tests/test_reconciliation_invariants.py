@@ -14,8 +14,8 @@ Tests:
 11. HARD INVARIANT: Same input sequence + same configuration = IDENTICAL output.
 """
 
-from models import CanonicalEvent, EventType, QualityStatus, Reason
-from reconciliation import Reconciler, ReliabilityTracker, ReliabilityConfig
+from mdrap.models import CanonicalEvent, EventType, QualityStatus, Reason
+from mdrap.reconciliation import Reconciler, ReliabilityTracker, ReliabilityConfig
 
 
 def _event(

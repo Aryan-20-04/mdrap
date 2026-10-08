@@ -1,6 +1,6 @@
 import time
 import pytest
-from itch import (
+from mdrap.itch import (
     ITCHParser,
     ITCHOrderBookTracker,
     STRUCT_E,
@@ -11,8 +11,8 @@ from itch import (
     MSG_STOCK_DIRECTORY,
     PRICE_FACTOR_ITCH,
 )
-from quality import QualityEngine
-from models import QualityStatus, Reason
+from mdrap.quality import QualityEngine
+from mdrap.models import QualityStatus, Reason
 
 
 def test_itch_untracked_order_execution_synthesis():
@@ -116,7 +116,7 @@ def test_itch_epoch_timestamp_avoids_stale_quarantine():
     assert abs(event.exchange_timestamp - t_now) < 5.0
 
     # Pass through QualityEngine - must NOT be flagged as STALE_TIMESTAMP
-    from quality import QualityConfig
+    from mdrap.quality import QualityConfig
 
     qe = QualityEngine(QualityConfig(staleness_threshold_s=10.0))
     result = qe.evaluate(event)

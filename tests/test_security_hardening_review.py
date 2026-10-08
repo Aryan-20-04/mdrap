@@ -18,10 +18,10 @@ pytest.importorskip("starlette")
 
 from starlette.testclient import TestClient
 
-from api import create_app
-from config import PlatformConfig
-from security import Role, SecurityManager
-from storage import Store
+from mdrap.api import create_app
+from mdrap.config import PlatformConfig
+from mdrap.security import Role, SecurityManager
+from mdrap.storage import Store
 
 
 class RemotePeerMiddleware:

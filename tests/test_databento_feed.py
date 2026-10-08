@@ -11,7 +11,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from databento_feed import (
+from mdrap.databento_feed import (
     decode_dbn_record,
     SymbolResolver,
     SyntheticDBNGenerator,
@@ -22,7 +22,7 @@ from databento_feed import (
     RTYPE_TRADE,
     FIXED_PX_FACTOR,
 )
-from models import RawEvent
+from mdrap.models import RawEvent
 
 
 def test_symbol_resolver():

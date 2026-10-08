@@ -14,7 +14,7 @@ Tests:
 """
 
 import pytest
-from shm import SHMWriter, SHMReader, HAS_SHM
+from mdrap.shm import SHMWriter, SHMReader, HAS_SHM
 
 
 @pytest.mark.skipif(not HAS_SHM, reason="SharedMemory not available on this platform")
@@ -99,9 +99,9 @@ def test_websocket_transport_protocol(tmp_path):
     pytest.importorskip("fastapi")
     pytest.importorskip("starlette")
     from starlette.testclient import TestClient
-    from api import AppState, create_app
-    from security import SecurityManager
-    from storage import Store
+    from mdrap.api import AppState, create_app
+    from mdrap.security import SecurityManager
+    from mdrap.storage import Store
 
     db_path = str(tmp_path / "ws_hard.db")
     store = Store(db_path)

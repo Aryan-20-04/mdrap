@@ -13,8 +13,8 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-import terminal_display
-from models import CanonicalEvent, EventType, QualityStatus
+import mdrap.terminal_display as terminal_display
+from mdrap.models import CanonicalEvent, EventType, QualityStatus
 
 
 def test_sparkline_renderers():

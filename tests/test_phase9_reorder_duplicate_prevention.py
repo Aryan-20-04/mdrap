@@ -4,10 +4,10 @@ import tempfile
 import time
 import pytest
 
-from models import RawEvent, CanonicalEvent, EventType, QualityStatus
-from quality import QualityEngine, QualityConfig
-from pipeline import Pipeline
-from storage import Store
+from mdrap.models import RawEvent, CanonicalEvent, EventType, QualityStatus
+from mdrap.quality import QualityEngine, QualityConfig
+from mdrap.pipeline import Pipeline
+from mdrap.storage import Store
 
 
 def test_batch_reorder_no_duplicate_dispatch():

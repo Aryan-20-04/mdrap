@@ -4,7 +4,7 @@ Tests for Active-Passive Failover State Machine and Disaster Recovery (src/failo
 
 import time
 import pytest
-from failover import (
+from mdrap.failover import (
     FailoverNode,
     HeartbeatMessage,
     NodeState,

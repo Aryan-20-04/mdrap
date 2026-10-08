@@ -6,15 +6,15 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from vessel import (
+from mdrap.vessel import (
     haversine_nm,
     GLOBAL_CHOKEPOINTS,
     Vessel,
     VesselTracker,
     validate_coordinates,
 )
-import fastpath
-from fastpath import (
+import mdrap.fastpath as fastpath
+from mdrap.fastpath import (
     fast_haversine_nm,
     make_fast_chokepoints,
     fast_vessel_chokepoint_eval,
@@ -154,7 +154,7 @@ def test_spatial_geofence_single_and_batch_parity():
 
 def test_fastpath_fallback_resilience_when_c_unavailable(monkeypatch):
     """Verify that if the C library is missing or fails, vessel.py falls back to pure Python seamlessly."""
-    import vessel
+    import mdrap.vessel as vessel
 
     # Temporarily force fastpath to be disabled
     monkeypatch.setattr(vessel, "_HAS_FASTPATH", False)

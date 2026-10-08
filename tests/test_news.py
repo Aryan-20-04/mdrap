@@ -6,7 +6,7 @@ from datetime import datetime
 # Insert src directory to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from news import (
+from mdrap.news import (
     SentimentScore,
     NewsItem,
     FinancialSentimentAnalyzer,

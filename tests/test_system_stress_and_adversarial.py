@@ -21,22 +21,22 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 pytestmark = pytest.mark.slow  # ponytail: stress/adversarial tests skip by default
 from cli import ALL_CANONICAL_COMMANDS, build_parser
-from models import CanonicalEvent, EventType, QualityStatus, RawEvent, Reason
-from pipeline import Pipeline
-from quality import QualityEngine, QualityConfig, _RollingStats
-from storage import Store
-from bbo import BBOEngine, ConsolidatedBBO
-from depth import ConsolidatedDepthEngine
-from mbo import OrderBookMBO
-from analytics import (
+from mdrap.models import CanonicalEvent, EventType, QualityStatus, RawEvent, Reason
+from mdrap.pipeline import Pipeline
+from mdrap.quality import QualityEngine, QualityConfig, _RollingStats
+from mdrap.storage import Store
+from mdrap.bbo import BBOEngine, ConsolidatedBBO
+from mdrap.depth import ConsolidatedDepthEngine
+from mdrap.mbo import OrderBookMBO
+from mdrap.analytics import (
     MarketAnalytics,
     OHLCVAggregator,
     SpreadAnalyzer,
     VolatilityTracker,
 )
-from flow_tracker import OrderFlowTracker, FlowCategory, AggressorSide
-from tca import TCAEngine, ExecutionRecord
-from stresstest import stress_adversarial_fuzzing, compute_latencies_us
+from mdrap.flow_tracker import OrderFlowTracker, FlowCategory, AggressorSide
+from mdrap.tca import TCAEngine, ExecutionRecord
+from mdrap.stresstest import stress_adversarial_fuzzing, compute_latencies_us
 
 
 # ===========================================================================
@@ -75,7 +75,7 @@ class TestCommandTimingBenchmark:
         analytics = MarketAnalytics()
         bbo = BBOEngine()
         pipe = Pipeline(store, analytics=analytics, bbo=bbo)
-        from simulator import FeedSimulator, SimulatorConfig
+        from mdrap.simulator import FeedSimulator, SimulatorConfig
 
         sim = FeedSimulator(SimulatorConfig(seed=42, num_events=500))
         for raw, _ in sim.generate():

@@ -19,7 +19,7 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from shm import (
+from mdrap.shm import (
     SHMWriter,
     SHMReader,
     HAS_SHM,
@@ -27,7 +27,7 @@ from shm import (
     HEADER_SIZE,
     SLOT_SIZE,
 )
-from client import MDRAPClient
+from mdrap.client import MDRAPClient
 
 
 @pytest.mark.skipif(not HAS_SHM, reason="SharedMemory not available")

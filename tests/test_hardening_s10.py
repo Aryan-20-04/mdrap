@@ -3,7 +3,7 @@ import pytest
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
-from audit_format import audit_bytes_v1, audit_bytes_v2, compute_audit_hash
+from mdrap.audit_format import audit_bytes_v1, audit_bytes_v2, compute_audit_hash
 
 
 def test_s10_v1_collision_demonstration():

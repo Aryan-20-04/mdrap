@@ -1,14 +1,14 @@
 import math
 import time
 import pytest
-from security import (
+from mdrap.security import (
     AccessDenied,
     InputSanitizer,
     Role,
     SecurityManager,
     ClientEntitlement,
 )
-from storage import Store
+from mdrap.storage import Store
 
 
 def test_s3_unknown_source_sign_payload():

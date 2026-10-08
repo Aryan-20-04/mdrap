@@ -5,8 +5,8 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from models import CanonicalEvent, EventType, QualityStatus
-from analytics import (
+from mdrap.models import CanonicalEvent, EventType, QualityStatus
+from mdrap.analytics import (
     OHLCVAggregator,
     SpreadAnalyzer,
     VolatilityTracker,

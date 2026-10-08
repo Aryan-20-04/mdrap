@@ -5,9 +5,9 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from security import SecurityManager, Role
-from storage import Store
-from gateway_tcp import TCPGatewayServer
+from mdrap.security import SecurityManager, Role
+from mdrap.storage import Store
+from mdrap.gateway_tcp import TCPGatewayServer
 
 
 def test_6b_tcp_gateway_fail_closed_without_security_manager():

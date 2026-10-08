@@ -8,8 +8,8 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from archive import RawArchive, replay
-from models import RawEvent
+from mdrap.archive import RawArchive, replay
+from mdrap.models import RawEvent
 
 
 @pytest.fixture

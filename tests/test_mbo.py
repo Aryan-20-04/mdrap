@@ -4,7 +4,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from mbo import OrderBookMBO, OrderSide, RestingOrder, QueuePositionInfo
+from mdrap.mbo import OrderBookMBO, OrderSide, RestingOrder, QueuePositionInfo
 
 
 def test_mbo_order_add_and_stats():

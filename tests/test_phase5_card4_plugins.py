@@ -4,7 +4,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from plugins import (
+from mdrap.plugins import (
     PLUGIN_GROUPS,
     discover_all_plugins,
     load_plugins,

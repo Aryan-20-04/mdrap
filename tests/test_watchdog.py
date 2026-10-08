@@ -4,9 +4,9 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from models import CanonicalEvent, EventType, QualityStatus, Reason
-from reconciliation import ReliabilityTracker
-from watchdog import SourceWatchdog, SourceState, WatchdogAlert
+from mdrap.models import CanonicalEvent, EventType, QualityStatus, Reason
+from mdrap.reconciliation import ReliabilityTracker
+from mdrap.watchdog import SourceWatchdog, SourceState, WatchdogAlert
 
 
 def _make_event(eid, source, ts, **kwargs):

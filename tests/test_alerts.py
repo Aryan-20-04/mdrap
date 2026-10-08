@@ -5,7 +5,7 @@ import time
 import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
-from alerts import AlertEngine, AlertStatus, AlertType
+from mdrap.alerts import AlertEngine, AlertStatus, AlertType
 
 
 def test_price_above_alert():

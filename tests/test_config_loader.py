@@ -1,5 +1,5 @@
 import pytest
-from config_loader import (
+from mdrap.config_loader import (
     load_config,
     resolve_config,
     compute_config_hash,

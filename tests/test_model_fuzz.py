@@ -10,7 +10,7 @@ or return an explicit error list without raising unhandled exceptions.
 import random
 import string
 import pytest
-from models import safe_parse_market_event
+from mdrap.models import safe_parse_market_event
 
 
 def random_string(max_len: int = 30) -> str:

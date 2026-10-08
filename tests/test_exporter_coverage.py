@@ -13,7 +13,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from exporter import MarketDataExporter
+from mdrap.exporter import MarketDataExporter
 
 
 def test_exporter_gather_and_csv():

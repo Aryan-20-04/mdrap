@@ -8,8 +8,8 @@ idempotent when identical events are replayed through the engine (e.g. from arch
 from __future__ import annotations
 
 import json
-from models import CanonicalEvent, EventType, QualityStatus, Reason
-from storage import Store
+from mdrap.models import CanonicalEvent, EventType, QualityStatus, Reason
+from mdrap.storage import Store
 
 
 def test_canonical_write_idempotency():

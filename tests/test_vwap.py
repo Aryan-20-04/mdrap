@@ -11,18 +11,18 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from client import MDRAPClient
-from depth import (
+from mdrap.client import MDRAPClient
+from mdrap.depth import (
     ConsolidatedDepthEngine,
     ConsolidatedLadder,
     DepthLevel,
     VWAPCurve,
     VWAPSlice,
 )
-from models import RawEvent
-from security import SecurityManager
-from service import MarketDataDaemon
-from storage import Store
+from mdrap.models import RawEvent
+from mdrap.security import SecurityManager
+from mdrap.service import MarketDataDaemon
+from mdrap.storage import Store
 
 
 def test_vwap_single_level_fill():

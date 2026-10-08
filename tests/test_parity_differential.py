@@ -6,9 +6,9 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 import pytest
-from models import CanonicalEvent, EventType, QualityStatus, Reason
-from quality import QualityConfig, QualityEngine
-from fastpath import FastQualityEngine, HAS_FASTPATH, _CFastEvent, _CFastResult
+from mdrap.models import CanonicalEvent, EventType, QualityStatus, Reason
+from mdrap.quality import QualityConfig, QualityEngine
+from mdrap.fastpath import FastQualityEngine, HAS_FASTPATH, _CFastEvent, _CFastResult
 
 pytestmark = pytest.mark.skipif(
     not HAS_FASTPATH, reason="Native fastpath library not available"
@@ -28,8 +28,8 @@ def generate_parity_stream(seed: int, num_events: int) -> list[CanonicalEvent]:
     8. flash crash (downward price anomaly)
     9. duplicate
     """
-    from simulator import FeedSimulator, SimulatorConfig
-    from gateway import normalize
+    from mdrap.simulator import FeedSimulator, SimulatorConfig
+    from mdrap.gateway import normalize
 
     sim_cfg = SimulatorConfig(
         seed=seed,

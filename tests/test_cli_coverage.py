@@ -19,7 +19,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 pytestmark = pytest.mark.slow  # ponytail: full CLI benchmark skip by default
 
 import cli
-import trading_cli
+import mdrap.trading_cli as trading_cli
 
 
 @pytest.fixture
@@ -61,8 +61,8 @@ def test_cli_microstructure_and_books(parser):
 def test_cli_venues_and_symbology(parser):
     _run_cmd(parser, ["markets"])
     _run_cmd(parser, ["venues"])
-    import symbology
-    import fx
+    import mdrap.symbology as symbology
+    import mdrap.fx as fx
 
     info = symbology.resolve_symbol("AAPL")
     assert info.ticker == "AAPL"
@@ -129,7 +129,7 @@ def test_cli_trading_commands(parser):
 
 
 def test_cli_fix_engine():
-    import fix_engine
+    import mdrap.fix_engine as fix_engine
 
     sample_fix = (
         "8=FIX.4.2\x019=55\x0135=D\x0149=BUYER\x0156=SELLER\x0134=1\x01"

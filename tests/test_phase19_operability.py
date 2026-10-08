@@ -16,9 +16,9 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from prometheus import PrometheusExporter
-from archive import RawArchive
-from models import RawEvent
+from mdrap.prometheus import PrometheusExporter
+from mdrap.archive import RawArchive
+from mdrap.models import RawEvent
 
 
 def test_ops_02_prometheus_audit_verification_non_blocking():

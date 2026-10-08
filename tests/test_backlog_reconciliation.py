@@ -12,8 +12,8 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from models import CanonicalEvent, EventType, QualityStatus
-from reconciliation import Reconciler, ReliabilityConfig, ReliabilityTracker
+from mdrap.models import CanonicalEvent, EventType, QualityStatus
+from mdrap.reconciliation import Reconciler, ReliabilityConfig, ReliabilityTracker
 
 
 def _create_canonical_trade(

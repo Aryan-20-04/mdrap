@@ -4,8 +4,8 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from bardb import Bar, BarAggregator, BarDatabase, INTERVALS
-from models import CanonicalEvent, EventType, QualityStatus
+from mdrap.bardb import Bar, BarAggregator, BarDatabase, INTERVALS
+from mdrap.models import CanonicalEvent, EventType, QualityStatus
 
 
 def _make_trade(instrument="AAPL", ts=1000.0, price=150.0, qty=100.0, seq=0):

@@ -14,7 +14,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from navigator import (
+from mdrap.navigator import (
     ConfirmationTicket,
     DataGrid,
     GridColumn,
@@ -309,7 +309,7 @@ def test_modal_navigator_render():
 
 @pytest.mark.skipif(sys.platform != "win32", reason="msvcrt is Windows-only")
 def test_key_reader_all_keys():
-    from navigator import KeyReader, Key
+    from mdrap.navigator import KeyReader, Key
 
     kr = KeyReader()
 

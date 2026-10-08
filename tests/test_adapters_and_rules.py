@@ -1,10 +1,10 @@
 import pytest
-from models import CanonicalEvent, EventType, QualityStatus
-from rules import register_rule, unregister_rule, clear_user_rules, evaluate_user_rules
+from mdrap.models import CanonicalEvent, EventType, QualityStatus
+from mdrap.rules import register_rule, unregister_rule, clear_user_rules, evaluate_user_rules
 from adapters import FeedAdapter, discover_adapters
 from adapters.template import TemplateCustomVenueAdapter
-from quality import QualityEngine
-from fastpath import FastQualityEngine, HAS_FASTPATH
+from mdrap.quality import QualityEngine
+from mdrap.fastpath import FastQualityEngine, HAS_FASTPATH
 
 
 @pytest.fixture(autouse=True)

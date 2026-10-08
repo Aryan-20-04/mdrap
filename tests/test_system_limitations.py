@@ -19,17 +19,17 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from analytics import MarketAnalytics
-from bbo import BBOEngine
-from depth import ConsolidatedDepthEngine
-from fastpath import FastQualityEngine, _INSTRUMENTS
-from models import CanonicalEvent, EventType, QualityStatus, RawEvent, Reason
-from pipeline import Pipeline
-from quality import QualityEngine
-from reconciliation import ReliabilityTracker
-from simulator import FeedSimulator, SimulatorConfig
-from storage import Store
-from watchdog import SourceState, SourceWatchdog
+from mdrap.analytics import MarketAnalytics
+from mdrap.bbo import BBOEngine
+from mdrap.depth import ConsolidatedDepthEngine
+from mdrap.fastpath import FastQualityEngine, _INSTRUMENTS
+from mdrap.models import CanonicalEvent, EventType, QualityStatus, RawEvent, Reason
+from mdrap.pipeline import Pipeline
+from mdrap.quality import QualityEngine
+from mdrap.reconciliation import ReliabilityTracker
+from mdrap.simulator import FeedSimulator, SimulatorConfig
+from mdrap.storage import Store
+from mdrap.watchdog import SourceState, SourceWatchdog
 
 
 def test_instrument_universe_capacity_and_fallback_limit():
@@ -39,7 +39,7 @@ def test_instrument_universe_capacity_and_fallback_limit():
     Verify that instruments within the mapped set run fast, and
     an expanded universe (e.g. 100 instruments) runs safely without memory corruption.
     """
-    from fastpath import is_available
+    from mdrap.fastpath import is_available
 
     if not is_available():
         pytest.skip("FastPath native library not available")

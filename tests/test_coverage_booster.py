@@ -18,10 +18,10 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 import cli
-import itch
-import research
-import service
-from storage import Store
+import mdrap.itch as itch
+import mdrap.research as research
+import mdrap.service as service
+from mdrap.storage import Store
 
 
 @pytest.fixture
@@ -186,7 +186,7 @@ def test_trading_cli_more_commands(parser):
 
 
 def test_polygon_feed_parsers():
-    import polygon_feed
+    import mdrap.polygon_feed as polygon_feed
 
     q = {
         "ev": "Q",

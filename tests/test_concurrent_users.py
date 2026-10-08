@@ -12,7 +12,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from workload_simulator import (
+from mdrap.workload_simulator import (
     ConcurrentWorkloadSimulator,
     DeviceConfig,
     DeviceResult,
@@ -20,7 +20,7 @@ from workload_simulator import (
     _compute_percentile,
     run_device_worker,
 )
-from service import MarketDataDaemon, StreamClient
+from mdrap.service import MarketDataDaemon, StreamClient
 
 
 def test_device_result_percentiles_calculation():

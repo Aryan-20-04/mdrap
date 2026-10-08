@@ -15,7 +15,7 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from shm import (
+from mdrap.shm import (
     SHMWriter,
     SHMReader,
     MAGIC,

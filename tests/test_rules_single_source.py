@@ -1,7 +1,7 @@
 import subprocess
 import sys
-from models import Reason
-from fastpath import (
+from mdrap.models import Reason
+from mdrap.fastpath import (
     HAS_FASTPATH,
     FastQualityEngine,
     _CFastEvent,

@@ -5,9 +5,9 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from models import CanonicalEvent, EventType, QualityStatus
-from storage import Store
-from columnar import ColumnarStore
+from mdrap.models import CanonicalEvent, EventType, QualityStatus
+from mdrap.storage import Store
+from mdrap.columnar import ColumnarStore
 
 try:
     import duckdb

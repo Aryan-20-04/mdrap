@@ -3,8 +3,8 @@ Tests for Venue-Aware Market Quality & Microstructure Rules (Circuit Bands, Vola
 """
 
 import pytest
-from models import CanonicalEvent, EventType, QualityStatus, Reason
-from quality import QualityEngine, QualityConfig
+from mdrap.models import CanonicalEvent, EventType, QualityStatus, Reason
+from mdrap.quality import QualityEngine, QualityConfig
 
 
 def _make_event(

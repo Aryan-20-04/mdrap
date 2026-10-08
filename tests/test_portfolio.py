@@ -3,7 +3,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from portfolio import WatchlistManager, PortfolioTracker
+from mdrap.portfolio import WatchlistManager, PortfolioTracker
 
 
 def test_watchlist_crud():

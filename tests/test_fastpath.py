@@ -5,12 +5,12 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 import pytest
-from fastpath import FastQualityEngine, NativeReplayBuffer
-from gateway import normalize
-from models import CanonicalEvent, EventType, QualityStatus, RawEvent, Reason
-from protocol import HEADER_STRUCT, TICK_FRAME_LEN, unpack_tick_payload
-from quality import QualityEngine
-from simulator import FeedSimulator, SimulatorConfig
+from mdrap.fastpath import FastQualityEngine, NativeReplayBuffer
+from mdrap.gateway import normalize
+from mdrap.models import CanonicalEvent, EventType, QualityStatus, RawEvent, Reason
+from mdrap.protocol import HEADER_STRUCT, TICK_FRAME_LEN, unpack_tick_payload
+from mdrap.quality import QualityEngine
+from mdrap.simulator import FeedSimulator, SimulatorConfig
 
 
 def _make_event(**overrides):
