@@ -937,6 +937,165 @@ def test_phase4_version_discipline_metadata():
     assert "Semantic Versioning" in v.__stability_policy__
 
 
+def test_granular_entitlements_venue_and_symbol_licensing(tmp_path):
+    """Verify granular client licensing enforcement at the security and store tiers."""
+    from mdrap.security import SecurityManager, Role, AccessDenied
+    from mdrap.storage import Store
+
+    db_path = str(tmp_path / "licensing.db")
+    store = Store(db_path)
+    sec = SecurityManager(store=store)
+
+    ent = sec.register_api_key(
+        client_id="LicensedHedgeFund",
+        role=Role.OPERATOR,
+        allowed_sources=["BINANCE", "KRAKEN"],
+        allowed_symbols=["BTC/USD", "ETH-USD"],
+    )
+
+    # 1. Direct authorization checks
+    # Valid source & symbol
+    sec.authorize(ent, Role.OPERATOR, action_name="feed_ingest", source="BINANCE", symbol="BTC/USD")
+    sec.authorize(ent, Role.OPERATOR, action_name="feed_ingest", source="KRAKEN", symbol="BTCUSD")  # Normalized
+    sec.authorize(ent, Role.OPERATOR, action_name="feed_ingest", source="BINANCE", symbol="ETHUSD")  # Normalized
+
+    # Unlicensed source
+    with pytest.raises(AccessDenied) as exc:
+        sec.authorize(ent, Role.OPERATOR, action_name="feed_ingest", source="COINBASE", symbol="BTC/USD")
+    assert "feed source 'COINBASE'" in str(exc.value)
+
+    # Unlicensed symbol
+    with pytest.raises(AccessDenied) as exc:
+        sec.authorize(ent, Role.OPERATOR, action_name="feed_ingest", source="BINANCE", symbol="SOL/USD")
+    assert "instrument 'SOL/USD'" in str(exc.value)
+
+    # 2. Store persistence and roundtrip
+    store.commit()
+    loaded_keys = store.load_api_keys()
+    matching = [k for k in loaded_keys if k.client_id == "LicensedHedgeFund"]
+    assert len(matching) == 1
+    loaded_ent = matching[0]
+    assert loaded_ent.allowed_sources == ["BINANCE", "KRAKEN"]
+    assert loaded_ent.allowed_symbols == ["BTC/USD", "ETH-USD"]
+
+    store.close()
+
+
+def test_granular_entitlements_rest_and_websocket_enforcement(tmp_path):
+    """Verify REST and WebSocket enforcement of granular symbol and source licensing."""
+    import asyncio
+    pytest.importorskip("fastapi")
+    pytest.importorskip("starlette")
+    from starlette.testclient import TestClient
+
+    from mdrap.api import AppState, create_app
+    from mdrap.security import SecurityManager, Role
+    from mdrap.storage import Store
+
+    db_path = str(tmp_path / "api_licensing.db")
+    store = Store(db_path)
+    sec = SecurityManager(store=store)
+
+    licensed_ent = sec.register_api_key(
+        client_id="RestrictedTrader",
+        role=Role.OPERATOR,
+        allowed_sources=["BINANCE"],
+        allowed_symbols=["BTC/USD"],
+    )
+    store.commit()
+
+    state = AppState(db_path=db_path, store=store, security_manager=sec)
+    app = create_app(state=state)
+    client = TestClient(app)
+
+    token = licensed_ent.token
+    headers = {"X-API-Key": token}
+
+    # 1. Ingest with unauthorized source -> 403 Forbidden
+    resp = client.post(
+        "/v1/ingest",
+        json={"source": "COINBASE", "payload": {"instrument": "BTC/USD", "price": 50000.0, "quantity": 1.0}},
+        headers=headers,
+    )
+    assert resp.status_code == 403
+    assert "not authorized to ingest for source 'COINBASE'" in resp.json()["detail"]
+
+    # 2. Ingest with unauthorized symbol -> 403 Forbidden
+    resp = client.post(
+        "/v1/ingest",
+        json={"source": "BINANCE", "payload": {"instrument": "ETH/USD", "price": 3000.0, "quantity": 1.0}},
+        headers=headers,
+    )
+    assert resp.status_code == 403
+    assert "not authorized to ingest for instrument 'ETH/USD'" in resp.json()["detail"]
+
+    # 3. Ingest with authorized source and symbol -> 200 OK
+    resp = client.post(
+        "/v1/ingest",
+        json={"source": "BINANCE", "payload": {"instrument": "BTC/USD", "price": 60000.0, "quantity": 1.0, "sequence": 1, "exchange_ts": time.time()}},
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    assert resp.json()["ingested"] == 1
+
+    # 4. Market queries: BBO and Depth for unlicensed symbol -> 403 Forbidden
+    resp_bbo = client.get("/v1/bbo/ETH/USD", headers=headers)
+    assert resp_bbo.status_code == 403
+
+    resp_depth = client.get("/v1/depth/ETH/USD", headers=headers)
+    assert resp_depth.status_code == 403
+
+    # 5. WebSocket licensing enforcement
+    with client.websocket_connect("/v1/events/stream", headers={"X-API-Key": token}) as ws:
+        ack = ws.receive_json()
+        assert ack["type"] == "ACK"
+
+        # Try to subscribe to unlicensed symbol -> receives ERROR
+        ws.send_json({"action": "SUB", "symbols": ["ETH/USD"]})
+        err_msg = ws.receive_json()
+        assert err_msg["type"] == "ERROR"
+        assert "Access denied: Not licensed for instrument(s): ETH/USD" in err_msg["error"]
+
+        # Subscribe to licensed symbol -> receives update
+        ws.send_json({"action": "SUB", "symbols": ["BTC/USD"]})
+        sub_msg = ws.receive_json()
+        assert sub_msg["type"] == "SUBSCRIPTION_UPDATE"
+        assert "BTC/USD" in sub_msg["subscribed"]
+
+        # Broadcast unlicensed instrument event -> subscriber does not receive it
+        asyncio.run(state.broadcast_event({
+            "type": "CANONICAL_TICK",
+            "instrument_id": "ETH/USD",
+            "price": 3100.0,
+            "source": "BINANCE",
+        }))
+
+        # Broadcast unlicensed source event -> subscriber does not receive it
+        asyncio.run(state.broadcast_event({
+            "type": "CANONICAL_TICK",
+            "instrument_id": "BTC/USD",
+            "price": 60100.0,
+            "source": "COINBASE",
+        }))
+
+        # Broadcast licensed event -> subscriber receives it
+        asyncio.run(state.broadcast_event({
+            "type": "CANONICAL_TICK",
+            "instrument_id": "BTC/USD",
+            "price": 60200.0,
+            "source": "BINANCE",
+        }))
+
+        received = ws.receive_json()
+        assert received["type"] == "CANONICAL_TICK"
+        assert received["instrument_id"] == "BTC/USD"
+        assert received["price"] == 60200.0
+        assert received["source"] == "BINANCE"
+
+    store.close()
+
+
+
 
 
 

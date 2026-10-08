@@ -208,11 +208,15 @@ CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_log(timestamp);
 CREATE TABLE IF NOT EXISTS api_keys (
     token_hash TEXT PRIMARY KEY,
     key_prefix TEXT NOT NULL DEFAULT '',
+    key_id TEXT NOT NULL DEFAULT '',
     client_id TEXT NOT NULL,
     role TEXT NOT NULL DEFAULT 'VIEWER',
     is_active INTEGER NOT NULL DEFAULT 1,
     created_at REAL NOT NULL,
-    expires_at REAL
+    expires_at REAL,
+    allowed_cidrs TEXT NOT NULL DEFAULT '[]',
+    allowed_sources TEXT NOT NULL DEFAULT '[]',
+    allowed_symbols TEXT NOT NULL DEFAULT '[]'
 );
 CREATE INDEX IF NOT EXISTS idx_api_keys_client ON api_keys(client_id);
 
@@ -507,6 +511,22 @@ class Store:
                         if "key_prefix" not in col_names:
                             self.conn.execute(
                                 "ALTER TABLE api_keys ADD COLUMN key_prefix TEXT NOT NULL DEFAULT ''"
+                            )
+                        if "key_id" not in col_names:
+                            self.conn.execute(
+                                "ALTER TABLE api_keys ADD COLUMN key_id TEXT NOT NULL DEFAULT ''"
+                            )
+                        if "allowed_cidrs" not in col_names:
+                            self.conn.execute(
+                                "ALTER TABLE api_keys ADD COLUMN allowed_cidrs TEXT NOT NULL DEFAULT '[]'"
+                            )
+                        if "allowed_sources" not in col_names:
+                            self.conn.execute(
+                                "ALTER TABLE api_keys ADD COLUMN allowed_sources TEXT NOT NULL DEFAULT '[]'"
+                            )
+                        if "allowed_symbols" not in col_names:
+                            self.conn.execute(
+                                "ALTER TABLE api_keys ADD COLUMN allowed_symbols TEXT NOT NULL DEFAULT '[]'"
                             )
                 except Exception as e:
                     import logging
@@ -2036,7 +2056,31 @@ class Store:
         cur_cols = {
             c[1] for c in self.conn.execute("PRAGMA table_info(api_keys)").fetchall()
         }
-        if "rate_limit_eps" in cur_cols:
+        key_id = getattr(ent, "key_id", "") or (token_hash[:16] if token_hash else "")
+        allowed_cidrs_str = json.dumps(list(getattr(ent, "allowed_cidrs", []) or []))
+        allowed_sources_str = json.dumps(list(getattr(ent, "allowed_sources", []) or []))
+        allowed_symbols_str = json.dumps(list(getattr(ent, "allowed_symbols", []) or []))
+
+        if "allowed_symbols" in cur_cols:
+            self.conn.execute(
+                """INSERT OR REPLACE INTO api_keys
+                   (token_hash, key_prefix, key_id, client_id, role, is_active, created_at, expires_at, allowed_cidrs, allowed_sources, allowed_symbols)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    token_hash,
+                    key_prefix,
+                    key_id,
+                    ent.client_id,
+                    role_str,
+                    1 if ent.is_active else 0,
+                    float(ent.created_at),
+                    float(ent.expires_at) if ent.expires_at is not None else None,
+                    allowed_cidrs_str,
+                    allowed_sources_str,
+                    allowed_symbols_str,
+                ),
+            )
+        elif "rate_limit_eps" in cur_cols:
             self.conn.execute(
                 """INSERT OR REPLACE INTO api_keys
                    (token_hash, key_prefix, client_id, role, rate_limit_eps, tier, can_access_l2, can_use_binary, can_use_shm, max_replay_events, is_active, created_at, expires_at)
@@ -2073,29 +2117,71 @@ class Store:
         """Load all registered API keys from the store."""
         from .security import ClientEntitlement, Role
 
-        cur = self.conn.execute(
-            """SELECT token_hash, key_prefix, client_id, role, is_active, created_at, expires_at
-               FROM api_keys"""
-        )
-        results = []
-        for row in cur.fetchall():
-            role_raw = row[3]
-            role = Role[role_raw] if role_raw in Role.__members__ else Role.VIEWER
-            results.append(
-                ClientEntitlement(
-                    token_hash=row[0],
-                    key_prefix=row[1],
-                    token=row[
-                        0
-                    ],  # for backward compatibility where ent.token is used in tests/maps
-                    client_id=row[2],
-                    role=role,
-                    is_active=bool(row[4]),
-                    created_at=float(row[5]),
-                    expires_at=float(row[6]) if row[6] is not None else None,
-                )
+        cur_cols = {
+            c[1] for c in self.conn.execute("PRAGMA table_info(api_keys)").fetchall()
+        }
+        if "allowed_symbols" in cur_cols:
+            cur = self.conn.execute(
+                """SELECT token_hash, key_prefix, client_id, role, is_active, created_at, expires_at,
+                          COALESCE(key_id, ''), COALESCE(allowed_cidrs, '[]'), COALESCE(allowed_sources, '[]'), COALESCE(allowed_symbols, '[]')
+                   FROM api_keys"""
             )
-        return results
+            results = []
+            for row in cur.fetchall():
+                role_raw = row[3]
+                role = Role[role_raw] if role_raw in Role.__members__ else Role.VIEWER
+                try:
+                    cidrs = json.loads(row[8]) if row[8] else []
+                except Exception:
+                    cidrs = []
+                try:
+                    sources = json.loads(row[9]) if row[9] else []
+                except Exception:
+                    sources = []
+                try:
+                    symbols = json.loads(row[10]) if row[10] else []
+                except Exception:
+                    symbols = []
+                results.append(
+                    ClientEntitlement(
+                        token_hash=row[0],
+                        key_prefix=row[1],
+                        token=row[0],
+                        client_id=row[2],
+                        role=role,
+                        is_active=bool(row[4]),
+                        created_at=float(row[5]),
+                        expires_at=float(row[6]) if row[6] is not None else None,
+                        key_id=row[7] or (row[0][:16] if row[0] else ""),
+                        allowed_cidrs=list(cidrs) if isinstance(cidrs, list) else [],
+                        allowed_sources=list(sources) if isinstance(sources, list) else [],
+                        allowed_symbols=list(symbols) if isinstance(symbols, list) else [],
+                    )
+                )
+            return results
+        else:
+            cur = self.conn.execute(
+                """SELECT token_hash, key_prefix, client_id, role, is_active, created_at, expires_at
+                   FROM api_keys"""
+            )
+            results = []
+            for row in cur.fetchall():
+                role_raw = row[3]
+                role = Role[role_raw] if role_raw in Role.__members__ else Role.VIEWER
+                results.append(
+                    ClientEntitlement(
+                        token_hash=row[0],
+                        key_prefix=row[1],
+                        token=row[0],
+                        client_id=row[2],
+                        role=role,
+                        is_active=bool(row[4]),
+                        created_at=float(row[5]),
+                        expires_at=float(row[6]) if row[6] is not None else None,
+                        key_id=row[0][:16] if row[0] else "",
+                    )
+                )
+            return results
 
     @_synchronized
     def revoke_api_key(self, token_or_hash: str) -> bool:

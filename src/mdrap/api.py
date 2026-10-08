@@ -137,6 +137,12 @@ class CreateKeyRequest(BaseModel):
     expires_at: Optional[float] = Field(
         None, description="Optional unix timestamp expiration"
     )
+    allowed_sources: Optional[List[str]] = Field(
+        default_factory=list, description="Licensed feed sources (empty for unrestricted)"
+    )
+    allowed_symbols: Optional[List[str]] = Field(
+        default_factory=list, description="Licensed instruments/symbols (empty for unrestricted)"
+    )
 
 
 class CreateKeyResponse(BaseModel):
@@ -148,6 +154,8 @@ class CreateKeyResponse(BaseModel):
     client_id: str
     role: str
     created_at: float
+    allowed_sources: List[str] = Field(default_factory=list)
+    allowed_symbols: List[str] = Field(default_factory=list)
     message: str = "Store this API key securely. It will not be shown again."
 
 
@@ -174,6 +182,8 @@ class KeyItem(BaseModel):
     is_active: bool
     created_at: float
     expires_at: Optional[float] = None
+    allowed_sources: List[str] = Field(default_factory=list)
+    allowed_symbols: List[str] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -296,9 +306,18 @@ class AppState:
         for ws, sub_syms in list(self.subscribers.items()):
             # Revocation check during stream broadcast
             tok = self.subscriber_tokens.get(ws)
-            if tok and not self.security_manager.get_entitlement(tok, active_only=True):
+            ent = self.security_manager.get_entitlement(tok, active_only=True) if tok else None
+            if tok and not ent:
                 dead_sockets.append(ws)
                 continue
+
+            # Granular licensing check (source & symbol)
+            if ent:
+                src = str(event_data.get("source") or event_data.get("chosen_source") or "").upper()
+                if src and not self.security_manager.check_source_allowed(ent, src):
+                    continue
+                if sym and not self.security_manager.check_symbol_allowed(ent, sym):
+                    continue
 
             if not sub_syms or "ALL" in sub_syms or sym in sub_syms:
                 q = self.subscriber_queues.get(ws)
@@ -419,6 +438,26 @@ def create_app(
             status_code=exc.status_code,
             content=content,
             headers=exc.headers,
+        )
+
+    from .security import AccessDenied
+
+    @app.exception_handler(AccessDenied)
+    async def access_denied_exception_handler(request: Request, exc: AccessDenied):
+        from starlette.responses import JSONResponse
+
+        content = {
+            "error": {
+                "code": status.HTTP_403_FORBIDDEN,
+                "message": str(exc),
+                "type": "AccessDenied",
+                "detail": str(exc),
+            },
+            "detail": str(exc),
+        }
+        return JSONResponse(
+            status_code=status.HTTP_403_FORBIDDEN,
+            content=content,
         )
 
     # -----------------------------------------------------------------------
@@ -766,6 +805,20 @@ def create_app(
                     detail=f"Client '{_auth.client_id}' is not authorized to ingest for source '{src}'",
                 )
 
+            payload_dict = it.get("payload", {}) if isinstance(it.get("payload"), dict) else {}
+            sym = str(
+                payload_dict.get("instrument")
+                or payload_dict.get("symbol")
+                or it.get("instrument")
+                or it.get("symbol")
+                or ""
+            )
+            if sym and not st.security_manager.check_symbol_allowed(_auth, sym):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"Client '{_auth.client_id}' is not authorized to ingest for instrument '{sym}'",
+                )
+
             client_raw_id = str(it.get("raw_id", ""))
             namespaced_raw_id = (
                 f"client_{_auth.client_id}:{client_raw_id}"
@@ -865,7 +918,13 @@ def create_app(
         _auth: ClientEntitlement = Depends(require_role(Role.VIEWER)),
     ):
         st: AppState = request.app.state.mdrap
-        events = st.store.latest(instrument_id, limit=1)
+        sym = instrument_id.upper()
+        if not st.security_manager.check_symbol_allowed(_auth, sym):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Client '{_auth.client_id}' is not authorized to access instrument '{sym}'",
+            )
+        events = st.store.latest(sym, limit=1)
         if not events:
             raise HTTPException(
                 status_code=404,
@@ -984,6 +1043,11 @@ def create_app(
     ):
         st: AppState = request.app.state.mdrap
         sym = instrument_id.upper()
+        if not st.security_manager.check_symbol_allowed(_auth, sym):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Client '{_auth.client_id}' is not authorized to access instrument '{sym}'",
+            )
         bbo_obj = st.bbo.current_bbo(sym)
         quote = bbo_obj.to_dict() if bbo_obj else None
         if not quote:
@@ -1014,6 +1078,11 @@ def create_app(
     ):
         st: AppState = request.app.state.mdrap
         sym = instrument_id.upper()
+        if not st.security_manager.check_symbol_allowed(_auth, sym):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Client '{_auth.client_id}' is not authorized to access instrument '{sym}'",
+            )
         ladder_obj = st.depth.current_ladder(sym)
         ladder = ladder_obj.to_dict() if ladder_obj else None
         if not ladder:
@@ -1084,6 +1153,8 @@ def create_app(
             client_id=req.client_id,
             role=role,
             expires_at=req.expires_at,
+            allowed_sources=req.allowed_sources or [],
+            allowed_symbols=req.allowed_symbols or [],
         )
         raw_token = ent.token
         st.security_manager.log_audit(
@@ -1099,6 +1170,8 @@ def create_app(
             client_id=ent.client_id,
             role=ent.role.value if hasattr(ent.role, "value") else str(ent.role),
             created_at=ent.created_at,
+            allowed_sources=list(ent.allowed_sources),
+            allowed_symbols=list(ent.allowed_symbols),
             message="Store this API key securely. It will not be shown again.",
         )
 
@@ -1118,6 +1191,8 @@ def create_app(
                 is_active=k.is_active,
                 created_at=k.created_at,
                 expires_at=k.expires_at,
+                allowed_sources=list(getattr(k, "allowed_sources", []) or []),
+                allowed_symbols=list(getattr(k, "allowed_symbols", []) or []),
             )
             for k in keys
         ]
@@ -1246,22 +1321,41 @@ def create_app(
                     syms = cmd_data.get("symbols", [])
                     if isinstance(syms, str):
                         syms = [syms]
-                    if len(subscribed_symbols) + len(syms) > 500:
+
+                    curr_ent = st.security_manager.get_entitlement(token, active_only=True) or client_ent
+                    unlicensed = []
+                    valid_syms = []
+                    for s in syms:
+                        s_upper = s.upper()
+                        if curr_ent and not st.security_manager.check_symbol_allowed(curr_ent, s_upper):
+                            unlicensed.append(s_upper)
+                        else:
+                            valid_syms.append(s_upper)
+
+                    if unlicensed:
                         await websocket.send_json(
                             {
                                 "type": "ERROR",
-                                "error": "Subscription limit exceeded (max 500 symbols per connection)",
+                                "error": f"Access denied: Not licensed for instrument(s): {', '.join(unlicensed)}",
                             }
                         )
-                    else:
-                        for s in syms:
-                            subscribed_symbols.add(s.upper())
-                        await websocket.send_json(
-                            {
-                                "type": "SUBSCRIPTION_UPDATE",
-                                "subscribed": list(subscribed_symbols),
-                            }
-                        )
+                    if valid_syms:
+                        if len(subscribed_symbols) + len(valid_syms) > 500:
+                            await websocket.send_json(
+                                {
+                                    "type": "ERROR",
+                                    "error": "Subscription limit exceeded (max 500 symbols per connection)",
+                                }
+                            )
+                        else:
+                            for s in valid_syms:
+                                subscribed_symbols.add(s)
+                            await websocket.send_json(
+                                {
+                                    "type": "SUBSCRIPTION_UPDATE",
+                                    "subscribed": list(subscribed_symbols),
+                                }
+                            )
 
                 elif action in ("UNSUB", "UNSUBSCRIBE"):
                     syms = cmd_data.get("symbols", [])

@@ -84,6 +84,7 @@ class ClientEntitlement:
     is_active: bool = True
     allowed_cidrs: list[str] = field(default_factory=list)
     allowed_sources: list[str] = field(default_factory=list)
+    allowed_symbols: list[str] = field(default_factory=list)
     is_rotating: bool = False
 
     def __post_init__(self):
@@ -112,6 +113,7 @@ class ClientEntitlement:
             "is_active": self.is_active,
             "allowed_cidrs": list(self.allowed_cidrs),
             "allowed_sources": list(self.allowed_sources),
+            "allowed_symbols": list(self.allowed_symbols),
             "is_rotating": self.is_rotating,
         }
 
@@ -133,6 +135,7 @@ class ClientEntitlement:
             is_active=bool(data.get("is_active", True)),
             allowed_cidrs=list(data.get("allowed_cidrs", [])),
             allowed_sources=list(data.get("allowed_sources", [])),
+            allowed_symbols=list(data.get("allowed_symbols", [])),
             is_rotating=bool(data.get("is_rotating", False)),
         )
 
@@ -805,20 +808,37 @@ class SecurityManager:
         )
 
     def check_source_allowed(self, entitlement: ClientEntitlement, source: str) -> bool:
-        """Verify whether an entitlement is permitted to publish for the given source."""
+        """Verify whether an entitlement is permitted to publish or consume for the given source."""
         if not entitlement.allowed_sources:
             return True
         return source.upper() in [s.upper() for s in entitlement.allowed_sources]
 
+    def check_symbol_allowed(self, entitlement: ClientEntitlement, symbol: str) -> bool:
+        """Verify whether an entitlement is permitted to access or subscribe to the given symbol/instrument."""
+        if not entitlement.allowed_symbols:
+            return True
+        sym_norm = symbol.upper().replace("/", "").replace("-", "")
+        for allowed in entitlement.allowed_symbols:
+            a_norm = allowed.upper().replace("/", "").replace("-", "")
+            if sym_norm == a_norm or symbol.upper() == allowed.upper():
+                return True
+        return False
 
     def authorize(
-        self, actor_or_token: Any, required_role: Role, action_name: str = ""
+        self,
+        actor_or_token: Any,
+        required_role: Role,
+        action_name: str = "",
+        source: str | None = None,
+        symbol: str | None = None,
     ) -> None:
-        """Enforce Role-Based Access Control hierarchy."""
+        """Enforce Role-Based Access Control hierarchy and granular venue/symbol licensing."""
+        ent = None
         if isinstance(actor_or_token, Role):
             actor_role = actor_or_token
             actor_name = f"role:{actor_role.value}"
         elif isinstance(actor_or_token, ClientEntitlement):
+            ent = actor_or_token
             if not actor_or_token.is_active or (
                 actor_or_token.expires_at is not None
                 and time.time() > actor_or_token.expires_at
@@ -863,6 +883,28 @@ class SecurityManager:
                 f"Access denied: Action '{action_name}' requires role '{required_role.value}', "
                 f"but actor has '{actor_role.value}'"
             )
+
+        if ent is not None:
+            if source and not self.check_source_allowed(ent, source):
+                self.log_audit(
+                    action="ACCESS_DENIED",
+                    actor=actor_name,
+                    role=actor_role,
+                    details=f"Action '{action_name}' restricted by venue licensing for '{source}'",
+                )
+                raise AccessDenied(
+                    f"Access denied: Entitlement not licensed for feed source '{source}'"
+                )
+            if symbol and not self.check_symbol_allowed(ent, symbol):
+                self.log_audit(
+                    action="ACCESS_DENIED",
+                    actor=actor_name,
+                    role=actor_role,
+                    details=f"Action '{action_name}' restricted by symbol licensing for '{symbol}'",
+                )
+                raise AccessDenied(
+                    f"Access denied: Entitlement not licensed for instrument '{symbol}'"
+                )
 
     def log_audit(
         self,
@@ -966,6 +1008,9 @@ class SecurityManager:
             role=role_clean,
             expires_at=expires_at,
             is_active=True,
+            allowed_cidrs=list(kwargs.get("allowed_cidrs", [])),
+            allowed_sources=list(kwargs.get("allowed_sources", [])),
+            allowed_symbols=list(kwargs.get("allowed_symbols", [])),
         )
 
         # Store ONLY token_hash in memory
