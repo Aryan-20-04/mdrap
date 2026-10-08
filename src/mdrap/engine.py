@@ -17,6 +17,7 @@ import math
 import os
 from pathlib import Path
 import threading
+import time
 import warnings
 from typing import Any
 
@@ -182,8 +183,28 @@ class Engine:
                 fsync_policy=fsync_policy,
                 max_segment_bytes=max_segment_bytes,
             )
-            # Catch up state from existing log records
-            for off, raw in self.log.iter_from(0):
+            # Bounded startup (Phase 3): check for snapshot in WAL directory to avoid O(history) replay
+            replay_from = 0
+            snapshot_file = os.path.join(self.log.log_dir, "snapshot.json")
+            if os.path.exists(snapshot_file):
+                try:
+                    with open(snapshot_file, "r", encoding="utf-8") as f_snap:
+                        snap_obj = json.load(f_snap)
+                    snap_state_dict = snap_obj.get("state")
+                    snap_offset = snap_obj.get("offset", -1)
+                    if snap_state_dict and snap_offset >= 0:
+                        self.state = EngineState.from_dict(snap_state_dict)
+                        replay_from = snap_offset + 1
+                        logger.info(
+                            "[engine] Restored snapshot at offset %d (event_count=%d)",
+                            snap_offset,
+                            self.state.event_count,
+                        )
+                except Exception as snap_exc:
+                    logger.warning("[engine] Failed to load snapshot %s: %s; replaying from start", snapshot_file, snap_exc)
+
+            # Catch up state only from uncompacted log records since snapshot
+            for off, raw in self.log.iter_from(replay_from):
                 self.state, _ = self.step(self.state, raw, self.clock, offset=off)
 
         if db_path is not None:
@@ -293,6 +314,8 @@ class Engine:
         with self._lock:
             decisions: list[EngineDecision] = []
             offsets: list[int] = []
+            valid_for_wal: list[RawEvent] = []
+            raw_to_offset: list[tuple[RawEvent, int]] = []
 
             for raw in event_list:
                 # Stamp receive timestamp before append to ensure deterministic replay (C2)
@@ -300,7 +323,7 @@ class Engine:
                     raw.receive_timestamp = self.clock.now()
 
                 # Determine offset before append so deterministic raw_id is stamped and persisted in WAL (N1)
-                offset = self.log.next_offset if self.log is not None else self.state.event_count
+                offset = (self.log.next_offset + len(valid_for_wal)) if self.log is not None else (self.state.event_count + len(decisions))
                 if not raw.raw_id:
                     raw.raw_id = f"raw_{raw.source}_{offset}"
 
@@ -334,10 +357,14 @@ class Engine:
                         offsets.append(offset)
                         continue
 
-                if self.log is not None:
-                    actual_offset = self.log.append(raw)
-                    assert actual_offset == offset, f"Offset mismatch: expected {offset}, got {actual_offset}"
+                valid_for_wal.append(raw)
+                raw_to_offset.append((raw, offset))
 
+            if self.log is not None and valid_for_wal:
+                allocated = self.log.append_batch(valid_for_wal)
+                assert allocated == [off for _, off in raw_to_offset], "WAL allocated offsets diverged"
+
+            for raw, offset in raw_to_offset:
                 offsets.append(offset)
                 self.state, dec = self.step(self.state, raw, self.clock, offset=offset)
                 decisions.append(dec)
@@ -869,3 +896,38 @@ class Engine:
             if self.log is not None and hasattr(self.log, "delete_segments_before"):
                 return self.log.delete_segments_before(offset)
             return 0
+
+    def save_snapshot(self, prune_obsolete_segments: bool = True) -> dict[str, Any]:
+        """Save a snapshot of current engine state to the WAL directory for bounded O(tail) startup."""
+        with self._lock:
+            if self.log is None:
+                raise RuntimeError("Cannot save snapshot without an active IngestLog")
+
+            last_offset = self.state.event_count - 1
+            snap_data = {
+                "version": 1,
+                "offset": last_offset,
+                "timestamp": self.clock.now(),
+                "event_count": self.state.event_count,
+                "state": self.state.to_dict(),
+            }
+            snap_dir = self.log.log_dir
+            tmp_path = os.path.join(snap_dir, f"snapshot.json.tmp.{time.time_ns()}")
+            final_path = os.path.join(snap_dir, "snapshot.json")
+
+            with open(tmp_path, "w", encoding="utf-8") as f:
+                json.dump(snap_data, f, sort_keys=True, indent=2)
+                f.flush()
+                os.fsync(f.fileno())
+
+            os.replace(tmp_path, final_path)
+
+            pruned = 0
+            if prune_obsolete_segments and last_offset >= 0:
+                pruned = self.delete_segments_before(last_offset)
+
+            return {
+                "snapshot_offset": last_offset,
+                "path": final_path,
+                "segments_pruned": pruned,
+            }

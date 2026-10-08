@@ -689,5 +689,103 @@ def test_n2_unsequenced_business_id_dedup():
     assert Reason.DUPLICATE.value in dec2.reasons
 
 
+def test_phase3_ingestlog_group_commit_batching(tmp_path):
+    """Phase 3: append_batch() executes atomic group commit with single fsync per batch."""
+    from mdrap.ingestlog import IngestLog
+    from mdrap.engine import Engine
+
+    wal_dir = tmp_path / "gc_wal"
+    log = IngestLog(str(wal_dir), fsync_policy="always")
+
+    # 1. Direct IngestLog append_batch
+    batch_raw = [
+        RawEvent(source="COINBASE", payload={"instrument": "BTC/USD", "price": 50000.0 + i, "seq": i})
+        for i in range(50)
+    ]
+    offsets = log.append_batch(batch_raw)
+    assert len(offsets) == 50
+    assert offsets == list(range(50))
+    assert log.next_offset == 50
+    log.close()
+
+    # Verify all 50 records replayed in exact order
+    log_read = IngestLog(str(wal_dir))
+    replayed = list(log_read.iter_from(0))
+    assert len(replayed) == 50
+    assert [off for off, _ in replayed] == list(range(50))
+    log_read.close()
+
+    # 2. Engine submit batch executes group commit through log
+    eng_dir = tmp_path / "gc_engine"
+    engine = Engine.open(str(eng_dir), config={"fsync_policy": "always"})
+    decisions = engine.submit(batch_raw)
+    assert isinstance(decisions, list)
+    assert len(decisions) == 50
+    assert [d.offset for d in decisions] == list(range(50))
+    assert engine.state.event_count == 50
+    engine.close()
+
+
+def test_phase3_engine_snapshot_bounded_startup(tmp_path):
+    """Phase 3: Engine snapshots enable O(tail) bounded startup without O(history) replay."""
+    from mdrap.engine import Engine
+
+    wal_dir = tmp_path / "snap_engine"
+    engine = Engine.open(str(wal_dir))
+
+    # Process initial 40 events
+    events_1 = [
+        RawEvent(
+            source="NASDAQ",
+            payload={
+                "instrument": "AAPL",
+                "event_type": "TRADE",
+                "price": 150.0 + (i * 0.01),
+                "quantity": 10.0,
+                "sequence": i,
+                "exchange_ts": 1000.0 + i,
+            },
+        )
+        for i in range(40)
+    ]
+    engine.submit(events_1)
+    assert engine.state.event_count == 40
+
+    # Save snapshot
+    snap_info = engine.save_snapshot()
+    assert snap_info["snapshot_offset"] == 39
+    assert os.path.exists(snap_info["path"])
+
+    # Close engine
+    engine.close()
+
+    # Reopen on same WAL directory: must restore directly from snapshot.json
+    engine_reopened = Engine.open(str(wal_dir))
+    assert engine_reopened.state.event_count == 40
+    assert engine_reopened.state.sequence_state["NASDAQ:AAPL"] == 39
+
+    # Append 10 more events; offsets continue seamlessly from 40 to 49
+    events_2 = [
+        RawEvent(
+            source="NASDAQ",
+            payload={
+                "instrument": "AAPL",
+                "event_type": "TRADE",
+                "price": 150.40 + (i * 0.01),
+                "quantity": 10.0,
+                "sequence": 40 + i,
+                "exchange_ts": 1040.0 + i,
+            },
+        )
+        for i in range(10)
+    ]
+    decisions_2 = engine_reopened.submit(events_2)
+    assert len(decisions_2) == 10
+    assert [d.offset for d in decisions_2] == list(range(40, 50))
+    assert engine_reopened.state.event_count == 50
+    engine_reopened.close()
+
+
+
 
 

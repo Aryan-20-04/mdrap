@@ -404,6 +404,92 @@ class IngestLog:
 
             return offset
 
+    def append_batch(self, events: list[RawEvent | dict]) -> list[int]:
+        """Atomically append a batch of records with group commit (Audit Phase 3).
+
+        Under fsync_policy='always', performs a single os.fsync() across the entire batch
+        rather than fsyncing on every single record, eliminating disk write saturation.
+        Returns the list of allocated sequential offsets.
+        """
+        if not events:
+            return []
+
+        with self._lock:
+            if self._is_poisoned:
+                raise IngestLogPoisonedError(
+                    "IngestLog is poisoned due to previous unrecoverable I/O failure. Reopen to recover."
+                )
+
+            prepared = []
+            for item in events:
+                if isinstance(item, RawEvent):
+                    rec = {
+                        "source": item.source,
+                        "payload": item.payload,
+                        "receive_timestamp": item.receive_timestamp,
+                        "raw_id": item.raw_id,
+                    }
+                elif isinstance(item, dict):
+                    rec = item
+                else:
+                    raise TypeError(f"Expected RawEvent or dict, got {type(item).__name__}")
+
+                p_bytes = json.dumps(rec, separators=(",", ":"), ensure_ascii=False).encode("utf-8", errors="replace")
+                crc = zlib.crc32(p_bytes) & 0xFFFFFFFF
+                prepared.append((p_bytes, crc))
+
+            allocated_offsets: list[int] = []
+            start_off = self._next_offset
+            now = time.time()
+
+            if self._current_file is None:
+                self._rotate_to_new_segment(start_off)
+
+            write_pos = self._current_file.tell()
+            try:
+                for idx, (p_bytes, crc) in enumerate(prepared):
+                    off = start_off + idx
+                    p_len = len(p_bytes)
+                    curr_size = self._current_file.tell()
+                    if curr_size + FRAME_HEADER_SIZE + p_len > self.max_segment_bytes:
+                        self._rotate_to_new_segment(off)
+                        write_pos = self._current_file.tell()
+
+                    frame_hdr = struct.pack(
+                        FRAME_HEADER_FORMAT,
+                        FRAME_MAGIC,
+                        0,
+                        off,
+                        now,
+                        p_len,
+                        crc,
+                    )
+                    self._current_file.write(frame_hdr)
+                    self._current_file.write(p_bytes)
+                    self._bytes_since_fsync += FRAME_HEADER_SIZE + p_len
+                    allocated_offsets.append(off)
+
+                # Flush userspace buffer once for entire batch
+                self._current_file.flush()
+
+                # Group commit: fsync once for the batch under 'always' policy
+                if self.fsync_policy in ("always", "grouped_by_size", "grouped_by_time"):
+                    os.fsync(self._current_file.fileno())
+                    self._bytes_since_fsync = 0
+                    self._last_fsync_ts = time.time()
+
+                self._next_offset = start_off + len(prepared)
+            except Exception:
+                try:
+                    self._current_file.seek(write_pos)
+                    self._current_file.truncate(write_pos)
+                    self._current_file.flush()
+                except Exception:
+                    self._is_poisoned = True
+                raise
+
+            return allocated_offsets
+
     def flush(self) -> None:
         """Force flush and fsync of the current active segment."""
         with self._lock:
