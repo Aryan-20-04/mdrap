@@ -51,6 +51,59 @@ def _safe_optional_float(val: Any) -> Optional[float]:
         return None
 
 
+# Fixed-point financial price constants and utilities
+DEFAULT_PRICE_SCALE: int = 100_000_000  # 1e8 fixed-point scaling factor (8 decimals)
+
+
+def to_fixed_point_price(price: Any, scale: int = DEFAULT_PRICE_SCALE) -> int:
+    """
+    Convert floating-point, integer, string, or Decimal price into fixed-point scaled integer.
+    Guarantees finite precision and eliminates IEEE 754 float representation drift.
+    Raises ValueError on NaN, infinite, or unparseable input.
+    """
+    if price is None:
+        raise ValueError("Cannot convert None to fixed-point price")
+    try:
+        f = float(price)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"Cannot convert non-numeric value to fixed-point price: {price!r}") from exc
+
+    if not math.isfinite(f):
+        raise ValueError(f"Cannot convert non-finite value ({f}) to fixed-point price")
+
+    return int(round(f * scale))
+
+
+def from_fixed_point_price(scaled_price: int, scale: int = DEFAULT_PRICE_SCALE) -> float:
+    """
+    Convert scaled integer back into floating-point price with scale factor.
+    """
+    if not isinstance(scaled_price, int):
+        raise TypeError(f"scaled_price must be an int, got {type(scaled_price).__name__}")
+    if scale <= 0:
+        raise ValueError(f"scale must be positive, got {scale}")
+    return float(scaled_price) / float(scale)
+
+
+def to_decimal_price(price: Any):
+    """
+    Convert numeric price to Python Decimal via string representation to avoid float artifacts.
+    """
+    from decimal import Decimal, InvalidOperation
+
+    if price is None:
+        raise ValueError("Cannot convert None to Decimal price")
+    if isinstance(price, Decimal):
+        return price
+    try:
+        f = float(price)
+        if not math.isfinite(f):
+            raise ValueError(f"Cannot convert non-finite value ({f}) to Decimal price")
+        return Decimal(str(price))
+    except (TypeError, ValueError, InvalidOperation) as exc:
+        raise ValueError(f"Cannot convert {price!r} to Decimal: {exc}") from exc
+
+
 class EventType(str, Enum):
     """Enumeration of market data event categories."""
 

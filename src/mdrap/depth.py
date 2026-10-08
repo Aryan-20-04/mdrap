@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import json
+import math
 from typing import Any, Dict, List, Optional, Tuple
 
 from .models import CanonicalEvent, EventType, QualityStatus, RawEvent
@@ -210,7 +211,14 @@ class ConsolidatedLadder:
             else best_price
         )
 
-        remaining = float(target_size)
+        try:
+            target_flt = float(target_size)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"target_size must be numeric: {target_size!r}") from exc
+        if not math.isfinite(target_flt) or target_flt <= 0:
+            raise ValueError(f"Invalid target_size: {target_size}. Must be finite and positive.")
+
+        remaining = target_flt
         cum_notional = 0.0
         venue_breakdown: dict[str, float] = {}
 
@@ -552,7 +560,7 @@ class ConsolidatedDepthEngine:
                 try:
                     p_val = float(row[0])
                     s_val = float(row[1])
-                    if p_val > 0 and s_val > 0:
+                    if math.isfinite(p_val) and math.isfinite(s_val) and p_val > 0 and s_val > 0:
                         all_bids.append(DepthLevel(price=p_val, size=s_val, venue=v))
                 except (ValueError, IndexError):
                     continue
@@ -561,7 +569,7 @@ class ConsolidatedDepthEngine:
                 try:
                     p_val = float(row[0])
                     s_val = float(row[1])
-                    if p_val > 0 and s_val > 0:
+                    if math.isfinite(p_val) and math.isfinite(s_val) and p_val > 0 and s_val > 0:
                         all_asks.append(DepthLevel(price=p_val, size=s_val, venue=v))
                 except (ValueError, IndexError):
                     continue

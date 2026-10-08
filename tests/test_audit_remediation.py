@@ -1095,6 +1095,97 @@ def test_granular_entitlements_rest_and_websocket_enforcement(tmp_path):
     store.close()
 
 
+def test_financial_fixed_point_and_decimal_precision():
+    """Verify fixed-point conversion and Decimal conversion accuracy and NaN/inf guards."""
+    from decimal import Decimal
+    from mdrap.models import (
+        to_fixed_point_price,
+        from_fixed_point_price,
+        to_decimal_price,
+        DEFAULT_PRICE_SCALE,
+    )
+
+    # 1. Fixed point price conversion
+    price_flt = 65432.12345678
+    scaled = to_fixed_point_price(price_flt)
+    assert scaled == 6543212345678
+    assert from_fixed_point_price(scaled) == pytest.approx(price_flt, abs=1e-8)
+
+    # String input
+    assert to_fixed_point_price("100.50") == 10050000000
+    assert from_fixed_point_price(10050000000) == 100.50
+
+    # Decimal input
+    dec_in = Decimal("123.45678901")
+    assert to_fixed_point_price(dec_in) == 12345678901
+    assert from_fixed_point_price(12345678901) == pytest.approx(123.45678901, abs=1e-8)
+
+    # Rejection of invalid inputs
+    for bad in (float("nan"), float("inf"), -float("inf"), "nan", "inf", None):
+        with pytest.raises(ValueError):
+            to_fixed_point_price(bad)
+
+    with pytest.raises(TypeError):
+        from_fixed_point_price("not_an_int")  # type: ignore
+
+    # 2. Decimal price conversion
+    dec = to_decimal_price("50000.25")
+    assert isinstance(dec, Decimal)
+    assert dec == Decimal("50000.25")
+
+    for bad in (float("nan"), float("inf"), "not_a_number", None):
+        with pytest.raises(ValueError):
+            to_decimal_price(bad)
+
+
+def test_depth_ladder_nan_inf_immunity():
+    """Verify ConsolidatedDepthEngine rejects non-finite NaN/inf prices and order sizes."""
+    from mdrap.depth import ConsolidatedDepthEngine
+    from mdrap.models import RawEvent
+
+    depth_engine = ConsolidatedDepthEngine()
+
+    # RawEvent with NaN and Inf in bids and asks
+    raw = RawEvent(
+        source="KRAKEN",
+        payload={
+            "instrument": "BTC/USD",
+            "exchange_ts": 1000.0,
+            "bids": [
+                [float("inf"), 1.0],      # Poison bid price
+                [100.0, float("nan")],    # Poison bid size
+                [100.0, float("inf")],    # Poison bid size
+                [99.0, 5.0],              # Valid bid
+            ],
+            "asks": [
+                [float("nan"), 2.0],      # Poison ask price
+                [-float("inf"), 2.0],     # Poison ask price
+                [101.0, float("nan")],    # Poison ask size
+                [102.0, 3.0],             # Valid ask
+            ],
+        },
+        receive_timestamp=1000.001,
+        raw_id="poison_depth_1",
+    )
+
+    ladder = depth_engine.observe(raw)
+    assert ladder is not None
+
+    # Only valid finite levels must be present
+    assert len(ladder.bids) == 1
+    assert ladder.bids[0].price == 99.0
+    assert ladder.bids[0].size == 5.0
+
+    assert len(ladder.asks) == 1
+    assert ladder.asks[0].price == 102.0
+    assert ladder.asks[0].size == 3.0
+
+    # compute_vwap rejects non-finite or non-positive target sizes
+    for bad_size in (float("nan"), float("inf"), 0.0, -5.0, "bad"):
+        with pytest.raises(ValueError):
+            ladder.compute_vwap("BUY", bad_size)
+
+
 
 
 
