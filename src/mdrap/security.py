@@ -709,6 +709,10 @@ class SecurityManager:
                         file=sys.stderr,
                     )
 
+    def sanitize_payload(self, payload: Any) -> Tuple[bool, Optional[str]]:
+        """Sanitize raw payload against malicious injection, deeply nested arrays, and illegal types."""
+        return self.sanitizer.sanitize(payload)
+
     def register_feed_secret(self, source: str, secret_key: str) -> None:
         """Register or rotate a pre-shared cryptographic key for a market data feed."""
         self._secrets[source.upper()] = secret_key.encode("utf-8")

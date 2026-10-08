@@ -112,6 +112,7 @@ class EngineConfig:
     fsync_policy: str = "always"
     max_segment_bytes: int = 10 * 1024 * 1024
     max_payload_bytes: int = 1024 * 1024  # 1 MB boundary cap (Finding N4)
+    security: Any | None = None
     projections: list[Any] = field(default_factory=list)
 
 
@@ -136,6 +137,7 @@ class Engine:
         fsync_policy: str = "always",
         max_segment_bytes: int = 10 * 1024 * 1024,
         max_payload_bytes: int = 1024 * 1024,
+        security: Any | None = None,
         **kwargs: Any,
     ) -> None:
         # Check legacy environment variables (Finding 6)
@@ -169,6 +171,7 @@ class Engine:
         self.staleness_threshold_s = staleness_threshold_s
         self.clock = clock if clock is not None else SystemClock()
         self.max_payload_bytes = max_payload_bytes
+        self.security = security
         self.state = self.create_initial_state()
         self._projections: list[Any] = []
         self._default_sqlite_proj: Any = None
@@ -227,6 +230,7 @@ class Engine:
         max_segment_bytes = 10 * 1024 * 1024
         max_payload_bytes = 1024 * 1024
         db_path = None
+        security = None
         projections = []
 
         if config is not None:
@@ -237,6 +241,7 @@ class Engine:
                 max_segment_bytes = config.get("max_segment_bytes", max_segment_bytes)
                 max_payload_bytes = config.get("max_payload_bytes", max_payload_bytes)
                 db_path = config.get("db_path", db_path)
+                security = config.get("security", security)
                 projections = config.get("projections", [])
             else:
                 staleness = getattr(config, "staleness_threshold_s", staleness)
@@ -245,6 +250,7 @@ class Engine:
                 max_segment_bytes = getattr(config, "max_segment_bytes", max_segment_bytes)
                 max_payload_bytes = getattr(config, "max_payload_bytes", max_payload_bytes)
                 db_path = getattr(config, "db_path", db_path)
+                security = getattr(config, "security", security)
                 projections = getattr(config, "projections", [])
 
         engine = cls(
@@ -255,12 +261,18 @@ class Engine:
             fsync_policy=fsync_policy,
             max_segment_bytes=max_segment_bytes,
             max_payload_bytes=max_payload_bytes,
+            security=security,
         )
 
         for proj in projections:
             engine.subscribe(proj)
 
         return engine
+
+    def process_one(self, raw: RawEvent) -> CanonicalEvent | None:
+        """Process a single RawEvent and return the resulting CanonicalEvent if valid/suspicious, or None if invalid."""
+        dec = self.submit(raw)
+        return dec.canonical_event if dec else None
 
     def subscribe(self, projection: Any, from_offset: int = 0) -> None:
         """Register a projection consumer and catch up from log offset."""
@@ -601,6 +613,52 @@ class Engine:
                 quarantine_row=q_row,
             )
             return state, decision
+
+        # 1b. Security sanitization and cryptographic HMAC verification
+        if self.security is not None:
+            is_valid, err_msg = self.security.sanitize_payload(payload)
+            if not is_valid:
+                event_id = f"q_{raw_event.source}_{offset}"
+                q_row = (
+                    event_id,
+                    "MALFORMED",
+                    raw_event.source,
+                    QualityStatus.INVALID.value,
+                    json.dumps([f"Payload failed security sanitization: {err_msg}"]),
+                    json.dumps(str(payload)),
+                    recv_ts,
+                )
+                state.counts["INVALID"] += 1
+                return state, EngineDecision(
+                    offset=offset,
+                    event_id=event_id,
+                    quality_status=QualityStatus.INVALID,
+                    reasons=[Reason.MALFORMED.value],
+                    quarantine_row=q_row,
+                )
+            if self.security.hmac_required(raw_event.source) or "signature" in payload:
+                sig = payload.get("signature")
+                if not sig or not self.security.verify_payload(
+                    raw_event.source, payload, sig
+                ):
+                    event_id = f"q_{raw_event.source}_{offset}"
+                    q_row = (
+                        event_id,
+                        str(payload.get("instrument", "UNKNOWN")),
+                        raw_event.source,
+                        QualityStatus.INVALID.value,
+                        json.dumps(["Cryptographic HMAC verification failed: missing or tampered signature"]),
+                        json.dumps(payload, default=str),
+                        recv_ts,
+                    )
+                    state.counts["INVALID"] += 1
+                    return state, EngineDecision(
+                        offset=offset,
+                        event_id=event_id,
+                        quality_status=QualityStatus.INVALID,
+                        reasons=[Reason.SECURITY_REJECT.value],
+                        quarantine_row=q_row,
+                    )
 
         # 2. Schema field validation
         instrument = payload.get("instrument")

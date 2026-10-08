@@ -1278,6 +1278,88 @@ def test_ingestlog_legacy_header_backward_compatibility(tmp_path):
     log.close()
 
 
+def test_phase2_architectural_unification(tmp_path):
+    """Phase 2: Architectural unification cut-over to Engine, lazy pipeline, and journal deprecations."""
+    import pytest
+    from starlette.testclient import TestClient
+    from mdrap.api import create_app, AppState
+    from mdrap.storage import Store
+    from mdrap.security import SecurityManager
+    from mdrap.models import RawEvent
+    from mdrap.journal import BinaryJournal
+    from mdrap.engine import Engine
+
+    # 1. BinaryJournal emits DeprecationWarning
+    journal_file = tmp_path / "test.dbn"
+    with pytest.deprecated_call():
+        bj = BinaryJournal(str(journal_file))
+        bj.close()
+
+    # 2. AppState initializes without starting legacy Pipeline
+    db_file = tmp_path / "uni_test.db"
+    wal_dir = tmp_path / "uni_test.wal"
+    store = Store(str(db_file))
+    sec = SecurityManager(store=store)
+    op_ent = sec.register_api_key(client_id="UniOp", role="OPERATOR")
+
+    state = AppState(db_path=str(db_file), store=store, security_manager=sec, wal_path=str(wal_dir))
+    assert state._pipeline is None, "Legacy Pipeline must not be eagerly instantiated"
+
+    # 3. Accessing state.pipeline triggers DeprecationWarning
+    with pytest.deprecated_call():
+        legacy_pipe = state.pipeline
+        assert legacy_pipe is not None
+
+    # 4. Ingestion runs through Engine and stays durable in WAL
+    app = create_app(state=state)
+    client = TestClient(app)
+    t_now = time.time()
+    payload = {
+        "source": "KRAKEN",
+        "payload": {
+            "instrument": "ETH/USD",
+            "event_type": "TRADE",
+            "price": 3100.0,
+            "quantity": 2.5,
+            "sequence": 1,
+            "exchange_ts": t_now,
+        },
+    }
+    r = client.post("/v1/ingest", json=payload, headers={"X-API-Key": op_ent.token})
+    assert r.status_code == 200
+    res_data = r.json()
+    assert res_data["status"] == "ok"
+    assert res_data["ingested"] == 1
+    assert len(res_data["canonical"]) == 1
+    assert res_data["canonical"][0]["price"] == 3100.0
+
+    # 5. Engine process_one contract
+    single_raw = RawEvent(
+        source="BINANCE",
+        payload={"instrument": "BTC/USDT", "price": 60000.0, "quantity": 1.0, "sequence": 2, "exchange_ts": t_now},
+        receive_timestamp=t_now,
+    )
+    can_ev = state.engine.process_one(single_raw)
+    assert can_ev is not None
+    assert can_ev.price == 60000.0
+    assert can_ev.instrument_id == "BTC/USDT"
+
+    # 6. Engine step HMAC rejection
+    sec_engine = Engine(security=sec)
+    bad_hmac_raw = RawEvent(
+        source="SECURE_FEED",
+        payload={"instrument": "SOL/USD", "price": 140.0, "signature": "bad_sig", "sequence": 1, "exchange_ts": t_now},
+        receive_timestamp=t_now,
+    )
+    _, hmac_dec = sec_engine.step(sec_engine.create_initial_state(), bad_hmac_raw, sec_engine.clock)
+    assert hmac_dec.canonical_event is None
+    assert "SECURITY_REJECT" in hmac_dec.reasons
+
+    state.engine.close()
+    store.close()
+
+
+
 
 
 

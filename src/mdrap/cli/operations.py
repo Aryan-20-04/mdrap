@@ -873,7 +873,7 @@ def cmd_doctor(args):
     # 8. 10k Smoke Benchmark
     import time
     from ..simulator import FeedSimulator, SimulatorConfig
-    from ..pipeline import Pipeline
+    from ..engine import Engine
     from ..storage import Store
 
     t0 = time.perf_counter()
@@ -882,10 +882,10 @@ def cmd_doctor(args):
     raw_events = [raw for raw, _ in sim.generate()]
 
     with Store(":memory:") as store:
-        pipe = Pipeline(store)
-        for rev in raw_events:
-            pipe.process_one(rev)
-        pipe.finish()
+        engine = Engine(staleness_threshold_s=2.0)
+        engine.subscribe(store)
+        engine.submit(raw_events)
+        engine.close()
     t_proc = time.perf_counter() - t0
     eps = 10_000 / t_proc if t_proc > 0 else 0
     p50_us = (t_proc / 10_000) * 1_000_000

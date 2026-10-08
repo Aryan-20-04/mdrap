@@ -58,6 +58,7 @@ from .security import (
     SecurityManager,
     _ROLE_HIERARCHY,
 )
+from .models import CanonicalEvent, EventType, QualityStatus, RawEvent
 from .storage import Store
 from .watchdog import SourceWatchdog
 from .prometheus import global_prometheus_exporter
@@ -213,19 +214,10 @@ class AppState:
         qc = QualityConfig(
             staleness_threshold_s=float(os.environ.get("MDRAP_API_STALENESS_S", "2.0"))
         )
-        quality_engine = (
+        self._quality_engine = (
             FastQualityEngine(config=qc) if is_available() else QualityEngine(config=qc)
         )
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", DeprecationWarning)
-            self.pipeline = Pipeline(
-                store=self.store,
-                quality=quality_engine,
-                reliability=self.reliability,
-                bbo=self.bbo,
-                watchdog=self.watchdog,
-                security=self.security_manager,
-            )
+        self._pipeline: Optional[Pipeline] = None
 
         from .engine import Engine
 
@@ -243,6 +235,7 @@ class AppState:
                         "staleness_threshold_s": float(
                             os.environ.get("MDRAP_API_STALENESS_S", "2.0")
                         ),
+                        "security": self.security_manager,
                     },
                 )
             else:
@@ -250,6 +243,7 @@ class AppState:
                     staleness_threshold_s=float(
                         os.environ.get("MDRAP_API_STALENESS_S", "2.0")
                     ),
+                    security=self.security_manager,
                 )
             if self.store:
                 self.engine.subscribe(self.store)
@@ -262,6 +256,7 @@ class AppState:
                 staleness_threshold_s=float(
                     os.environ.get("MDRAP_API_STALENESS_S", "2.0")
                 ),
+                security=self.security_manager,
             )
             if self.store:
                 self.engine.subscribe(self.store)
@@ -281,6 +276,27 @@ class AppState:
         # Decoupled downstream sinks for operational observability
         self.kafka_sink: Any | None = None
         self.alert_engine: Any | None = None
+
+    @property
+    def pipeline(self) -> Any:
+        """Deprecated property: exposes legacy Pipeline instance on demand."""
+        warnings.warn(
+            "AppState.pipeline is deprecated in MDRAP v3.0.0; use AppState.engine instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        if self._pipeline is None:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", DeprecationWarning)
+                self._pipeline = Pipeline(
+                    store=self.store,
+                    quality=self._quality_engine,
+                    reliability=self.reliability,
+                    bbo=self.bbo,
+                    watchdog=self.watchdog,
+                    security=self.security_manager,
+                )
+        return self._pipeline
 
     def record_feed_event(self, source: str, count: int = 1):
         src = source.upper()
@@ -605,7 +621,7 @@ def create_app(
                         "reason": "Engine IngestLog WAL is poisoned due to unrecoverable I/O failure",
                     },
                 )
-        if hasattr(st, "pipeline") and st.pipeline.degraded:
+        if hasattr(st, "_pipeline") and st._pipeline is not None and st._pipeline.degraded:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail={
@@ -856,31 +872,51 @@ def create_app(
             )
 
         def _process_batch_locked(batch: list[RawEvent]):
-            with st.pipeline_lock:
-                res = st.pipeline.process_batch(batch)
             if hasattr(st, "engine") and st.engine is not None:
-                try:
-                    with st.engine._lock:
-                        st.engine.submit(batch)
-                except Exception as exc:
-                    logger.debug("[api] Engine WAL mirroring error: %s", exc)
-            return res
+                with st.engine._lock:
+                    decisions = st.engine.submit(batch)
+                res_events = []
+                from .models import CanonicalEvent, EventType, QualityStatus
+                for d in decisions:
+                    if d.canonical_event is not None:
+                        res_events.append(d.canonical_event)
+                    else:
+                        inst = d.quarantine_row[1] if d.quarantine_row else "UNKNOWN"
+                        src = d.quarantine_row[2] if d.quarantine_row else "UNKNOWN"
+                        ts = d.quarantine_row[6] if d.quarantine_row else server_ts
+                        res_events.append(
+                            CanonicalEvent(
+                                event_id=d.event_id,
+                                instrument_id=str(inst),
+                                event_type=EventType.UNKNOWN,
+                                exchange_timestamp=float(ts),
+                                receive_timestamp=float(ts),
+                                processing_timestamp=float(server_ts),
+                                source=str(src),
+                                quality_status=QualityStatus.INVALID,
+                                reasons=d.reasons,
+                            )
+                        )
+                return res_events
+            with st.pipeline_lock:
+                return [e for e in st.pipeline.process_batch(batch) if e is not None]
 
         # 4. Offload synchronous batch processing to worker thread pool
         results = await asyncio.to_thread(_process_batch_locked, raw_events)
 
         # 5. Record feed telemetry, update BBO/watchdog, and broadcast to WebSocket subscribers
         for ev in results:
-            if hasattr(st, "bbo") and st.bbo is not None:
-                try:
-                    st.bbo.observe(ev)
-                except Exception:
-                    pass
-            if hasattr(st, "watchdog") and st.watchdog is not None:
-                try:
-                    st.watchdog.observe(ev)
-                except Exception:
-                    pass
+            if getattr(ev, "quality_status", None) != QualityStatus.INVALID:
+                if hasattr(st, "bbo") and st.bbo is not None:
+                    try:
+                        st.bbo.observe(ev)
+                    except Exception:
+                        pass
+                if hasattr(st, "watchdog") and st.watchdog is not None:
+                    try:
+                        st.watchdog.observe(ev)
+                    except Exception:
+                        pass
             st.record_feed_event(ev.source)
             if ev.source.upper() in st.active_feeds:
                 st.active_feeds[ev.source.upper()]["status"] = "ACTIVE"
@@ -996,7 +1032,8 @@ def create_app(
         _auth: ClientEntitlement = Depends(require_role(Role.OPERATOR)),
     ):
         st: AppState = request.app.state.mdrap
-        ev = st.store.reprocess_quarantine(event_id, st.pipeline)
+        proc = st.engine if hasattr(st, "engine") and st.engine is not None else st.pipeline
+        ev = st.store.reprocess_quarantine(event_id, proc)
         if ev is None:
             raise HTTPException(
                 status_code=404, detail=f"Quarantined record '{event_id}' not found"

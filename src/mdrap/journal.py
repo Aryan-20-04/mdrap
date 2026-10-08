@@ -14,6 +14,7 @@ import os
 import struct
 import time
 from typing import Generator
+import warnings
 
 from .shm import (
     SLOT_SIZE,
@@ -58,6 +59,12 @@ class BinaryJournal:
         initial_records: int = DEFAULT_INITIAL_RECORDS,
         epoch: int | None = None,
     ):
+        warnings.warn(
+            "BinaryJournal in mdrap.journal is deprecated in MDRAP v3.0.0; "
+            "use IngestLog WAL (mdrap.ingestlog) as the mandatory durability boundary instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self.filepath = filepath
         self.initial_records = max(1024, initial_records)
         self.epoch = epoch if epoch is not None else int(time.time_ns())
@@ -348,6 +355,12 @@ class BinaryJournalReader:
     """
 
     def __init__(self, filepath: str):
+        warnings.warn(
+            "BinaryJournalReader in mdrap.journal is deprecated in MDRAP v3.0.0; "
+            "use IngestLog WAL (mdrap.ingestlog) as the mandatory durability boundary instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self.filepath = filepath
         if not os.path.exists(filepath):
             raise FileNotFoundError(f"Journal not found: {filepath}")
