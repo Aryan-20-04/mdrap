@@ -1,0 +1,18 @@
+{
+  "timestamp_utc": "2026-10-09T11:30:02Z",
+  "platform_info": {
+    "os": "Windows",
+    "os_release": "11",
+    "architecture": "AMD64",
+    "python_version": "3.13.1"
+  },
+  "build_info": {
+    "git_commit": "462da61bfd83a8344a1e775dae4f6cdf9bbb6988",
+    "mdrap_version": "3.0.0"
+  },
+  "wal_summary": {
+    "status": "NOT_CONFIGURED"
+  },
+  "configuration": {},
+  "status": "HEALTHY"
+}

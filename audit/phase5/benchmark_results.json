@@ -1,0 +1,17 @@
+{
+  "timestamp": 1791545478.657414,
+  "pilot_run": {
+    "pilot_profile": "Profile A (Single-Node High Throughput)",
+    "event_count": 25000,
+    "events_consumed": 25000,
+    "elapsed_s": 90.0005,
+    "throughput_eps": 277.8,
+    "mem_delta_mb": 0.881,
+    "mem_peak_mb": 0.882,
+    "p50_us": 3507.5,
+    "p95_us": 4402.5,
+    "p99_us": 5345.0,
+    "p999_us": 10834.0,
+    "max_us": 20967.7
+  }
+}
