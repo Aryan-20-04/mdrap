@@ -1,0 +1,35 @@
+{
+  "timestamp": "2026-10-09T18:11:31Z",
+  "network_tests": [
+    {
+      "target_node": "node-01",
+      "port": 56694,
+      "endpoint": "127.0.0.1:56694",
+      "tcp_connect": "SUCCESS",
+      "round_trip_ms": 0.56
+    },
+    {
+      "target_node": "node-02",
+      "port": 56695,
+      "endpoint": "127.0.0.1:56695",
+      "tcp_connect": "SUCCESS",
+      "round_trip_ms": 0.414
+    },
+    {
+      "target_node": "node-03",
+      "port": 56696,
+      "endpoint": "127.0.0.1:56696",
+      "tcp_connect": "SUCCESS",
+      "round_trip_ms": 0.32
+    }
+  ],
+  "inter_node_latencies_ms": {
+    "node-01 -> node-02": 0.283,
+    "node-01 -> node-03": 0.234,
+    "node-02 -> node-03": 0.204
+  },
+  "interface_audited": "127.0.0.1 (Loopback / Localhost)",
+  "physical_network_isolated": false,
+  "limitation_note": "Single physical host - loopback TCP bypasses physical NIC and ToR switch fabric.",
+  "status": "PASS"
+}

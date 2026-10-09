@@ -1,0 +1,86 @@
+{
+  "timestamp": "2026-10-09T18:12:44Z",
+  "audit_phase": "Phase 11",
+  "total_scenarios_audited": 10,
+  "scenarios_passed": 10,
+  "scenarios_failed": 0,
+  "verdict": "PASS",
+  "stale_write_interception_latencies_us": {
+    "count": 7,
+    "mean_us": 1.5,
+    "min_us": 0.9,
+    "max_us": 2.6
+  },
+  "scenarios": [
+    {
+      "scenario_id": "SCEN-01",
+      "title": "Former leader alive after losing quorum",
+      "description": "Leader partitioned from peers loses quorum, cannot renew lease, and write attempt fails.",
+      "passed": true,
+      "outcome": "QuorumLossError on renew + FencingTokenError on expired write attempt"
+    },
+    {
+      "scenario_id": "SCEN-02",
+      "title": "Former leader isolated from new leader with destination access",
+      "description": "Old leader attempts direct write to shared persistence; intercepted by FencedWALWriter.",
+      "passed": true,
+      "outcome": "Intercepted in 2.60 us"
+    },
+    {
+      "scenario_id": "SCEN-03",
+      "title": "Old leader reconnects after new leader commits",
+      "description": "Reconnected zombie leader attempts write after multiple newer epoch commits.",
+      "passed": true,
+      "outcome": "FencingTokenError raised (epoch 1 < 3, lat=1.60 us)"
+    },
+    {
+      "scenario_id": "SCEN-04",
+      "title": "Old leader restarts with stale local state",
+      "description": "Node boots with cold/stale epoch state and immediately attempts write before resync.",
+      "passed": true,
+      "outcome": "Intercepted: epoch 1 < active epoch 3"
+    },
+    {
+      "scenario_id": "SCEN-05",
+      "title": "Two leaders attempt concurrent commits",
+      "description": "Race between competing leaders resolved by strict monotonic highest epoch advance.",
+      "passed": true,
+      "outcome": "Lower epoch rejected deterministically"
+    },
+    {
+      "scenario_id": "SCEN-06",
+      "title": "Delayed message arrives after epoch transition",
+      "description": "Out-of-order in-flight payload stamped with preceding epoch arrives at storage.",
+      "passed": true,
+      "outcome": "Epoch fence intercepted delayed frame in 0.90 us"
+    },
+    {
+      "scenario_id": "SCEN-07",
+      "title": "Write begins before fencing, reaches persistence after fencing",
+      "description": "In-flight transit delay causes token expiration prior to persistence barrier arrival.",
+      "passed": true,
+      "outcome": "Lease expiration detected at fence gate in 1.20 us"
+    },
+    {
+      "scenario_id": "SCEN-08",
+      "title": "Durable backend restarts independently",
+      "description": "Persistence gate restores epoch state from checkpoint; rejects stale pre-restart tokens.",
+      "passed": true,
+      "outcome": "Recovered fence state preserved; stale write rejected in 1.00 us"
+    },
+    {
+      "scenario_id": "SCEN-09",
+      "title": "Replication fails during leadership transition",
+      "description": "Candidate node unable to contact majority peers cannot acquire leadership.",
+      "passed": true,
+      "outcome": "QuorumLossError raised; zero leadership tokens issued"
+    },
+    {
+      "scenario_id": "SCEN-10",
+      "title": "Minority partition attempts write acknowledgement",
+      "description": "Partitioned minority member attempts write ACK; blocked by lease abdication.",
+      "passed": true,
+      "outcome": "Leadership abdicated; lease invalidated"
+    }
+  ]
+}

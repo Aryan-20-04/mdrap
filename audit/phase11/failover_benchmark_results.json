@@ -1,0 +1,42 @@
+{
+  "timestamp": "2026-10-09T18:13:53Z",
+  "phase": "Phase 11",
+  "sample_count": 100,
+  "timeout_count": 0,
+  "unsuccessful_recoveries": 0,
+  "sla_target_ms": 250.0,
+  "sla_passed": true,
+  "lifecycle_stages": {
+    "failure_detection_ms": {
+      "p50": 101.31,
+      "p95": 102.27,
+      "p99": 103.72,
+      "max": 103.72
+    },
+    "election_quorum_us": {
+      "p50": 19.4,
+      "p95": 29.1,
+      "p99": 58.6,
+      "max": 58.6
+    },
+    "fencing_registration_us": {
+      "p50": 1.2,
+      "p95": 1.9,
+      "p99": 2.8,
+      "max": 2.8
+    },
+    "first_durable_write_us": {
+      "p50": 3739.4,
+      "p95": 6126.9,
+      "p99": 21112.3,
+      "max": 21112.3
+    },
+    "total_complete_failover_ms": {
+      "p50": 105.0,
+      "p95": 107.07,
+      "p99": 122.45,
+      "max": 122.45
+    }
+  },
+  "verdict": "PASS \u2014 Complete failover lifecycle verified across 100 trials"
+}

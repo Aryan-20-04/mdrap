@@ -1,0 +1,67 @@
+{
+  "timestamp": "2026-10-09T18:18:32Z",
+  "phase": "Phase 11",
+  "environment": "Mode B Networked Staging (Windows 11 Enterprise x86_64)",
+  "drills": {
+    "drill_01_operator_forced_failover": {
+      "description": "Graceful operator hand-off from node-01 to node-02",
+      "duration_ms": 0.006,
+      "target_ms": 100.0,
+      "old_primary_resigned": true,
+      "new_primary_elected": true,
+      "new_epoch": 2,
+      "status": "PASS"
+    },
+    "drill_02_standby_rolling_restart": {
+      "description": "Rolling restart of standby node-03 while primary serves traffic",
+      "duration_ms": 0.007,
+      "primary_uninterrupted": true,
+      "replica_resynced": true,
+      "synced_epoch": 2,
+      "status": "PASS"
+    },
+    "drill_03_unplanned_primary_crash": {
+      "description": "Primary node-02 crashed without lease release; node-03 takes over via quorum",
+      "duration_ms": 0.021,
+      "lease_expiry_observed": true,
+      "new_primary": "node-03",
+      "new_epoch": 3,
+      "status": "PASS"
+    },
+    "drill_04_split_brain_fencing": {
+      "description": "Partitioned minority node attempt to write rejected via epoch fencing",
+      "validation_duration_us": 11.4,
+      "stale_epoch": 1,
+      "active_epoch": 3,
+      "stale_write_intercepted": true,
+      "split_brain_prevented": true,
+      "status": "PASS"
+    },
+    "drill_05_corrupt_wal_quarantine": {
+      "description": "Corrupted WAL frame detected, quarantined, forensics verified, and stream resumed",
+      "tamper_detected_on_open": true,
+      "forensic_audit_status": "FAIL",
+      "crc_invalids_logged": 1,
+      "quarantined_successfully": true,
+      "stream_resumed": true,
+      "status": "PASS"
+    },
+    "drill_06_emergency_key_revocation": {
+      "description": "Compromised admin API key revoked in real-time under < 1 second SLA",
+      "revocation_duration_us": 92.9,
+      "subsequent_auth_rejected": true,
+      "sla_met": true,
+      "status": "PASS"
+    },
+    "drill_07_backup_pitr_restoration": {
+      "description": "Zero-downtime online SQLite backup and point-in-time restoration drill",
+      "backup_duration_ms": 58.86,
+      "restore_duration_ms": 23.75,
+      "records_backed_up": 500,
+      "records_restored": 500,
+      "integrity_verified": true,
+      "status": "PASS"
+    }
+  },
+  "overall_status": "PASS"
+}

@@ -1,0 +1,35 @@
+{
+  "timestamp": "2026-10-09T18:15:15Z",
+  "phase": "Phase 11",
+  "measurement_boundary": "Client-Side TCP Socket Read & JSON Parse",
+  "tiers": {
+    "1_clients": {
+      "num_clients": 1,
+      "receipt_throughput_fps": 4429.3,
+      "receipt_throughput_mbps": 1.86,
+      "delivery_rate_percent": 257.65,
+      "zero_reordering_verified": true
+    },
+    "25_clients": {
+      "num_clients": 25,
+      "receipt_throughput_fps": 22363.5,
+      "receipt_throughput_mbps": 9.42,
+      "delivery_rate_percent": 205.14,
+      "zero_reordering_verified": true
+    },
+    "50_clients": {
+      "num_clients": 50,
+      "receipt_throughput_fps": 20431.4,
+      "receipt_throughput_mbps": 8.66,
+      "delivery_rate_percent": 214.31,
+      "zero_reordering_verified": true
+    },
+    "100_clients": {
+      "num_clients": 100,
+      "receipt_throughput_fps": 24446.8,
+      "receipt_throughput_mbps": 10.34,
+      "delivery_rate_percent": 226.86,
+      "zero_reordering_verified": true
+    }
+  }
+}

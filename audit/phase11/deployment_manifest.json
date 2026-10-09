@@ -1,0 +1,54 @@
+{
+  "manifest_version": "1.1",
+  "deployment_target": "Mode B (Networked Staging - Local Multi-Process over TCP)",
+  "generated_at": "2026-10-09T18:20:00Z",
+  "release_candidate": "v3.1.0-rc1",
+  "topology_name": "3-Node Quorum Staging Cluster (Phase 11)",
+  "nodes": {
+    "node-01": {
+      "role": "PRIMARY_CANDIDATE",
+      "host": "127.0.0.1",
+      "alt_lan_ip": "10.21.12.27",
+      "http_port": 8111,
+      "tcp_ingress_port": 9111,
+      "db_file": "data/cluster_p11/node_01.db",
+      "wal_dir": "data/cluster_p11/wal_01",
+      "auto_start": true
+    },
+    "node-02": {
+      "role": "STANDBY_SYNC",
+      "host": "127.0.0.1",
+      "alt_lan_ip": "10.21.12.27",
+      "http_port": 8112,
+      "tcp_ingress_port": 9112,
+      "db_file": "data/cluster_p11/node_02.db",
+      "wal_dir": "data/cluster_p11/wal_02",
+      "auto_start": true
+    },
+    "node-03": {
+      "role": "QUORUM_PEER",
+      "host": "127.0.0.1",
+      "alt_lan_ip": "10.21.12.27",
+      "http_port": 8113,
+      "tcp_ingress_port": 9113,
+      "db_file": "data/cluster_p11/node_03.db",
+      "wal_dir": "data/cluster_p11/wal_03",
+      "auto_start": true
+    }
+  },
+  "runtime_parameters": {
+    "lease_ttl_sec": 0.5,
+    "heartbeat_interval_sec": 0.15,
+    "max_clock_drift_sec": 0.05,
+    "quorum_threshold": 2,
+    "enable_shm": false,
+    "require_auth": true,
+    "fencing_enforcement": "STRICT_MONOTONIC",
+    "independent_host_status": "BLOCKED_SINGLE_HOST_ENVIRONMENT"
+  },
+  "security_environment": {
+    "salt_env_var": "MDRAP_API_KEY_SALT",
+    "daemon_token_env_var": "MDRAP_DAEMON_TOKEN",
+    "network_isolation": "LOOPBACK_AND_LOCAL_LAN_ONLY"
+  }
+}
