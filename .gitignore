@@ -145,11 +145,19 @@ data/chd-runs/
 data/edgar_cache/
 data/test_export.csv/
 
-# Agent & Session Metadata
+# Agent, Skill & Session Metadata (Local Only)
 .system_generated/
 .pytest-tmp/
 Microsoft/
 *.journal
 data/*.journal
+.agent/
+.agents/
+GEMINI.md
+history.md
+plan.md
+*.zip
+benchmarks/phase0/
+tools/phase0/
 
 
