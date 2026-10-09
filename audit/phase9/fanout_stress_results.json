@@ -1,0 +1,66 @@
+{
+  "timestamp": "2026-10-09T16:34:12Z",
+  "tiers": {
+    "1_clients": {
+      "num_clients": 1,
+      "events_published": 5000,
+      "publish_eps": 347635.0,
+      "egress_fps": 30308.1,
+      "publisher_latency_us": {
+        "p50": 0.6,
+        "p95": 1.0,
+        "p99": 2.0
+      },
+      "frames_delivered": 5000,
+      "delivery_rate_percent": 100.0
+    },
+    "25_clients": {
+      "num_clients": 25,
+      "events_published": 5000,
+      "publish_eps": 38327.4,
+      "egress_fps": 443933.0,
+      "publisher_latency_us": {
+        "p50": 0.7,
+        "p95": 0.8,
+        "p99": 2.2
+      },
+      "frames_delivered": 125000,
+      "delivery_rate_percent": 100.0
+    },
+    "50_clients": {
+      "num_clients": 50,
+      "events_published": 5000,
+      "publish_eps": 18236.7,
+      "egress_fps": 588176.8,
+      "publisher_latency_us": {
+        "p50": 0.7,
+        "p95": 1.2,
+        "p99": 1.4
+      },
+      "frames_delivered": 250000,
+      "delivery_rate_percent": 100.0
+    },
+    "100_clients": {
+      "num_clients": 100,
+      "events_published": 5000,
+      "publish_eps": 10867.5,
+      "egress_fps": 725896.4,
+      "publisher_latency_us": {
+        "p50": 0.7,
+        "p95": 1.1,
+        "p99": 2.3
+      },
+      "frames_delivered": 475455,
+      "delivery_rate_percent": 95.09
+    }
+  },
+  "noisy_neighbor_test": {
+    "fast_clients_count": 90,
+    "slow_clients_count": 10,
+    "events_injected": 2000,
+    "stalled_clients_evicted": 10,
+    "fast_client_min_received": 2000,
+    "fast_client_max_received": 2000,
+    "stalled_clients_shed_cleanly": true
+  }
+}

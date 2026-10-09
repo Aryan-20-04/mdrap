@@ -1,0 +1,78 @@
+{
+  "timestamp": "2026-10-09T16:39:40Z",
+  "valid_segment_audit": {
+    "target_path": "C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\audit\\phase9\\data_e2e\\wal_logs\\segment_000000000000.log",
+    "target_type": "IngestLog_Segment",
+    "records_scanned": 1200,
+    "bytes_scanned": 288511,
+    "crc32_valid_count": 1200,
+    "crc32_invalid_count": 0,
+    "sequence_gaps": 0,
+    "sequence_inversions": 0,
+    "timestamp_inversions": 0,
+    "first_seq": 0,
+    "last_seq": 1199,
+    "merkle_root": "b47d33e06ca82d7f0d3e8fd0ae732a56eb82301266519b3ab09878fe363d220f",
+    "duration_seconds": 0.0253,
+    "status": "PASS",
+    "details": []
+  },
+  "corrupted_segment_audit": {
+    "target_path": "C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\audit\\phase9\\data_e2e\\segment_corrupted.log",
+    "target_type": "IngestLog_Segment",
+    "records_scanned": 1200,
+    "bytes_scanned": 288511,
+    "crc32_valid_count": 1199,
+    "crc32_invalid_count": 1,
+    "sequence_gaps": 0,
+    "sequence_inversions": 0,
+    "timestamp_inversions": 0,
+    "first_seq": 0,
+    "last_seq": 1199,
+    "merkle_root": "486973f02bb1f52226a6a318aa747ba4d16ee7a73f1990ed0edca58b47b2513a",
+    "duration_seconds": 0.0256,
+    "status": "FAIL",
+    "details": [
+      "CRC32 mismatch at offset 601: expected 0x4c199df0, got 0xcab0d574"
+    ]
+  },
+  "truncated_segment_audit": {
+    "target_path": "C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\audit\\phase9\\data_e2e\\segment_truncated.log",
+    "target_type": "IngestLog_Segment",
+    "records_scanned": 1199,
+    "bytes_scanned": 288466,
+    "crc32_valid_count": 1199,
+    "crc32_invalid_count": 0,
+    "sequence_gaps": 0,
+    "sequence_inversions": 0,
+    "timestamp_inversions": 0,
+    "first_seq": 0,
+    "last_seq": 1198,
+    "merkle_root": "0ddc07938ef5bb35418ce463c9deb8951160632b73f8636dfc07b1d04a0a1e14",
+    "duration_seconds": 0.0244,
+    "status": "FAIL",
+    "details": [
+      "Incomplete payload: expected 199, got 154"
+    ]
+  },
+  "sqlite_store_audit": {
+    "target_path": "C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\audit\\phase9\\data_e2e\\market_data_uat.db",
+    "target_type": "SQLite_Store",
+    "records_scanned": 1197,
+    "bytes_scanned": 917504,
+    "crc32_valid_count": 1197,
+    "crc32_invalid_count": 0,
+    "sequence_gaps": 0,
+    "sequence_inversions": 0,
+    "timestamp_inversions": 0,
+    "first_seq": null,
+    "last_seq": null,
+    "merkle_root": null,
+    "duration_seconds": 0.011,
+    "status": "PASS",
+    "details": []
+  },
+  "tamper_detection_verified": true,
+  "torn_tail_detection_verified": true,
+  "merkle_provenance_verified": true
+}

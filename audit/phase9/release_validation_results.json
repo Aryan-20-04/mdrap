@@ -1,0 +1,86 @@
+{
+  "timestamp": "2026-10-09T16:42:00Z",
+  "release_candidate": "v3.0.0-rc1",
+  "commit_sha": "c907ca1",
+  "target_environment": "Mode A (Local Integration / Sandbox UAT)",
+  "build_and_packaging": {
+    "core_package": {
+      "name": "mdrap-core",
+      "version": "3.0.0",
+      "wheel_status": "BUILT",
+      "fastpath_extension": "MSVC compiled C extension (_fastpath_c.pyd)"
+    },
+    "companion_packages_built": [
+      {
+        "name": "mdrap-options",
+        "version": "1.0.0",
+        "status": "PASS"
+      },
+      {
+        "name": "mdrap-analytics",
+        "version": "1.0.0",
+        "status": "PASS"
+      },
+      {
+        "name": "mdrap-strategies",
+        "version": "1.0.0",
+        "status": "PASS"
+      },
+      {
+        "name": "mdrap-contrib-vessel",
+        "version": "1.0.0",
+        "status": "PASS"
+      }
+    ]
+  },
+  "verification_campaigns": {
+    "full_regression_suite": {
+      "collected": 1300,
+      "passed": 1240,
+      "deselected": 60,
+      "failed": 0,
+      "pass_rate_percent": 100.0
+    },
+    "backward_compatibility_suite": {
+      "tests_run": 29,
+      "tests_passed": 29,
+      "pass_rate_percent": 100.0
+    },
+    "quality_gates": {
+      "gates_evaluated": 6,
+      "gates_passed": 6,
+      "status": "ALL_GATES_PASSED"
+    },
+    "uat_deployment_validation": {
+      "primary_node_health": "HEALTHY",
+      "standby_node_health": "HEALTHY",
+      "status": "PASS"
+    },
+    "distributed_failover": {
+      "scenarios_tested": 5,
+      "scenarios_passed": 5,
+      "complete_failover_latency_ms": 102.91,
+      "status": "PASS"
+    },
+    "fencing_interception": {
+      "stale_writes_injected": 10,
+      "stale_writes_intercepted": 10,
+      "interception_rate_percent": 100.0,
+      "status": "PASS"
+    },
+    "fanout_scalability": {
+      "max_clients_tested": 100,
+      "aggregate_egress_fps": 725896.4,
+      "stalled_clients_evicted": 10,
+      "status": "PASS"
+    },
+    "historical_integrity": {
+      "records_verified": 1200,
+      "crc32_pass_percent": 100.0,
+      "tamper_detection": "VERIFIED",
+      "torn_tail_detection": "VERIFIED",
+      "status": "PASS"
+    }
+  },
+  "verdict": "MDRAP v3.0.0-rc1 satisfies all Mode A verification requirements and is certified release-ready for controlled staging."
+}

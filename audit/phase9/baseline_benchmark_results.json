@@ -1,0 +1,41 @@
+{
+  "timestamp": "2026-10-09T16:27:30Z",
+  "phase": "Phase 9 Preflight Baseline",
+  "reproduced_benchmarks": {
+    "native_hotpath_layer1": {
+      "throughput_eps": 16597784,
+      "latency_ns_per_tick": 60.20,
+      "scope": "In-process MSVC x86_64 native C kernel"
+    },
+    "python_compute_layer2": {
+      "throughput_eps": 125892,
+      "latency_microseconds": {"p50": 3.5, "p99": 5.8},
+      "scope": "In-process Python compute loop"
+    },
+    "persistence_layer3": {
+      "throughput_eps": 126941,
+      "latency_microseconds": {"p50": 3.0, "p99": 10.6},
+      "scope": "Local IngestLog WAL write"
+    },
+    "fanout_layer_phase8_claimed": {
+      "100_clients_publish_eps": 382502.8,
+      "100_clients_egress_frames_per_sec": 797770.4,
+      "publisher_handoff_latency_us": {"p50": 0.70, "p99": 2.00},
+      "delivery_boundary": "In-memory deque pop across 100 concurrent reader threads"
+    },
+    "ha_failover_phase8_claimed": {
+      "in_memory_epoch_advance_ms": {"p50": 0.002, "p99": 0.009},
+      "stale_fencing_rejection_us": {"p50": 1.40, "p99": 7.20},
+      "scope": "In-process ConsensusCoordinator condition variable / atomic term advance"
+    },
+    "standard_socket_ingress": {
+      "udp_loopback_p50_us": 10.2,
+      "tcp_loopback_p50_us": 13.5,
+      "scope": "Windows 11 Winsock2 loopback kernel stack"
+    }
+  },
+  "scrutiny_notes": {
+    "ha_failover_measurement_boundary": "Phase 8 failover benchmark measured local epoch memory advancement (2 us), which excludes failure detection heartbeat timeout (200-500 ms) and socket reconnect. Phase 9 must measure complete multi-process end-to-end failover.",
+    "fanout_delivery_boundary": "Phase 8 fan-out benchmark measured in-memory deque delivery (797k frames/s). Phase 9 must measure real network socket delivery across independent client processes."
+  }
+}

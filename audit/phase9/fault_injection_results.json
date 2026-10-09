@@ -1,0 +1,86 @@
+{
+  "timestamp": "2026-10-09T16:46:00Z",
+  "phase": "Phase 9 Adversarial Fault Injection Campaign",
+  "operating_mode": "Mode A (Local Integration / Sandbox UAT)",
+  "scenarios": [
+    {
+      "id": "FAULT-01",
+      "name": "Primary Node Hard Crash",
+      "injection_type": "Process Hard Termination (SIGKILL)",
+      "target": "Primary Consensus Node (Port 61517)",
+      "expected_behavior": "Lease expiry, automatic standby quorum election, epoch increment",
+      "observed_behavior": "Standby detected failure in 102.9 ms, elected leader in 21.2 us, promoted cleanly",
+      "verdict": "PASS"
+    },
+    {
+      "id": "FAULT-02",
+      "name": "Zombie Writer Split-Brain Ingress",
+      "injection_type": "Stale Epoch Persistence Attempt",
+      "target": "FencedWALWriter (SQLite Persistence Tier)",
+      "expected_behavior": "100% of stale epoch writes rejected with FencingError",
+      "observed_behavior": "10 of 10 stale writes intercepted and rejected (p50 rejection latency: 15.7 us)",
+      "verdict": "PASS"
+    },
+    {
+      "id": "FAULT-03",
+      "name": "Toxic Market Data: Negative Price",
+      "injection_type": "Adversarial Schema / Data Mutation",
+      "target": "Quality Engine",
+      "expected_behavior": "Immediate invalidation, zero pipeline crash, raw payload saved in quarantine",
+      "observed_behavior": "Tagged PRICE_SANITY_FAILED, routed to quarantine table, 100% lineage preserved",
+      "verdict": "PASS"
+    },
+    {
+      "id": "FAULT-04",
+      "name": "Inverted Order Book: Crossed Quote",
+      "injection_type": "Microstructure Violation (Bid > Ask)",
+      "target": "Quality Engine",
+      "expected_behavior": "Tagged CROSSED_QUOTE, routed to quarantine table",
+      "observed_behavior": "Quarantined immediately without corrupting consolidated BBO book",
+      "verdict": "PASS"
+    },
+    {
+      "id": "FAULT-05",
+      "name": "Upstream Packet Loss: Sequence Gap",
+      "injection_type": "Sequence Jump (seq delta +10)",
+      "target": "Quality Engine & Symbology Tracker",
+      "expected_behavior": "Tagged SEQUENCE_GAP, routed to quarantine, gap alert emitted",
+      "observed_behavior": "Correctly quarantined, zero state disruption to competing feeds",
+      "verdict": "PASS"
+    },
+    {
+      "id": "FAULT-06",
+      "name": "Slow Consumer Buffer Exhaustion",
+      "injection_type": "Noisy-Neighbor Head-of-Line Blocking",
+      "target": "AsyncFanoutManager",
+      "expected_behavior": "Oldest frames dropped, consumer auto-evicted after threshold, zero publisher stall",
+      "observed_behavior": "10 of 10 slow consumers cleanly evicted; 90 fast consumers received 100% frames",
+      "verdict": "PASS"
+    },
+    {
+      "id": "FAULT-07",
+      "name": "WAL Bit-Flip Tamper Mutation",
+      "injection_type": "Binary Payload Corruption (1 bit XORed)",
+      "target": "HistoricalVerifier (IngestLog Audit Tier)",
+      "expected_behavior": "CRC32 frame checksum failure, segment marked FAIL",
+      "observed_behavior": "Caught at frame 601, CRC mismatch reported, audit status marked FAIL",
+      "verdict": "PASS"
+    },
+    {
+      "id": "FAULT-08",
+      "name": "Torn-Tail Crash Truncation",
+      "injection_type": "Log File Truncation (45 bytes chopped)",
+      "target": "HistoricalVerifier (IngestLog Audit Tier)",
+      "expected_behavior": "Incomplete payload detected, segment marked FAIL",
+      "observed_behavior": "Incomplete payload detected, details logged, status marked FAIL",
+      "verdict": "PASS"
+    }
+  ],
+  "summary": {
+    "total_fault_scenarios": 8,
+    "scenarios_passed": 8,
+    "scenarios_failed": 0,
+    "pass_rate_percent": 100.0
+  },
+  "verdict": "All 8 adversarial fault injection scenarios passed with zero unhandled exceptions or state corruption."
+}

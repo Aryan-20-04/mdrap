@@ -1,0 +1,46 @@
+{
+  "timestamp": "2026-10-09T16:30:18Z",
+  "scenarios": [
+    {
+      "id": "DFM-01",
+      "name": "primary_process_termination",
+      "trigger": "Simulated SIGKILL on primary process",
+      "recovery_action": "Secondary waits for lease timeout, advances epoch, assumes authority",
+      "data_loss": "0 committed events lost",
+      "status": "PASS"
+    },
+    {
+      "id": "DFM-02",
+      "name": "minority_network_partition",
+      "trigger": "Leader isolated from 2 of 3 cluster nodes",
+      "recovery_action": "Leader abdicates on lease renewal failure (QuorumLossError); prevents rogue writes",
+      "data_loss": "0 events corrupted",
+      "status": "PASS"
+    },
+    {
+      "id": "DFM-03",
+      "name": "stale_leader_post_failover_reconnect",
+      "trigger": "Old primary awakens and attempts to write with Epoch 1",
+      "recovery_action": "Authoritative FencedWALWriter intercepts and rejects write via FencingTokenError",
+      "data_loss": "0 stale events admitted",
+      "status": "PASS"
+    },
+    {
+      "id": "DFM-04",
+      "name": "concurrent_leadership_race",
+      "trigger": "Two nodes attempt election simultaneously without majority",
+      "recovery_action": "Quorum rule (N/2 + 1) blocks split leadership; at most one candidate prevails",
+      "data_loss": "0 conflicting epochs issued",
+      "status": "PASS"
+    },
+    {
+      "id": "DFM-05",
+      "name": "partition_healing_and_reintegration",
+      "trigger": "Network connectivity restored after partition",
+      "recovery_action": "Demoted node rejoins as standby; syncs sequence head from active leader",
+      "data_loss": "0 sequence discrepancies",
+      "status": "PASS"
+    }
+  ],
+  "overall_status": "PASS"
+}

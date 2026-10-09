@@ -1,0 +1,43 @@
+{
+  "timestamp": "2026-10-09T16:27:59Z",
+  "mode": "Mode A (Local Multi-Process Integration)",
+  "topology": {
+    "primary": {
+      "port": 61517,
+      "db_path": "C:\\Users\\KIIT0001\\AppData\\Local\\Temp\\tmpeagf6gt3_uat_pri.db"
+    },
+    "secondary": {
+      "port": 61518,
+      "db_path": "C:\\Users\\KIIT0001\\AppData\\Local\\Temp\\tmpd6jl4prp_uat_sec.db"
+    }
+  },
+  "checks": [
+    {
+      "name": "primary_startup",
+      "status": "PASS",
+      "port": 61517
+    },
+    {
+      "name": "secondary_startup",
+      "status": "PASS",
+      "port": 61518
+    },
+    {
+      "name": "primary_health_check",
+      "status": "PASS"
+    },
+    {
+      "name": "secondary_health_check",
+      "status": "PASS"
+    },
+    {
+      "name": "storage_isolation",
+      "status": "PASS"
+    },
+    {
+      "name": "clean_shutdown_and_cleanup",
+      "status": "PASS"
+    }
+  ],
+  "status": "PASS"
+}

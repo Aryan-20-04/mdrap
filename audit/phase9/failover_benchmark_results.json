@@ -1,0 +1,22 @@
+{
+  "timestamp": "2026-10-09T16:30:18Z",
+  "trials": 10,
+  "lease_duration_sec": 0.1,
+  "complete_failover_latency_ms": {
+    "p50": 102.91,
+    "p95": 104.41,
+    "p99": 104.41,
+    "mean": 102.81
+  },
+  "lifecycle_stage_breakdown": {
+    "failure_detection_p50_ms": 102.87,
+    "quorum_election_p50_us": 21.2,
+    "stale_writer_fencing_rejection_p50_us": 15.7
+  },
+  "safety_metrics": {
+    "stale_writes_attempted": 10,
+    "stale_writes_accepted": 0,
+    "stale_writes_rejected": 10,
+    "split_brain_prevented": true
+  }
+}

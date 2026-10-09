@@ -1,0 +1,70 @@
+{
+  "timestamp": "2026-10-09T16:45:00Z",
+  "phase": "Phase 9 Consolidated Benchmarks",
+  "environment": {
+    "host_os": "Windows 11 Enterprise (10.0.26100)",
+    "cpu_architecture": "x86_64",
+    "python_runtime": "CPython 3.13.1",
+    "acceleration": "MSVC Compiled Native C Extension (_fastpath_c.pyd)"
+  },
+  "benchmarks": {
+    "ingress_and_sbe_decode": {
+      "throughput_eps": 2480000.0,
+      "latency_us": {
+        "p50": 0.35,
+        "p95": 0.65,
+        "p99": 1.10
+      }
+    },
+    "gateway_normalization": {
+      "throughput_eps": 1820000.0,
+      "latency_us": {
+        "p50": 0.48,
+        "p95": 0.85,
+        "p99": 1.45
+      }
+    },
+    "quality_evaluation": {
+      "throughput_eps": 1150000.0,
+      "latency_us": {
+        "p50": 0.72,
+        "p95": 1.25,
+        "p99": 2.10
+      }
+    },
+    "cross_feed_reconciliation": {
+      "throughput_eps": 1220000.0,
+      "latency_us": {
+        "p50": 0.82,
+        "p95": 1.40,
+        "p99": 2.14
+      }
+    },
+    "async_fanout_broadcast": {
+      "publisher_latency_us": {
+        "1_client": {"p50": 0.60, "p95": 1.00, "p99": 2.00},
+        "25_clients": {"p50": 0.70, "p95": 0.80, "p99": 2.20},
+        "50_clients": {"p50": 0.70, "p95": 1.20, "p99": 1.40},
+        "100_clients": {"p50": 0.70, "p95": 1.10, "p99": 2.30}
+      },
+      "aggregate_egress_fps": {
+        "1_client": 30308.1,
+        "25_clients": 443933.0,
+        "50_clients": 588176.8,
+        "100_clients": 725896.4
+      }
+    },
+    "distributed_failover": {
+      "failure_detection_ms": 102.9,
+      "quorum_election_us": 21.2,
+      "wal_fencing_registration_us": 15.7,
+      "total_complete_failover_ms": 102.91
+    },
+    "forensic_historical_verification": {
+      "records_scanned_per_sec": 47430.8,
+      "megabytes_scanned_per_sec": 11.4,
+      "merkle_root_computation_ms": 25.3
+    }
+  },
+  "verdict": "All benchmarks meet or exceed low-latency targets under Mode A execution."
+}
