@@ -1,0 +1,78 @@
+{
+  "timestamp": "2026-10-09T17:16:56Z",
+  "valid_segment_audit": {
+    "target_path": "C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\audit\\phase10\\data_e2e_durability\\wal_logs\\segment_000000000000.log",
+    "target_type": "IngestLog_Segment",
+    "records_scanned": 2000,
+    "bytes_scanned": 483397,
+    "crc32_valid_count": 2000,
+    "crc32_invalid_count": 0,
+    "sequence_gaps": 0,
+    "sequence_inversions": 0,
+    "timestamp_inversions": 0,
+    "first_seq": 0,
+    "last_seq": 1999,
+    "merkle_root": "8a39909f0aea28a7d8cdc9c76bb456248f4c6e01b29a2b3b30d503f4e718c387",
+    "duration_seconds": 0.0166,
+    "status": "PASS",
+    "details": []
+  },
+  "corrupted_segment_audit": {
+    "target_path": "C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\audit\\phase10\\data_e2e_durability\\segment_corrupted.log",
+    "target_type": "IngestLog_Segment",
+    "records_scanned": 2000,
+    "bytes_scanned": 483397,
+    "crc32_valid_count": 1999,
+    "crc32_invalid_count": 1,
+    "sequence_gaps": 0,
+    "sequence_inversions": 0,
+    "timestamp_inversions": 0,
+    "first_seq": 0,
+    "last_seq": 1999,
+    "merkle_root": "e8512a074a7560f796e1bfe445a32ad341c39322c783988c64a6294f7ec6854a",
+    "duration_seconds": 0.0217,
+    "status": "FAIL",
+    "details": [
+      "CRC32 mismatch at offset 1001: expected 0x4fb33bfa, got 0x4a58f46a"
+    ]
+  },
+  "truncated_segment_audit": {
+    "target_path": "C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\audit\\phase10\\data_e2e_durability\\segment_truncated.log",
+    "target_type": "IngestLog_Segment",
+    "records_scanned": 1999,
+    "bytes_scanned": 483352,
+    "crc32_valid_count": 1999,
+    "crc32_invalid_count": 0,
+    "sequence_gaps": 0,
+    "sequence_inversions": 0,
+    "timestamp_inversions": 0,
+    "first_seq": 0,
+    "last_seq": 1998,
+    "merkle_root": "bb27071af6c257e163c7b1a0f94f00fb31d76b6972f34b500d99c15f90082e06",
+    "duration_seconds": 0.0205,
+    "status": "FAIL",
+    "details": [
+      "Incomplete payload: expected 199, got 154"
+    ]
+  },
+  "sqlite_store_audit": {
+    "target_path": "C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\audit\\phase10\\data_e2e_durability\\market_data_staging.db",
+    "target_type": "SQLite_Store",
+    "records_scanned": 1997,
+    "bytes_scanned": 1421312,
+    "crc32_valid_count": 1997,
+    "crc32_invalid_count": 0,
+    "sequence_gaps": 0,
+    "sequence_inversions": 0,
+    "timestamp_inversions": 0,
+    "first_seq": null,
+    "last_seq": null,
+    "merkle_root": null,
+    "duration_seconds": 0.0092,
+    "status": "PASS",
+    "details": []
+  },
+  "tamper_detection_verified": true,
+  "torn_tail_detection_verified": true,
+  "merkle_provenance_verified": true
+}

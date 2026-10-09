@@ -1,0 +1,60 @@
+{
+  "timestamp": "2026-10-09T17:00:12Z",
+  "mode": "Mode B (Networked Staging - Local Multi-Process over TCP)",
+  "cluster_size": 3,
+  "quorum_size": 2,
+  "nodes": {
+    "node-01": {
+      "role": "PRIMARY_CANDIDATE",
+      "host": "127.0.0.1",
+      "port": 54263,
+      "db_path": "C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\audit\\phase10\\staging_cluster_data\\node-01.db",
+      "status": "ONLINE"
+    },
+    "node-02": {
+      "role": "STANDBY_SYNC",
+      "host": "127.0.0.1",
+      "port": 54264,
+      "db_path": "C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\audit\\phase10\\staging_cluster_data\\node-02.db",
+      "status": "ONLINE"
+    },
+    "node-03": {
+      "role": "QUORUM_PEER",
+      "host": "127.0.0.1",
+      "port": 54265,
+      "db_path": "C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\audit\\phase10\\staging_cluster_data\\node-03.db",
+      "status": "ONLINE"
+    }
+  },
+  "readiness_checks": [
+    {
+      "node_id": "node-01",
+      "port": 54263,
+      "check": "HEALTH",
+      "rtt_ms": 38.482,
+      "status": "PASS"
+    },
+    {
+      "node_id": "node-02",
+      "port": 54264,
+      "check": "HEALTH",
+      "rtt_ms": 25.527,
+      "status": "PASS"
+    },
+    {
+      "node_id": "node-03",
+      "port": 54265,
+      "check": "HEALTH",
+      "rtt_ms": 48.014,
+      "status": "PASS"
+    }
+  ],
+  "consensus_initialization": {
+    "initial_leader": "node-01",
+    "epoch": 1,
+    "lease_duration_sec": 0.5,
+    "quorum_achieved": true,
+    "status": "PASS"
+  },
+  "status": "PASS"
+}

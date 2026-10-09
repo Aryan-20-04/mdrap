@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-10-09T17:04:40Z",
+  "total_stale_writes_injected": 3,
+  "total_stale_writes_intercepted": 3,
+  "interception_latencies_us": [
+    22.8
+  ],
+  "fencing_enforcement_boundary": "In-process FencedWALWriter validation gate"
+}

@@ -1,0 +1,113 @@
+{
+  "timestamp": "2026-10-09T17:04:40Z",
+  "total_scenarios": 15,
+  "scenarios_passed": 15,
+  "scenarios_failed": 0,
+  "scenarios": [
+    {
+      "scenario_id": 1,
+      "name": "Primary Termination During Ingestion",
+      "description": "Primary crashed; secondary took over with monotonic epoch.",
+      "verdict": "PASS",
+      "details": "Epoch 1 -> 2"
+    },
+    {
+      "scenario_id": 2,
+      "name": "Primary Crash In-Flight Write",
+      "description": "Verified IngestLog recovery preserved prior durable write.",
+      "verdict": "PASS",
+      "details": "Offset 0 durably committed"
+    },
+    {
+      "scenario_id": 3,
+      "name": "Primary Termination Post-ACK",
+      "description": "Acknowledged record survives abrupt caller unbind.",
+      "verdict": "PASS",
+      "details": "Record present in segment"
+    },
+    {
+      "scenario_id": 4,
+      "name": "Primary Isolated from Quorum",
+      "description": "Isolated primary fails lease renewal and abdicates.",
+      "verdict": "PASS",
+      "details": "QuorumLossError raised on renewal"
+    },
+    {
+      "scenario_id": 5,
+      "name": "Minority Node Network Isolation",
+      "description": "Isolated minority node cannot claim leadership.",
+      "verdict": "PASS",
+      "details": "Reachable 1 < Quorum 2"
+    },
+    {
+      "scenario_id": 6,
+      "name": "Partition Followed by Healing",
+      "description": "Healed node successfully communicates and acquires lease.",
+      "verdict": "PASS",
+      "details": "Healed leader: node-03, Epoch: 3"
+    },
+    {
+      "scenario_id": 7,
+      "name": "Delayed & Reordered Control Messages",
+      "description": "Delayed token from older epoch rejected by FencedWALWriter.",
+      "verdict": "PASS",
+      "details": "Stale epoch 1 rejected"
+    },
+    {
+      "scenario_id": 8,
+      "name": "Expired Leases and Stale Epochs",
+      "description": "Expired lease token rejected by FencedWALWriter.",
+      "verdict": "PASS",
+      "details": "Lease timeout enforced"
+    },
+    {
+      "scenario_id": 9,
+      "name": "Former Leader Zombie Write Attempt",
+      "description": "Demoted leader blocked from writing to active partition.",
+      "verdict": "PASS",
+      "details": "FencingTokenError raised"
+    },
+    {
+      "scenario_id": 10,
+      "name": "Node Restart with Stale Local State",
+      "description": "Restarted node syncs and monotonically increments past cluster epoch.",
+      "verdict": "PASS",
+      "details": "New epoch 3"
+    },
+    {
+      "scenario_id": 11,
+      "name": "Simultaneous Candidate Elections",
+      "description": "Concurrent election requests resolve with monotonic serial epochs.",
+      "verdict": "PASS",
+      "details": "Epoch A=4, Epoch B=5"
+    },
+    {
+      "scenario_id": 12,
+      "name": "Quorum Loss & Quorum Restoration",
+      "description": "Quorum loss halts leadership; healing restores election.",
+      "verdict": "PASS",
+      "details": "Quorum barrier enforced"
+    },
+    {
+      "scenario_id": 13,
+      "name": "Slow/Unavailable Persistence Destination",
+      "description": "Persistence destination decoupled via write-ahead logging.",
+      "verdict": "PASS",
+      "details": "Buffered commits handled cleanly"
+    },
+    {
+      "scenario_id": 14,
+      "name": "Repeated Leader Changes Under Ingestion",
+      "description": "10 consecutive rapid leader failovers maintained strict epoch monotonicity.",
+      "verdict": "PASS",
+      "details": "Epoch sequence: [7, 8, 9, 10, 11, 12, 13, 14, 15, 16]"
+    },
+    {
+      "scenario_id": 15,
+      "name": "Restart During Recovery / Replay",
+      "description": "IngestLog scan recovered exactly 50 framed records on restart.",
+      "verdict": "PASS",
+      "details": "Recovered offsets: 50"
+    }
+  ]
+}

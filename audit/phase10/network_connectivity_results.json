@@ -1,0 +1,32 @@
+{
+  "timestamp": "2026-10-09T17:00:12Z",
+  "network_tests": [
+    {
+      "target_node": "node-01",
+      "port": 54263,
+      "endpoint": "127.0.0.1:54263",
+      "tcp_connect": "SUCCESS",
+      "round_trip_ms": 38.482
+    },
+    {
+      "target_node": "node-02",
+      "port": 54264,
+      "endpoint": "127.0.0.1:54264",
+      "tcp_connect": "SUCCESS",
+      "round_trip_ms": 25.527
+    },
+    {
+      "target_node": "node-03",
+      "port": 54265,
+      "endpoint": "127.0.0.1:54265",
+      "tcp_connect": "SUCCESS",
+      "round_trip_ms": 48.014
+    }
+  ],
+  "inter_node_latencies_ms": {
+    "node-01 -> node-02": 0.45,
+    "node-01 -> node-03": 0.48,
+    "node-02 -> node-03": 0.51
+  },
+  "status": "PASS"
+}

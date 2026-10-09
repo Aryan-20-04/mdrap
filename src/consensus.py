@@ -118,6 +118,7 @@ class ConsensusCoordinator:
         node_id: str,
         cluster_nodes: List[str],
         lease_duration_sec: float = 0.5,
+        initial_epoch: int = 0,
     ) -> None:
         self.node_id = node_id
         self.cluster_nodes = sorted(list(set(cluster_nodes)))
@@ -125,11 +126,17 @@ class ConsensusCoordinator:
         self.lease_duration_sec = lease_duration_sec
 
         self._lock = threading.Lock()
-        self._current_epoch: int = 0
+        self._current_epoch: int = initial_epoch
         self._active_leader: Optional[str] = None
         self._current_token: Optional[EpochToken] = None
         self._peer_heartbeats: Dict[str, float] = {nid: time.time() for nid in self.cluster_nodes}
         self._isolated_peers: Set[str] = set()
+
+    def sync_epoch(self, epoch: int) -> None:
+        """Synchronize node's local epoch with observed cluster epoch from peer heartbeats."""
+        with self._lock:
+            if epoch > self._current_epoch:
+                self._current_epoch = epoch
 
     def simulate_network_partition(self, isolated_node_ids: List[str]) -> None:
         """Simulate network partition disconnecting specific nodes."""

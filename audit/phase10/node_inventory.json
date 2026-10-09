@@ -1,0 +1,60 @@
+{
+  "inventory_version": "1.0",
+  "environment": "Mode B (Networked Staging - Local Multi-Process over TCP)",
+  "cluster_id": "mdrap-staging-cluster-01",
+  "generated_at": "2026-10-09T16:58:00Z",
+  "host": {
+    "hostname": "DESKTOP-MDRAP",
+    "os": "Windows 11 Enterprise (Build 26100.3194)",
+    "architecture": "x86_64",
+    "python_version": "3.13.1",
+    "memory_mb": 16047,
+    "logical_cores": 8
+  },
+  "nodes": [
+    {
+      "node_id": "node-01",
+      "initial_role": "PRIMARY_CANDIDATE",
+      "failure_domain": "proc-domain-01",
+      "host_ip": "127.0.0.1",
+      "alt_lan_ip": "10.21.12.27",
+      "http_api_port": 8101,
+      "ingress_tcp_port": 9101,
+      "db_path": "data/cluster/node_01.db",
+      "wal_dir": "data/cluster/wal_01",
+      "lease_duration_sec": 0.5,
+      "heartbeat_interval_sec": 0.15
+    },
+    {
+      "node_id": "node-02",
+      "initial_role": "STANDBY_SYNC",
+      "failure_domain": "proc-domain-02",
+      "host_ip": "127.0.0.1",
+      "alt_lan_ip": "10.21.12.27",
+      "http_api_port": 8102,
+      "ingress_tcp_port": 9102,
+      "db_path": "data/cluster/node_02.db",
+      "wal_dir": "data/cluster/wal_02",
+      "lease_duration_sec": 0.5,
+      "heartbeat_interval_sec": 0.15
+    },
+    {
+      "node_id": "node-03",
+      "initial_role": "QUORUM_PEER",
+      "failure_domain": "proc-domain-03",
+      "host_ip": "127.0.0.1",
+      "alt_lan_ip": "10.21.12.27",
+      "http_api_port": 8103,
+      "ingress_tcp_port": 9103,
+      "db_path": "data/cluster/node_03.db",
+      "wal_dir": "data/cluster/wal_03",
+      "lease_duration_sec": 0.5,
+      "heartbeat_interval_sec": 0.15
+    }
+  ],
+  "quorum_policy": {
+    "total_nodes": 3,
+    "quorum_required": 2,
+    "consensus_type": "Quorum-Based Lease with Monotonic Fencing"
+  }
+}

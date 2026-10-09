@@ -1,0 +1,13 @@
+{
+  "timestamp": "2026-10-09T17:16:56Z",
+  "total_events_ingested": 2000,
+  "valid_events_count": 1994,
+  "quarantined_events_count": 6,
+  "sqlite_canonical_records": 1997,
+  "sqlite_quarantine_records": 6,
+  "sqlite_lineage_records": 2000,
+  "fanout_delivered_to_consumer": 2000,
+  "pipeline_duration_seconds": 6.4221,
+  "pipeline_throughput_eps": 311.4,
+  "quality_gate_passed": true
+}

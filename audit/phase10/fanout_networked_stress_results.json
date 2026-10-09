@@ -1,0 +1,70 @@
+{
+  "timestamp": "2026-10-09T17:15:15Z",
+  "transport": "Real TCP Network Sockets (Loopback & Local Interface)",
+  "tiers": {
+    "1_clients": {
+      "num_clients": 1,
+      "events_published": 2000,
+      "publisher_latency_us": {
+        "p50": 106.9,
+        "p95": 179.9,
+        "p99": 264.6
+      },
+      "publisher_throughput_eps": 7952.3,
+      "client_receipt_throughput_fps": 3572.1,
+      "client_receipt_mbps": 1.18,
+      "total_frames_received_by_clients": 2000,
+      "delivery_rate_percent": 100.0
+    },
+    "25_clients": {
+      "num_clients": 25,
+      "events_published": 2000,
+      "publisher_latency_us": {
+        "p50": 509.5,
+        "p95": 1339.9,
+        "p99": 1962.8
+      },
+      "publisher_throughput_eps": 1631.3,
+      "client_receipt_throughput_fps": 32404.7,
+      "client_receipt_mbps": 10.78,
+      "total_frames_received_by_clients": 50000,
+      "delivery_rate_percent": 100.0
+    },
+    "50_clients": {
+      "num_clients": 50,
+      "events_published": 2000,
+      "publisher_latency_us": {
+        "p50": 1996.9,
+        "p95": 4415.8,
+        "p99": 6514.3
+      },
+      "publisher_throughput_eps": 492.9,
+      "client_receipt_throughput_fps": 22797.7,
+      "client_receipt_mbps": 7.62,
+      "total_frames_received_by_clients": 100000,
+      "delivery_rate_percent": 100.0
+    },
+    "100_clients": {
+      "num_clients": 100,
+      "events_published": 2000,
+      "publisher_latency_us": {
+        "p50": 3531.0,
+        "p95": 8074.2,
+        "p99": 10419.7
+      },
+      "publisher_throughput_eps": 276.3,
+      "client_receipt_throughput_fps": 26385.7,
+      "client_receipt_mbps": 8.82,
+      "total_frames_received_by_clients": 200000,
+      "delivery_rate_percent": 100.0
+    }
+  },
+  "noisy_neighbor_test": {
+    "fast_clients_count": 90,
+    "stalled_clients_count": 10,
+    "stalled_clients_evicted": 10,
+    "fast_client_min_received": 5037,
+    "fast_client_max_received": 5796,
+    "fast_clients_unaffected": true
+  }
+}

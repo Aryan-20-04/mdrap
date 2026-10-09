@@ -1,0 +1,50 @@
+{
+  "manifest_version": "1.0",
+  "deployment_target": "Mode B (Networked Staging)",
+  "generated_at": "2026-10-09T17:00:00Z",
+  "release_candidate": "v3.0.0-rc1",
+  "topology_name": "3-Node Quorum Staging Cluster",
+  "nodes": {
+    "node-01": {
+      "role": "PRIMARY_CANDIDATE",
+      "host": "127.0.0.1",
+      "http_port": 8101,
+      "tcp_ingress_port": 9101,
+      "db_file": "data/cluster/node_01.db",
+      "wal_dir": "data/cluster/wal_01",
+      "auto_start": true
+    },
+    "node-02": {
+      "role": "STANDBY_SYNC",
+      "host": "127.0.0.1",
+      "http_port": 8102,
+      "tcp_ingress_port": 9102,
+      "db_file": "data/cluster/node_02.db",
+      "wal_dir": "data/cluster/wal_02",
+      "auto_start": true
+    },
+    "node-03": {
+      "role": "QUORUM_PEER",
+      "host": "127.0.0.1",
+      "http_port": 8103,
+      "tcp_ingress_port": 9103,
+      "db_file": "data/cluster/node_03.db",
+      "wal_dir": "data/cluster/wal_03",
+      "auto_start": true
+    }
+  },
+  "runtime_parameters": {
+    "lease_ttl_sec": 0.5,
+    "heartbeat_interval_sec": 0.15,
+    "max_clock_drift_sec": 0.05,
+    "quorum_threshold": 2,
+    "enable_shm": false,
+    "require_auth": true,
+    "fencing_enforcement": "STRICT_MONOTONIC"
+  },
+  "security_environment": {
+    "salt_env_var": "MDRAP_API_KEY_SALT",
+    "daemon_token_env_var": "MDRAP_DAEMON_TOKEN",
+    "network_isolation": "LOOPBACK_AND_INTERNAL_VLAN_ONLY"
+  }
+}

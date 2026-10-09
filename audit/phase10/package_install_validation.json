@@ -1,0 +1,18 @@
+{
+  "timestamp": "2026-10-09T17:24:23Z",
+  "wheel_file": "C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\dist\\mdrap_core-3.1.0-py3-none-any.whl",
+  "wheel_size_bytes": 791247,
+  "install_duration_seconds": 2.666,
+  "isolated_target": "C:\\Users\\KIIT0001\\AppData\\Local\\Temp\\mdrap-install-verify-e2zihg12\\site-packages",
+  "clean_environment_import": "PASS",
+  "subprocesses_executed": [
+    "pip install --target",
+    "python -S isolated import"
+  ],
+  "output": [
+    "MDRAP_VERSION: 3.1.0",
+    "MODELS_SENTINEL: True",
+    "INGESTLOG_SENTINEL: True"
+  ],
+  "status": "PASS"
+}

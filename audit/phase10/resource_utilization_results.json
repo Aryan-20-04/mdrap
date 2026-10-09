@@ -1,0 +1,12 @@
+{
+  "timestamp": "2026-10-09T17:16:36Z",
+  "soak_events_streamed": 25000,
+  "soak_duration_seconds": 42.86,
+  "sustained_throughput_fps": 583.3,
+  "python_heap_start_mb": 0.0,
+  "python_heap_end_mb": 1.297,
+  "heap_growth_delta_mb": 1.297,
+  "open_sockets_leaked": 0,
+  "thread_deadlocks_detected": 0,
+  "bounded_memory_verified": true
+}
