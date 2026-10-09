@@ -23,7 +23,7 @@ duckdb>=1.0.0,<2.0.0           # Vectorized columnar embedded OLAP database for 
 pyarrow>=20.0.0                # Apache Parquet columnar file serialization (CVE PYSEC-2026-113 mitigated)
 
 # --- REST / WebSocket API & Distribution (Optional) ---
-fastapi>=0.110.0,<1.0.0        # Institutional REST and WebSocket real-time distribution server
+fastapi>=0.142.2,<1.0.0        # Institutional REST and WebSocket real-time distribution server
 uvicorn>=0.28.0,<1.0.0         # High-throughput ASGI server implementation
 httpx>=0.27.0,<1.0.0           # HTTP and ASGI client for testing and distribution webhooks
 
