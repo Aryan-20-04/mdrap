@@ -1,0 +1,40 @@
+{
+  "benchmark_metadata": {
+    "name": "MDRAP Pre-Phase 6 Single-Node Baseline Benchmark",
+    "timestamp": "2026-10-09T17:15:00Z",
+    "environment": {
+      "platform": "win32",
+      "python_version": "3.13.1",
+      "topology": "Profile A (Single-Node High Throughput)",
+      "git_commit": "d996384"
+    }
+  },
+  "workload": {
+    "event_count": 25000,
+    "symbols": 20,
+    "consumers": 1,
+    "persistence": "IngestLog WAL (grouped_by_size)"
+  },
+  "performance": {
+    "elapsed_seconds": 7.896,
+    "throughput_eps": 3166.0,
+    "latency_microseconds": {
+      "p50": 278.9,
+      "p90": 365.1,
+      "p95": 382.4,
+      "p99": 412.3,
+      "p99_9": 489.1,
+      "max": 712.5
+    }
+  },
+  "memory": {
+    "baseline_rss_mb": 42.11,
+    "peak_rss_mb": 42.99,
+    "delta_mb": 0.881
+  },
+  "verification": {
+    "sequence_gaps": 0,
+    "silent_loss_count": 0,
+    "status": "PASS"
+  }
+}
