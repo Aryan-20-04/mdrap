@@ -1,0 +1,31 @@
+{
+  "benchmark_metadata": {
+    "name": "MDRAP Phase 6 Partitioned Scaling Benchmark",
+    "timestamp": "2026-10-09T12:08:51Z",
+    "events_processed": 20000,
+    "shards_count": 2,
+    "partitioning_mode": "range (A-L vs M-Z)"
+  },
+  "performance": {
+    "elapsed_seconds": 1.0055,
+    "throughput_events_per_sec": 19890.9,
+    "latency_microseconds": {
+      "p50": 8.8,
+      "p90": 17.0,
+      "p95": 19.2,
+      "p99": 35.1,
+      "p99_9": 535.5,
+      "max": 39665.1
+    }
+  },
+  "memory": {
+    "start_bytes": 0,
+    "end_bytes": 4316248,
+    "delta_mb": 4.116
+  },
+  "verification": {
+    "zero_sequence_gaps": true,
+    "zero_silent_loss": true,
+    "status": "PASS"
+  }
+}
