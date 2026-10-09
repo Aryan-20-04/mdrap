@@ -1,0 +1,48 @@
+{
+  "platform": "MDRAP",
+  "release_version": "3.0.0",
+  "git_commit": "df068652c2809210ccdee5650a131dc8a1f6fa34",
+  "build_timestamp_utc": "2026-10-09T09:00:00Z",
+  "artifacts": [
+    {
+      "path": "src/mdrap/fastpath.c",
+      "sha256": "334c01b8f93f356ef19932842f61a620dcc2dca9eee5efc98a7942008935384f",
+      "type": "native_c_source"
+    },
+    {
+      "path": "src/mdrap/gateway.py",
+      "sha256": "1e9bdd4ef310d41236bb40be3f46b9deb28a7cb35663c510125b160cff553941",
+      "type": "core_engine_python"
+    },
+    {
+      "path": "src/mdrap/quality.py",
+      "sha256": "f114004c29f86a7085f2c20ccfa46e4ae1811cb49212a9f29cf54ba2d0b6782c",
+      "type": "core_engine_python"
+    },
+    {
+      "path": "sdk/cpp/include/mdrap/event.hpp",
+      "sha256": "0bd18f0aeb31b6738695521d867d3b13b3f0b2d4e0a5e2be4d403eed53ffb55c",
+      "type": "sdk_cpp_header"
+    },
+    {
+      "path": "sdk/cpp/include/mdrap/consumer.hpp",
+      "sha256": "775ed5997ba10c35b5680c5e1452a009940fbd1650bd220c611a1a12ff99de7c",
+      "type": "sdk_cpp_header"
+    }
+  ],
+  "supported_profiles": [
+    "Profile A (Single-Node High Throughput)",
+    "Profile B (Active-Passive High Availability)"
+  ],
+  "verification_gates": {
+    "gate_0_preflight": "PASS",
+    "gate_1_contract": "PASS",
+    "gate_2_correctness": "PASS",
+    "gate_3_performance": "PASS",
+    "gate_4_resilience": "PASS",
+    "gate_5_security": "PASS",
+    "gate_6_observability": "PASS",
+    "gate_7_packaging": "PASS",
+    "gate_8_readiness": "PASS_WITH_LIMITATIONS"
+  }
+}

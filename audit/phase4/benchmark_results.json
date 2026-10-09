@@ -1,0 +1,68 @@
+{
+  "timestamp": 1791535959.4611015,
+  "sustained_soak": {
+    "event_count": 50000,
+    "elapsed_s": 3.9538,
+    "throughput_eps": 12646.2,
+    "mem_delta_mb": 1.766,
+    "mem_peak_mb": 1.767,
+    "p50_us": 59.0,
+    "p95_us": 117.3,
+    "p99_us": 183.7,
+    "p999_us": 552.5,
+    "max_us": 3837.8
+  },
+  "stage_profile": {
+    "event_count": 20000,
+    "poll_stage": {
+      "p50_us": 5.0,
+      "p95_us": 6.1,
+      "p99_us": 9.1,
+      "p999_us": 34.1,
+      "max_us": 382.5
+    },
+    "normalize_stage": {
+      "p50_us": 5.0,
+      "p95_us": 5.8,
+      "p99_us": 7.9,
+      "p999_us": 45.3,
+      "max_us": 603.6
+    },
+    "quality_eval_stage": {
+      "p50_us": 10.1,
+      "p95_us": 11.6,
+      "p99_us": 19.4,
+      "p999_us": 80.1,
+      "max_us": 571.3
+    },
+    "sbe_pack_stage": {
+      "p50_us": 2.0,
+      "p95_us": 2.4,
+      "p99_us": 3.4,
+      "p999_us": 15.5,
+      "max_us": 527.4
+    }
+  },
+  "capacity_scaling": [
+    {
+      "batch_size": 1000,
+      "elapsed_s": 0.0223,
+      "rate_eps": 44891.8
+    },
+    {
+      "batch_size": 5000,
+      "elapsed_s": 0.1128,
+      "rate_eps": 44343.8
+    },
+    {
+      "batch_size": 20000,
+      "elapsed_s": 0.4002,
+      "rate_eps": 49971.0
+    },
+    {
+      "batch_size": 50000,
+      "elapsed_s": 1.0233,
+      "rate_eps": 48859.5
+    }
+  ]
+}

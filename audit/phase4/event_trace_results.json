@@ -1,0 +1,27 @@
+{
+  "test_run": {
+    "events_generated": 2500,
+    "events_processed": 2500,
+    "events_valid": 2250,
+    "events_suspicious": 249,
+    "events_invalid": 1,
+    "sbe_frames_generated": 2500,
+    "sbe_frame_size_bytes": 64,
+    "total_sbe_bytes": 160000,
+    "wal_records_committed": 2500,
+    "wal_records_replayed": 2500,
+    "metered_events_recorded": 2500,
+    "elapsed_seconds": 8.9675,
+    "events_per_second": 278.78
+  },
+  "invariants_verified": {
+    "zero_event_loss": true,
+    "zero_wal_loss": true,
+    "sequence_continuity": true,
+    "sbe_exact_64byte_wire_layout": true,
+    "idempotent_metering_count_match": true,
+    "replayed_seq_match": true,
+    "invalid_event_quarantined": true
+  },
+  "status": "PASS"
+}
