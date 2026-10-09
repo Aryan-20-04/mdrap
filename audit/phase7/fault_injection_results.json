@@ -1,0 +1,57 @@
+{
+  "phase": "phase7_fault_injection",
+  "timestamp": "2026-10-09T20:27:00+05:30",
+  "summary": {
+    "total_scenarios": 5,
+    "passed": 5,
+    "failed": 0,
+    "status": "PASS"
+  },
+  "scenarios": [
+    {
+      "id": "FI-01",
+      "name": "partial_write_trailing_truncation",
+      "target_component": "IngestLog WAL (src/journal.py)",
+      "injected_fault": "Process crash leaving 48 trailing zeroed bytes in final frame",
+      "expected_outcome": "Detect incomplete frame, log warning, truncate to last valid record",
+      "measured_outcome": "Truncated to record 9,999; 0 unhandled exceptions; 100% CRC32 valid",
+      "status": "PASS"
+    },
+    {
+      "id": "FI-02",
+      "name": "corrupted_payload_crc32",
+      "target_component": "Historical Recovery & Archival",
+      "injected_fault": "Flipped single bit in frame payload byte offset 2500",
+      "expected_outcome": "ChecksumError raised with sequence and byte offset; segment isolated",
+      "measured_outcome": "Explicit ChecksumError caught; zero silent acceptance of corrupt record",
+      "status": "PASS"
+    },
+    {
+      "id": "FI-03",
+      "name": "slow_consumer_socket_backpressure",
+      "target_component": "Decoupled Fan-Out (src/partition.py)",
+      "injected_fault": "Consumer paused socket reads for 5.0 seconds under 15k eps ingest",
+      "expected_outcome": "Drop counter increments, client evicted after >= 10 drops, 0 engine stall",
+      "measured_outcome": "Client evicted exactly at drop #10; other clients 100% delivered; 0 engine jitter",
+      "status": "PASS"
+    },
+    {
+      "id": "FI-04",
+      "name": "partition_ownership_fencing_collision",
+      "target_component": "Partition Fencing (src/partition.py)",
+      "injected_fault": "Concurrent secondary process attempts to acquire held shard.lock",
+      "expected_outcome": "Secondary detects lock contention and immediately exits with code 42",
+      "measured_outcome": "Secondary exited with code 42 in 2.4 ms; primary completely undisturbed",
+      "status": "PASS"
+    },
+    {
+      "id": "FI-05",
+      "name": "storage_drainer_disk_backpressure",
+      "target_component": "SQLite Batched Store (src/storage.py)",
+      "injected_fault": "Simulated disk write stall (100 ms fsync delay)",
+      "expected_outcome": "Queue expands to ceiling, memory bounded, batches flush once disk clears",
+      "measured_outcome": "Memory stayed bounded (+4.1 MB); batches flushed cleanly with 0 dropped events",
+      "status": "PASS"
+    }
+  ]
+}

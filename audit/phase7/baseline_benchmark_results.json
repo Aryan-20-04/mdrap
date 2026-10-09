@@ -1,0 +1,34 @@
+{
+  "phase": "phase7_baseline",
+  "timestamp": "2026-10-09T20:23:30+05:30",
+  "environment": {
+    "os": "Windows 11 (win32)",
+    "python": "3.13.1",
+    "cpu": "Intel x86-64",
+    "compiler": "MSVC / Clang compatible"
+  },
+  "workloads": {
+    "single_node_pipeline": {
+      "events": 50000,
+      "throughput_eps": 13733.38,
+      "latency_p50_us": 18.4,
+      "latency_p90_us": 42.1,
+      "latency_p99_us": 2187.4,
+      "duration_seconds": 3.64,
+      "status": "PASS"
+    },
+    "sharded_fleet_profile_a": {
+      "events": 20000,
+      "shards": 2,
+      "throughput_eps": 23114.0,
+      "latency_p50_us": 7.8,
+      "latency_p90_us": 17.0,
+      "latency_p95_us": 19.2,
+      "latency_p99_us": 27.5,
+      "latency_p999_us": 535.5,
+      "memory_rss_delta_mb": 4.115,
+      "duration_seconds": 0.865,
+      "status": "PASS"
+    }
+  }
+}

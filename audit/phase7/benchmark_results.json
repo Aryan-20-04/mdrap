@@ -1,0 +1,27 @@
+{
+  "phase": "phase7_final_benchmark",
+  "timestamp": "2026-10-09T20:29:00+05:30",
+  "environment": {
+    "os": "Windows 11 (win32)",
+    "python": "3.13.1",
+    "cpu": "Intel x86-64",
+    "topology": "2-Shard Symbol Universe Partitioned Fleet"
+  },
+  "metrics": {
+    "events_processed": 20000,
+    "elapsed_seconds": 0.865,
+    "throughput_eps": 23114.0,
+    "peak_burst_throughput_eps": 28284.8,
+    "latency_p50_us": 7.8,
+    "latency_p75_us": 11.4,
+    "latency_p90_us": 17.0,
+    "latency_p95_us": 19.2,
+    "latency_p99_us": 27.5,
+    "latency_p999_us": 535.5,
+    "max_latency_us": 1420.0,
+    "memory_rss_delta_mb": 4.115,
+    "fanout_queue_dwell_us": 8.5,
+    "consumer_drop_count": 0,
+    "compliance_status": "PASS"
+  }
+}

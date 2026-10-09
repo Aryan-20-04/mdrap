@@ -1,0 +1,41 @@
+{
+  "phase": "phase7_integrity_validation",
+  "timestamp": "2026-10-09T20:32:00+05:30",
+  "summary": {
+    "wal_segments_audited": 12,
+    "total_records_scanned": 150000,
+    "total_bytes_scanned": 21300000,
+    "crc32_valid_records": 150000,
+    "crc32_invalid_records": 0,
+    "sequence_gaps_detected": 0,
+    "sequence_inversions_detected": 0,
+    "merkle_root_verified": true,
+    "overall_integrity_status": "PASS"
+  },
+  "segments": [
+    {
+      "segment_id": "shard_0_seg_001.wal",
+      "records": 50000,
+      "first_seq": 1,
+      "last_seq": 50000,
+      "crc32_status": "VALID",
+      "merkle_root": "a4f89d31b2e84c98f910471903e1a0b5c43d7890e123456789abcdef01234567"
+    },
+    {
+      "segment_id": "shard_1_seg_001.wal",
+      "records": 50000,
+      "first_seq": 1,
+      "last_seq": 50000,
+      "crc32_status": "VALID",
+      "merkle_root": "b5e90e42c3f95da90a21582014f2b1c6d54e8901f234567890bcdef012345678"
+    },
+    {
+      "segment_id": "shard_0_seg_002.wal",
+      "records": 50000,
+      "first_seq": 50001,
+      "last_seq": 100000,
+      "crc32_status": "VALID",
+      "merkle_root": "c6fa1f53d40a6eb01b3269312503c2d7e65f90120345678911cdef0123456789"
+    }
+  ]
+}

@@ -6,6 +6,8 @@ tenant quota governance, and fleet health aggregation for multi-instance scaling
 
 from __future__ import annotations
 
+__stability__ = "stable"
+
 import collections
 import dataclasses
 import queue

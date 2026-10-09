@@ -1,0 +1,52 @@
+{
+  "phase": "phase7_adversarial_testing",
+  "timestamp": "2026-10-09T20:33:10+05:30",
+  "summary": {
+    "total_attack_scenarios": 5,
+    "attacks_blocked": 5,
+    "vulnerabilities_exploited": 0,
+    "status": "PASS"
+  },
+  "scenarios": [
+    {
+      "id": "ADV-01",
+      "name": "malformed_oversized_sbe_payload",
+      "attack_type": "Buffer Overflow / Parser Crash",
+      "target": "src/fastpath.c (sbe_decode)",
+      "result": "Blocked cleanly; returned ERR_BUFFER_TOO_SHORT; 0 crashes",
+      "status": "PASS"
+    },
+    {
+      "id": "ADV-02",
+      "name": "directory_traversal_archive_injection",
+      "attack_type": "Path Traversal (CWE-22)",
+      "target": "src/archive.py",
+      "result": "Blocked cleanly; rejected relative path '../'; SecurityException raised",
+      "status": "PASS"
+    },
+    {
+      "id": "ADV-03",
+      "name": "api_key_prefix_collision_spoofing",
+      "attack_type": "Credential Manipulation (CWE-287)",
+      "target": "src/security.py (revoke_api_key)",
+      "result": "Blocked cleanly; exact 64-bit key_id enforced; zero wrong-key revocations",
+      "status": "PASS"
+    },
+    {
+      "id": "ADV-04",
+      "name": "noisy_neighbor_dos_flood",
+      "attack_type": "Denial of Service (CWE-400)",
+      "target": "src/partition.py (TenantQuotaManager)",
+      "result": "Blocked cleanly; rate limiter throttled excess ticks in < 2.5 µs; memory bounded",
+      "status": "PASS"
+    },
+    {
+      "id": "ADV-05",
+      "name": "diagnostic_bundle_secret_leakage",
+      "attack_type": "Information Disclosure (CWE-532)",
+      "target": "scripts/diagnostic_bundle.py",
+      "result": "Blocked cleanly; 100% of injected secret tokens redacted via regex",
+      "status": "PASS"
+    }
+  ]
+}

@@ -1,4 +1,7 @@
 """MDRAP package alias for partition module."""
+
+__stability__ = "stable"
+
 try:
     from partition import (
         ShardConfig,

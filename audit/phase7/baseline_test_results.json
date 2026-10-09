@@ -1,0 +1,39 @@
+{
+  "phase": "phase7_baseline",
+  "timestamp": "2026-10-09T20:23:00+05:30",
+  "environment": {
+    "os": "Windows 11 (win32)",
+    "python": "3.13.1",
+    "pytest": "8.3.4",
+    "cpu": "Intel x86-64"
+  },
+  "summary": {
+    "total_collected": 1267,
+    "deselected": 60,
+    "selected": 1207,
+    "passed": 1207,
+    "failed": 0,
+    "skipped": 0,
+    "warnings": 640,
+    "pass_rate_pct": 100.0,
+    "duration_seconds": 239.80,
+    "status": "PASS"
+  },
+  "test_suites": {
+    "core_regression": {
+      "count": 1197,
+      "passed": 1197,
+      "failed": 0
+    },
+    "phase5_pilot": {
+      "count": 5,
+      "passed": 5,
+      "failed": 0
+    },
+    "phase6_scaling": {
+      "count": 5,
+      "passed": 5,
+      "failed": 0
+    }
+  }
+}
