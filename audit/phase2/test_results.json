@@ -1,0 +1,70 @@
+{
+  "timestamp": 1791532139.0,
+  "summary": {
+    "total": 1229,
+    "passed": 1169,
+    "deselected": 60,
+    "failed": 0,
+    "errors": 0,
+    "duration_seconds": 223.39
+  },
+  "phase2_suites": {
+    "tests/test_phase2_lifecycle.py": {
+      "passed": 2,
+      "failed": 0,
+      "tests": [
+        "test_runtime_lifecycle_full_happy_path",
+        "test_runtime_initialization_failure_cleans_up"
+      ]
+    },
+    "tests/test_phase2_backpressure.py": {
+      "passed": 4,
+      "failed": 0,
+      "tests": [
+        "test_service_client_session_bounded_and_eviction",
+        "test_service_degradation_state_on_excessive_drops",
+        "test_api_websocket_subscriber_bounded_and_eviction",
+        "test_api_degradation_state_and_health_response"
+      ]
+    },
+    "tests/test_phase2_supervision.py": {
+      "passed": 4,
+      "failed": 0,
+      "tests": [
+        "test_supervisor_normal_worker_lifecycle",
+        "test_supervisor_transient_crash_restart",
+        "test_supervisor_fatal_worker_error_escalation",
+        "test_supervisor_exhausted_retries_escalation"
+      ]
+    },
+    "tests/test_phase2_observability.py": {
+      "passed": 3,
+      "failed": 0,
+      "tests": [
+        "test_liveness_endpoint",
+        "test_readiness_healthy_and_failure",
+        "test_health_truthful_states"
+      ]
+    },
+    "tests/test_phase2_config_validation.py": {
+      "passed": 5,
+      "failed": 0,
+      "tests": [
+        "test_valid_config_passes_validation",
+        "test_unknown_top_level_section_fails",
+        "test_unknown_key_in_defaults_fails",
+        "test_invalid_numeric_bounds",
+        "test_precedence_hierarchy"
+      ]
+    },
+    "tests/test_phase2_deployment.py": {
+      "passed": 2,
+      "failed": 0,
+      "tests": [
+        "test_systemd_unit_file_security_hardening",
+        "test_dockerfile_security_and_non_root"
+      ]
+    }
+  },
+  "overall_status": "PASSED"
+}

@@ -45,6 +45,7 @@ class _ClientSession:
     symbols: Set[str] = field(default_factory=set)
     queue: queue.Queue = field(default_factory=lambda: queue.Queue(maxsize=1000))
     dropped_ticks: int = 0
+    max_dropped_ticks: int = 1000
     is_alive: bool = True
     is_binary: bool = False
     is_sbe: bool = False
@@ -875,6 +876,17 @@ class MarketDataDaemon:
                     sess.queue.put_nowait(out_tick)
                 except queue.Full:
                     sess.dropped_ticks += 1
+                    if sess.dropped_ticks >= sess.max_dropped_ticks and sess.is_alive:
+                        sess.is_alive = False
+                        logger.warning(
+                            "[service] Evicting stalled client (%s) after exceeding %d dropped ticks",
+                            sess.entitlement.client_id if sess.entitlement else "unauthenticated",
+                            sess.max_dropped_ticks,
+                        )
+                        try:
+                            sess.queue.put_nowait(None)
+                        except Exception:
+                            pass
 
             # L2 Depth delivery
             if out_depth and (
@@ -884,6 +896,17 @@ class MarketDataDaemon:
                     sess.queue.put_nowait(out_depth)
                 except queue.Full:
                     sess.dropped_ticks += 1
+                    if sess.dropped_ticks >= sess.max_dropped_ticks and sess.is_alive:
+                        sess.is_alive = False
+                        logger.warning(
+                            "[service] Evicting stalled client (%s) after exceeding %d dropped depth ticks",
+                            sess.entitlement.client_id if sess.entitlement else "unauthenticated",
+                            sess.max_dropped_ticks,
+                        )
+                        try:
+                            sess.queue.put_nowait(None)
+                        except Exception:
+                            pass
 
             # Real-time VWAP delivery
             if vwap_msg and (
@@ -893,6 +916,30 @@ class MarketDataDaemon:
                     sess.queue.put_nowait(vwap_msg)
                 except queue.Full:
                     sess.dropped_ticks += 1
+                    if sess.dropped_ticks >= sess.max_dropped_ticks and sess.is_alive:
+                        sess.is_alive = False
+                        logger.warning(
+                            "[service] Evicting stalled client (%s) after exceeding %d dropped VWAP ticks",
+                            sess.entitlement.client_id if sess.entitlement else "unauthenticated",
+                            sess.max_dropped_ticks,
+                        )
+                        try:
+                            sess.queue.put_nowait(None)
+                        except Exception:
+                            pass
+
+    def is_degraded(self) -> tuple[bool, str]:
+        """Return whether the daemon is operating in degraded mode due to excessive drops or resource pressure."""
+        with self._sub_lock:
+            active_drops = sum(s.dropped_ticks for s in self._sessions.values())
+        total_drops = self._total_dropped + active_drops
+        if total_drops > 5000:
+            return True, f"High client queue drop count: {total_drops}"
+        if self._shm_errors > 100:
+            return True, f"High shared memory publish error count: {self._shm_errors}"
+        if hasattr(self.pipeline, "degraded") and self.pipeline.degraded:
+            return True, "Pipeline storage writer degraded"
+        return False, ""
 
     def stats(self) -> dict:
         uptime = time.time() - self._t0 if self._t0 > 0 else 0.0
@@ -919,6 +966,7 @@ class MarketDataDaemon:
         with self._replay_lock:
             replay_buf_size = len(self._replay_buffer)
             replay_buf_stats = self._replay_buffer.stats()
+        degraded, degraded_reason = self.is_degraded()
         return {
             "uptime_s": round(uptime, 2),
             "total_broadcast": self._total_broadcast,
@@ -929,6 +977,8 @@ class MarketDataDaemon:
             "active_clients": client_count,
             "dropped_ticks": total_dropped,
             "rate_limited_ticks": total_rate_limited,
+            "degraded": degraded,
+            "degraded_reason": degraded_reason,
             "client_roles": role_breakdown,
             "client_tiers": role_breakdown,
             "host": self.host,

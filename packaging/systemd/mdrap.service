@@ -1,0 +1,46 @@
+[Unit]
+Description=Market Data Reliability & Acceleration Platform (MDRAP)
+Documentation=https://github.com/mdrap/mdrap
+After=network.target network-online.target time-sync.target
+Wants=network-online.target time-sync.target
+
+[Service]
+Type=simple
+User=mdrap
+Group=mdrap
+WorkingDirectory=/var/lib/mdrap
+ExecStart=/usr/local/bin/mdrap serve --host 0.0.0.0 --port 8000 --db /var/lib/mdrap/mdrap.db --wal /var/lib/mdrap/mdrap.wal
+ExecReload=/bin/kill -HUP $MAINPID
+KillSignal=SIGTERM
+TimeoutStopSec=10s
+Restart=on-failure
+RestartSec=2s
+
+# Resource Limits
+LimitNOFILE=65536
+LimitMEMLOCK=infinity
+Nice=-10
+
+# Linux Security Hardening & Sandboxing
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+MemoryDenyWriteExecute=false
+RestrictRealtime=false
+RestrictSUIDSGID=true
+RemoveIPC=false
+
+# Writable paths required for durable WAL, SQLite, and logs
+ReadWritePaths=/var/lib/mdrap /var/log/mdrap /dev/shm
+
+# Environment Defaults
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+EnvironmentFile=-/etc/default/mdrap
+
+[Install]
+WantedBy=multi-user.target

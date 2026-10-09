@@ -1,0 +1,41 @@
+{
+  "timestamp": 1791531856.7895727,
+  "platform": "win32",
+  "python_version": "3.13.1 (tags/v3.13.1:0671451, Dec  3 2024, 19:06:28) [MSC v.1942 64 bit (AMD64)]",
+  "engine_step": {
+    "num_events": 20000,
+    "duration_s": 1.8352,
+    "throughput_eps": 10897.9,
+    "latency_us": {
+      "min": 49.9,
+      "p50": 79.3,
+      "p90": 113.52,
+      "p95": 162.9,
+      "p99": 266.01,
+      "p99_9": 468.9,
+      "max": 1803.6,
+      "mean": 90.87
+    }
+  },
+  "bounded_queue_saturation": {
+    "total_operations": 15000,
+    "enqueued": 1000,
+    "dropped": 14000,
+    "duration_s": 0.0283,
+    "throughput_ops_sec": 530168.3,
+    "latency_us": {
+      "p50": 1.4,
+      "p95": 2.7,
+      "p99": 3.8,
+      "max": 100.8
+    }
+  },
+  "runtime_lifecycle": {
+    "init_duration_ms": 74.35,
+    "events_processed": 1000,
+    "proc_duration_s": 3.8228,
+    "ingest_eps": 261.6,
+    "stop_drain_duration_ms": 10.56,
+    "drain_success": true
+  }
+}

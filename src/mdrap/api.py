@@ -104,6 +104,8 @@ class HealthResponse(BaseModel):
     shm: Dict[str, Any]
     watchdog: Dict[str, Any]
     persistence_mode: Optional[str] = "production_durable"
+    degraded: bool = False
+    degraded_reason: str = ""
 
 
 class FeedRegisterRequest(BaseModel):
@@ -283,6 +285,8 @@ class AppState:
         self.subscriber_loops: Dict[WebSocket, Any] = {}
         self.subscriber_drops: Dict[WebSocket, int] = {}
         self.subscriber_tasks: Dict[WebSocket, asyncio.Task] = {}
+        self.total_subscriber_drops: int = 0
+        self.max_client_drops: int = int(os.environ.get("MDRAP_MAX_CLIENT_DROPS", "500"))
         self.pipeline_lock = threading.Lock()
         self._lock = asyncio.Lock()
 
@@ -324,6 +328,17 @@ class AppState:
             }
         self.active_feeds[src]["events_count"] += count
 
+    def is_degraded(self) -> tuple[bool, str]:
+        """Check whether the application is running in a degraded state."""
+        if self.total_subscriber_drops > 1000:
+            return True, f"Excessive WebSocket subscriber drops: {self.total_subscriber_drops}"
+        if hasattr(self, "_pipeline") and self._pipeline is not None and getattr(self._pipeline, "degraded", False):
+            return True, "Pipeline storage writer degraded"
+        states = self.watchdog.source_states()
+        if states and all(s == "SILENT" for s in states.values()):
+            return True, "All monitored feed sources are silent"
+        return False, ""
+
     async def broadcast_event(self, event_data: dict):
         """Dispatch validated canonical tick or BBO event to connected WebSocket clients."""
         sym = str(
@@ -364,12 +379,20 @@ class AppState:
                         else:
                             q.put_nowait(event_data)
                     except asyncio.QueueFull:
-                        self.subscriber_drops[ws] = self.subscriber_drops.get(ws, 0) + 1
-                        if self.subscriber_drops[ws] % 100 == 1:
+                        self.total_subscriber_drops += 1
+                        drops = self.subscriber_drops.get(ws, 0) + 1
+                        self.subscriber_drops[ws] = drops
+                        if drops % 100 == 1:
                             logger.warning(
                                 "[api] WebSocket subscriber queue full, dropped message #%d",
-                                self.subscriber_drops[ws],
+                                drops,
                             )
+                        if drops >= self.max_client_drops:
+                            logger.warning(
+                                "[api] Evicting slow WebSocket subscriber after exceeding %d dropped messages",
+                                self.max_client_drops,
+                            )
+                            dead_sockets.append(ws)
                 else:
                     try:
                         await ws.send_json(event_data)
@@ -675,9 +698,10 @@ def create_app(
         uptime = round(time.time() - st.start_time, 2)
         states = st.watchdog.source_states()
         is_healthy = not bool(getattr(st, "init_error", None))
+        is_deg, deg_reason = st.is_degraded()
 
         return HealthResponse(
-            status="healthy" if is_healthy else "unhealthy",
+            status="healthy" if (is_healthy and not is_deg) else ("degraded" if is_healthy else "unhealthy"),
             version=__version__,
             uptime_seconds=uptime,
             engine="running" if (st.engine is not None and is_healthy) else "failed",
@@ -699,6 +723,8 @@ def create_app(
                 "sources": states,
             },
             persistence_mode=getattr(st, "persistence_mode", "production_durable"),
+            degraded=is_deg,
+            degraded_reason=deg_reason,
         )
 
     # Root alias health endpoints for orchestrator compatibility (e.g. k8s probes)
