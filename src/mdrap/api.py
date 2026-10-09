@@ -103,6 +103,7 @@ class HealthResponse(BaseModel):
     db: Dict[str, Any]
     shm: Dict[str, Any]
     watchdog: Dict[str, Any]
+    persistence_mode: Optional[str] = "production_durable"
 
 
 class FeedRegisterRequest(BaseModel):
@@ -227,31 +228,15 @@ class AppState:
             if self.db_path != ":memory:"
             else None,
         )
-        try:
-            if self.wal_path:
-                self.engine = Engine.open(
-                    self.wal_path,
-                    config={
-                        "staleness_threshold_s": float(
-                            os.environ.get("MDRAP_API_STALENESS_S", "2.0")
-                        ),
-                        "security": self.security_manager,
-                    },
-                )
-            else:
-                self.engine = Engine(
-                    staleness_threshold_s=float(
-                        os.environ.get("MDRAP_API_STALENESS_S", "2.0")
-                    ),
-                    security=self.security_manager,
-                )
-            if self.store:
-                self.engine.subscribe(self.store)
-        except Exception as exc:
-            logger.warning(
-                "Could not initialize Engine with WAL: %s; falling back to in-memory engine",
-                exc,
-            )
+        is_dev = (
+            self.db_path == ":memory:"
+            or os.environ.get("MDRAP_DEV_MODE", "").lower() in ("1", "true", "yes")
+        )
+        self.persistence_mode = "development_in_memory" if is_dev else "production_durable"
+        self.init_error: Optional[str] = None
+        self.engine: Optional[Engine] = None
+
+        if self.persistence_mode == "development_in_memory":
             self.engine = Engine(
                 staleness_threshold_s=float(
                     os.environ.get("MDRAP_API_STALENESS_S", "2.0")
@@ -260,6 +245,33 @@ class AppState:
             )
             if self.store:
                 self.engine.subscribe(self.store)
+        else:
+            try:
+                if self.wal_path:
+                    self.engine = Engine.open(
+                        self.wal_path,
+                        config={
+                            "staleness_threshold_s": float(
+                                os.environ.get("MDRAP_API_STALENESS_S", "2.0")
+                            ),
+                            "security": self.security_manager,
+                        },
+                    )
+                else:
+                    self.engine = Engine(
+                        staleness_threshold_s=float(
+                            os.environ.get("MDRAP_API_STALENESS_S", "2.0")
+                        ),
+                        security=self.security_manager,
+                    )
+                if self.store:
+                    self.engine.subscribe(self.store)
+            except Exception as exc:
+                self.init_error = f"Durable storage initialization failed: {exc}"
+                logger.critical(
+                    "Production storage initialization failed: %s; startup aborted without silent durability downgrade",
+                    exc,
+                )
 
         self.start_time = time.time()
         self.active_feeds: Dict[str, Dict[str, Any]] = {}
@@ -268,6 +280,7 @@ class AppState:
         self.subscribers: Dict[WebSocket, Set[str]] = {}
         self.subscriber_tokens: Dict[WebSocket, str] = {}
         self.subscriber_queues: Dict[WebSocket, asyncio.Queue] = {}
+        self.subscriber_loops: Dict[WebSocket, Any] = {}
         self.subscriber_drops: Dict[WebSocket, int] = {}
         self.subscriber_tasks: Dict[WebSocket, asyncio.Task] = {}
         self.pipeline_lock = threading.Lock()
@@ -337,9 +350,19 @@ class AppState:
 
             if not sub_syms or "ALL" in sub_syms or sym in sub_syms:
                 q = self.subscriber_queues.get(ws)
+                ws_loop = self.subscriber_loops.get(ws)
                 if q is not None:
                     try:
-                        q.put_nowait(event_data)
+                        cur_loop = None
+                        try:
+                            cur_loop = asyncio.get_running_loop()
+                        except RuntimeError:
+                            pass
+
+                        if ws_loop is not None and ws_loop.is_running() and ws_loop != cur_loop:
+                            ws_loop.call_soon_threadsafe(q.put_nowait, event_data)
+                        else:
+                            q.put_nowait(event_data)
                     except asyncio.QueueFull:
                         self.subscriber_drops[ws] = self.subscriber_drops.get(ws, 0) + 1
                         if self.subscriber_drops[ws] % 100 == 1:
@@ -357,6 +380,7 @@ class AppState:
             self.subscribers.pop(ws, None)
             self.subscriber_tokens.pop(ws, None)
             self.subscriber_queues.pop(ws, None)
+            self.subscriber_loops.pop(ws, None)
             self.subscriber_drops.pop(ws, None)
             task = self.subscriber_tasks.pop(ws, None)
             if task:
@@ -597,8 +621,18 @@ def create_app(
         return {"status": "alive", "uptime_seconds": uptime}
 
     @router.get("/readiness", tags=["Health"])
+    @router.get("/ready", tags=["Health"])
     def get_readiness(request: Request):
         st: AppState = request.app.state.mdrap
+        if getattr(st, "init_error", None):
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail={
+                    "status": "not_ready",
+                    "reason": st.init_error,
+                    "persistence_mode": getattr(st, "persistence_mode", "production_durable"),
+                },
+            )
         try:
             with st.store._lock:
                 st.store.conn.execute("SELECT 1;").fetchone()
@@ -629,22 +663,27 @@ def create_app(
                     "reason": "Pipeline storage writer and dead-letter fallback failed",
                 },
             )
-        return {"status": "ready", "database": "connected"}
+        return {
+            "status": "ready",
+            "database": "connected",
+            "persistence_mode": getattr(st, "persistence_mode", "production_durable"),
+        }
 
     @router.get("/health", response_model=HealthResponse, tags=["Health"])
     def get_health(request: Request):
         st: AppState = request.app.state.mdrap
         uptime = round(time.time() - st.start_time, 2)
         states = st.watchdog.source_states()
+        is_healthy = not bool(getattr(st, "init_error", None))
 
         return HealthResponse(
-            status="healthy",
+            status="healthy" if is_healthy else "unhealthy",
             version=__version__,
             uptime_seconds=uptime,
-            engine="running",
+            engine="running" if (st.engine is not None and is_healthy) else "failed",
             active_feeds_count=len(st.active_feeds),
             db={
-                "path": st.db_path,
+                "path": os.path.basename(str(st.db_path)) if st.db_path != ":memory:" else ":memory:",
                 "wal_mode": True,
                 "conflicts": getattr(st.store, "conflicts", 0),
             },
@@ -659,6 +698,7 @@ def create_app(
                 "total_monitored": len(states),
                 "sources": states,
             },
+            persistence_mode=getattr(st, "persistence_mode", "production_durable"),
         )
 
     # Root alias health endpoints for orchestrator compatibility (e.g. k8s probes)
@@ -667,6 +707,7 @@ def create_app(
         return get_liveness(request)
 
     @app.get("/readiness", tags=["Health"])
+    @app.get("/ready", tags=["Health"])
     def app_readiness(request: Request):
         return get_readiness(request)
 
@@ -783,6 +824,17 @@ def create_app(
         """Ingest raw market data events into pipeline and broadcast over WebSocket (C4)."""
         st: AppState = request.app.state.mdrap
 
+        if getattr(st, "init_error", None):
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=f"Durable storage unavailable: {st.init_error}",
+            )
+        if getattr(st, "persistence_mode", "") == "production_durable" and getattr(st, "engine", None) is None:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Durable storage engine unavailable in production mode",
+            )
+
         # 1. Enforce maximum request body size
         content_length = request.headers.get("content-length")
         if content_length and int(content_length) > MAX_REQUEST_BODY_BYTES:
@@ -898,6 +950,11 @@ def create_app(
                             )
                         )
                 return res_events
+            if getattr(st, "persistence_mode", "") == "production_durable":
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail=f"Durable storage engine unavailable in production mode: {getattr(st, 'init_error', 'uninitialized')}",
+                )
             with st.pipeline_lock:
                 return [e for e in st.pipeline.process_batch(batch) if e is not None]
 
@@ -1032,6 +1089,16 @@ def create_app(
         _auth: ClientEntitlement = Depends(require_role(Role.OPERATOR)),
     ):
         st: AppState = request.app.state.mdrap
+        if getattr(st, "init_error", None):
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=f"Durable storage unavailable: {st.init_error}",
+            )
+        if getattr(st, "persistence_mode", "") == "production_durable" and getattr(st, "engine", None) is None:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Durable storage engine unavailable in production mode",
+            )
         proc = st.engine if hasattr(st, "engine") and st.engine is not None else st.pipeline
         ev = st.store.reprocess_quarantine(event_id, proc)
         if ev is None:
@@ -1330,6 +1397,7 @@ def create_app(
         st.subscribers[websocket] = subscribed_symbols
         st.subscriber_tokens[websocket] = token
         st.subscriber_queues[websocket] = queue
+        st.subscriber_loops[websocket] = asyncio.get_running_loop()
         st.subscriber_drops[websocket] = 0
 
         async def _sender():
@@ -1446,6 +1514,7 @@ def create_app(
             st.subscribers.pop(websocket, None)
             st.subscriber_tokens.pop(websocket, None)
             st.subscriber_queues.pop(websocket, None)
+            st.subscriber_loops.pop(websocket, None)
             st.subscriber_drops.pop(websocket, None)
             task = st.subscriber_tasks.pop(websocket, None)
             if task:

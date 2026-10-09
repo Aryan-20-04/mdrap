@@ -84,6 +84,26 @@ def test_invalid_api_key_returns_401(auth_setup):
     assert "Invalid or inactive API key" in r.json()["detail"]
 
 
+def test_token_hash_cannot_authenticate(auth_setup):
+    """A leaked token_hash must never grant API access (SEC-01)."""
+    client = auth_setup["client"]
+    sec = auth_setup["sec"]
+    admin_ent = sec.get_entitlement(auth_setup["admin_key"])
+    assert admin_ent is not None
+    r = client.get("/v1/events", headers={"X-API-Key": admin_ent.token_hash})
+    assert r.status_code == 401
+    assert "Invalid or inactive API key" in r.json()["detail"]
+
+
+def test_healthcheck_redacts_host_directory_paths(auth_setup):
+    """Public health endpoint must not leak full directory paths."""
+    client = auth_setup["client"]
+    r = client.get("/v1/health")
+    assert r.status_code == 200
+    db_path = r.json()["db"]["path"]
+    assert "/" not in db_path and "\\" not in db_path
+
+
 def test_bearer_token_authorization_header(auth_setup):
     client = auth_setup["client"]
     v_key = auth_setup["viewer_key"]

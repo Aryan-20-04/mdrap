@@ -103,6 +103,17 @@ class EngineDecision:
 
 
 @dataclass
+class RecoveryMetrics:
+    """Telemetry capturing replay recovery outcomes and skipped/corrupted frame accounting."""
+
+    replayed_records: int = 0
+    valid_records: int = 0
+    quarantined_records: int = 0
+    corrupted_frames: int = 0
+    skipped_offsets: int = 0
+
+
+@dataclass
 class EngineConfig:
     """Configuration options for Engine.open()."""
 
@@ -177,6 +188,7 @@ class Engine:
         self._default_sqlite_proj: Any = None
         self.log: Any = None
         self._lock = threading.RLock()
+        self.recovery_metrics: RecoveryMetrics = RecoveryMetrics()
 
         if path is not None:
             from .ingestlog import IngestLog
@@ -324,85 +336,95 @@ class Engine:
             return [] if not is_single else None  # type: ignore[return-value]
 
         with self._lock:
-            decisions: list[EngineDecision] = []
-            offsets: list[int] = []
-            valid_for_wal: list[RawEvent] = []
-            raw_to_offset: list[tuple[RawEvent, int]] = []
+            state_snapshot = self.state.to_dict()
+            try:
+                decisions: list[EngineDecision] = []
+                offsets: list[int] = []
+                valid_for_wal: list[RawEvent] = []
+                raw_to_offset: list[tuple[RawEvent, int]] = []
 
-            for raw in event_list:
-                # Stamp receive timestamp before append to ensure deterministic replay (C2)
-                if not raw.receive_timestamp:
-                    raw.receive_timestamp = self.clock.now()
+                for raw in event_list:
+                    # Stamp receive timestamp before append to ensure deterministic replay (C2)
+                    if not raw.receive_timestamp:
+                        raw.receive_timestamp = self.clock.now()
 
-                # Determine offset before append so deterministic raw_id is stamped and persisted in WAL (N1)
-                offset = (self.log.next_offset + len(valid_for_wal)) if self.log is not None else (self.state.event_count + len(decisions))
-                if not raw.raw_id:
-                    raw.raw_id = f"raw_{raw.source}_{offset}"
+                    # Determine offset before append so deterministic raw_id is stamped and persisted in WAL (N1)
+                    offset = (self.log.next_offset + len(valid_for_wal)) if self.log is not None else (self.state.event_count + len(decisions))
+                    if not raw.raw_id:
+                        raw.raw_id = f"raw_{raw.source}_{offset}"
 
-                # Enforce payload size limit at Engine boundary to protect WAL from stalling (N4)
-                if self.max_payload_bytes > 0:
-                    payload = raw.payload
-                    p_len = len(payload) if isinstance(payload, (str, bytes)) else (
-                        len(json.dumps(payload, default=str)) if isinstance(payload, dict) else len(str(payload))
-                    )
-                    if p_len > self.max_payload_bytes:
-                        q_id = f"q_{raw.source}_{offset}"
-                        q_row = (
-                            q_id,
-                            "OVERSIZE",
-                            raw.source,
-                            QualityStatus.INVALID.value,
-                            json.dumps([f"Payload size {p_len} bytes exceeds limit {self.max_payload_bytes} bytes"]),
-                            json.dumps({"size": p_len, "truncated": str(payload)[:256]}),
-                            raw.receive_timestamp,
+                    # Enforce payload size limit at Engine boundary to protect WAL from stalling (N4)
+                    if self.max_payload_bytes > 0:
+                        payload = raw.payload
+                        p_len = len(payload) if isinstance(payload, (str, bytes)) else (
+                            len(json.dumps(payload, default=str)) if isinstance(payload, dict) else len(str(payload))
                         )
-                        self.state.event_count += 1
-                        self.state.counts["INVALID"] += 1
-                        dec = EngineDecision(
-                            offset=offset,
-                            event_id=q_id,
-                            quality_status=QualityStatus.INVALID,
-                            reasons=[Reason.SCHEMA_VIOLATION.value],
-                            quarantine_row=q_row,
-                        )
-                        decisions.append(dec)
-                        offsets.append(offset)
-                        continue
+                        if p_len > self.max_payload_bytes:
+                            q_id = f"q_{raw.source}_{offset}"
+                            q_row = (
+                                q_id,
+                                "OVERSIZE",
+                                raw.source,
+                                QualityStatus.INVALID.value,
+                                json.dumps([f"Payload size {p_len} bytes exceeds limit {self.max_payload_bytes} bytes"]),
+                                json.dumps({"size": p_len, "truncated": str(payload)[:256]}),
+                                raw.receive_timestamp,
+                            )
+                            self.state.event_count += 1
+                            self.state.counts["INVALID"] += 1
+                            dec = EngineDecision(
+                                offset=offset,
+                                event_id=q_id,
+                                quality_status=QualityStatus.INVALID,
+                                reasons=[Reason.SCHEMA_VIOLATION.value],
+                                quarantine_row=q_row,
+                            )
+                            decisions.append(dec)
+                            offsets.append(offset)
+                            continue
 
-                valid_for_wal.append(raw)
-                raw_to_offset.append((raw, offset))
+                    valid_for_wal.append(raw)
+                    raw_to_offset.append((raw, offset))
 
-            if self.log is not None and valid_for_wal:
-                allocated = self.log.append_batch(valid_for_wal)
-                assert allocated == [off for _, off in raw_to_offset], "WAL allocated offsets diverged"
+                if self.log is not None and valid_for_wal:
+                    allocated = self.log.append_batch(valid_for_wal)
+                    assert allocated == [off for _, off in raw_to_offset], "WAL allocated offsets diverged"
 
-            for raw, offset in raw_to_offset:
-                offsets.append(offset)
-                self.state, dec = self.step(self.state, raw, self.clock, offset=offset)
-                decisions.append(dec)
+                for raw, offset in raw_to_offset:
+                    offsets.append(offset)
+                    self.state, dec = self.step(self.state, raw, self.clock, offset=offset)
+                    decisions.append(dec)
 
-            # Dispatch to subscribed projections atomically
-            if self._projections and decisions:
-                last_offset = offsets[-1]
-                for proj in self._projections:
-                    proj.apply(decisions, last_offset)
+                # Dispatch to subscribed projections atomically
+                if self._projections and decisions:
+                    last_offset = offsets[-1]
+                    for proj in self._projections:
+                        proj.apply(decisions, last_offset)
 
-            if is_single:
-                return decisions[0]
-            return decisions
+                if is_single:
+                    return decisions[0]
+                return decisions
+            except Exception:
+                # Durability / IO failure rollback (Task 5: Exception Safety & State Consistency)
+                self.state = EngineState.from_dict(state_snapshot)
+                raise
 
     def replay(
         self,
         from_offset: int = 0,
         to_offset: int | None = None,
         projection: Any | None = None,
-    ) -> list[EngineDecision]:
+        return_metrics: bool = False,
+    ) -> list[EngineDecision] | tuple[list[EngineDecision], RecoveryMetrics]:
         """Replay events from WAL from_offset up to to_offset."""
+        metrics = RecoveryMetrics()
         if self.log is None:
-            return []
+            self.recovery_metrics = metrics
+            return ([], metrics) if return_metrics else []
 
         decisions: list[EngineDecision] = []
         replay_state = self.create_initial_state()
+        initial_corrupt = getattr(self.log, "corrupted_frames_count", 0)
 
         for off, raw in self.log.iter_from(0):
             if off < from_offset:
@@ -412,11 +434,37 @@ class Engine:
                 break
             replay_state, dec = self.step(replay_state, raw, self.clock, offset=off)
             decisions.append(dec)
+            metrics.replayed_records += 1
+            if dec.quality_status == QualityStatus.INVALID:
+                metrics.quarantined_records += 1
+            else:
+                metrics.valid_records += 1
+
+        curr_corrupt = getattr(self.log, "corrupted_frames_count", 0)
+        metrics.corrupted_frames = curr_corrupt - initial_corrupt
+        self.recovery_metrics = metrics
 
         if projection is not None and decisions:
             projection.apply(decisions, decisions[-1].offset)
 
+        if return_metrics:
+            return decisions, metrics
         return decisions
+
+    def replay_with_metrics(
+        self,
+        from_offset: int = 0,
+        to_offset: int | None = None,
+        projection: Any | None = None,
+    ) -> tuple[list[EngineDecision], RecoveryMetrics]:
+        """Explicit typed variant of replay() returning decisions and RecoveryMetrics."""
+        res = self.replay(
+            from_offset=from_offset,
+            to_offset=to_offset,
+            projection=projection,
+            return_metrics=True,
+        )
+        return res  # type: ignore[return-value]
 
     def process(self, raw: RawEvent) -> CanonicalEvent | None:
         """Process a single raw event through the validation pipeline."""

@@ -14,6 +14,7 @@ import struct
 import threading
 import time
 import zlib
+from enum import IntEnum
 from typing import Iterator
 
 from .models import RawEvent
@@ -22,6 +23,18 @@ __stability__ = "stable"
 
 
 logger = logging.getLogger(__name__)
+
+
+class AckStatus(IntEnum):
+    """Acknowledgement boundary status for event persistence (Spec §5 / INV-DUR-001)."""
+
+    RECEIVED = 1          # Reached network socket / API boundary
+    ACCEPTED = 2          # Validated against schema and bounds
+    BUFFERED_APP = 3      # Staged in userspace application buffer
+    WRITTEN_OS = 4        # Flushed to OS kernel buffer cache (write + flush)
+    DURABLY_COMMITTED = 5 # Synchronized to non-volatile storage (fsync)
+    RECOVERED = 6         # Reconstructed from write-ahead log replay
+
 
 # Constants & Binary Layout
 LOG_MAGIC = b"MDRAPILG"  # 8 bytes
@@ -34,6 +47,7 @@ FRAME_HEADER_FORMAT = ">HHQdII"  # magic(2), res(2), offset(8), ts(8), length(4)
 FRAME_HEADER_SIZE = struct.calcsize(FRAME_HEADER_FORMAT)  # 28
 
 DEFAULT_MAX_SEGMENT_BYTES = 10 * 1024 * 1024  # 10 MB
+MAX_FRAME_PAYLOAD_BYTES = 16 * 1024 * 1024     # 16 MB boundary ceiling to prevent OOM on corrupted lengths
 
 
 class IngestLogError(Exception):
@@ -74,6 +88,7 @@ class IngestLog:
         self._bytes_since_fsync = 0
         self._last_fsync_ts = time.time()
         self._is_poisoned: bool = False
+        self.corrupted_frames_count: int = 0
         self._lock_file = None
 
         if lock:
@@ -261,6 +276,11 @@ class IngestLog:
                         raise IngestLogCorruptError(
                             f"Invalid frame magic 0x{f_magic:04x} in {filepath} at pos {pos} (offset={offset}): corrupted segment"
                         )
+
+                if length > MAX_FRAME_PAYLOAD_BYTES or length > self.max_segment_bytes:
+                    raise IngestLogCorruptError(
+                        f"Oversized frame length {length} exceeds maximum {MAX_FRAME_PAYLOAD_BYTES} in {filepath} at pos {pos}"
+                    )
 
                 payload_bytes = f.read(length)
                 if len(payload_bytes) < length:
@@ -568,10 +588,21 @@ class IngestLog:
                     f_magic, _, offset, ts, length, expected_crc = struct.unpack(FRAME_HEADER_FORMAT, frame_hdr_bytes)
                     if f_magic != FRAME_MAGIC:
                         break
+                    if length > MAX_FRAME_PAYLOAD_BYTES or length > self.max_segment_bytes:
+                        logger.warning(
+                            "Oversized frame length %d at offset %d in %s; skipping remaining segment",
+                            length, offset, path,
+                        )
+                        self.corrupted_frames_count += 1
+                        break
                     payload_bytes = f.read(length)
                     if len(payload_bytes) < length:
                         break
                     if (zlib.crc32(payload_bytes) & 0xFFFFFFFF) != expected_crc:
+                        self.corrupted_frames_count += 1
+                        logger.warning(
+                            "Corrupted CRC at offset %d in %s; skipping frame", offset, path
+                        )
                         continue
 
                     if offset >= start_offset:

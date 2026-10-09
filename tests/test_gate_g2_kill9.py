@@ -1,6 +1,11 @@
-"""Pytest integration for Gate G2 Kill-9 crash/recovery harness."""
+import os
+import sys
 
-from tests.gate_g2_harness import run_gate_g2_harness
+_TESTS_DIR = os.path.dirname(os.path.abspath(__file__))
+if _TESTS_DIR not in sys.path:
+    sys.path.insert(0, _TESTS_DIR)
+
+from gate_g2_harness import run_gate_g2_harness
 
 
 def test_gate_g2_kill9_recovery_smoke():

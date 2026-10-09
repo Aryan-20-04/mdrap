@@ -1,0 +1,189 @@
+{
+  "metadata": {
+    "platform": "Windows-11-10.0.26200-SP0",
+    "machine": "AMD64",
+    "processor": "Intel64 Family 6 Model 154 Stepping 4, GenuineIntel",
+    "python_version": "3.13.1",
+    "git_commit": "b891898a3f38fdf46a7454e19ee210f7dae19737",
+    "timestamp_utc": "2026-10-08T22:27:18Z"
+  },
+  "benchmarks": {
+    "1_native_core": {
+      "status": "PASSED",
+      "benchmark": "1. Native Engine Throughput & Latency",
+      "binary": "mdrap-core.exe",
+      "runs": 3,
+      "events_per_run": 500000,
+      "throughput_eps_median": 5011807.8,
+      "throughput_eps_max": 6066584.4,
+      "latency_ns_median": 199.5,
+      "latency_ns_min": 164.8,
+      "runs_detail": [
+        {
+          "run": 1,
+          "events": 500000,
+          "elapsed_s": 0.0824,
+          "throughput_eps": 6066584.4,
+          "latency_ns_per_tick": 164.8
+        },
+        {
+          "run": 2,
+          "events": 500000,
+          "elapsed_s": 0.1011,
+          "throughput_eps": 4948011.2,
+          "latency_ns_per_tick": 202.1
+        },
+        {
+          "run": 3,
+          "events": 500000,
+          "elapsed_s": 0.0998,
+          "throughput_eps": 5011807.8,
+          "latency_ns_per_tick": 199.5
+        }
+      ]
+    },
+    "2_python_overhead": {
+      "status": "PASSED",
+      "benchmark": "2. Python-to-Native Overhead",
+      "num_events": 50000,
+      "python_engine": {
+        "elapsed_s": 0.1683,
+        "throughput_eps": 297146.4,
+        "latency_ns_per_event": 3365.3
+      },
+      "native_fastpath_engine": {
+        "elapsed_s": 0.1309,
+        "throughput_eps": 382041.6,
+        "latency_ns_per_event": 2617.5
+      },
+      "speedup_ratio": 1.29
+    },
+    "3_shm_latency": {
+      "status": "PASSED",
+      "benchmark": "3. Shared-Memory Producer-to-Consumer Latency",
+      "concurrency_sweep": [
+        {
+          "sources": 1,
+          "events": 10000,
+          "p50_us": 2.1,
+          "p95_us": 2.3,
+          "p99_us": 4.2,
+          "p99_9_us": 48.7
+        },
+        {
+          "sources": 2,
+          "events": 10000,
+          "p50_us": 2.2,
+          "p95_us": 5.1,
+          "p99_us": 6.4,
+          "p99_9_us": 62.6
+        },
+        {
+          "sources": 4,
+          "events": 10000,
+          "p50_us": 2.1,
+          "p95_us": 2.4,
+          "p99_us": 4.6,
+          "p99_9_us": 19.2
+        },
+        {
+          "sources": 8,
+          "events": 10000,
+          "p50_us": 2.1,
+          "p95_us": 2.7,
+          "p99_us": 5.0,
+          "p99_9_us": 34.4
+        }
+      ]
+    },
+    "4_feed_parsing": {
+      "status": "PASSED",
+      "benchmark": "4. Feed Parsing and Normalization",
+      "num_events": 50000,
+      "binary_sbe_decode": {
+        "elapsed_s": 0.1555,
+        "throughput_eps": 321498.5,
+        "latency_ns_per_event": 3110.4
+      },
+      "python_json_decode": {
+        "elapsed_s": 0.1467,
+        "throughput_eps": 340742.9,
+        "latency_ns_per_event": 2934.8
+      },
+      "speedup_ratio": 0.94
+    },
+    "5_ingest_publication": {
+      "status": "PASSED",
+      "benchmark": "5. Ingestion-to-Publication Latency",
+      "num_events": 20000,
+      "elapsed_s": 0.2312,
+      "throughput_eps": 86505.9,
+      "latency_us": {
+        "p50": 9.6,
+        "p95": 14.1,
+        "p99": 22.0,
+        "p99_9": 115.0,
+        "max": 433.6
+      }
+    },
+    "6_persistence_wal": {
+      "status": "PASSED",
+      "benchmark": "6. Persistence and WAL Latency",
+      "num_events": 10000,
+      "sqlite_wal_batch": {
+        "elapsed_s": 0.1333,
+        "throughput_eps": 75015.0,
+        "latency_us_per_event": 13.33
+      },
+      "ingestlog_binary_wal": {
+        "elapsed_s": 0.4472,
+        "throughput_eps": 22361.6,
+        "latency_us_per_event": 44.72
+      }
+    },
+    "7_full_pipeline": {
+      "status": "PASSED",
+      "benchmark": "7. Full-Pipeline and End-to-End Latency",
+      "num_events": 20000,
+      "elapsed_s": 1.9698,
+      "throughput_eps": 10153.1,
+      "processing_latency_us": {
+        "p50": 91498438374723.2,
+        "p95": 91498442465040.45,
+        "p99": 91498442832947.97,
+        "p99_9": 91498442945353.98,
+        "max": 91498442949803.11
+      },
+      "e2e_latency_us": {
+        "p50": 91498438375068.42,
+        "p95": 91498442466025.11,
+        "p99": 91498442833865.88,
+        "p99_9": 91498442945372.11,
+        "max": 91498442950742.48
+      },
+      "invariants": {
+        "dropped_events": 0,
+        "zero_loss_verified": true
+      }
+    },
+    "8_replay_recovery": {
+      "status": "PASSED",
+      "benchmark": "8. Replay and Recovery Throughput",
+      "events_written": 25000,
+      "events_replayed": 25000,
+      "elapsed_s": 0.3903,
+      "throughput_eps": 64046.5
+    },
+    "9_backpressure": {
+      "status": "PASSED",
+      "benchmark": "9. Backpressure and Slow-Consumer Behavior",
+      "total_events": 20000,
+      "burst_events": 4000,
+      "drain_time_ms": 269.9,
+      "total_elapsed_s": 1.6933,
+      "effective_throughput_eps": 11811.2,
+      "data_loss_count": 0,
+      "zero_loss_verified": true
+    }
+  }
+}

@@ -37,6 +37,7 @@ import os
 import sqlite3
 import threading
 import time
+from enum import Enum
 from typing import Any
 
 from .models import CanonicalEvent
@@ -44,6 +45,14 @@ from .models import CanonicalEvent
 __stability__ = "stable"
 
 logger = logging.getLogger("mdrap.storage")
+
+
+class PersistenceMode(str, Enum):
+    """Explicit persistence modes governed by operational requirements (Spec §5 & Task 1)."""
+
+    PRODUCTION_DURABLE = "production_durable"
+    DEVELOPMENT_IN_MEMORY = "development_in_memory"
+    DEGRADED = "degraded"
 
 
 class StorageConflictError(RuntimeError):
@@ -324,7 +333,12 @@ def _read_synchronized(method):
 class Store:
     """Thread-safe SQLite storage engine for MDRAP event stream and analytics."""
 
-    def __init__(self, path: str = ":memory:", durability: str = "balanced"):
+    def __init__(
+        self,
+        path: str = ":memory:",
+        durability: str = "balanced",
+        persistence_mode: Optional[str] = None,
+    ):
         self.path = path
         self.db_path = path
         self.durability = (durability or "balanced").lower()
@@ -340,6 +354,15 @@ class Store:
             or "mode=memory" in path
             or path.startswith("file::memory:")
         )
+        self.is_memory: bool = is_mem
+        if persistence_mode is not None:
+            self.persistence_mode = str(persistence_mode)
+        else:
+            self.persistence_mode = (
+                PersistenceMode.DEVELOPMENT_IN_MEMORY.value
+                if is_mem
+                else PersistenceMode.PRODUCTION_DURABLE.value
+            )
         self._lock = threading.RLock()
         self._read_lock = self._lock if is_mem else threading.RLock()
         with self._lock:

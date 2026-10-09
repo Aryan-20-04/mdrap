@@ -26,7 +26,7 @@ def test_import_mdrap_api_without_salt_or_demo_does_not_crash():
         [
             sys.executable,
             "-c",
-            "import os; os.environ.pop('MDRAP_DEMO', None); os.environ.pop('MDRAP_API_KEY_SALT', None); import mdrap.api; print('IMPORT_SUCCESS')",
+            "import sys; sys.path.insert(0, 'src'); import os; os.environ.pop('MDRAP_DEMO', None); os.environ.pop('MDRAP_API_KEY_SALT', None); import mdrap.api; print('IMPORT_SUCCESS')",
         ],
         capture_output=True,
         text=True,
