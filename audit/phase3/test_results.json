@@ -1,0 +1,56 @@
+{
+  "timestamp": 1791533570.0,
+  "summary": {
+    "total_selected": 30,
+    "passed": 30,
+    "failed": 0,
+    "skipped": 0,
+    "duration_s": 34.70
+  },
+  "workstreams": {
+    "workstream_e_sdk_conformance": {
+      "passed": 3,
+      "failed": 0,
+      "tests": [
+        "tests/test_phase3_sdk_conformance.py::test_sbe_binary_layout_conformance",
+        "tests/test_phase3_sdk_conformance.py::test_cpp_consumer_sdk_execution",
+        "tests/test_phase3_sdk_conformance.py::test_java_consumer_sdk_execution"
+      ]
+    },
+    "workstream_f_ingress_adapters": {
+      "passed": 4,
+      "failed": 0,
+      "tests": [
+        "tests/test_phase3_ingress.py::test_ingress_config_validation",
+        "tests/test_phase3_ingress.py::test_ingress_adapter_lifecycle",
+        "tests/test_phase3_ingress.py::test_ingress_gap_and_duplicate_detection",
+        "tests/test_phase3_ingress.py::test_ingress_normalization"
+      ]
+    },
+    "workstream_h_licensing_metering": {
+      "passed": 4,
+      "failed": 0,
+      "tests": [
+        "tests/test_phase3_metering.py::test_entitlement_verification_fail_closed",
+        "tests/test_phase3_metering.py::test_durable_usage_recording_and_idempotency",
+        "tests/test_phase3_metering.py::test_restart_durability",
+        "tests/test_phase3_metering.py::test_report_exports_json_and_csv"
+      ]
+    },
+    "workstream_i_high_availability": {
+      "passed": 5,
+      "failed": 0,
+      "tests": [
+        "tests/test_phase3_ha.py::test_heartbeat_exchange",
+        "tests/test_phase3_ha.py::test_failover_on_primary_silence",
+        "tests/test_phase3_ha.py::test_stale_fencing_token_rejection",
+        "tests/test_phase3_ha.py::test_split_brain_resolution",
+        "tests/test_phase3_ha.py::test_standby_catchup_syncing_state"
+      ]
+    },
+    "core_regression_security_invariants": {
+      "passed": 14,
+      "failed": 0
+    }
+  }
+}

@@ -249,6 +249,29 @@ class FailoverNode:
         """Take node offline for maintenance."""
         self._transition_to(NodeState.MAINTENANCE, reason="Operator maintenance")
 
+    def assert_fencing_token(self, token: int) -> None:
+        """Verify that an operation token matches the active fencing token.
+
+        Raises StaleEpochError if the token is stale or node is not PRIMARY.
+        """
+        if self.state != NodeState.PRIMARY:
+            raise StaleEpochError(
+                f"Node {self.node_id} is in state {self.state}, cannot write as PRIMARY"
+            )
+        if token < self.fencing_token:
+            raise StaleEpochError(
+                f"Fencing token {token} is stale (active cluster fencing token is {self.fencing_token})"
+            )
+
+    def replicate_commit(self, seq: int) -> None:
+        """Record replication progress on a standby node."""
+        if self.state not in (NodeState.STANDBY, NodeState.SYNCING):
+            return
+        if seq >= self._primary_last_seq and self.state == NodeState.SYNCING:
+            self._transition_to(
+                NodeState.STANDBY, reason="Standby caught up to primary sequence"
+            )
+
     def fail(self, reason: str = "unrecoverable error") -> None:
         """Mark node as FAILED."""
         self._transition_to(NodeState.FAILED, reason=reason)

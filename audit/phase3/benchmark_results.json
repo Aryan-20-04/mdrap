@@ -1,0 +1,30 @@
+{
+  "timestamp": 1791533510.190263,
+  "ingress_adapter": {
+    "event_count": 50000,
+    "elapsed_s": 0.2689,
+    "rate_eps": 185969.1,
+    "p50_us": 4.6,
+    "p95_us": 6.1,
+    "p99_us": 11.5,
+    "max_us": 503.9
+  },
+  "durable_metering": {
+    "batch_count": 20000,
+    "elapsed_s": 3.3253,
+    "rate_ops": 6014.4,
+    "p50_us": 65.8,
+    "p95_us": 174.7,
+    "p99_us": 3022.8,
+    "max_us": 26750.3
+  },
+  "failover_heartbeats": {
+    "heartbeat_count": 50000,
+    "elapsed_s": 0.0971,
+    "rate_ops": 514908.7,
+    "p50_us": 1.7,
+    "p95_us": 1.9,
+    "p99_us": 2.4,
+    "max_us": 88.1
+  }
+}
