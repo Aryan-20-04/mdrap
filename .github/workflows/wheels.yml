@@ -21,7 +21,7 @@ jobs:
         env:
           CIBW_TEST_COMMAND: "python -c \"import mdrap; from mdrap.engine import Engine; from mdrap.ingestlog import IngestLog; print('Wheel test passed')\""
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: cibw-wheels-${{ matrix.os }}
           path: ./wheelhouse/*.whl
