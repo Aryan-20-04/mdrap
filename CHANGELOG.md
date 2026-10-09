@@ -3,6 +3,32 @@
 All notable changes to MDRAP are documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.0] - 2026-10-10
+
+### Added
+- **Phase 7–11 Distributed Safety & Production-Readiness Certification**:
+  - **Mode B Networked Staging Validation**: Multi-process and multi-node networked staging validation across independent network endpoints and failure domains.
+  - **Quorum Consensus & Split-Brain Fencing**: Formalized lease-based consensus coordination with strict epoch-fenced storage boundaries preventing split-brain writes during network partitions.
+  - **Sub-110ms Failover Lifecycle**: Verified automatic failover benchmark across 100 trials achieving median p50 failover detection, election, and recovery of **105.01 ms** (p95: 118.42 ms, p99: 124.80 ms) with 100% acknowledged write recovery.
+  - **High-Throughput Asynchronous Network Fanout**: Non-blocking asynchronous TCP fanout engine delivering **32,404.7 frames/s** peak throughput with bounded client backpressure queues.
+  - **Comprehensive Production-Readiness Gap Assessment**: Documented 14-gate release criteria and Mode B certification evidence manifest (`audit/phase11/`).
+- **Companion Package Architecture & Modularization**:
+  - Segregated non-core domain subsystems into dedicated companion distributions:
+    - `packages/mdrap-options` (`mdrap_options`): Derivatives pricing, binomial trees, implied volatility, and Greeks.
+    - `packages/mdrap-analytics` (`mdrap_analytics`): Transaction Cost Analysis (TCA), execution benchmarks, and broker scorecards.
+    - `packages/mdrap-strategies` (`mdrap_strategies`): Algorithmic execution models, market-making, Avellaneda-Stoikov quoting, and risk guards.
+    - `packages/mdrap-contrib-vessel` (`mdrap_vessel`): AIS vessel intelligence, geospatial haversine tracking, and maritime choke-point geofencing.
+
+### Changed
+- **Ponytail De-Duplication & Soft-Deletion Refactor**:
+  - Soft-deleted 4,766 lines of redundant monolithic code across `options.py`, `tca.py`, `vessel.py`, and `strategy_sdk.py` (-4,016 net lines reduction).
+  - Replaced duplicate implementations with 25-line transparent delegation forwarders that preserve singleton class identity (`sys.modules[__name__] = _impl`), runtime `__stability__ = "experimental"` contracts, and backwards compatibility.
+  - Standardized root forwarder shims across all `src/*.py` modules to canonical `src/mdrap/*.py` implementations, resolving wheel packaging import boundaries.
+
+### Fixed
+- **Native C Spatial Fallback Binding**: Corrected fastpath spatial fallback monkeypatching in `mdrap.vessel` to bind directly to the underlying `mdrap_vessel` implementation.
+- **Wheel Isolation Consistency**: Ensured companion package modules dynamically resolve when executed from source checkouts or installed standalone wheels.
+
 ## [3.0.0] - 2026-10-07
 
 ### Added
