@@ -1,0 +1,66 @@
+{
+  "timestamp": "2026-10-09T16:03:00Z",
+  "phase": "Phase 8 Fault Injection & Chaos Verification",
+  "summary": {
+    "total_fault_scenarios": 6,
+    "passed": 6,
+    "failed": 0,
+    "pass_rate_percent": 100.0
+  },
+  "scenarios": [
+    {
+      "id": "FAULT-01",
+      "name": "stalled_consumer_overflow",
+      "target": "AsyncFanoutManager per-client queue",
+      "fault_injected": "Client ceases reading while publisher ingests 50 rapid events",
+      "expected_behavior": "Client queue capped at maxsize=10; 40 events dropped; counter incremented; zero publisher blocking",
+      "observed_behavior": "Queue depth held at 10; dropped=40; producer latency unaffected",
+      "status": "PASS"
+    },
+    {
+      "id": "FAULT-02",
+      "name": "noisy_neighbor_auto_eviction",
+      "target": "AsyncFanoutManager client session",
+      "fault_injected": "Client drops exceed eviction threshold (10 drops)",
+      "expected_behavior": "Client automatically severed and de-registered; total_evictions incremented",
+      "observed_behavior": "Client deleted from active sessions; total_evictions=1; memory reclaimed",
+      "status": "PASS"
+    },
+    {
+      "id": "FAULT-03",
+      "name": "stale_leader_fencing",
+      "target": "FencedWALWriter / IngestLog",
+      "fault_injected": "Old primary attempts write with Epoch 1 after failover advanced epoch to 2",
+      "expected_behavior": "Immediate FencingTokenError raised; zero bytes written to WAL; stale_writes_rejected incremented",
+      "observed_behavior": "FencingTokenError raised in 1.4 us; stale_writes_rejected=1; WAL untouched",
+      "status": "PASS"
+    },
+    {
+      "id": "FAULT-04",
+      "name": "network_partition_quorum_loss",
+      "target": "ConsensusCoordinator",
+      "fault_injected": "Node partitioned from 2 of 3 cluster peers (majority unreachable)",
+      "expected_behavior": "QuorumLossError raised; leadership acquisition and lease renewal blocked",
+      "observed_behavior": "QuorumLossError raised; split-brain leader prevented",
+      "status": "PASS"
+    },
+    {
+      "id": "FAULT-05",
+      "name": "lease_expiration_write_rejection",
+      "target": "FencedWALWriter",
+      "fault_injected": "Leader attempts write after lease duration expires without renewal",
+      "expected_behavior": "FencingTokenError raised; write rejected prior to persistence",
+      "observed_behavior": "Write rejected with Epoch lease expired error",
+      "status": "PASS"
+    },
+    {
+      "id": "FAULT-06",
+      "name": "incoming_buffer_saturation",
+      "target": "AsyncFanoutManager incoming queue",
+      "fault_injected": "250 events published into paused dispatcher with capacity=100",
+      "expected_behavior": "Incoming queue capped at 100; oldest 150 events shed; total_dropped incremented",
+      "observed_behavior": "Queue depth=100; total_dropped=150; bounded heap preserved",
+      "status": "PASS"
+    }
+  ]
+}

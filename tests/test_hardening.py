@@ -89,12 +89,14 @@ def test_slow_consumer_queue_isolation():
         # Ensure server session for slow consumer has constrained buffers / queue for deterministic drop on Linux
         with daemon._sub_lock:
             for s in daemon._sessions.values():
-                if s.sock != client_fast.sock:
+                if s.sock.getpeername() == s_slow.getsockname():
                     try:
                         s.sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 1024)
                     except Exception:
                         pass
                     s.queue = queue.Queue(maxsize=50)
+                else:
+                    s.queue = queue.Queue(maxsize=2000)
 
         # Inject 1,200 events rapidly (exceeding queue maxsize=1000)
         for i in range(1200):

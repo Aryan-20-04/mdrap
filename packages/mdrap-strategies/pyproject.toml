@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mdrap-strategies"
+version = "1.0.0"
+description = "MDRAP Algorithmic Strategy SDK, Avellaneda-Stoikov Market Making, and Execution Models"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [{ name = "MDRAP Team" }]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Topic :: Office/Business :: Financial :: Investment",
+]
+dependencies = [
+    "mdrap-core>=3.0.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["mdrap_strategies*"]

@@ -1,0 +1,81 @@
+{
+  "timestamp": "2026-10-09T16:04:00Z",
+  "phase": "Phase 8 Comprehensive Benchmark Profile",
+  "environment": {
+    "os": "Windows 11 Enterprise x86_64",
+    "python": "3.13.1",
+    "cpu_cores": 8,
+    "fastpath_c_accelerated": true
+  },
+  "layer1_native_c_hotpath": {
+    "peak_throughput_eps": 20621677,
+    "sustained_10m_throughput_eps": 16597784,
+    "latency_ns_per_tick": {
+      "min": 48.50,
+      "p50_equivalent": 60.20,
+      "mean": 68.80
+    }
+  },
+  "layer2_python_compute": {
+    "throughput_eps": 125892,
+    "latency_microseconds": {
+      "p50": 3.5,
+      "p95": 4.0,
+      "p99": 5.8,
+      "p99_9": 143.3
+    }
+  },
+  "layer3_wal_persistence": {
+    "engine": "BinaryJournal / IngestLog WAL",
+    "throughput_eps": 126941,
+    "latency_microseconds": {
+      "p50": 3.0,
+      "p95": 5.3,
+      "p99": 10.6,
+      "p99_9": 1265.4
+    }
+  },
+  "layer4_partitioned_fleet": {
+    "shards": 2,
+    "throughput_eps": 22994.2,
+    "latency_microseconds": {
+      "p50": 8.2,
+      "p99": 26.5
+    },
+    "memory_delta_mb": 4.122
+  },
+  "workstream_b_async_fanout": {
+    "max_concurrent_clients_tested": 100,
+    "publish_throughput_eps": 382502.8,
+    "egress_delivery_frames_per_sec": 797770.4,
+    "publisher_handoff_latency_us": {
+      "p50": 0.70,
+      "p95": 0.90,
+      "p99": 2.00
+    },
+    "delivery_rate_percent": 100.0,
+    "head_of_line_blocking_observed": false
+  },
+  "workstream_c_ha_failover": {
+    "trials": 20,
+    "failover_transition_latency_ms": {
+      "p50": 0.002,
+      "p95": 0.009,
+      "p99": 0.009
+    },
+    "stale_write_rejection_latency_us": {
+      "p50": 1.40,
+      "p99": 7.20
+    },
+    "stale_writes_rejected_percent": 100.0,
+    "split_brain_prevented": true
+  },
+  "workstream_d_socket_ingress": {
+    "tcp_loopback_p50_us": 13.5,
+    "tcp_loopback_p99_us": 55.3,
+    "udp_loopback_p50_us": 10.2,
+    "udp_loopback_p99_us": 26.5,
+    "physical_bypass_certified": false,
+    "status": "ENVIRONMENT_LIMITED"
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "timestamp": "2026-10-09T15:54:22Z",
+  "trials": 20,
+  "cluster_topology": {
+    "nodes": [
+      "node_primary",
+      "node_secondary",
+      "node_arbiter"
+    ],
+    "quorum_size": 2,
+    "fencing_boundary": "FencedWALWriter / IngestLog"
+  },
+  "failover_latency_ms": {
+    "p50": 0.002,
+    "p95": 0.009,
+    "p99": 0.009,
+    "mean": 0.002,
+    "min": 0.002,
+    "max": 0.009
+  },
+  "stale_fencing_rejection_latency_us": {
+    "p50": 1.4,
+    "p99": 7.2,
+    "mean": 1.795
+  },
+  "safety_verification": {
+    "split_brain_prevented": true,
+    "stale_writes_accepted": 0,
+    "stale_writes_rejected": 20,
+    "fencing_success_rate_percent": 100.0
+  }
+}

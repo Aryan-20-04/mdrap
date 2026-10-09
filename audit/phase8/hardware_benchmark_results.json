@@ -1,0 +1,56 @@
+{
+  "timestamp": "2026-10-09T15:55:41Z",
+  "host_environment": {
+    "os": "Windows 11 Enterprise x86_64",
+    "python_runtime": "3.13.1",
+    "socket_implementation": "Winsock2 standard kernel stack",
+    "hardware_bypass_available": false
+  },
+  "measurements": [
+    {
+      "transport": "TCP_LOOPBACK",
+      "packet_size_bytes": 64,
+      "packets_tested": 10000,
+      "latency_us": {
+        "p50": 13.5,
+        "p90": 18.8,
+        "p95": 31.5,
+        "p99": 55.3,
+        "p99_9": 136.4,
+        "mean": 15.9,
+        "min": 12.0,
+        "max": 229.7
+      }
+    },
+    {
+      "transport": "TCP_LOOPBACK",
+      "packet_size_bytes": 256,
+      "packets_tested": 10000,
+      "latency_us": {
+        "p50": 14.1,
+        "p90": 30.7,
+        "p95": 34.3,
+        "p99": 58.8,
+        "p99_9": 168.3,
+        "mean": 17.33,
+        "min": 12.4,
+        "max": 587.5
+      }
+    },
+    {
+      "transport": "UDP_LOOPBACK",
+      "packet_size_bytes": 64,
+      "packets_tested": 10000,
+      "latency_us": {
+        "p50": 10.2,
+        "p90": 11.0,
+        "p95": 11.6,
+        "p99": 26.5,
+        "p99_9": 161.8,
+        "mean": 10.97,
+        "min": 8.9,
+        "max": 479.2
+      }
+    }
+  ]
+}

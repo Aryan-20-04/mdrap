@@ -1,0 +1,60 @@
+{
+  "timestamp": "2026-10-09T15:44:30Z",
+  "phase": "Phase 8 Preflight Baseline",
+  "native_hotpath_layer1": {
+    "engine": "fastpath native C kernel (x86_64)",
+    "events_run": 1000000,
+    "runs": 5,
+    "peak_throughput_eps": 20621677,
+    "mean_throughput_eps": 15200235,
+    "latency_ns_per_tick": {
+      "run1": 68.10,
+      "run2": 94.00,
+      "run3": 63.70,
+      "run4": 69.70,
+      "run5": 48.50,
+      "min": 48.50,
+      "mean": 68.80
+    },
+    "sustained_10m_run": {
+      "events": 10000000,
+      "throughput_eps": 16597784,
+      "latency_ns_per_tick": 60.20
+    }
+  },
+  "python_compute_layer2": {
+    "events": 100000,
+    "seed": 42,
+    "throughput_eps": 125892,
+    "elapsed_seconds": 0.7943,
+    "latency_microseconds": {
+      "p50": 3.5,
+      "p95": 4.0,
+      "p99": 5.8,
+      "p99_9": 143.3
+    }
+  },
+  "persistence_layer3": {
+    "events": 50000,
+    "engine": "BinaryJournal / IngestLog WAL",
+    "throughput_eps": 126941,
+    "latency_microseconds": {
+      "p50": 3.0,
+      "p95": 5.3,
+      "p99": 10.6,
+      "p99_9": 1265.4
+    }
+  },
+  "partitioned_fleet_scaling": {
+    "events": 20000,
+    "shards": 2,
+    "partition_mode": "range (A-L vs M-Z)",
+    "throughput_eps": 22994.2,
+    "elapsed_seconds": 0.870,
+    "latency_microseconds": {
+      "p50": 8.2,
+      "p99": 26.5
+    },
+    "memory_delta_mb": 4.122
+  }
+}
