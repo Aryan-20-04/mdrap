@@ -1,7 +1,7 @@
 # MDRAP Phase 7 — Native Code Safety & Memory Management Review
 
 ## 1. Executive Summary & Review Scope
-MDRAP employs native C kernels ([`src/fastpath.c`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/fastpath.c), [`src/mdrap_core.c`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/mdrap_core.c)) to achieve high-throughput Simple Binary Encoding (SBE) deserialization, hardware CRC32 computation, and lock-free seqlock IPC ring buffer access.
+MDRAP employs native C kernels ([`src/fastpath.c`](src/fastpath.c), [`src/mdrap_core.c`](src/mdrap_core.c)) to achieve high-throughput Simple Binary Encoding (SBE) deserialization, hardware CRC32 computation, and lock-free seqlock IPC ring buffer access.
 
 This review evaluates the memory safety, integer boundaries, struct layouts, pointer lifetimes, and undefined behavior risks across all native and FFI interfaces.
 
@@ -28,6 +28,6 @@ This review evaluates the memory safety, integer boundaries, struct layouts, poi
 - **Padding Invariant**: Unused trailing bytes are explicitly padded with null bytes, preventing uninitialized memory disclosure.
 
 ### D. Lifetime & Object Ownership Across Python/C FFI
-- **Audit Target**: ctypes FFI bindings in [`src/fastpath.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/fastpath.py).
+- **Audit Target**: ctypes FFI bindings in [`src/fastpath.py`](src/fastpath.py).
 - **Finding**: Python manages memory lifetimes of all input bytes buffers. Native C functions operate as pure, non-allocating functions taking borrowed pointers, eliminating native memory leak risks.
 - **Valgrind / AddressSanitizer Verification**: Clean runs; 0 bytes leaked across 50,000 function calls.

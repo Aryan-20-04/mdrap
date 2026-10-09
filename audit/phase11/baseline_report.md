@@ -3,7 +3,7 @@
 ## 1. Executive Summary & Verification Context
 This report documents the preflight baseline established for **MDRAP Phase 11 — Independent-Host Staging, Distributed Safety Certification, and Production-Readiness Gap Closure**.
 
-The verification was conducted against the verified Git commit [`560d233`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/audit/phase10/phase10_exit_report.md) on branch `main` in the local execution environment, building upon the baseline established in Phase 10 (`25fc850`).
+The verification was conducted against the verified Git commit [`560d233`](audit/phase10/phase10_exit_report.md) on branch `main` in the local execution environment, building upon the baseline established in Phase 10 (`25fc850`).
 
 ---
 

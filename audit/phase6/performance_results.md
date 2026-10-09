@@ -1,7 +1,7 @@
 # MDRAP Phase 6 — Empirical Performance Results & Benchmark Verification
 
 ## 1. Executive Summary & Benchmark Scoreboard
-To validate the throughput, latency, and resource scaling claims of the horizontal symbol-partitioning architecture, a rigorous 20,000-event benchmark was executed using [`benchmarks/phase6_scaling_benchmark.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/benchmarks/phase6_scaling_benchmark.py) comparing Phase 5 single-node operations against the Phase 6 sharded fleet.
+To validate the throughput, latency, and resource scaling claims of the horizontal symbol-partitioning architecture, a rigorous 20,000-event benchmark was executed using [`benchmarks/phase6_scaling_benchmark.py`](benchmarks/phase6_scaling_benchmark.py) comparing Phase 5 single-node operations against the Phase 6 sharded fleet.
 
 The benchmark proved that partitioned sharding delivers a **6.28x throughput speedup** while holding tail latencies well within sub-millisecond execution budgets.
 

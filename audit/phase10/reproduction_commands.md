@@ -11,7 +11,7 @@ All commands are designed for **PowerShell** on Windows or **Bash** on Linux.
 
 ```powershell
 # 1. Clone or enter MDRAP repository
-cd C:\Users\KIIT0001\Desktop\Projects\mdrap
+cd .
 
 # 2. Configure mandatory staging environment secrets
 $env:MDRAP_API_KEY_SALT = "staging_cluster_salt_phase10_secret"

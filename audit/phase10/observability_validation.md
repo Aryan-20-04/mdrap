@@ -12,7 +12,7 @@ This report documents the verification of the **MDRAP Phase 10 Observability Arc
 ## 3. Telemetry Interfaces & Metrics Catalog
 
 ### 3.1 Prometheus Metrics (`/metrics`)
-Implemented in [`src/mdrap/prometheus.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/mdrap/prometheus.py) adhering to Prometheus exposition format 0.0.4:
+Implemented in [`src/mdrap/prometheus.py`](src/mdrap/prometheus.py) adhering to Prometheus exposition format 0.0.4:
 - `mdrap_events_ingested_total`: Cumulative raw ticks ingested across all active venue adapters.
 - `mdrap_events_canonical_total`: Cumulative verified canonical events produced.
 - `mdrap_events_quarantined_total`: Malformed, crossed, or anomalous frames diverted to quarantine.

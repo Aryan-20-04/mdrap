@@ -22,7 +22,7 @@ To prevent silent performance degradation from incremental code changes, MDRAP e
 
 ## 3. CI/CD Automated Enforcement Mechanism
 
-Enforcement is built directly into automated benchmark harnesses ([`benchmarks/phase6_scaling_benchmark.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/benchmarks/phase6_scaling_benchmark.py)):
+Enforcement is built directly into automated benchmark harnesses ([`benchmarks/phase6_scaling_benchmark.py`](benchmarks/phase6_scaling_benchmark.py)):
 
 ```python
 # Automated Budget Assertions in CI Harness

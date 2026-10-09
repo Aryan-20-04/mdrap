@@ -43,5 +43,5 @@ This preflight inspection establishes the ground truth of the repository before 
 - **Sharded Fleet (2-Shard Symbol Universe)**: 23,114.0 – 28,284.8 eps ($p50 = 6.2 - 7.8\text{ \mu s}$, $p99 = 15.9 - 27.5\text{ \mu s}$)
 - **Memory RSS Stability**: Delta bounded to $+4.115\text{ MB}$ over 20,000 continuous processed events.
 - **Data File Locations**:
-  - Test Baseline: [`audit/phase7/baseline_test_results.json`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/audit/phase7/baseline_test_results.json)
-  - Benchmark Baseline: [`audit/phase7/baseline_benchmark_results.json`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/audit/phase7/baseline_benchmark_results.json)
+  - Test Baseline: [`audit/phase7/baseline_test_results.json`](audit/phase7/baseline_test_results.json)
+  - Benchmark Baseline: [`audit/phase7/baseline_benchmark_results.json`](audit/phase7/baseline_benchmark_results.json)

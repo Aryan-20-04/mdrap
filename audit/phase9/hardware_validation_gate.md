@@ -12,7 +12,7 @@ This report establishes the baseline boundaries, details the software emulation 
 ---
 
 ## 2. Host Hardware Inventory & Capability Audit
-Data source: [`audit/phase9/environment_inventory.md`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/audit/phase9/environment_inventory.md)
+Data source: [`audit/phase9/environment_inventory.md`](audit/phase9/environment_inventory.md)
 
 | Subsystem | Local Environment State | Institutional Production Requirement | Variance / Gap |
 | :--- | :--- | :--- | :--- |

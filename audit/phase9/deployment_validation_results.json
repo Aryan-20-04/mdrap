@@ -4,11 +4,11 @@
   "topology": {
     "primary": {
       "port": 61517,
-      "db_path": "C:\\Users\\KIIT0001\\AppData\\Local\\Temp\\tmpeagf6gt3_uat_pri.db"
+      "db_path": "tmp/tmpeagf6gt3_uat_pri.db"
     },
     "secondary": {
       "port": 61518,
-      "db_path": "C:\\Users\\KIIT0001\\AppData\\Local\\Temp\\tmpd6jl4prp_uat_sec.db"
+      "db_path": "tmp/tmpd6jl4prp_uat_sec.db"
     }
   },
   "checks": [

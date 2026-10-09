@@ -8,21 +8,21 @@
       "role": "PRIMARY_CANDIDATE",
       "host": "127.0.0.1",
       "port": 54263,
-      "db_path": "C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\audit\\phase10\\staging_cluster_data\\node-01.db",
+      "db_path": "audit\\phase10\\staging_cluster_data\\node-01.db",
       "status": "ONLINE"
     },
     "node-02": {
       "role": "STANDBY_SYNC",
       "host": "127.0.0.1",
       "port": 54264,
-      "db_path": "C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\audit\\phase10\\staging_cluster_data\\node-02.db",
+      "db_path": "audit\\phase10\\staging_cluster_data\\node-02.db",
       "status": "ONLINE"
     },
     "node-03": {
       "role": "QUORUM_PEER",
       "host": "127.0.0.1",
       "port": 54265,
-      "db_path": "C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\audit\\phase10\\staging_cluster_data\\node-03.db",
+      "db_path": "audit\\phase10\\staging_cluster_data\\node-03.db",
       "status": "ONLINE"
     }
   },

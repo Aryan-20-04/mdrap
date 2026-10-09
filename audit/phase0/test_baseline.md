@@ -5,7 +5,7 @@
 **Host Environment**: `Windows-11-10.0.26200-SP0 (AMD64)`  
 **Python Runtime**: `CPython 3.13.1 (MSC v.1942 64-bit)`  
 **Native Toolchain**: `GCC (MinGW-w64) / Clang / MSVC cl.exe`  
-**Machine-Readable Log**: [`test_results.json`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/audit/phase0/test_results.json)  
+**Machine-Readable Log**: [`test_results.json`](audit/phase0/test_results.json)  
 **Status**: COMPLETE (Baseline Established)
 
 ---
@@ -27,7 +27,7 @@ However, adversarial inspection of the test harness reveals critical gaps betwee
 | **Operating System** | Microsoft Windows 11 Enterprise (Build 10.0.26200) |
 | **Architecture** | `x86_64` (AMD64, Intel Core i7 12th Gen / Alder Lake hybrid) |
 | **Python Version** | 3.13.1 |
-| **Virtualenv Path** | `C:\Users\KIIT0001\Desktop\Projects\mdrap\.venv-g0` |
+| **Virtualenv Path** | `.\.venv-g0` |
 | **Pytest Version** | `pytest 8.3.4` (Plugins: `anyio-4.13.0`, `asyncio-0.24.0`, `cov-6.0.0`, `mock-3.14.0`, `timeout-2.3.1`) |
 | **C Compiler** | `gcc (MinGW-w64)` targeting x86_64-w64-mingw32 |
 | **Native Targets** | `_fastpath_native.dll`, `mdrap-core.exe`, `_fastpath_c.cp313-win_amd64.pyd` |

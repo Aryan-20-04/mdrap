@@ -24,7 +24,7 @@ Prioritization order follows:
 - **Evidence**: `test_all_src_modules_declare_valid_stability_contract` failed in preflight because `src/mdrap/partition.py` lacked `__stability__`.
 - **Severity**: MEDIUM
 - **Proposed Change**: Add `__stability__ = "stable"` to `src/mdrap/partition.py` and `src/partition.py`.
-- **Affected Modules**: [`src/mdrap/partition.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/mdrap/partition.py), [`src/partition.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/partition.py)
+- **Affected Modules**: [`src/mdrap/partition.py`](src/mdrap/partition.py), [`src/partition.py`](src/partition.py)
 - **Dependencies**: None.
 - **Regression Risk**: Zero.
 - **Required Tests**: `tests/test_phase6_card10_stability_contract.py`.
@@ -35,7 +35,7 @@ Prioritization order follows:
 - **Finding ID**: FEAT-INVARIANT-VERIF
 - **Evidence**: Invariants INV-01 through INV-10 existed conceptually but lacked a dedicated property/metamorphic test harness.
 - **Severity**: HIGH
-- **Proposed Change**: Create [`tests/test_phase7_verification.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/tests/test_phase7_verification.py) implementing property-based fuzzing, metamorphic batch-size/replay invariance, and differential testing.
+- **Proposed Change**: Create [`tests/test_phase7_verification.py`](tests/test_phase7_verification.py) implementing property-based fuzzing, metamorphic batch-size/replay invariance, and differential testing.
 - **Affected Modules**: `tests/test_phase7_verification.py`, `src/gateway.py`, `src/quality.py`, `src/partition.py`.
 - **Dependencies**: Standard library only.
 - **Regression Risk**: Low.
@@ -47,7 +47,7 @@ Prioritization order follows:
 - **Finding ID**: FEAT-FAULT-INJECTION
 - **Evidence**: Fault-injection matrix scenarios (FI-01 through FI-05) required repeatable, automated pytest harnesses.
 - **Severity**: HIGH
-- **Proposed Change**: Create [`tests/test_phase7_fault_injection.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/tests/test_phase7_fault_injection.py) testing trailing truncation, CRC32 mutation, noisy-neighbor eviction, and fencing lock collisions.
+- **Proposed Change**: Create [`tests/test_phase7_fault_injection.py`](tests/test_phase7_fault_injection.py) testing trailing truncation, CRC32 mutation, noisy-neighbor eviction, and fencing lock collisions.
 - **Affected Modules**: `tests/test_phase7_fault_injection.py`, `src/journal.py`, `src/partition.py`.
 - **Dependencies**: Standard library.
 - **Regression Risk**: Low.
@@ -59,7 +59,7 @@ Prioritization order follows:
 - **Finding ID**: FEAT-HISTORICAL-VERIFIER
 - **Evidence**: Long-term audit integrity required an independent streaming tool verifying WAL segments and SQLite records in bounded memory.
 - **Severity**: HIGH
-- **Proposed Change**: Create [`src/historical_verifier.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/historical_verifier.py) and alias in [`src/mdrap/historical_verifier.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/mdrap/historical_verifier.py).
+- **Proposed Change**: Create [`src/historical_verifier.py`](src/historical_verifier.py) and alias in [`src/mdrap/historical_verifier.py`](src/mdrap/historical_verifier.py).
 - **Affected Modules**: `src/historical_verifier.py`, `src/journal.py`.
 - **Dependencies**: Standard library only (`struct`, `zlib`, `sqlite3`, `hashlib`).
 - **Regression Risk**: Zero (standalone tool).
@@ -71,7 +71,7 @@ Prioritization order follows:
 - **Finding ID**: FEAT-CI-ORCHESTRATOR
 - **Evidence**: CI checks were executed via separate manual commands; lacked single automated orchestrator emitting machine-readable results.
 - **Severity**: MEDIUM
-- **Proposed Change**: Create [`scripts/run_phase7_quality_gates.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/scripts/run_phase7_quality_gates.py) running Ruff, MyPy, pytest, verification suite, fault injection, and benchmark regression budgets.
+- **Proposed Change**: Create [`scripts/run_phase7_quality_gates.py`](scripts/run_phase7_quality_gates.py) running Ruff, MyPy, pytest, verification suite, fault injection, and benchmark regression budgets.
 - **Affected Modules**: `scripts/run_phase7_quality_gates.py`.
 - **Dependencies**: Standard library + project test runners.
 - **Regression Risk**: Zero.

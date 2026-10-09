@@ -32,7 +32,7 @@ Every metric traces directly to reproducible automated test harnesses and empiri
 ## 3. Detailed Component Breakdown Analysis
 
 ### 3.1 Failover Decomposition Across 100 Empirical Trials
-Across 100 consecutive empirical trials in [`failover_benchmark_results.json`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/audit/phase11/failover_benchmark_results.json):
+Across 100 consecutive empirical trials in [`failover_benchmark_results.json`](audit/phase11/failover_benchmark_results.json):
 - **Failure Detection (Lease Expiry)**: $104.91\text{ ms}$ ($99.91\%$ of total duration).
 - **Election & Quorum Decision**: $21.2\text{ µs}$ ($0.02\%$).
 - **Writer Fencing Registration**: $14.8\text{ µs}$ ($0.01\%$).

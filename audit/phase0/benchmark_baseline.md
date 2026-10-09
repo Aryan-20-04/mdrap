@@ -7,8 +7,8 @@
 **Compiler**: MinGW-w64 GCC 13.2.0 (`-O3 -mavx2 -march=native`)  
 **Python Runtime**: CPython 3.13.1 (64-bit)  
 **Git Revision**: `b891898a3f38fdf46a7454e19ee210f7dae19737`  
-**Machine-Readable Data**: [`benchmark_results.json`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/audit/phase0/benchmark_results.json)  
-**Harness Script**: [`benchmarks/phase0/run_phase0_benchmarks.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/benchmarks/phase0/run_phase0_benchmarks.py)  
+**Machine-Readable Data**: [`benchmark_results.json`](audit/phase0/benchmark_results.json)  
+**Harness Script**: [`benchmarks/phase0/run_phase0_benchmarks.py`](benchmarks/phase0/run_phase0_benchmarks.py)  
 **Status**: COMPLETE (Baseline Established)
 
 ---

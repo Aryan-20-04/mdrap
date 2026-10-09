@@ -1,7 +1,7 @@
 {
   "timestamp": "2026-10-09T16:39:40Z",
   "valid_segment_audit": {
-    "target_path": "C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\audit\\phase9\\data_e2e\\wal_logs\\segment_000000000000.log",
+    "target_path": "audit\\phase9\\data_e2e\\wal_logs\\segment_000000000000.log",
     "target_type": "IngestLog_Segment",
     "records_scanned": 1200,
     "bytes_scanned": 288511,
@@ -18,7 +18,7 @@
     "details": []
   },
   "corrupted_segment_audit": {
-    "target_path": "C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\audit\\phase9\\data_e2e\\segment_corrupted.log",
+    "target_path": "audit\\phase9\\data_e2e\\segment_corrupted.log",
     "target_type": "IngestLog_Segment",
     "records_scanned": 1200,
     "bytes_scanned": 288511,
@@ -37,7 +37,7 @@
     ]
   },
   "truncated_segment_audit": {
-    "target_path": "C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\audit\\phase9\\data_e2e\\segment_truncated.log",
+    "target_path": "audit\\phase9\\data_e2e\\segment_truncated.log",
     "target_type": "IngestLog_Segment",
     "records_scanned": 1199,
     "bytes_scanned": 288466,
@@ -56,7 +56,7 @@
     ]
   },
   "sqlite_store_audit": {
-    "target_path": "C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\audit\\phase9\\data_e2e\\market_data_uat.db",
+    "target_path": "audit\\phase9\\data_e2e\\market_data_uat.db",
     "target_type": "SQLite_Store",
     "records_scanned": 1197,
     "bytes_scanned": 917504,

@@ -4,7 +4,7 @@
 This assessment provides a formal architectural analysis of MDRAP's distributed consistency model, leader election mechanics, and persistence fencing boundaries, accompanied by empirical verification across 10 mandatory distributed failure scenarios.
 
 ### Algorithmic Classification:
-[`src/mdrap/consensus.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/mdrap/consensus.py) implements:
+[`src/mdrap/consensus.py`](src/mdrap/consensus.py) implements:
 $$\textbf{Quorum-Based Lease Coordination with Monotonic Epoch Fencing}$$
 
 It is **NOT** Raft or Multi-Paxos:

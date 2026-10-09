@@ -65,10 +65,10 @@ with tempfile.TemporaryDirectory(prefix="mdrap-install-verify-p11-") as temp_dir
     data = {
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "phase": "Phase 11",
-        "wheel_file": str(wheel_path),
+        "wheel_file": os.path.relpath(wheel_path, _REPO_ROOT).replace("\\", "/"),
         "wheel_size_bytes": os.path.getsize(wheel_path),
         "install_duration_seconds": install_duration,
-        "isolated_target": install_target,
+        "isolated_target": "tmp/mdrap-install-verify/site-packages",
         "clean_environment_import": "PASS",
         "subprocesses_executed": ["pip install --target", "python -S isolated import"],
         "output": res_import.stdout.strip().splitlines(),

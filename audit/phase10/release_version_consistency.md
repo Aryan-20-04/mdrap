@@ -7,9 +7,9 @@ This document provides the formal **Version Consistency Audit** for MDRAP Phase 
 
 | Artifact / Component | Location / Identifier | Declared Version | Consistency Status |
 |:---|:---|:---:|:---:|
-| **Platform Source Version** | [`src/mdrap/_version.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/mdrap/_version.py#L8) | `3.1.0` | **MATCH** |
-| **Package Init Export** | [`src/mdrap/__init__.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/mdrap/__init__.py#L14) | `3.1.0` | **MATCH** |
-| **PyProject Dynamic Hook** | [`pyproject.toml`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/pyproject.toml#L122) | `mdrap._version.__version__` (`3.1.0`) | **MATCH** |
+| **Platform Source Version** | [`src/mdrap/_version.py`](src/mdrap/_version.py#L8) | `3.1.0` | **MATCH** |
+| **Package Init Export** | [`src/mdrap/__init__.py`](src/mdrap/__init__.py#L14) | `3.1.0` | **MATCH** |
+| **PyProject Dynamic Hook** | [`pyproject.toml`](pyproject.toml#L122) | `mdrap._version.__version__` (`3.1.0`) | **MATCH** |
 | **Core Distribution Wheel** | `dist/mdrap_core-3.1.0-py3-none-any.whl` | `3.1.0` | **MATCH** |
 | **Release Candidate Tag** | Git working tree baseline | `v3.1.0-rc1` (commit `25fc850`) | **MATCH** |
 | **Legacy Global Environment** | User site-packages (`AppData/Roaming/...`) | `2.3.0` | **SHADOW DETECTED / ISOLATED** |

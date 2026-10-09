@@ -9,7 +9,7 @@ In compliance with Phase 11 Mandatory Rules §1.11, §1.15, and Institutional De
 
 ```powershell
 # Set repository root and staging security environment variables
-cd c:\Users\KIIT0001\Desktop\Projects\mdrap
+cd .
 $env:PYTHONPATH = ".;src"
 $env:MDRAP_API_KEY_SALT = "staging_cluster_salt_phase11_secret"
 $env:MDRAP_DAEMON_TOKEN = "staging_admin_token_phase11"

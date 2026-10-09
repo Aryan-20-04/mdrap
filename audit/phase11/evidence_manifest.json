@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-10-09T18:20:36Z",
+  "timestamp": "2026-10-09T19:17:48Z",
   "phase": "Phase 11 \u2014 Independent-Host Staging, Distributed Safety Certification, and Production-Readiness Gap Closure",
   "operating_mode": "Mode B (Networked Staging over TCP Sockets)",
   "environment": "Windows 11 Enterprise x86_64, CPython 3.13.1, Single Physical Host",
@@ -18,16 +18,16 @@
     {
       "filename": "baseline_report.md",
       "path": "audit/phase11/baseline_report.md",
-      "size_bytes": 3133,
-      "sha256": "7f5a31b3089dd4098a7ec2194edf0384b2def30240f2ace94b52d008f469e7b0",
+      "size_bytes": 3141,
+      "sha256": "8767cac92f63f13cda624a35bdc878a8496dadfb1eaee2cc44650cc5f9e2d192",
       "format": "MD",
       "status": "VERIFIED"
     },
     {
       "filename": "benchmark_comparison.md",
       "path": "audit/phase11/benchmark_comparison.md",
-      "size_bytes": 4744,
-      "sha256": "fcef629970f295254227342f46b01f39cf5b16351ecb7557d62c112d3c9ef19a",
+      "size_bytes": 4753,
+      "sha256": "4d0d668f14b6a9dfea1a166989c3290f802692978da3504710f32293e2b07cef",
       "format": "MD",
       "status": "VERIFIED"
     },
@@ -50,8 +50,8 @@
     {
       "filename": "distributed_consistency_assessment.md",
       "path": "audit/phase11/distributed_consistency_assessment.md",
-      "size_bytes": 7200,
-      "sha256": "22d76261b4bfe4c3004d7cfa0bc1c76b0c50df36d09e22c938b1463dd17d8c0c",
+      "size_bytes": 7247,
+      "sha256": "165689cd97e88a61ed2a1731a0fdd4ffb429bb3963e21098da1dc968e77c8d5f",
       "format": "MD",
       "status": "VERIFIED"
     },
@@ -130,8 +130,8 @@
     {
       "filename": "historical_integrity_results.json",
       "path": "audit/phase11/historical_integrity_results.json",
-      "size_bytes": 2786,
-      "sha256": "df7e84349c9ce67d633c3cdec3b7b03ba77a6d56ac49663409304eabab74cdeb",
+      "size_bytes": 2598,
+      "sha256": "ea5cb5968167dd8bbf9a116df90a80e8fc6c4ab73d446150f6375c2591af47c6",
       "format": "JSON",
       "status": "VERIFIED"
     },
@@ -178,8 +178,8 @@
     {
       "filename": "package_install_validation.json",
       "path": "audit/phase11/package_install_validation.json",
-      "size_bytes": 630,
-      "sha256": "bf8b0d1023f99d4a0be0a4328d209237e3b1e91be90db36eb0406577dfefe20d",
+      "size_bytes": 529,
+      "sha256": "dee4c04da4f6ba39d98ffbe6c57031080df30a6884af63165abf40b55c162c67",
       "format": "JSON",
       "status": "VERIFIED"
     },
@@ -194,8 +194,8 @@
     {
       "filename": "phase11_exit_report.md",
       "path": "audit/phase11/phase11_exit_report.md",
-      "size_bytes": 17946,
-      "sha256": "0d4a5ab25f345ad1bf3a37dfab71af88ff1631ef09c01b280feb0897ad52bb18",
+      "size_bytes": 18123,
+      "sha256": "4b034f444be47fc4fe63562309a3895ea0416f535904e2efd59f12babd471093",
       "format": "MD",
       "status": "VERIFIED"
     },
@@ -218,8 +218,8 @@
     {
       "filename": "reproduction_commands.md",
       "path": "audit/phase11/reproduction_commands.md",
-      "size_bytes": 3658,
-      "sha256": "e0ea3350aabe40bb5c9a3e500fa7de199aedb774284377039044def578f42936",
+      "size_bytes": 3717,
+      "sha256": "5bb8f940bfceadb3f28747cdfed94afbf4297d9983cd135a82bf441164306ac6",
       "format": "MD",
       "status": "VERIFIED"
     },
@@ -250,8 +250,8 @@
     {
       "filename": "security_validation.md",
       "path": "audit/phase11/security_validation.md",
-      "size_bytes": 3990,
-      "sha256": "a7ec2c66c745e4602407fc0f9ec4a221fb177a0473847ef7d82bfd063e91019f",
+      "size_bytes": 3995,
+      "sha256": "d7e12991e6119e463a44cf8d1e1787000213ff97cf6379d4826b3df27d4922fc",
       "format": "MD",
       "status": "VERIFIED"
     }

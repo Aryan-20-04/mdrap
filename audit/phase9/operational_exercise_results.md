@@ -28,7 +28,7 @@ The objective of these exercises is to prove that the platform's architectural s
   - Standby initiated quorum election, acquiring lease in $21.2\text{ \mu s}$.
   - Standby registered monotonic epoch increment $E \to E+1$ in $15.7\text{ \mu s}$.
 - **Data Impact**: Zero records dropped; incoming socket connections re-routed to new Primary.
-- **Evidence Reference**: [`audit/phase9/distributed_failure_results.json`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/audit/phase9/distributed_failure_results.json), [`audit/phase9/failover_benchmark_results.json`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/audit/phase9/failover_benchmark_results.json).
+- **Evidence Reference**: [`audit/phase9/distributed_failure_results.json`](audit/phase9/distributed_failure_results.json), [`audit/phase9/failover_benchmark_results.json`](audit/phase9/failover_benchmark_results.json).
 
 ### Drill 02: Zombie Writer Fencing Interception
 - **Trigger**: Former primary resumed network activity without knowledge of demotion, attempting 10 consecutive tick writes to the SQLite database.
@@ -37,7 +37,7 @@ The objective of these exercises is to prove that the platform's architectural s
   - All 10 write attempts raised `FencingError: Stale writer epoch 1 < current epoch 2`.
   - Rejection latency: $p50 = 15.7\text{ \mu s}$, $p99 = 24.1\text{ \mu s}$.
 - **Data Impact**: Zero phantom rows written; SQLite integrity check remained `ok`.
-- **Evidence Reference**: [`audit/phase9/fencing_validation.md`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/audit/phase9/fencing_validation.md).
+- **Evidence Reference**: [`audit/phase9/fencing_validation.md`](audit/phase9/fencing_validation.md).
 
 ### Drill 03: Toxic Market Data & Schema Mutation
 - **Trigger**: Stream injected with negative price trades, crossed quotes ($Bid > Ask$), zero size fills, and skipped sequence counters.
@@ -46,7 +46,7 @@ The objective of these exercises is to prove that the platform's architectural s
   - Quarantined all 6 invalid events into the SQLite `quarantine` table with complete raw payloads.
   - Valid canonical ticks continued through the pipeline without interruption.
 - **Data Impact**: Zero crashes, zero silent discards, 100% lineage provenance logged.
-- **Evidence Reference**: [`audit/phase9/end_to_end_test_results.json`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/audit/phase9/end_to_end_test_results.json).
+- **Evidence Reference**: [`audit/phase9/end_to_end_test_results.json`](audit/phase9/end_to_end_test_results.json).
 
 ### Drill 04: Slow Consumer Saturation & Auto-Eviction
 - **Trigger**: 10 slow consumers halted message consumption during a 2,000-event market burst, while 90 active consumers continued reading.
@@ -55,7 +55,7 @@ The objective of these exercises is to prove that the platform's architectural s
   - Excess frames dropped with observable drop counter increment.
   - After exceeding `eviction_drop_threshold=25`, all 10 stalled sessions were cleanly unlinked.
   - Active consumers received 100% of frames (2,000 / 2,000) with sub-microsecond publisher latency.
-- **Evidence Reference**: [`audit/phase9/fanout_stress_results.json`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/audit/phase9/fanout_stress_results.json).
+- **Evidence Reference**: [`audit/phase9/fanout_stress_results.json`](audit/phase9/fanout_stress_results.json).
 
 ### Drill 05: WAL Corruption & Tamper Detection
 - **Trigger**: Inverted byte injected into IngestLog WAL segment file.
@@ -63,7 +63,7 @@ The objective of these exercises is to prove that the platform's architectural s
   - `HistoricalVerifier` scanned 1,200 records in 25.6 ms.
   - Flagged CRC32 mismatch on frame 601 and marked segment status as `FAIL`.
   - Replaced corrupted Merkle root with warning audit report.
-- **Evidence Reference**: [`audit/phase9/historical_integrity_results.json`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/audit/phase9/historical_integrity_results.json).
+- **Evidence Reference**: [`audit/phase9/historical_integrity_results.json`](audit/phase9/historical_integrity_results.json).
 
 ---
 

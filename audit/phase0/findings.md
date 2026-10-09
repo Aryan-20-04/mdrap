@@ -32,7 +32,7 @@
 ### FINDING-SEC-001: Static API Key Salt & Fallback to Raw Token Hash as Authenticator
 - **Severity**: **Critical**
 - **Confidence**: **Confirmed**
-- **Affected File & Function**: [`src/security.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/security.py#L34-L40), `hash_api_key()`, and [`src/security.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/security.py#L515-L535), `SecurityManager.get_by_token_or_hash()`
+- **Affected File & Function**: [`src/security.py`](src/security.py#L34-L40), `hash_api_key()`, and [`src/security.py`](src/security.py#L515-L535), `SecurityManager.get_by_token_or_hash()`
 - **Exact Code Evidence**:
   ```python
   API_KEY_SALT: str = os.environ.get("MDRAP_API_KEY_SALT", "mdrap_kdf_v1")
@@ -61,7 +61,7 @@
 ### FINDING-IPC-001: 16-Character Symbol & Source Identifier Truncation in SHM Slot V3
 - **Severity**: **High**
 - **Confidence**: **Confirmed**
-- **Affected File & Function**: [`src/fastpath.c`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/fastpath.c#L180-L215), `FastSlotV3` struct layout; [`src/shm.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/shm.py#L110-L140), `SHMWriter.write_tick()`
+- **Affected File & Function**: [`src/fastpath.c`](src/fastpath.c#L180-L215), `FastSlotV3` struct layout; [`src/shm.py`](src/shm.py#L110-L140), `SHMWriter.write_tick()`
 - **Exact Code Evidence**:
   In `fastpath.c`:
   ```c
@@ -90,7 +90,7 @@
 ### FINDING-QUAL-001: Boolean Primitives and NaN Values Ingress Validation Bypass
 - **Severity**: **High**
 - **Confidence**: **Confirmed**
-- **Affected File & Function**: [`src/gateway.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/gateway.py#L168-L184), `normalize()`; [`src/models.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/models.py#L635-L657)
+- **Affected File & Function**: [`src/gateway.py`](src/gateway.py#L168-L184), `normalize()`; [`src/models.py`](src/models.py#L635-L657)
 - **Exact Code Evidence**:
   ```python
   if event_type_raw == "TRADE":
@@ -116,7 +116,7 @@
 ### FINDING-QUAL-002: Out-of-Order Reordering Buffer Traps Events if `drain_expired()` Omitted
 - **Severity**: **High**
 - **Confidence**: **Confirmed**
-- **Affected File & Function**: [`src/quality.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/quality.py#L415-L440), `QualityEngine.evaluate()`
+- **Affected File & Function**: [`src/quality.py`](src/quality.py#L415-L440), `QualityEngine.evaluate()`
 - **Exact Code Evidence**:
   ```python
   if jump > 1 and jump <= cfg.reorder_max_jump and len(sl.pending) < cfg.reorder_buffer_capacity:
@@ -137,7 +137,7 @@
 ### FINDING-DUR-001: In-Flight Batch Loss in Async Storage Writer Queue on Abrupt Termination
 - **Severity**: **High**
 - **Confidence**: **Confirmed**
-- **Affected File & Function**: [`src/mdrap/pipeline.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/mdrap/pipeline.py#L260-L268), `Pipeline.__init__()` and `flush()`
+- **Affected File & Function**: [`src/mdrap/pipeline.py`](src/mdrap/pipeline.py#L260-L268), `Pipeline.__init__()` and `flush()`
 - **Exact Code Evidence**:
   ```python
   self._write_queue: queue.Queue = queue.Queue(maxsize=128)
@@ -157,7 +157,7 @@
 ### FINDING-API-001: Sensitive Infrastructure Path Disclosure on Unauthenticated Endpoints
 - **Severity**: **Medium**
 - **Confidence**: **Confirmed**
-- **Affected File & Function**: [`src/api.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/api.py#L370-L420), `/v1/health` and `/health`
+- **Affected File & Function**: [`src/api.py`](src/api.py#L370-L420), `/v1/health` and `/health`
 - **Exact Code Evidence**:
   ```python
   @router.get("/health", response_model=HealthResponse, tags=["Health"])
@@ -180,7 +180,7 @@
 ### FINDING-API-002: Sequential TCP Client Broadcast Stalls Async Event Loop Under Slow Consumers
 - **Severity**: **Medium**
 - **Confidence**: **Confirmed**
-- **Affected File & Function**: [`src/gateway_tcp.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/gateway_tcp.py#L125-L147), `TCPGatewayServer.broadcast()`
+- **Affected File & Function**: [`src/gateway_tcp.py`](src/gateway_tcp.py#L125-L147), `TCPGatewayServer.broadcast()`
 - **Exact Code Evidence**:
   ```python
   for writer in list(self.clients):
@@ -199,7 +199,7 @@
 ### FINDING-SEQ-001: Monotonic Event Identifier Collision Across Process Restarts
 - **Severity**: **Medium**
 - **Confidence**: **Confirmed**
-- **Affected File & Function**: [`src/gateway.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/gateway.py#L25-L50)
+- **Affected File & Function**: [`src/gateway.py`](src/gateway.py#L25-L50)
 - **Exact Code Evidence**:
   ```python
   _event_counter = itertools.count(1)
@@ -215,7 +215,7 @@
 ### FINDING-QUAL-003: Rule Specification Discrepancy on Locked Markets (`bid == ask`)
 - **Severity**: **Low**
 - **Confidence**: **Confirmed**
-- **Affected Files**: [`src/rules.def`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/rules.def#L23) vs [`src/quality.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/quality.py#L462)
+- **Affected Files**: [`src/rules.def`](src/rules.def#L23) vs [`src/quality.py`](src/quality.py#L462)
 - **Code Evidence**:
   - `rules.def`: `RULE_DEF(CROSSED_QUOTE, 6, "Bid price greater than or equal to ask price")`
   - `quality.py`: `if ev.bid_price > ev.ask_price:`

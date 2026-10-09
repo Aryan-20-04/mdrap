@@ -2,8 +2,8 @@
   "metadata": {
     "platform": "Windows-11-10.0.26200-SP0",
     "python_version": "3.13.1 (tags/v3.13.1:0671451, Dec  3 2024, 19:06:28) [MSC v.1942 64 bit (AMD64)]",
-    "executable": "C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\.venv-g0\\Scripts\\python.exe",
-    "pytest_executable": "C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\.venv-g0\\Scripts\\pytest.exe",
+    "executable": ".venv-g0\\Scripts\\python.exe",
+    "pytest_executable": ".venv-g0\\Scripts\\pytest.exe",
     "timestamp": 1791497674.1608489,
     "date_utc": "2026-10-08T22:14:34Z"
   },
@@ -13,7 +13,7 @@
       "name": "Python syntax and import checks",
       "category": "syntax_and_import",
       "command": [
-        "C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\.venv-g0\\Scripts\\python.exe",
+        ".venv-g0\\Scripts\\python.exe",
         "-m",
         "compileall",
         "src",
@@ -34,7 +34,7 @@
       "name": "Native compilation and extension build",
       "category": "native_build",
       "command": [
-        "C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\.venv-g0\\Scripts\\python.exe",
+        ".venv-g0\\Scripts\\python.exe",
         "build_fastpath.py"
       ],
       "status": "PASSED",
@@ -43,7 +43,7 @@
       "counts": {
         "build_targets": 3
       },
-      "stdout_tail": "[build] Compiling fastpath.c -> C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\src\\mdrap\\_fastpath_native.dll using gcc\n[build] SUCCESS! Compiled C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\src\\mdrap\\_fastpath_native.dll (196,551 bytes)\n[build] Compiling mdrap_core.c -> C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\src\\mdrap\\mdrap-core.exe using gcc\n[build] SUCCESS! Compiled C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\src\\mdrap\\mdrap-core.exe (375,544 bytes)\n[build] Compiling _fastpath_c.c -> C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\src\\mdrap\\_fastpath_c.cp313-win_amd64.pyd using gcc\n[build] SUCCESS! Compiled C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\src\\mdrap\\_fastpath_c.cp313-win_amd64.pyd (212,199 bytes)\n",
+      "stdout_tail": "[build] Compiling fastpath.c -> src\\mdrap\\_fastpath_native.dll using gcc\n[build] SUCCESS! Compiled src\\mdrap\\_fastpath_native.dll (196,551 bytes)\n[build] Compiling mdrap_core.c -> src\\mdrap\\mdrap-core.exe using gcc\n[build] SUCCESS! Compiled src\\mdrap\\mdrap-core.exe (375,544 bytes)\n[build] Compiling _fastpath_c.c -> src\\mdrap\\_fastpath_c.cp313-win_amd64.pyd using gcc\n[build] SUCCESS! Compiled src\\mdrap\\_fastpath_c.cp313-win_amd64.pyd (212,199 bytes)\n",
       "stderr_tail": ""
     },
     {
@@ -51,7 +51,7 @@
       "name": "Focused unit tests",
       "category": "unit",
       "command": [
-        "C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\.venv-g0\\Scripts\\pytest.exe",
+        ".venv-g0\\Scripts\\pytest.exe",
         "tests/test_canonical_models.py",
         "tests/test_config.py",
         "tests/test_config_loader.py",
@@ -72,7 +72,7 @@
         "warnings": 4,
         "errors": 0
       },
-      "stdout_tail": "...................................                                      [100%]\n============================== warnings summary ===============================\ntests/test_config.py::test_config_yaml_loading\n  C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\tests\\test_config.py:32: DeprecationWarning: Loading configuration from config.yaml via mdrap.config is deprecated in MDRAP v3.0.0; use mdrap.toml via mdrap.config_loader instead.\n    cfg = load_config()\n\ntests/test_metrics_flush.py::test_pipeline_live_flush_attribution\n  C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\tests\\test_metrics_flush.py:26: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.\n    pipeline = Pipeline(store=store, flush_interval_s=0.0001)\n\ntests/test_metrics_flush.py::test_pipeline_live_flush_attribution\ntests/test_rules_single_source.py::test_native_c_never_sets_user_bits\n  C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\src\\mdrap\\fastpath.py:843: DeprecationWarning: Loading configuration from config.yaml via mdrap.config is deprecated in MDRAP v3.0.0; use mdrap.toml via mdrap.config_loader instead.\n    self.cfg = load_config().quality\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n35 passed, 4 warnings in 0.69s\n",
+      "stdout_tail": "...................................                                      [100%]\n============================== warnings summary ===============================\ntests/test_config.py::test_config_yaml_loading\n  tests\\test_config.py:32: DeprecationWarning: Loading configuration from config.yaml via mdrap.config is deprecated in MDRAP v3.0.0; use mdrap.toml via mdrap.config_loader instead.\n    cfg = load_config()\n\ntests/test_metrics_flush.py::test_pipeline_live_flush_attribution\n  tests\\test_metrics_flush.py:26: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.\n    pipeline = Pipeline(store=store, flush_interval_s=0.0001)\n\ntests/test_metrics_flush.py::test_pipeline_live_flush_attribution\ntests/test_rules_single_source.py::test_native_c_never_sets_user_bits\n  src\\mdrap\\fastpath.py:843: DeprecationWarning: Loading configuration from config.yaml via mdrap.config is deprecated in MDRAP v3.0.0; use mdrap.toml via mdrap.config_loader instead.\n    self.cfg = load_config().quality\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n35 passed, 4 warnings in 0.69s\n",
       "stderr_tail": ""
     },
     {
@@ -80,7 +80,7 @@
       "name": "Engine and event determinism tests",
       "category": "determinism",
       "command": [
-        "C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\.venv-g0\\Scripts\\pytest.exe",
+        ".venv-g0\\Scripts\\pytest.exe",
         "tests/test_engine_deterministic.py",
         "tests/test_engine_facade.py",
         "tests/test_golden_parity.py",
@@ -101,7 +101,7 @@
         "warnings": 9,
         "errors": 0
       },
-      "stdout_tail": "tion from config.yaml via mdrap.config is deprecated in MDRAP v3.0.0; use mdrap.toml via mdrap.config_loader instead.\n    self.cfg = load_config().quality\n\ntests/test_decision_identity.py::test_decision_identity_pipeline_process_one_vs_process_batch\n  C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\tests\\test_decision_identity.py:152: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.\n    pipe1 = Pipeline(store=store1, quality=FastQualityEngine())\n\ntests/test_decision_identity.py::test_decision_identity_pipeline_process_one_vs_process_batch\n  C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\tests\\test_decision_identity.py:153: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.\n    pipe2 = Pipeline(store=store2, quality=FastQualityEngine())\n\ntests/test_quality.py::test_first_event_is_valid\ntests/test_quality.py::test_exact_duplicate_is_invalid\ntests/test_quality.py::test_sequence_gap_is_suspicious_not_invalid\ntests/test_quality.py::test_out_of_order_detected\ntests/test_quality.py::test_crossed_quote_is_invalid\n  C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\src\\mdrap\\quality.py:238: DeprecationWarning: Loading configuration from config.yaml via mdrap.config is deprecated in MDRAP v3.0.0; use mdrap.toml via mdrap.config_loader instead.\n    self.cfg = load_config().quality\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n32 passed, 9 warnings in 43.56s\n",
+      "stdout_tail": "tion from config.yaml via mdrap.config is deprecated in MDRAP v3.0.0; use mdrap.toml via mdrap.config_loader instead.\n    self.cfg = load_config().quality\n\ntests/test_decision_identity.py::test_decision_identity_pipeline_process_one_vs_process_batch\n  tests\\test_decision_identity.py:152: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.\n    pipe1 = Pipeline(store=store1, quality=FastQualityEngine())\n\ntests/test_decision_identity.py::test_decision_identity_pipeline_process_one_vs_process_batch\n  tests\\test_decision_identity.py:153: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.\n    pipe2 = Pipeline(store=store2, quality=FastQualityEngine())\n\ntests/test_quality.py::test_first_event_is_valid\ntests/test_quality.py::test_exact_duplicate_is_invalid\ntests/test_quality.py::test_sequence_gap_is_suspicious_not_invalid\ntests/test_quality.py::test_out_of_order_detected\ntests/test_quality.py::test_crossed_quote_is_invalid\n  src\\mdrap\\quality.py:238: DeprecationWarning: Loading configuration from config.yaml via mdrap.config is deprecated in MDRAP v3.0.0; use mdrap.toml via mdrap.config_loader instead.\n    self.cfg = load_config().quality\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n32 passed, 9 warnings in 43.56s\n",
       "stderr_tail": ""
     },
     {
@@ -109,7 +109,7 @@
       "name": "WAL, persistence, snapshot, and recovery tests",
       "category": "persistence",
       "command": [
-        "C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\.venv-g0\\Scripts\\pytest.exe",
+        ".venv-g0\\Scripts\\pytest.exe",
         "tests/test_ingestlog.py",
         "tests/test_journal.py",
         "tests/test_storage_backends_independent.py",
@@ -131,7 +131,7 @@
         "warnings": 8,
         "errors": 0
       },
-      "stdout_tail": "sts/test_journal.py::test_journal_reopen_and_append\n  C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\tests\\test_journal.py:104: DeprecationWarning: BinaryJournal in mdrap.journal is deprecated in MDRAP v3.0.0; use IngestLog WAL (mdrap.ingestlog) as the mandatory durability boundary instead.\n    with BinaryJournal(journal_path, initial_records=1024, epoch=12345) as j1:\n\ntests/test_journal.py::test_journal_reopen_and_append\n  C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\tests\\test_journal.py:111: DeprecationWarning: BinaryJournal in mdrap.journal is deprecated in MDRAP v3.0.0; use IngestLog WAL (mdrap.ingestlog) as the mandatory durability boundary instead.\n    with BinaryJournal(journal_path) as j2:\n\ntests/test_journal.py::test_journal_reopen_and_append\n  C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\tests\\test_journal.py:120: DeprecationWarning: BinaryJournalReader in mdrap.journal is deprecated in MDRAP v3.0.0; use IngestLog WAL (mdrap.ingestlog) as the mandatory durability boundary instead.\n    with BinaryJournalReader(journal_path) as reader:\n\ntests/test_journal.py::test_journal_corrupt_file_handling\n  C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\tests\\test_journal.py:135: DeprecationWarning: BinaryJournalReader in mdrap.journal is deprecated in MDRAP v3.0.0; use IngestLog WAL (mdrap.ingestlog) as the mandatory durability boundary instead.\n    BinaryJournalReader(journal_path)\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n36 passed, 14 skipped, 8 warnings in 1.77s\n",
+      "stdout_tail": "sts/test_journal.py::test_journal_reopen_and_append\n  tests\\test_journal.py:104: DeprecationWarning: BinaryJournal in mdrap.journal is deprecated in MDRAP v3.0.0; use IngestLog WAL (mdrap.ingestlog) as the mandatory durability boundary instead.\n    with BinaryJournal(journal_path, initial_records=1024, epoch=12345) as j1:\n\ntests/test_journal.py::test_journal_reopen_and_append\n  tests\\test_journal.py:111: DeprecationWarning: BinaryJournal in mdrap.journal is deprecated in MDRAP v3.0.0; use IngestLog WAL (mdrap.ingestlog) as the mandatory durability boundary instead.\n    with BinaryJournal(journal_path) as j2:\n\ntests/test_journal.py::test_journal_reopen_and_append\n  tests\\test_journal.py:120: DeprecationWarning: BinaryJournalReader in mdrap.journal is deprecated in MDRAP v3.0.0; use IngestLog WAL (mdrap.ingestlog) as the mandatory durability boundary instead.\n    with BinaryJournalReader(journal_path) as reader:\n\ntests/test_journal.py::test_journal_corrupt_file_handling\n  tests\\test_journal.py:135: DeprecationWarning: BinaryJournalReader in mdrap.journal is deprecated in MDRAP v3.0.0; use IngestLog WAL (mdrap.ingestlog) as the mandatory durability boundary instead.\n    BinaryJournalReader(journal_path)\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n36 passed, 14 skipped, 8 warnings in 1.77s\n",
       "stderr_tail": ""
     },
     {
@@ -139,7 +139,7 @@
       "name": "Protocol, IPC, and serialization tests",
       "category": "protocol_ipc",
       "command": [
-        "C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\.venv-g0\\Scripts\\pytest.exe",
+        ".venv-g0\\Scripts\\pytest.exe",
         "tests/test_sbe.py",
         "tests/test_protocol.py",
         "tests/test_itch.py",
@@ -164,7 +164,7 @@
         "warnings": 32,
         "errors": 0
       },
-      "stdout_tail": "jects\\mdrap\\tests\\test_multicast_arbitrator.py:135: DeprecationWarning: ABFeedArbitrator and mdrap.multicast_arbitrator are deprecated and non-core to the market data engine.\n    arb = ABFeedArbitrator(\n\ntests/test_fix.py::test_fix_session_logon_flow\n  C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\tests\\test_fix.py:51: DeprecationWarning: FIXSession and mdrap.fix_engine are deprecated and non-core to the market data engine.\n    session = FIXSession(sender_comp_id=\"MDRAP\", target_comp_id=\"BROKER\")\n\ntests/test_fix.py::test_logon_rejected_on_unknown_compid\n  C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\tests\\test_fix.py:70: DeprecationWarning: FIXSession and mdrap.fix_engine are deprecated and non-core to the market data engine.\n    session = FIXSession(sender_comp_id=\"MDRAP\", target_comp_id=\"BROKER\")\n\ntests/test_fix.py::test_fix_session_order_creation\n  C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\tests\\test_fix.py:82: DeprecationWarning: FIXSession and mdrap.fix_engine are deprecated and non-core to the market data engine.\n    session = FIXSession(sender_comp_id=\"MDRAP\", target_comp_id=\"BROKER\")\n\ntests/test_fix.py::test_fix_session_order_cancel\n  C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\tests\\test_fix.py:93: DeprecationWarning: FIXSession and mdrap.fix_engine are deprecated and non-core to the market data engine.\n    session = FIXSession(sender_comp_id=\"MDRAP\", target_comp_id=\"BROKER\")\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n68 passed, 32 warnings in 2.91s\n",
+      "stdout_tail": "jects\\mdrap\\tests\\test_multicast_arbitrator.py:135: DeprecationWarning: ABFeedArbitrator and mdrap.multicast_arbitrator are deprecated and non-core to the market data engine.\n    arb = ABFeedArbitrator(\n\ntests/test_fix.py::test_fix_session_logon_flow\n  tests\\test_fix.py:51: DeprecationWarning: FIXSession and mdrap.fix_engine are deprecated and non-core to the market data engine.\n    session = FIXSession(sender_comp_id=\"MDRAP\", target_comp_id=\"BROKER\")\n\ntests/test_fix.py::test_logon_rejected_on_unknown_compid\n  tests\\test_fix.py:70: DeprecationWarning: FIXSession and mdrap.fix_engine are deprecated and non-core to the market data engine.\n    session = FIXSession(sender_comp_id=\"MDRAP\", target_comp_id=\"BROKER\")\n\ntests/test_fix.py::test_fix_session_order_creation\n  tests\\test_fix.py:82: DeprecationWarning: FIXSession and mdrap.fix_engine are deprecated and non-core to the market data engine.\n    session = FIXSession(sender_comp_id=\"MDRAP\", target_comp_id=\"BROKER\")\n\ntests/test_fix.py::test_fix_session_order_cancel\n  tests\\test_fix.py:93: DeprecationWarning: FIXSession and mdrap.fix_engine are deprecated and non-core to the market data engine.\n    session = FIXSession(sender_comp_id=\"MDRAP\", target_comp_id=\"BROKER\")\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n68 passed, 32 warnings in 2.91s\n",
       "stderr_tail": ""
     },
     {
@@ -172,7 +172,7 @@
       "name": "Feed, pipeline, and replay integration tests",
       "category": "integration",
       "command": [
-        "C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\.venv-g0\\Scripts\\pytest.exe",
+        ".venv-g0\\Scripts\\pytest.exe",
         "tests/test_full_architecture_pipeline.py",
         "tests/test_pipeline_integration.py",
         "tests/test_databento_feed.py",
@@ -198,7 +198,7 @@
         "warnings": 30,
         "errors": 0
       },
-      "stdout_tail": "deprecated in MDRAP v3.0.0; use IngestLog WAL (mdrap.ingestlog) as the mandatory durability boundary instead.\n    with BinaryJournal(jnl_path, initial_records=16) as jnl:\n\ntests/test_replay_engine.py::test_replay_engine_load_from_binary_journal\n  C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\src\\mdrap\\replay.py:322: DeprecationWarning: BinaryJournalReader in mdrap.journal is deprecated in MDRAP v3.0.0; use IngestLog WAL (mdrap.ingestlog) as the mandatory durability boundary instead.\n    with BinaryJournalReader(filepath) as reader:\n\ntests/test_reorder_buffer.py::test_reorder_buffer_pipeline_integration\n  C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\tests\\test_reorder_buffer.py:112: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.\n    pipeline = Pipeline(store=store, quality=engine)\n\ntests/test_live.py::test_5_venue_consolidated_nbbo\n  C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\tests\\test_live.py:246: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.\n    pipeline = Pipeline(store, bbo=bbo)\n\ntests/test_bbo.py::test_pipeline_bbo_end_to_end\n  C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\tests\\test_bbo.py:356: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.\n    pipeline = Pipeline(store, bbo=bbo_engine)\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n83 passed, 30 warnings in 8.90s\n",
+      "stdout_tail": "deprecated in MDRAP v3.0.0; use IngestLog WAL (mdrap.ingestlog) as the mandatory durability boundary instead.\n    with BinaryJournal(jnl_path, initial_records=16) as jnl:\n\ntests/test_replay_engine.py::test_replay_engine_load_from_binary_journal\n  src\\mdrap\\replay.py:322: DeprecationWarning: BinaryJournalReader in mdrap.journal is deprecated in MDRAP v3.0.0; use IngestLog WAL (mdrap.ingestlog) as the mandatory durability boundary instead.\n    with BinaryJournalReader(filepath) as reader:\n\ntests/test_reorder_buffer.py::test_reorder_buffer_pipeline_integration\n  tests\\test_reorder_buffer.py:112: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.\n    pipeline = Pipeline(store=store, quality=engine)\n\ntests/test_live.py::test_5_venue_consolidated_nbbo\n  tests\\test_live.py:246: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.\n    pipeline = Pipeline(store, bbo=bbo)\n\ntests/test_bbo.py::test_pipeline_bbo_end_to_end\n  tests\\test_bbo.py:356: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.\n    pipeline = Pipeline(store, bbo=bbo_engine)\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n83 passed, 30 warnings in 8.90s\n",
       "stderr_tail": ""
     },
     {
@@ -206,7 +206,7 @@
       "name": "API, streaming, authentication, and entitlement tests",
       "category": "api_security",
       "command": [
-        "C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\.venv-g0\\Scripts\\pytest.exe",
+        ".venv-g0\\Scripts\\pytest.exe",
         "tests/test_api_endpoints.py",
         "tests/test_api_auth.py",
         "tests/test_api_websocket.py",
@@ -230,7 +230,7 @@
         "warnings": 73,
         "errors": 0
       },
-      "stdout_tail": "ng endpoints directly.\n    with MDRAPClient(host=\"127.0.0.1\", port=running_daemon.port) as client:\n\ntests/test_client.py::test_client_stream_l2_depth\n  C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\tests\\test_client.py:135: DeprecationWarning: Client / MDRAPClient is deprecated in MDRAP v3.0.0; use Engine or streaming endpoints directly.\n    with MDRAPClient(host=\"127.0.0.1\", port=running_daemon.port) as client:\n\ntests/test_client.py::test_daemon_replay_buffer_and_request_replay\n  C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\tests\\test_client.py:149: DeprecationWarning: Client / MDRAPClient is deprecated in MDRAP v3.0.0; use Engine or streaming endpoints directly.\n    with MDRAPClient(host=\"127.0.0.1\", port=running_daemon.port) as client:\n\ntests/test_client.py::test_client_automated_gap_detection_and_replay\n  C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\tests\\test_client.py:248: DeprecationWarning: Client / MDRAPClient is deprecated in MDRAP v3.0.0; use Engine or streaming endpoints directly.\n    with MDRAPClient(host=\"127.0.0.1\", port=port, auto_replay=True) as client:\n\ntests/test_client.py::test_client_unsubscribe_and_queries\n  C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\tests\\test_client.py:265: DeprecationWarning: Client / MDRAPClient is deprecated in MDRAP v3.0.0; use Engine or streaming endpoints directly.\n    with MDRAPClient(host=\"127.0.0.1\", port=running_daemon.port) as client:\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n76 passed, 73 warnings in 11.36s\n",
+      "stdout_tail": "ng endpoints directly.\n    with MDRAPClient(host=\"127.0.0.1\", port=running_daemon.port) as client:\n\ntests/test_client.py::test_client_stream_l2_depth\n  tests\\test_client.py:135: DeprecationWarning: Client / MDRAPClient is deprecated in MDRAP v3.0.0; use Engine or streaming endpoints directly.\n    with MDRAPClient(host=\"127.0.0.1\", port=running_daemon.port) as client:\n\ntests/test_client.py::test_daemon_replay_buffer_and_request_replay\n  tests\\test_client.py:149: DeprecationWarning: Client / MDRAPClient is deprecated in MDRAP v3.0.0; use Engine or streaming endpoints directly.\n    with MDRAPClient(host=\"127.0.0.1\", port=running_daemon.port) as client:\n\ntests/test_client.py::test_client_automated_gap_detection_and_replay\n  tests\\test_client.py:248: DeprecationWarning: Client / MDRAPClient is deprecated in MDRAP v3.0.0; use Engine or streaming endpoints directly.\n    with MDRAPClient(host=\"127.0.0.1\", port=port, auto_replay=True) as client:\n\ntests/test_client.py::test_client_unsubscribe_and_queries\n  tests\\test_client.py:265: DeprecationWarning: Client / MDRAPClient is deprecated in MDRAP v3.0.0; use Engine or streaming endpoints directly.\n    with MDRAPClient(host=\"127.0.0.1\", port=running_daemon.port) as client:\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n76 passed, 73 warnings in 11.36s\n",
       "stderr_tail": ""
     },
     {
@@ -238,7 +238,7 @@
       "name": "Failover and disaster-recovery tests",
       "category": "failover_dr",
       "command": [
-        "C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\.venv-g0\\Scripts\\pytest.exe",
+        ".venv-g0\\Scripts\\pytest.exe",
         "tests/test_failover_and_dr.py",
         "tests/test_failure_modes.py",
         "tests/test_chaos.py",
@@ -259,7 +259,7 @@
         "warnings": 50,
         "errors": 0
       },
-      "stdout_tail": "est_t2_property_k_restarts_accumulate_all_rows\ntests/test_phase1_card1_restart_loss.py::test_t2_property_k_restarts_accumulate_all_rows\n  C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\tests\\test_phase1_card1_restart_loss.py:86: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.\n    pipeline = Pipeline(store=store, flush_interval_s=0.01)\n\ntests/test_phase1_card1_restart_loss.py::test_t3_collision_detection_raises_storage_conflict_error\n  C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\tests\\test_phase1_card1_restart_loss.py:120: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.\n    p1 = Pipeline(store=store, flush_interval_s=0.01)\n\ntests/test_phase1_card1_restart_loss.py::test_t3_collision_detection_raises_storage_conflict_error\n  C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\tests\\test_phase1_card1_restart_loss.py:138: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.\n    p2 = Pipeline(store=store, flush_interval_s=0.01)\n\ntests/test_service_resilience.py::test_daemon_client_connect_and_broadcast\n  C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\src\\mdrap\\service.py:106: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.\n    self.pipeline = Pipeline(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n35 passed, 50 warnings in 11.54s\n",
+      "stdout_tail": "est_t2_property_k_restarts_accumulate_all_rows\ntests/test_phase1_card1_restart_loss.py::test_t2_property_k_restarts_accumulate_all_rows\n  tests\\test_phase1_card1_restart_loss.py:86: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.\n    pipeline = Pipeline(store=store, flush_interval_s=0.01)\n\ntests/test_phase1_card1_restart_loss.py::test_t3_collision_detection_raises_storage_conflict_error\n  tests\\test_phase1_card1_restart_loss.py:120: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.\n    p1 = Pipeline(store=store, flush_interval_s=0.01)\n\ntests/test_phase1_card1_restart_loss.py::test_t3_collision_detection_raises_storage_conflict_error\n  tests\\test_phase1_card1_restart_loss.py:138: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.\n    p2 = Pipeline(store=store, flush_interval_s=0.01)\n\ntests/test_service_resilience.py::test_daemon_client_connect_and_broadcast\n  src\\mdrap\\service.py:106: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.\n    self.pipeline = Pipeline(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n35 passed, 50 warnings in 11.54s\n",
       "stderr_tail": ""
     },
     {
@@ -267,7 +267,7 @@
       "name": "Packaging and installation tests",
       "category": "packaging",
       "command": [
-        "C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\.venv-g0\\Scripts\\pytest.exe",
+        ".venv-g0\\Scripts\\pytest.exe",
         "tests/test_packaging_single_source.py",
         "tests/test_build_fastpath.py",
         "tests/test_extension_protocols.py",
@@ -287,7 +287,7 @@
         "warnings": 14,
         "errors": 0
       },
-      "stdout_tail": "est_plugin_conformance.py::test_pipeline_pre_evaluate_hook_drop\n  C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\tests\\test_plugin_conformance.py:387: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.\n    pipeline = Pipeline(store=store, pre_evaluate_hook=drop_hook)\n\ntests/test_plugin_conformance.py::test_hook_exceptions_are_quarantined_and_isolated\n  C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\tests\\test_plugin_conformance.py:464: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.\n    pipeline = Pipeline(store=store, pre_evaluate_hook=raising_hook)\n\ntests/test_plugin_conformance.py::test_post_hook_drop_and_exception_are_accounted\n  C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\tests\\test_plugin_conformance.py:512: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.\n    drop_pipeline = Pipeline(store=drop_store, post_evaluate_hook=lambda ev: None)\n\ntests/test_plugin_conformance.py::test_post_hook_drop_and_exception_are_accounted\n  C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\tests\\test_plugin_conformance.py:526: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.\n    error_pipeline = Pipeline(store=error_store, post_evaluate_hook=broken_post_hook)\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n29 passed, 14 warnings in 1.41s\n",
+      "stdout_tail": "est_plugin_conformance.py::test_pipeline_pre_evaluate_hook_drop\n  tests\\test_plugin_conformance.py:387: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.\n    pipeline = Pipeline(store=store, pre_evaluate_hook=drop_hook)\n\ntests/test_plugin_conformance.py::test_hook_exceptions_are_quarantined_and_isolated\n  tests\\test_plugin_conformance.py:464: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.\n    pipeline = Pipeline(store=store, pre_evaluate_hook=raising_hook)\n\ntests/test_plugin_conformance.py::test_post_hook_drop_and_exception_are_accounted\n  tests\\test_plugin_conformance.py:512: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.\n    drop_pipeline = Pipeline(store=drop_store, post_evaluate_hook=lambda ev: None)\n\ntests/test_plugin_conformance.py::test_post_hook_drop_and_exception_are_accounted\n  tests\\test_plugin_conformance.py:526: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.\n    error_pipeline = Pipeline(store=error_store, post_evaluate_hook=broken_post_hook)\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n29 passed, 14 warnings in 1.41s\n",
       "stderr_tail": ""
     },
     {
@@ -295,7 +295,7 @@
       "name": "Full test suite",
       "category": "full_suite",
       "command": [
-        "C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\.venv-g0\\Scripts\\pytest.exe",
+        ".venv-g0\\Scripts\\pytest.exe",
         "tests/",
         "-q"
       ],
@@ -310,7 +310,7 @@
         "warnings": 612,
         "errors": 0
       },
-      "stdout_tail": "position\n  C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\tests\\test_vessel.py:187: DeprecationWarning: VesselTracker and AIS vessel intelligence in mdrap.vessel are deprecated and non-core to the market data engine.\n    tracker = VesselTracker()\n\ntests/test_vwap.py::test_daemon_vwap_command_and_client_query\n  C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\tests\\test_vwap.py:260: DeprecationWarning: Client / MDRAPClient is deprecated in MDRAP v3.0.0; use Engine or streaming endpoints directly.\n    with MDRAPClient(host=\"127.0.0.1\", port=9988, timeout=2.0) as client:\n\ntests/test_vwap.py::test_daemon_vwap_auth_guard\n  C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\tests\\test_vwap.py:292: DeprecationWarning: Client / MDRAPClient is deprecated in MDRAP v3.0.0; use Engine or streaming endpoints directly.\n    with MDRAPClient(\n\ntests/test_vwap.py::test_daemon_vwap_auth_guard\n  C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\tests\\test_vwap.py:301: DeprecationWarning: Client / MDRAPClient is deprecated in MDRAP v3.0.0; use Engine or streaming endpoints directly.\n    with MDRAPClient(\n\ntests/test_ws_feed.py::test_no_silent_drops_under_backpressure\n  C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\tests\\test_ws_feed.py:319: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.\n    pipeline = Pipeline(store=store)\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n1041 passed, 18 skipped, 60 deselected, 612 warnings in 210.33s (0:03:30)\n",
+      "stdout_tail": "position\n  tests\\test_vessel.py:187: DeprecationWarning: VesselTracker and AIS vessel intelligence in mdrap.vessel are deprecated and non-core to the market data engine.\n    tracker = VesselTracker()\n\ntests/test_vwap.py::test_daemon_vwap_command_and_client_query\n  tests\\test_vwap.py:260: DeprecationWarning: Client / MDRAPClient is deprecated in MDRAP v3.0.0; use Engine or streaming endpoints directly.\n    with MDRAPClient(host=\"127.0.0.1\", port=9988, timeout=2.0) as client:\n\ntests/test_vwap.py::test_daemon_vwap_auth_guard\n  tests\\test_vwap.py:292: DeprecationWarning: Client / MDRAPClient is deprecated in MDRAP v3.0.0; use Engine or streaming endpoints directly.\n    with MDRAPClient(\n\ntests/test_vwap.py::test_daemon_vwap_auth_guard\n  tests\\test_vwap.py:301: DeprecationWarning: Client / MDRAPClient is deprecated in MDRAP v3.0.0; use Engine or streaming endpoints directly.\n    with MDRAPClient(\n\ntests/test_ws_feed.py::test_no_silent_drops_under_backpressure\n  tests\\test_ws_feed.py:319: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.\n    pipeline = Pipeline(store=store)\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n1041 passed, 18 skipped, 60 deselected, 612 warnings in 210.33s (0:03:30)\n",
       "stderr_tail": ""
     }
   ]

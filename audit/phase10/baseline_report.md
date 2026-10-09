@@ -3,7 +3,7 @@
 ## 1. Executive Summary & Verification Context
 This report documents the preflight baseline established for **MDRAP Phase 10 — Networked Staging, Distributed Failure Validation, and Production-Readiness Evidence**.
 
-The verification was conducted against the clean Git commit [`25fc850`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/audit/phase9/phase9_exit_report.md) on branch `main` in the local execution environment.
+The verification was conducted against the clean Git commit [`25fc850`](audit/phase9/phase9_exit_report.md) on branch `main` in the local execution environment.
 
 ---
 

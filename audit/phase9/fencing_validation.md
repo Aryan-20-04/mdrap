@@ -2,7 +2,7 @@
 
 ## 1. Fencing Architecture & Boundary Enforcement
 Fencing is enforced strictly at the persistence boundary:
-[`src/consensus.py::FencedWALWriter`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/consensus.py) wrapping the [`IngestLog`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/mdrap/ingestlog.py) WAL.
+[`src/consensus.py::FencedWALWriter`](src/consensus.py) wrapping the [`IngestLog`](src/mdrap/ingestlog.py) WAL.
 
 ```mermaid
 sequenceDiagram
@@ -20,7 +20,7 @@ sequenceDiagram
 ```
 
 ## 2. Test Verification & Empirical Results
-In [`scripts/test_complete_failover.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/scripts/test_complete_failover.py):
+In [`scripts/test_complete_failover.py`](scripts/test_complete_failover.py):
 - **Stale Writes Attempted**: 10
 - **Stale Writes Accepted**: **0** (Zero split-brain corruptions)
 - **Stale Writes Intercepted**: **10 (100.0%)**

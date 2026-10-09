@@ -3,7 +3,7 @@
 ## 1. Executive Summary
 This document details the **15 distributed fault scenarios** executed against the 3-node MDRAP staging cluster in Mode B, as mandated by Phase 10 Specification §5.
 
-All 15 scenarios were executed programmatically via [`scripts/test_networked_faults_and_failover.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/scripts/test_networked_faults_and_failover.py).
+All 15 scenarios were executed programmatically via [`scripts/test_networked_faults_and_failover.py`](scripts/test_networked_faults_and_failover.py).
 
 ---
 
@@ -38,4 +38,4 @@ All 15 scenarios were executed programmatically via [`scripts/test_networked_fau
 
 ## 4. Verdict
 All 15 distributed fault scenarios passed with **100% compliance** against stated safety invariants.
-Evidence file: [`audit/phase10/distributed_fault_results.json`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/audit/phase10/distributed_fault_results.json).
+Evidence file: [`audit/phase10/distributed_fault_results.json`](audit/phase10/distributed_fault_results.json).

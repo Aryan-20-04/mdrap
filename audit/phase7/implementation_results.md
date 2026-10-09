@@ -1,7 +1,7 @@
 # MDRAP Phase 7 — Implementation Results & Verification Evidence
 
 ## 1. Executive Summary & Verification Verdict
-All 5 planned engineering items from [`audit/phase7/implementation_plan.md`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/audit/phase7/implementation_plan.md) have been implemented, regression-tested, and empirically verified.
+All 5 planned engineering items from [`audit/phase7/implementation_plan.md`](audit/phase7/implementation_plan.md) have been implemented, regression-tested, and empirically verified.
 
 **Implementation Status: 100% COMPLETE & VERIFIED (Zero Regressions, Zero Flakes)**
 
@@ -21,13 +21,13 @@ All 5 planned engineering items from [`audit/phase7/implementation_plan.md`](fil
 
 ## 3. Code Modifications Delivered
 
-1. [`src/historical_verifier.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/historical_verifier.py): Standalone streaming forensic verifier with bounded-memory WAL and SQLite verification.
-2. [`src/mdrap/historical_verifier.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/mdrap/historical_verifier.py): Standard package alias.
-3. [`src/mdrap/partition.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/mdrap/partition.py): Added `__stability__ = "stable"` metadata.
-4. [`src/partition.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/partition.py): Added `__stability__ = "stable"` metadata.
-5. [`tests/test_phase7_verification.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/tests/test_phase7_verification.py): 9 continuous invariant, property, metamorphic, and differential tests.
-6. [`tests/test_phase7_fault_injection.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/tests/test_phase7_fault_injection.py): 5 automated fault-injection drills.
-7. [`scripts/run_phase7_quality_gates.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/scripts/run_phase7_quality_gates.py): Automated multi-stage quality gate orchestrator.
+1. [`src/historical_verifier.py`](src/historical_verifier.py): Standalone streaming forensic verifier with bounded-memory WAL and SQLite verification.
+2. [`src/mdrap/historical_verifier.py`](src/mdrap/historical_verifier.py): Standard package alias.
+3. [`src/mdrap/partition.py`](src/mdrap/partition.py): Added `__stability__ = "stable"` metadata.
+4. [`src/partition.py`](src/partition.py): Added `__stability__ = "stable"` metadata.
+5. [`tests/test_phase7_verification.py`](tests/test_phase7_verification.py): 9 continuous invariant, property, metamorphic, and differential tests.
+6. [`tests/test_phase7_fault_injection.py`](tests/test_phase7_fault_injection.py): 5 automated fault-injection drills.
+7. [`scripts/run_phase7_quality_gates.py`](scripts/run_phase7_quality_gates.py): Automated multi-stage quality gate orchestrator.
 
 ---
 

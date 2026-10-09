@@ -23,7 +23,7 @@ This document provides a comparative performance analysis across **Phase 8 (Modu
 
 ## 3. Deep-Dive Failover Breakdown (100 Empirical Trials)
 
-Across 100 consecutive empirical trials in [`failover_benchmark_results.json`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/audit/phase10/failover_benchmark_results.json):
+Across 100 consecutive empirical trials in [`failover_benchmark_results.json`](audit/phase10/failover_benchmark_results.json):
 
 ```text
 Phase 10 Failover Stage Latency Breakdown (p50):

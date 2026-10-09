@@ -1,7 +1,7 @@
 # MDRAP Phase 7 — Differential Testing Strategy & Cross-Implementation Verification
 
 ## 1. Executive Summary & Objective
-Where multiple implementations of the same logic exist within MDRAP (specifically, the native C high-throughput kernel in [`src/fastpath.c`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/fastpath.c) and the pure Python reference engine in [`src/quality.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/quality.py)), subtle discrepancies between floating-point rounding, bitmask operations, or edge-case handling can create critical cross-platform divergence.
+Where multiple implementations of the same logic exist within MDRAP (specifically, the native C high-throughput kernel in [`src/fastpath.c`](src/fastpath.c) and the pure Python reference engine in [`src/quality.py`](src/quality.py)), subtle discrepancies between floating-point rounding, bitmask operations, or edge-case handling can create critical cross-platform divergence.
 
 **Differential Testing** subjects both implementations to identical inputs and asserts bit-for-bit parity across all outputs.
 
@@ -32,6 +32,6 @@ Where multiple implementations of the same logic exist within MDRAP (specificall
 ---
 
 ## 3. Automated Execution in Phase 7
-Implemented in [`tests/test_phase7_verification.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/tests/test_phase7_verification.py):
+Implemented in [`tests/test_phase7_verification.py`](tests/test_phase7_verification.py):
 - `test_differential_python_versus_native_rules`: Evaluates 2,500 test events and verifies 100% agreement on validation status and reason bitmasks.
 - `test_differential_sbe_wire_fidelity`: Asserts numeric fidelity between fixed-point wire serialization and canonical models.

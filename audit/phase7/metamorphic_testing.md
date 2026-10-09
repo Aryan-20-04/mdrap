@@ -36,7 +36,7 @@ When processing complex market-data event streams, computing an exact oracle or 
 ---
 
 ## 3. Automated Execution in Phase 7
-Implemented in [`tests/test_phase7_verification.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/tests/test_phase7_verification.py):
+Implemented in [`tests/test_phase7_verification.py`](tests/test_phase7_verification.py):
 - `test_metamorphic_batch_size_invariance`: Verifies batch sizes 1, 10, 50, 100 on 500 events yield identical order book and storage projections.
 - `test_metamorphic_live_versus_replay_equivalence`: Replays 1,000 serialized WAL events and asserts $100\%$ identity with live ingest records.
 - `test_metamorphic_read_idempotency`: Asserts repeated state inspection causes zero sequence advancement or storage mutation.

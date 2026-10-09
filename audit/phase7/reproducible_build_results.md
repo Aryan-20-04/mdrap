@@ -8,7 +8,7 @@ In compliance with Rule 8.1 ("Attempt to rebuild the same revision in clean envi
 ## 2. Deterministic Build Evaluation
 
 ### Evaluation 1: Native C Kernel Compilation
-- **Source Code**: [`src/fastpath.c`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/fastpath.c), [`src/mdrap_core.c`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/mdrap_core.c)
+- **Source Code**: [`src/fastpath.c`](src/fastpath.c), [`src/mdrap_core.c`](src/mdrap_core.c)
 - **Compiler Flags**: `-O3 -fPIC -Wall -Wextra -std=c99` (GCC/Clang) or `/O2 /W4` (MSVC)
 - **Outcome**: Rebuilding in separate directories produces functionally equivalent shared objects (`.dll` / `.so`).
 - **Byte Reproducibility**: Binary checksums match when compiler timestamps are normalized using `SOURCE_DATE_EPOCH`.

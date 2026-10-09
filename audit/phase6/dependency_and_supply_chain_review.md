@@ -38,5 +38,5 @@ MDRAP enforces an ultra-lean dependency architecture:
 ---
 
 ## 4. Native C Kernel Supply Chain
-- Native C acceleration kernels ([`src/fastpath.c`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/fastpath.c), [`src/mdrap_core.c`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/mdrap_core.c)) contain **zero external C library dependencies** beyond the standard C99 runtime library (`stdio.h`, `stdint.h`, `string.h`, `stdlib.h`).
+- Native C acceleration kernels ([`src/fastpath.c`](src/fastpath.c), [`src/mdrap_core.c`](src/mdrap_core.c)) contain **zero external C library dependencies** beyond the standard C99 runtime library (`stdio.h`, `stdint.h`, `string.h`, `stdlib.h`).
 - Native binaries are compiled locally using standard GCC/Clang/MSVC compilers without third-party binary blobs.

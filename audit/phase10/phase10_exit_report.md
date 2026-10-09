@@ -61,7 +61,7 @@ All 10 claims asserted in `audit/phase9/phase9_exit_report.md` were independentl
 ## 4. Consensus & High Availability Assessment
 
 ### Algorithm Classification
-The MDRAP consensus coordinator ([`src/mdrap/consensus.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/mdrap/consensus.py)) is formally classified as:
+The MDRAP consensus coordinator ([`src/mdrap/consensus.py`](src/mdrap/consensus.py)) is formally classified as:
 **Quorum-Based Lease Coordination with Monotonic Epoch Fencing**.
 - It is **NOT** Raft or Multi-Paxos (it does not maintain a replicated distributed state machine log across nodes).
 - It relies on strict majority quorum ($N/2 + 1$) for leadership acquisition and time-bounded leases (`lease_duration_sec = 0.1–0.2 s`).

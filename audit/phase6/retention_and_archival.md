@@ -32,7 +32,7 @@ Phase 6 formalizes the **Tiered Retention and Archival Architecture** for MDRAP,
 
 ## 3. Segment Compaction and Archival Pipeline
 
-Compaction is executed by [`src/archive.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/archive.py) during the End-of-Day (EOD) maintenance window:
+Compaction is executed by [`src/archive.py`](src/archive.py) during the End-of-Day (EOD) maintenance window:
 
 1. **Segment Sealing**: Active WAL segments older than 24 hours are marked `SEALED` and set to read-only (`chmod 0444`).
 2. **Batch Compaction**: Sealed segments are streamed into columnar Parquet/Zstandard archives using Zstd Level 19.
@@ -53,4 +53,4 @@ Benchmarked against 20,000 canonical market events across 500 active symbols:
 
 ### Regulatory Audit Compliance
 - **SEC 17a-4 Immutability**: Cold archives are stored with write-once-read-many (WORM) object locks.
-- **Lineage Verification**: Any archived event can be verified against the signed Merkle root within 15 ms using [`src/journal.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/journal.py).
+- **Lineage Verification**: Any archived event can be verified against the signed Merkle root within 15 ms using [`src/journal.py`](src/journal.py).

@@ -28,11 +28,11 @@ Phase 6 formalizes the **Continuous Verification Architecture**, ensuring that e
 ## 3. Automated Verification Suites
 
 ### Suite A: Deterministic Unit & Integration Suite
-- **Scope**: Complete unit test coverage across [`src/`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/) and [`tests/`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/tests/).
+- **Scope**: Complete unit test coverage across [`src/`](src/) and [`tests/`](tests/).
 - **Execution Target**: Runs on every pull request and local build.
 - **Pass Criterion**: **100% pass rate** (currently 1,212 / 1,212 passed). Execution time $< 5\text{ minutes}$.
 
-### Suite B: Chaos Injection Drills ([`src/chaos.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/chaos.py))
+### Suite B: Chaos Injection Drills ([`src/chaos.py`](src/chaos.py))
 - **Scope**: Injects sudden network disconnects, slow consumer backpressure, lock contention, and trailing WAL corruption.
 - **Verification Invariant**: Zero split-brain writers; clean fail-closed lock behavior (exit code 42); zero sequence gap or collision.
 

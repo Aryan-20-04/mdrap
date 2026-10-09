@@ -10,7 +10,7 @@ This framework defines the formal **Benchmark Governance Policy** for MDRAP, gov
 ## 2. Standardized Benchmark Profiles
 
 ### Profile A: Sharded Ingestion & Fan-Out Benchmark
-- **Target Harness**: [`benchmarks/phase6_scaling_benchmark.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/benchmarks/phase6_scaling_benchmark.py)
+- **Target Harness**: [`benchmarks/phase6_scaling_benchmark.py`](benchmarks/phase6_scaling_benchmark.py)
 - **Workload**: 20,000 canonical events across 500 active symbols (`AAPL`, `MSFT`, `GOOG`, `NVDA`, `AMZN`, etc.).
 - **Topology**: 2 Shards (Range mode: `A-L` $\rightarrow$ Shard 0, `M-Z` $\rightarrow$ Shard 1), 2 concurrent TCP fan-out consumers.
 - **Warm-Up Policy**: 2,000 preliminary events to pre-warm CPU instruction caches, JIT structures, and OS buffer caches before measurement start.
@@ -21,7 +21,7 @@ This framework defines the formal **Benchmark Governance Policy** for MDRAP, gov
   - Fan-out queue dwell time and drop count
 
 ### Profile B: Full Monolithic Pipeline Benchmark
-- **Target Harness**: [`benchmarks/run_performance_suite.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/benchmarks/run_performance_suite.py)
+- **Target Harness**: [`benchmarks/run_performance_suite.py`](benchmarks/run_performance_suite.py)
 - **Workload**: 50,000 events streamed through single-node gateway, quality evaluator, and SQLite batch drainer.
 - **Metrics Collected**: End-to-end processing latency, batch drain efficiency, and CPU utilization.
 

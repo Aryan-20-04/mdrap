@@ -9,7 +9,7 @@ This catalog defines the definitive mathematical and operational invariants gove
 
 ### INV-01: Zero Silent Data Loss
 - **Exact Guarantee**: No valid, suspicious, or invalid event shall ever be dropped from the system without incrementing an observable counter, logging a warning, or routing to the quarantine audit log.
-- **Enforcing Modules**: [`src/gateway.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/gateway.py), [`src/ws_feed.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/ws_feed.py), [`src/partition.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/partition.py)
+- **Enforcing Modules**: [`src/gateway.py`](src/gateway.py), [`src/ws_feed.py`](src/ws_feed.py), [`src/partition.py`](src/partition.py)
 - **Conditions**: All operating conditions, including backpressure saturation and feed errors.
 - **Known Exceptions**: None.
 - **Failure Impact**: Critical (undetected missing ticks causing false pricing and financial loss).
@@ -19,7 +19,7 @@ This catalog defines the definitive mathematical and operational invariants gove
 
 ### INV-02: Strict Monotonic Sequencing per Partition
 - **Exact Guarantee**: For any two consecutive events $e_i, e_{i+1}$ published on a partition, their sequence numbers satisfy $\text{Seq}(e_{i+1}) = \text{Seq}(e_i) + 1$, with zero gaps, decrements, or duplicates.
-- **Enforcing Modules**: [`src/gateway.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/gateway.py), [`src/journal.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/journal.py), [`src/partition.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/partition.py)
+- **Enforcing Modules**: [`src/gateway.py`](src/gateway.py), [`src/journal.py`](src/journal.py), [`src/partition.py`](src/partition.py)
 - **Conditions**: All live ingestion, partitioned routing, and crash recovery replay.
 - **Known Exceptions**: None within an active partition.
 - **Failure Impact**: Fatal (corrupted order book state and downstream order matching failures).
@@ -29,7 +29,7 @@ This catalog defines the definitive mathematical and operational invariants gove
 
 ### INV-03: Quality Status Priority Monotonicity
 - **Exact Guarantee**: Event quality statuses obey the strict priority ordering: $\text{INVALID} > \text{SUSPICIOUS} > \text{VALID}$. An event evaluated as INVALID or SUSPICIOUS can never be downgraded to a lower severity.
-- **Enforcing Modules**: [`src/quality.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/quality.py), [`src/rules.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/rules.py), [`src/fastpath.c`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/fastpath.c)
+- **Enforcing Modules**: [`src/quality.py`](src/quality.py), [`src/rules.py`](src/rules.py), [`src/fastpath.c`](src/fastpath.c)
 - **Conditions**: Multi-rule evaluation passes across trades and quotes.
 - **Known Exceptions**: None.
 - **Failure Impact**: Severe (publishing erroneous prices as valid).
@@ -39,7 +39,7 @@ This catalog defines the definitive mathematical and operational invariants gove
 
 ### INV-04: Lineage & Provenance Preservation
 - **Exact Guarantee**: Every canonical event and canonical decision must preserve its original venue source ID, exchange timestamp, receive timestamp, and reason codes.
-- **Enforcing Modules**: [`src/models.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/models.py), [`src/reconciliation.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/reconciliation.py)
+- **Enforcing Modules**: [`src/models.py`](src/models.py), [`src/reconciliation.py`](src/reconciliation.py)
 - **Conditions**: Ingress, normalization, reconciliation, and archival.
 - **Known Exceptions**: Feeds lacking exchange timestamps fall back to `receive_timestamp` with `clock_source = "GATEWAY_RECV"`.
 - **Failure Impact**: High (inability to satisfy regulatory trade reconstructability audits).
@@ -49,7 +49,7 @@ This catalog defines the definitive mathematical and operational invariants gove
 
 ### INV-05: WAL Durability Boundary Before Publication
 - **Exact Guarantee**: An event is never published to client sockets or marked as processed until its record is safely appended to the IngestLog WAL.
-- **Enforcing Modules**: [`src/journal.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/journal.py), [`src/pipeline.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/pipeline.py), [`src/partition.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/partition.py)
+- **Enforcing Modules**: [`src/journal.py`](src/journal.py), [`src/pipeline.py`](src/pipeline.py), [`src/partition.py`](src/partition.py)
 - **Conditions**: Live trading mode.
 - **Known Exceptions**: `:memory:` ephemeral test mode.
 - **Failure Impact**: Fatal (phantom fills published to algorithms before crash).
@@ -59,7 +59,7 @@ This catalog defines the definitive mathematical and operational invariants gove
 
 ### INV-06: Strict Resource & Buffer Boundedness
 - **Exact Guarantee**: All internal queues, fan-out buffers, seqlock rings, and deduplication LRUs must have fixed upper memory ceilings. Memory delta must plateau under sustained load.
-- **Enforcing Modules**: [`src/partition.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/partition.py), [`src/shm.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/shm.py), [`src/quality.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/quality.py)
+- **Enforcing Modules**: [`src/partition.py`](src/partition.py), [`src/shm.py`](src/shm.py), [`src/quality.py`](src/quality.py)
 - **Conditions**: Continuous operation under peak load.
 - **Known Exceptions**: None.
 - **Failure Impact**: Fatal (OOM killer termination of production service).
@@ -69,7 +69,7 @@ This catalog defines the definitive mathematical and operational invariants gove
 
 ### INV-07: Mutex-Free Read Concurrency in Shared Memory
 - **Exact Guarantee**: Shared-memory readers never acquire locks and cannot stall or block writer threads, guarded by atomic seqlock version counters.
-- **Enforcing Modules**: [`src/shm.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/shm.py), [`src/fastpath.c`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/fastpath.c)
+- **Enforcing Modules**: [`src/shm.py`](src/shm.py), [`src/fastpath.c`](src/fastpath.c)
 - **Conditions**: Multi-process local IPC stream distribution.
 - **Known Exceptions**: None.
 - **Failure Impact**: Severe (slow consumer causing latency spike in publisher).
@@ -79,7 +79,7 @@ This catalog defines the definitive mathematical and operational invariants gove
 
 ### INV-08: Pure Python Fallback Semantic Parity
 - **Exact Guarantee**: Pure Python fallback execution must yield identical validation outcomes, reason bitmasks, and normalized fields as native C extensions.
-- **Enforcing Modules**: [`src/quality.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/quality.py), [`src/fastpath.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/fastpath.py), [`src/fastpath.c`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/fastpath.c)
+- **Enforcing Modules**: [`src/quality.py`](src/quality.py), [`src/fastpath.py`](src/fastpath.py), [`src/fastpath.c`](src/fastpath.c)
 - **Conditions**: Operating on platforms where C compiler is unavailable or `$env:MDRAP_DISABLE_FASTPATH="1"`.
 - **Known Exceptions**: None.
 - **Failure Impact**: High (inconsistent execution between development and production).
@@ -89,7 +89,7 @@ This catalog defines the definitive mathematical and operational invariants gove
 
 ### INV-09: Single-Writer Exclusive Filesystem Fencing
 - **Exact Guarantee**: A partition directory can have only one active writer process. A secondary launch attempting to bind the same directory immediately terminates with exit code 42.
-- **Enforcing Modules**: [`src/partition.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/partition.py), OS kernel file locks (`shard.lock`)
+- **Enforcing Modules**: [`src/partition.py`](src/partition.py), OS kernel file locks (`shard.lock`)
 - **Conditions**: Process startup and multi-instance orchestration.
 - **Known Exceptions**: None.
 - **Failure Impact**: Fatal (split-brain corruption of SQLite databases and WAL segments).
@@ -99,7 +99,7 @@ This catalog defines the definitive mathematical and operational invariants gove
 
 ### INV-10: Cryptographic Immutability of Cold Archives
 - **Exact Guarantee**: Sealed WAL archives and Parquet partitions must have SHA-256 Merkle root hashes recorded in an immutable manifest. Any altered byte must be flagged as tampering.
-- **Enforcing Modules**: [`src/journal.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/journal.py), [`src/archive.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/archive.py)
+- **Enforcing Modules**: [`src/journal.py`](src/journal.py), [`src/archive.py`](src/archive.py)
 - **Conditions**: EOD compaction and historical forensic retrieval.
 - **Known Exceptions**: None.
 - **Failure Impact**: High (inability to satisfy SEC 17a-4 compliance requirements).

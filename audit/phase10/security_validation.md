@@ -6,7 +6,7 @@ This report evaluates the **Security Architecture & Hardening Controls** of MDRA
 ## 2. Authentication, Entitlements & Key Management
 
 ### 2.1 Salt Enforcement & Cryptographic Hashing
-- **Mandatory Salt**: In accordance with institutional security policies, [`src/mdrap/security.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/mdrap/security.py) mandates non-empty `MDRAP_API_KEY_SALT` outside demo mode. Startup halts immediately with `ValueError` if the salt is missing.
+- **Mandatory Salt**: In accordance with institutional security policies, [`src/mdrap/security.py`](src/mdrap/security.py) mandates non-empty `MDRAP_API_KEY_SALT` outside demo mode. Startup halts immediately with `ValueError` if the salt is missing.
 - **Token Hashing**: Tokens are generated via `secrets.token_urlsafe(32)` prefixed with `mdrap_live_` and hashed using PBKDF2/SHA-256 salted keys. Raw token secrets are never stored in memory or SQLite tables.
 - **Constant-Time Verification**: All token comparisons use `hmac.compare_digest` to eliminate side-channel timing attack vulnerabilities.
 

@@ -21,4 +21,4 @@ This catalog provides an explicit registry of all automated CI/CD quality gates 
 ---
 
 ## 3. Automated Orchestrator
-All gates are orchestrated programmatically via [`scripts/run_phase7_quality_gates.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/scripts/run_phase7_quality_gates.py). The orchestrator outputs machine-readable JSON status and terminates with exit code 0 only when all blocking gates pass.
+All gates are orchestrated programmatically via [`scripts/run_phase7_quality_gates.py`](scripts/run_phase7_quality_gates.py). The orchestrator outputs machine-readable JSON status and terminates with exit code 0 only when all blocking gates pass.

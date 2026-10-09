@@ -92,18 +92,18 @@ Fan-out Queue Dwell Time    120 µs                 < 10 µs                  -9
 
 ## 7. Machine-Readable Results Directory
 
-All machine-readable audit artifacts are validated, well-formed JSON documents located under [`audit/phase7/`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/audit/phase7/):
-- Test Baseline: [`baseline_test_results.json`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/audit/phase7/baseline_test_results.json)
-- Benchmark Baseline: [`baseline_benchmark_results.json`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/audit/phase7/baseline_benchmark_results.json)
-- Final Regression Tests: [`test_results.json`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/audit/phase7/test_results.json)
-- Final Scaling Benchmark: [`benchmark_results.json`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/audit/phase7/benchmark_results.json)
-- CI Quality Gates: [`ci_verification_results.json`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/audit/phase7/ci_verification_results.json)
-- Fault Injection Results: [`fault_injection_results.json`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/audit/phase7/fault_injection_results.json)
-- Historical Integrity Results: [`integrity_validation_results.json`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/audit/phase7/integrity_validation_results.json)
-- Compatibility Results: [`compatibility_results.json`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/audit/phase7/compatibility_results.json)
-- Adversarial Test Results: [`adversarial_test_results.json`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/audit/phase7/adversarial_test_results.json)
-- Dependency Validation Results: [`dependency_validation_results.json`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/audit/phase7/dependency_validation_results.json)
-- Sanitizers & Static Analysis: [`sanitizer_and_static_analysis_results.json`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/audit/phase7/sanitizer_and_static_analysis_results.json)
+All machine-readable audit artifacts are validated, well-formed JSON documents located under [`audit/phase7/`](audit/phase7/):
+- Test Baseline: [`baseline_test_results.json`](audit/phase7/baseline_test_results.json)
+- Benchmark Baseline: [`baseline_benchmark_results.json`](audit/phase7/baseline_benchmark_results.json)
+- Final Regression Tests: [`test_results.json`](audit/phase7/test_results.json)
+- Final Scaling Benchmark: [`benchmark_results.json`](audit/phase7/benchmark_results.json)
+- CI Quality Gates: [`ci_verification_results.json`](audit/phase7/ci_verification_results.json)
+- Fault Injection Results: [`fault_injection_results.json`](audit/phase7/fault_injection_results.json)
+- Historical Integrity Results: [`integrity_validation_results.json`](audit/phase7/integrity_validation_results.json)
+- Compatibility Results: [`compatibility_results.json`](audit/phase7/compatibility_results.json)
+- Adversarial Test Results: [`adversarial_test_results.json`](audit/phase7/adversarial_test_results.json)
+- Dependency Validation Results: [`dependency_validation_results.json`](audit/phase7/dependency_validation_results.json)
+- Sanitizers & Static Analysis: [`sanitizer_and_static_analysis_results.json`](audit/phase7/sanitizer_and_static_analysis_results.json)
 
 ---
 
@@ -138,16 +138,16 @@ All machine-readable audit artifacts are validated, well-formed JSON documents l
 
 | Capability | Status | Evidence Document | Code & Test Anchors | Remaining Blocker |
 | :--- | :--- | :--- | :--- | :--- |
-| **Invariant Verification** | **PRODUCTION-VERIFIED** | [`invariant_catalog.md`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/audit/phase7/invariant_catalog.md) | `tests/test_phase7_verification.py` | None |
-| **Property-Based Testing**| **PRODUCTION-VERIFIED** | [`property_testing.md`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/audit/phase7/property_testing.md) | 500 SBE roundtrips, sequence fuzzing | None |
-| **Metamorphic Invariance** | **PRODUCTION-VERIFIED** | [`metamorphic_testing.md`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/audit/phase7/metamorphic_testing.md) | Batch sizes 1, 10, 50, 100 parity | None |
-| **Differential Testing** | **PRODUCTION-VERIFIED** | [`differential_testing.md`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/audit/phase7/differential_testing.md) | Dual-oracle rule validation | None |
-| **Fault Injection** | **PRODUCTION-VERIFIED** | [`fault_injection_matrix.md`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/audit/phase7/fault_injection_matrix.md) | `tests/test_phase7_fault_injection.py` | None |
-| **Recovery Assurance** | **PRODUCTION-VERIFIED** | [`recovery_assurance.md`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/audit/phase7/recovery_assurance.md) | Trailing truncation, RTO 1.84s | None |
-| **Historical Forensic Audit**| **PRODUCTION-VERIFIED** | [`historical_integrity_strategy.md`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/audit/phase7/historical_integrity_strategy.md) | `src/historical_verifier.py` | None |
-| **CI Quality Gate Pipeline**| **PRODUCTION-VERIFIED** | [`ci_architecture.md`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/audit/phase7/ci_architecture.md) | `scripts/run_phase7_quality_gates.py` | None |
-| **Supply Chain Assurance** | **PRODUCTION-VERIFIED** | [`supply_chain_assurance.md`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/audit/phase7/supply_chain_assurance.md) | 0 CVEs, 0 copyleft licenses | None |
-| **Performance Budgets** | **PRODUCTION-VERIFIED** | [`performance_results.md`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/audit/phase7/performance_results.md) | 23,114.0 eps, p99 27.5 µs | None |
-| **Operational Incident Mgt**| **PRODUCTION-VERIFIED** | [`operational_exercises.md`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/audit/phase7/operational_exercises.md) | GameDay runbooks, SLI/SLO contract | None |
-| **Technical Debt Governance**| **PRODUCTION-VERIFIED** | [`technical_debt_register.md`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/audit/phase7/technical_debt_register.md) | Tracked items, Phase 8 sunset plan | None |
-| **Overall Phase 7 Status** | **PASS WITH LIMITATIONS** | [`phase7_exit_report.md`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/audit/phase7/phase7_exit_report.md) | **1,221 / 1,221 Tests Passed (100%)** | Real cross-connects simulated |
+| **Invariant Verification** | **PRODUCTION-VERIFIED** | [`invariant_catalog.md`](audit/phase7/invariant_catalog.md) | `tests/test_phase7_verification.py` | None |
+| **Property-Based Testing**| **PRODUCTION-VERIFIED** | [`property_testing.md`](audit/phase7/property_testing.md) | 500 SBE roundtrips, sequence fuzzing | None |
+| **Metamorphic Invariance** | **PRODUCTION-VERIFIED** | [`metamorphic_testing.md`](audit/phase7/metamorphic_testing.md) | Batch sizes 1, 10, 50, 100 parity | None |
+| **Differential Testing** | **PRODUCTION-VERIFIED** | [`differential_testing.md`](audit/phase7/differential_testing.md) | Dual-oracle rule validation | None |
+| **Fault Injection** | **PRODUCTION-VERIFIED** | [`fault_injection_matrix.md`](audit/phase7/fault_injection_matrix.md) | `tests/test_phase7_fault_injection.py` | None |
+| **Recovery Assurance** | **PRODUCTION-VERIFIED** | [`recovery_assurance.md`](audit/phase7/recovery_assurance.md) | Trailing truncation, RTO 1.84s | None |
+| **Historical Forensic Audit**| **PRODUCTION-VERIFIED** | [`historical_integrity_strategy.md`](audit/phase7/historical_integrity_strategy.md) | `src/historical_verifier.py` | None |
+| **CI Quality Gate Pipeline**| **PRODUCTION-VERIFIED** | [`ci_architecture.md`](audit/phase7/ci_architecture.md) | `scripts/run_phase7_quality_gates.py` | None |
+| **Supply Chain Assurance** | **PRODUCTION-VERIFIED** | [`supply_chain_assurance.md`](audit/phase7/supply_chain_assurance.md) | 0 CVEs, 0 copyleft licenses | None |
+| **Performance Budgets** | **PRODUCTION-VERIFIED** | [`performance_results.md`](audit/phase7/performance_results.md) | 23,114.0 eps, p99 27.5 µs | None |
+| **Operational Incident Mgt**| **PRODUCTION-VERIFIED** | [`operational_exercises.md`](audit/phase7/operational_exercises.md) | GameDay runbooks, SLI/SLO contract | None |
+| **Technical Debt Governance**| **PRODUCTION-VERIFIED** | [`technical_debt_register.md`](audit/phase7/technical_debt_register.md) | Tracked items, Phase 8 sunset plan | None |
+| **Overall Phase 7 Status** | **PASS WITH LIMITATIONS** | [`phase7_exit_report.md`](audit/phase7/phase7_exit_report.md) | **1,221 / 1,221 Tests Passed (100%)** | Real cross-connects simulated |

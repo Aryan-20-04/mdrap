@@ -4,7 +4,7 @@
 Each extracted companion package was verified for independent packaging and distribution readiness:
 - Standalone `pyproject.toml` configurations validated against PEP 517 / PEP 621.
 - Pure-Python wheel builds executed via `pip wheel --no-deps`.
-- Public APIs tested in isolation via [`tests/test_companion_packages.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/tests/test_companion_packages.py).
+- Public APIs tested in isolation via [`tests/test_companion_packages.py`](tests/test_companion_packages.py).
 
 ## 2. Package Artifact Inventory
 

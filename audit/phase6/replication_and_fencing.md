@@ -31,7 +31,7 @@ MDRAP Phase 6 defines an explicit **Replication and Fencing Model** governed by:
 ```
 
 ### Fencing Enforcement Rules
-- **Pre-Initialization Lock**: Before mounting [`src/journal.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/journal.py) or binding TCP ingest sockets, the shard invokes `_acquire_partition_fence()`.
+- **Pre-Initialization Lock**: Before mounting [`src/journal.py`](src/journal.py) or binding TCP ingest sockets, the shard invokes `_acquire_partition_fence()`.
 - **Zero Lock Stealing**: If `shard.lock` is held, the instance logs a critical alert and terminates with exit code `42 (ERR_PARTITION_LOCKED)`. Standbys never preemptively steal an active lock without human or orchestrated administrative intervention.
 - **Kernel-Guaranteed Clean Release**: Upon unexpected process termination (`SIGKILL`, segfault, kernel panic), the operating system cleans up file descriptor locks automatically, allowing rapid standby restart without manual cleanup.
 

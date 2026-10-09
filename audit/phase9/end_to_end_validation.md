@@ -6,10 +6,10 @@ This report documents the verification of the complete **MDRAP Market Data Pipel
 The test suite validates data movement, transformation, and validation through every layer:
 $$\text{Ingress} \longrightarrow \text{IngestLog WAL} \longrightarrow \text{Gateway Normalization} \longrightarrow \text{Quality Engine} \longrightarrow \text{Reconciliation} \longrightarrow \text{SQLite Store} \longrightarrow \text{Fan-Out Broadcast} \longrightarrow \text{Consumer Reader}$$
 
-Additionally, it verifies **historical forensic integrity** using [`HistoricalVerifier`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/historical_verifier.py) to prove tamper-detection, torn-tail detection, and cryptographic Merkle root signing.
+Additionally, it verifies **historical forensic integrity** using [`HistoricalVerifier`](src/historical_verifier.py) to prove tamper-detection, torn-tail detection, and cryptographic Merkle root signing.
 
 ## 2. Test Execution & Topology
-- **Harness**: [`scripts/test_end_to_end_pipeline.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/scripts/test_end_to_end_pipeline.py)
+- **Harness**: [`scripts/test_end_to_end_pipeline.py`](scripts/test_end_to_end_pipeline.py)
 - **Workload**: 1,200 heterogeneous market events across 3 equity instruments (`AAPL`, `MSFT`, `GOOG`) and 2 competing feeds (`FEED_A`, `FEED_B`).
 - **Anomalies Injected**:
   1. Negative price event ($-\$150.00$)
@@ -19,7 +19,7 @@ Additionally, it verifies **historical forensic integrity** using [`HistoricalVe
   5. Multi-feed price divergences
 
 ## 3. Pipeline Ingestion & Normalization Results
-Data source: [`audit/phase9/end_to_end_test_results.json`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/audit/phase9/end_to_end_test_results.json)
+Data source: [`audit/phase9/end_to_end_test_results.json`](audit/phase9/end_to_end_test_results.json)
 
 | Metric | Result | Target / Requirement | Status |
 | :--- | :--- | :--- | :--- |
@@ -38,7 +38,7 @@ Data source: [`audit/phase9/end_to_end_test_results.json`](file:///c:/Users/KIIT
 3. **Stream Broadcast Completeness**: All 1,200 events were received by the fan-out subscriber with zero frame corruption or loss.
 
 ## 4. Forensic Historical Integrity & Tamper-Proofing
-Data source: [`audit/phase9/historical_integrity_results.json`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/audit/phase9/historical_integrity_results.json)
+Data source: [`audit/phase9/historical_integrity_results.json`](audit/phase9/historical_integrity_results.json)
 
 The historical log segments and SQLite stores were subjected to adversarial forensic auditing via `HistoricalVerifier`:
 

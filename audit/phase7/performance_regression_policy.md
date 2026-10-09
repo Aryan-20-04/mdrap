@@ -23,7 +23,7 @@ Any PR or commit that degrades baseline throughput by $> 20\%$ or increases tail
 
 ## 3. Enforcement & Verification Runbook
 
-Automated assertions in the continuous quality gate script ([`scripts/run_phase7_quality_gates.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/scripts/run_phase7_quality_gates.py)):
+Automated assertions in the continuous quality gate script ([`scripts/run_phase7_quality_gates.py`](scripts/run_phase7_quality_gates.py)):
 
 ```python
 def check_performance_budget(measured: dict, baseline: dict):

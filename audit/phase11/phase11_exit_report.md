@@ -68,7 +68,7 @@ All 11 claims asserted in `audit/phase10/phase10_exit_report.md` were independen
 ## 4. Consensus Classification & Persistence Fencing Audit
 
 ### 4.1 Algorithmic Classification
-[`src/mdrap/consensus.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/mdrap/consensus.py) is formally classified as:
+[`src/mdrap/consensus.py`](src/mdrap/consensus.py) is formally classified as:
 $$\textbf{Quorum-Based Lease Coordination with Monotonic Epoch Fencing}$$
 - **Not Raft or Multi-Paxos**: Does not replicate state machine logs across nodes. Nodes write locally to IngestLog WAL.
 - **Majority Quorum Lease**: Majority vote ($\lfloor N/2 \rfloor + 1 = 2/3$) required for leadership acquisition and renewal ($T_{\text{lease}} = 500\text{ ms}$, $T_{\text{heartbeat}} = 150\text{ ms}$).

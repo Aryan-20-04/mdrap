@@ -1,7 +1,7 @@
 # MDRAP Phase 10 — Distributed Consensus Algorithm & Fencing Assessment
 
 ## 1. Executive Summary & Algorithmic Classification
-In strict compliance with Phase 10 Mandate §5, this report independently evaluates the consensus, coordination, and fencing mechanisms implemented in [`src/mdrap/consensus.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/mdrap/consensus.py) and [`src/mdrap/failover.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/mdrap/failover.py).
+In strict compliance with Phase 10 Mandate §5, this report independently evaluates the consensus, coordination, and fencing mechanisms implemented in [`src/mdrap/consensus.py`](src/mdrap/consensus.py) and [`src/mdrap/failover.py`](src/mdrap/failover.py).
 
 ### Algorithmic Classification
 The MDRAP consensus architecture is formally classified as:
@@ -31,7 +31,7 @@ It does **not** implement a replicated distributed log (such as Raft log matchin
 - If an isolated node attempts to assert leadership while in a minority partition (e.g. 1 node out of 3), the election is blocked.
 
 ### 2.4 Fencing Token Enforcement & Persistence Boundary
-- **Enforcement Point**: Authoritative write fencing is enforced at the userspace persistence boundary by [`FencedWALWriter`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/mdrap/consensus.py#L43-L96).
+- **Enforcement Point**: Authoritative write fencing is enforced at the userspace persistence boundary by [`FencedWALWriter`](src/mdrap/consensus.py#L43-L96).
 - **Validation Rules**:
   ```python
   if token.is_expired:

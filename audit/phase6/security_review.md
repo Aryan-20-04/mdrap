@@ -13,11 +13,11 @@ A thorough threat modeling and code review was conducted against all Phase 6 add
 
 ### Surface A: Multi-Tenant Fan-Out & Noisy-Neighbor Attacks
 - **Threat**: Malicious or misconfigured tenant subscribes to high-frequency tickers and deliberately stalls TCP reads to exhaust engine memory and deny service to competing tenants.
-- **Mitigation & Verification**: Implemented in [`ConsumerFanoutManager`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/partition.py). Each consumer receives a dedicated bounded `collections.deque(maxlen=1000)`. Stalled consumers trigger drop counter increments. Upon $\ge 10$ drops, the consumer is instantly evicted and socket closed. Verified in `test_consumer_fanout_and_noisy_neighbor_eviction`.
+- **Mitigation & Verification**: Implemented in [`ConsumerFanoutManager`](src/partition.py). Each consumer receives a dedicated bounded `collections.deque(maxlen=1000)`. Stalled consumers trigger drop counter increments. Upon $\ge 10$ drops, the consumer is instantly evicted and socket closed. Verified in `test_consumer_fanout_and_noisy_neighbor_eviction`.
 
 ### Surface B: Tenant Subscription & Quota Spoofing
 - **Threat**: Unprivileged tenant submits requests for restricted premium symbol universes or floods ingestion with high query volumes.
-- **Mitigation & Verification**: Implemented in [`TenantQuotaManager`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/partition.py). Hard subscription ceilings enforced per tenant tier (Standard: 50, VIP: 500). Sliding-window token-bucket rate limiting enforces eps ceilings in $< 2.5\text{ \mu s}$. Verified in `test_tenant_quota_governance`.
+- **Mitigation & Verification**: Implemented in [`TenantQuotaManager`](src/partition.py). Hard subscription ceilings enforced per tenant tier (Standard: 50, VIP: 500). Sliding-window token-bucket rate limiting enforces eps ceilings in $< 2.5\text{ \mu s}$. Verified in `test_tenant_quota_governance`.
 
 ### Surface C: Shard Split-Brain & Uncoordinated Multi-Writer Attacks
 - **Threat**: Network partition or rogue orchestration script starts duplicate shard writers, leading to split-brain writes and poisoned order books.
@@ -25,7 +25,7 @@ A thorough threat modeling and code review was conducted against all Phase 6 add
 
 ### Surface D: API Key Harvesting & Token Prefix Collisions
 - **Threat**: Weak token prefixes allow attackers to revoke unauthorized keys or infer secret entropy.
-- **Mitigation & Verification**: Addressed in [`src/security.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/security.py). Each entitlement requires a deterministic 64-bit `key_id` derived from the PBKDF2 salt/hash. Revocation operations prioritize exact 16-hex-char `key_id` lookups.
+- **Mitigation & Verification**: Addressed in [`src/security.py`](src/security.py). Each entitlement requires a deterministic 64-bit `key_id` derived from the PBKDF2 salt/hash. Revocation operations prioritize exact 16-hex-char `key_id` lookups.
 
 ---
 

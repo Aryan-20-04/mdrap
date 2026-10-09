@@ -9,7 +9,7 @@ This document provides an exhaustive forensic record of all **failures, deviatio
 
 ### DEV-01: Consensus Coordinator Peer Epoch Synchronization Gap
 - **Severity**: HIGH (Distributed Safety)
-- **Component**: [`src/mdrap/consensus.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/mdrap/consensus.py), [`src/consensus.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/consensus.py)
+- **Component**: [`src/mdrap/consensus.py`](src/mdrap/consensus.py), [`src/consensus.py`](src/consensus.py)
 - **Symptom**: When multiple `ConsensusCoordinator` instances ran across simulated cluster nodes, an election requested on an independent instance incremented its local private epoch counter (`_current_epoch += 1`) starting from 0, resulting in conflicting or regressed epoch tokens across nodes.
 - **Root Cause**: The consensus implementation lacked an epoch exchange/synchronization hook to ingest epoch updates from peer node heartbeat/announcement messages.
 - **Remediation**: Added `sync_epoch(self, epoch: int) -> None` and `initial_epoch: int = 0` to `ConsensusCoordinator`. In networked staging, nodes synchronize local epochs upon receiving peer heartbeats.
@@ -19,7 +19,7 @@ This document provides an exhaustive forensic record of all **failures, deviatio
 
 ### DEV-02: Infinite Background Feed Simulation on `sim_speed_eps=0.0`
 - **Severity**: MEDIUM (Resource Contention / Test Isolation)
-- **Component**: [`src/mdrap/service.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/mdrap/service.py#L605-L615)
+- **Component**: [`src/mdrap/service.py`](src/mdrap/service.py#L605-L615)
 - **Symptom**: When `MarketDataDaemon` was initialized with `sim_speed_eps=0.0` to disable automatic feed simulation, `_ingestion_loop` computed `sleep_s = 0.0` and immediately started an unbounded loop generating 10 million events in the background, saturating client queues.
 - **Root Cause**: `_ingestion_loop` did not check `if self.sim_speed_eps <= 0.0:` before launching `FeedSimulator`.
 - **Remediation**: Added guard condition in `_ingestion_loop`:

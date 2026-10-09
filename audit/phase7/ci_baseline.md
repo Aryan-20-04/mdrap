@@ -7,7 +7,7 @@ To transition MDRAP toward an automated, self-verifying engineering platform, th
 
 ## 2. Test Suite Architecture & Markers
 
-As defined in [`pytest.ini`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/pytest.ini):
+As defined in [`pytest.ini`](pytest.ini):
 ```ini
 [pytest]
 pythonpath = src .

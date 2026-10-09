@@ -33,7 +33,7 @@ Phase 7 implements **Property-Based Testing** using deterministic pseudo-random 
 ---
 
 ## 3. Implementation in Phase 7 Verification Suite
-These properties are codified and executed in [`tests/test_phase7_verification.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/tests/test_phase7_verification.py):
+These properties are codified and executed in [`tests/test_phase7_verification.py`](tests/test_phase7_verification.py):
 - `test_property_sbe_serialization_roundtrip`: 1,000 randomized canonical events.
 - `test_property_monotonic_sequence_generation`: Arbitrary burst sizes up to 5,000 ticks.
 - `test_property_quality_status_dominance`: Fuzzed price/size inputs asserting strict status hierarchy.
