@@ -53,24 +53,24 @@ flowchart TD
 
 | Component | Module | Role in Research Platform |
 |---|---|---|
-| **Core Pipeline & Quality** | [`pipeline.py`](src/pipeline.py), [`quality.py`](src/quality.py), [`models.py`](src/models.py) | Ingests raw historical records, validates timestamp monotonicity and price consistency, and enforces quality status (`VALID`, `SUSPICIOUS`, `INVALID`). |
-| **CHD History Replay** | [`chd_history.py`](src/chd_history.py), [`chd.py`](src/chd.py) | Fast historical replay of compressed exchange order books and tick streams with nano-precision timestamp alignment. |
-| **Columnar Storage (DuckDB)** | [`columnar.py`](src/columnar.py) | Embedded [`ColumnarStore`](src/columnar.py) powering sub-second vectorized aggregations, windowed metrics, and Parquet persistence. |
-| **Corporate Actions Engine** | [`corporate_actions.py`](src/corporate_actions.py) | Normalizes raw historical prices against stock splits, reverse splits, cash dividends, and ticker renames to avoid phantom returns. |
-| **Alpha Feature Store** | [`features.py`](src/features.py) | Point-in-time technical and microstructure features: `sma()`, `ema()`, `rsi()`, `macd()`, `bollinger_bands()`, and `atr()`. |
-| **Options & Greeks Modeling** | [`options.py`](src/options.py) | Black-Scholes-Merton (BSM) options pricing, implied volatility (IV) solvers, and analytic Greeks (`delta`, `gamma`, `vega`, `theta`). |
-| **Backtest Engine** | [`backtest.py`](src/backtest.py) | Event-driven historical simulation with [`BacktestEngine`](src/backtest.py), paper execution, equity curve sampling, and drawdown analysis. |
+| **Core Pipeline & Quality** | [`pipeline.py`](src/mdrap/pipeline.py), [`quality.py`](src/mdrap/quality.py), [`models.py`](src/mdrap/models.py) | Ingests raw historical records, validates timestamp monotonicity and price consistency, and enforces quality status (`VALID`, `SUSPICIOUS`, `INVALID`). |
+| **CHD History Replay** | [`chd_history.py`](src/mdrap/chd_history.py), [`chd.py`](src/mdrap/chd.py) | Fast historical replay of compressed exchange order books and tick streams with nano-precision timestamp alignment. |
+| **Columnar Storage (DuckDB)** | [`columnar.py`](src/mdrap/columnar.py) | Embedded [`ColumnarStore`](src/mdrap/columnar.py) powering sub-second vectorized aggregations, windowed metrics, and Parquet persistence. |
+| **Corporate Actions Engine** | [`corporate_actions.py`](src/mdrap/corporate_actions.py) | Normalizes raw historical prices against stock splits, reverse splits, cash dividends, and ticker renames to avoid phantom returns. |
+| **Alpha Feature Store** | [`features.py`](src/mdrap/features.py) | Point-in-time technical and microstructure features: `sma()`, `ema()`, `rsi()`, `macd()`, `bollinger_bands()`, and `atr()`. |
+| **Options & Greeks Modeling** | [`options.py`](src/mdrap/options.py) | Black-Scholes-Merton (BSM) options pricing, implied volatility (IV) solvers, and analytic Greeks (`delta`, `gamma`, `vega`, `theta`). |
+| **Backtest Engine** | [`backtest.py`](src/mdrap/backtest.py) | Event-driven historical simulation with [`BacktestEngine`](src/mdrap/backtest.py), paper execution, equity curve sampling, and drawdown analysis. |
 
 ---
 
 ## 3. End-to-End Implementation Example
 
 The following script demonstrates the complete research workflow:
-1. Loads historical raw events and validates data quality via [`Pipeline`](src/pipeline.py).
-2. Stores canonical events into embedded DuckDB via [`ColumnarStore`](src/columnar.py).
-3. Applies historical split factors via [`CorporateActionsEngine`](src/corporate_actions.py).
-4. Calculates technical features (RSI / Moving Averages) via [`features.py`](src/features.py).
-5. Executes an event-driven momentum strategy using [`BacktestEngine`](src/backtest.py).
+1. Loads historical raw events and validates data quality via [`Pipeline`](src/mdrap/pipeline.py).
+2. Stores canonical events into embedded DuckDB via [`ColumnarStore`](src/mdrap/columnar.py).
+3. Applies historical split factors via [`CorporateActionsEngine`](src/mdrap/corporate_actions.py).
+4. Calculates technical features (RSI / Moving Averages) via [`features.py`](src/mdrap/features.py).
+5. Executes an event-driven momentum strategy using [`BacktestEngine`](src/mdrap/backtest.py).
 
 ```python
 """
@@ -219,7 +219,7 @@ if __name__ == "__main__":
 
 ## 4. Analytical Query Patterns with DuckDB
 
-[`ColumnarStore`](src/columnar.py) enables researchers to query tick archives with standard SQL using vectorized SIMD kernels:
+[`ColumnarStore`](src/mdrap/columnar.py) enables researchers to query tick archives with standard SQL using vectorized SIMD kernels:
 
 ```python
 from columnar import ColumnarStore
@@ -255,7 +255,7 @@ spread_df = store.con.execute("""
 
 When running a research or backtesting workstation, you should omit low-level production streaming infrastructure:
 
-- **No Shared Memory Ring Buffer ([`shm.py`](src/shm.py))**: In-memory Python iterables or DuckDB columnar scans are significantly more ergonomic for batch analysis than POSIX IPC ring buffers.
-- **No Headless TCP Socket Daemons ([`service.py`](src/service.py), [`gateway_tcp.py`](src/gateway_tcp.py))**: Avoid running network server loops; load datasets directly from local files or object storage.
-- **No Live WebSocket Exchange Handlers ([`ws_feed.py`](src/ws_feed.py), [`live.py`](src/live.py))**: Research uses immutable historical snapshots rather than live non-deterministic internet feeds.
-- **No Live Terminal Rendering ([`terminal_display.py`](src/terminal_display.py))**: Terminal cockpits generate high console I/O; researchers should use Jupyter Notebooks, Pandas DataFrames, or Matplotlib charts.
+- **No Shared Memory Ring Buffer ([`shm.py`](src/mdrap/shm.py))**: In-memory Python iterables or DuckDB columnar scans are significantly more ergonomic for batch analysis than POSIX IPC ring buffers.
+- **No Headless TCP Socket Daemons ([`service.py`](src/mdrap/service.py), [`gateway_tcp.py`](src/mdrap/gateway_tcp.py))**: Avoid running network server loops; load datasets directly from local files or object storage.
+- **No Live WebSocket Exchange Handlers ([`ws_feed.py`](src/mdrap/ws_feed.py), [`live.py`](src/mdrap/live.py))**: Research uses immutable historical snapshots rather than live non-deterministic internet feeds.
+- **No Live Terminal Rendering ([`terminal_display.py`](src/mdrap/terminal_display.py))**: Terminal cockpits generate high console I/O; researchers should use Jupyter Notebooks, Pandas DataFrames, or Matplotlib charts.

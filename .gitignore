@@ -74,6 +74,8 @@ benchmarks/benchmark_*.json
 *.dbn
 data/*.db
 data/*.db-wal
+data/*.db.wal/
+data/wal/
 data/*.db-shm
 data/*.db-journal
 data/*.dbn

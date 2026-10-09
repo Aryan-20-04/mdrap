@@ -1,12 +1,12 @@
 # Implementing Custom Storage Backends
 
-MDRAP ships with an ultra-fast SQLite persistence engine with Write-Ahead Logging (WAL) and memory mapping ([`Store`](src/storage.py)). For distributed deployments, time-series databases, or cloud tiers, persistence can be swapped with any engine (PostgreSQL, TimescaleDB, ClickHouse) implementing [`StorageBackend`](src/protocols.py).
+MDRAP ships with an ultra-fast SQLite persistence engine with Write-Ahead Logging (WAL) and memory mapping ([`Store`](src/mdrap/storage.py)). For distributed deployments, time-series databases, or cloud tiers, persistence can be swapped with any engine (PostgreSQL, TimescaleDB, ClickHouse) implementing [`StorageBackend`](src/mdrap/protocols.py).
 
 ---
 
 ## The StorageBackend Protocol
 
-Defined in [`src/protocols.py`](src/protocols.py):
+Defined in [`src/mdrap/protocols.py`](src/mdrap/protocols.py):
 
 ```python
 from typing import Any, Protocol, runtime_checkable
@@ -35,7 +35,7 @@ class StorageBackend(Protocol):
 
 ## Pipeline Flush Lifecycle
 
-[`Pipeline`](src/pipeline.py) batches ticks in memory queues (`BATCH_SIZE=2000` or `flush_interval_s=1.0s`):
+[`Pipeline`](src/mdrap/pipeline.py) batches ticks in memory queues (`BATCH_SIZE=2000` or `flush_interval_s=1.0s`):
 
 ```mermaid
 sequenceDiagram
@@ -54,7 +54,7 @@ sequenceDiagram
 ```
 
 ### Flush Protocol:
-1. **Atomic Optimization**: If backend provides `write_batches_atomic()`, [`Pipeline.flush()`](src/pipeline.py#L610-L647) submits canonical, quarantine, lineage, and health records in one call.
+1. **Atomic Optimization**: If backend provides `write_batches_atomic()`, [`Pipeline.flush()`](src/mdrap/pipeline.py#L610-L647) submits canonical, quarantine, lineage, and health records in one call.
 2. **Fallback Sequence**: Otherwise calls `write_canonical_batch()`, `write_quarantine_batch()`, `write_lineage_batch()`, `upsert_source_health()`, then `commit()`.
 3. **Dead-Letter Spilling**: On unhandled database exceptions, in-memory batches are dumped to fsync'd JSONL files under `data/deadletter/spill-<ns>.jsonl` before raising.
 
@@ -172,6 +172,6 @@ class PostgresStorageBackend:
 
 ## Source References
 
-- [`src/protocols.py`](src/protocols.py): [`StorageBackend`](src/protocols.py) protocol definition.
-- [`src/storage.py`](src/storage.py): Production SQLite [`Store`](src/storage.py) with WAL and PRAGMA tuning.
-- [`src/pipeline.py`](src/pipeline.py): Batch buffer management, flush execution, and dead-letter queue.
+- [`src/mdrap/protocols.py`](src/mdrap/protocols.py): [`StorageBackend`](src/mdrap/protocols.py) protocol definition.
+- [`src/mdrap/storage.py`](src/mdrap/storage.py): Production SQLite [`Store`](src/mdrap/storage.py) with WAL and PRAGMA tuning.
+- [`src/mdrap/pipeline.py`](src/mdrap/pipeline.py): Batch buffer management, flush execution, and dead-letter queue.

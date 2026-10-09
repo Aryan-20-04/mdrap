@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-12  
 **Status:** Accepted  
-**Scope:** Core Platform · Alternative Data Layer (src/research.py)
+**Scope:** Core Platform · Alternative Data Layer (src/mdrap/research.py)
 
 ---
 
@@ -97,7 +97,7 @@ Furthermore, users acquiring MDRAP via `git clone` or `pip install` required a z
 2. **Automated Multi-Compiler Packaging (`build_fastpath.py`, `setup.py`)**:
    - `build_fastpath.py` auto-detects GCC, Clang, or MSVC (`cl.exe`) on system PATH and targets `.dll` (Windows), `.so` (Linux), or `.dylib` / `.so` (macOS) with 30s timeout guards.
    - `setup.py` hooks into `BuildPyWithFastpath` and `DevelopWithFastpath` so `pip install .` and `pip install -e .` compile native hot paths automatically.
-3. **Transparent JIT Loader (`src/fastpath.py`)**:
+3. **Transparent JIT Loader (`src/mdrap/fastpath.py`)**:
    - On first import, `_load_native_lib()` inspects candidate binary paths. If absent but `fastpath.c` is present, it auto-compiles JIT in sub-seconds.
 4. **Zero-Degradation Pure Python Fallback**:
    - If no C compiler is available, or if explicitly toggled via `MDRAP_DISABLE_FASTPATH=1`, all 70 modules execute using pure Python standard library fallbacks with 100% numerical parity and zero dropped events.
@@ -119,7 +119,7 @@ Furthermore, users acquiring MDRAP via `git clone` or `pip install` required a z
 
 **Date:** 2026-09-14  
 **Status:** Accepted  
-**Scope:** Core Storage · Analytical Engine · CLI Pipeline Dispatch (`src/cli.py`, `src/columnar.py`)
+**Scope:** Core Storage · Analytical Engine · CLI Pipeline Dispatch (`src/cli.py`, `src/mdrap/columnar.py`)
 
 ---
 
@@ -157,7 +157,7 @@ Per Design Principle #2 ("Measure before claiming") and Principle #3 ("Never sil
 
 **Date:** 2026-09-14  
 **Status:** Accepted  
-**Scope:** Presentation Layer · Terminal UX · Execution Safety (`src/navigator.py`, `mdrap desk`)
+**Scope:** Presentation Layer · Terminal UX · Execution Safety (`src/mdrap/navigator.py`, `mdrap desk`)
 
 ---
 
@@ -171,7 +171,7 @@ High-frequency market operators and algorithmic trading desk supervisors need su
 
 ## 2. Decision: Vim-Inspired Modal State Machine with Armed Execution Tickets
 
-We introduced the `ModalNavigator` (`src/navigator.py`, CLI: `mdrap desk` / `mdrap nav`):
+We introduced the `ModalNavigator` (`src/mdrap/navigator.py`, CLI: `mdrap desk` / `mdrap nav`):
 
 1. **Strict Modal State Machine**:
    - `NORMAL`: Directional navigation (`j`/`k`, `Ctrl-D`/`Ctrl-U`, `g`/`G`), tab traversal (`h`/`l`/`1-5`), and non-mutating inspection (`c` chart, `d` depth, `v` vwap, `o` browser link, `x` excel export).
@@ -217,17 +217,17 @@ Per Section 26 Design Principle #1 ("Correctness before optimization") and Princ
 ## 2. Decision: Ponytail Over-Engineering Elimination
 
 1. **Purged Dead Classes & Stubs**:
-   - Removed `LiveStrategyRunner` and `OrderBookLevel` from `src/strategy_sdk.py`.
-   - Removed uncalled helper stubs from `src/shm.py`, `src/terminal_display.py`, `src/storage.py`, `src/bbo.py`, `src/depth.py`, `src/reconciliation.py`, and `src/client.py`.
+   - Removed `LiveStrategyRunner` and `OrderBookLevel` from `src/mdrap/strategy_sdk.py`.
+   - Removed uncalled helper stubs from `src/mdrap/shm.py`, `src/mdrap/terminal_display.py`, `src/mdrap/storage.py`, `src/mdrap/bbo.py`, `src/mdrap/depth.py`, `src/mdrap/reconciliation.py`, and `src/mdrap/client.py`.
 2. **Standard Library Normal Distribution Delegation**:
-   - Replaced custom polynomial erf-based approximations in `src/options.py` with direct delegation to `statistics.NormalDist()`:
+   - Replaced custom polynomial erf-based approximations in `src/mdrap/options.py` with direct delegation to `statistics.NormalDist()`:
      ```python
      _STD_NORM = statistics.NormalDist()
      def _norm_cdf(x: float) -> float: return _STD_NORM.cdf(x)
      def _norm_pdf(x: float) -> float: return _STD_NORM.pdf(x)
      ```
 3. **Surfaced Silent Exceptions Platform-Wide**:
-   - In `src/security.py`, `src/service.py`, `src/config.py`, and `src/quality.py`, converted silent exception swallows (`except: pass`) into explicit `sys.stderr` error notifications and telemetry error counter increments.
+   - In `src/mdrap/security.py`, `src/mdrap/service.py`, `src/mdrap/config.py`, and `src/mdrap/quality.py`, converted silent exception swallows (`except: pass`) into explicit `sys.stderr` error notifications and telemetry error counter increments.
    - Enforced Design Principle #3 ("Never silently discard bad data") on corrupt WebSocket and Polygon/Databento feed frames by routing unparseable frames as `RawEvent(is_malformed=True)` into `normalize()` to be quarantined as `INVALID` with `SCHEMA_VIOLATION`.
 
 ---
@@ -243,7 +243,7 @@ Per Section 26 Design Principle #1 ("Correctness before optimization") and Princ
 
 **Date:** 2026-09-22  
 **Status:** Accepted  
-**Scope:** Standalone Native Core · Process Split · Shared Memory Interface (`src/mdrap_core.c`, `src/shm.py`)  
+**Scope:** Standalone Native Core · Process Split · Shared Memory Interface (`src/mdrap_core.c`, `src/mdrap/shm.py`)  
 **Full ADR:** [docs/decisions/0003-native-core-process-split.md](decisions/0003-native-core-process-split.md)
 
 ## 1. Context & Decision

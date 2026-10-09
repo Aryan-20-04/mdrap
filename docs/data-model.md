@@ -14,7 +14,7 @@ Every piece of data flows through a strict lifecycle:
 
 ## 2. Event Schemas
 
-### 2.1 `RawEvent` (`src/models.py`)
+### 2.1 `RawEvent` (`src/mdrap/models.py`)
 Unnormalized record direct from the feed or simulator:
 | Field | Type | Description |
 |---|---|---|
@@ -23,7 +23,7 @@ Unnormalized record direct from the feed or simulator:
 | `receive_timestamp` | `float` | High-precision epoch timestamp stamped at gateway arrival |
 | `raw_id` | `str` | Unique monotonic identifier (`sim-N` or `raw-N`) |
 
-### 2.2 `CanonicalEvent` (`src/models.py`)
+### 2.2 `CanonicalEvent` (`src/mdrap/models.py`)
 Normalized canonical representation:
 | Field | Type | Description |
 |---|---|---|
@@ -54,7 +54,7 @@ A deduplication key determines identity within the bounded LRU window:
 
 ---
 
-## 4. Storage Tables (`src/storage.py`)
+## 4. Storage Tables (`src/mdrap/storage.py`)
 
 - **`canonical_events`**: Stores only events where `quality_status != 'INVALID'`.
 - **`quarantine`**: Stores corrupted or invalid events (`raw_id`, `source`, `reason`, `raw_payload`, `received_at`).

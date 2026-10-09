@@ -64,15 +64,15 @@ The platform converts noisy, delayed, duplicated, and inconsistent market data f
 
 ## 2. Component Responsibilities
 
-### 2.1 Security & Ingestion Gateway (`src/gateway.py`, `src/security.py`)
+### 2.1 Security & Ingestion Gateway (`src/mdrap/gateway.py`, `src/mdrap/security.py`)
 - **Rate Limiting & Sanitization**: Token bucket rate limiter protects pipeline from quote bursts and denial-of-service ($20,000\text{ eps}$). Regex and range checking sanitizes all numeric fields and string symbols.
 - **HMAC Authentication & RBAC**: Constant-time HMAC-SHA256 signature verification protects against feed spoofing. Role-Based Access Control enforces entitlements (`VIEWER`, `OPERATOR`, `ADMIN`).
 - **`ingest()`**: Records high-resolution `receive_timestamp` immediately upon arrival and assigns a monotonic `raw_id`.
 - **`normalize()`**: Maps vendor-specific schemas to the uniform `CanonicalEvent`. Catches schema violations and routes them as `INVALID` events to quarantine.
-- **Corrupt-Frame Quarantine Path**: Ingest feeds (`src/ws_feed.py`, `src/polygon_feed.py`) never silently drop malformed, truncated, or unparseable wire frames. Corrupt payloads are wrapped into `RawEvent(is_malformed=True)` and dispatched through `normalize()`, generating an `INVALID` event quarantined under `SCHEMA_VIOLATION` (Principle #3).
-- **Write-Ahead Raw Archive (`src/archive.py`)**: Date- and source-partitioned JSONL logging preserves raw payloads before ingestion.
+- **Corrupt-Frame Quarantine Path**: Ingest feeds (`src/mdrap/ws_feed.py`, `src/mdrap/polygon_feed.py`) never silently drop malformed, truncated, or unparseable wire frames. Corrupt payloads are wrapped into `RawEvent(is_malformed=True)` and dispatched through `normalize()`, generating an `INVALID` event quarantined under `SCHEMA_VIOLATION` (Principle #3).
+- **Write-Ahead Raw Archive (`src/mdrap/archive.py`)**: Date- and source-partitioned JSONL logging preserves raw payloads before ingestion.
 
-### 2.2 Quality Engine, Jitter Buffer & Native C Fastpath (`src/quality.py`, `src/fastpath.c`, `src/fastpath.py`)
+### 2.2 Quality Engine, Jitter Buffer & Native C Fastpath (`src/mdrap/quality.py`, `src/fastpath.c`, `src/mdrap/fastpath.py`)
 - Stateful per-`(source, instrument)` evaluation.
 - Classifies into three non-downgradable levels: `VALID` < `SUSPICIOUS` < `INVALID`.
 - Uses Welford's algorithm (`_RollingStats`) for numerically stable rolling mean and standard deviation.
@@ -85,12 +85,12 @@ The platform converts noisy, delayed, duplicated, and inconsistent market data f
   - Measured latency: **24.4 ns/event** in sequenced batch C kernel; **~50 ns** single evaluation; **~16 µs** Python pipeline.
   - Automatic boundary fallback to pure Python if beyond 8,192 symbols.
 
-### 2.3 Consolidated Depth & Real-Time VWAP Engine (`src/depth.py`)
+### 2.3 Consolidated Depth & Real-Time VWAP Engine (`src/mdrap/depth.py`)
 - Aggregates disparate quote feeds and order updates into a unified multi-venue Level-2 depth ladder.
 - Computes real-time **Volume Weighted Average Price (VWAP)** execution schedules, slippage curves, and market impact estimates for arbitrary order sizes.
 - Calculates dynamic bid/ask liquidity imbalances.
 
-### 2.4 Cross-Feed Reconciler & Adaptive Watchdog (`src/reconciliation.py`, `src/watchdog.py`, `src/bbo.py`)
+### 2.4 Cross-Feed Reconciler & Adaptive Watchdog (`src/mdrap/reconciliation.py`, `src/mdrap/watchdog.py`, `src/mdrap/bbo.py`)
 - Maintains per-instrument alignment across multiple feeds.
 - Computes real-time source reliability scores based on weighted performance:
   - Accuracy / Agreement: 40%
@@ -98,13 +98,13 @@ The platform converts noisy, delayed, duplicated, and inconsistent market data f
   - Deduplication cleanliness: 20%
   - Latency / Freshness: 15%
 - Generates Synthetic Consolidated NBBO with venue attribution and locked/crossed book status.
-- **Adaptive Hybrid Silence Watchdog (`src/watchdog.py`)**:
+- **Adaptive Hybrid Silence Watchdog (`src/mdrap/watchdog.py`)**:
   - Dual-mode trigger: fixed wall-clock threshold ($2.0\text{ s}$) combined with peer-aware EWMA inter-tick pace ($10\times$ multiplier).
   - Triggers sub-5ms failover during active trading sessions when a source stalls while sibling feeds stream normally.
   - Quiet-market protection: sibling feeds waking from an overnight or weekend pause do not trigger false failovers.
   - Ingests SHM backpressure watermark warnings to monitor ring buffer consumer saturation.
 
-### 2.5 Storage, Quarantine & Merkle Audit (`src/storage.py`, `src/pipeline.py`, `src/security.py`)
+### 2.5 Storage, Quarantine & Merkle Audit (`src/mdrap/storage.py`, `src/mdrap/pipeline.py`, `src/mdrap/security.py`)
 - Segregates data streams into distinct tables:
   - `canonical_events`: Only `VALID` and `SUSPICIOUS` market events.
   - `quarantine`: `INVALID` events with raw payload and failure reason. Never drops data.
@@ -112,29 +112,29 @@ The platform converts noisy, delayed, duplicated, and inconsistent market data f
   - `source_health`: Historical log of source reliability scores.
   - `audit_log`: Cryptographically chained SHA-256 Merkle log with standalone export & verification.
   - `quarantine_merkle_log`: Tamper-evident pairwise SHA-256 Merkle root log over batched quarantine events (Format Version 3).
-- **Decoupled Async Persistence Engine (`src/pipeline.py`)**:
+- **Decoupled Async Persistence Engine (`src/mdrap/pipeline.py`)**:
   - Hot tick loop enqueues event batches into a bounded queue (`queue.Queue(maxsize=128)`).
   - Dedicated background writer thread (`_writer_loop`) drains batches to SQLite atomic transactions (`write_batches_atomic`) without stalling the hot ingest loop.
   - Reduces burst tail latency ($p99.9$) from $2.2\text{ ms} \to 314.7\,\mu\text{s}$.
   - Durable fsync'd JSONL dead-letter spillover (`_spill_dead_letter`) guarantees zero data loss on database errors or process shutdown.
 
-### 2.6 Analytical Storage Engine (`src/analytics.py`)
+### 2.6 Analytical Storage Engine (`src/mdrap/analytics.py`)
 - Tick-level aggregation into completed and current **5-second OHLCV candles**.
 - Tracks rolling bid/ask spread distributions and crossed-quote occurrences.
 - Computes realized price volatility and price range percentages using Welford's online variance algorithm.
 
-### 2.7 In-Place Terminal Visualization, Modal Navigator & Institutional Exporter (`src/terminal_display.py`, `src/navigator.py`, `src/exporter.py`)
+### 2.7 In-Place Terminal Visualization, Modal Navigator & Institutional Exporter (`src/mdrap/terminal_display.py`, `src/mdrap/navigator.py`, `src/mdrap/exporter.py`)
 - **In-Place Terminal HUD**: ANSI cursor repositioning renders live ticker tables and candlestick charts without vertical scrolling or terminal flicker.
-- **Modal Keyboard Navigator Desk (`src/navigator.py`)**: High-velocity terminal desk with a 3-mode state machine (`NORMAL`, `FILTER`, `MODAL`), Vim home-row motions, live incremental search debounce, and two-stage armed execution tickets preventing stray key accidental order submissions.
+- **Modal Keyboard Navigator Desk (`src/mdrap/navigator.py`)**: High-velocity terminal desk with a 3-mode state machine (`NORMAL`, `FILTER`, `MODAL`), Vim home-row motions, live incremental search debounce, and two-stage armed execution tickets preventing stray key accidental order submissions.
 - **Visual Candlestick Charts**: 3-character columns (` █ `, ` │ `, ` ┼ `) with outlier-resilient 10th–90th percentile scaling and synchronized volume histograms.
 - **5-Tab Financial Model Exporter**: Translates market microstructure data into styled Microsoft Excel workbooks (`.xlsx`) or automated CSV report packages.
 
-### 2.8 IPC, Shared Memory, Kafka & Alert Delivery (`src/service.py`, `src/shm.py`, `src/kafka_sink.py`, `src/alert_sinks.py`, `src/prometheus.py`)
+### 2.8 IPC, Shared Memory, Kafka & Alert Delivery (`src/mdrap/service.py`, `src/mdrap/shm.py`, `src/mdrap/kafka_sink.py`, `src/mdrap/alert_sinks.py`, `src/mdrap/prometheus.py`)
 - Headless daemon running on a non-blocking streaming socket.
 - **Binary Shared Memory Transport (SHM v3)**: Lock-free 128B ring buffer with two-phase seqlock commit. Cache Line 2 carries `SHM_FLAG_WATERMARK_WARNING = 0x01` at offset 80, signaling backpressure when reader lag or buffer occupancy crosses 80%.
-- **Durable Kafka / Redpanda Sink (`src/kafka_sink.py`)**: High-throughput distributed streaming sink with per-instrument partition routing and thread-safe batch delivery.
-- **External Alert Delivery Sinks (`src/alert_sinks.py`)**: Asynchronous worker dispatching operational and watchdog alerts to Webhook, Slack, and PagerDuty endpoints.
-- **Prometheus Exporter (`src/prometheus.py`)**: Production-grade metric exporter with reverse-proxy IP spoofing protection.
+- **Durable Kafka / Redpanda Sink (`src/mdrap/kafka_sink.py`)**: High-throughput distributed streaming sink with per-instrument partition routing and thread-safe batch delivery.
+- **External Alert Delivery Sinks (`src/mdrap/alert_sinks.py`)**: Asynchronous worker dispatching operational and watchdog alerts to Webhook, Slack, and PagerDuty endpoints.
+- **Prometheus Exporter (`src/mdrap/prometheus.py`)**: Production-grade metric exporter with reverse-proxy IP spoofing protection.
 
 ---
 

@@ -1,6 +1,6 @@
 # MDRAP Alternative Data & Research Flow Architecture
 
-This document diagrams the execution lifecycle of the Alternative Data & SEC Research Engine (src/research.py).
+This document diagrams the execution lifecycle of the Alternative Data & SEC Research Engine (src/mdrap/research.py).
 
 ---
 

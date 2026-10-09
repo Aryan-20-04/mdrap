@@ -931,7 +931,7 @@ mdrap desk
 ---
 
 #### Multi-Currency Portfolio Accounting
-MDRAP's portfolio and paper execution engines support multi-currency positions and cross-currency portfolio valuation via the institutional triangular `FXMatrix` engine (`src/fx.py`).
+MDRAP's portfolio and paper execution engines support multi-currency positions and cross-currency portfolio valuation via the institutional triangular `FXMatrix` engine (`src/mdrap/fx.py`).
 
 ```bash
 # View portfolio with localized conversion to Indian Rupees (INR Lakh/Crore formatting: ₹1,25,000.00)
@@ -950,7 +950,7 @@ mdrap portfolio --currency GBP
 ---
 
 #### Universal Symbology Resolution
-The universal symbology engine (`src/symbology.py`) resolves disparate ticker formats into canonical instrument identifiers with venue, currency, and asset class mappings:
+The universal symbology engine (`src/mdrap/symbology.py`) resolves disparate ticker formats into canonical instrument identifiers with venue, currency, and asset class mappings:
 - **Exchange Suffixes**: `RELIANCE.NS` → `XNSE` (INR), `TCS.BO` → `XBOM` (INR), `BMW.DE` → `XETR` (EUR), `7203.T` → `XTKS` (JPY).
 - **Japanese 4-Digit Security Codes**: `7203` → Toyota Motor Corp (`XTKS`), `6758` → Sony Group (`XTKS`), `9984` → SoftBank Group (`XTKS`).
 - **Reuters Instrument Codes (RIC)**: `RELI.NS` → `RELIANCE` on `XNSE`, `BMWG.DE` → `BMW` on `XETR`.

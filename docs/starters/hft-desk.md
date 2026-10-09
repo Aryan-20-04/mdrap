@@ -51,11 +51,11 @@ This minimal HFT deployment utilizes only 5 core modules from MDRAP:
 
 | Component | Module | Role in HFT Architecture |
 |---|---|---|
-| **Core Models & Pipeline** | [`models.py`](src/models.py), [`gateway.py`](src/gateway.py), [`pipeline.py`](src/pipeline.py) | Normalized [`CanonicalEvent`](src/models.py) representation, synchronous ingress loop, deterministic GC management (`tuned_gc`). |
-| **Native C Fastpath** | [`fastpath.py`](src/fastpath.py), [`fastpath.c`](src/fastpath.c) | Sub-microsecond (24–37 ns) quality scoring across 7 core validation rules (gap, dedup, price sanity, crossed books). |
-| **SHM Ring Buffer** | [`shm.py`](src/shm.py) | High-throughput [`SHMWriter`](src/shm.py) and [`SHMReader`](src/shm.py) with SPMC lock-free circular ring buffer, two-phase commit, and cache-line padding. |
-| **Binary Wire Protocol** | [`protocol.py`](src/protocol.py) | Compact 92-byte pre-compiled struct framing ([`pack_tick_frame`](src/protocol.py)) eliminating JSON parsing overhead. |
-| **TCP Streaming Daemon** | [`service.py`](src/service.py) | [`MarketDataDaemon`](src/service.py) for socket connectivity to remote risk desks and hardware ring replay buffers. |
+| **Core Models & Pipeline** | [`models.py`](src/mdrap/models.py), [`gateway.py`](src/mdrap/gateway.py), [`pipeline.py`](src/mdrap/pipeline.py) | Normalized [`CanonicalEvent`](src/mdrap/models.py) representation, synchronous ingress loop, deterministic GC management (`tuned_gc`). |
+| **Native C Fastpath** | [`fastpath.py`](src/mdrap/fastpath.py), [`fastpath.c`](src/fastpath.c) | Sub-microsecond (24–37 ns) quality scoring across 7 core validation rules (gap, dedup, price sanity, crossed books). |
+| **SHM Ring Buffer** | [`shm.py`](src/mdrap/shm.py) | High-throughput [`SHMWriter`](src/mdrap/shm.py) and [`SHMReader`](src/mdrap/shm.py) with SPMC lock-free circular ring buffer, two-phase commit, and cache-line padding. |
+| **Binary Wire Protocol** | [`protocol.py`](src/mdrap/protocol.py) | Compact 92-byte pre-compiled struct framing ([`pack_tick_frame`](src/mdrap/protocol.py)) eliminating JSON parsing overhead. |
+| **TCP Streaming Daemon** | [`service.py`](src/mdrap/service.py) | [`MarketDataDaemon`](src/mdrap/service.py) for socket connectivity to remote risk desks and hardware ring replay buffers. |
 
 ---
 
@@ -105,8 +105,8 @@ daemon:
 ## 4. End-to-End Implementation Example
 
 The following code illustrates the zero-copy pipeline:
-1. Producer initializes [`Pipeline`](src/pipeline.py) with [`FastQualityEngine`](src/fastpath.py) and publishes validated events to [`SHMWriter`](src/shm.py).
-2. Algorithmic trading client consumes ticks in a lock-free loop via [`SHMReader`](src/shm.py) with zero kernel context switches.
+1. Producer initializes [`Pipeline`](src/mdrap/pipeline.py) with [`FastQualityEngine`](src/mdrap/fastpath.py) and publishes validated events to [`SHMWriter`](src/mdrap/shm.py).
+2. Algorithmic trading client consumes ticks in a lock-free loop via [`SHMReader`](src/mdrap/shm.py) with zero kernel context switches.
 
 ```python
 """
@@ -248,8 +248,8 @@ Benchmarks measured on standard x86_64 server hardware:
 
 An HFT trading desk should aggressively trim non-critical modules to prevent garbage collection pauses, lock contention, and cache pollution:
 
-- **No REST / WebSocket API Service ([`api.py`](src/api.py))**: Avoids HTTP parsing and asyncio loop scheduling overhead.
-- **No Analytical Columnar Engine ([`columnar.py`](src/columnar.py))**: DuckDB aggregations belong on an offline analytics node, not on the trading box.
-- **No Historical Backtesting ([`backtest.py`](src/backtest.py))**: Keep execution binaries decoupled from backtest runners.
-- **No Research & Sentiment Modules ([`research.py`](src/research.py), [`news.py`](src/news.py), [`vessel.py`](src/vessel.py))**: External web scraping and alternative datasets have no role on the microsecond path.
-- **No Rich Terminal Cockpit / Interactive CLI ([`terminal_display.py`](src/terminal_display.py), [`navigator.py`](src/navigator.py))**: TUI formatting consumes hundreds of CPU cycles; use headless daemons with lightweight binary metrics.
+- **No REST / WebSocket API Service ([`api.py`](src/mdrap/api.py))**: Avoids HTTP parsing and asyncio loop scheduling overhead.
+- **No Analytical Columnar Engine ([`columnar.py`](src/mdrap/columnar.py))**: DuckDB aggregations belong on an offline analytics node, not on the trading box.
+- **No Historical Backtesting ([`backtest.py`](src/mdrap/backtest.py))**: Keep execution binaries decoupled from backtest runners.
+- **No Research & Sentiment Modules ([`research.py`](src/mdrap/research.py), [`news.py`](src/mdrap/news.py), [`vessel.py`](src/mdrap/vessel.py))**: External web scraping and alternative datasets have no role on the microsecond path.
+- **No Rich Terminal Cockpit / Interactive CLI ([`terminal_display.py`](src/mdrap/terminal_display.py), [`navigator.py`](src/mdrap/navigator.py))**: TUI formatting consumes hundreds of CPU cycles; use headless daemons with lightweight binary metrics.

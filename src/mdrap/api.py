@@ -1605,8 +1605,23 @@ def create_app(
 
 
 # Lazy application instantiation for ASGI servers (e.g. uvicorn api:app)
+_cached_app: Optional[FastAPI] = None
+
+
+def get_app() -> FastAPI:
+    global _cached_app
+    if _cached_app is None:
+        _cached_app = create_app()
+    return _cached_app
+
+
+def _reset_cached_app() -> None:
+    global _cached_app
+    _cached_app = None
+
+
 def __getattr__(name: str) -> Any:
     if name == "app":
-        return create_app()
+        return get_app()
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 

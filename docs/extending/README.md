@@ -53,12 +53,12 @@ MDRAP provides 6 primary extension points:
 
 | # | Extension Point | Protocol / Decorator | Entry Point Group | Description | Sub-Guide |
 |---|-----------------|----------------------|-------------------|-------------|-----------|
-| 1 | **Feed Adapter** | [`FeedAdapter`](src/adapters/__init__.py) | `mdrap.adapters` | Connects exchange feeds, multicast lines, and proprietary binary sockets to emit [`RawEvent`](src/models.py). | [Feed Adapter Guide](docs/extending/feed-adapter.md) |
-| 2 | **Storage Backend** | [`StorageBackend`](src/protocols.py) | Custom factory | Swappable persistence engine for canonical ticks, quarantine records, lineage trails, and BBO snapshots. | [Storage Backend Guide](docs/extending/storage-backend.md) |
-| 3 | **Quality Rules** | [`@register_rule`](src/rules.py) | `mdrap.quality_rules` | Custom user-defined quality checks in bitmask range `32..63` executed post-native pass. | [Quality Rules Guide](docs/extending/quality-rules.md) |
-| 4 | **Auth Provider** | [`AuthProvider`](src/protocols.py) | Custom factory | Pluggable authentication, RBAC enforcement (`VIEWER` < `OPERATOR` < `ADMIN`), and tamper-evident audit logging. | [Auth Provider Guide](docs/extending/auth-provider.md) |
-| 5 | **Output Sink** | [`OutputSink`](src/protocols.py) | `mdrap.output_sinks` | Real-time fanout sink for downstream distribution across messaging buses (Kafka, RabbitMQ, ZeroMQ, SHM). | [Output Sink Guide](docs/extending/output-sink.md) |
-| 6 | **Alert Sink** | [`AlertSink`](src/protocols.py) | `mdrap.alert_sinks` | Resilient external notifications to Webhooks, Slack, and PagerDuty with rate limiting, retries, and DLQ. | [Alert Sink Guide](docs/extending/alert-sink.md) |
+| 1 | **Feed Adapter** | [`FeedAdapter`](src/adapters/__init__.py) | `mdrap.adapters` | Connects exchange feeds, multicast lines, and proprietary binary sockets to emit [`RawEvent`](src/mdrap/models.py). | [Feed Adapter Guide](docs/extending/feed-adapter.md) |
+| 2 | **Storage Backend** | [`StorageBackend`](src/mdrap/protocols.py) | Custom factory | Swappable persistence engine for canonical ticks, quarantine records, lineage trails, and BBO snapshots. | [Storage Backend Guide](docs/extending/storage-backend.md) |
+| 3 | **Quality Rules** | [`@register_rule`](src/mdrap/rules.py) | `mdrap.quality_rules` | Custom user-defined quality checks in bitmask range `32..63` executed post-native pass. | [Quality Rules Guide](docs/extending/quality-rules.md) |
+| 4 | **Auth Provider** | [`AuthProvider`](src/mdrap/protocols.py) | Custom factory | Pluggable authentication, RBAC enforcement (`VIEWER` < `OPERATOR` < `ADMIN`), and tamper-evident audit logging. | [Auth Provider Guide](docs/extending/auth-provider.md) |
+| 5 | **Output Sink** | [`OutputSink`](src/mdrap/protocols.py) | `mdrap.output_sinks` | Real-time fanout sink for downstream distribution across messaging buses (Kafka, RabbitMQ, ZeroMQ, SHM). | [Output Sink Guide](docs/extending/output-sink.md) |
+| 6 | **Alert Sink** | [`AlertSink`](src/mdrap/protocols.py) | `mdrap.alert_sinks` | Resilient external notifications to Webhooks, Slack, and PagerDuty with rate limiting, retries, and DLQ. | [Alert Sink Guide](docs/extending/alert-sink.md) |
 
 ---
 
@@ -121,10 +121,10 @@ from mdrap.core.models import CanonicalEvent  # Do not use!
 
 - [`src/adapters/__init__.py`](src/adapters/__init__.py): [`FeedAdapter`](src/adapters/__init__.py) protocol definition and discovery routine.
 - [`src/adapters/template.py`](src/adapters/template.py): Reference implementation of a custom venue feed adapter.
-- [`src/protocols.py`](src/protocols.py): Protocol definitions for [`StorageBackend`](src/protocols.py), [`AuthProvider`](src/protocols.py), [`QualityEvaluator`](src/protocols.py), and [`OutputSink`](src/protocols.py).
-- [`src/rules.py`](src/rules.py): User quality rule registry and [`@register_rule`](src/rules.py) decorator.
-- [`src/models.py`](src/models.py): Canonical domain types ([`RawEvent`](src/models.py), [`CanonicalEvent`](src/models.py), [`QualityStatus`](src/models.py), [`Reason`](src/models.py)).
-- [`src/pipeline.py`](src/pipeline.py): Core [`Pipeline`](src/pipeline.py) orchestrator and flush lifecycle.
-- [`src/storage.py`](src/storage.py): Default SQLite persistence engine implementation [`Store`](src/storage.py).
-- [`src/security.py`](src/security.py): Cryptographic [`SecurityManager`](src/security.py) and RBAC role definitions.
-- [`src/service.py`](src/service.py): Background daemon [`MarketDataDaemon`](src/service.py) coordinating broadcast distribution.
+- [`src/mdrap/protocols.py`](src/mdrap/protocols.py): Protocol definitions for [`StorageBackend`](src/mdrap/protocols.py), [`AuthProvider`](src/mdrap/protocols.py), [`QualityEvaluator`](src/mdrap/protocols.py), and [`OutputSink`](src/mdrap/protocols.py).
+- [`src/mdrap/rules.py`](src/mdrap/rules.py): User quality rule registry and [`@register_rule`](src/mdrap/rules.py) decorator.
+- [`src/mdrap/models.py`](src/mdrap/models.py): Canonical domain types ([`RawEvent`](src/mdrap/models.py), [`CanonicalEvent`](src/mdrap/models.py), [`QualityStatus`](src/mdrap/models.py), [`Reason`](src/mdrap/models.py)).
+- [`src/mdrap/pipeline.py`](src/mdrap/pipeline.py): Core [`Pipeline`](src/mdrap/pipeline.py) orchestrator and flush lifecycle.
+- [`src/mdrap/storage.py`](src/mdrap/storage.py): Default SQLite persistence engine implementation [`Store`](src/mdrap/storage.py).
+- [`src/mdrap/security.py`](src/mdrap/security.py): Cryptographic [`SecurityManager`](src/mdrap/security.py) and RBAC role definitions.
+- [`src/mdrap/service.py`](src/mdrap/service.py): Background daemon [`MarketDataDaemon`](src/mdrap/service.py) coordinating broadcast distribution.

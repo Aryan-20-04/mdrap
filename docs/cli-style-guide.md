@@ -18,7 +18,7 @@ This specification defines the visual standards, accessibility requirements, and
 All terminal tables and callout panels across MDRAP must standardize on **rounded boxes**:
 
 - **Border Type**: `rich.box.ROUNDED`
-- **Implementation**: Import `Table` and `Panel` from `src/term.py`, which defaults all tables to `box=box.ROUNDED`.
+- **Implementation**: Import `Table` and `Panel` from `src/mdrap/term.py`, which defaults all tables to `box=box.ROUNDED`.
 - **Panels**: Use `Panel(..., border_style="cyan")` for headers and status summaries. Use `yellow` only for degraded states, and `red` for emergency alerts.
 
 ```python
@@ -32,7 +32,7 @@ table = Table(title="Feed Reliability", expand=True)
 
 ## 3. Colorblind-Safe Semantic Status Indicators
 
-Status and direction must never rely on green/red contrast alone. Always use `format_status()` and `format_direction()` from `src/term.py`.
+Status and direction must never rely on green/red contrast alone. Always use `format_status()` and `format_direction()` from `src/mdrap/term.py`.
 
 ### 3.1 Platform & Pipeline Status
 
@@ -65,7 +65,7 @@ All numbers must be formatted with commas for thousands and explicit decimal bou
 - **Latencies**: Microseconds `us` with 2 decimals for averages, integers for percentiles (e.g., `52.40 us`, `p50: 15 us / p99: 48 us`).
 - **Throughput**: `{eps:,.0f} eps` (e.g., `1,024,500 eps`).
 
-Use the `format_num(val, decimals=2)` helper in `src/term.py` for consistent rendering.
+Use the `format_num(val, decimals=2)` helper in `src/mdrap/term.py` for consistent rendering.
 
 ---
 

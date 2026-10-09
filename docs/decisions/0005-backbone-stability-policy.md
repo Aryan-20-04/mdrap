@@ -51,26 +51,26 @@ The three tiers are defined as follows:
 - **Definition**: Mission-critical platform backbone. The public API surface (exported classes, method signatures, parameter names, return types) is frozen.
 - **Breaking Changes**: Strictly prohibited in patch releases. Any breaking alteration requires a formal deprecation period lasting at least one minor release cycle (`vX.Y -> vX.Y+1`) where a runtime `DeprecationWarning` is emitted before removal.
 - **Covered Modules**:
-  - Core Pipeline: [`models.py`](src/models.py), [`gateway.py`](src/gateway.py), [`quality.py`](src/quality.py), [`reconciliation.py`](src/reconciliation.py), [`pipeline.py`](src/pipeline.py), [`metrics.py`](src/metrics.py), [`config.py`](src/config.py), [`rules.py`](src/rules.py).
-  - Storage & Audit: [`storage.py`](src/storage.py), [`archive.py`](src/archive.py), [`security.py`](src/security.py), [`audit_format.py`](src/audit_format.py).
-  - Delivery Protocols: [`shm.py`](src/shm.py), [`protocol.py`](src/protocol.py), [`service.py`](src/service.py).
-  - Native Hot Path: [`fastpath.py`](src/fastpath.py), [`fastpath.c`](src/fastpath.c).
-  - Extension Interfaces: [`adapters/__init__.py`](src/adapters/__init__.py), [`protocols.py`](src/protocols.py).
+  - Core Pipeline: [`models.py`](src/mdrap/models.py), [`gateway.py`](src/mdrap/gateway.py), [`quality.py`](src/mdrap/quality.py), [`reconciliation.py`](src/mdrap/reconciliation.py), [`pipeline.py`](src/mdrap/pipeline.py), [`metrics.py`](src/mdrap/metrics.py), [`config.py`](src/mdrap/config.py), [`rules.py`](src/mdrap/rules.py).
+  - Storage & Audit: [`storage.py`](src/mdrap/storage.py), [`archive.py`](src/mdrap/archive.py), [`security.py`](src/mdrap/security.py), [`audit_format.py`](src/mdrap/audit_format.py).
+  - Delivery Protocols: [`shm.py`](src/mdrap/shm.py), [`protocol.py`](src/mdrap/protocol.py), [`service.py`](src/mdrap/service.py).
+  - Native Hot Path: [`fastpath.py`](src/mdrap/fastpath.py), [`fastpath.c`](src/fastpath.c).
+  - Extension Interfaces: [`adapters/__init__.py`](src/adapters/__init__.py), [`protocols.py`](src/mdrap/protocols.py).
 
 ### 2.2 `beta` Tier
 - **Definition**: Production-grade and covered by comprehensive automated tests, but subject to ergonomic refinements or protocol adjustments across minor versions.
 - **Breaking Changes**: Permitted across minor version bumps (`v2.1 -> v2.2`), provided all changes are thoroughly documented in [`CHANGELOG.md`](CHANGELOG.md).
 - **Covered Modules**:
-  - Analytics & Quantitative: [`analytics.py`](src/analytics.py), [`depth.py`](src/depth.py), [`columnar.py`](src/columnar.py), [`backtest.py`](src/backtest.py), [`features.py`](src/features.py), [`options.py`](src/options.py), [`risk.py`](src/risk.py).
-  - Feeds & Ingestion: [`ws_feed.py`](src/ws_feed.py), [`polygon_feed.py`](src/polygon_feed.py), [`databento_feed.py`](src/databento_feed.py), [`live.py`](src/live.py).
-  - Client & Server Interfaces: [`api.py`](src/api.py), [`client.py`](src/client.py), [`cli.py`](src/cli.py), [`navigator.py`](src/navigator.py).
+  - Analytics & Quantitative: [`analytics.py`](src/mdrap/analytics.py), [`depth.py`](src/mdrap/depth.py), [`columnar.py`](src/mdrap/columnar.py), [`backtest.py`](src/mdrap/backtest.py), [`features.py`](src/mdrap/features.py), [`options.py`](src/mdrap/options.py), [`risk.py`](src/mdrap/risk.py).
+  - Feeds & Ingestion: [`ws_feed.py`](src/mdrap/ws_feed.py), [`polygon_feed.py`](src/mdrap/polygon_feed.py), [`databento_feed.py`](src/mdrap/databento_feed.py), [`live.py`](src/mdrap/live.py).
+  - Client & Server Interfaces: [`api.py`](src/mdrap/api.py), [`client.py`](src/mdrap/client.py), [`cli.py`](src/cli.py), [`navigator.py`](src/mdrap/navigator.py).
 
 ### 2.3 `experimental` Tier
 - **Definition**: Exploratory prototypes, cutting-edge research modules, and incubating features under active design.
 - **Breaking Changes**: No guarantees whatsoever. Classes, functions, or entire modules may be renamed, restructured, or eliminated without notice between any release.
 - **Covered Modules**:
-  - Alternative Data: [`research.py`](src/research.py) (SEC EDGAR), [`news.py`](src/news.py), [`vessel.py`](src/vessel.py) (AIS tracking).
-  - Advanced Trading Tools: [`tca.py`](src/tca.py), [`strategy_sdk.py`](src/strategy_sdk.py), [`trading_cli.py`](src/trading_cli.py).
+  - Alternative Data: [`research.py`](src/mdrap/research.py) (SEC EDGAR), [`news.py`](src/mdrap/news.py), [`vessel.py`](src/mdrap/vessel.py) (AIS tracking).
+  - Advanced Trading Tools: [`tca.py`](src/mdrap/tca.py), [`strategy_sdk.py`](src/mdrap/strategy_sdk.py), [`trading_cli.py`](src/mdrap/trading_cli.py).
 
 ---
 

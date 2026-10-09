@@ -161,7 +161,7 @@ All figures trace directly to empirical timed runs on Windows 11 (AMD Ryzen 5 76
 ## 6. Critical Correctness Findings
 
 ### [CRITICAL] CORR-01: Silent Trade Execution Dropping on Unmapped Orders in ITCH 5.0
-- **Location**: [`src/itch.py:373-375, 413-415`](src/itch.py#L373-L375)
+- **Location**: [`src/mdrap/itch.py:373-375, 413-415`](src/mdrap/itch.py#L373-L375)
 - **Component**: `ITCHOrderBookTracker.process_message()`
 - **Mechanism**:
   ```python
@@ -174,12 +174,12 @@ All figures trace directly to empirical timed runs on Windows 11 (AMD Ryzen 5 76
 - **Technical Explanation**: In production ITCH feeds, joining mid-day, recovering from network dropouts, or processing unprinted orders results in execution messages referencing unknown `order_ref` IDs. MDRAP silently returns `None`. Real match events executed on NASDAQ are completely lost from the canonical stream without a log, counter, or quarantine entry.
 
 ### [CRITICAL] CORR-02: Silent Event Duplication in Batch Processing via Reorder Buffer Leak
-- **Location**: [`src/pipeline.py:607-628`](src/pipeline.py#L607-L628)
+- **Location**: [`src/mdrap/pipeline.py:607-628`](src/mdrap/pipeline.py#L607-L628)
 - **Component**: `Pipeline.process_batch()`
 - **Mechanism**: When `reorder_window_s > 0`, `QualityEngine.evaluate(ev)` stores out-of-order events into its internal `pending` buffer and returns `None`. However, `Pipeline.process_batch()` **disregards the return value of `evaluate()`**, iterates blindly over `valid_events`, and dispatches the held event immediately. Later, `drain_expired()` pops the event and dispatches it a second time. The identical market event is processed and persisted twice.
 
 ### [CRITICAL] CORR-03: Provenance Destruction & Symbol Collision in Binary Serialization
-- **Location**: [`src/protocol.py:76-77, 93-94`](src/protocol.py#L76-L77)
+- **Location**: [`src/mdrap/protocol.py:76-77, 93-94`](src/mdrap/protocol.py#L76-L77)
 - **Component**: `pack_tick_frame()`
 - **Mechanism**:
   ```python
@@ -188,12 +188,12 @@ All figures trace directly to empirical timed runs on Windows 11 (AMD Ryzen 5 76
 - **Technical Explanation**: `symbol` is truncated to 8 bytes. Institutional options symbols (e.g., `AAPL260116C00150000` and `AAPL260116P00150000`) both truncate to `AAPL2601`. Calls and Puts collide into the same instrument. Crypto pairs (`BTC-USDT-SPOT` vs `BTC-USDT-SWAP`) collide into `BTC-USDT`. Furthermore, `raw_id`, `clock_source`, and quality reason bitmasks are dropped from the frame, destroying audit lineage.
 
 ### [HIGH] CORR-04: Upstream Packet Loss Concealment via Global Sequence Fabrication
-- **Location**: [`src/polygon_feed.py:123, 198`](src/polygon_feed.py#L123), [`src/databento_feed.py:185`](src/databento_feed.py#L185)
+- **Location**: [`src/mdrap/polygon_feed.py:123, 198`](src/mdrap/polygon_feed.py#L123), [`src/mdrap/databento_feed.py:185`](src/mdrap/databento_feed.py#L185)
 - **Component**: `parse_polygon_quote()`, `decode_dbn_record()`
 - **Mechanism**: Feeds lacking native monotonic sequence numbers assign sequence IDs using a single shared global `itertools.count(1)` across all symbols. Real network packet loss can never be detected by downstream sequence gap rules because MDRAP manufactures gap-free contiguous integers.
 
 ### [HIGH] CORR-05: 100% False-Positive Quarantine of NASDAQ ITCH Ticks via Epoch Mismatch
-- **Location**: [`src/itch.py:100, 400`](src/itch.py#L100) vs [`src/quality.py:520`](src/quality.py#L520)
+- **Location**: [`src/mdrap/itch.py:100, 400`](src/mdrap/itch.py#L100) vs [`src/mdrap/quality.py:520`](src/mdrap/quality.py#L520)
 - **Mechanism**: ITCH timestamps represent integer nanoseconds **since midnight EDT** ($\sim 34,200\text{ s}$ to $57,600\text{ s}$). The gateway divides this by $10^9$, producing timestamps around $40,000.0$. In `QualityEngine`, staleness evaluates `receive_ts - exchange_ts`. Since `receive_ts` is Unix epoch seconds ($\approx 1.74 \times 10^9\text{ s}$), the delta is $\approx 1.7 \times 10^9\text{ seconds} \gg 0.05\text{ s}$. **Every single NASDAQ ITCH tick is quarantined as `STALE`**.
 
 ---
@@ -201,12 +201,12 @@ All figures trace directly to empirical timed runs on Windows 11 (AMD Ryzen 5 76
 ## 7. Critical Concurrency Findings
 
 ### [CRITICAL] CONC-01: Total Memory Ordering Failure on ARM Architectures
-- **Location**: [`src/shm.py:331-365, 638-650`](src/shm.py#L331-L365)
+- **Location**: [`src/mdrap/shm.py:331-365, 638-650`](src/mdrap/shm.py#L331-L365)
 - **Component**: `SHMWriter.write_tick()`, `SHMReader.read_slot()`
 - **Mechanism**: The pure-Python shared memory engine relies on `struct.pack_into` and `struct.unpack_from` with **zero memory fences or atomic intrinsics**. On weakly ordered architectures (ARMv8, Apple Silicon, AWS Graviton), CPU out-of-order execution allows writes to `commit_seq` or `head_seq` to become visible to consumers before the payload bytes flush from the CPU store buffer. Readers speculatively read unwritten payload slots, validating corrupt and torn market ticks.
 
 ### [CRITICAL] CONC-02: Multi-Client Head-of-Line Blocking in TCP Gateway
-- **Location**: [`src/gateway_tcp.py:130-138`](src/gateway_tcp.py#L130-L138)
+- **Location**: [`src/mdrap/gateway_tcp.py:130-138`](src/mdrap/gateway_tcp.py#L130-L138)
 - **Component**: `TCPGatewayServer.broadcast()`
 - **Mechanism**:
   ```python
@@ -217,12 +217,12 @@ All figures trace directly to empirical timed runs on Windows 11 (AMD Ryzen 5 76
 - **Technical Explanation**: Broadcast drains are awaited **serially**. If 5 clients experience TCP window exhaustion or network jitter, the loop blocks sequentially for up to $5 \times 50\text{ ms} = 250\text{ ms}$, completely halting market data delivery for all connected clients.
 
 ### [HIGH] CONC-03: In-Memory SQLite Read/Write Race Condition
-- **Location**: [`src/storage.py:450`](src/storage.py#L450)
+- **Location**: [`src/mdrap/storage.py:450`](src/mdrap/storage.py#L450)
 - **Component**: `Store.__init__()`
 - **Mechanism**: When using `:memory:` SQLite databases, line 450 assigns `self.read_conn = self.conn`. However, writes synchronize on `self._lock` while reads synchronize on `self._read_lock`. Concurrent readers and writers invoke operations simultaneously on the exact same underlying `sqlite3.Connection`, causing `sqlite3.ProgrammingError: SQLite objects created in a thread can only be used in that same thread` and data corruption.
 
 ### [HIGH] CONC-04: Unsynchronized Replay Buffer Data Race
-- **Location**: [`src/service.py:137, 326, 548`](src/service.py#L137)
+- **Location**: [`src/mdrap/service.py:137, 326, 548`](src/mdrap/service.py#L137)
 - **Component**: `MarketDataDaemon`
 - **Mechanism**: `self._replay_lock = threading.Lock()` is instantiated at line 137, but is **never acquired anywhere in `service.py`**. The ingestion thread writes ticks into `self._replay_buffer` while multiple client threads execute `replay()` queries simultaneously without mutual exclusion.
 
@@ -245,7 +245,7 @@ All figures trace directly to empirical timed runs on Windows 11 (AMD Ryzen 5 76
 - **Technical Explanation**: `PyDict_SetItem` increments the reference count of both key and value; it does **not** steal references. Freshly created objects (`PyUnicode_FromString`, `PyFloat_FromDouble`, `PyLong_FromUnsignedLongLong`) are passed directly without storing pointers or calling `Py_DECREF`. Every read leaks 10+ Python heap objects per tick (~500 MB of leaked RAM per second at 1M eps), forcing fast process OOM crashes.
 
 ### [HIGH] MEM-03: C-API Argument Mismatch Silently Disabling Native Acceleration
-- **Location**: [`src/fastpath.py:1826-1848`](src/fastpath.py#L1826-L1848) vs [`src/_fastpath_c.c:304-308`](src/_fastpath_c.c#L304-L308)
+- **Location**: [`src/mdrap/fastpath.py:1826-1848`](src/mdrap/fastpath.py#L1826-L1848) vs [`src/_fastpath_c.c:304-308`](src/_fastpath_c.c#L304-L308)
 - **Component**: `native_shm_write_tick()`
 - **Mechanism**: `_fastpath_c.c` requires 18 positional arguments (`nargs < 18` checks for `present`). `fastpath.py` calls it with only 17 arguments (omitting `present`). The C extension raises a `TypeError`, which is swallowed by `except Exception: pass` in Python, permanently disabling the compiled C-extension write path and forcing all writes onto ctypes.
 
@@ -281,7 +281,7 @@ gantt
 ```
 
 1. **GIL Contention During High Volume**: Python's Global Interpreter Lock forces ingestion, serialization, and socket broadcasting threads onto a single CPU core. Under load, thread context switching incurs 10–50 µs jitter per tick.
-2. **`_probe_active_epoch` Syscall Storm**: In [`src/shm.py:464-485`](src/shm.py#L464-L485), `SHMReader.stream()` opens, memory-maps, reads, and unmaps a brand-new OS shared memory handle every 256 polling spins, causing kernel context switch storms.
+2. **`_probe_active_epoch` Syscall Storm**: In [`src/mdrap/shm.py:464-485`](src/mdrap/shm.py#L464-L485), `SHMReader.stream()` opens, memory-maps, reads, and unmaps a brand-new OS shared memory handle every 256 polling spins, causing kernel context switch storms.
 3. **Serial JSON Rendering**: Outbound WebSockets and TCP daemons dynamically serialize dictionaries using standard `json.dumps()` on the broadcast thread, generating massive young-generation GC pressure.
 
 ---
@@ -289,16 +289,16 @@ gantt
 ## 10. Market-Data Semantic Risks
 
 ### 10.1 Order Book Inversion and Crossed Books
-In [`src/depth.py:570-620`](src/depth.py#L570-L620), when multiple venues cross (Venue A bid 105.0 > Venue B ask 100.0), `ConsolidatedDepthEngine` flags `is_crossed = True` but **still outputs and publishes the ladder**. It then calculates `micro_price` and executes synthetic sweeps on the inverted ladder, providing corrupted pricing to downstream execution algos.
+In [`src/mdrap/depth.py:570-620`](src/mdrap/depth.py#L570-L620), when multiple venues cross (Venue A bid 105.0 > Venue B ask 100.0), `ConsolidatedDepthEngine` flags `is_crossed = True` but **still outputs and publishes the ladder**. It then calculates `micro_price` and executes synthetic sweeps on the inverted ladder, providing corrupted pricing to downstream execution algos.
 
 ### 10.2 Negative Price Blindness
-In [`src/bbo.py:157, 182`](src/bbo.py#L157), `BBOEngine` initializes `best_bid = -1.0` and mandates `has_bid = best_bid >= 0`. During legitimate negative pricing regimes (e.g., WTI Crude Oil trading at -$37.63 on April 20, 2020), `best_bid` is dropped as non-existent, setting `best_bid = None` and manufacturing a false, one-sided market.
+In [`src/mdrap/bbo.py:157, 182`](src/mdrap/bbo.py#L157), `BBOEngine` initializes `best_bid = -1.0` and mandates `has_bid = best_bid >= 0`. During legitimate negative pricing regimes (e.g., WTI Crude Oil trading at -$37.63 on April 20, 2020), `best_bid` is dropped as non-existent, setting `best_bid = None` and manufacturing a false, one-sided market.
 
 ### 10.3 Venue Trading Schedule Midnight Wrap Bug
-In [`src/venues.py:510-512`](src/venues.py#L510-L512), trading session phases for venues crossing UTC midnight (e.g., Osaka Exchange open 23:75, close 06:30 UTC; NYMEX open 23:00, close 22:00 UTC) check `if hour_frac >= open_h and hour_frac < close_h:`. No hour can be $\ge 23$ AND $< 6.5$. The check is permanently `False`, causing midnight-wrapping exchanges to always report `CLOSED` during live trading hours.
+In [`src/mdrap/venues.py:510-512`](src/mdrap/venues.py#L510-L512), trading session phases for venues crossing UTC midnight (e.g., Osaka Exchange open 23:75, close 06:30 UTC; NYMEX open 23:00, close 22:00 UTC) check `if hour_frac >= open_h and hour_frac < close_h:`. No hour can be $\ge 23$ AND $< 6.5$. The check is permanently `False`, causing midnight-wrapping exchanges to always report `CLOSED` during live trading hours.
 
 ### 10.4 Pseudorandom Broker MPID Fabrication
-In [`src/flow_tracker.py:358-364`](src/flow_tracker.py#L358-L364), public trades lacking broker identifiers are pseudorandomly assigned institutional broker MPIDs (`GSCO`, `MSCO`, `CDED`, `VIRT`) using `(self.total_trades + int(price * 10)) % len(mpid_keys)`. The engine outputs institutional accumulation/distribution statistics based on **fabricated broker identities**.
+In [`src/mdrap/flow_tracker.py:358-364`](src/mdrap/flow_tracker.py#L358-L364), public trades lacking broker identifiers are pseudorandomly assigned institutional broker MPIDs (`GSCO`, `MSCO`, `CDED`, `VIRT`) using `(self.total_trades + int(price * 10)) % len(mpid_keys)`. The engine outputs institutional accumulation/distribution statistics based on **fabricated broker identities**.
 
 ---
 
@@ -321,7 +321,7 @@ In [`src/flow_tracker.py:358-364`](src/flow_tracker.py#L358-L364), public trades
 │                         CRITICAL SECURITY HIGHLIGHT                          │
 ├──────────────────────────────────────────────────────────────────────────────┤
 │ SEC-01: Hash-as-Key Authentication Bypass                                    │
-│ Location: src/security.py:384-395, 769                                       │
+│ Location: src/mdrap/security.py:384-395, 769                                       │
 │                                                                              │
 │ When HashedKeyStore.get_by_token_or_hash(token) fails to match salted or    │
 │ legacy hashes, it falls back to:                                             │
@@ -332,9 +332,9 @@ In [`src/flow_tracker.py:358-364`](src/flow_tracker.py#L358-L364), public trades
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
 
-1. **SEC-02: Rate Limit Bypass via Eviction Reset** ([`src/security.py:152-163`](src/security.py#L152-L163)): Cycling through 1,025 source names continuously evicts rate-limited buckets, resetting them to full capacity (40,000 tokens) and defeating DDoS protections.
-2. **SEC-03: Silent Failure of Database Key Revocation** ([`src/storage.py:1645`](src/storage.py#L1645)): `Store.revoke_api_key()` calculates unsalted SHA-256 while `SecurityManager` stores salted HMAC-SHA256. Database revocations update 0 rows and fail silently; revoked keys remain active across restarts.
-3. **SEC-04: Server-Side Request Forgery (SSRF) in Outbound Alerts** ([`src/alert_sinks.py:179`](src/alert_sinks.py#L179)): Webhook delivery invokes `urllib.request.urlopen` without scheme or IP validation, allowing internal network probing and cloud metadata extraction (`http://169.254.169.254/`).
+1. **SEC-02: Rate Limit Bypass via Eviction Reset** ([`src/mdrap/security.py:152-163`](src/mdrap/security.py#L152-L163)): Cycling through 1,025 source names continuously evicts rate-limited buckets, resetting them to full capacity (40,000 tokens) and defeating DDoS protections.
+2. **SEC-03: Silent Failure of Database Key Revocation** ([`src/mdrap/storage.py:1645`](src/mdrap/storage.py#L1645)): `Store.revoke_api_key()` calculates unsalted SHA-256 while `SecurityManager` stores salted HMAC-SHA256. Database revocations update 0 rows and fail silently; revoked keys remain active across restarts.
+3. **SEC-04: Server-Side Request Forgery (SSRF) in Outbound Alerts** ([`src/mdrap/alert_sinks.py:179`](src/mdrap/alert_sinks.py#L179)): Webhook delivery invokes `urllib.request.urlopen` without scheme or IP validation, allowing internal network probing and cloud metadata extraction (`http://169.254.169.254/`).
 
 ---
 

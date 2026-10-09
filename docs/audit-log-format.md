@@ -93,7 +93,7 @@ mdrap audit --verify-proof audit_proof.json
 
 ## 5. Format Version 3 — Batched Tamper-Evident Quarantine Merkle Log
 
-In addition to linear administrative audit logs, MDRAP implements high-volume, tamper-evident batch Merkle tree hashing for quarantined market data rows (`src/storage.py`).
+In addition to linear administrative audit logs, MDRAP implements high-volume, tamper-evident batch Merkle tree hashing for quarantined market data rows (`src/mdrap/storage.py`).
 
 ### 5.1 Architecture & Design Rational
 Quarantine bursts during market anomalies can involve thousands of discarded or malformed ticks per second. Computing a linear hash chain on the hot ingest loop would introduce serialization bottlenecks. 

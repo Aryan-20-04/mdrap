@@ -176,46 +176,46 @@ Because your strategy logic (`on_tick`, `on_quote`) strictly relies on MDRAP's n
 
 MDRAP provides 12 modular engines covering the complete institutional quant lifecycle:
 
-### 1. Historical Backtesting Engine (`src/backtest.py`)
+### 1. Historical Backtesting Engine (`src/mdrap/backtest.py`)
 Point-in-time event replay avoiding lookahead bias. Computes Sharpe, Sortino, Calmar, max drawdown, win rate, profit factor, equity and drawdown curves, and walk-forward out-of-sample optimization.
 ```bash
 python cli.py backtest -s whale_momentum -i AAPL -c 100000
 ```
 
-### 2. Portfolio Risk & VaR Engine (`src/risk.py`)
+### 2. Portfolio Risk & VaR Engine (`src/mdrap/risk.py`)
 Institutional risk analytics supporting 3 Value-at-Risk methodologies (Historical Simulation, Parametric, and Monte Carlo), Expected Shortfall (CVaR), running high-watermark drawdown tracking, and multi-tier circuit breakers.
 ```bash
 python cli.py risk -c 0.95 -k 100000
 ```
 
-### 3. Persistent Multi-Timeframe Bar Database (`src/bardb.py`)
+### 3. Persistent Multi-Timeframe Bar Database (`src/mdrap/bardb.py`)
 Incremental tick-to-candle rollup into 7 pre-computed intervals (`1s`, `5s`, `1m`, `5m`, `15m`, `1h`, `1d`) stored in SQLite with WAL mode. Supports point-in-time as-of and window temporal queries.
 ```bash
 python cli.py bars summary
 python cli.py bars query -i AAPL -n 1m -l 20
 ```
 
-### 4. Options Pricing & Greeks Engine (`src/options.py`)
+### 4. Options Pricing & Greeks Engine (`src/mdrap/options.py`)
 Pure-Python derivatives pricing with Black-Scholes-Merton (European), Cox-Ross-Rubinstein Binomial Tree (American early exercise), first and second-order Greeks (Delta, Gamma, Theta, Vega, Rho, Vanna, Volga), Newton-Raphson IV solver, and volatility surface construction.
 ```bash
 python cli.py options price -u AAPL -s 155 -k 150 -t call
 python cli.py options chain -u AAPL -s 155
 ```
 
-### 5. News & Financial Sentiment Pipeline (`src/news.py`)
+### 5. News & Financial Sentiment Pipeline (`src/mdrap/news.py`)
 Aggregates RSS/Atom feeds (SEC, Fed, major financial wires), extracts ticker cashtags, and evaluates headline sentiment using financial dictionaries with price impact correlation.
 ```bash
 python cli.py news analyze '$AAPL beats Q4 revenue expectations, raises dividend and buyback program'
 ```
 
-### 6. Real-Time Alert Engine (`src/alerts.py`)
+### 6. Real-Time Alert Engine (`src/mdrap/alerts.py`)
 Persistent, configurable alerts for price thresholds, bid-ask spread blowouts, volume spikes (whale blocks), feed silence, and drawdown triggers with SQLite persistence.
 ```bash
 python cli.py alert add -i AAPL -t ABOVE -v 200.0
 python cli.py alert list
 ```
 
-### 7. Watchlists & Portfolio Tracker (`src/portfolio.py`)
+### 7. Watchlists & Portfolio Tracker (`src/mdrap/portfolio.py`)
 Named watchlists with symbol management alongside institutional portfolio tracking with realized/unrealized P&L, sector/strategy attribution, and benchmark comparison.
 ```bash
 python cli.py watchlist add -n Tech -s AAPL MSFT NVDA
@@ -223,29 +223,29 @@ python cli.py watchlist list
 python cli.py portfolio summary
 ```
 
-### 8. Corporate Actions Processor (`src/corporate_actions.py`)
+### 8. Corporate Actions Processor (`src/mdrap/corporate_actions.py`)
 Calculates cumulative adjustment factors for stock splits (forward/reverse), cash dividends, symbol ticker changes, and delistings to maintain adjusted price and volume history.
 ```bash
 python cli.py corpact -i AAPL
 ```
 
-### 9. ML Feature Store (`src/features.py`)
+### 9. ML Feature Store (`src/mdrap/features.py`)
 Calculates technical indicators (RSI, MACD, Bollinger Bands, ATR, OBV) and market microstructure metrics (VPIN, order book imbalance, realized volatility) with point-in-time registry export.
 ```bash
 python cli.py features list
 ```
 
-### 10. Automated Task Scheduler (`src/scheduler.py`)
+### 10. Automated Task Scheduler (`src/mdrap/scheduler.py`)
 Cron-like task scheduler with aliases (`@hourly`, `@daily`, `@eod`) for automated end-of-day portfolio rollups, bar rollups, and reporting.
 ```bash
 python cli.py schedule list
 python cli.py schedule eod
 ```
 
-### 11. FIX Protocol Engine (`src/fix_engine.py`)
+### 11. FIX Protocol Engine (`src/mdrap/fix_engine.py`)
 FIX 4.2 / 4.4 parser and serializer supporting tag-value, checksum validation, session heartbeat/logon management, and standard order routing (`NewOrderSingle`, `OrderCancelRequest`, `ExecutionReport`).
 
-### 12. Multi-Asset Class Data Model (`src/models.py`)
+### 12. Multi-Asset Class Data Model (`src/mdrap/models.py`)
 Extended canonical event model natively supporting Equities, Crypto, Futures, Options, Bonds, and FX with zero breaking changes to existing pipelines.
 
 ---
@@ -254,7 +254,7 @@ Extended canonical event model natively supporting Equities, Crypto, Futures, Op
 
 To maintain institutional execution speeds and minimize cold-start and tick-loop overhead, the platform implements:
 
-1. **Phase 13 Native C Hot-Path Accelerators (`src/fastpath.c`, `src/fastpath.py`)**:
+1. **Phase 13 Native C Hot-Path Accelerators (`src/fastpath.c`, `src/mdrap/fastpath.py`)**:
    - **B-S-M European Pricing & 7 Greeks**: Vectorized closed-form Black-Scholes-Merton pricing with analytical Delta, Gamma, Vega, Theta, Rho, Vanna, and Volga computed simultaneously in a single C kernel call.
    - **Binomial American Options Tree (CRR Model)**: Evaluates deep American option early exercise boundaries via pre-calculated powers and dynamic programming (`fastpath_binomial_price` achieving **0.21 ms vs 13.6 ms, 64.1x speedup**).
    - **Newton-Raphson Implied Volatility Solver**: Analytical root-finding with bounded volatility clamping `[0.001, 5.0]` achieving microsecond-scale convergence.
@@ -267,12 +267,12 @@ To maintain institutional execution speeds and minimize cold-start and tick-loop
 
 3. **Codebase Consolidation & Leaning**:
    - **Argparse Subparser Factory**: Centralized `_sub()` helper eliminates ~250 lines of duplicate parser boilerplate in `src/cli.py`.
-   - **TUI Dashboard Engine Merge**: Merged `src/sdk_dashboard.py` (184 lines) into `src/terminal_display.py`.
-   - **Unified Client Architecture**: Integrated `MDrapClient` (asyncio TCP gateway client) directly into `src/client.py`, simplifying the client SDK surface.
+   - **TUI Dashboard Engine Merge**: Merged `src/sdk_dashboard.py` (184 lines) into `src/mdrap/terminal_display.py`.
+   - **Unified Client Architecture**: Integrated `MDrapClient` (asyncio TCP gateway client) directly into `src/mdrap/client.py`, simplifying the client SDK surface.
    - **Deduplicated L2 Depth Reconstruction**: Replaced duplicated SQLite event parsing logic in `cmd_depth` and `cmd_vwap` with `_load_or_fetch_depth_events()`.
-   - **Historical Parser Merge**: Merged `src/chd_cli.py` (132 lines) into `src/chd.py`.
+   - **Historical Parser Merge**: Merged `src/chd_cli.py` (132 lines) into `src/mdrap/chd.py`.
 
-4. **$O(1)$ LRU Cache Eviction**: `OrderedDict.popitem(last=False)` replaces iterator instantiation during saturated deduplication windows in `src/quality.py`.
+4. **$O(1)$ LRU Cache Eviction**: `OrderedDict.popitem(last=False)` replaces iterator instantiation during saturated deduplication windows in `src/mdrap/quality.py`.
 
 5. **High-Throughput SQLite PRAGMAs**:
    - `PRAGMA mmap_size = 268435456;` (256 MB memory-mapped file I/O)

@@ -659,6 +659,8 @@ class SecurityManager:
         for k, v in os.environ.items():
             if k.startswith("MDRAP_API_KEY_"):
                 suffix = k[len("MDRAP_API_KEY_") :].upper()
+                if suffix == "SALT" or not v.strip():
+                    continue
                 role_val = Role[suffix] if suffix in Role.__members__ else Role.VIEWER
                 th = hash_api_key(v)
                 self._api_keys[th] = ClientEntitlement(

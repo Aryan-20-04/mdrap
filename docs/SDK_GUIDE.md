@@ -64,7 +64,7 @@ runner = LiveStrategyRunner(MyAlgo(), port=9000)
 asyncio.run(runner.run())
 ```
 
-See `src/strategy_sdk.py` for complete reference implementations (e.g., `WhaleMomentumStrategy`, `GridMakerStrategy`).
+See `src/mdrap/strategy_sdk.py` for complete reference implementations (e.g., `WhaleMomentumStrategy`, `GridMakerStrategy`).
 
 ## 4. Level-2 Order Book & Execution Ledger
 Every strategy automatically maintains a synthetic or live Level-2 Limit Order Book with multi-tier depth for every subscribed symbol:

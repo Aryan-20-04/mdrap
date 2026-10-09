@@ -58,59 +58,59 @@ Every public class, protocol, function, and module in MDRAP belongs to exactly o
 
 ## 3. Public API Classification Matrix
 
-### 3.1 Core Canonical Data Models (`src/models.py`)
+### 3.1 Core Canonical Data Models (`src/mdrap/models.py`)
 
 | Symbol | Stability | Description |
 | :--- | :--- | :--- |
-| [`RawEvent`](../src/models.py) | **`STABLE`** | Ingested event containing source timestamp, venue, sequence, payload |
-| [`CanonicalEvent`](../src/models.py) | **`STABLE`** | Validated, normalized, consensus event with quality bitmask & lineage |
-| [`EventType`](../src/models.py) | **`STABLE`** | Canonical enumeration (`TRADE`, `QUOTE`, `BBO`, `BOOK_SNAPSHOT`, `HEARTBEAT`) |
-| [`QualityStatus`](../src/models.py) | **`STABLE`** | Strict quality classification hierarchy (`VALID`, `SUSPICIOUS`, `INVALID`) |
-| [`Reason`](../src/models.py) | **`STABLE`** | Standard reason bitmask codes (`DUPLICATE`, `OUT_OF_ORDER`, `CROSSED_BOOK`, etc.) |
+| [`RawEvent`](../src/mdrap/models.py) | **`STABLE`** | Ingested event containing source timestamp, venue, sequence, payload |
+| [`CanonicalEvent`](../src/mdrap/models.py) | **`STABLE`** | Validated, normalized, consensus event with quality bitmask & lineage |
+| [`EventType`](../src/mdrap/models.py) | **`STABLE`** | Canonical enumeration (`TRADE`, `QUOTE`, `BBO`, `BOOK_SNAPSHOT`, `HEARTBEAT`) |
+| [`QualityStatus`](../src/mdrap/models.py) | **`STABLE`** | Strict quality classification hierarchy (`VALID`, `SUSPICIOUS`, `INVALID`) |
+| [`Reason`](../src/mdrap/models.py) | **`STABLE`** | Standard reason bitmask codes (`DUPLICATE`, `OUT_OF_ORDER`, `CROSSED_BOOK`, etc.) |
 
-### 3.2 Extension Protocols & Interfaces (`src/protocols.py`)
+### 3.2 Extension Protocols & Interfaces (`src/mdrap/protocols.py`)
 
 Third-party packages and plugins rely on these structural subtyping protocols:
 
 | Interface | Stability | Contract Methods |
 | :--- | :--- | :--- |
-| [`FeedAdapter`](../src/protocols.py) | **`STABLE`** | `open() -> None`, `__iter__() -> Generator[RawEvent]`, `close() -> None` |
-| [`StorageBackend`](../src/protocols.py) | **`STABLE`** | `write_canonical()`, `write_quarantine()`, `query_canonical()`, `close()` |
-| [`QualityRule`](../src/protocols.py) | **`STABLE`** | `evaluate(event) -> tuple[int, QualityStatus]` (User bitmask 32–63) |
-| [`OutputSink`](../src/protocols.py) | **`STABLE`** | `publish(event) -> None`, `flush() -> None`, `close() -> None` |
-| [`AlertSink`](../src/protocols.py) | **`STABLE`** | `deliver(alert) -> bool`, `name: str` |
-| [`AuthProvider`](../src/protocols.py) | **`STABLE`** | `authenticate(token) -> Optional[ClientEntitlement]` |
+| [`FeedAdapter`](../src/mdrap/protocols.py) | **`STABLE`** | `open() -> None`, `__iter__() -> Generator[RawEvent]`, `close() -> None` |
+| [`StorageBackend`](../src/mdrap/protocols.py) | **`STABLE`** | `write_canonical()`, `write_quarantine()`, `query_canonical()`, `close()` |
+| [`QualityRule`](../src/mdrap/protocols.py) | **`STABLE`** | `evaluate(event) -> tuple[int, QualityStatus]` (User bitmask 32–63) |
+| [`OutputSink`](../src/mdrap/protocols.py) | **`STABLE`** | `publish(event) -> None`, `flush() -> None`, `close() -> None` |
+| [`AlertSink`](../src/mdrap/protocols.py) | **`STABLE`** | `deliver(alert) -> bool`, `name: str` |
+| [`AuthProvider`](../src/mdrap/protocols.py) | **`STABLE`** | `authenticate(token) -> Optional[ClientEntitlement]` |
 
 ### 3.3 Pipeline & Processing Engines
 
 | Engine | Stability | Module | Responsibility |
 | :--- | :--- | :--- | :--- |
-| `Pipeline` | **`STABLE`** | [`src/pipeline.py`](../src/pipeline.py) | Synchronous feed processing pipeline (gateway -> quality -> reconcile -> persist) |
-| `QualityEngine` | **`STABLE`** | [`src/quality.py`](../src/quality.py) | 7 core statistical & structural quality rules |
-| `Reconciler` | **`STABLE`** | [`src/reconciliation.py`](../src/reconciliation.py) | Multi-feed consensus and dynamic cross-reconciliation |
-| `FeedWatchdog` | **`STABLE`** | [`src/watchdog.py`](../src/watchdog.py) | Source liveness monitoring, heartbeat tracking, and auto-isolation |
-| `Store` | **`STABLE`** | [`src/storage.py`](../src/storage.py) | Persistent SQLite engine with WAL journaling & Merkle quarantine log |
-| `BBOEngine` | **`STABLE`** | [`src/bbo.py`](../src/bbo.py) | Consolidated National Best Bid & Offer (NBBO) aggregation |
-| `FastQualityEngine` | **`STABLE`** | [`src/fastpath.py`](../src/fastpath.py) | Native C accelerated ctypes validation hot path |
+| `Pipeline` | **`STABLE`** | [`src/mdrap/pipeline.py`](../src/mdrap/pipeline.py) | Synchronous feed processing pipeline (gateway -> quality -> reconcile -> persist) |
+| `QualityEngine` | **`STABLE`** | [`src/mdrap/quality.py`](../src/mdrap/quality.py) | 7 core statistical & structural quality rules |
+| `Reconciler` | **`STABLE`** | [`src/mdrap/reconciliation.py`](../src/mdrap/reconciliation.py) | Multi-feed consensus and dynamic cross-reconciliation |
+| `FeedWatchdog` | **`STABLE`** | [`src/mdrap/watchdog.py`](../src/mdrap/watchdog.py) | Source liveness monitoring, heartbeat tracking, and auto-isolation |
+| `Store` | **`STABLE`** | [`src/mdrap/storage.py`](../src/mdrap/storage.py) | Persistent SQLite engine with WAL journaling & Merkle quarantine log |
+| `BBOEngine` | **`STABLE`** | [`src/mdrap/bbo.py`](../src/mdrap/bbo.py) | Consolidated National Best Bid & Offer (NBBO) aggregation |
+| `FastQualityEngine` | **`STABLE`** | [`src/mdrap/fastpath.py`](../src/mdrap/fastpath.py) | Native C accelerated ctypes validation hot path |
 
 ### 3.4 Client SDK & Distribution Services
 
 | Interface | Stability | Module | Responsibility |
 | :--- | :--- | :--- | :--- |
-| `MDRAPClient` | **`BETA`** | [`src/client.py`](../src/client.py) | Zero-dependency institutional client library with gap recovery |
-| `MarketEvent` | **`BETA`** | [`src/client.py`](../src/client.py) | Normalized client event model |
-| `REST & WebSocket API` | **`BETA`** | [`src/api.py`](../src/api.py) | Commercial REST endpoints and real-time streaming WebSocket hub |
-| `PrometheusExporter` | **`STABLE`** | [`src/prometheus.py`](../src/prometheus.py) | OpenMetrics / Prometheus scrape exposition |
-| `DurableKafkaSink` | **`STABLE`** | [`src/kafka_sink.py`](../src/kafka_sink.py) | Decoupled background Kafka publication queue |
+| `MDRAPClient` | **`BETA`** | [`src/mdrap/client.py`](../src/mdrap/client.py) | Zero-dependency institutional client library with gap recovery |
+| `MarketEvent` | **`BETA`** | [`src/mdrap/client.py`](../src/mdrap/client.py) | Normalized client event model |
+| `REST & WebSocket API` | **`BETA`** | [`src/mdrap/api.py`](../src/mdrap/api.py) | Commercial REST endpoints and real-time streaming WebSocket hub |
+| `PrometheusExporter` | **`STABLE`** | [`src/mdrap/prometheus.py`](../src/mdrap/prometheus.py) | OpenMetrics / Prometheus scrape exposition |
+| `DurableKafkaSink` | **`STABLE`** | [`src/mdrap/kafka_sink.py`](../src/mdrap/kafka_sink.py) | Decoupled background Kafka publication queue |
 
 ### 3.5 High-Speed Transport & Analytical Storage
 
 | Component | Stability | Module | Responsibility |
 | :--- | :--- | :--- | :--- |
-| `SHMRingBuffer` | **`BETA`** | [`src/shm.py`](../src/shm.py) | Lockless zero-copy shared memory IPC ring buffer |
-| `ColumnarStore` | **`BETA`** | [`src/columnar.py`](../src/columnar.py) | Embedded DuckDB vectorized analytics and Parquet archival |
-| `ITCHParser` | **`BETA`** | [`src/itch.py`](../src/itch.py) | NASDAQ TotalView ITCH 5.0 binary feed dissector |
-| `SBEParser` | **`BETA`** | [`src/sbe.py`](../src/sbe.py) | Simple Binary Encoding (SBE) parser |
+| `SHMRingBuffer` | **`BETA`** | [`src/mdrap/shm.py`](../src/mdrap/shm.py) | Lockless zero-copy shared memory IPC ring buffer |
+| `ColumnarStore` | **`BETA`** | [`src/mdrap/columnar.py`](../src/mdrap/columnar.py) | Embedded DuckDB vectorized analytics and Parquet archival |
+| `ITCHParser` | **`BETA`** | [`src/mdrap/itch.py`](../src/mdrap/itch.py) | NASDAQ TotalView ITCH 5.0 binary feed dissector |
+| `SBEParser` | **`BETA`** | [`src/mdrap/sbe.py`](../src/mdrap/sbe.py) | Simple Binary Encoding (SBE) parser |
 
 ### 3.6 Research, Modeling & Quantitative Strategies
 
@@ -140,7 +140,7 @@ $$\text{Version} = \text{MAJOR}.\text{MINOR}.\text{PATCH}$$
 ## 5. Community Extension Safety Contract
 
 If you are developing third-party plugins or integrations for MDRAP:
-1. Only subclass or implement protocols defined in [`src/protocols.py`](../src/protocols.py).
-2. Register custom validation rules using the [`@register_rule`](../src/rules.py) decorator within the user bitmask range (bits 32–63).
+1. Only subclass or implement protocols defined in [`src/mdrap/protocols.py`](../src/mdrap/protocols.py).
+2. Register custom validation rules using the [`@register_rule`](../src/mdrap/rules.py) decorator within the user bitmask range (bits 32–63).
 3. Do not rely on unexported modules or private helper methods (`_...`).
 4. Validate extensions against the official 9-gate quality protocol: `./scripts/check.sh`.

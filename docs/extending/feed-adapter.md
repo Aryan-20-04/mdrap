@@ -36,7 +36,7 @@ flowchart LR
 
 ## 1. Implementing the Protocol
 
-Adapters yield [`RawEvent`](src/models.py) objects. Raw payloads are dictionaries capturing native feed fields. MDRAP's normalization gateway automatically maps common key variants (`symbol` / `instrument`, `qty` / `quantity`, `bid_sz` / `bid_size`).
+Adapters yield [`RawEvent`](src/mdrap/models.py) objects. Raw payloads are dictionaries capturing native feed fields. MDRAP's normalization gateway automatically maps common key variants (`symbol` / `instrument`, `qty` / `quantity`, `bid_sz` / `bid_size`).
 
 Reference implementation based on [`src/adapters/template.py`](src/adapters/template.py):
 
@@ -170,5 +170,5 @@ def test_pipeline_integration():
 
 - [`src/adapters/__init__.py`](src/adapters/__init__.py): Protocol definition and `discover_adapters()`.
 - [`src/adapters/template.py`](src/adapters/template.py): Reference custom venue template.
-- [`src/models.py`](src/models.py): [`RawEvent`](src/models.py) and [`CanonicalEvent`](src/models.py) models.
-- [`src/gateway.py`](src/gateway.py): Feed ingestion normalization rules.
+- [`src/mdrap/models.py`](src/mdrap/models.py): [`RawEvent`](src/mdrap/models.py) and [`CanonicalEvent`](src/mdrap/models.py) models.
+- [`src/mdrap/gateway.py`](src/mdrap/gateway.py): Feed ingestion normalization rules.

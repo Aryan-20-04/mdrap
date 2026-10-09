@@ -68,7 +68,7 @@ The Market Data Reliability & Acceleration Platform (MDRAP) operates as an ultra
 | `overrun_stats.total_laps` | Counter | Laps | Number of times a slow consumer was lapped by the ring publisher. | Alert if $> 0$ for high-priority consumers. |
 | `overrun_stats.skipped_ticks` | Counter | Ticks | Total ticks skipped forward by slow consumers catching up. | Telemetry for algorithmic consumer tuning. |
 
-### 3.4 Feed Recovery & State Machine Telemetry (`src/recovery.py`)
+### 3.4 Feed Recovery & State Machine Telemetry (`src/mdrap/recovery.py`)
 
 | Metric / Field | Type | Unit | Description | SLO / Alert Threshold |
 |---|---|---|---|---|

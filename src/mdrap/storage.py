@@ -569,6 +569,15 @@ class Store:
                 )
                 self.conn.execute(f"PRAGMA user_version = {CURRENT_SCHEMA_VERSION};")
                 applied_versions.add(3)
+
+            # Ensure projection_checkpoints exists across all migrated databases
+            self.conn.execute("""
+                CREATE TABLE IF NOT EXISTS projection_checkpoints (
+                    name TEXT PRIMARY KEY,
+                    last_offset INTEGER NOT NULL,
+                    updated_at REAL NOT NULL
+                );
+            """)
             self.conn.commit()
 
             if not is_mem:

@@ -67,7 +67,7 @@ def test_custom_feed_adapter():
 
 ## 4. How to Simulate a Feed Adapter
 
-Feed adapters can be driven by the deterministic `MarketSimulator` in `src/simulator.py`:
+Feed adapters can be driven by the deterministic `MarketSimulator` in `src/mdrap/simulator.py`:
 
 ```python
 from simulator import MarketSimulator

@@ -1,12 +1,12 @@
 # Implementing Custom Auth Providers
 
-MDRAP secures market data streams, operational APIs, and administration consoles using Role-Based Access Control (RBAC) and cryptographically chained audit trails ([`SecurityManager`](src/security.py)). For enterprise single sign-on (SSO), OAuth2/OIDC, or active directory integration, implement [`AuthProvider`](src/protocols.py).
+MDRAP secures market data streams, operational APIs, and administration consoles using Role-Based Access Control (RBAC) and cryptographically chained audit trails ([`SecurityManager`](src/mdrap/security.py)). For enterprise single sign-on (SSO), OAuth2/OIDC, or active directory integration, implement [`AuthProvider`](src/mdrap/protocols.py).
 
 ---
 
 ## The AuthProvider Protocol
 
-Defined in [`src/protocols.py`](src/protocols.py):
+Defined in [`src/mdrap/protocols.py`](src/mdrap/protocols.py):
 
 ```python
 from typing import Any, Protocol, runtime_checkable
@@ -46,7 +46,7 @@ Any role at level $N$ possesses all permissions of levels $< N$.
 
 ## Integration with FastAPI (`api.py`)
 
-In [`src/api.py`](src/api.py), the [`require_role`](src/api.py) dependency resolves incoming client identity from two standard HTTP header carriers:
+In [`src/mdrap/api.py`](src/mdrap/api.py), the [`require_role`](src/mdrap/api.py) dependency resolves incoming client identity from two standard HTTP header carriers:
 1. `X-API-Key: <token>` header
 2. `Authorization: Bearer <token>` header
 
@@ -166,7 +166,7 @@ class OAuth2AuthProvider:
 
 ## Source References
 
-- [`src/protocols.py`](src/protocols.py): [`AuthProvider`](src/protocols.py) protocol definition.
-- [`src/security.py`](src/security.py): Core [`SecurityManager`](src/security.py), [`Role`](src/security.py), and [`ClientEntitlement`](src/security.py).
-- [`src/api.py`](src/api.py): FastAPI security dependencies ([`require_role`](src/api.py#L272)).
-- [`src/audit_format.py`](src/audit_format.py): Cryptographic hash chain formatting.
+- [`src/mdrap/protocols.py`](src/mdrap/protocols.py): [`AuthProvider`](src/mdrap/protocols.py) protocol definition.
+- [`src/mdrap/security.py`](src/mdrap/security.py): Core [`SecurityManager`](src/mdrap/security.py), [`Role`](src/mdrap/security.py), and [`ClientEntitlement`](src/mdrap/security.py).
+- [`src/mdrap/api.py`](src/mdrap/api.py): FastAPI security dependencies ([`require_role`](src/mdrap/api.py#L272)).
+- [`src/mdrap/audit_format.py`](src/mdrap/audit_format.py): Cryptographic hash chain formatting.

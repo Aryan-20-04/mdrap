@@ -26,6 +26,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   - Standardized root forwarder shims across all `src/*.py` modules to canonical `src/mdrap/*.py` implementations, resolving wheel packaging import boundaries.
 
 ### Fixed
+- **API App Caching & WAL Contention Errata (`mdrap serve`)**: Fixed `AppState` re-initialization where `uvicorn` resolved `mdrap.api:app` multiple times without singleton caching, causing the second instance to fail acquiring the exclusive WAL directory lock and reporting `engine: failed` (`503 Service Unavailable`). Implemented `_cached_app` / `get_app()` singleton resolution in `api.py` and passed `factory=True` with `"mdrap.api:create_app"` in `cmd_serve`.
+- **API Key Salt Collision Errata (`MDRAP_API_KEY_SALT`)**: Fixed environment variable parser in `SecurityManager` treating `MDRAP_API_KEY_SALT` as an active `VIEWER` client token. This collision populated `_api_keys`, which prevented initial admin bootstrap (`MDRAP_INITIAL_ADMIN_KEY` and `MDRAP_AUTO_BOOTSTRAP_ADMIN`) from running on clean startups. `MDRAP_API_KEY_SALT` is now explicitly skipped during client key registration.
+- **Idempotent Projection Checkpoints DDL**: Added idempotent table creation for `projection_checkpoints` to ensure compatibility across all migrated SQLite database files during `Store.apply`.
 - **Native C Spatial Fallback Binding**: Corrected fastpath spatial fallback monkeypatching in `mdrap.vessel` to bind directly to the underlying `mdrap_vessel` implementation.
 - **Wheel Isolation Consistency**: Ensured companion package modules dynamically resolve when executed from source checkouts or installed standalone wheels.
 
