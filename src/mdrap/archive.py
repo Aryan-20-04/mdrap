@@ -89,7 +89,17 @@ class RawArchive:
 
         for file_path, lines in grouped.items():
             if file_path not in self._file_handles:
+                # LRU cap (<=32 open FDs) across date rollovers to prevent FD leak (OPS-03)
+                if len(self._file_handles) >= 32:
+                    oldest_fp, oldest_h = next(iter(self._file_handles.items()))
+                    try:
+                        oldest_h.close()
+                    except Exception:
+                        pass
+                    del self._file_handles[oldest_fp]
                 self._file_handles[file_path] = open(file_path, "a", encoding="utf-8")
+            else:
+                self._file_handles[file_path] = self._file_handles.pop(file_path)
 
             handle = self._file_handles[file_path]
             for line in lines:
@@ -116,7 +126,10 @@ class RawArchive:
     def close(self) -> None:
         self.flush()
         for handle in self._file_handles.values():
-            handle.close()
+            try:
+                handle.close()
+            except Exception:
+                pass
         self._file_handles.clear()
 
     def stats(self) -> dict:

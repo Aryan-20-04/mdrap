@@ -268,8 +268,8 @@ SQLITE_RETRY_BACKOFF_WRITE_S: float = 0.05  # 50 ms backoff on write lock conten
 SQLITE_RETRY_BACKOFF_READ_S: float = 0.01  # 10 ms backoff on read contention
 DEFAULT_SQLITE_TIMEOUT_S: float = 30.0  # 30-second busy timeout
 DEFAULT_BUSY_TIMEOUT_MS: int = 30000  # 30,000 ms pragma busy timeout
-DEFAULT_SQLITE_MMAP_MB: int = 64  # 64 MB mmap
-DEFAULT_SQLITE_CACHE_MB: int = 16  # 16 MB dedicated cache
+DEFAULT_SQLITE_MMAP_MB: int = 256  # 256 MB mmap
+DEFAULT_SQLITE_CACHE_MB: int = 64  # 64 MB dedicated cache
 BYTES_PER_MB: int = 1024 * 1024
 PAGE_CACHE_KIB_PER_MB: int = 1000
 CURRENT_SCHEMA_VERSION: int = 3
@@ -397,6 +397,10 @@ class Store:
                 self.conn.execute("PRAGMA synchronous=FULL;")
             else:
                 self.conn.execute("PRAGMA synchronous=NORMAL;")
+            try:
+                self.conn.execute("PRAGMA wal_autocheckpoint=1000;")
+            except sqlite3.OperationalError:
+                pass
 
             # Memory-tuned pragmas: 64MB mmap and 16MB page cache by default
             mmap_mb = int(
@@ -1700,21 +1704,39 @@ class Store:
             )
 
     @_synchronized
-    def verify_quarantine_merkle_integrity(self) -> tuple[bool, str, int]:
+    def verify_quarantine_merkle_integrity(
+        self, since_entry_id: int | None = None
+    ) -> tuple[bool, str, int]:
         """Verify the cryptographic hash-chain and batch Merkle roots of the quarantine log."""
         from .audit_format import compute_audit_hash
 
-        cur = self.conn.execute(
-            "SELECT entry_id, timestamp, entry_hash, prev_root, batch_root, batch_size, format_version "
-            "FROM quarantine_merkle_log ORDER BY entry_id ASC"
-        )
+        if since_entry_id is not None and since_entry_id > 1:
+            prev_row = self.conn.execute(
+                "SELECT entry_hash FROM quarantine_merkle_log WHERE entry_id = ?",
+                (since_entry_id - 1,),
+            ).fetchone()
+            expected_prev = (
+                prev_row[0]
+                if prev_row
+                else "GENESIS_0000000000000000000000000000000000000000000000000000000000000000"
+            )
+            cur = self.conn.execute(
+                "SELECT entry_id, timestamp, entry_hash, prev_root, batch_root, batch_size, format_version "
+                "FROM quarantine_merkle_log WHERE entry_id >= ? ORDER BY entry_id ASC",
+                (since_entry_id,),
+            )
+        else:
+            expected_prev = (
+                "GENESIS_0000000000000000000000000000000000000000000000000000000000000000"
+            )
+            cur = self.conn.execute(
+                "SELECT entry_id, timestamp, entry_hash, prev_root, batch_root, batch_size, format_version "
+                "FROM quarantine_merkle_log ORDER BY entry_id ASC"
+            )
         rows = cur.fetchall()
         if not rows:
             return True, "Quarantine Merkle log is empty (valid)", 0
 
-        expected_prev = (
-            "GENESIS_0000000000000000000000000000000000000000000000000000000000000000"
-        )
         for entry_id, ts, entry_hash, prev_root, batch_root, batch_size, f_ver in rows:
             if prev_root != expected_prev:
                 return (
@@ -1740,24 +1762,46 @@ class Store:
                 )
             expected_prev = entry_hash
 
+        last_id = rows[-1][0] if rows else 0
         return (
             True,
             f"Quarantine Merkle log verified ({len(rows)} batches intact)",
-            len(rows),
+            last_id,
         )
 
     @_synchronized
     def verify_audit_integrity(
-        self, anchor: tuple[int, str] | None = None
+        self,
+        anchor: tuple[int, str] | None = None,
+        since_entry_id: int | None = None,
     ) -> tuple[bool, str, int]:
         from .audit_format import compute_audit_hash
 
-        cur = self.conn.execute(
-            "SELECT entry_id, timestamp, actor, role, action, details, prev_hash, entry_hash, "
-            "COALESCE(format_version, 1) FROM audit_log ORDER BY entry_id ASC"
-        )
+        if since_entry_id is not None and since_entry_id > 1:
+            prev_row = self.conn.execute(
+                "SELECT entry_hash FROM audit_log WHERE entry_id = ?",
+                (since_entry_id - 1,),
+            ).fetchone()
+            expected_prev = (
+                prev_row[0]
+                if prev_row
+                else "GENESIS_0000000000000000000000000000000000000000000000000000000000000000"
+            )
+            cur = self.conn.execute(
+                "SELECT entry_id, timestamp, actor, role, action, details, prev_hash, entry_hash, "
+                "COALESCE(format_version, 1) FROM audit_log WHERE entry_id >= ? ORDER BY entry_id ASC",
+                (since_entry_id,),
+            )
+        else:
+            expected_prev = (
+                "GENESIS_0000000000000000000000000000000000000000000000000000000000000000"
+            )
+            cur = self.conn.execute(
+                "SELECT entry_id, timestamp, actor, role, action, details, prev_hash, entry_hash, "
+                "COALESCE(format_version, 1) FROM audit_log ORDER BY entry_id ASC"
+            )
         rows = cur.fetchall()
-        if anchor is not None:
+        if anchor is not None and since_entry_id is None:
             expected_count, expected_head = anchor
             genesis = "GENESIS_0000000000000000000000000000000000000000000000000000000000000000"
             if expected_count < 0:
@@ -1780,9 +1824,6 @@ class Store:
         if not rows:
             return True, "Audit log is empty (valid)", 0
 
-        expected_prev = (
-            "GENESIS_0000000000000000000000000000000000000000000000000000000000000000"
-        )
         for entry_id, ts, actor, role, action, details, prev_h, entry_h, f_ver in rows:
             if prev_h != expected_prev:
                 return (
@@ -1801,6 +1842,7 @@ class Store:
                 )
             expected_prev = entry_h
 
+        last_id = rows[-1][0] if rows else 0
         return (
             True,
             (
@@ -1809,7 +1851,7 @@ class Store:
                 if anchor is None
                 else f"Anchored audit chain verified ({len(rows)} entries intact)"
             ),
-            len(rows),
+            last_id,
         )
 
     @_synchronized

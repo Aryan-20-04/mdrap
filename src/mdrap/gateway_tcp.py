@@ -65,6 +65,10 @@ class TCPGatewayServer:
         self.server: asyncio.AbstractServer | None = None
         self._stats = {"sent": 0, "dropped": 0, "connected": 0, "auth_failures": 0}
         self.running = False
+        self.client_queue_size: int = int(os.environ.get("MDRAP_TCP_QUEUE_SIZE", "1024"))
+        self.max_buffer_size: int = int(os.environ.get("MDRAP_TCP_MAX_BUFFER", "65536"))
+        self._client_queues: dict[asyncio.StreamWriter, asyncio.Queue] = {}
+        self._client_tasks: dict[asyncio.StreamWriter, asyncio.Task] = {}
 
     async def handle_client(
         self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
@@ -115,7 +119,11 @@ class TCPGatewayServer:
                     )
                 return
 
+        q: asyncio.Queue = asyncio.Queue(maxsize=self.client_queue_size)
         self.clients.add(writer)
+        self._client_queues[writer] = q
+        writer_task = asyncio.create_task(self._client_writer_loop(writer, q))
+        self._client_tasks[writer] = writer_task
         self._stats["connected"] = len(self.clients)
 
         try:
@@ -151,13 +159,34 @@ class TCPGatewayServer:
         ) as conn_err:
             logger.debug("[gateway_tcp] Connection closed (%s)", conn_err)
         finally:
-            self.clients.discard(writer)
-            self._stats["connected"] = len(self.clients)
-            try:
-                writer.close()
-                await writer.wait_closed()
-            except Exception as close_exc:
-                logger.debug("[gateway_tcp] Error closing client writer: %s", close_exc)
+            self._cleanup_client(writer)
+
+    def _cleanup_client(self, writer: asyncio.StreamWriter) -> None:
+        self.clients.discard(writer)
+        self._client_queues.pop(writer, None)
+        task = self._client_tasks.pop(writer, None)
+        if task and not task.done() and task != asyncio.current_task():
+            task.cancel()
+        try:
+            writer.close()
+        except Exception as close_exc:
+            logger.debug("[gateway_tcp] Error closing client writer: %s", close_exc)
+        self._stats["connected"] = len(self.clients)
+
+    async def _client_writer_loop(
+        self, writer: asyncio.StreamWriter, q: asyncio.Queue
+    ) -> None:
+        try:
+            while self.running:
+                data = await q.get()
+                if data is None:
+                    break
+                writer.write(data)
+                await writer.drain()
+        except Exception as exc:
+            logger.debug("[gateway_tcp] Client writer loop exception: %s", exc)
+        finally:
+            self._cleanup_client(writer)
 
     async def _send_to_client(self, writer: asyncio.StreamWriter, data: bytes) -> bool:
         try:
@@ -171,37 +200,51 @@ class TCPGatewayServer:
             return False
 
     async def broadcast(self, payload: dict):
-        """Broadcast any JSON-serializable dictionary to all connected TCP clients concurrently (CONC-02)."""
+        """Broadcast JSON message to all connected clients asynchronously with zero head-of-line blocking."""
         if not self.clients:
             return
         data = (json.dumps(payload) + "\n").encode("utf-8")
-        clients_list = list(self.clients)
-        if not clients_list:
-            return
-
-        results = await asyncio.gather(
-            *(self._send_to_client(w, data) for w in clients_list),
-            return_exceptions=False,
-        )
-
         dead = []
-        for writer, ok in zip(clients_list, results):
-            if ok:
-                self._stats["sent"] += 1
+        direct_writers = []
+        for w in list(self.clients):
+            # Check transport write buffer size if available
+            transport = getattr(w, "transport", None)
+            if transport is not None and hasattr(transport, "get_write_buffer_size"):
+                try:
+                    buf_sz = transport.get_write_buffer_size()
+                    if isinstance(buf_sz, (int, float)) and buf_sz > self.max_buffer_size:
+                        dead.append(w)
+                        self._stats["dropped"] += 1
+                        continue
+                except Exception:
+                    pass
+
+            q = self._client_queues.get(w)
+            if q is not None:
+                try:
+                    q.put_nowait(data)
+                    self._stats["sent"] += 1
+                except asyncio.QueueFull:
+                    dead.append(w)
+                    self._stats["dropped"] += 1
             else:
-                dead.append(writer)
-                self._stats["dropped"] += 1
+                direct_writers.append(w)
+
+        if direct_writers:
+            results = await asyncio.gather(
+                *(self._send_to_client(w, data) for w in direct_writers),
+                return_exceptions=False,
+            )
+            for w, ok in zip(direct_writers, results):
+                if ok:
+                    self._stats["sent"] += 1
+                else:
+                    dead.append(w)
+                    self._stats["dropped"] += 1
 
         if dead:
             for w in dead:
-                self.clients.discard(w)
-                try:
-                    w.close()
-                except Exception as close_exc:
-                    logger.debug(
-                        "[gateway_tcp] Error closing evicted client: %s", close_exc
-                    )
-            self._stats["connected"] = len(self.clients)
+                self._cleanup_client(w)
 
     async def start(self):
         self.running = True
@@ -215,6 +258,16 @@ class TCPGatewayServer:
 
     async def stop(self):
         self.running = False
+        for task in list(self._client_tasks.values()):
+            task.cancel()
+        for w in list(self.clients):
+            try:
+                w.close()
+            except Exception:
+                pass
+        self.clients.clear()
+        self._client_queues.clear()
+        self._client_tasks.clear()
         if self.server:
             self.server.close()
             await self.server.wait_closed()

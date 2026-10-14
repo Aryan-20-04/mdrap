@@ -104,9 +104,9 @@ def _decode_ts6(ts_bytes: bytes) -> int:
 @dataclass(slots=True)
 class ITCHMessage:
     msg_type: str
-    locate: int
-    tracking: int
-    timestamp_ns: int
+    locate: int = 0
+    tracking: int = 0
+    timestamp_ns: int = 0
     stock: str = ""
     order_ref: int = 0
     side: str = ""
@@ -361,6 +361,7 @@ class ITCHOrderBookTracker:
         self.total_cancels = 0
         self.total_replaces = 0
         self.total_trades = 0
+        self.quarantined_executes = 0
         self._session_midnight = (
             session_midnight_epoch
             if session_midnight_epoch is not None
@@ -403,30 +404,44 @@ class ITCHOrderBookTracker:
             self.total_executes += 1
             ord_entry = self.orders.get(msg.order_ref)
             if not ord_entry:
-                # CORR-01: Real trade execution occurred on exchange for untracked order
                 stock = msg.stock or self.locate_to_stock.get(
                     msg.locate, f"LOCATE_{msg.locate}"
                 )
-                exec_price = msg.price if (t == "C" and msg.price > 0) else None
-                self.total_trades += 1
-                return CanonicalEvent(
-                    event_id=f"itch-e-{msg.match_number or msg.order_ref}",
-                    instrument_id=stock,
-                    event_type=EventType.TRADE,
-                    exchange_timestamp=self._convert_itch_timestamp(msg.timestamp_ns),
-                    receive_timestamp=time.time(),
-                    processing_timestamp=time.time(),
-                    source="NASDAQ_ITCH50",
-                    sequence_number=self.total_trades,
-                    price=exec_price,
-                    quantity=float(msg.shares),
-                    quality_status=QualityStatus.SUSPICIOUS
-                    if exec_price is None
-                    else QualityStatus.VALID,
-                    reasons=["EXECUTION_WITHOUT_LOCAL_ORDER_STATE"]
-                    if exec_price is None
-                    else [],
-                )
+                if t == "E":
+                    # ITCH E messages carry no price; quarantine as INVALID without inventing synthetic price
+                    self.quarantined_executes += 1
+                    return CanonicalEvent(
+                        event_id=f"itch-e-{msg.match_number or msg.order_ref}",
+                        instrument_id=stock,
+                        event_type=EventType.TRADE,
+                        exchange_timestamp=self._convert_itch_timestamp(msg.timestamp_ns),
+                        receive_timestamp=time.time(),
+                        processing_timestamp=time.time(),
+                        source="NASDAQ_ITCH50",
+                        sequence_number=self.total_trades + self.quarantined_executes,
+                        price=None,
+                        quantity=float(msg.shares),
+                        quality_status=QualityStatus.INVALID,
+                        reasons=["UNKNOWN_ORDER_REF", "EXECUTION_WITHOUT_PRICE"],
+                    )
+                else:
+                    # ITCH C carries execution price; record unmapped trade as SUSPICIOUS
+                    exec_price = msg.price if (msg.price and msg.price > 0) else None
+                    self.total_trades += 1
+                    return CanonicalEvent(
+                        event_id=f"itch-c-{msg.match_number or msg.order_ref}",
+                        instrument_id=stock,
+                        event_type=EventType.TRADE,
+                        exchange_timestamp=self._convert_itch_timestamp(msg.timestamp_ns),
+                        receive_timestamp=time.time(),
+                        processing_timestamp=time.time(),
+                        source="NASDAQ_ITCH50",
+                        sequence_number=self.total_trades,
+                        price=exec_price,
+                        quantity=float(msg.shares),
+                        quality_status=QualityStatus.SUSPICIOUS,
+                        reasons=["EXECUTION_WITHOUT_LOCAL_ORDER_STATE"],
+                    )
 
             stock, side, price, rem_shares = ord_entry
             exec_shares = min(msg.shares, rem_shares)

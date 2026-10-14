@@ -23,7 +23,7 @@ from typing import Any, Dict, Iterator, Optional, Set
 from .bbo import BBOEngine
 from .depth import ConsolidatedDepthEngine
 from .fastpath import NativeReplayBuffer
-from .models import RawEvent
+from .models import RawEvent, QualityStatus, CanonicalEvent, EventType
 from .pipeline import Pipeline
 from .protocol import pack_depth_frame, pack_tick_frame
 from .reconciliation import ReliabilityTracker
@@ -73,6 +73,7 @@ class MarketDataDaemon:
         require_auth: Optional[bool] = None,
         enable_shm: bool = True,
         shm_name: str = "mdrap_feed",
+        use_engine: Optional[bool] = None,
     ):
         self.host = host
         self.port = port
@@ -82,6 +83,10 @@ class MarketDataDaemon:
         self.sim_speed_eps = sim_speed_eps
         self.enable_shm = enable_shm
         self.shm_name = shm_name
+        if use_engine is not None:
+            self.use_engine = use_engine
+        else:
+            self.use_engine = os.environ.get("MDRAP_USE_ENGINE", "1").lower() in ("1", "true", "yes")
         env_auth = os.environ.get("MDRAP_REQUIRE_AUTH")
         if require_auth is not None:
             self.require_auth = require_auth
@@ -110,6 +115,18 @@ class MarketDataDaemon:
             bbo=self.bbo,
             watchdog=self.watchdog,
         )
+
+        if self.use_engine:
+            from .engine import Engine
+            self.engine = Engine(clock=None, security=self.security_manager)
+            if self.db_path and not self.db_path.startswith(":"):
+                from .projection import SQLiteProjection
+                self._engine_projection = SQLiteProjection(self.db_path)
+                self.engine.subscribe(self._engine_projection)
+            else:
+                self._engine_projection = None
+        else:
+            self.engine = None
 
         self.shm_writer = None
         self._shm_errors = 0
@@ -169,6 +186,10 @@ class MarketDataDaemon:
         )
         self._ingest_thread.start()
 
+        # 6. Start active watchdog heartbeat checking for total feed silence
+        if hasattr(self.watchdog, "start_heartbeat"):
+            self.watchdog.start_heartbeat(interval_s=0.25)
+
         if blocking:
             try:
                 while self._running:
@@ -179,8 +200,18 @@ class MarketDataDaemon:
     def stop(self) -> None:
         """Gracefully stop the daemon and flush pending storage writes."""
         if not self._running:
+            if self.engine:
+                self.engine.close()
+                self.engine = None
+            if self.pipeline:
+                self.pipeline.finish()
+            if self.store:
+                self.store.close()
             return
         self._running = False
+
+        if hasattr(self.watchdog, "stop_heartbeat"):
+            self.watchdog.stop_heartbeat()
 
         if self._server_sock:
             try:
@@ -224,11 +255,19 @@ class MarketDataDaemon:
                 logger.debug("[service] SHM writer close error: %s", exc)
             self.shm_writer = None
 
+        if self.engine:
+            self.engine.close()
+            self.engine = None
+
         if self.pipeline:
             self.pipeline.finish()
 
         if self.store:
             self.store.close()
+
+    def close(self) -> None:
+        """Alias for stop()."""
+        self.stop()
 
     def _socket_accept_loop(self) -> None:
         """Accept new client connections, spawn non-blocking writer and reader threads."""
@@ -622,7 +661,42 @@ class MarketDataDaemon:
     def _process_and_broadcast(self, raw: RawEvent) -> None:
         """Ingest raw event, evaluate quality, update BBO & L2 depth, and broadcast to subscribed sockets via non-blocking queues."""
         t0_ns = time.perf_counter_ns()
-        ev = self.pipeline.process_one(raw)
+        if self.use_engine and self.engine is not None:
+            dec = self.engine.submit(raw)
+            ev = dec.canonical_event if dec else None
+            if ev:
+                if self.watchdog:
+                    self.watchdog.observe(ev)
+                self.reliability.observe(ev)
+                self.bbo.observe(ev)
+            elif dec and dec.quality_status == QualityStatus.INVALID:
+                from .models import CanonicalEvent, EventType
+                payload_dict = raw.payload if isinstance(raw.payload, dict) else {}
+                try:
+                    ev_type = EventType(payload_dict.get("event_type", "TICK"))
+                except ValueError:
+                    ev_type = EventType.UNKNOWN
+                ev = CanonicalEvent(
+                    event_id=dec.event_id,
+                    instrument_id=payload_dict.get("instrument", "UNKNOWN"),
+                    event_type=ev_type,
+                    exchange_timestamp=float(payload_dict.get("exchange_ts", raw.receive_timestamp)),
+                    receive_timestamp=float(raw.receive_timestamp),
+                    processing_timestamp=time.time(),
+                    source=raw.source,
+                    sequence_number=payload_dict.get("sequence"),
+                    price=payload_dict.get("price"),
+                    quantity=payload_dict.get("quantity"),
+                    bid_price=payload_dict.get("bid"),
+                    ask_price=payload_dict.get("ask"),
+                    bid_size=payload_dict.get("bid_size"),
+                    ask_size=payload_dict.get("ask_size"),
+                    quality_status=dec.quality_status,
+                    reasons=dec.reasons,
+                    raw_id=raw.raw_id,
+                )
+        else:
+            ev = self.pipeline.process_one(raw)
         if not ev:
             return
 

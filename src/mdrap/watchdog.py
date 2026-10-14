@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from enum import Enum
 import threading
 import time
-from typing import Callable
+from typing import Any, Callable
 
 from .models import CanonicalEvent
 from .reconciliation import ReliabilityTracker
@@ -37,15 +37,19 @@ class SourceState(str, Enum):
 class SourceWatchdog:
     def __init__(
         self,
-        reliability: ReliabilityTracker,
+        reliability: ReliabilityTracker | None = None,
         silence_threshold_s: float = 2.0,
         degradation_threshold: float = 0.90,
         recovery_threshold: float = 0.93,
         min_ticks_for_adaptive: int = 20,
         adaptive_multiplier: float = 10.0,
+        per_source_thresholds: dict[str, float] | None = None,
+        poll_interval_s: float | None = None,
     ):
         self.reliability = reliability
         self.silence_threshold_s = silence_threshold_s
+        self.poll_interval_s = poll_interval_s
+        self.per_source_thresholds: dict[str, float] = dict(per_source_thresholds or {})
         self.degradation_threshold = degradation_threshold
         self.recovery_threshold = recovery_threshold
         self.min_ticks_for_adaptive = min_ticks_for_adaptive
@@ -65,29 +69,37 @@ class SourceWatchdog:
         self._heartbeat_stop: threading.Event | None = None
         self._heartbeat_callback: Callable[[list[WatchdogAlert]], None] | None = None
 
-    def observe(self, event: CanonicalEvent) -> list[WatchdogAlert]:
+    def observe(self, event: Any) -> list[WatchdogAlert]:
         """
         Update watchdog state with a new event and check for failures.
         Returns a list of alerts if state changes occur.
         """
         with self._lock:
-            source_in = event.source
-            now_ts = event.exchange_timestamp
-            prev_ts = self._last_seen.get(source_in)
-            if prev_ts is not None and now_ts > prev_ts:
-                gap = now_ts - prev_ts
-                ewma = self._ewma_interval.get(source_in, gap)
-                self._ewma_interval[source_in] = 0.9 * ewma + 0.1 * gap
-                self._tick_counts[source_in] = self._tick_counts.get(source_in, 0) + 1
-            elif source_in not in self._tick_counts:
-                self._tick_counts[source_in] = 1
+            return self._observe_locked(event)
 
-            self._last_seen[event.source] = event.exchange_timestamp
-            self._last_seen_wall[event.source] = time.monotonic()
-        if event.source not in self._source_states:
-            self._source_states[event.source] = SourceState.HEALTHY
+    def _observe_locked(self, event: Any) -> list[WatchdogAlert]:
+        source_in = getattr(event, "source", "")
+        now_ts = getattr(event, "exchange_timestamp", None)
+        if now_ts is None:
+            now_ts = getattr(event, "receive_timestamp", None)
+        if now_ts is None:
+            now_ts = time.time()
 
-        current_time = event.exchange_timestamp
+        prev_ts = self._last_seen.get(source_in)
+        if prev_ts is not None and now_ts > prev_ts:
+            gap = now_ts - prev_ts
+            ewma = self._ewma_interval.get(source_in, gap)
+            self._ewma_interval[source_in] = 0.9 * ewma + 0.1 * gap
+            self._tick_counts[source_in] = self._tick_counts.get(source_in, 0) + 1
+        elif source_in not in self._tick_counts:
+            self._tick_counts[source_in] = 1
+
+        self._last_seen[source_in] = now_ts
+        self._last_seen_wall[source_in] = time.monotonic()
+        if source_in not in self._source_states:
+            self._source_states[source_in] = SourceState.HEALTHY
+
+        current_time = now_ts
         new_alerts = []
 
         # Pull cached scores from the reliability tracker
@@ -206,13 +218,14 @@ class SourceWatchdog:
                     else self._last_seen.get(source, 0.0)
                 )
 
-                if (now_val - last_seen_time) > self.silence_threshold_s:
+                thresh = self.per_source_thresholds.get(source, self.silence_threshold_s)
+                if (now_val - last_seen_time) > thresh:
                     self._source_states[source] = SourceState.SILENT
                     alert = WatchdogAlert(
                         source=source,
                         alert_type="SILENCE",
                         timestamp=now_wall_clock if use_wall else now_val,
-                        details=f"Source {source} silent for > {self.silence_threshold_s:.2f}s (active heartbeat check)",
+                        details=f"Source {source} silent for > {thresh:.2f}s (active heartbeat check)",
                         action_taken="Marked SILENT, initiating failover",
                     )
                     self._alerts.append(alert)
@@ -222,10 +235,16 @@ class SourceWatchdog:
 
     def start_heartbeat(
         self,
-        interval_s: float = 0.5,
+        interval_s: float | None = None,
         on_alert: Callable[[list[WatchdogAlert]], None] | None = None,
+        poll_interval_s: float | None = None,
     ) -> None:
         """Start active background heartbeat thread checking for total feed silence."""
+        effective_interval = (
+            poll_interval_s
+            if poll_interval_s is not None
+            else (interval_s if interval_s is not None else (self.poll_interval_s or 0.25))
+        )
         with self._lock:
             if self._heartbeat_thread is not None and self._heartbeat_thread.is_alive():
                 return
@@ -241,7 +260,7 @@ class SourceWatchdog:
                         except Exception:
                             pass
                     if self._heartbeat_stop:
-                        self._heartbeat_stop.wait(interval_s)
+                        self._heartbeat_stop.wait(effective_interval)
 
             self._heartbeat_thread = threading.Thread(
                 target=_heartbeat_worker, name="mdrap-watchdog-heartbeat", daemon=True

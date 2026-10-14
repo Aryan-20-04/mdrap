@@ -93,16 +93,19 @@ class SQLiteProjection:
             )
             cur.execute(
                 """
-                CREATE TABLE IF NOT EXISTS quarantine_events (
+                CREATE TABLE IF NOT EXISTS quarantine (
                     event_id TEXT PRIMARY KEY,
-                    instrument_id TEXT NOT NULL,
-                    source TEXT NOT NULL,
-                    quality_status TEXT NOT NULL,
+                    instrument_id TEXT,
+                    source TEXT,
+                    quality_status TEXT,
                     reasons TEXT,
-                    raw_payload TEXT,
-                    created_at REAL NOT NULL
+                    payload_json TEXT,
+                    receive_timestamp REAL
                 );
                 """
+            )
+            cur.execute(
+                "CREATE VIEW IF NOT EXISTS quarantine_events AS SELECT * FROM quarantine;"
             )
             cur.execute(
                 """
@@ -218,9 +221,9 @@ class SQLiteProjection:
                 if quarantine_rows:
                     cur.executemany(
                         """
-                        INSERT OR IGNORE INTO quarantine_events (
+                        INSERT OR IGNORE INTO quarantine (
                             event_id, instrument_id, source,
-                            quality_status, reasons, raw_payload, created_at
+                            quality_status, reasons, payload_json, receive_timestamp
                         ) VALUES (?, ?, ?, ?, ?, ?, ?);
                         """,
                         quarantine_rows,
@@ -251,6 +254,124 @@ class SQLiteProjection:
             cur = self._conn.cursor()
             cur.execute("SELECT COUNT(*) FROM quarantine_events;")
             return cur.fetchone()[0]
+
+    def close(self) -> None:
+        with self._lock:
+            try:
+                self._conn.close()
+            except Exception:
+                pass
+
+
+class DuckDBProjection:
+    """Production DuckDB columnar projection for ultra-fast time-series analytical scans."""
+
+    def __init__(self, db_path: str = ":memory:", name: str = "duckdb_canonical") -> None:
+        try:
+            import duckdb
+        except ImportError:
+            raise RuntimeError("duckdb is not installed; install via pip install duckdb")
+        self.db_path = db_path
+        self.name = name
+        self._lock = threading.Lock()
+        if db_path != ":memory:":
+            os.makedirs(os.path.dirname(os.path.abspath(db_path)), exist_ok=True)
+        self._conn = duckdb.connect(db_path)
+        self._init_schema()
+
+    def _init_schema(self) -> None:
+        with self._lock:
+            self._conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS projection_checkpoints (
+                    name VARCHAR PRIMARY KEY,
+                    last_offset BIGINT NOT NULL,
+                    updated_at DOUBLE NOT NULL
+                );
+                """
+            )
+            self._conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS canonical_events (
+                    event_id VARCHAR PRIMARY KEY,
+                    instrument_id VARCHAR NOT NULL,
+                    event_type VARCHAR NOT NULL,
+                    exchange_timestamp DOUBLE NOT NULL,
+                    receive_timestamp DOUBLE NOT NULL,
+                    processing_timestamp DOUBLE NOT NULL,
+                    source VARCHAR NOT NULL,
+                    sequence_number BIGINT,
+                    price DOUBLE,
+                    quantity DOUBLE,
+                    bid_price DOUBLE,
+                    ask_price DOUBLE,
+                    bid_size DOUBLE,
+                    ask_size DOUBLE,
+                    quality_status VARCHAR NOT NULL,
+                    reasons VARCHAR,
+                    raw_id VARCHAR
+                );
+                """
+            )
+
+    def checkpoint(self) -> int:
+        with self._lock:
+            res = self._conn.execute(
+                "SELECT last_offset FROM projection_checkpoints WHERE name = ?",
+                [self.name],
+            ).fetchone()
+            return int(res[0]) if res else -1
+
+    def apply(self, batch: list[Any], offset: int) -> None:
+        if not batch:
+            return
+        canonical_rows = []
+        for item in batch:
+            ev = getattr(item, "canonical_event", None)
+            if ev is not None:
+                r_json = json.dumps(ev.reasons) if isinstance(ev.reasons, list) else str(ev.reasons or "")
+                ev_type_str = ev.event_type.value if hasattr(ev.event_type, "value") else str(ev.event_type)
+                canonical_rows.append((
+                    ev.event_id,
+                    ev.instrument_id,
+                    ev_type_str,
+                    float(ev.exchange_timestamp or 0.0),
+                    float(ev.receive_timestamp or 0.0),
+                    float(ev.processing_timestamp or 0.0),
+                    ev.source,
+                    ev.sequence_number,
+                    ev.price,
+                    ev.quantity,
+                    ev.bid_price,
+                    ev.ask_price,
+                    ev.bid_size,
+                    ev.ask_size,
+                    ev.quality_status.value if hasattr(ev.quality_status, "value") else str(ev.quality_status),
+                    r_json,
+                    ev.raw_id,
+                ))
+        with self._lock:
+            if canonical_rows:
+                self._conn.executemany(
+                    """
+                    INSERT OR IGNORE INTO canonical_events VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                    """,
+                    canonical_rows,
+                )
+            self._conn.execute(
+                """
+                INSERT OR REPLACE INTO projection_checkpoints VALUES (?, ?, ?);
+                """,
+                [self.name, offset, time.time()],
+            )
+
+    def count_canonical(self) -> int:
+        with self._lock:
+            return int(self._conn.execute("SELECT COUNT(*) FROM canonical_events").fetchone()[0])
+
+    def query(self, sql: str, params: list | None = None) -> list:
+        with self._lock:
+            return self._conn.execute(sql, params or []).fetchall()
 
     def close(self) -> None:
         with self._lock:

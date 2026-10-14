@@ -182,6 +182,7 @@ class Pipeline:
         journal: bool | str | None = None,
         durability_policy: str = "fail_closed",
         clock: Clock | None = None,
+        use_engine: bool = False,
     ):
         warnings.warn(
             "Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.",
@@ -190,6 +191,19 @@ class Pipeline:
         )
         self.store = store
         self.clock = clock if clock is not None else SystemClock()
+        self.use_engine: bool = (
+            use_engine
+            or os.environ.get("MDRAP_USE_ENGINE", "0").lower() in ("1", "true", "yes")
+        )
+        if self.use_engine:
+            from .engine import Engine
+            self.engine = Engine(clock=self.clock, security=security)
+            db_path = getattr(store, "path", None)
+            if db_path and isinstance(db_path, str) and not db_path.startswith(":"):
+                from .projection import SQLiteProjection
+                self.engine.subscribe(SQLiteProjection(db_path))
+        else:
+            self.engine = None
         self.durability_policy: str = (
             durability_policy
             if durability_policy is not None
@@ -562,6 +576,24 @@ class Pipeline:
         self, raw: RawEvent, source_label: str | None = None
     ) -> CanonicalEvent | None:
         self._raise_if_writer_failed()
+        if self.use_engine and self.engine is not None:
+            dec = self.engine.submit(raw)
+            ev = dec.canonical_event if dec else None
+            self.metrics.processed += 1
+            st_name = dec.quality_status.name if dec else "INVALID"
+            self.metrics.quality_counts[st_name] = (
+                self.metrics.quality_counts.get(st_name, 0) + 1
+            )
+            if ev:
+                if self.watchdog:
+                    self.watchdog.observe(ev)
+                if self.reliability:
+                    self.reliability.observe(ev)
+                if self.bbo:
+                    self.bbo.observe(ev)
+                if self.analytics:
+                    self.analytics.observe(ev)
+            return ev
         # Timing sampling: only instrument 1-in-(mask+1) events when mask > 0
         self._event_counter += 1
         _do_timing = (self._event_counter & self._timing_sample_mask) == 0
@@ -689,6 +721,8 @@ class Pipeline:
         # Apply reconciliation quality annotations to current event (not cached copies)
         if decision and decision.quality_reasons:
             event.reasons.extend(decision.quality_reasons)
+            if event.quality_status == QualityStatus.VALID:
+                event.quality_status = QualityStatus.SUSPICIOUS
         self.reliability.observe(event)
 
         # Feed analytics engine (V3: OHLCV, spread, volatility)
@@ -786,6 +820,27 @@ class Pipeline:
         if not raw_events:
             return []
         self._raise_if_writer_failed()
+        if self.use_engine and self.engine is not None:
+            decisions = self.engine.submit(raw_events)
+            results: list[CanonicalEvent] = []
+            for dec in decisions:
+                self.metrics.processed += 1
+                st_name = dec.quality_status.name if dec else "INVALID"
+                self.metrics.quality_counts[st_name] = (
+                    self.metrics.quality_counts.get(st_name, 0) + 1
+                )
+                ev = dec.canonical_event
+                if ev:
+                    if self.watchdog:
+                        self.watchdog.observe(ev)
+                    if self.reliability:
+                        self.reliability.observe(ev)
+                    if self.bbo:
+                        self.bbo.observe(ev)
+                    if self.analytics:
+                        self.analytics.observe(ev)
+                    results.append(ev)
+            return results
 
         results: list[CanonicalEvent | None] = [None] * len(raw_events)
         start_times_ns: list[int] = []
@@ -1215,6 +1270,12 @@ class Pipeline:
                 logger.debug("[pipeline] Error closing journal: %s", exc)
             finally:
                 self._journal_file = None
+        if getattr(self, "engine", None) is not None:
+            try:
+                self.engine.close()
+            except Exception:
+                pass
+            self.engine = None
 
     def __del__(self) -> None:
         if getattr(self, "_journal_file", None) is not None:
@@ -1322,3 +1383,10 @@ def replay_dead_letter_spills(store, dead_letter_dir: str | None = None) -> dict
         os.rename(fpath, replayed_path)
 
     return stats
+
+
+class EnginePipeline(Pipeline):
+    """Legacy Pipeline adapter backed directly by Engine.submit() (Phase 3 Task 3.1)."""
+
+    def __init__(self, store: Any, **kwargs: Any):
+        super().__init__(store=store, use_engine=True, **kwargs)

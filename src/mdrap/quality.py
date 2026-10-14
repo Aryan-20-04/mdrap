@@ -455,6 +455,8 @@ class QualityEngine:
                 event.quantity,
                 event.bid_price,
                 event.ask_price,
+                event.bid_size,
+                event.ask_size,
             )
             if self._unseq_dedup.check_and_insert(unseq_key):
                 dup_st_name = getattr(cfg, "unseq_dup_status", "SUSPICIOUS")

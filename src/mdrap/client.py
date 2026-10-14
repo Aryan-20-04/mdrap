@@ -765,7 +765,7 @@ class MDRAPClient:
         # If streaming via Shared Memory (sub-microsecond IPC)
         if self.shm_reader:
             # Check epoch before streaming in case publisher restarted while client was idle
-            if not self.shm_reader.check_epoch_valid():
+            if not self.shm_reader.check_epoch_valid(force_probe=True):
                 try:
                     self.shm_reader.close()
                     from .shm import SHMReader

@@ -580,6 +580,15 @@ def create_app(
 
             ent = sec_mgr.get_entitlement(token, active_only=True)
             if not ent:
+                try:
+                    sec_mgr.log_audit(
+                        action="ACCESS_DENIED",
+                        actor=f"ip:{client_ip}",
+                        role=Role.VIEWER,
+                        details=f"Invalid or inactive API key from {client_ip}",
+                    )
+                except Exception as exc:
+                    logger.debug("[api] Audit log failed for denied auth: %s", exc)
                 now = time.monotonic()
                 with _FAILED_AUTH_LOCK:
                     while _FAILED_AUTH_ATTEMPTS:
@@ -1412,6 +1421,15 @@ def create_app(
 
         if not client_ent:
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Unauthorized")
+            return
+
+        # Enforce per-IP connection limit to prevent connection exhaustion
+        client_ip = _resolve_client_ip(websocket)
+        active_for_ip = sum(
+            1 for ws in st.subscribers if _resolve_client_ip(ws) == client_ip
+        )
+        if active_for_ip >= 50:
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Too many connections")
             return
 
         # 2. Accept connection once authenticated

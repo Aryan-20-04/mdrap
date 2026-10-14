@@ -266,3 +266,92 @@ def to_quality_config(resolved: dict[str, Any]) -> QualityConfig:
         reorder_window_s=float(resolved.get("reorder_window_s", 0.0)),
         reorder_max_slots=int(resolved.get("reorder_max_slots", 32)),
     )
+
+
+def migrate_yaml_to_toml(
+    yaml_path: str | Path | None = None,
+    toml_path: str | Path | None = None,
+) -> Path:
+    """Migrate legacy config.yaml to mdrap.toml format (Phase 3 Task 3.5)."""
+    if yaml_path is None:
+        cand = Path("config.yaml")
+        if not cand.is_file():
+            cand = Path("config/config.yaml")
+        yaml_path = cand
+    else:
+        yaml_path = Path(yaml_path)
+
+    if not yaml_path.is_file():
+        raise FileNotFoundError(f"Source YAML configuration not found: {yaml_path}")
+
+    if toml_path is None:
+        toml_path = Path("mdrap.toml")
+    else:
+        toml_path = Path(toml_path)
+
+    raw_data: dict[str, Any] = {}
+    try:
+        import yaml
+        with open(yaml_path, "r", encoding="utf-8") as f:
+            raw_data = yaml.safe_load(f) or {}
+    except ImportError:
+        with open(yaml_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and ":" in line:
+                    k, v = line.split(":", 1)
+                    k = k.strip()
+                    v = v.strip().strip("'\"")
+                    try:
+                        v = float(v) if "." in v else int(v)
+                    except ValueError:
+                        pass
+                    raw_data[k] = v
+
+    defaults_dict: dict[str, Any] = {}
+    sections_dict: dict[str, dict[str, Any]] = {}
+
+    for k, v in raw_data.items():
+        if k in ("quality", "defaults"):
+            if isinstance(v, dict):
+                defaults_dict.update(v)
+        elif k in ALLOWED_TOP_SECTIONS:
+            if isinstance(v, dict):
+                sections_dict.setdefault(k, {}).update(v)
+        elif isinstance(v, dict):
+            for sub_k, sub_v in v.items():
+                if sub_k in ALLOWED_QUALITY_KEYS:
+                    defaults_dict[sub_k] = sub_v
+        elif k in ALLOWED_QUALITY_KEYS:
+            defaults_dict[k] = v
+
+    toml_lines = [
+        "# MDRAP Unified Configuration (Migrated from config.yaml)",
+        "# Spec §26 & Phase 3 TOML Format",
+        "",
+        "[defaults]",
+    ]
+    for k, v in sorted(defaults_dict.items()):
+        if isinstance(v, (int, float)):
+            toml_lines.append(f"{k} = {v}")
+        elif isinstance(v, bool):
+            toml_lines.append(f"{k} = {'true' if v else 'false'}")
+        elif isinstance(v, str):
+            toml_lines.append(f'{k} = "{v}"')
+
+    for sec, items in sorted(sections_dict.items()):
+        if sec == "defaults" or not items:
+            continue
+        toml_lines.append(f"\n[{sec}]")
+        for k, v in sorted(items.items()):
+            if isinstance(v, (int, float)):
+                toml_lines.append(f"{k} = {v}")
+            elif isinstance(v, bool):
+                toml_lines.append(f"{k} = {'true' if v else 'false'}")
+            elif isinstance(v, str):
+                toml_lines.append(f'{k} = "{v}"')
+
+    with open(toml_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(toml_lines) + "\n")
+
+    return toml_path

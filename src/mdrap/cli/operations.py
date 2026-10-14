@@ -665,7 +665,19 @@ def cmd_gateway(args):
 
 
 def cmd_config(args):
-    """Handle mdrap config show."""
+    """Handle mdrap config show and migration."""
+    if getattr(args, "migrate", False) or getattr(args, "config_action", "") == "migrate":
+        from ..config_loader import migrate_yaml_to_toml
+        src_yaml = getattr(args, "file", None)
+        out_toml = getattr(args, "out", None)
+        try:
+            dest = migrate_yaml_to_toml(src_yaml, out_toml)
+            Console().print(f"[bold green]Successfully migrated configuration to {dest}[/bold green]")
+        except Exception as exc:
+            Console(stderr=True).print(f"[bold red]Migration error: {exc}[/bold red]")
+            sys.exit(1)
+        return
+
     from ..config_loader import (
         load_config,
         resolve_config,

@@ -19,6 +19,7 @@ from __future__ import annotations
 from collections.abc import Generator
 import logging
 import os
+import platform
 import secrets
 import struct
 import sys
@@ -35,6 +36,33 @@ except ImportError:
     HAS_SHM = False
 
 __stability__ = "stable"
+
+
+def _check_arm_shm_safety() -> None:
+    """Fail closed on weak-memory architectures (ARM64) if native C atomics are unavailable."""
+    arch = platform.machine().lower()
+    if arch in ("aarch64", "arm64", "armv8l", "armv8"):
+        allow_unsafe = os.environ.get("MDRAP_UNSAFE_SHM", "0").lower() in (
+            "1",
+            "true",
+            "yes",
+        )
+        if not allow_unsafe:
+            try:
+                from .fastpath import HAS_FASTPATH
+
+                if not HAS_FASTPATH:
+                    raise RuntimeError(
+                        f"Refusing to run lock-free Shared Memory on ARM64 ({arch}) without native C atomics. "
+                        "Weak memory ordering can cause silent data corruption or torn reads. "
+                        "Compile the native C fastpath extension or set MDRAP_UNSAFE_SHM=1 to override."
+                    )
+            except (ImportError, AttributeError):
+                raise RuntimeError(
+                    f"Refusing to run lock-free Shared Memory on ARM64 ({arch}) without native C atomics. "
+                    "Weak memory ordering can cause silent data corruption or torn reads. "
+                    "Compile the native C fastpath extension or set MDRAP_UNSAFE_SHM=1 to override."
+                )
 
 # ---------------------------------------------------------------------------
 # Memory Layout & Cache-Line Alignment Constants (SHM v3)
@@ -140,6 +168,7 @@ class SHMWriter:
             raise RuntimeError(
                 "multiprocessing.shared_memory is not supported in this Python environment."
             )
+        _check_arm_shm_safety()
 
         if slot_count < 2 or (slot_count & (slot_count - 1)) != 0:
             raise ValueError(f"slot_count must be a power of 2, got {slot_count}")
@@ -266,18 +295,18 @@ class SHMWriter:
         seq: int,
         symbol: str,
         source: str,
-        price: float | None,
-        size: float | None,
-        bid: float | None,
-        ask: float | None,
-        bid_size: float | None,
-        ask_size: float | None,
-        status: str,
-        is_crossed: bool,
-        exchange_ts: float,
-        ingest_ts: float,
-        broadcast_ts: float,
-        engine_us: float,
+        price: float | None = None,
+        size: float | None = None,
+        bid: float | None = None,
+        ask: float | None = None,
+        bid_size: float | None = None,
+        ask_size: float | None = None,
+        status: str = "VALID",
+        is_crossed: bool = False,
+        exchange_ts: float = 0.0,
+        ingest_ts: float = 0.0,
+        broadcast_ts: float = 0.0,
+        engine_us: float = 0.0,
     ) -> None:
         """
         Write a TICK event into the circular ring buffer slot with two-phase commit.
@@ -504,6 +533,7 @@ class SHMReader:
             raise RuntimeError(
                 "multiprocessing.shared_memory is not supported in this Python environment."
             )
+        _check_arm_shm_safety()
 
         self.name = name
         try:
@@ -608,12 +638,11 @@ class SHMReader:
             logger.debug("[shm] Failed to reattach to %s: %s", self.name, exc)
             return False
 
-    def check_epoch_valid(self, force_probe: bool = True) -> bool:
+    def check_epoch_valid(self, force_probe: bool = False) -> bool:
         """
         Verify that the writer epoch has not changed (i.e. daemon has not restarted).
-        On POSIX, an unlinked segment remains mapped by old readers; probing the named
-        segment ensures detection when a new writer creates a replacement segment.
-        External named segment probing is rate-limited to avoid syscall storms during tight polling.
+        Fast in-memory read from offset 16 of mapped buffer is zero syscalls.
+        External named segment probing is only performed when force_probe=True.
         """
         if not self.shm:
             return False
@@ -621,12 +650,13 @@ class SHMReader:
             current_epoch = struct.unpack_from("<Q", self.shm.buf, 16)[0]
             if current_epoch != self.epoch_id:
                 return False
-            now = time.time()
-            if force_probe or (now - self._last_epoch_probe) >= 0.05:
-                self._last_epoch_probe = now
-                active_epoch = _probe_active_epoch(self.name)
-                if active_epoch is None or active_epoch != self.epoch_id:
-                    return False
+            if force_probe:
+                now = time.time()
+                if (now - self._last_epoch_probe) >= 0.05:
+                    self._last_epoch_probe = now
+                    active_epoch = _probe_active_epoch(self.name)
+                    if active_epoch is None or active_epoch != self.epoch_id:
+                        return False
             return True
         except Exception:
             return False
@@ -793,7 +823,7 @@ class SHMReader:
             }
             return
 
-        if not self.check_epoch_valid():
+        if not self.check_epoch_valid(force_probe=True):
             try:
                 active_epoch = _probe_active_epoch(self.name)
                 if active_epoch is not None and active_epoch != self.epoch_id:

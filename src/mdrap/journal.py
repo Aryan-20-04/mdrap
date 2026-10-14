@@ -15,6 +15,7 @@ import struct
 import time
 from typing import Generator
 import warnings
+import zlib
 
 from .shm import (
     SLOT_SIZE,
@@ -137,11 +138,22 @@ class BinaryJournal:
             # Scan forward to recover any trailing slots written before an ungraceful crash
             while self._record_count < self._capacity_records:
                 offset = JOURNAL_HEADER_SIZE + (self._record_count * SLOT_SIZE)
-                slot_seq = struct.unpack_from("<Q", self._mm, offset)[0]
+                slot_bytes = self._mm[offset : offset + SLOT_SIZE]
+                slot_seq = struct.unpack_from("<Q", slot_bytes, 0)[0]
                 if slot_seq == 0 or slot_seq == 0xFFFFFFFFFFFFFFFF:
                     break
                 if self._record_count > 0 and slot_seq < self._last_seq:
                     break
+                # Verify CRC32 if embedded at offset 120
+                stored_crc = struct.unpack_from("<I", slot_bytes, 120)[0]
+                if stored_crc != 0:
+                    calc_crc = zlib.crc32(slot_bytes[:120])
+                    if calc_crc != stored_crc:
+                        logger.warning(
+                            "[journal] Torn/corrupt record detected at index %d (CRC mismatch), truncating",
+                            self._record_count,
+                        )
+                        break
                 if self._record_count == 0:
                     self._first_seq = slot_seq
                 self._last_seq = slot_seq
@@ -214,7 +226,11 @@ class BinaryJournal:
         self._ensure_capacity(1)
 
         offset = JOURNAL_HEADER_SIZE + (self._record_count * SLOT_SIZE)
-        self._mm[offset : offset + SLOT_SIZE] = slot_bytes
+        buf = bytearray(slot_bytes)
+        if struct.unpack_from("<I", buf, 120)[0] == 0:
+            crc = zlib.crc32(buf[:120])
+            struct.pack_into("<I", buf, 120, crc)
+        self._mm[offset : offset + SLOT_SIZE] = buf
 
         seq = struct.unpack_from("<Q", self._mm, offset)[0]
         if self._record_count == 0:

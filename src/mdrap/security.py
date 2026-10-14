@@ -283,26 +283,27 @@ class TokenBucketRateLimiter:
     def allow(self, source: str = "default", tokens: float = 1.0) -> bool:
         with self._lock:
             now = time.perf_counter()
+
+            if len(self._buckets) >= 1024 and source not in self._buckets:
+                # SEC-02: Only evict genuinely idle buckets (full and inactive for >= 10.0s).
+                # Never evict active or depleted buckets, preventing eviction-based rate limit bypass.
+                idle_sources = [
+                    k
+                    for k, (toks, t) in self._buckets.items()
+                    if (now - t) >= 10.0 and (toks + (now - t) * self.rate) >= self.capacity
+                ]
+                if idle_sources:
+                    for k in idle_sources[: len(self._buckets) - 1024 + 1]:
+                        self._buckets.pop(k, None)
+                # If still full, route unknown sources to shared overflow bucket to prevent memory leak & rate amplification
+                if len(self._buckets) >= 1024 and source not in self._buckets:
+                    source = "__overflow__"
+
             current_tokens, last_time = self._buckets.get(source, (self.capacity, now))
 
             # Refill tokens based on elapsed time
             elapsed = now - last_time
             current_tokens = min(self.capacity, current_tokens + elapsed * self.rate)
-
-            if len(self._buckets) > 1024 and source not in self._buckets:
-                # SEC-02: Only evict fully replenished (idle) buckets.
-                # Never evict depleted/throttled buckets, preventing eviction-based rate limit bypass.
-                idle_sources = [
-                    k
-                    for k, (toks, t) in self._buckets.items()
-                    if (toks + (now - t) * self.rate) >= self.capacity
-                ]
-                if idle_sources:
-                    for k in idle_sources[: len(self._buckets) - 1024 + 1]:
-                        self._buckets.pop(k, None)
-                else:
-                    # All buckets active/depleted. New source gets baseline rate burst, not full capacity.
-                    current_tokens = min(self.rate, current_tokens)
 
             if current_tokens >= tokens:
                 self._buckets[source] = (current_tokens - tokens, now)
@@ -530,10 +531,13 @@ class HashedKeyStore(dict):
             return None
         h_salted, h_legacy = self._hash_candidates(key)
         ent = super().get(h_salted)
-        if ent is not None:
+        if ent is not None and hmac.compare_digest(ent.token_hash or "", h_salted):
             return ent
         legacy_ent = super().get(h_legacy)
-        if legacy_ent is not None:
+        if legacy_ent is not None and (
+            hmac.compare_digest(legacy_ent.token_hash or "", h_legacy)
+            or hmac.compare_digest(hashlib.sha256(key.encode("utf-8")).hexdigest(), h_legacy)
+        ):
             # Audit M3: Transparently migrate legacy unsalted hash to modern salted hash
             legacy_ent.token_hash = h_salted
             legacy_ent.key_id = h_salted[:16]
@@ -547,13 +551,10 @@ class HashedKeyStore(dict):
         return None
 
     def get_by_token_or_hash(self, key: str) -> Optional[ClientEntitlement]:
-        """Lookup entitlement by token, salted/legacy hash, or direct hash (administrative use only)."""
+        """Lookup entitlement strictly by token. Hash-as-token fallback removed (SEC-01)."""
         if not key:
             return None
-        ent = self.get_by_token(key)
-        if ent is not None:
-            return ent
-        return super().get(key)
+        return self.get_by_token(key)
 
 
 class SecurityManager:
@@ -643,6 +644,7 @@ class SecurityManager:
         self._verified_count = 0
         self._tampered_count = 0
         self._rate_limited_count = 0
+        self._in_memory_audit: list[dict] = []
 
         self._api_keys: HashedKeyStore = HashedKeyStore()
         if is_demo:
@@ -956,7 +958,23 @@ class SecurityManager:
             if hasattr(self.store, "commit"):
                 self.store.commit()
 
+        self._in_memory_audit.append(
+            {
+                "timestamp": timestamp,
+                "actor": actor,
+                "role": role_str,
+                "action": action,
+                "details": details,
+                "entry_hash": entry_hash,
+            }
+        )
         return entry_hash
+
+    def get_audit_log(self, limit: int = 100) -> list[dict]:
+        """Return recorded audit entries from storage or memory."""
+        if self.store and hasattr(self.store, "query_audit_log"):
+            return self.store.query_audit_log(limit=limit)
+        return list(self._in_memory_audit[-limit:])
 
     def verify_audit_trail(
         self, anchor: Optional[Tuple[int, str]] = None
@@ -1024,9 +1042,16 @@ class SecurityManager:
                 ) from exc
         return ent
 
+    def generate_api_key(
+        self, client_id: str, role: Role | str = Role.VIEWER, **kwargs
+    ) -> str:
+        """Convenience method to register and return the generated plaintext API token."""
+        ent = self.register_api_key(client_id=client_id, role=role, **kwargs)
+        return ent.token
+
     def revoke_api_key(self, token: str) -> bool:
         """Revoke an active API key immediately by token, token_hash, key_id, or key_prefix."""
-        ent = self._api_keys.get_by_token_or_hash(token)
+        ent = self._api_keys.get_by_token(token) or self._api_keys.get_by_hash(token)
         if not ent:
             # Try exact key_id match first (16 hex chars = 64 bits entropy)
             for v in list(self._api_keys.values()):
@@ -1113,6 +1138,10 @@ class SecurityManager:
             self._rate_limited_count += 1
         return allowed
 
+    def authenticate(self, token: str) -> bool:
+        """Authenticate token and return boolean status without raising."""
+        return self.get_entitlement(token, active_only=True) is not None
+
     def authenticate_request(
         self, token: str, client_ip: Optional[str] = None
     ) -> ClientEntitlement:
@@ -1160,7 +1189,7 @@ class SecurityManager:
         """
         old_ent: Optional[ClientEntitlement] = None
         # Try lookup by token or token_hash
-        old_ent = self._api_keys.get_by_token_or_hash(token_or_client_id)
+        old_ent = self._api_keys.get_by_token(token_or_client_id) or self._api_keys.get_by_hash(token_or_client_id)
         if not old_ent:
             # Try lookup by client_id
             for ent in self._api_keys.values():

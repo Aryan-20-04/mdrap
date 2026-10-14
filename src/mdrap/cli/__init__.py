@@ -332,7 +332,7 @@ def build_parser() -> argparse.ArgumentParser:
         "status",
         cmd_status,
         "Show comprehensive platform status overview",
-        ["s"],
+        ["s", "stats"],
         db=True,
     )
     _sub(
@@ -348,7 +348,7 @@ def build_parser() -> argparse.ArgumentParser:
         "run",
         cmd_run,
         "Run the pipeline against the simulator (optionally with live dashboard)",
-        ["r"],
+        ["r", "ingest"],
         db=True,
     )
     _add_sim_flags(p_run, default_events=50_000)
@@ -542,6 +542,7 @@ def build_parser() -> argparse.ArgumentParser:
         "audit",
         cmd_audit,
         "View and cryptographically verify tamper-evident audit logs",
+        aliases=["verify", "aud"],
         db=True,
     )
     p_audit.add_argument(
@@ -592,6 +593,7 @@ def build_parser() -> argparse.ArgumentParser:
         "deadletter",
         cmd_deadletter,
         "Inspect and replay uncommitted dead-letter transaction logs",
+        aliases=["quarantine", "dl"],
         db=True,
     )
     p_deadletter.add_argument(
@@ -1743,8 +1745,11 @@ def build_parser() -> argparse.ArgumentParser:
         ["cfg"],
     )
     p_cfg.add_argument(
-        "config_action", nargs="?", default="show", help="Action (default: show)"
+        "config_action", nargs="?", default="show", help="Action (show, migrate)"
     )
+    p_cfg.add_argument("--migrate", action="store_true", help="Migrate legacy config.yaml to mdrap.toml")
+    p_cfg.add_argument("--file", help="Source YAML file to migrate")
+    p_cfg.add_argument("--out", help="Target TOML file path (default: mdrap.toml)")
     p_cfg.add_argument("--venue", help="Filter by venue code (e.g. binance, XNSE)")
     p_cfg.add_argument(
         "--instrument",
@@ -1944,6 +1949,7 @@ MNEMONIC_MAP = {
     "server": "serve",
     # Reliability & Audit
     "stat": "status",
+    "stats": "status",
     "status": "status",
     "s": "status",
     "des": "status",
@@ -1959,6 +1965,7 @@ MNEMONIC_MAP = {
     "api-keys": "keys",
     "aud": "audit",
     "audit": "audit",
+    "verify": "audit",
     "chaos": "chaos",
     "ch": "chaos",
     "stress": "stress",
@@ -1977,6 +1984,7 @@ MNEMONIC_MAP = {
     "compare": "compare",
     "run": "run",
     "r": "run",
+    "ingest": "run",
     "throughput": "throughput",
     "tp": "throughput",
     "meps": "throughput",
@@ -1994,8 +2002,8 @@ MNEMONIC_MAP = {
     "last": "latest",
     "lineage": "lineage",
     "lin": "lineage",
-    "quarantine": "quar",
-    "quar": "quar",
+    "quarantine": "deadletter",
+    "quar": "deadletter",
     "mbo": "mbo",
     "l3": "mbo",
     "queue": "mbo",

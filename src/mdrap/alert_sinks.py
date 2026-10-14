@@ -66,6 +66,34 @@ class RateLimiter:
             return False
 
 
+def _is_restricted_ip(ip_obj: Any) -> bool:
+    import ipaddress
+    if hasattr(ip_obj, "ipv4_mapped") and ip_obj.ipv4_mapped:
+        ip_obj = ip_obj.ipv4_mapped
+    if (
+        ip_obj.is_loopback
+        or ip_obj.is_private
+        or ip_obj.is_link_local
+        or ip_obj.is_reserved
+        or ip_obj.is_multicast
+        or ip_obj.is_unspecified
+    ):
+        return True
+    if isinstance(ip_obj, ipaddress.IPv4Address):
+        if ip_obj in ipaddress.IPv4Network("100.64.0.0/10"):
+            return True
+    return False
+
+
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Prevent HTTP redirects in outbound alert webhooks to mitigate SSRF bypasses."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise urllib.error.HTTPError(
+            req.full_url, code, f"SSRF Protection: HTTP redirect to '{newurl}' refused", headers, fp
+        )
+
+
 def validate_webhook_url(url: str) -> None:
     """Validate webhook URL against SSRF attacks (SEC-04)."""
     import ipaddress
@@ -88,16 +116,20 @@ def validate_webhook_url(url: str) -> None:
     if allow_internal:
         return
 
-    # Check IP literal
+    # Check dangerous hostnames
+    if host.lower() in ("localhost", "metadata.google.internal", "instance-data"):
+        raise ValueError(
+            f"SSRF Protection: Webhook destination '{host}' is a restricted hostname."
+        )
+
+    # Check port limits (only standard web ports permitted)
+    if parsed.port and parsed.port not in (80, 443, 8080, 8443):
+        raise ValueError(f"SSRF Protection: Port {parsed.port} is not permitted.")
+
+    # 1. Check IP literal (IPv4 or IPv6)
     try:
         ip = ipaddress.ip_address(host)
-        if (
-            ip.is_loopback
-            or ip.is_private
-            or ip.is_link_local
-            or ip.is_reserved
-            or ip.is_multicast
-        ):
+        if _is_restricted_ip(ip):
             raise ValueError(
                 f"SSRF Protection: Webhook destination '{host}' is in a private/restricted address range."
             )
@@ -106,25 +138,25 @@ def validate_webhook_url(url: str) -> None:
         if "SSRF Protection" in str(e):
             raise
 
-    # Check dangerous hostnames
-    if host.lower() in ("localhost", "metadata.google.internal", "instance-data"):
-        raise ValueError(
-            f"SSRF Protection: Webhook destination '{host}' is a restricted hostname."
-        )
+    # 2. Check shorthand / integer IPv4 encodings (e.g. 127.1, 2130706433, 0177.0.0.1)
+    try:
+        packed = socket.inet_aton(host)
+        resolved_ip = ipaddress.ip_address(socket.inet_ntoa(packed))
+        if _is_restricted_ip(resolved_ip):
+            raise ValueError(
+                f"SSRF Protection: Webhook destination '{host}' resolves to restricted IP {resolved_ip}."
+            )
+    except (OSError, ValueError) as e:
+        if "SSRF Protection" in str(e):
+            raise
 
-    # DNS resolution check
+    # 3. DNS resolution check
     try:
         addrs = socket.getaddrinfo(host, None)
         for _, _, _, _, sockaddr in addrs:
             ip_str = sockaddr[0]
             ip = ipaddress.ip_address(ip_str)
-            if (
-                ip.is_loopback
-                or ip.is_private
-                or ip.is_link_local
-                or ip.is_reserved
-                or ip.is_multicast
-            ):
+            if _is_restricted_ip(ip):
                 raise ValueError(
                     f"SSRF Protection: Host '{host}' resolves to restricted IP {ip_str}."
                 )
@@ -163,6 +195,16 @@ class BaseHttpAlertSink:
         self.success_count = 0
         self.failure_count = 0
         self.is_closed = False
+
+    @staticmethod
+    def _is_ssrf_safe(ip_str: str) -> bool:
+        """Check if an IP address string is safe from SSRF attacks."""
+        import ipaddress
+        try:
+            ip = ipaddress.ip_address(ip_str)
+            return not _is_restricted_ip(ip)
+        except ValueError:
+            return False
 
         # Ensure signing secret is registered in SecurityManager if provided
         if self.security_manager and not self.signing_secret_key:
@@ -252,7 +294,8 @@ class BaseHttpAlertSink:
                     headers=headers,
                     method="POST",
                 )
-                with urllib.request.urlopen(req, timeout=self.timeout_s) as resp:
+                opener = urllib.request.build_opener(_NoRedirectHandler)
+                with opener.open(req, timeout=self.timeout_s) as resp:
                     if 200 <= resp.status < 300:
                         self.success_count += 1
                         return DeliveryResult(
@@ -314,8 +357,9 @@ class BaseHttpAlertSink:
 class WebhookAlertSink(BaseHttpAlertSink):
     """Generic JSON Webhook Alert Sink."""
 
-    def __init__(self, endpoint_url: str, **kwargs) -> None:
-        super().__init__(name="webhook", endpoint_url=endpoint_url, **kwargs)
+    def __init__(self, endpoint_url: str = "", url: str | None = None, **kwargs) -> None:
+        target = url or endpoint_url
+        super().__init__(name="webhook", endpoint_url=target, **kwargs)
 
 
 class SlackAlertSink(BaseHttpAlertSink):

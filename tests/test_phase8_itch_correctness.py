@@ -52,8 +52,8 @@ def test_itch_untracked_order_execution_synthesis():
     assert event is not None, "Execution for untracked order was silently dropped!"
     assert event.instrument_id == "TSLA"
     assert event.quantity == 150.0
-    assert event.quality_status == QualityStatus.SUSPICIOUS
-    assert "EXECUTION_WITHOUT_LOCAL_ORDER_STATE" in event.reasons
+    assert event.quality_status == QualityStatus.INVALID
+    assert "UNKNOWN_ORDER_REF" in event.reasons
 
     # Execute untracked order with explicit price (C message)
     pc = STRUCT_C.pack(
@@ -66,7 +66,8 @@ def test_itch_untracked_order_execution_synthesis():
     assert event_c.instrument_id == "TSLA"
     assert event_c.quantity == 200.0
     assert event_c.price == pytest.approx(250.75)
-    assert event_c.quality_status == QualityStatus.VALID
+    assert event_c.quality_status == QualityStatus.SUSPICIOUS
+    assert "EXECUTION_WITHOUT_LOCAL_ORDER_STATE" in event_c.reasons
 
 
 def test_itch_epoch_timestamp_avoids_stale_quarantine():

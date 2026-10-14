@@ -317,6 +317,25 @@ class Engine:
                 if batch:
                     projection.apply(batch, batch[-1].offset)
 
+    def rebuild_projection(self, projection: Any) -> int:
+        """Reconstruct projection from offset 0 using IngestLog WAL as single source of truth."""
+        with self._lock:
+            if self.log is None:
+                return 0
+            if projection not in self._projections:
+                self._projections.append(projection)
+            batch = []
+            replay_state = self.create_initial_state()
+            for off, raw in self.log.iter_from(0):
+                replay_state, dec = self.step(replay_state, raw, self.clock, offset=off)
+                batch.append(dec)
+                if len(batch) >= 2000:
+                    projection.apply(batch, batch[-1].offset)
+                    batch = []
+            if batch:
+                projection.apply(batch, batch[-1].offset)
+            return self.log.next_offset
+
     def submit(
         self, events: RawEvent | list[RawEvent]
     ) -> EngineDecision | list[EngineDecision]:
@@ -534,6 +553,10 @@ class Engine:
             "projections": proj_stats,
             "health_status": health_status,
         }
+
+    def stats(self) -> dict[str, Any]:
+        """Alias for metrics()."""
+        return self.metrics()
 
     def close(self) -> None:
         """Release WAL and projection resources."""
@@ -898,6 +921,7 @@ class Engine:
         price = payload.get("price")
         if price is not None and status != QualityStatus.INVALID:
             prices = state.price_windows.setdefault(slot_key, [])
+            price_anomaly = False
             if len(prices) >= 20:
                 mean = sum(prices) / len(prices)
                 variance = sum((p - mean) ** 2 for p in prices) / len(prices)
@@ -905,12 +929,20 @@ class Engine:
                 sigma_floor = mean * 0.0001
                 effective_std = max(std, sigma_floor)
                 if effective_std > 0 and abs(price - mean) > (DEFAULT_PRICE_STDDEV * effective_std):
-                    if status == QualityStatus.VALID:
-                        status = QualityStatus.SUSPICIOUS
-                    reasons.append(Reason.PRICE_ANOMALY.value)
-            prices.append(price)
-            if len(prices) > DEFAULT_PRICE_WINDOW:
-                prices.pop(0)
+                    price_anomaly = True
+            elif len(prices) >= 3:
+                mean = sum(prices) / len(prices)
+                if mean > 0 and abs(price - mean) / mean > 0.10:
+                    price_anomaly = True
+
+            if price_anomaly:
+                if status == QualityStatus.VALID:
+                    status = QualityStatus.SUSPICIOUS
+                reasons.append(Reason.PRICE_ANOMALY.value)
+            else:
+                prices.append(price)
+                if len(prices) > DEFAULT_PRICE_WINDOW:
+                    prices.pop(0)
 
         # Update BBO state per source
         if bid is not None or ask is not None:
@@ -923,15 +955,21 @@ class Engine:
 
         # Cross-feed reconciliation
         disagreement = False
-        if price is not None:
+        if price is not None and status != QualityStatus.INVALID:
             recent_inst = state.reconciliation_state.setdefault(instrument, {})
-            recent_inst[raw_event.source] = price
-            prices_across = list(recent_inst.values())
-            if len(prices_across) >= 2:
-                spread = max(prices_across) - min(prices_across)
-                avg_p = sum(prices_across) / len(prices_across)
-                if avg_p > 0 and (spread / avg_p) > 0.01:  # 1% cross-feed disagreement
-                    disagreement = True
+            recent_inst[raw_event.source] = (price, exch_ts)
+            recent_prices = [
+                p for (p, ts) in recent_inst.values()
+                if abs(exch_ts - ts) <= 0.25
+            ]
+            if len(recent_prices) >= 2:
+                mean_p = sum(recent_prices) / len(recent_prices)
+                if mean_p > 0:
+                    for p in recent_prices:
+                        if abs(p - mean_p) / mean_p > 0.005:  # 0.5% cross-feed disagreement (spec §12)
+                            disagreement = True
+                            break
+                if disagreement:
                     reasons.append(Reason.CROSS_FEED_DISAGREEMENT.value)
                     if status == QualityStatus.VALID:
                         status = QualityStatus.SUSPICIOUS
