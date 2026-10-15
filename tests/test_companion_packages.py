@@ -21,7 +21,7 @@ for pkg_dir in [
 
 
 def test_companion_options_standalone():
-    import mdrap_options as opt
+    opt = pytest.importorskip("mdrap_options")
 
     contract = opt.OptionContract(
         underlying="AAPL",
@@ -37,7 +37,7 @@ def test_companion_options_standalone():
 
 
 def test_companion_analytics_standalone():
-    import mdrap_analytics as tca
+    tca = pytest.importorskip("mdrap_analytics")
     from mdrap.bbo import ConsolidatedBBO
 
     engine = tca.TCAEngine()
@@ -72,7 +72,7 @@ def test_companion_analytics_standalone():
 
 
 def test_companion_strategies_standalone():
-    import mdrap_strategies as strat
+    strat = pytest.importorskip("mdrap_strategies")
 
     limits = strat.RiskLimits(max_order_size=500.0)
     rm = strat.RiskManager(limits=limits, initial_capital=50_000.0)
@@ -89,7 +89,7 @@ def test_companion_strategies_standalone():
 
 
 def test_companion_vessel_standalone():
-    import mdrap_vessel as vsl
+    vsl = pytest.importorskip("mdrap_vessel")
 
     tracker = vsl.VesselTracker()
     assert tracker is not None
