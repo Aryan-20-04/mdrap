@@ -1,0 +1,1468 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.1, pytest-8.3.4, pluggy-1.6.0
+rootdir: C:\Users\KIIT0001\Desktop\Projects\mdrap
+configfile: pytest.ini
+testpaths: tests
+plugins: anyio-4.13.0, Faker-33.1.0, langsmith-0.7.20, asyncio-0.24.0, cov-6.0.0, mock-3.14.0, timeout-2.3.1
+asyncio: mode=Mode.STRICT, default_loop_scope=function
+collected 1335 items / 60 deselected / 1275 selected
+
+tests\repro\test_repro_10_api_import_salt.py .                           [  0%]
+tests\repro\test_repro_11_readme_timestamp_clock.py .                    [  0%]
+tests\repro\test_repro_1_journal_truncation.py .                         [  0%]
+tests\repro\test_repro_2_journal_write_failure.py .                      [  0%]
+tests\repro\test_repro_3_recovery_malformed.py .                         [  0%]
+tests\repro\test_repro_4_recovery_conflict.py .                          [  0%]
+tests\repro\test_repro_5_poison_integer.py .                             [  0%]
+tests\repro\test_repro_6_non_dict_payload.py .....                       [  0%]
+tests\repro\test_repro_7_native_python_parity.py .                       [  1%]
+tests\test_adapters_and_rules.py ...                                     [  1%]
+tests\test_adversarial_fuzzing.py ......                                 [  1%]
+tests\test_alerts.py ...........                                         [  2%]
+tests\test_analytics.py ..........                                       [  3%]
+tests\test_api_auth.py ..........                                        [  4%]
+tests\test_api_endpoints.py .........                                    [  4%]
+tests\test_api_security_hardening.py ........                            [  5%]
+tests\test_api_websocket.py ....                                         [  5%]
+tests\test_archive.py .......                                            [  6%]
+tests\test_async_fanout.py ....                                          [  6%]
+tests\test_audit_chain_tamper.py ........                                [  7%]
+tests\test_audit_hardening.py ............                               [  8%]
+tests\test_audit_remediation.py ...................................      [ 10%]
+tests\test_backlog_reconciliation.py ..                                  [ 11%]
+tests\test_backtest.py ............                                      [ 12%]
+tests\test_backup_restore.py ...                                         [ 12%]
+tests\test_bardb.py .............                                        [ 13%]
+tests\test_bbo.py ..........                                             [ 14%]
+tests\test_build_fastpath.py .                                           [ 14%]
+tests\test_canonical_models.py .......                                   [ 14%]
+tests\test_chaos.py ......                                               [ 15%]
+tests\test_chaos_drills_v26.py .....                                     [ 15%]
+tests\test_chd.py ...................................................... [ 19%]
+...................                                                      [ 21%]
+tests\test_cli.py ............................                           [ 23%]
+tests\test_client.py ........                                            [ 24%]
+tests\test_columnar.py ..............                                    [ 25%]
+tests\test_companion_packages.py ....                                    [ 25%]
+tests\test_concurrent_users.py ...                                       [ 25%]
+tests\test_config.py .....                                               [ 26%]
+tests\test_config_loader.py ...                                          [ 26%]
+tests\test_corporate_actions.py ............                             [ 27%]
+tests\test_coverage_booster.py ..........                                [ 28%]
+tests\test_databento_feed.py ........                                    [ 28%]
+tests\test_decision_identity.py ...                                      [ 29%]
+tests\test_depth.py ........                                             [ 29%]
+tests\test_docs_verification.py ........                                 [ 30%]
+tests\test_engine_context.py ...                                         [ 30%]
+tests\test_engine_deterministic.py ...                                   [ 30%]
+tests\test_engine_facade.py ..                                           [ 30%]
+tests\test_entitlements.py ........                                      [ 31%]
+tests\test_error_surfacing.py .......                                    [ 32%]
+tests\test_export.py ......                                              [ 32%]
+tests\test_exporter_coverage.py ...                                      [ 32%]
+tests\test_extension_protocols.py ......                                 [ 33%]
+tests\test_failover_and_dr.py ......                                     [ 33%]
+tests\test_failure_modes.py .....                                        [ 34%]
+tests\test_fastpath.py .........                                         [ 34%]
+tests\test_fastpath_quantitative.py ..........                           [ 35%]
+tests\test_fault_injection.py ..........                                 [ 36%]
+tests\test_features.py ...........                                       [ 37%]
+tests\test_feed_handler.py .....                                         [ 37%]
+tests\test_fix.py ......                                                 [ 38%]
+tests\test_flow_tracker.py ....                                          [ 38%]
+tests\test_fpga_parity.py ...                                            [ 38%]
+tests\test_full_architecture_pipeline.py .                               [ 38%]
+tests\test_fuzz.py .                                                     [ 38%]
+tests\test_fx.py .....                                                   [ 39%]
+tests\test_gate_g2_kill9.py .                                            [ 39%]
+tests\test_golden_parity.py ..                                           [ 39%]
+tests\test_ha_consensus.py .....                                         [ 39%]
+tests\test_hardening.py .........                                        [ 40%]
+tests\test_hardening_d1.py .                                             [ 40%]
+tests\test_hardening_d2_d6.py ......                                     [ 41%]
+tests\test_hardening_m1_m4.py ...                                        [ 41%]
+tests\test_hardening_p1_p2.py ..                                         [ 41%]
+tests\test_hardening_p3_p12.py .......                                   [ 42%]
+tests\test_hardening_q1_q4.py ....                                       [ 42%]
+tests\test_hardening_s1.py ..                                            [ 42%]
+tests\test_hardening_s10.py ..                                           [ 42%]
+tests\test_hardening_s2_s4.py .                                          [ 42%]
+tests\test_hardening_security.py ......                                  [ 43%]
+tests\test_hardening_w1_w3.py ....                                       [ 43%]
+tests\test_historical_storage.py ....                                    [ 43%]
+tests\test_ingestlog.py .....                                            [ 44%]
+tests\test_institutional_security.py ......                              [ 44%]
+tests\test_itch.py ........                                              [ 45%]
+tests\test_journal.py ....                                               [ 45%]
+tests\test_key_storage_hardening.py ..                                   [ 45%]
+tests\test_keyboard_shortcuts.py .......                                 [ 46%]
+tests\test_live.py ............                                          [ 47%]
+tests\test_live_resolution.py ..........                                 [ 48%]
+tests\test_manifest.py .                                                 [ 48%]
+tests\test_mbo.py ........                                               [ 48%]
+tests\test_metrics_flush.py ..                                           [ 48%]
+tests\test_model_fuzz.py .                                               [ 49%]
+tests\test_multi_asset.py .....                                          [ 49%]
+tests\test_multicast_arbitrator.py .....                                 [ 49%]
+tests\test_multimarket_quality.py ....                                   [ 50%]
+tests\test_navigator.py ..................                               [ 51%]
+tests\test_navigator_coverage.py .........                               [ 52%]
+tests\test_news.py ...........                                           [ 53%]
+tests\test_next_pieces_guarantees.py ..........                          [ 53%]
+tests\test_options.py ...............                                    [ 55%]
+tests\test_options_coverage.py .......                                   [ 55%]
+tests\test_packaging_single_source.py ..                                 [ 55%]
+tests\test_parity_differential.py .....                                  [ 56%]
+tests\test_phase10_security_remediation.py ....                          [ 56%]
+tests\test_phase11_storage_durability.py .....                           [ 56%]
+tests\test_phase12_watchdog.py ...                                       [ 57%]
+tests\test_phase13_tcp_distribution.py .                                 [ 57%]
+tests\test_phase14_numerical_financial.py ....                           [ 57%]
+tests\test_phase15_microstructure.py .....                               [ 57%]
+tests\test_phase19_operability.py ...                                    [ 58%]
+tests\test_phase1_card1_restart_loss.py ...                              [ 58%]
+tests\test_phase1_card5_audit_tamper.py .....                            [ 58%]
+tests\test_phase1_card6_security_hardening.py ........                   [ 59%]
+tests\test_phase1_deterministic_replay.py ..                             [ 59%]
+tests\test_phase1_identity_sequencing.py ..                              [ 59%]
+tests\test_phase1_input_bounds.py ...                                    [ 59%]
+tests\test_phase1_persistence_init.py ..                                 [ 60%]
+tests\test_phase1_roadmap_verification.py ..........                     [ 60%]
+tests\test_phase1_wal_integrity.py ....                                  [ 61%]
+tests\test_phase21_feed_recovery_and_pcap.py ......                      [ 61%]
+tests\test_phase2_backpressure.py ....                                   [ 61%]
+tests\test_phase2_card8_migrations.py ...                                [ 62%]
+tests\test_phase2_config_validation.py .....                             [ 62%]
+tests\test_phase2_deployment.py ..                                       [ 62%]
+tests\test_phase2_durability.py ....                                     [ 63%]
+tests\test_phase2_lifecycle.py ..                                        [ 63%]
+tests\test_phase2_native_memory_safety.py ........                       [ 63%]
+tests\test_phase2_observability.py ...                                   [ 64%]
+tests\test_phase2_roadmap_verification.py .........                      [ 64%]
+tests\test_phase2_supervision.py ....                                    [ 65%]
+tests\test_phase3_card9_durability.py ..                                 [ 65%]
+tests\test_phase3_ha.py .....                                            [ 65%]
+tests\test_phase3_ingress.py ....                                        [ 65%]
+tests\test_phase3_metering.py ....                                       [ 66%]
+tests\test_phase3_phase4_native_dispatch.py ..                           [ 66%]
+tests\test_phase3_roadmap_verification.py .....                          [ 66%]
+tests\test_phase3_sdk_conformance.py ...                                 [ 67%]
+tests\test_phase3_security.py .......                                    [ 67%]
+tests\test_phase4_end_to_end.py .                                        [ 67%]
+tests\test_phase4_observability.py ...                                   [ 67%]
+tests\test_phase4_packaging_and_delivery.py ....                         [ 68%]
+tests\test_phase4_resilience.py ....                                     [ 68%]
+tests\test_phase4_roadmap_verification.py ......                         [ 69%]
+tests\test_phase4_security.py ....                                       [ 69%]
+tests\test_phase5_api_and_extensibility.py .............                 [ 70%]
+tests\test_phase5_card4_plugins.py ..                                    [ 70%]
+tests\test_phase5_pilot.py .....                                         [ 70%]
+tests\test_phase5_roadmap_verification.py .....                          [ 71%]
+tests\test_phase6_canonical_contract.py ....                             [ 71%]
+tests\test_phase6_card10_stability_contract.py ....                      [ 71%]
+tests\test_phase6_scaling.py .....                                       [ 72%]
+tests\test_phase6_soak_recovery.py .                                     [ 72%]
+tests\test_phase7_event_correctness.py ....                              [ 72%]
+tests\test_phase7_fault_injection.py .....                               [ 73%]
+tests\test_phase7_verification.py .........                              [ 73%]
+tests\test_phase8_fault_injection.py ......                              [ 74%]
+tests\test_phase8_itch_correctness.py ..                                 [ 74%]
+tests\test_phase9_reorder_duplicate_prevention.py .                      [ 74%]
+tests\test_pipeline_integration.py .....                                 [ 74%]
+tests\test_plugin_conformance.py ...........                             [ 75%]
+tests\test_polygon_feed.py .......                                       [ 76%]
+tests\test_portfolio.py ...............                                  [ 77%]
+tests\test_projection.py ...                                             [ 77%]
+tests\test_protocol.py .......                                           [ 78%]
+tests\test_quality.py ..........                                         [ 79%]
+tests\test_quality_hardening_matrix.py .......                           [ 79%]
+tests\test_quarantine_merkle.py ...                                      [ 79%]
+tests\test_quarantine_subsystem.py ....                                  [ 80%]
+tests\test_reconciliation_invariants.py .......                          [ 80%]
+tests\test_reference_adapter.py ..                                       [ 80%]
+tests\test_reorder_buffer.py ....                                        [ 81%]
+tests\test_replay_engine.py .........                                    [ 81%]
+tests\test_replay_idempotency.py ..                                      [ 82%]
+tests\test_research.py ..................                                [ 83%]
+tests\test_research_security.py ........                                 [ 84%]
+tests\test_risk.py ............                                          [ 85%]
+tests\test_rules_single_source.py ..                                     [ 85%]
+tests\test_sbe.py ....                                                   [ 85%]
+tests\test_scheduler.py ........                                         [ 86%]
+tests\test_sdk.py ..                                                     [ 86%]
+tests\test_sdk_commercial.py ....                                        [ 86%]
+tests\test_sdk_public_contract.py ...                                    [ 86%]
+tests\test_security.py ...............                                   [ 88%]
+tests\test_security_hardening_review.py .....                            [ 88%]
+tests\test_service.py ........                                           [ 89%]
+tests\test_service_resilience.py ....                                    [ 89%]
+tests\test_shm.py ......                                                 [ 89%]
+tests\test_shm_decoupled.py ........                                     [ 90%]
+tests\test_shm_drainer.py ..                                             [ 90%]
+tests\test_shm_fuzz.py ............                                      [ 91%]
+tests\test_shm_publisher_crash.py ....                                   [ 91%]
+tests\test_shm_watermark.py .....                                        [ 92%]
+tests\test_storage_backends_independent.py ....                          [ 92%]
+tests\test_strategy_sdk.py ................                              [ 93%]
+tests\test_symbology.py .......                                          [ 94%]
+tests\test_system_limitations.py .....                                   [ 94%]
+tests\test_tca.py ...                                                    [ 94%]
+tests\test_terminal_display.py ......                                    [ 95%]
+tests\test_terminal_display_coverage.py ....                             [ 95%]
+tests\test_transport_hardening.py ...                                    [ 96%]
+tests\test_venues.py .........                                           [ 96%]
+tests\test_vessel.py .......                                             [ 97%]
+tests\test_vessel_fastpath.py .....                                      [ 97%]
+tests\test_vwap.py ........                                              [ 98%]
+tests\test_watchdog.py ..........                                        [ 99%]
+tests\test_ws_feed.py ............                                       [100%]
+
+============================== warnings summary ===============================
+src\mdrap\backtest.py:28
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\src\mdrap\backtest.py:28: DeprecationWarning: Strategy and algorithmic execution models in mdrap.strategy_sdk are deprecated and non-core to the market data engine; use mdrap_strategies companion package instead.
+    from .strategy_sdk import PaperExecutor, Strategy, StrategyRunner
+
+tests\test_failure_modes.py:28
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_failure_modes.py:28: DeprecationWarning: Importing from root 'journal' is deprecated in MDRAP v3.0.0; use 'mdrap.ingestlog' for WAL durability instead.
+    from src.journal import BinaryJournal, BinaryJournalReader
+
+..\..\..\..\..\Python313\Lib\importlib\__init__.py:88
+  C:\Python313\Lib\importlib\__init__.py:88: DeprecationWarning: Derivatives pricing and OptionsChain in mdrap.options are deprecated and non-core to the market data engine; use mdrap_options companion package instead.
+    return _bootstrap._gcd_import(name[level:], package, level)
+
+src\mdrap\fx.py:108
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\src\mdrap\fx.py:108: DeprecationWarning: FXMatrix and mdrap.fx are deprecated and non-core to the market data engine.
+    GLOBAL_FX: FXMatrix = FXMatrix()
+
+tests\test_system_stress_and_adversarial.py:38
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_system_stress_and_adversarial.py:38: DeprecationWarning: TCAEngine and mdrap.tca are deprecated and non-core to the market data engine; use mdrap_analytics companion package instead.
+    from mdrap.tca import TCAEngine, ExecutionRecord
+
+tests\test_vessel.py:8
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_vessel.py:8: DeprecationWarning: VesselTracker and AIS vessel intelligence in mdrap.vessel are deprecated and non-core to the market data engine; use mdrap_vessel companion package instead.
+    from mdrap.vessel import (
+
+tests/repro/test_repro_11_readme_timestamp_clock.py::test_clock_injection_in_pipeline_and_quality
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\repro\test_repro_11_readme_timestamp_clock.py:34: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.
+    pipeline = Pipeline(store=store, clock=clock, journal=False, async_writer=False)
+
+tests/repro/test_repro_11_readme_timestamp_clock.py: 1 warning
+tests/repro/test_repro_1_journal_truncation.py: 1 warning
+tests/repro/test_repro_2_journal_write_failure.py: 1 warning
+tests/repro/test_repro_4_recovery_conflict.py: 1 warning
+tests/repro/test_repro_5_poison_integer.py: 1 warning
+tests/repro/test_repro_6_non_dict_payload.py: 5 warnings
+tests/test_adapters_and_rules.py: 1 warning
+tests/test_audit_hardening.py: 2 warnings
+tests/test_audit_remediation.py: 1 warning
+tests/test_bbo.py: 1 warning
+tests/test_chaos.py: 11 warnings
+tests/test_chaos_drills_v26.py: 10 warnings
+tests/test_chd.py: 6 warnings
+tests/test_cli.py: 18 warnings
+tests/test_client.py: 5 warnings
+tests/test_concurrent_users.py: 2 warnings
+tests/test_coverage_booster.py: 8 warnings
+tests/test_decision_identity.py: 2 warnings
+tests/test_entitlements.py: 5 warnings
+tests/test_error_surfacing.py: 1 warning
+tests/test_export.py: 7 warnings
+tests/test_exporter_coverage.py: 2 warnings
+tests/test_extension_protocols.py: 1 warning
+tests/test_fastpath.py: 5 warnings
+tests/test_feed_handler.py: 1 warning
+tests/test_full_architecture_pipeline.py: 1 warning
+tests/test_hardening.py: 4 warnings
+tests/test_hardening_p1_p2.py: 2 warnings
+tests/test_hardening_p3_p12.py: 3 warnings
+tests/test_live.py: 1 warning
+tests/test_metrics_flush.py: 1 warning
+tests/test_next_pieces_guarantees.py: 1 warning
+tests/test_phase1_card1_restart_loss.py: 9 warnings
+tests/test_phase2_backpressure.py: 2 warnings
+tests/test_phase3_card9_durability.py: 2 warnings
+tests/test_phase3_roadmap_verification.py: 4 warnings
+tests/test_phase4_packaging_and_delivery.py: 1 warning
+tests/test_phase4_roadmap_verification.py: 1 warning
+tests/test_phase5_api_and_extensibility.py: 1 warning
+tests/test_pipeline_integration.py: 7 warnings
+tests/test_plugin_conformance.py: 5 warnings
+tests/test_protocol.py: 2 warnings
+tests/test_rules_single_source.py: 1 warning
+tests/test_security.py: 1 warning
+tests/test_service.py: 8 warnings
+tests/test_service_resilience.py: 1 warning
+tests/test_shm.py: 1 warning
+tests/test_system_limitations.py: 2 warnings
+tests/test_terminal_display.py: 3 warnings
+tests/test_vwap.py: 2 warnings
+tests/test_ws_feed.py: 1 warning
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\src\mdrap\fastpath.py:843: DeprecationWarning: Loading configuration from config.yaml via mdrap.config is deprecated in MDRAP v3.0.0; use mdrap.toml via mdrap.config_loader instead.
+    self.cfg = load_config().quality
+
+tests/repro/test_repro_1_journal_truncation.py::test_exception_in_pipeline_with_block_preserves_journal
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\repro\test_repro_1_journal_truncation.py:29: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.
+    with Pipeline(
+
+tests/repro/test_repro_2_journal_write_failure.py::test_journal_write_failure_fails_closed_and_logs_error
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\repro\test_repro_2_journal_write_failure.py:30: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.
+    pipeline = Pipeline(
+
+tests/repro/test_repro_4_recovery_conflict.py::test_idempotent_recovery_does_not_trigger_finish_storage_conflict_error
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\repro\test_repro_4_recovery_conflict.py:61: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.
+    pipeline = Pipeline(store=recovered_store, journal=False, async_writer=False)
+
+tests/repro/test_repro_5_poison_integer.py::test_poison_integer_quarantined_and_neighbors_survive
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\repro\test_repro_5_poison_integer.py:27: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.
+    pipeline = Pipeline(store=store, journal=False, async_writer=False)
+
+tests/repro/test_repro_6_non_dict_payload.py::test_non_dict_payload_quarantines_safely_without_crashing[None]
+tests/repro/test_repro_6_non_dict_payload.py::test_non_dict_payload_quarantines_safely_without_crashing[bad_payload1]
+tests/repro/test_repro_6_non_dict_payload.py::test_non_dict_payload_quarantines_safely_without_crashing[bad_payload2]
+tests/repro/test_repro_6_non_dict_payload.py::test_non_dict_payload_quarantines_safely_without_crashing[x]
+tests/repro/test_repro_6_non_dict_payload.py::test_non_dict_payload_quarantines_safely_without_crashing[12345]
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\repro\test_repro_6_non_dict_payload.py:31: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.
+    pipeline = Pipeline(store=store, journal=False, async_writer=False)
+
+tests/test_api_endpoints.py::test_health_endpoint
+tests/test_api_endpoints.py::test_feeds_crud
+tests/test_api_endpoints.py::test_events_and_quality
+tests/test_api_endpoints.py::test_audit_endpoints
+tests/test_api_endpoints.py::test_bbo_and_depth_endpoints
+tests/test_api_endpoints.py::test_config_endpoint_redacts_secrets
+tests/test_api_endpoints.py::test_keys_crud_lifecycle
+tests/test_api_endpoints.py::test_server_ingest_and_websocket_broadcast
+tests/test_api_endpoints.py::test_standard_error_schema_returned
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_api_endpoints.py:47: DeprecationWarning: AppState.pipeline is deprecated in MDRAP v3.0.0; use AppState.engine instead.
+    if hasattr(state.pipeline.quality, "reset"):
+
+tests/test_api_endpoints.py::test_health_endpoint
+tests/test_api_endpoints.py::test_feeds_crud
+tests/test_api_endpoints.py::test_events_and_quality
+tests/test_api_endpoints.py::test_audit_endpoints
+tests/test_api_endpoints.py::test_bbo_and_depth_endpoints
+tests/test_api_endpoints.py::test_config_endpoint_redacts_secrets
+tests/test_api_endpoints.py::test_keys_crud_lifecycle
+tests/test_api_endpoints.py::test_server_ingest_and_websocket_broadcast
+tests/test_api_endpoints.py::test_standard_error_schema_returned
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_api_endpoints.py:48: DeprecationWarning: AppState.pipeline is deprecated in MDRAP v3.0.0; use AppState.engine instead.
+    state.pipeline.quality.reset()
+
+tests/test_api_endpoints.py::test_health_endpoint
+tests/test_api_endpoints.py::test_feeds_crud
+tests/test_api_endpoints.py::test_events_and_quality
+tests/test_api_endpoints.py::test_audit_endpoints
+tests/test_api_endpoints.py::test_bbo_and_depth_endpoints
+tests/test_api_endpoints.py::test_config_endpoint_redacts_secrets
+tests/test_api_endpoints.py::test_keys_crud_lifecycle
+tests/test_api_endpoints.py::test_server_ingest_and_websocket_broadcast
+tests/test_api_endpoints.py::test_standard_error_schema_returned
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_api_endpoints.py:62: DeprecationWarning: AppState.pipeline is deprecated in MDRAP v3.0.0; use AppState.engine instead.
+    if hasattr(state.pipeline.quality, "reset"):
+
+tests/test_api_endpoints.py::test_health_endpoint
+tests/test_api_endpoints.py::test_feeds_crud
+tests/test_api_endpoints.py::test_events_and_quality
+tests/test_api_endpoints.py::test_audit_endpoints
+tests/test_api_endpoints.py::test_bbo_and_depth_endpoints
+tests/test_api_endpoints.py::test_config_endpoint_redacts_secrets
+tests/test_api_endpoints.py::test_keys_crud_lifecycle
+tests/test_api_endpoints.py::test_server_ingest_and_websocket_broadcast
+tests/test_api_endpoints.py::test_standard_error_schema_returned
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_api_endpoints.py:63: DeprecationWarning: AppState.pipeline is deprecated in MDRAP v3.0.0; use AppState.engine instead.
+    state.pipeline.quality.reset()
+
+tests/test_api_security_hardening.py::test_readiness_fails_when_pipeline_writer_is_degraded
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_api_security_hardening.py:137: DeprecationWarning: AppState.pipeline is deprecated in MDRAP v3.0.0; use AppState.engine instead.
+    api_client["state"].pipeline._writer_failure = WriterFailure("double fault")
+
+tests/test_archive.py::test_write_and_replay_roundtrip
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_archive.py:35: DeprecationWarning: RawArchive in mdrap.archive is deprecated in MDRAP v3.0.0; use IngestLog WAL as the mandatory durability boundary instead.
+    with RawArchive(temp_dir, buffer_size=50) as archive:
+
+tests/test_archive.py::test_date_partitioning
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_archive.py:54: DeprecationWarning: RawArchive in mdrap.archive is deprecated in MDRAP v3.0.0; use IngestLog WAL as the mandatory durability boundary instead.
+    with RawArchive(temp_dir) as archive:
+
+tests/test_archive.py::test_source_partitioning
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_archive.py:66: DeprecationWarning: RawArchive in mdrap.archive is deprecated in MDRAP v3.0.0; use IngestLog WAL as the mandatory durability boundary instead.
+    with RawArchive(temp_dir) as archive:
+
+tests/test_archive.py::test_buffered_flush_on_close
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_archive.py:94: DeprecationWarning: RawArchive in mdrap.archive is deprecated in MDRAP v3.0.0; use IngestLog WAL as the mandatory durability boundary instead.
+    with RawArchive(temp_dir, buffer_size=50) as archive:
+
+tests/test_archive.py::test_replay_filter_by_date
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_archive.py:106: DeprecationWarning: RawArchive in mdrap.archive is deprecated in MDRAP v3.0.0; use IngestLog WAL as the mandatory durability boundary instead.
+    with RawArchive(temp_dir) as archive:
+
+tests/test_archive.py::test_replay_filter_by_source
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_archive.py:121: DeprecationWarning: RawArchive in mdrap.archive is deprecated in MDRAP v3.0.0; use IngestLog WAL as the mandatory durability boundary instead.
+    with RawArchive(temp_dir) as archive:
+
+tests/test_archive.py::test_stats
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_archive.py:140: DeprecationWarning: RawArchive in mdrap.archive is deprecated in MDRAP v3.0.0; use IngestLog WAL as the mandatory durability boundary instead.
+    with RawArchive(temp_dir) as archive:
+
+tests/test_audit_hardening.py: 2 warnings
+tests/test_coverage_booster.py: 1 warning
+tests/test_extension_protocols.py: 1 warning
+tests/test_fastpath.py: 1 warning
+tests/test_hardening.py: 1 warning
+tests/test_hardening_q1_q4.py: 4 warnings
+tests/test_phase2_roadmap_verification.py: 1 warning
+tests/test_phase4_end_to_end.py: 1 warning
+tests/test_phase4_packaging_and_delivery.py: 1 warning
+tests/test_phase4_resilience.py: 1 warning
+tests/test_phase5_pilot.py: 1 warning
+tests/test_phase7_verification.py: 1 warning
+tests/test_quality.py: 5 warnings
+tests/test_quality_hardening_matrix.py: 3 warnings
+tests/test_ws_feed.py: 2 warnings
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\src\mdrap\quality.py:238: DeprecationWarning: Loading configuration from config.yaml via mdrap.config is deprecated in MDRAP v3.0.0; use mdrap.toml via mdrap.config_loader instead.
+    self.cfg = load_config().quality
+
+tests/test_audit_hardening.py::test_terminal_dashboard_render
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_audit_hardening.py:460: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.
+    pipeline = Pipeline(store)
+
+tests/test_audit_remediation.py::test_m1_raw_archive_path_traversal
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_audit_remediation.py:442: DeprecationWarning: RawArchive in mdrap.archive is deprecated in MDRAP v3.0.0; use IngestLog WAL as the mandatory durability boundary instead.
+    archive = RawArchive(str(archive_dir))
+
+tests/test_audit_remediation.py::test_pipeline_glued_record_bug_prevention
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_audit_remediation.py:620: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.
+    pipeline = Pipeline(store=store)
+
+tests/test_backtest.py::TestBacktestEngine::test_annualized_return_on_complete_capital_loss
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_backtest.py:316: DeprecationWarning: BacktestEngine in mdrap.backtest is deprecated and non-core to the market data engine.
+    engine = BacktestEngine(initial_capital=100_000.0)
+
+tests/test_backtest.py: 10 warnings
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_backtest.py:43: DeprecationWarning: Strategy and algorithmic execution models in mdrap.strategy_sdk are deprecated and non-core to the market data engine.
+    super().__init__(name="BuyOnce", symbols=[symbol])
+
+tests/test_backtest.py::TestBacktestEngine::test_backtest_basic_buy_and_hold
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_backtest.py:96: DeprecationWarning: BacktestEngine in mdrap.backtest is deprecated and non-core to the market data engine.
+    engine = BacktestEngine(initial_capital=100_000.0)
+
+tests/test_backtest.py::TestBacktestEngine::test_backtest_benchmark_comparison
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_backtest.py:210: DeprecationWarning: BacktestEngine in mdrap.backtest is deprecated and non-core to the market data engine.
+    engine = BacktestEngine(initial_capital=100_000.0, benchmark_symbol="AAPL")
+
+tests/test_backtest.py::TestBacktestEngine::test_backtest_equity_curve
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_backtest.py:174: DeprecationWarning: BacktestEngine in mdrap.backtest is deprecated and non-core to the market data engine.
+    engine = BacktestEngine(initial_capital=100_000.0)
+
+tests/test_backtest.py::TestBacktestEngine::test_backtest_max_drawdown
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_backtest.py:148: DeprecationWarning: BacktestEngine in mdrap.backtest is deprecated and non-core to the market data engine.
+    engine = BacktestEngine(initial_capital=100_000.0)
+
+tests/test_backtest.py::TestBacktestEngine::test_backtest_metrics_correctness
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_backtest.py:107: DeprecationWarning: BacktestEngine in mdrap.backtest is deprecated and non-core to the market data engine.
+    engine = BacktestEngine(initial_capital=100_000.0)
+
+tests/test_backtest.py::TestBacktestEngine::test_backtest_metrics_correctness
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_backtest.py:56: DeprecationWarning: Strategy and algorithmic execution models in mdrap.strategy_sdk are deprecated and non-core to the market data engine.
+    super().__init__(name="MultiTrade", symbols=[symbol])
+
+tests/test_backtest.py::TestBacktestEngine::test_backtest_no_trades
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_backtest.py:199: DeprecationWarning: BacktestEngine in mdrap.backtest is deprecated and non-core to the market data engine.
+    engine = BacktestEngine(initial_capital=100_000.0)
+
+tests/test_backtest.py::TestBacktestEngine::test_backtest_no_trades
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_backtest.py:88: DeprecationWarning: Strategy and algorithmic execution models in mdrap.strategy_sdk are deprecated and non-core to the market data engine.
+    super().__init__(name="NoTrade", symbols=[symbol])
+
+tests/test_backtest.py::TestBacktestEngine::test_backtest_sharpe_ratio
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_backtest.py:189: DeprecationWarning: BacktestEngine in mdrap.backtest is deprecated and non-core to the market data engine.
+    engine = BacktestEngine(initial_capital=100_000.0)
+
+tests/test_backtest.py::TestBacktestEngine::test_backtest_short_selling
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_backtest.py:237: DeprecationWarning: BacktestEngine in mdrap.backtest is deprecated and non-core to the market data engine.
+    engine = BacktestEngine(initial_capital=100_000.0)
+
+tests/test_backtest.py::TestBacktestEngine::test_backtest_short_selling
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_backtest.py:74: DeprecationWarning: Strategy and algorithmic execution models in mdrap.strategy_sdk are deprecated and non-core to the market data engine.
+    super().__init__(name="ShortStrat", symbols=[symbol])
+
+tests/test_backtest.py::TestBacktestEngine::test_order_book_depth_during_quote_stream
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_backtest.py:286: DeprecationWarning: BacktestEngine in mdrap.backtest is deprecated and non-core to the market data engine.
+    engine = BacktestEngine(initial_capital=100_000.0)
+
+tests/test_backtest.py::TestBacktestEngine::test_walkforward_splits
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_backtest.py:221: DeprecationWarning: BacktestEngine in mdrap.backtest is deprecated and non-core to the market data engine.
+    engine = BacktestEngine(initial_capital=100_000.0)
+
+tests/test_bbo.py::test_pipeline_bbo_end_to_end
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_bbo.py:356: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.
+    pipeline = Pipeline(store, bbo=bbo_engine)
+
+tests/test_chaos.py::test_feed_kill_drill
+tests/test_chaos.py::test_run_all_drills
+tests/test_chaos_drills_v26.py::test_complete_chaos_suite_v26
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\src\mdrap\chaos.py:80: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.
+    pipeline = Pipeline(store=store, reliability=rel, watchdog=watchdog)
+
+tests/test_chaos.py::test_network_jitter_drill
+tests/test_chaos.py::test_run_all_drills
+tests/test_chaos_drills_v26.py::test_complete_chaos_suite_v26
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\src\mdrap\chaos.py:152: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.
+    pipeline = Pipeline(store=store)
+
+tests/test_chaos.py::test_burst_drill
+tests/test_chaos.py::test_run_all_drills
+tests/test_chaos_drills_v26.py::test_complete_chaos_suite_v26
+tests/test_cli.py::test_cmd_chaos_drill_dispatch
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\src\mdrap\chaos.py:195: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.
+    pipeline = Pipeline(store=store)
+
+tests/test_chaos.py::test_storage_outage_drill
+tests/test_chaos.py::test_run_all_drills
+tests/test_chaos_drills_v26.py::test_complete_chaos_suite_v26
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\src\mdrap\chaos.py:237: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.
+    pipeline = Pipeline(store=store)
+
+tests/test_chaos.py::test_run_all_drills
+tests/test_chaos_drills_v26.py::test_sequence_reversal_drill
+tests/test_chaos_drills_v26.py::test_complete_chaos_suite_v26
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\src\mdrap\chaos.py:392: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.
+    pipeline = Pipeline(store=store)
+
+tests/test_chaos.py::test_run_all_drills
+tests/test_chaos_drills_v26.py::test_sqlite_locked_backoff_drill
+tests/test_chaos_drills_v26.py::test_complete_chaos_suite_v26
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\src\mdrap\chaos.py:469: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.
+    pipeline = Pipeline(store=store)
+
+tests/test_chaos.py::test_run_all_drills
+tests/test_chaos_drills_v26.py::test_network_partition_drill
+tests/test_chaos_drills_v26.py::test_complete_chaos_suite_v26
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\src\mdrap\chaos.py:516: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.
+    pipeline = Pipeline(store=store, reliability=rel, watchdog=watchdog)
+
+tests/test_chd.py::test_pipeline_import_raw_replay_lineage_and_no_false_age
+tests/test_chd.py::test_failed_ingest_publishes_nothing_but_keeps_cache
+tests/test_chd.py::test_duplicate_trade_ids_quarantined_without_artificial_gaps
+tests/test_chd.py::test_cross_hour_book_continuity
+tests/test_chd.py::test_empty_filtered_interval_never_publishes
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\src\mdrap\chd_history.py:371: DeprecationWarning: RawArchive in mdrap.archive is deprecated in MDRAP v3.0.0; use IngestLog WAL as the mandatory durability boundary instead.
+    with RawArchive(str(temporary / "raw")) as archive:
+
+tests/test_chd.py::test_pipeline_import_raw_replay_lineage_and_no_false_age
+tests/test_chd.py::test_failed_ingest_publishes_nothing_but_keeps_cache
+tests/test_chd.py::test_duplicate_trade_ids_quarantined_without_artificial_gaps
+tests/test_chd.py::test_cross_hour_book_continuity
+tests/test_chd.py::test_empty_filtered_interval_never_publishes
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\src\mdrap\chd_history.py:372: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.
+    pipeline = Pipeline(store, archive=archive)
+
+tests/test_chd.py::test_pipeline_import_raw_replay_lineage_and_no_false_age
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_chd.py:429: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.
+    pipeline = Pipeline(replayed)
+
+tests/test_cli.py::test_cmd_status_runs_successfully
+tests/test_cli.py::test_cmd_analytics_positional_dispatch
+tests/test_cli.py::test_cmd_query_positional_dispatch
+tests/test_cli.py::test_cmd_watchdog_dispatch
+tests/test_cli.py::test_cmd_bbo_dispatch
+tests/test_cli.py::test_cmd_live_dispatch
+tests/test_cli.py::test_cmd_security_dispatch
+tests/test_cli.py::test_cmd_audit_dispatch
+tests/test_cli.py::test_cmd_audit_verify_dispatch
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_cli.py:34: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.
+    pipeline = Pipeline(store, analytics=analytics, bbo=bbo)
+
+tests/test_cli.py::test_cmd_live_dispatch
+tests/test_terminal_display.py::test_cli_ticker_command
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\src\mdrap\cli\market.py:437: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.
+    pipeline = Pipeline(store, bbo=bbo)
+
+tests/test_cli.py::test_cmd_live_dispatch
+tests/test_terminal_display.py::test_cli_ticker_command
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\src\mdrap\cli\market.py:493: DeprecationWarning: LiveTickerDashboard and mdrap.terminal_display are deprecated and non-core to the market data engine.
+    dashboard = LiveTickerDashboard(
+
+tests/test_cli.py::test_cmd_tca_dispatch
+tests/test_coverage_booster.py::test_cli_tca_and_flow_extended
+tests/test_coverage_booster.py::test_cli_tca_and_flow_extended
+tests/test_coverage_booster.py::test_cli_tca_and_flow_extended
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\src\mdrap\cli\market.py:1977: DeprecationWarning: TCAEngine and mdrap.tca are deprecated and non-core to the market data engine.
+    engine = TCAEngine()
+
+tests/test_cli.py::test_cmd_strategy_dispatch
+tests/test_strategy_sdk.py::test_whale_momentum_strategy_execution
+tests/test_strategy_sdk.py::test_strategy_order_book_snapshot_on_execution
+tests/test_strategy_sdk.py::test_strategy_execution_ledger
+tests/test_strategy_sdk.py::test_strategy_export_executions_json_and_csv
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\packages\mdrap-strategies\mdrap_strategies\__init__.py:1178: DeprecationWarning: Strategy and algorithmic execution models in mdrap.strategy_sdk are deprecated and non-core to the market data engine.
+    super().__init__(name="WhaleMomentum", symbols=syms)
+
+tests/test_cli.py::test_cmd_run_duckdb_sync_error_handling
+tests/test_cli.py::test_cmd_run_duckdb_sync_error_handling
+tests/test_cli.py::test_cmd_run_duckdb_sync_error_handling
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\src\mdrap\cli\core.py:46: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.
+    pipeline = Pipeline(
+
+tests/test_client.py: 5 warnings
+tests/test_concurrent_users.py: 2 warnings
+tests/test_entitlements.py: 5 warnings
+tests/test_error_surfacing.py: 1 warning
+tests/test_hardening.py: 1 warning
+tests/test_phase2_backpressure.py: 2 warnings
+tests/test_phase3_roadmap_verification.py: 2 warnings
+tests/test_protocol.py: 2 warnings
+tests/test_service.py: 8 warnings
+tests/test_service_resilience.py: 1 warning
+tests/test_shm.py: 1 warning
+tests/test_vwap.py: 2 warnings
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\src\mdrap\service.py:112: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.
+    self.pipeline = Pipeline(
+
+tests/test_client.py::test_client_connect_and_status
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_client.py:98: DeprecationWarning: Client / MDRAPClient is deprecated in MDRAP v3.0.0; use Engine or streaming endpoints directly.
+    with MDRAPClient(host="127.0.0.1", port=running_daemon.port) as client:
+
+tests/test_client.py::test_client_stream_l1_ticks_with_monotonic_seq
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_client.py:114: DeprecationWarning: Client / MDRAPClient is deprecated in MDRAP v3.0.0; use Engine or streaming endpoints directly.
+    with MDRAPClient(host="127.0.0.1", port=running_daemon.port) as client:
+
+tests/test_client.py::test_client_stream_l2_depth
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_client.py:135: DeprecationWarning: Client / MDRAPClient is deprecated in MDRAP v3.0.0; use Engine or streaming endpoints directly.
+    with MDRAPClient(host="127.0.0.1", port=running_daemon.port) as client:
+
+tests/test_client.py::test_daemon_replay_buffer_and_request_replay
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_client.py:149: DeprecationWarning: Client / MDRAPClient is deprecated in MDRAP v3.0.0; use Engine or streaming endpoints directly.
+    with MDRAPClient(host="127.0.0.1", port=running_daemon.port) as client:
+
+tests/test_client.py::test_client_automated_gap_detection_and_replay
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_client.py:248: DeprecationWarning: Client / MDRAPClient is deprecated in MDRAP v3.0.0; use Engine or streaming endpoints directly.
+    with MDRAPClient(host="127.0.0.1", port=port, auto_replay=True) as client:
+
+tests/test_client.py::test_client_unsubscribe_and_queries
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_client.py:265: DeprecationWarning: Client / MDRAPClient is deprecated in MDRAP v3.0.0; use Engine or streaming endpoints directly.
+    with MDRAPClient(host="127.0.0.1", port=running_daemon.port) as client:
+
+tests/test_companion_packages.py::test_companion_analytics_standalone
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_companion_packages.py:43: DeprecationWarning: TCAEngine and mdrap.tca are deprecated and non-core to the market data engine.
+    engine = tca.TCAEngine()
+
+tests/test_companion_packages.py::test_companion_vessel_standalone
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_companion_packages.py:94: DeprecationWarning: VesselTracker and AIS vessel intelligence in mdrap.vessel are deprecated and non-core to the market data engine.
+    tracker = vsl.VesselTracker()
+
+tests/test_concurrent_users.py::test_concurrent_normal_and_fast_devices
+tests/test_hardening.py::test_slow_consumer_queue_isolation
+  C:\Users\KIIT0001\AppData\Roaming\Python\Python313\site-packages\_pytest\threadexception.py:82: PytestUnhandledThreadExceptionWarning: Exception in thread mdrap-feed-ingest
+  
+  Traceback (most recent call last):
+    File "C:\Python313\Lib\threading.py", line 1041, in _bootstrap_inner
+      self.run()
+      ~~~~~~~~^^
+    File "C:\Python313\Lib\threading.py", line 992, in run
+      self._target(*self._args, **self._kwargs)
+      ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    File "C:\Users\KIIT0001\Desktop\Projects\mdrap\src\mdrap\service.py", line 655, in _ingestion_loop
+      self._process_and_broadcast(raw)
+      ~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^
+    File "C:\Users\KIIT0001\Desktop\Projects\mdrap\src\mdrap\service.py", line 683, in _process_and_broadcast
+      exchange_timestamp=float(payload_dict.get("exchange_ts", raw.receive_timestamp)),
+                         ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  ValueError: could not convert string to float: 'not-a-timestamp'
+  
+    warnings.warn(pytest.PytestUnhandledThreadExceptionWarning(msg))
+
+tests/test_config.py::test_config_yaml_loading
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_config.py:32: DeprecationWarning: Loading configuration from config.yaml via mdrap.config is deprecated in MDRAP v3.0.0; use mdrap.toml via mdrap.config_loader instead.
+    cfg = load_config()
+
+tests/test_corporate_actions.py: 12 warnings
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_corporate_actions.py:12: DeprecationWarning: CorporateActionsEngine and mdrap.corporate_actions are deprecated and non-core to the market data engine.
+    return CorporateActionsEngine(db_path=":memory:")
+
+tests/test_coverage_booster.py::test_cli_all_stress_modules
+tests/test_coverage_booster.py::test_cli_all_stress_modules
+tests/test_coverage_booster.py::test_cli_all_stress_modules
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\src\mdrap\stresstest.py:444: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.
+    pipe = Pipeline(store=store)
+
+tests/test_coverage_booster.py::test_cli_all_stress_modules
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\src\mdrap\stresstest.py:606: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.
+    pipeline = Pipeline(store, analytics=analytics, bbo=bbo)
+
+tests/test_coverage_booster.py::test_cli_vessel_filters
+tests/test_coverage_booster.py::test_cli_vessel_filters
+tests/test_coverage_booster.py::test_cli_vessel_filters
+tests/test_coverage_booster.py::test_cli_vessel_filters
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\src\mdrap\cli\integrations.py:1067: DeprecationWarning: VesselTracker and AIS vessel intelligence in mdrap.vessel are deprecated and non-core to the market data engine.
+    tracker = VesselTracker()
+
+tests/test_coverage_booster.py::test_cli_tca_and_flow_extended
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\src\mdrap\cli\market.py:2538: DeprecationWarning: MarketDataExporter in mdrap.exporter is deprecated in MDRAP v3.0.0; use export_data() in mdrap.export for Parquet/CSV/JSON exports instead.
+    exporter = MarketDataExporter(db_path=db_path)
+
+tests/test_coverage_booster.py::test_cli_tca_and_flow_extended
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\src\mdrap\cli\market.py:2116: DeprecationWarning: MarketDataExporter in mdrap.exporter is deprecated in MDRAP v3.0.0; use export_data() in mdrap.export for Parquet/CSV/JSON exports instead.
+    exporter = MarketDataExporter(db_path=getattr(args, "db", "data/mdrap.db"))
+
+tests/test_coverage_booster.py::test_cli_test_all_mocked
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\src\mdrap\cli\core.py:988: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.
+    pipe_v1 = Pipeline(store_v1)
+
+tests/test_coverage_booster.py::test_cli_test_all_mocked
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\src\mdrap\cli\core.py:1017: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.
+    pipe_c = Pipeline(store_c, quality=FastQualityEngine())
+
+tests/test_coverage_booster.py::test_cli_test_all_mocked
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\src\mdrap\cli\core.py:1047: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.
+    pipe_q = Pipeline(store_q)
+
+tests/test_coverage_booster.py::test_cli_test_all_mocked
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\src\mdrap\cli\core.py:1082: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.
+    pipe_ch = Pipeline(store_ch)
+
+tests/test_coverage_booster.py::test_trading_cli_more_commands
+tests/test_coverage_booster.py::test_trading_cli_more_commands
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\src\mdrap\trading_cli.py:415: DeprecationWarning: NewsFeed and sentiment analysis in mdrap.news are deprecated and non-core to the market data engine.
+    feed = NewsFeed()
+
+tests/test_coverage_booster.py::test_trading_cli_more_commands
+tests/test_coverage_booster.py::test_trading_cli_more_commands
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\src\mdrap\trading_cli.py:718: DeprecationWarning: CorporateActionsEngine and mdrap.corporate_actions are deprecated and non-core to the market data engine.
+    engine = CorporateActionsEngine(db_path=db_path)
+
+tests/test_decision_identity.py::test_decision_identity_pipeline_process_one_vs_process_batch
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_decision_identity.py:152: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.
+    pipe1 = Pipeline(store=store1, quality=FastQualityEngine())
+
+tests/test_decision_identity.py::test_decision_identity_pipeline_process_one_vs_process_batch
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_decision_identity.py:153: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.
+    pipe2 = Pipeline(store=store2, quality=FastQualityEngine())
+
+tests/test_entitlements.py::test_daemon_auth_with_valid_and_revoked_keys
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_entitlements.py:92: DeprecationWarning: Client / MDRAPClient is deprecated in MDRAP v3.0.0; use Engine or streaming endpoints directly.
+    with MDRAPClient(
+
+tests/test_entitlements.py::test_daemon_auth_with_valid_and_revoked_keys
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_entitlements.py:100: DeprecationWarning: Client / MDRAPClient is deprecated in MDRAP v3.0.0; use Engine or streaming endpoints directly.
+    with MDRAPClient(
+
+tests/test_entitlements.py::test_daemon_auth_with_valid_and_revoked_keys
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_entitlements.py:111: DeprecationWarning: Client / MDRAPClient is deprecated in MDRAP v3.0.0; use Engine or streaming endpoints directly.
+    with MDRAPClient(
+
+tests/test_entitlements.py::test_authenticated_client_full_access
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_entitlements.py:120: DeprecationWarning: Client / MDRAPClient is deprecated in MDRAP v3.0.0; use Engine or streaming endpoints directly.
+    with MDRAPClient(
+
+tests/test_entitlements.py::test_pro_tier_permissions
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_entitlements.py:142: DeprecationWarning: Client / MDRAPClient is deprecated in MDRAP v3.0.0; use Engine or streaming endpoints directly.
+    with MDRAPClient(
+
+tests/test_entitlements.py::test_rate_limiter_throttles_events
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_entitlements.py:166: DeprecationWarning: Client / MDRAPClient is deprecated in MDRAP v3.0.0; use Engine or streaming endpoints directly.
+    with MDRAPClient(
+
+tests/test_entitlements.py::test_backward_compatibility_unauthenticated
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_entitlements.py:200: DeprecationWarning: Client / MDRAPClient is deprecated in MDRAP v3.0.0; use Engine or streaming endpoints directly.
+    with MDRAPClient(host="127.0.0.1", port=daemon.port) as client:
+
+tests/test_error_surfacing.py::test_config_parse_failure_surfaced_to_stderr
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_error_surfacing.py:98: DeprecationWarning: Loading configuration from config.yaml via mdrap.config is deprecated in MDRAP v3.0.0; use mdrap.toml via mdrap.config_loader instead.
+    cfg = load_config(temp_path)
+
+tests/test_export.py::test_exporter_gather_data
+tests/test_export.py::test_exporter_excel_generation
+tests/test_export.py::test_exporter_csv_generation
+tests/test_export.py::test_exporter_auto_populates_empty_db
+tests/test_export.py::test_cli_export_command
+tests/test_export.py::test_export_data_json_and_sql_injection_defense
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_export.py:36: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.
+    pipe = Pipeline(store=store)
+
+tests/test_export.py::test_exporter_gather_data
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_export.py:56: DeprecationWarning: MarketDataExporter in mdrap.exporter is deprecated in MDRAP v3.0.0; use export_data() in mdrap.export for Parquet/CSV/JSON exports instead.
+    exporter = MarketDataExporter(db_path=temp_env["db"])
+
+tests/test_export.py::test_exporter_excel_generation
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_export.py:74: DeprecationWarning: MarketDataExporter in mdrap.exporter is deprecated in MDRAP v3.0.0; use export_data() in mdrap.export for Parquet/CSV/JSON exports instead.
+    exporter = MarketDataExporter(db_path=temp_env["db"])
+
+tests/test_export.py::test_exporter_csv_generation
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_export.py:120: DeprecationWarning: MarketDataExporter in mdrap.exporter is deprecated in MDRAP v3.0.0; use export_data() in mdrap.export for Parquet/CSV/JSON exports instead.
+    exporter = MarketDataExporter(db_path=temp_env["db"])
+
+tests/test_export.py::test_exporter_auto_populates_empty_db
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_export.py:153: DeprecationWarning: MarketDataExporter in mdrap.exporter is deprecated in MDRAP v3.0.0; use export_data() in mdrap.export for Parquet/CSV/JSON exports instead.
+    exporter = MarketDataExporter(db_path=empty_db)
+
+tests/test_export.py::test_exporter_auto_populates_empty_db
+tests/test_exporter_coverage.py::test_exporter_gather_and_csv
+tests/test_exporter_coverage.py::test_exporter_excel
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\src\mdrap\exporter.py:58: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.
+    pipe = Pipeline(store=store)
+
+tests/test_export.py::test_cli_export_command
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\src\mdrap\cli\market.py:1293: DeprecationWarning: MarketDataExporter in mdrap.exporter is deprecated in MDRAP v3.0.0; use export_data() in mdrap.export for Parquet/CSV/JSON exports instead.
+    exporter = MarketDataExporter(db_path=db_path)
+
+tests/test_exporter_coverage.py::test_exporter_gather_and_csv
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_exporter_coverage.py:22: DeprecationWarning: MarketDataExporter in mdrap.exporter is deprecated in MDRAP v3.0.0; use export_data() in mdrap.export for Parquet/CSV/JSON exports instead.
+    exporter = MarketDataExporter(db_path=db_path)
+
+tests/test_exporter_coverage.py::test_exporter_excel
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_exporter_coverage.py:39: DeprecationWarning: MarketDataExporter in mdrap.exporter is deprecated in MDRAP v3.0.0; use export_data() in mdrap.export for Parquet/CSV/JSON exports instead.
+    exporter = MarketDataExporter(db_path=db_path)
+
+tests/test_exporter_coverage.py::test_export_order_flow_workbook
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_exporter_coverage.py:79: DeprecationWarning: MarketDataExporter in mdrap.exporter is deprecated in MDRAP v3.0.0; use export_data() in mdrap.export for Parquet/CSV/JSON exports instead.
+    exporter = MarketDataExporter(db_path=":memory:")
+
+tests/test_extension_protocols.py::test_minimal_storage_pipeline_interop
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_extension_protocols.py:271: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.
+    pipeline = Pipeline(store=alt_store)
+
+tests/test_extension_protocols.py::test_minimal_quality_evaluator_interop
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_extension_protocols.py:303: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.
+    pipeline = Pipeline(store=alt_store, quality=alt_quality)
+
+tests/test_failure_modes.py::test_failure_drain_worker_crash_and_restart
+tests/test_failure_modes.py::test_failure_drain_worker_crash_and_restart
+tests/test_shm_drainer.py::test_shm_drainer_to_journal_and_store
+tests/test_shm_drainer.py::test_shm_drainer_overrun_catchup
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\src\mdrap\shm_drainer.py:81: DeprecationWarning: BinaryJournal in mdrap.journal is deprecated in MDRAP v3.0.0; use IngestLog WAL (mdrap.ingestlog) as the mandatory durability boundary instead.
+    self.journal = BinaryJournal(journal_path)
+
+tests/test_failure_modes.py::test_failure_drain_worker_crash_and_restart
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_failure_modes.py:214: DeprecationWarning: BinaryJournalReader in mdrap.journal is deprecated in MDRAP v3.0.0; use IngestLog WAL (mdrap.ingestlog) as the mandatory durability boundary instead.
+    j_reader = BinaryJournalReader(journal_path)
+
+tests/test_failure_modes.py::test_failure_drain_worker_crash_and_restart
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_failure_modes.py:254: DeprecationWarning: BinaryJournalReader in mdrap.journal is deprecated in MDRAP v3.0.0; use IngestLog WAL (mdrap.ingestlog) as the mandatory durability boundary instead.
+    j_reader2 = BinaryJournalReader(journal_path)
+
+tests/test_failure_modes.py::test_failure_journal_truncation_recovery
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_failure_modes.py:275: DeprecationWarning: BinaryJournal in mdrap.journal is deprecated in MDRAP v3.0.0; use IngestLog WAL (mdrap.ingestlog) as the mandatory durability boundary instead.
+    with BinaryJournal(journal_path, initial_records=1024) as j1:
+
+tests/test_failure_modes.py::test_failure_journal_truncation_recovery
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_failure_modes.py:296: DeprecationWarning: BinaryJournal in mdrap.journal is deprecated in MDRAP v3.0.0; use IngestLog WAL (mdrap.ingestlog) as the mandatory durability boundary instead.
+    with BinaryJournal(journal_path) as j2:
+
+tests/test_failure_modes.py::test_failure_journal_truncation_recovery
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_failure_modes.py:310: DeprecationWarning: BinaryJournalReader in mdrap.journal is deprecated in MDRAP v3.0.0; use IngestLog WAL (mdrap.ingestlog) as the mandatory durability boundary instead.
+    with BinaryJournalReader(journal_path) as reader:
+
+tests/test_feed_handler.py::test_supervisor_pipeline_integration
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_feed_handler.py:132: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.
+    pipeline = Pipeline(store, bbo=bbo)
+
+tests/test_fix.py::test_fix_session_logon_flow
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_fix.py:51: DeprecationWarning: FIXSession and mdrap.fix_engine are deprecated and non-core to the market data engine.
+    session = FIXSession(sender_comp_id="MDRAP", target_comp_id="BROKER")
+
+tests/test_fix.py::test_logon_rejected_on_unknown_compid
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_fix.py:70: DeprecationWarning: FIXSession and mdrap.fix_engine are deprecated and non-core to the market data engine.
+    session = FIXSession(sender_comp_id="MDRAP", target_comp_id="BROKER")
+
+tests/test_fix.py::test_fix_session_order_creation
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_fix.py:82: DeprecationWarning: FIXSession and mdrap.fix_engine are deprecated and non-core to the market data engine.
+    session = FIXSession(sender_comp_id="MDRAP", target_comp_id="BROKER")
+
+tests/test_fix.py::test_fix_session_order_cancel
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_fix.py:93: DeprecationWarning: FIXSession and mdrap.fix_engine are deprecated and non-core to the market data engine.
+    session = FIXSession(sender_comp_id="MDRAP", target_comp_id="BROKER")
+
+tests/test_full_architecture_pipeline.py::test_full_system_end_to_end_pipeline
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_full_architecture_pipeline.py:35: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.
+    pipeline = Pipeline(store=store)
+
+tests/test_fx.py::test_fx_identity
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_fx.py:11: DeprecationWarning: FXMatrix and mdrap.fx are deprecated and non-core to the market data engine.
+    matrix = FXMatrix()
+
+tests/test_fx.py::test_fx_direct_conversion
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_fx.py:20: DeprecationWarning: FXMatrix and mdrap.fx are deprecated and non-core to the market data engine.
+    matrix = FXMatrix({"USD/INR": 88.50, "EUR/USD": 1.085})
+
+tests/test_fx.py::test_fx_triangular_arbitrage_cross_rate
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_fx.py:29: DeprecationWarning: FXMatrix and mdrap.fx are deprecated and non-core to the market data engine.
+    matrix = FXMatrix({"USD/INR": 88.50, "EUR/USD": 1.10})
+
+tests/test_fx.py::test_fx_update_rate
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_fx.py:38: DeprecationWarning: FXMatrix and mdrap.fx are deprecated and non-core to the market data engine.
+    matrix = FXMatrix()
+
+tests/test_hardening.py::test_rate_limited_events_are_quarantined
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_hardening.py:265: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.
+    pipeline = Pipeline(store=store, security=sec)
+
+tests/test_hardening.py::test_time_based_flush_for_low_volume_feeds
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_hardening.py:334: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.
+    pipeline = Pipeline(store=store, flush_interval_s=0.1)
+
+tests/test_hardening_p1_p2.py::test_p1_archive_captures_all_events_before_security_gates
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_hardening_p1_p2.py:16: DeprecationWarning: RawArchive in mdrap.archive is deprecated in MDRAP v3.0.0; use IngestLog WAL as the mandatory durability boundary instead.
+    archive = RawArchive(archive_dir)
+
+tests/test_hardening_p1_p2.py::test_p1_archive_captures_all_events_before_security_gates
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_hardening_p1_p2.py:29: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.
+    pipeline = Pipeline(store=store, security=sec, archive=archive)
+
+tests/test_hardening_p1_p2.py::test_p2_require_hmac_enforced_when_configured
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_hardening_p1_p2.py:59: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.
+    pipeline = Pipeline(store=store, security=sec)
+
+tests/test_hardening_p3_p12.py::test_flush_transactional_dead_letter_spill
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_hardening_p3_p12.py:65: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.
+    pipe = Pipeline(store=FailingStore(), async_writer=False)
+
+tests/test_hardening_p3_p12.py::test_storage_and_spill_double_failure_degrades_and_raises
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_hardening_p3_p12.py:90: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.
+    pipe = Pipeline(store=FailingStore(), async_writer=False)
+
+tests/test_hardening_p3_p12.py::test_async_writer_double_failure_is_visible_and_shutdown_is_clean
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_hardening_p3_p12.py:116: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.
+    pipe = Pipeline(store=FailingStore(), async_writer=True)
+
+tests/test_journal.py::test_journal_create_write_read
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_journal.py:23: DeprecationWarning: BinaryJournal in mdrap.journal is deprecated in MDRAP v3.0.0; use IngestLog WAL (mdrap.ingestlog) as the mandatory durability boundary instead.
+    with BinaryJournal(journal_path, initial_records=1024) as j:
+
+tests/test_journal.py::test_journal_create_write_read
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_journal.py:47: DeprecationWarning: BinaryJournalReader in mdrap.journal is deprecated in MDRAP v3.0.0; use IngestLog WAL (mdrap.ingestlog) as the mandatory durability boundary instead.
+    with BinaryJournalReader(journal_path) as reader:
+
+tests/test_journal.py::test_journal_auto_expansion
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_journal.py:81: DeprecationWarning: BinaryJournal in mdrap.journal is deprecated in MDRAP v3.0.0; use IngestLog WAL (mdrap.ingestlog) as the mandatory durability boundary instead.
+    with BinaryJournal(journal_path, initial_records=1024) as j:
+
+tests/test_journal.py::test_journal_auto_expansion
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_journal.py:93: DeprecationWarning: BinaryJournalReader in mdrap.journal is deprecated in MDRAP v3.0.0; use IngestLog WAL (mdrap.ingestlog) as the mandatory durability boundary instead.
+    with BinaryJournalReader(journal_path) as reader:
+
+tests/test_journal.py::test_journal_reopen_and_append
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_journal.py:104: DeprecationWarning: BinaryJournal in mdrap.journal is deprecated in MDRAP v3.0.0; use IngestLog WAL (mdrap.ingestlog) as the mandatory durability boundary instead.
+    with BinaryJournal(journal_path, initial_records=1024, epoch=12345) as j1:
+
+tests/test_journal.py::test_journal_reopen_and_append
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_journal.py:111: DeprecationWarning: BinaryJournal in mdrap.journal is deprecated in MDRAP v3.0.0; use IngestLog WAL (mdrap.ingestlog) as the mandatory durability boundary instead.
+    with BinaryJournal(journal_path) as j2:
+
+tests/test_journal.py::test_journal_reopen_and_append
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_journal.py:120: DeprecationWarning: BinaryJournalReader in mdrap.journal is deprecated in MDRAP v3.0.0; use IngestLog WAL (mdrap.ingestlog) as the mandatory durability boundary instead.
+    with BinaryJournalReader(journal_path) as reader:
+
+tests/test_journal.py::test_journal_corrupt_file_handling
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_journal.py:135: DeprecationWarning: BinaryJournalReader in mdrap.journal is deprecated in MDRAP v3.0.0; use IngestLog WAL (mdrap.ingestlog) as the mandatory durability boundary instead.
+    BinaryJournalReader(journal_path)
+
+tests/test_keyboard_shortcuts.py::test_single_ticker_render_hotkey_states
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_keyboard_shortcuts.py:62: DeprecationWarning: LiveTickerDashboard and mdrap.terminal_display are deprecated and non-core to the market data engine.
+    td = TerminalDisplay()
+
+tests/test_keyboard_shortcuts.py::test_multi_ticker_render_hotkey_states
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_keyboard_shortcuts.py:71: DeprecationWarning: LiveTickerDashboard and mdrap.terminal_display are deprecated and non-core to the market data engine.
+    td = TerminalDisplay()
+
+tests/test_live.py::test_5_venue_consolidated_nbbo
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_live.py:246: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.
+    pipeline = Pipeline(store, bbo=bbo)
+
+tests/test_live_resolution.py::TestMultiVenueEquityIntegration::test_trade_event_does_not_clobber_venue_quotes
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_live_resolution.py:226: DeprecationWarning: LiveTickerDashboard and mdrap.terminal_display are deprecated and non-core to the market data engine.
+    dashboard = LiveTickerDashboard()
+
+tests/test_metrics_flush.py::test_pipeline_live_flush_attribution
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_metrics_flush.py:26: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.
+    pipeline = Pipeline(store=store, flush_interval_s=0.0001)
+
+tests/test_multicast_arbitrator.py::test_arbitrator_dual_feed_deduplication
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_multicast_arbitrator.py:16: DeprecationWarning: ABFeedArbitrator and mdrap.multicast_arbitrator are deprecated and non-core to the market data engine.
+    arb = ABFeedArbitrator(initial_seq=1)
+
+tests/test_multicast_arbitrator.py::test_arbitrator_single_feed_drop_resilience
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_multicast_arbitrator.py:47: DeprecationWarning: ABFeedArbitrator and mdrap.multicast_arbitrator are deprecated and non-core to the market data engine.
+    arb = ABFeedArbitrator(initial_seq=1)
+
+tests/test_multicast_arbitrator.py::test_arbitrator_dual_feed_drop_tcp_recovery
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_multicast_arbitrator.py:77: DeprecationWarning: ABFeedArbitrator and mdrap.multicast_arbitrator are deprecated and non-core to the market data engine.
+    arb = ABFeedArbitrator(
+
+tests/test_multicast_arbitrator.py::test_arbitrator_multi_channel
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_multicast_arbitrator.py:109: DeprecationWarning: ABFeedArbitrator and mdrap.multicast_arbitrator are deprecated and non-core to the market data engine.
+    arb = ABFeedArbitrator(initial_seq=1)
+
+tests/test_multicast_arbitrator.py::test_multicast_feed_simulator_end_to_end
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_multicast_arbitrator.py:135: DeprecationWarning: ABFeedArbitrator and mdrap.multicast_arbitrator are deprecated and non-core to the market data engine.
+    arb = ABFeedArbitrator(
+
+tests/test_navigator.py::TestNavigatorDesk::test_default_tabs
+tests/test_navigator.py::TestNavigatorDesk::test_filter_mode_entry_and_typing
+tests/test_navigator.py::TestNavigatorDesk::test_modal_confirmation_safety_gate
+tests/test_navigator.py::TestNavigatorDesk::test_open_url_action
+tests/test_navigator.py::TestNavigatorDesk::test_tab_switching_via_hotkeys
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_navigator.py:131: DeprecationWarning: MDRAPNavigator and mdrap.navigator are deprecated and non-core to the market data engine.
+    self.nav = MDRAPNavigator(console=self.console)
+
+tests/test_navigator.py: 7 warnings
+tests/test_navigator_coverage.py: 4 warnings
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\src\mdrap\navigator.py:555: DeprecationWarning: VesselTracker and AIS vessel intelligence in mdrap.vessel are deprecated and non-core to the market data engine.
+    tracker = VesselTracker()
+
+tests/test_navigator.py::TestNavigatorCLIIntegration::test_cmd_desk_execution
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\src\mdrap\cli\integrations.py:1354: DeprecationWarning: MDRAPNavigator and mdrap.navigator are deprecated and non-core to the market data engine.
+    nav = MDRAPNavigator()
+
+tests/test_navigator.py::TestNavigatorRenderingStability::test_all_tabs_render_without_jitter_or_overflow
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_navigator.py:247: DeprecationWarning: MDRAPNavigator and mdrap.navigator are deprecated and non-core to the market data engine.
+    nav = MDRAPNavigator(console=c)
+
+tests/test_navigator_coverage.py::test_modal_navigator_modes_and_keys
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_navigator_coverage.py:139: DeprecationWarning: MDRAPNavigator and mdrap.navigator are deprecated and non-core to the market data engine.
+    nav = MDRAPNavigator()
+
+tests/test_navigator_coverage.py::test_modal_confirmation_ticket_execution
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_navigator_coverage.py:186: DeprecationWarning: MDRAPNavigator and mdrap.navigator are deprecated and non-core to the market data engine.
+    nav = MDRAPNavigator()
+
+tests/test_navigator_coverage.py::test_modal_navigator_actions
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_navigator_coverage.py:233: DeprecationWarning: MDRAPNavigator and mdrap.navigator are deprecated and non-core to the market data engine.
+    nav = MDRAPNavigator()
+
+tests/test_navigator_coverage.py::test_modal_navigator_render
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_navigator_coverage.py:291: DeprecationWarning: MDRAPNavigator and mdrap.navigator are deprecated and non-core to the market data engine.
+    nav = MDRAPNavigator()
+
+tests/test_news.py: 11 warnings
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_news.py:22: DeprecationWarning: NewsFeed and sentiment analysis in mdrap.news are deprecated and non-core to the market data engine.
+    self.feed = NewsFeed()
+
+tests/test_next_pieces_guarantees.py::test_pipeline_isolation_when_kafka_down
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_next_pieces_guarantees.py:61: DeprecationWarning: DurableKafkaSink in mdrap.kafka_sink is deprecated in MDRAP v3.0.0; use SQLiteProjection or standard OutputSink extensions instead.
+    kafka_sink = DurableKafkaSink(store=store, producer=broken_producer)
+
+tests/test_next_pieces_guarantees.py::test_pipeline_isolation_when_kafka_down
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_next_pieces_guarantees.py:64: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.
+    pipeline = Pipeline(store=store)
+
+tests/test_next_pieces_guarantees.py::test_kafka_durable_at_least_once_and_checkpoint_resume
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_next_pieces_guarantees.py:133: DeprecationWarning: DurableKafkaSink in mdrap.kafka_sink is deprecated in MDRAP v3.0.0; use SQLiteProjection or standard OutputSink extensions instead.
+    sink1 = DurableKafkaSink(config=cfg, store=store, producer=producer)
+
+tests/test_next_pieces_guarantees.py::test_kafka_durable_at_least_once_and_checkpoint_resume
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_next_pieces_guarantees.py:162: DeprecationWarning: DurableKafkaSink in mdrap.kafka_sink is deprecated in MDRAP v3.0.0; use SQLiteProjection or standard OutputSink extensions instead.
+    sink2 = DurableKafkaSink(config=cfg, store=store, producer=producer2)
+
+tests/test_next_pieces_guarantees.py::test_kafka_topic_separation_false_positive_prevention
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_next_pieces_guarantees.py:182: DeprecationWarning: DurableKafkaSink in mdrap.kafka_sink is deprecated in MDRAP v3.0.0; use SQLiteProjection or standard OutputSink extensions instead.
+    sink = DurableKafkaSink(store=store, producer=producer)
+
+tests/test_next_pieces_guarantees.py::test_prometheus_operational_metrics_exposition
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_next_pieces_guarantees.py:375: DeprecationWarning: AppState.pipeline is deprecated in MDRAP v3.0.0; use AppState.engine instead.
+    st.pipeline.process_one(raw)
+
+tests/test_next_pieces_guarantees.py::test_prometheus_operational_metrics_exposition
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_next_pieces_guarantees.py:376: DeprecationWarning: AppState.pipeline is deprecated in MDRAP v3.0.0; use AppState.engine instead.
+    st.pipeline.flush()
+
+tests/test_next_pieces_guarantees.py::test_prometheus_reconciliation_kafka_lag
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_next_pieces_guarantees.py:399: DeprecationWarning: DurableKafkaSink in mdrap.kafka_sink is deprecated in MDRAP v3.0.0; use SQLiteProjection or standard OutputSink extensions instead.
+    sink = DurableKafkaSink(store=store, producer=producer)
+
+tests/test_options.py::test_options_chain_generation
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_options.py:120: DeprecationWarning: OptionsChain in mdrap.options is deprecated and non-core to the market data engine.
+    chain_obj = OptionsChain(underlying="AAPL", spot=150.0, risk_free_rate=0.05)
+
+tests/test_options.py: 20 warnings
+tests/test_options_coverage.py: 10 warnings
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\packages\mdrap-options\mdrap_options\__init__.py:517: DeprecationWarning: Derivatives pricing in mdrap.options is deprecated and non-core to the market data engine.
+    price_info = price_option(contract, self.spot, self.risk_free_rate, vol)
+
+tests/test_options.py::test_options_chain_find_atm
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_options.py:129: DeprecationWarning: OptionsChain in mdrap.options is deprecated and non-core to the market data engine.
+    chain_obj = OptionsChain(underlying="AAPL", spot=150.0, risk_free_rate=0.05)
+
+tests/test_options_coverage.py::test_options_contract_pricing
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_options_coverage.py:60: DeprecationWarning: Derivatives pricing in mdrap.options is deprecated and non-core to the market data engine.
+    p_euro = price_option(c_euro, spot=155.0, risk_free_rate=0.05, volatility=0.25)
+
+tests/test_options_coverage.py::test_options_contract_pricing
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_options_coverage.py:74: DeprecationWarning: Derivatives pricing in mdrap.options is deprecated and non-core to the market data engine.
+    p_amer = price_option(c_amer, spot=140.0, risk_free_rate=0.05, volatility=0.25)
+
+tests/test_options_coverage.py::test_options_chain_and_max_pain
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_options_coverage.py:153: DeprecationWarning: OptionsChain in mdrap.options is deprecated and non-core to the market data engine.
+    chain = OptionsChain("AAPL", spot=150.0, risk_free_rate=0.05)
+
+tests/test_phase11_storage_durability.py::test_stor_01_journal_partial_batch_reopen_no_overwrite
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_phase11_storage_durability.py:30: DeprecationWarning: BinaryJournal in mdrap.journal is deprecated in MDRAP v3.0.0; use IngestLog WAL (mdrap.ingestlog) as the mandatory durability boundary instead.
+    j1 = BinaryJournal(jpath, initial_records=1024)
+
+tests/test_phase11_storage_durability.py::test_stor_01_journal_partial_batch_reopen_no_overwrite
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_phase11_storage_durability.py:45: DeprecationWarning: BinaryJournal in mdrap.journal is deprecated in MDRAP v3.0.0; use IngestLog WAL (mdrap.ingestlog) as the mandatory durability boundary instead.
+    j2 = BinaryJournal(jpath)
+
+tests/test_phase11_storage_durability.py::test_stor_01_journal_partial_batch_reopen_no_overwrite
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_phase11_storage_durability.py:65: DeprecationWarning: BinaryJournalReader in mdrap.journal is deprecated in MDRAP v3.0.0; use IngestLog WAL (mdrap.ingestlog) as the mandatory durability boundary instead.
+    with BinaryJournalReader(jpath) as reader:
+
+tests/test_phase11_storage_durability.py::test_stor_01_journal_scan_forward_crash_recovery
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_phase11_storage_durability.py:79: DeprecationWarning: BinaryJournal in mdrap.journal is deprecated in MDRAP v3.0.0; use IngestLog WAL (mdrap.ingestlog) as the mandatory durability boundary instead.
+    j = BinaryJournal(jpath, initial_records=512)
+
+tests/test_phase11_storage_durability.py::test_stor_01_journal_scan_forward_crash_recovery
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_phase11_storage_durability.py:104: DeprecationWarning: BinaryJournal in mdrap.journal is deprecated in MDRAP v3.0.0; use IngestLog WAL (mdrap.ingestlog) as the mandatory durability boundary instead.
+    j_recovered = BinaryJournal(jpath)
+
+tests/test_phase11_storage_durability.py::test_stor_01_journal_scan_forward_crash_recovery
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_phase11_storage_durability.py:116: DeprecationWarning: BinaryJournalReader in mdrap.journal is deprecated in MDRAP v3.0.0; use IngestLog WAL (mdrap.ingestlog) as the mandatory durability boundary instead.
+    with BinaryJournalReader(jpath) as reader:
+
+tests/test_phase11_storage_durability.py::test_stor_03_fsync_durability_invocations
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_phase11_storage_durability.py:166: DeprecationWarning: BinaryJournal in mdrap.journal is deprecated in MDRAP v3.0.0; use IngestLog WAL (mdrap.ingestlog) as the mandatory durability boundary instead.
+    journal = BinaryJournal(jpath, initial_records=128)
+
+tests/test_phase11_storage_durability.py::test_stor_03_fsync_durability_invocations
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_phase11_storage_durability.py:177: DeprecationWarning: RawArchive in mdrap.archive is deprecated in MDRAP v3.0.0; use IngestLog WAL as the mandatory durability boundary instead.
+    archive = RawArchive(base_dir=archive_dir, buffer_size=100)
+
+tests/test_phase15_microstructure.py::test_mic_06_multicast_arbitrator_async_tcp_replay
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_phase15_microstructure.py:308: DeprecationWarning: ABFeedArbitrator and mdrap.multicast_arbitrator are deprecated and non-core to the market data engine.
+    arb = ABFeedArbitrator(
+
+tests/test_phase19_operability.py::test_ops_03_raw_archive_fd_cleanup
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_phase19_operability.py:91: DeprecationWarning: RawArchive in mdrap.archive is deprecated in MDRAP v3.0.0; use IngestLog WAL as the mandatory durability boundary instead.
+    archive = RawArchive(base_dir=tmpdir, buffer_size=1)
+
+tests/test_phase1_card1_restart_loss.py::test_t1_repro_two_runs_same_db_no_loss
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_phase1_card1_restart_loss.py:33: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.
+    p1 = Pipeline(store=store1, flush_interval_s=0.01)
+
+tests/test_phase1_card1_restart_loss.py::test_t1_repro_two_runs_same_db_no_loss
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_phase1_card1_restart_loss.py:47: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.
+    p2 = Pipeline(store=store2, flush_interval_s=0.01)
+
+tests/test_phase1_card1_restart_loss.py::test_t2_property_k_restarts_accumulate_all_rows
+tests/test_phase1_card1_restart_loss.py::test_t2_property_k_restarts_accumulate_all_rows
+tests/test_phase1_card1_restart_loss.py::test_t2_property_k_restarts_accumulate_all_rows
+tests/test_phase1_card1_restart_loss.py::test_t2_property_k_restarts_accumulate_all_rows
+tests/test_phase1_card1_restart_loss.py::test_t2_property_k_restarts_accumulate_all_rows
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_phase1_card1_restart_loss.py:86: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.
+    pipeline = Pipeline(store=store, flush_interval_s=0.01)
+
+tests/test_phase1_card1_restart_loss.py::test_t3_collision_detection_raises_storage_conflict_error
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_phase1_card1_restart_loss.py:120: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.
+    p1 = Pipeline(store=store, flush_interval_s=0.01)
+
+tests/test_phase1_card1_restart_loss.py::test_t3_collision_detection_raises_storage_conflict_error
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_phase1_card1_restart_loss.py:138: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.
+    p2 = Pipeline(store=store, flush_interval_s=0.01)
+
+tests/test_phase1_roadmap_verification.py::test_1_10_raw_archive_fd_leak_prevention
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_phase1_roadmap_verification.py:195: DeprecationWarning: RawArchive in mdrap.archive is deprecated in MDRAP v3.0.0; use IngestLog WAL as the mandatory durability boundary instead.
+    archive = RawArchive(base_dir=temp_dir, buffer_size=1)
+
+tests/test_phase21_feed_recovery_and_pcap.py::test_pcap_writer_and_reader_roundtrip
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_phase21_feed_recovery_and_pcap.py:168: DeprecationWarning: PcapReader and raw packet dissection in mdrap.pcap are deprecated and non-core to the market data engine.
+    with PcapReader(pcap_path) as reader:
+
+tests/test_phase21_feed_recovery_and_pcap.py::test_pcap_moldudp64_dissection_with_itch_integration
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_phase21_feed_recovery_and_pcap.py:206: DeprecationWarning: PcapReader and raw packet dissection in mdrap.pcap are deprecated and non-core to the market data engine.
+    with PcapReader(pcap_path) as reader:
+
+tests/test_phase2_roadmap_verification.py::test_2_7_journal_crc32_and_torn_tail_crash_recovery
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_phase2_roadmap_verification.py:352: DeprecationWarning: BinaryJournal in mdrap.journal is deprecated in MDRAP v3.0.0; use IngestLog WAL (mdrap.ingestlog) as the mandatory durability boundary instead.
+    with BinaryJournal(jpath, initial_records=64) as j:
+
+tests/test_phase2_roadmap_verification.py::test_2_7_journal_crc32_and_torn_tail_crash_recovery
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_phase2_roadmap_verification.py:369: DeprecationWarning: BinaryJournal in mdrap.journal is deprecated in MDRAP v3.0.0; use IngestLog WAL (mdrap.ingestlog) as the mandatory durability boundary instead.
+    with BinaryJournal(jpath) as j_rec:
+
+tests/test_phase2_roadmap_verification.py::test_2_7_journal_crc32_and_torn_tail_crash_recovery
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_phase2_roadmap_verification.py:374: DeprecationWarning: BinaryJournalReader in mdrap.journal is deprecated in MDRAP v3.0.0; use IngestLog WAL (mdrap.ingestlog) as the mandatory durability boundary instead.
+    with BinaryJournalReader(jpath) as reader:
+
+tests/test_phase3_card9_durability.py::test_dead_letter_spill_on_storage_failure
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_phase3_card9_durability.py:29: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.
+    pipeline = Pipeline(fail_store, flush_interval_s=0.1, async_writer=True)
+
+tests/test_phase3_card9_durability.py::test_supervisor_revives_dead_writer_thread
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_phase3_card9_durability.py:88: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.
+    pipeline = Pipeline(store, flush_interval_s=1.0, async_writer=True)
+
+tests/test_phase3_roadmap_verification.py::test_3_1_engine_pipeline_adapter_implements_legacy_interface
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\src\mdrap\pipeline.py:1392: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.
+    super().__init__(store=store, use_engine=True, **kwargs)
+
+tests/test_phase3_roadmap_verification.py::test_3_2_shadow_run_diff_zero
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_phase3_roadmap_verification.py:99: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.
+    pipe = Pipeline(store=store_pipe)
+
+tests/test_phase5_api_and_extensibility.py::test_pipeline_strict_align_mode
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_phase5_api_and_extensibility.py:301: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.
+    pipeline = Pipeline(store=store)
+
+tests/test_phase9_reorder_duplicate_prevention.py::test_batch_reorder_no_duplicate_dispatch
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_phase9_reorder_duplicate_prevention.py:23: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.
+    pipeline = Pipeline(store=store, quality=qe)
+
+tests/test_pipeline_integration.py::test_pipeline_processes_all_events_without_crashing
+tests/test_pipeline_integration.py::test_replay_is_deterministic
+tests/test_pipeline_integration.py::test_replay_is_deterministic
+tests/test_pipeline_integration.py::test_different_seeds_can_diverge
+tests/test_pipeline_integration.py::test_different_seeds_can_diverge
+tests/test_pipeline_integration.py::test_lineage_written_for_every_canonical_event
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_pipeline_integration.py:15: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.
+    pipeline = Pipeline(store)
+
+tests/test_pipeline_integration.py::test_no_event_is_silently_dropped
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_pipeline_integration.py:36: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.
+    pipeline = Pipeline(store)
+
+tests/test_plugin_conformance.py::test_pipeline_pre_and_post_evaluate_hooks
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_plugin_conformance.py:322: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.
+    pipeline = Pipeline(
+
+tests/test_plugin_conformance.py::test_pipeline_pre_evaluate_hook_drop
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_plugin_conformance.py:387: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.
+    pipeline = Pipeline(store=store, pre_evaluate_hook=drop_hook)
+
+tests/test_plugin_conformance.py::test_hook_exceptions_are_quarantined_and_isolated
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_plugin_conformance.py:464: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.
+    pipeline = Pipeline(store=store, pre_evaluate_hook=raising_hook)
+
+tests/test_plugin_conformance.py::test_post_hook_drop_and_exception_are_accounted
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_plugin_conformance.py:512: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.
+    drop_pipeline = Pipeline(store=drop_store, post_evaluate_hook=lambda ev: None)
+
+tests/test_plugin_conformance.py::test_post_hook_drop_and_exception_are_accounted
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_plugin_conformance.py:526: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.
+    error_pipeline = Pipeline(store=error_store, post_evaluate_hook=broken_post_hook)
+
+tests/test_portfolio.py::test_portfolio_buy_and_hold
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_portfolio.py:51: DeprecationWarning: PortfolioTracker and mdrap.portfolio are deprecated and non-core to the market data engine.
+    tracker = PortfolioTracker()
+
+tests/test_portfolio.py::test_portfolio_buy_then_sell
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_portfolio.py:62: DeprecationWarning: PortfolioTracker and mdrap.portfolio are deprecated and non-core to the market data engine.
+    tracker = PortfolioTracker()
+
+tests/test_portfolio.py::test_portfolio_short_sell
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_portfolio.py:72: DeprecationWarning: PortfolioTracker and mdrap.portfolio are deprecated and non-core to the market data engine.
+    tracker = PortfolioTracker()
+
+tests/test_portfolio.py::test_portfolio_cash_tracking
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_portfolio.py:85: DeprecationWarning: PortfolioTracker and mdrap.portfolio are deprecated and non-core to the market data engine.
+    tracker = PortfolioTracker(initial_cash=100_000.0)
+
+tests/test_portfolio.py::test_portfolio_total_equity
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_portfolio.py:91: DeprecationWarning: PortfolioTracker and mdrap.portfolio are deprecated and non-core to the market data engine.
+    tracker = PortfolioTracker(initial_cash=100_000.0)
+
+tests/test_portfolio.py::test_pnl_by_sector
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_portfolio.py:101: DeprecationWarning: PortfolioTracker and mdrap.portfolio are deprecated and non-core to the market data engine.
+    tracker = PortfolioTracker()
+
+tests/test_portfolio.py::test_pnl_by_strategy
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_portfolio.py:113: DeprecationWarning: PortfolioTracker and mdrap.portfolio are deprecated and non-core to the market data engine.
+    tracker = PortfolioTracker()
+
+tests/test_portfolio.py::test_portfolio_snapshot
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_portfolio.py:125: DeprecationWarning: PortfolioTracker and mdrap.portfolio are deprecated and non-core to the market data engine.
+    tracker = PortfolioTracker(initial_cash=100_000.0)
+
+tests/test_portfolio.py::test_benchmark_comparison
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_portfolio.py:137: DeprecationWarning: PortfolioTracker and mdrap.portfolio are deprecated and non-core to the market data engine.
+    tracker = PortfolioTracker(initial_cash=100_000.0)
+
+tests/test_portfolio.py::test_portfolio_summary
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_portfolio.py:152: DeprecationWarning: PortfolioTracker and mdrap.portfolio are deprecated and non-core to the market data engine.
+    tracker = PortfolioTracker(initial_cash=100_000.0)
+
+tests/test_portfolio.py::test_portfolio_multi_currency_nav
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_portfolio.py:164: DeprecationWarning: PortfolioTracker and mdrap.portfolio are deprecated and non-core to the market data engine.
+    tracker = PortfolioTracker(initial_cash=100_000.0, base_currency="USD")
+
+tests/test_portfolio.py::test_portfolio_short_borrow_cost
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_portfolio.py:178: DeprecationWarning: PortfolioTracker and mdrap.portfolio are deprecated and non-core to the market data engine.
+    tracker = PortfolioTracker(initial_cash=100_000.0)
+
+tests/test_portfolio.py::test_cmd_report_13f_and_rts28
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\src\mdrap\cli\market.py:2144: DeprecationWarning: PortfolioTracker and mdrap.portfolio are deprecated and non-core to the market data engine.
+    tracker = PortfolioTracker(db_path=db_path)
+
+tests/test_portfolio.py::test_cmd_report_13f_and_rts28
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\src\mdrap\cli\market.py:2253: DeprecationWarning: TCAEngine and mdrap.tca are deprecated and non-core to the market data engine.
+    engine = TCAEngine()
+
+tests/test_protocol.py::test_client_daemon_binary_streaming
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_protocol.py:221: DeprecationWarning: Client / MDRAPClient is deprecated in MDRAP v3.0.0; use Engine or streaming endpoints directly.
+    with MDRAPClient(
+
+tests/test_protocol.py::test_mixed_json_and_binary_clients
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_protocol.py:241: DeprecationWarning: Client / MDRAPClient is deprecated in MDRAP v3.0.0; use Engine or streaming endpoints directly.
+    with MDRAPClient(
+
+tests/test_protocol.py::test_mixed_json_and_binary_clients
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_protocol.py:244: DeprecationWarning: Client / MDRAPClient is deprecated in MDRAP v3.0.0; use Engine or streaming endpoints directly.
+    with MDRAPClient(
+
+tests/test_quarantine_subsystem.py::test_quarantine_isolation_and_inspection
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_quarantine_subsystem.py:44: DeprecationWarning: QuarantineManager in mdrap.quarantine is deprecated; use SQLite quarantine storage and engine quarantine events directly.
+    qm = QuarantineManager()
+
+tests/test_quarantine_subsystem.py::test_quarantine_deterministic_replay
+tests/test_quarantine_subsystem.py::test_quarantine_deterministic_replay
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_quarantine_subsystem.py:89: DeprecationWarning: QuarantineManager in mdrap.quarantine is deprecated; use SQLite quarantine storage and engine quarantine events directly.
+    qm = QuarantineManager()
+
+tests/test_quarantine_subsystem.py::test_quarantine_does_not_mutate_accepted_data
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_quarantine_subsystem.py:130: DeprecationWarning: QuarantineManager in mdrap.quarantine is deprecated; use SQLite quarantine storage and engine quarantine events directly.
+    qm = QuarantineManager()
+
+tests/test_reorder_buffer.py::test_reorder_buffer_pipeline_integration
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_reorder_buffer.py:112: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.
+    pipeline = Pipeline(store=store, quality=engine)
+
+tests/test_replay_engine.py::test_replay_engine_load_from_binary_journal
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_replay_engine.py:220: DeprecationWarning: BinaryJournal in mdrap.journal is deprecated in MDRAP v3.0.0; use IngestLog WAL (mdrap.ingestlog) as the mandatory durability boundary instead.
+    with BinaryJournal(jnl_path, initial_records=16) as jnl:
+
+tests/test_replay_engine.py::test_replay_engine_load_from_binary_journal
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\src\mdrap\replay.py:322: DeprecationWarning: BinaryJournalReader in mdrap.journal is deprecated in MDRAP v3.0.0; use IngestLog WAL (mdrap.ingestlog) as the mandatory durability boundary instead.
+    with BinaryJournalReader(filepath) as reader:
+
+tests/test_sdk_commercial.py::test_sdk_health_and_feeds
+  C:\Users\KIIT0001\AppData\Roaming\Python\Python313\site-packages\websockets\legacy\__init__.py:6: DeprecationWarning: websockets.legacy is deprecated; see https://websockets.readthedocs.io/en/stable/howto/upgrade.html for upgrade instructions
+    warnings.warn(  # deprecated in 14.0 - 2024-11-09
+
+tests/test_sdk_commercial.py::test_sdk_health_and_feeds
+  C:\Users\KIIT0001\AppData\Roaming\Python\Python313\site-packages\uvicorn\protocols\websockets\websockets_impl.py:16: DeprecationWarning: websockets.server.WebSocketServerProtocol is deprecated
+    from websockets.server import WebSocketServerProtocol
+
+tests/test_sdk_commercial.py::test_sdk_health_and_feeds
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_sdk_commercial.py:109: DeprecationWarning: Client / MDRAPClient is deprecated in MDRAP v3.0.0; use Engine or streaming endpoints directly.
+    with MDRAPClient(base_url=base_url, api_key=api_key) as client:
+
+tests/test_sdk_commercial.py::test_sdk_events_and_quality
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_sdk_commercial.py:140: DeprecationWarning: Client / MDRAPClient is deprecated in MDRAP v3.0.0; use Engine or streaming endpoints directly.
+    with MDRAPClient(base_url=base_url, api_key=api_key) as client:
+
+tests/test_sdk_commercial.py::test_sdk_audit_verification_and_export
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_sdk_commercial.py:161: DeprecationWarning: Client / MDRAPClient is deprecated in MDRAP v3.0.0; use Engine or streaming endpoints directly.
+    with MDRAPClient(base_url=base_url, api_key=api_key) as client:
+
+tests/test_sdk_commercial.py::test_sdk_depth_rest_fallback
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_sdk_commercial.py:178: DeprecationWarning: Client / MDRAPClient is deprecated in MDRAP v3.0.0; use Engine or streaming endpoints directly.
+    with MDRAPClient(base_url=base_url, api_key=api_key) as client:
+
+tests/test_sdk_public_contract.py::test_client_initialization_and_context_manager
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_sdk_public_contract.py:52: DeprecationWarning: Client / MDRAPClient is deprecated in MDRAP v3.0.0; use Engine or streaming endpoints directly.
+    client = Client(
+
+tests/test_security.py::test_pipeline_with_security
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_security.py:153: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.
+    pipeline = Pipeline(store=store, security=sec)
+
+tests/test_shm.py::test_mdrap_client_with_shm_end_to_end
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_shm.py:220: DeprecationWarning: Client / MDRAPClient is deprecated in MDRAP v3.0.0; use Engine or streaming endpoints directly.
+    client = MDRAPClient(
+
+tests/test_shm_decoupled.py::test_client_streaming_epoch_auto_recovery
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_shm_decoupled.py:164: DeprecationWarning: Client / MDRAPClient is deprecated in MDRAP v3.0.0; use Engine or streaming endpoints directly.
+    client = MDRAPClient(transport="shm", shm_name=shm_name)
+
+tests/test_shm_decoupled.py::test_transport_fallback_hierarchy
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_shm_decoupled.py:287: DeprecationWarning: Client / MDRAPClient is deprecated in MDRAP v3.0.0; use Engine or streaming endpoints directly.
+    client_auto = MDRAPClient(transport="auto", shm_name=non_existent)
+
+tests/test_shm_decoupled.py::test_transport_fallback_hierarchy
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_shm_decoupled.py:300: DeprecationWarning: Client / MDRAPClient is deprecated in MDRAP v3.0.0; use Engine or streaming endpoints directly.
+    client_shm = MDRAPClient(transport="shm", shm_name=non_existent)
+
+tests/test_shm_drainer.py::test_shm_drainer_to_journal_and_store
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_shm_drainer.py:72: DeprecationWarning: BinaryJournalReader in mdrap.journal is deprecated in MDRAP v3.0.0; use IngestLog WAL (mdrap.ingestlog) as the mandatory durability boundary instead.
+    with BinaryJournalReader(journal_path) as reader:
+
+tests/test_shm_drainer.py::test_shm_drainer_overrun_catchup
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_shm_drainer.py:133: DeprecationWarning: BinaryJournalReader in mdrap.journal is deprecated in MDRAP v3.0.0; use IngestLog WAL (mdrap.ingestlog) as the mandatory durability boundary instead.
+    with BinaryJournalReader(journal_path) as reader:
+
+tests/test_shm_publisher_crash.py::test_client_clean_exit_on_publisher_crash
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_shm_publisher_crash.py:183: DeprecationWarning: Client / MDRAPClient is deprecated in MDRAP v3.0.0; use Engine or streaming endpoints directly.
+    client = MDRAPClient(transport="shm", shm_name=shm_name)
+
+tests/test_strategy_sdk.py::test_spread_capture_market_maker
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\packages\mdrap-strategies\mdrap_strategies\__init__.py:1258: DeprecationWarning: Strategy and algorithmic execution models in mdrap.strategy_sdk are deprecated and non-core to the market data engine.
+    super().__init__(name="SpreadCaptureMM", symbols=syms)
+
+tests/test_strategy_sdk.py::test_avellaneda_stoikov_quoting_and_inventory_skew
+tests/test_strategy_sdk.py::test_avellaneda_stoikov_quality_shield
+tests/test_strategy_sdk.py::test_avellaneda_stoikov_passive_fills
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\packages\mdrap-strategies\mdrap_strategies\__init__.py:1333: DeprecationWarning: Strategy and algorithmic execution models in mdrap.strategy_sdk are deprecated and non-core to the market data engine.
+    super().__init__(
+
+tests/test_system_limitations.py::test_burst_throughput_saturation_and_latency_profile
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_system_limitations.py:356: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.
+    pipeline = Pipeline(store=store)
+
+tests/test_tca.py::test_tca_single_buy_price_improvement
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_tca.py:16: DeprecationWarning: TCAEngine and mdrap.tca are deprecated and non-core to the market data engine.
+    engine = TCAEngine()
+
+tests/test_tca.py::test_tca_single_sell_disimprovement_slippage
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_tca.py:59: DeprecationWarning: TCAEngine and mdrap.tca are deprecated and non-core to the market data engine.
+    engine = TCAEngine()
+
+tests/test_tca.py::test_tca_batch_evaluation_and_broker_scorecard
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_tca.py:101: DeprecationWarning: TCAEngine and mdrap.tca are deprecated and non-core to the market data engine.
+    engine = TCAEngine()
+
+tests/test_terminal_display.py::test_live_ticker_dashboard_single_ticker
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_terminal_display.py:111: DeprecationWarning: LiveTickerDashboard and mdrap.terminal_display are deprecated and non-core to the market data engine.
+    dash = LiveTickerDashboard()
+
+tests/test_terminal_display.py::test_live_ticker_dashboard_multi_ticker
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_terminal_display.py:182: DeprecationWarning: LiveTickerDashboard and mdrap.terminal_display are deprecated and non-core to the market data engine.
+    dash = LiveTickerDashboard()
+
+tests/test_terminal_display.py::test_cli_chart_command
+tests/test_terminal_display.py::test_cli_ticker_command
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_terminal_display.py:31: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.
+    pipe = Pipeline(store=store)
+
+tests/test_vessel.py::test_vessel_filtering
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_vessel.py:106: DeprecationWarning: VesselTracker and AIS vessel intelligence in mdrap.vessel are deprecated and non-core to the market data engine.
+    tracker = VesselTracker()
+
+tests/test_vessel.py::test_vessel_lookup
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_vessel.py:139: DeprecationWarning: VesselTracker and AIS vessel intelligence in mdrap.vessel are deprecated and non-core to the market data engine.
+    tracker = VesselTracker()
+
+tests/test_vessel.py::test_commodity_breakdown
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_vessel.py:161: DeprecationWarning: VesselTracker and AIS vessel intelligence in mdrap.vessel are deprecated and non-core to the market data engine.
+    tracker = VesselTracker()
+
+tests/test_vessel.py::test_update_position
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_vessel.py:187: DeprecationWarning: VesselTracker and AIS vessel intelligence in mdrap.vessel are deprecated and non-core to the market data engine.
+    tracker = VesselTracker()
+
+tests/test_vwap.py::test_daemon_vwap_command_and_client_query
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_vwap.py:260: DeprecationWarning: Client / MDRAPClient is deprecated in MDRAP v3.0.0; use Engine or streaming endpoints directly.
+    with MDRAPClient(host="127.0.0.1", port=9988, timeout=2.0) as client:
+
+tests/test_vwap.py::test_daemon_vwap_auth_guard
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_vwap.py:292: DeprecationWarning: Client / MDRAPClient is deprecated in MDRAP v3.0.0; use Engine or streaming endpoints directly.
+    with MDRAPClient(
+
+tests/test_vwap.py::test_daemon_vwap_auth_guard
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_vwap.py:301: DeprecationWarning: Client / MDRAPClient is deprecated in MDRAP v3.0.0; use Engine or streaming endpoints directly.
+    with MDRAPClient(
+
+tests/test_ws_feed.py::test_no_silent_drops_under_backpressure
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_ws_feed.py:319: DeprecationWarning: Pipeline is deprecated in MDRAP v3.0.0; use IngestLog, Engine, and SQLiteProjection instead.
+    pipeline = Pipeline(store=store)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+======== 1275 passed, 60 deselected, 663 warnings in 237.06s (0:03:57) ========
