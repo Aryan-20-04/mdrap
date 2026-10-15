@@ -774,6 +774,16 @@ def cmd_doctor(args):
     py_ver = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro} ({platform.python_implementation()})"
     t.add_row("Runtime", "Python Version", py_ver, format_status("PASS"))
 
+    # 1b. Hardware Profile
+    from ..profile import current_profile
+    prof = current_profile()
+    t.add_row(
+        "Hardware",
+        "Adaptive Profile",
+        f"{prof.mode.value} ({prof.cpu_cores} cores, {prof.total_ram_gb}GB RAM | Ring: {prof.summary()['ring_buffer_mb']}MB)",
+        format_status("PASS"),
+    )
+
     # 2. Config File
     cfg_path = find_config_path()
     cfg_str = str(cfg_path) if cfg_path else "Built-in defaults (in-memory)"

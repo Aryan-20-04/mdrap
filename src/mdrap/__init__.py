@@ -36,6 +36,8 @@ from .ingestlog import (
 from .pipeline import Pipeline, EnginePipeline
 from .projection import SQLiteProjection, DuckDBProjection
 from .storage import Store
+from .profile import HardwareProfile, ProfileMode, current_profile
+from .facade import stream, connect, doctor
 
 # Backward-compatible alias for deterministic engine
 CoreEngine = Engine
@@ -87,6 +89,12 @@ __all__ = [
     "Store",
     "Engine",
     "EngineConfig",
+    "HardwareProfile",
+    "ProfileMode",
+    "current_profile",
+    "stream",
+    "connect",
+    "doctor",
 ]
 
 __stability__ = "stable"
