@@ -37,6 +37,11 @@ jobs:
       - name: Run Test Suite
         run: pytest tests/ -q --timeout=120 --tb=short
 
+      - name: Run Test Suite (Pure Python Fallback Parity)
+        env:
+          MDRAP_DISABLE_FASTPATH: "1"
+        run: pytest tests/test_phase5_event_type_parity.py -q --tb=short
+
 
 
       - name: Verify Environment Diagnostics

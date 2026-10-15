@@ -36,17 +36,14 @@ jobs:
         run: |
           mkdir -p build
           if [ "${{ matrix.sanitizer }}" = "address" ]; then
-            gcc -fsanitize=address -O1 -g -fno-omit-frame-pointer -shared -fPIC -o src/libfastpath.so src/fastpath.c -lm
-            cp src/libfastpath.so src/_fastpath_native.so
-            gcc -fsanitize=address -O1 -g -fno-omit-frame-pointer -o build/mdrap-core src/mdrap_core.c -lm
+            gcc -fsanitize=address -O1 -g -fno-omit-frame-pointer -shared -fPIC -Isrc/mdrap -o src/mdrap/_fastpath_native.so src/mdrap/fastpath.c -lm
+            gcc -fsanitize=address -O1 -g -fno-omit-frame-pointer -Isrc/mdrap -o build/mdrap-core src/mdrap/mdrap_core.c -lm
           elif [ "${{ matrix.sanitizer }}" = "undefined" ]; then
-            gcc -fsanitize=undefined -O1 -g -shared -fPIC -o src/libfastpath.so src/fastpath.c -lm
-            cp src/libfastpath.so src/_fastpath_native.so
-            gcc -fsanitize=undefined -O1 -g -o build/mdrap-core src/mdrap_core.c -lm
+            gcc -fsanitize=undefined -O1 -g -shared -fPIC -Isrc/mdrap -o src/mdrap/_fastpath_native.so src/mdrap/fastpath.c -lm
+            gcc -fsanitize=undefined -O1 -g -Isrc/mdrap -o build/mdrap-core src/mdrap/mdrap_core.c -lm
           elif [ "${{ matrix.sanitizer }}" = "thread" ]; then
-            gcc -fsanitize=thread -O1 -g -shared -fPIC -o src/libfastpath.so src/fastpath.c -lm
-            cp src/libfastpath.so src/_fastpath_native.so
-            gcc -fsanitize=thread -O1 -g -o build/mdrap-core src/mdrap_core.c -lm
+            gcc -fsanitize=thread -O1 -g -shared -fPIC -Isrc/mdrap -o src/mdrap/_fastpath_native.so src/mdrap/fastpath.c -lm
+            gcc -fsanitize=thread -O1 -g -Isrc/mdrap -o build/mdrap-core src/mdrap/mdrap_core.c -lm
           fi
 
       - name: Run Native Core Under Sanitizer
