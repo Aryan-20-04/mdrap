@@ -27,7 +27,7 @@ def test_phase2_replay_determinism(tmp_path):
     for i in range(25):
         raw = RawEvent(
             source="NASDAQ",
-            payload={"instrument": "MSFT", "price": 400.0 + i, "sequence": i + 1, "exchange_ts": 1700000000.0 + i},
+            payload={"instrument": "MSFT", "event_type": "TRADE", "quantity": 10.0, "price": 400.0 + i, "sequence": i + 1, "exchange_ts": 1700000000.0 + i},
             receive_timestamp=1700000000.0 + i,
         )
         log.append(raw)
@@ -136,7 +136,7 @@ def test_phase2_restart_dedup(tmp_path):
     clock = FixedClock(1700000000.0)
     state = engine.create_initial_state()
 
-    raw1 = RawEvent(source="SRC", payload={"instrument": "AMZN", "price": 170.0, "sequence": 1, "exchange_ts": 1700000000.0})
+    raw1 = RawEvent(source="SRC", payload={"instrument": "AMZN", "event_type": "TRADE", "quantity": 10.0, "price": 170.0, "sequence": 1, "exchange_ts": 1700000000.0})
     state, dec1 = engine.step(state, raw1, clock, offset=0)
 
     # First apply: commits row, advances checkpoint to 0
@@ -144,7 +144,7 @@ def test_phase2_restart_dedup(tmp_path):
     assert proj.count_canonical() == 1
     assert proj.checkpoint() == 0
 
-    raw2 = RawEvent(source="SRC", payload={"instrument": "AMZN", "price": 171.0, "sequence": 2, "exchange_ts": 1700000001.0})
+    raw2 = RawEvent(source="SRC", payload={"instrument": "AMZN", "event_type": "TRADE", "quantity": 10.0, "price": 171.0, "sequence": 2, "exchange_ts": 1700000001.0})
     state, dec2 = engine.step(state, raw2, clock, offset=1)
 
     # Simulate crash before checkpoint: insert row directly into SQLite but without advancing projection_checkpoints

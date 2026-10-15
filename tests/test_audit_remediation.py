@@ -572,7 +572,7 @@ def test_cli_wal_verify_and_salvage_commands(tmp_path, capsys):
     wal_dir = tmp_path / "cli_wal"
     log = IngestLog(str(wal_dir))
     for i in range(5):
-        log.append(RawEvent(source="KRAKEN", payload={"instrument": "ETH/USD", "price": 3000.0 + i, "seq": i}))
+        log.append(RawEvent(source="KRAKEN", payload={"instrument": "ETH/USD", "event_type": "TRADE", "price": 3000.0 + i, "seq": i}))
     log.close()
 
     # 1. Test verify command with JSON output
@@ -1336,7 +1336,7 @@ def test_phase2_architectural_unification(tmp_path):
     # 5. Engine process_one contract
     single_raw = RawEvent(
         source="BINANCE",
-        payload={"instrument": "BTC/USDT", "price": 60000.0, "quantity": 1.0, "sequence": 2, "exchange_ts": t_now},
+        payload={"instrument": "BTC/USDT", "event_type": "TRADE", "price": 60000.0, "quantity": 1.0, "sequence": 2, "exchange_ts": t_now},
         receive_timestamp=t_now,
     )
     can_ev = state.engine.process_one(single_raw)
@@ -1403,7 +1403,7 @@ def test_phase3_concurrency_and_reliability(tmp_path):
     raws = [
         RawEvent(
             source="COINBASE",
-            payload={"instrument": "ETH/USD", "price": 3000.0 + i, "quantity": 1.0, "sequence": i + 1, "exchange_ts": t0},
+            payload={"instrument": "ETH/USD", "event_type": "TRADE", "price": 3000.0 + i, "quantity": 1.0, "sequence": i + 1, "exchange_ts": t0},
             receive_timestamp=t0,
         )
         for i in range(3)

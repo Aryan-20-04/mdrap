@@ -48,7 +48,7 @@ def run_worker(log_dir, db_path, ack_file, num_events, kill_after):
 
             raw = RawEvent(
                 source="SRC_G2",
-                payload={"instrument": "AAPL", "price": 150.0 + (i % 10), "sequence": i + 1, "exchange_ts": time.time()},
+                payload={"instrument": "AAPL", "event_type": "TRADE", "quantity": 10.0, "price": 150.0 + (i % 10), "sequence": i + 1, "exchange_ts": time.time()},
                 receive_timestamp=time.time(),
                 raw_id=f"g2_raw_{i}",
             )
