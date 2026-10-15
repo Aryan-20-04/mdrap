@@ -23,7 +23,7 @@
 | **F-10** | Native C vs Python Quality Decision Divergence (`fastpath.py`) | P1 (High) | **FIXED** | Phase 5 | Commit Phase 5 |
 | **F-11** | Fan-Out Benchmark Delivery Rate > 100% Contaminated | P1 (High) | **FIXED** | Phase 7 | Commit Phase 7 |
 | **F-12** | Native Parity Tests Skipped When C Lib Absent | P2 (Medium) | **FIXED** | Phase 5 & 10 | Commit Phase 5 |
-| **F-13** | Core Scope Sprawl (Options, TCA, Risk, Marine AIS) | P2 (Medium) | **CONFIRMED** | Phase 8 | Pending Phase 8 |
+| **F-13** | Core Scope Sprawl (Options, TCA, Risk, Marine AIS) | P2 (Medium) | **FIXED** | Phase 8 | Commit Phase 8 |
 
 ---
 
@@ -178,6 +178,7 @@
 ### F-13: Core Scope Sprawl
 - **Files:** `src/mdrap/options.py`, `src/mdrap/tca.py`, `src/mdrap/risk.py`, `src/mdrap/vessel.py`
 - **Severity:** P2 (Medium)
+- **Status:** FIXED (Phase 8)
 - **Expected Result:** Core engine focused strictly on high-throughput market data normalization, quality validation, and capture.
 - **Actual Result:** Financial analytics (Greeks, VaR, TCA) and unrelated marine tracking expand maintenance and audit surface.
-- **Resolution Strategy:** In Phase 8, classify modules; define clean extension interfaces without breaking backward compatibility.
+- **Resolution:** Formally separated codebase into strict tiers in `docs/product/edition-boundaries.md`. Verified Tier 1 core engine (`mdrap-core`) is 100% MIT with zero commercial or external runtime dependencies. Moved or stubbed Tier 3 companion domain modules (`options`, `tca`, `risk`, `strategy_sdk`, `vessel`) to emit `DeprecationWarning` when imported directly from `mdrap`. Core public exports in `mdrap/__init__.py` exclude all non-core analytics. Verified with `tests/test_phase8_edition_boundaries.py`.

@@ -9,8 +9,16 @@ drawdown monitoring, correlation analysis, and position limit enforcement.
 import math
 import statistics
 import random
+import warnings
 from dataclasses import dataclass
 from typing import Any
+
+warnings.warn(
+    "PortfolioRiskEngine and mdrap.risk are non-core to the market data engine "
+    "and scheduled for migration to mdrap_analytics; importing mdrap.risk directly is deprecated.",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 try:
     from . import fastpath
