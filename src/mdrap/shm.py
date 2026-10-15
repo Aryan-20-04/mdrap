@@ -17,6 +17,7 @@ Key Architectural Guarantees:
 from __future__ import annotations
 
 from collections.abc import Generator
+from enum import Enum
 import logging
 import os
 import platform
@@ -27,6 +28,30 @@ import time
 from dataclasses import dataclass
 
 logger = logging.getLogger("mdrap.shm")
+
+
+class ReaderState(str, Enum):
+    """Lifecycle state machine for SHMReader."""
+
+    DETACHED = "DETACHED"
+    ATTACHED = "ATTACHED"
+    INVALIDATED = "INVALIDATED"
+    REATTACHING = "REATTACHING"
+
+
+def _safe_unregister(name: str) -> None:
+    """Safely unregister shared memory name from multiprocessing resource_tracker."""
+    try:
+        from multiprocessing import resource_tracker
+
+        for target in (name, "/" + name.lstrip("/") if sys.platform != "win32" else name):
+            try:
+                resource_tracker.unregister(target, "shared_memory")
+            except Exception:
+                pass
+    except Exception:
+        pass
+
 
 try:
     from multiprocessing.shared_memory import SharedMemory
@@ -507,12 +532,7 @@ def _probe_active_epoch(name: str) -> int | None:
             probe = SharedMemory(name=name, create=False, track=False)
         except TypeError:
             probe = SharedMemory(name=name, create=False)
-            try:
-                from multiprocessing import resource_tracker
-
-                resource_tracker.unregister(probe._name, "shared_memory")
-            except Exception as exc:
-                logger.debug("[shm] Resource tracker unregister probe error: %s", exc)
+            _safe_unregister(probe._name)
         try:
             return struct.unpack_from("<Q", probe.buf, 16)[0]
         finally:
@@ -536,18 +556,14 @@ class SHMReader:
         _check_arm_shm_safety()
 
         self.name = name
+        self.state = ReaderState.DETACHED
         try:
             self.shm: SharedMemory | None = SharedMemory(
                 name=self.name, create=False, track=False
             )
         except TypeError:
             self.shm = SharedMemory(name=self.name, create=False)
-            try:
-                from multiprocessing import resource_tracker
-
-                resource_tracker.unregister(self.shm._name, "shared_memory")
-            except Exception as exc:
-                logger.debug("[shm] Resource tracker unregister reader error: %s", exc)
+            _safe_unregister(self.shm._name)
 
         buf_len = len(self.shm.buf)
         if buf_len < HEADER_SIZE + 2 * SLOT_SIZE:
@@ -582,6 +598,7 @@ class SHMReader:
         self.watermark_slots = int(self.slot_count * self.watermark_pct)
         self.overrun_stats = SHMOverrunStats()
         self._last_epoch_probe = 0.0
+        self.state = ReaderState.ATTACHED
 
     def is_watermark_warning_set(self) -> bool:
         """Check if the watermark warning bitflag is set in Cache Line 2."""
@@ -615,50 +632,88 @@ class SHMReader:
 
     def _reattach(self) -> bool:
         """Re-attach to named shared memory segment following a publisher restart or epoch change."""
+        self.state = ReaderState.REATTACHING
         try:
             if self.shm:
                 try:
                     self.shm.close()
                 except Exception:
                     pass
+                self.shm = None
             try:
                 self.shm = SharedMemory(name=self.name, create=False, track=False)
             except TypeError:
                 self.shm = SharedMemory(name=self.name, create=False)
-                try:
-                    from multiprocessing import resource_tracker
+                _safe_unregister(self.shm._name)
 
-                    resource_tracker.unregister(self.shm._name, "shared_memory")
-                except Exception:
-                    pass
-            self.epoch_id = struct.unpack_from("<Q", self.shm.buf, 16)[0]
+            buf_len = len(self.shm.buf)
+            if buf_len < HEADER_SIZE + 2 * SLOT_SIZE:
+                self.close()
+                return False
+
+            magic, ver, slot_sz, slot_cnt, reserved, epoch_id, head_seq, _ = (
+                HEADER_LINE1_STRUCT.unpack_from(self.shm.buf, 0)
+            )
+            if magic != MAGIC or ver != VERSION:
+                self.close()
+                return False
+
+            self.slot_size = slot_sz
+            self.slot_count = slot_cnt
+            self.mask = slot_cnt - 1
+            self.epoch_id = epoch_id
+            self.watermark_pct = DEFAULT_SHM_WATERMARK_PCT
+            self.watermark_slots = int(self.slot_count * self.watermark_pct)
             self._last_epoch_probe = time.time()
+            self.state = ReaderState.ATTACHED
             return True
         except Exception as exc:
             logger.debug("[shm] Failed to reattach to %s: %s", self.name, exc)
+            self.state = ReaderState.INVALIDATED
             return False
 
     def check_epoch_valid(self, force_probe: bool = False) -> bool:
         """
         Verify that the writer epoch has not changed (i.e. daemon has not restarted).
         Fast in-memory read from offset 16 of mapped buffer is zero syscalls.
-        External named segment probing is only performed when force_probe=True.
+        External named segment probing is performed when force_probe=True, when
+        the mapped POSIX inode is unlinked (st_nlink == 0), or when heartbeat is stale.
         """
-        if not self.shm:
+        if not self.shm or self.state == ReaderState.DETACHED:
             return False
         try:
+            # POSIX unlinked segment detection (st_nlink == 0)
+            if hasattr(self.shm, "_fd") and isinstance(self.shm._fd, int) and self.shm._fd >= 0:
+                try:
+                    if os.fstat(self.shm._fd).st_nlink == 0:
+                        self.state = ReaderState.INVALIDATED
+                        return False
+                except OSError:
+                    self.state = ReaderState.INVALIDATED
+                    return False
+
             current_epoch = struct.unpack_from("<Q", self.shm.buf, 16)[0]
             if current_epoch != self.epoch_id:
+                self.state = ReaderState.INVALIDATED
                 return False
-            if force_probe:
+
+            should_probe = force_probe
+            if not should_probe and not self.is_writer_alive(max_stale_s=2.0):
+                should_probe = True
+
+            if should_probe:
                 now = time.time()
-                if (now - self._last_epoch_probe) >= 0.05:
+                if (now - self._last_epoch_probe) >= 0.05 or force_probe:
                     self._last_epoch_probe = now
                     active_epoch = _probe_active_epoch(self.name)
                     if active_epoch is None or active_epoch != self.epoch_id:
+                        self.state = ReaderState.INVALIDATED
                         return False
+
+            self.state = ReaderState.ATTACHED
             return True
         except Exception:
+            self.state = ReaderState.INVALIDATED
             return False
 
     def read_latest_seq(self) -> int:
@@ -824,17 +879,12 @@ class SHMReader:
             return
 
         if not self.check_epoch_valid(force_probe=True):
-            try:
-                active_epoch = _probe_active_epoch(self.name)
-                if active_epoch is not None and active_epoch != self.epoch_id:
-                    self._reattach()
-                else:
-                    new_epoch = struct.unpack_from("<Q", self.shm.buf, 16)[0]
-                    self.epoch_id = new_epoch
-            except Exception as exc:
-                logger.debug("[shm] Error reading new epoch: %s", exc)
-            curr_seq = 0
-            yield {"type": "EPOCH_CHANGE"}
+            old_epoch = self.epoch_id
+            if self._reattach():
+                curr_seq = self.read_latest_seq()
+            else:
+                curr_seq = 0
+            yield {"type": "EPOCH_CHANGE", "old_epoch": old_epoch, "new_epoch": self.epoch_id}
 
         while True:
             # Fast in-memory epoch check (nanoseconds, zero syscalls)
@@ -883,17 +933,12 @@ class SHMReader:
                     return
 
                 if not self.check_epoch_valid(force_probe=False):
-                    try:
-                        active_epoch = _probe_active_epoch(self.name)
-                        if active_epoch is not None and active_epoch != self.epoch_id:
-                            self._reattach()
-                        else:
-                            new_epoch = struct.unpack_from("<Q", self.shm.buf, 16)[0]
-                            self.epoch_id = new_epoch
-                    except Exception as exc:
-                        logger.debug("[shm] Error updating epoch during spin: %s", exc)
-                    curr_seq = 0
-                    yield {"type": "EPOCH_CHANGE"}
+                    old_epoch = self.epoch_id
+                    if self._reattach():
+                        curr_seq = self.read_latest_seq()
+                    else:
+                        curr_seq = 0
+                    yield {"type": "EPOCH_CHANGE", "old_epoch": old_epoch, "new_epoch": self.epoch_id}
                     continue
 
             # Timeout check
@@ -922,6 +967,7 @@ class SHMReader:
 
     def close(self) -> None:
         """Close shared memory handle."""
+        self.state = ReaderState.DETACHED
         if self.shm:
             try:
                 self.shm.close()

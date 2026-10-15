@@ -112,8 +112,9 @@
 ### F-07: Linux POSIX Shared-Memory Reader Misses Publisher Restart
 - **File:** `src/mdrap/shm.py:641` (`SHMReader.check_epoch_valid`)
 - **Severity:** P0 (Critical)
+- **Status:** FIXED (Phase 2)
 - **Reproduction Status:** On POSIX/Linux, unlinking `/dev/shm/<name>` keeps existing file descriptors alive on the old unlinked inode. Readers reading `offset 16` of `self.shm.buf` read the old unlinked inode and report `check_epoch_valid() == True`, failing to detect the new publisher.
-- **Resolution Strategy:** In Phase 2, implement heartbeat stale detection and active filesystem/name inode probing in `check_epoch_valid()`. Establish state machine `DETACHED -> ATTACHED -> INVALIDATED -> REATTACHING -> ATTACHED`.
+- **Resolution:** Implemented `ReaderState` FSM (`DETACHED -> ATTACHED -> INVALIDATED -> REATTACHING -> ATTACHED`), POSIX `st_nlink == 0` unlinked inode detection via open fd `fstat`, heartbeat staleness check, active named segment epoch probe, and safe multiprocessing `resource_tracker` unregistration without `KeyError`. Verified across 25 consecutive restart test runs (25/25 PASS).
 
 ---
 
