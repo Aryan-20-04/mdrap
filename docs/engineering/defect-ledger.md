@@ -124,10 +124,11 @@
 ### F-08: Malformed Input Crashes Background Ingestion Loop
 - **File:** `src/mdrap/service.py:655, 683` (`_ingestion_loop`, `_process_and_broadcast`)
 - **Severity:** P0 (Critical)
+- **Status:** FIXED (Phase 4)
 - **Reproduction Command:** Submit raw event where `exchange_ts="INVALID_STRING"`. `float("INVALID_STRING")` raises `ValueError`, killing `_ingestion_loop` thread while daemon remains marked `_running = True`.
 - **Expected Result:** Malformed event is trapped, quarantined to dead-letter, and error counter incremented; ingestion thread continues processing subsequent valid events.
-- **Actual Result:** Worker thread terminates with uncaught exception; daemon reports running while completely stalled.
-- **Resolution Strategy:** In Phase 4, trap normalization/schema exceptions at event boundaries and expose worker thread liveness in health/readiness.
+- **Actual Result:** Worker thread terminated with uncaught exception; daemon reported running while completely stalled.
+- **Resolution:** Added safe type-tolerant timestamp and numeric parsing in `_process_and_broadcast()`. Wrapped feed polling loops in `_ingestion_loop()` with exception trapping, logging, and `_ingestion_errors` incrementing. Updated `is_degraded()` to verify `_ingest_thread.is_alive()` and error rate thresholds, exposing worker thread health directly in telemetry and status queries. Verified with `tests/test_phase4_ingest_failure_isolation.py`.
 
 ---
 

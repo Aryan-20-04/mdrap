@@ -158,6 +158,8 @@ class MarketDataDaemon:
         self._total_broadcast = 0
         self._total_dropped = 0
         self._total_rate_limited = 0
+        self._ingestion_errors = 0
+        self._last_ingest_ts = 0.0
         self._ingest_thread: Optional[threading.Thread] = None
         self._server_thread: Optional[threading.Thread] = None
 
@@ -632,7 +634,7 @@ class MarketDataDaemon:
             client_sock.close()
 
     def _ingestion_loop(self) -> None:
-        """Main feed ingestion loop: streams ticks into pipeline and broadcasts."""
+        """Main feed ingestion loop: streams ticks into pipeline and broadcasts with failure isolation."""
         if self.use_live:
             from .live import YahooFinanceFeed
 
@@ -640,7 +642,12 @@ class MarketDataDaemon:
             for raw in feed.poll():
                 if not self._running:
                     break
-                self._process_and_broadcast(raw)
+                try:
+                    self._process_and_broadcast(raw)
+                except Exception as exc:
+                    self._ingestion_errors += 1
+                    logger.warning("[daemon] Malformed event in live ingestion loop: %s (error: %s)", raw, exc)
+                self._last_ingest_ts = time.time()
         else:
             num_events = self.sim_events if self.sim_events > 0 else 10_000_000
             sim = FeedSimulator(SimulatorConfig(seed=42, num_events=num_events))
@@ -652,7 +659,12 @@ class MarketDataDaemon:
             for raw, _label in sim.generate():
                 if not self._running:
                     break
-                self._process_and_broadcast(raw)
+                try:
+                    self._process_and_broadcast(raw)
+                except Exception as exc:
+                    self._ingestion_errors += 1
+                    logger.warning("[daemon] Malformed event in sim ingestion loop: %s (error: %s)", raw, exc)
+                self._last_ingest_ts = time.time()
                 if sleep_s > 0:
                     time.sleep(sleep_s)
                 if self.sim_events > 0 and self._total_broadcast >= self.sim_events:
@@ -674,19 +686,43 @@ class MarketDataDaemon:
                 payload_dict = raw.payload if isinstance(raw.payload, dict) else {}
                 try:
                     ev_type = EventType(payload_dict.get("event_type", "TICK"))
-                except ValueError:
+                except (ValueError, TypeError):
                     ev_type = EventType.UNKNOWN
+
+                raw_ex_ts = payload_dict.get("exchange_ts")
+                try:
+                    ex_ts = float(raw_ex_ts) if raw_ex_ts is not None else float(raw.receive_timestamp or time.time())
+                except (ValueError, TypeError):
+                    ex_ts = float(raw.receive_timestamp or time.time()) if raw.receive_timestamp else time.time()
+
+                try:
+                    recv_ts = float(raw.receive_timestamp) if raw.receive_timestamp else time.time()
+                except (ValueError, TypeError):
+                    recv_ts = time.time()
+
+                raw_price = payload_dict.get("price")
+                try:
+                    parsed_price = float(raw_price) if raw_price is not None else None
+                except (ValueError, TypeError):
+                    parsed_price = None
+
+                raw_qty = payload_dict.get("quantity")
+                try:
+                    parsed_qty = float(raw_qty) if raw_qty is not None else None
+                except (ValueError, TypeError):
+                    parsed_qty = None
+
                 ev = CanonicalEvent(
                     event_id=dec.event_id,
-                    instrument_id=payload_dict.get("instrument", "UNKNOWN"),
+                    instrument_id=str(payload_dict.get("instrument", "UNKNOWN")),
                     event_type=ev_type,
-                    exchange_timestamp=float(payload_dict.get("exchange_ts", raw.receive_timestamp)),
-                    receive_timestamp=float(raw.receive_timestamp),
+                    exchange_timestamp=ex_ts,
+                    receive_timestamp=recv_ts,
                     processing_timestamp=time.time(),
                     source=raw.source,
                     sequence_number=payload_dict.get("sequence"),
-                    price=payload_dict.get("price"),
-                    quantity=payload_dict.get("quantity"),
+                    price=parsed_price,
+                    quantity=parsed_qty,
                     bid_price=payload_dict.get("bid"),
                     ask_price=payload_dict.get("ask"),
                     bid_size=payload_dict.get("bid_size"),
@@ -1004,6 +1040,10 @@ class MarketDataDaemon:
 
     def is_degraded(self) -> tuple[bool, str]:
         """Return whether the daemon is operating in degraded mode due to excessive drops or resource pressure."""
+        if self._running and self._ingest_thread is not None and not self._ingest_thread.is_alive():
+            return True, "Ingestion worker thread dead"
+        if self._ingestion_errors > 100:
+            return True, f"High ingestion error count: {self._ingestion_errors}"
         with self._sub_lock:
             active_drops = sum(s.dropped_ticks for s in self._sessions.values())
         total_drops = self._total_dropped + active_drops
@@ -1051,6 +1091,9 @@ class MarketDataDaemon:
             "active_clients": client_count,
             "dropped_ticks": total_dropped,
             "rate_limited_ticks": total_rate_limited,
+            "ingestion_errors": self._ingestion_errors,
+            "ingestion_thread_alive": bool(self._ingest_thread and self._ingest_thread.is_alive()) if self._running else False,
+            "last_ingest_ts": self._last_ingest_ts,
             "degraded": degraded,
             "degraded_reason": degraded_reason,
             "client_roles": role_breakdown,
