@@ -27,7 +27,12 @@ from .models import (
 )
 from .clock import Clock, FixedClock, SystemClock
 from .engine import Engine, EngineConfig, EngineDecision, EngineState
-from .ingestlog import IngestLog
+from .ingestlog import (
+    IngestLog,
+    IngestLogError,
+    IngestLogCorruptError,
+    IngestLogPoisonedError,
+)
 from .pipeline import Pipeline, EnginePipeline
 from .projection import SQLiteProjection, DuckDBProjection
 from .storage import Store
@@ -69,6 +74,9 @@ __all__ = [
     "FixedClock",
     "SystemClock",
     "IngestLog",
+    "IngestLogError",
+    "IngestLogCorruptError",
+    "IngestLogPoisonedError",
     "CoreEngine",
     "EngineDecision",
     "EngineState",

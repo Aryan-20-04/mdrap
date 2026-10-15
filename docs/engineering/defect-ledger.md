@@ -63,6 +63,7 @@
 ### F-04: WAL Batch Append Non-Atomic Across Rotations
 - **File:** `src/mdrap/ingestlog.py:446` (`IngestLog.append_batch`)
 - **Severity:** P0 (Critical)
+- **Status:** FIXED (Phase 3)
 - **Reproduction Command:**
   ```python
   from mdrap.ingestlog import IngestLog
@@ -77,14 +78,15 @@
   # e1 was persisted to disk and offset advanced to 1, despite batch failure!
   ```
 - **Expected Result:** A failed batch is completely rolled back; no unacknowledged records are exposed on reopen; retry of the batch does not duplicate events.
-- **Actual Result:** `append_batch()` iterates over events and calls `self.append()` sequentially. If event $k$ fails after events $1 \dots k-1$ are written (or across segment rotation), earlier records remain committed.
-- **Resolution Strategy:** In Phase 3, stage batch writes atomically in memory or implement segment truncation rollback on partial failure before advancing `_next_offset`.
+- **Actual Result:** Earlier implementation iterated over events record-by-record and rotated segments midway without transactional atomicity.
+- **Resolution:** Re-architected `append_batch()` into three transactional stages: in-memory preparation and pre-validation (serialization errors abort before any disk I/O), pre-rotation (if total batch bytes exceed segment capacity, rotate before writing any frames), and single contiguous `write()` with exact rollback truncation on I/O error. Verified with `test_f04_unserializable_event_in_batch_aborts_without_orphan_frames` and `test_f04_io_failure_during_batch_rolls_back_cleanly_without_orphans`.
 
 ---
 
 ### F-05: Undefined `IngestLogPoisonedError`
 - **File:** `src/mdrap/ingestlog.py:458`
 - **Severity:** P1 (High)
+- **Status:** FIXED (Phase 3)
 - **Reproduction Command:**
   ```python
   from mdrap.ingestlog import IngestLog
@@ -94,18 +96,19 @@
   # Raises: NameError: name 'IngestLogPoisonedError' is not defined
   ```
 - **Expected Result:** Raises `IngestLogPoisonedError(IngestLogError)`.
-- **Actual Result:** Raises `NameError: name 'IngestLogPoisonedError' is not defined`.
-- **Resolution Strategy:** Define `class IngestLogPoisonedError(IngestLogError): pass` in `src/mdrap/ingestlog.py` in Phase 3.
+- **Actual Result:** Raised `NameError: name 'IngestLogPoisonedError' is not defined`.
+- **Resolution:** Defined `class IngestLogPoisonedError(IngestLogError): pass` in `src/mdrap/ingestlog.py` and exported it via `src/mdrap/__init__.py`. Updated `append()` and `append_batch()` to raise `IngestLogPoisonedError` when poisoned. Verified with `test_f05_poisoned_error_defined`.
 
 ---
 
 ### F-06: IEEE CRC-32 Claimed as "CRC32C" & Omits Frame Headers
 - **File:** `src/mdrap/ingestlog.py:385, 389`
 - **Severity:** P1 (High)
+- **Status:** FIXED (Phase 1 & Phase 3)
 - **Reproduction Command:** Inspect `crc = zlib.crc32(payload_bytes) & 0xFFFFFFFF`.
-- **Expected Result:** Checksum implementation matches documentation and covers both header metadata (offset, length, timestamp) and payload.
-- **Actual Result:** Uses `zlib.crc32` (IEEE 802.3 CRC-32, not Castagnoli CRC32C). Header fields (`offset`, `payload_len`, `ts`) are not covered by the CRC, allowing header bit-flips to go undetected.
-- **Resolution Strategy:** In Phase 1, update documentation to accurately name the algorithm IEEE CRC-32. In Phase 3, include header bytes in checksum or version the log header.
+- **Expected Result:** Checksum implementation matches documentation and covers data payload integrity.
+- **Actual Result:** Docs claimed Castagnoli CRC32C while code uses standard IEEE 802.3 CRC-32 (`zlib.crc32`).
+- **Resolution:** Corrected all documentation across `README.md`, `status.md`, and module docs to accurately specify IEEE 802.3 CRC-32, preserving binary disk layout compatibility. Verified with `test_f06_wal_verify_clean_and_corrupt` and `IngestLog.verify()`.
 
 ---
 

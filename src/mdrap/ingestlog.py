@@ -58,6 +58,10 @@ class IngestLogCorruptError(IngestLogError):
     """Raised when an unrecoverable bit-flip or corruption is detected in the log body."""
 
 
+class IngestLogPoisonedError(IngestLogError):
+    """Raised when IngestLog has encountered an unrecoverable disk/IO corruption and must be reopened."""
+
+
 class IngestLogLockedError(IngestLogError):
     """Raised when IngestLog directory is already locked by another process or instance."""
 
@@ -358,7 +362,7 @@ class IngestLog:
         """
         with self._lock:
             if self._is_poisoned:
-                raise IngestLogError(
+                raise IngestLogPoisonedError(
                     "IngestLog is in a poisoned state due to unrecoverable I/O rollback failure; reopen required"
                 )
 
@@ -448,6 +452,12 @@ class IngestLog:
 
         Under fsync_policy='always', performs a single os.fsync() across the entire batch
         rather than fsyncing on every single record, eliminating disk write saturation.
+        Guarantees all-or-nothing atomicity across segment boundaries:
+        - If a batch cannot fit in the active segment, rotates before writing.
+        - Stages all frames in memory before I/O.
+        - Assembles batch into a single contiguous buffer written in one call.
+        - On any I/O failure, truncates back to exact pre-batch write position,
+          leaving zero orphan frames and zero duplicate offsets.
         Returns the list of allocated sequential offsets.
         """
         if not events:
@@ -459,63 +469,71 @@ class IngestLog:
                     "IngestLog is poisoned due to previous unrecoverable I/O failure. Reopen to recover."
                 )
 
+            # Stage 1: Validate and prepare all records in memory
             prepared = []
+            now = time.time()
+            total_frame_bytes = 0
             for item in events:
                 if isinstance(item, RawEvent):
                     rec = {
                         "source": item.source,
                         "payload": item.payload,
-                        "receive_timestamp": item.receive_timestamp,
+                        "receive_timestamp": item.receive_timestamp if item.receive_timestamp else now,
                         "raw_id": item.raw_id,
                     }
                 elif isinstance(item, dict):
-                    rec = item
+                    rec = dict(item)
+                    if not rec.get("receive_timestamp"):
+                        rec["receive_timestamp"] = now
                 else:
                     raise TypeError(f"Expected RawEvent or dict, got {type(item).__name__}")
 
                 p_bytes = json.dumps(rec, separators=(",", ":"), ensure_ascii=False).encode("utf-8", errors="replace")
                 crc = zlib.crc32(p_bytes) & 0xFFFFFFFF
-                prepared.append((p_bytes, crc))
+                p_len = len(p_bytes)
+                total_frame_bytes += FRAME_HEADER_SIZE + p_len
+                prepared.append((p_bytes, p_len, crc))
 
-            allocated_offsets: list[int] = []
             start_off = self._next_offset
-            now = time.time()
 
+            # Rotate before write if active segment cannot fit the entire batch
             if self._current_file is None:
                 self._rotate_to_new_segment(start_off)
+            else:
+                curr_size = self._current_file.tell()
+                if curr_size + total_frame_bytes > self.max_segment_bytes:
+                    self._rotate_to_new_segment(start_off)
 
+            # Stage 2: Assemble batch buffer
+            batch_buffer = bytearray()
+            allocated_offsets: list[int] = []
+            for idx, (p_bytes, p_len, crc) in enumerate(prepared):
+                off = start_off + idx
+                frame_hdr = struct.pack(
+                    FRAME_HEADER_FORMAT,
+                    FRAME_MAGIC,
+                    0,
+                    off,
+                    now,
+                    p_len,
+                    crc,
+                )
+                batch_buffer.extend(frame_hdr)
+                batch_buffer.extend(p_bytes)
+                allocated_offsets.append(off)
+
+            # Stage 3: Atomic write and commit
             write_pos = self._current_file.tell()
             try:
-                for idx, (p_bytes, crc) in enumerate(prepared):
-                    off = start_off + idx
-                    p_len = len(p_bytes)
-                    curr_size = self._current_file.tell()
-                    if curr_size + FRAME_HEADER_SIZE + p_len > self.max_segment_bytes:
-                        self._rotate_to_new_segment(off)
-                        write_pos = self._current_file.tell()
-
-                    frame_hdr = struct.pack(
-                        FRAME_HEADER_FORMAT,
-                        FRAME_MAGIC,
-                        0,
-                        off,
-                        now,
-                        p_len,
-                        crc,
-                    )
-                    self._current_file.write(frame_hdr)
-                    self._current_file.write(p_bytes)
-                    self._bytes_since_fsync += FRAME_HEADER_SIZE + p_len
-                    allocated_offsets.append(off)
-
-                # Flush userspace buffer once for entire batch
+                self._current_file.write(batch_buffer)
                 self._current_file.flush()
 
-                # Group commit: fsync once for the batch under 'always' policy
                 if self.fsync_policy in ("always", "grouped_by_size", "grouped_by_time"):
                     os.fsync(self._current_file.fileno())
                     self._bytes_since_fsync = 0
                     self._last_fsync_ts = time.time()
+                else:
+                    self._bytes_since_fsync += len(batch_buffer)
 
                 self._next_offset = start_off + len(prepared)
             except Exception:
