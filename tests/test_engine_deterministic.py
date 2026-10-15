@@ -108,7 +108,7 @@ def test_engine_poison_and_invalid_payloads_quarantined():
     # Healthy event following poison events processes cleanly
     healthy_ev = RawEvent(
         source="HEALTHY",
-        payload={"instrument": "AAPL", "price": 150.0, "sequence": 1, "exchange_ts": 1700000000.0},
+        payload={"instrument": "AAPL", "event_type": "TRADE", "price": 150.0, "sequence": 1, "exchange_ts": 1700000000.0},
         receive_timestamp=1700000000.0,
     )
     state, dec_healthy = engine.step(state, healthy_ev, clock)

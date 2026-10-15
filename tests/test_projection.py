@@ -23,7 +23,7 @@ def test_sqlite_projection_atomic_apply_and_checkpoint(tmp_path):
     for i in range(5):
         raw = RawEvent(
             source="TEST",
-            payload={"instrument": "GOOGL", "price": 140.0 + i, "sequence": i + 1, "exchange_ts": 1700000000.0 + i},
+            payload={"instrument": "GOOGL", "event_type": "TRADE", "price": 140.0 + i, "sequence": i + 1, "exchange_ts": 1700000000.0 + i},
             receive_timestamp=1700000000.0 + i,
         )
         state, dec = engine.step(state, raw, clock)
@@ -53,7 +53,7 @@ def test_sqlite_projection_idempotent_replay(tmp_path):
     for i in range(10):
         raw = RawEvent(
             source="TEST",
-            payload={"instrument": "AMZN", "price": 180.0 + i, "sequence": i + 1, "exchange_ts": 1700000000.0 + i},
+            payload={"instrument": "AMZN", "event_type": "TRADE", "price": 180.0 + i, "sequence": i + 1, "exchange_ts": 1700000000.0 + i},
             receive_timestamp=1700000000.0 + i,
         )
         state, dec = engine.step(state, raw, clock)
@@ -84,7 +84,7 @@ def test_sqlite_projection_rollback_on_failure(tmp_path):
     engine = Engine()
     clock = FixedClock(1700000000.0)
     state = engine.create_initial_state()
-    _, dec = engine.step(state, RawEvent(source="TEST", payload={"instrument": "META", "price": 500.0}), clock)
+    _, dec = engine.step(state, RawEvent(source="TEST", payload={"instrument": "META", "event_type": "TRADE", "price": 500.0}), clock)
 
     with pytest.raises(Exception):
         proj.apply([dec], offset=0)

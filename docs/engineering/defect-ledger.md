@@ -19,10 +19,10 @@
 | **F-06** | Claimed "CRC32C" is IEEE CRC-32 & Omits Headers | P1 (High) | **REPRODUCED** | Phase 1 & 3 | Pending Phase 1/3 |
 | **F-07** | Linux POSIX SHM Unlink Prevents Restart Detection (`shm.py`) | P0 (Critical) | **REPRODUCED** (POSIX model) | Phase 2 | Pending Phase 2 |
 | **F-08** | Ingestion Loop Dies on Malformed Input (`service.py`) | P0 (Critical) | **REPRODUCED** | Phase 4 | Pending Phase 4 |
-| **F-09** | Missing/Unknown Event Types Accepted as Valid (`engine.py`) | P0 (Critical) | **REPRODUCED** | Phase 5 | Pending Phase 5 |
-| **F-10** | Native C vs Python Quality Decision Divergence (`fastpath.py`) | P1 (High) | **REPRODUCED** | Phase 5 | Pending Phase 5 |
+| **F-09** | Missing/Unknown Event Types Accepted as Valid (`engine.py`) | P0 (Critical) | **FIXED** | Phase 5 | Commit Phase 5 |
+| **F-10** | Native C vs Python Quality Decision Divergence (`fastpath.py`) | P1 (High) | **FIXED** | Phase 5 | Commit Phase 5 |
 | **F-11** | Fan-Out Benchmark Delivery Rate > 100% Contaminated | P1 (High) | **REPRODUCED** | Phase 7 | Pending Phase 7 |
-| **F-12** | Native Parity Tests Skipped When C Lib Absent | P2 (Medium) | **CONFIRMED** | Phase 5 & 10 | Pending Phase 5/10 |
+| **F-12** | Native Parity Tests Skipped When C Lib Absent | P2 (Medium) | **FIXED** | Phase 5 & 10 | Commit Phase 5 |
 | **F-13** | Core Scope Sprawl (Options, TCA, Risk, Marine AIS) | P2 (Medium) | **CONFIRMED** | Phase 8 | Pending Phase 8 |
 
 ---
@@ -135,6 +135,7 @@
 ### F-09: Missing / Unknown Event Types Accepted as Valid
 - **File:** `src/mdrap/engine.py:736, 1001`
 - **Severity:** P0 (Critical)
+- **Status:** FIXED (Phase 5)
 - **Reproduction Command:**
   ```python
   from mdrap.engine import Engine
@@ -142,21 +143,22 @@
   engine = Engine.open(None)
   raw = RawEvent(source="X", receive_timestamp=1.0, payload={"instrument": "AAPL", "price": 100.0, "event_type": "UNKNOWN_GARBAGE"})
   dec = engine.submit(raw)
-  print(dec.quality_status)  # Outputs: QualityStatus.VALID!
+  print(dec.quality_status)  # Outputs: QualityStatus.INVALID ['SCHEMA_VIOLATION']
   ```
 - **Expected Result:** Unknown or missing event types are rejected with `QualityStatus.INVALID` and `Reason.SCHEMA_VIOLATION`.
-- **Actual Result:** Missing `event_type` defaults to `"TRADE"` (line 736); unknown string in `event_type` falls back to `EventType.UNKNOWN` (line 1004) and is published as `QualityStatus.VALID`.
-- **Resolution Strategy:** In Phase 5, strictly validate `event_type` against allowed enum values; quarantine missing/unknown types.
+- **Actual Result:** Missing `event_type` defaulted to `"TRADE"` (line 736); unknown string in `event_type` fell back to `EventType.UNKNOWN` (line 1004) and was published as `QualityStatus.VALID`.
+- **Resolution:** Added strict schema validation in `Engine._step_internal()` requiring `event_type` to be present and a member of `("TRADE", "QUOTE", "BBO", "BOOK", "DEPTH")`. Enforced structural constraints requiring `price` for `TRADE` and at least one of `bid` or `ask` for `QUOTE`/`BBO`. Missing or unknown types are quarantined with `QualityStatus.INVALID` and `Reason.SCHEMA_VIOLATION`. Verified with `tests/test_phase5_event_type_parity.py`.
 
 ---
 
 ### F-10 & F-12: Native C vs Python Quality Decision Divergence
-- **File:** `src/mdrap/fastpath.py:1076`
+- **File:** `src/mdrap/fastpath.py:1076, 1229`, `src/mdrap/fastpath.c:608`
 - **Severity:** P1 (High)
+- **Status:** FIXED (Phase 5)
 - **Reproduction Command:** Inspect `1 if event.event_type == EventType.QUOTE else 0` passed to `_C_EXT.eval_fast2`.
 - **Expected Result:** Native C fastpath and Python `QualityEngine` handle all event types (`TRADE`, `QUOTE`, `BBO`, `BOOK`, `DEPTH`, `UNKNOWN`) with identical decisions and reason bitmasks.
-- **Actual Result:** Native C engine only distinguishes `QUOTE` vs non-quote (treated as `TRADE`), leading to divergent evaluations on order book and depth events.
-- **Resolution Strategy:** In Phase 5, align C kernel signatures and event-type handling; run automated differential fuzzing.
+- **Actual Result:** Native C engine only distinguished `QUOTE` vs non-quote (treated as `TRADE`), leading to divergent evaluations on order book, depth, and unknown events.
+- **Resolution:** Updated `FastQualityEngine._evaluate_unlocked()` and `_evaluate_batch_unlocked()` to map `EventType.QUOTE` -> `1`, `EventType.TRADE` -> `0`, and all non-quote/trade or unknown event types to `-1`. C kernel flags any non-0/non-1 event type as `STATUS_INVALID` and `REASON_SCHEMA_VIOLATION`. Verified 100% parity across all event types between native C and Python fallback in `tests/test_phase5_event_type_parity.py`.
 
 ---
 

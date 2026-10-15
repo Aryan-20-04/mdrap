@@ -246,7 +246,7 @@ def test_strict_batch_alignment_on_engine_submit(tmp_path):
         # 0: Valid
         RawEvent(
             source="FEED_A",
-            payload={"instrument": "AAPL", "price": 150.0, "quantity": 10.0, "sequence": 1, "exchange_ts": 1700000000.0},
+            payload={"instrument": "AAPL", "event_type": "TRADE", "price": 150.0, "quantity": 10.0, "sequence": 1, "exchange_ts": 1700000000.0},
             receive_timestamp=1700000000.001,
             raw_id="ev_0",
         ),
@@ -260,7 +260,7 @@ def test_strict_batch_alignment_on_engine_submit(tmp_path):
         # 2: Valid
         RawEvent(
             source="FEED_A",
-            payload={"instrument": "AAPL", "price": 150.5, "quantity": 10.0, "sequence": 2, "exchange_ts": 1700000000.003},
+            payload={"instrument": "AAPL", "event_type": "TRADE", "price": 150.5, "quantity": 10.0, "sequence": 2, "exchange_ts": 1700000000.003},
             receive_timestamp=1700000000.003,
             raw_id="ev_2",
         ),
@@ -375,7 +375,7 @@ def test_multi_engine_process_isolation(tmp_path):
     events_a = [
         RawEvent(
             source="FEED_SHARED",
-            payload={"instrument": "AAPL", "price": 100.0 + i, "sequence": i + 1, "exchange_ts": 1700000000.0 + i},
+            payload={"instrument": "AAPL", "event_type": "TRADE", "price": 100.0 + i, "sequence": i + 1, "exchange_ts": 1700000000.0 + i},
             receive_timestamp=1700000000.001 + i,
             raw_id=f"a_{i}",
         )
@@ -387,7 +387,7 @@ def test_multi_engine_process_isolation(tmp_path):
     # If state were global, this would be flagged as DUPLICATE or OUT_OF_ORDER!
     event_b = RawEvent(
         source="FEED_SHARED",
-        payload={"instrument": "AAPL", "price": 200.0, "sequence": 1, "exchange_ts": 1700000000.0},
+        payload={"instrument": "AAPL", "event_type": "TRADE", "price": 200.0, "sequence": 1, "exchange_ts": 1700000000.0},
         receive_timestamp=1700000000.001,
         raw_id="b_0",
     )

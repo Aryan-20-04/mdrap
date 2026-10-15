@@ -733,10 +733,12 @@ class Engine:
 
         # 2. Schema field validation
         instrument = payload.get("instrument")
-        event_type_str = payload.get("event_type", "TRADE")
+        raw_event_type = payload.get("event_type")
+
+        # Check for backpressure drop / tombstone
         if (
             payload.get("drop_reason") == "BACKPRESSURE_DROP"
-            or event_type_str == "TOMBSTONE_DROPPED"
+            or raw_event_type == "TOMBSTONE_DROPPED"
         ):
             event_id = f"q_{raw_event.source}_{offset}"
             q_row = (
@@ -756,6 +758,7 @@ class Engine:
                 reasons=[Reason.BACKPRESSURE_DROP.value],
                 quarantine_row=q_row,
             )
+
         if not instrument or not isinstance(instrument, str):
             event_id = f"q_{raw_event.source}_{offset}"
             q_row = (
@@ -764,6 +767,94 @@ class Engine:
                 raw_event.source,
                 QualityStatus.INVALID.value,
                 json.dumps(["Missing or invalid instrument string"]),
+                json.dumps(payload, default=str),
+                recv_ts,
+            )
+            state.counts["INVALID"] += 1
+            return state, EngineDecision(
+                offset=offset,
+                event_id=event_id,
+                quality_status=QualityStatus.INVALID,
+                reasons=[Reason.SCHEMA_VIOLATION.value],
+                quarantine_row=q_row,
+            )
+
+        # F-09: Event type validation - missing or unknown types must be quarantined as INVALID
+        if raw_event_type is None:
+            event_id = f"q_{raw_event.source}_{offset}"
+            q_row = (
+                event_id,
+                instrument,
+                raw_event.source,
+                QualityStatus.INVALID.value,
+                json.dumps(["Missing required event_type field"]),
+                json.dumps(payload, default=str),
+                recv_ts,
+            )
+            state.counts["INVALID"] += 1
+            return state, EngineDecision(
+                offset=offset,
+                event_id=event_id,
+                quality_status=QualityStatus.INVALID,
+                reasons=[Reason.SCHEMA_VIOLATION.value],
+                quarantine_row=q_row,
+            )
+
+        if isinstance(raw_event_type, EventType):
+            event_type_str = raw_event_type.value
+        elif isinstance(raw_event_type, str):
+            event_type_str = raw_event_type.strip().upper()
+        else:
+            event_type_str = ""
+
+        if event_type_str not in ("TRADE", "QUOTE", "BBO", "BOOK", "DEPTH"):
+            event_id = f"q_{raw_event.source}_{offset}"
+            q_row = (
+                event_id,
+                instrument,
+                raw_event.source,
+                QualityStatus.INVALID.value,
+                json.dumps([f"Unknown or invalid event_type: {raw_event_type!r}"]),
+                json.dumps(payload, default=str),
+                recv_ts,
+            )
+            state.counts["INVALID"] += 1
+            return state, EngineDecision(
+                offset=offset,
+                event_id=event_id,
+                quality_status=QualityStatus.INVALID,
+                reasons=[Reason.SCHEMA_VIOLATION.value],
+                quarantine_row=q_row,
+            )
+
+        # Structural validation per event type
+        if event_type_str == "TRADE" and payload.get("price") is None:
+            event_id = f"q_{raw_event.source}_{offset}"
+            q_row = (
+                event_id,
+                instrument,
+                raw_event.source,
+                QualityStatus.INVALID.value,
+                json.dumps(["TRADE event requires price"]),
+                json.dumps(payload, default=str),
+                recv_ts,
+            )
+            state.counts["INVALID"] += 1
+            return state, EngineDecision(
+                offset=offset,
+                event_id=event_id,
+                quality_status=QualityStatus.INVALID,
+                reasons=[Reason.SCHEMA_VIOLATION.value],
+                quarantine_row=q_row,
+            )
+        elif event_type_str in ("QUOTE", "BBO") and payload.get("bid") is None and payload.get("ask") is None:
+            event_id = f"q_{raw_event.source}_{offset}"
+            q_row = (
+                event_id,
+                instrument,
+                raw_event.source,
+                QualityStatus.INVALID.value,
+                json.dumps(["QUOTE/BBO event requires at least one of bid or ask"]),
                 json.dumps(payload, default=str),
                 recv_ts,
             )

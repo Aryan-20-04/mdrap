@@ -1066,6 +1066,17 @@ class FastQualityEngine:
                 self.reason_counts[r] = self.reason_counts.get(r, 0) + 1
             return res
 
+        # F-10: Map event type cleanly for C hotpath (1=QUOTE, 0=TRADE, -1=other/unknown)
+        c_ev_type = (
+            1
+            if (event.event_type == EventType.QUOTE or event.event_type == "QUOTE")
+            else (
+                0
+                if (event.event_type == EventType.TRADE or event.event_type == "TRADE")
+                else -1
+            )
+        )
+
         try:
             # Phase 3: Ultra-fast C-API extension (< 250 ns, zero ctypes boxing)
             if self._engine_ptr_c and _C_EXT:
@@ -1073,7 +1084,7 @@ class FastQualityEngine:
                     self._engine_ptr_c,
                     s_id,
                     i_id,
-                    1 if event.event_type == EventType.QUOTE else 0,
+                    c_ev_type,
                     event.exchange_timestamp,
                     event.receive_timestamp,
                     event.sequence_number if event.sequence_number is not None else -1,
@@ -1091,7 +1102,7 @@ class FastQualityEngine:
                     self._engine_ptr,
                     s_id,
                     i_id,
-                    1 if event.event_type == EventType.QUOTE else 0,
+                    c_ev_type,
                     event.exchange_timestamp,
                     event.receive_timestamp,
                     event.sequence_number if event.sequence_number is not None else -1,
@@ -1108,7 +1119,7 @@ class FastQualityEngine:
                     self._engine_ptr,
                     s_id,
                     i_id,
-                    1 if event.event_type == EventType.QUOTE else 0,
+                    c_ev_type,
                     event.exchange_timestamp,
                     event.receive_timestamp,
                     event.sequence_number if event.sequence_number is not None else -1,
@@ -1123,7 +1134,7 @@ class FastQualityEngine:
                 packed = _FAST_EVAL(
                     s_id,
                     i_id,
-                    1 if event.event_type == EventType.QUOTE else 0,
+                    c_ev_type,
                     event.exchange_timestamp,
                     event.receive_timestamp,
                     event.sequence_number if event.sequence_number is not None else -1,
@@ -1226,7 +1237,15 @@ class FastQualityEngine:
             if ev.ask_size is not None:
                 pm |= FE_HAS_ASK_SZ
 
-            c_ev.event_type = 1 if ev.event_type == EventType.QUOTE else 0
+            c_ev.event_type = (
+                1
+                if (ev.event_type == EventType.QUOTE or ev.event_type == "QUOTE")
+                else (
+                    0
+                    if (ev.event_type == EventType.TRADE or ev.event_type == "TRADE")
+                    else -1
+                )
+            )
             c_ev.present_mask = pm
             c_ev.exchange_ts = ev.exchange_timestamp
             c_ev.receive_ts = ev.receive_timestamp
