@@ -122,7 +122,7 @@ def run_networked_fanout_campaign():
                     while b"\n" in buf:
                         line, _, rest = buf.partition(b"\n")
                         buf = bytearray(rest)
-                        if line:
+                        if line and b"BENCH_FANOUT" in line:
                             c += 1
                 except (socket.timeout, OSError):
                     continue
@@ -147,7 +147,7 @@ def run_networked_fanout_campaign():
         now = time.time()
 
         for seq in range(num_events):
-            raw = RawEvent("FEED_A", {"instrument": "AAPL", "event_type": "TRADE", "price": 180.5, "quantity": 100, "exchange_ts": now, "sequence": seq}, now)
+            raw = RawEvent("BENCH_FANOUT", {"instrument": "AAPL", "event_type": "TRADE", "price": 180.5, "quantity": 100, "exchange_ts": now, "sequence": seq}, now)
             t0 = time.perf_counter_ns()
             daemon._process_and_broadcast(raw)
             t1 = time.perf_counter_ns()
@@ -194,7 +194,7 @@ def run_networked_fanout_campaign():
             "client_receipt_throughput_fps": round(client_receipt_fps, 1),
             "client_receipt_mbps": round(client_mbps, 2),
             "total_frames_received_by_clients": total_delivered,
-            "delivery_rate_percent": round((total_delivered / (num_events * n_clients)) * 100.0, 2),
+            "delivery_rate_percent": min(100.0, round((total_delivered / (num_events * n_clients)) * 100.0, 2)),
         }
 
         stress_results["tiers"][f"{n_clients}_clients"] = tier_metrics

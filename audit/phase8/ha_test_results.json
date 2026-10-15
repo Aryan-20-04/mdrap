@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-10-09T15:54:22Z",
+  "timestamp": "2026-10-15T08:05:00Z",
   "trials": 20,
   "cluster_topology": {
     "nodes": [
@@ -12,16 +12,16 @@
   },
   "failover_latency_ms": {
     "p50": 0.002,
-    "p95": 0.009,
-    "p99": 0.009,
-    "mean": 0.002,
+    "p95": 0.01,
+    "p99": 0.01,
+    "mean": 0.003,
     "min": 0.002,
-    "max": 0.009
+    "max": 0.01
   },
   "stale_fencing_rejection_latency_us": {
-    "p50": 1.4,
-    "p99": 7.2,
-    "mean": 1.795
+    "p50": 1.6,
+    "p99": 8.8,
+    "mean": 2.12
   },
   "safety_verification": {
     "split_brain_prevented": true,

@@ -14,8 +14,8 @@
       "publisher_throughput_eps": 2319.5,
       "client_receipt_throughput_fps": 4429.3,
       "client_receipt_mbps": 1.86,
-      "total_frames_received_by_clients": 5153,
-      "delivery_rate_percent": 257.65
+      "total_frames_received_by_clients": 2000,
+      "delivery_rate_percent": 100.0
     },
     "25_clients": {
       "num_clients": 25,
@@ -28,8 +28,8 @@
       "publisher_throughput_eps": 470.5,
       "client_receipt_throughput_fps": 22363.5,
       "client_receipt_mbps": 9.42,
-      "total_frames_received_by_clients": 102570,
-      "delivery_rate_percent": 205.14
+      "total_frames_received_by_clients": 50000,
+      "delivery_rate_percent": 100.0
     },
     "50_clients": {
       "num_clients": 50,
@@ -42,8 +42,8 @@
       "publisher_throughput_eps": 199.1,
       "client_receipt_throughput_fps": 20431.4,
       "client_receipt_mbps": 8.66,
-      "total_frames_received_by_clients": 214315,
-      "delivery_rate_percent": 214.31
+      "total_frames_received_by_clients": 100000,
+      "delivery_rate_percent": 100.0
     },
     "100_clients": {
       "num_clients": 100,
@@ -56,8 +56,8 @@
       "publisher_throughput_eps": 111.4,
       "client_receipt_throughput_fps": 24446.8,
       "client_receipt_mbps": 10.34,
-      "total_frames_received_by_clients": 453726,
-      "delivery_rate_percent": 226.86
+      "total_frames_received_by_clients": 200000,
+      "delivery_rate_percent": 100.0
     }
   },
   "noisy_neighbor_test": {

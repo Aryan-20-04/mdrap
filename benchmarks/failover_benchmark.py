@@ -1,7 +1,9 @@
 """
-MDRAP Phase 8 High Availability Failover & Fencing Benchmark.
-Measures failover transition latency, epoch advancement speed, and stale write
-rejection rates across simulated multi-node cluster failovers.
+MDRAP Single-Node In-Process Lease Epoch Handover & Fencing Benchmark.
+
+Note: MDRAP v3.1 is scoped strictly as a single-node engine. This benchmark measures
+in-process coordinator epoch advancement and FencedWALWriter rejection latency.
+For production single-node crash recovery, see run_wal_recovery_benchmark().
 """
 
 import sys
@@ -9,6 +11,8 @@ import os
 import time
 import json
 import statistics
+import tempfile
+import shutil
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
@@ -19,6 +23,8 @@ from mdrap.consensus import (
     FencingTokenError,
     QuorumLossError,
 )
+from mdrap.ingestlog import IngestLog
+from mdrap.models import RawEvent
 
 
 def run_failover_benchmark(num_trials=20):
@@ -116,5 +122,55 @@ def run_failover_benchmark(num_trials=20):
     return results
 
 
+def run_wal_recovery_benchmark(num_trials=10, events_per_trial=5000):
+    """Benchmark true single-node crash recovery and WAL replay performance."""
+    print(f"=== MDRAP Single-Node WAL Crash Recovery Benchmark ({num_trials} trials, {events_per_trial} events/trial) ===")
+    recovery_times_ms = []
+
+    for trial in range(num_trials):
+        tmp = tempfile.mkdtemp(prefix="bench_wal_recovery_")
+        try:
+            # 1. Populate WAL
+            log = IngestLog(tmp, max_segment_bytes=64 * 1024)
+            for i in range(events_per_trial):
+                log.append(RawEvent(
+                    source="BENCH",
+                    payload={"instrument": "AAPL", "event_type": "TRADE", "price": 150.0 + i, "sequence": i + 1, "exchange_ts": 1000.0 + i},
+                    receive_timestamp=1000.0 + i,
+                ))
+            log.close()
+
+            # 2. Benchmark recovery on reopen
+            t0 = time.perf_counter()
+            recovered_log = IngestLog(tmp, max_segment_bytes=64 * 1024)
+            t1 = time.perf_counter()
+
+            assert recovered_log.next_offset == events_per_trial
+            recovered_log.close()
+            recovery_times_ms.append((t1 - t0) * 1000.0)
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    recovery_times_ms.sort()
+    n = len(recovery_times_ms)
+    p50 = recovery_times_ms[int(n * 0.50)]
+    p95 = recovery_times_ms[int(n * 0.95)]
+    p99 = recovery_times_ms[int(n * 0.99)]
+
+    res = {
+        "trials": num_trials,
+        "events_per_trial": events_per_trial,
+        "recovery_time_ms": {
+            "p50": round(p50, 3),
+            "p95": round(p95, 3),
+            "p99": round(p99, 3),
+            "mean": round(statistics.mean(recovery_times_ms), 3),
+        },
+    }
+    print(f"WAL Recovery: p50 = {p50:.3f} ms | p95 = {p95:.3f} ms | p99 = {p99:.3f} ms")
+    return res
+
+
 if __name__ == "__main__":
     run_failover_benchmark()
+    run_wal_recovery_benchmark()
