@@ -5,8 +5,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [3.1.0] - 2026-10-10
 
+> [!NOTE]
+> **Audit Clarification (2026-10-15):** The multi-node "Distributed Safety", "Quorum Consensus", and "Failover Lifecycle" entries below were measured against an in-process local simulation (`ConsensusCoordinator`) and loopback sockets; they are NOT supported as multi-host distributed cluster features. MDRAP is strictly scoped as an embedded single-node market data engine. See [`docs/product/scope-and-guarantees.md`](docs/product/scope-and-guarantees.md).
+
 ### Added
-- **Phase 7–11 Distributed Safety & Production-Readiness Certification**:
+- **Phase 7–11 Single-Node Hardening & Production-Readiness Evaluation**:
   - **Mode B Networked Staging Validation**: Multi-process and multi-node networked staging validation across independent network endpoints and failure domains.
   - **Quorum Consensus & Split-Brain Fencing**: Formalized lease-based consensus coordination with strict epoch-fenced storage boundaries preventing split-brain writes during network partitions.
   - **Sub-110ms Failover Lifecycle**: Verified automatic failover benchmark across 100 trials achieving median p50 failover detection, election, and recovery of **105.01 ms** (p95: 118.42 ms, p99: 124.80 ms) with 100% acknowledged write recovery.

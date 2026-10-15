@@ -1,9 +1,10 @@
 """
-MDRAP Phase 8 Distributed High Availability, Consensus & Fencing Engine.
+MDRAP Simulated In-Process Lease & Fencing Module.
 
-Implements lease-based consensus, monotonic epoch generation tokens, and
-authoritative write-path fencing to guarantee split-brain safety across
-multi-host MDRAP cluster deployments. Pure Python stdlib.
+NOTE: This module is an in-process simulation intended for local testing and
+lease-fencing pattern experimentation. It does NOT provide distributed
+network consensus across independent hosts. MDRAP is strictly scoped as an
+embedded single-node market data engine. See docs/product/scope-and-guarantees.md.
 """
 
 from __future__ import annotations
@@ -13,7 +14,7 @@ import threading
 import time
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-__stability__ = "stable"
+__stability__ = "experimental"
 
 
 class FencingTokenError(RuntimeError):

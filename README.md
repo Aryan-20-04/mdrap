@@ -10,12 +10,12 @@ MDRAP converts noisy, delayed, duplicated, and out-of-order market data from mul
 
 ## Key Capabilities
 
-- **Lossless IngestLog Durability**: WAL-first append with segment CRC32C checksums, atomic directory synchronization, and deterministic recovery guaranteeing 100% acknowledged event safety across abrupt crashes.
+- **Lossless IngestLog Durability**: WAL-first append with segment IEEE CRC-32 checksums, atomic directory synchronization, and deterministic recovery guaranteeing acknowledged event safety across crashes.
 - **Deterministic Quality Engine**: 24 financial quality checks, Welford numerical variance filtering, dynamic volatility bands, bounded-memory deduplication, and non-downgradable quality states (`INVALID > SUSPICIOUS > VALID`).
-- **Never Silently Discard Bad Data**: Invalid market events are quarantined with full cryptographic lineage and cause codes; drop and eviction counters are continuously exported.
-- **Dual-Tier Acceleration & Fallback Parity**: Optional native C hot path (`src/fastpath.c`, `src/mdrap_core.c`) with AVX2 SIMD acceleration and lock-free SPSC shared memory ring buffer (`shm.py`), backed by 100% numerically identical pure-Python fallback.
-- **Distributed Safety & Fast Failover**: Quorum-based lease coordination and epoch-fenced storage boundaries preventing split-brain writes, with median failover lifecycle of 105.01 ms (p50 across 100 trials).
-- **High-Throughput Network Fanout**: Non-blocking asynchronous TCP fanout engine delivering 32,000+ frames/sec to downstream subscriber desks.
+- **Never Silently Discard Bad Data**: Invalid market events are quarantined with cryptographic lineage and cause codes; drop and eviction counters are continuously exported.
+- **Dual-Tier Acceleration & Fallback Parity**: Optional native C hot path (`src/fastpath.c`, `src/mdrap_core.c`) with AVX2 SIMD acceleration and seqlock SPSC shared memory ring buffer (`shm.py`), backed by 100% numerically identical pure-Python fallback.
+- **Single-Node Low-Latency Fanout**: Non-blocking asynchronous shared memory and local TCP streaming distribution for co-located subscriber desks and analytics.
+- **Explicit Scope & Non-Goals**: Strictly single-node architecture. See [Scope & Guarantees Specification](docs/product/scope-and-guarantees.md) for supported topologies and boundaries.
 
 ---
 

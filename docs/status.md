@@ -8,8 +8,8 @@ This document provides an honest, auditable record of the verification status of
 
 | Operating Mode | Scope | Verification Status | Operational Clearance |
 | --- | --- | --- | --- |
-| **Mode A** | Single-Host Process Isolation & Native IPC | **VERIFIED** | Sandbox & Development Approved |
-| **Mode B** | Independent-Host Staging & Distributed Safety | **VERIFIED** | Staging & UAT Cluster Approved |
+| **Mode A** | Single-Host Process Isolation & Native IPC | **VERIFIED** | Sandbox & Single-Node Production Approved |
+| **Mode B** | Multi-Host Distributed Clustering & Failover | **NOT SUPPORTED** | Strictly Single-Node Scope (Non-Goal) |
 | **Mode C** | Live Venue Connectivity & Production Exchange Feeds | **GATED** | Requires Direct Licensing & Compliance Sign-Off |
 | **Mode D** | Physical Kernel-Bypass & Hardware Acceleration | **GATED** | Requires Dedicated FPGA / NIC Testbenches |
 
@@ -18,23 +18,18 @@ This document provides an honest, auditable record of the verification status of
 ## 2. What Is Verified
 
 ### 2.1 Test Suite & Mathematical Parity
-- **1,240 Automated Tests**: 100% clean test execution across unit, integration, property-based, and chaos test suites.
-- **Dual-Tier Parity Guarantee**: Native C hot-path kernel (`src/fastpath.c`, `src/mdrap_core.c`) and pure Python fallback (`MDRAP_DISABLE_FASTPATH="1"`) produce bit-for-bit identical outputs for all 24 financial quality checks, Welford variance tracking, and deduplication states.
+- **1,275 Automated Tests**: Clean baseline test execution on Windows AMD64 (`suite_baseline_20261015.log`; 60 slow/network tests deselected by default).
+- **Dual-Tier Parity Guarantee**: Native C hot-path kernel (`src/fastpath.c`, `src/mdrap_core.c`) and pure Python fallback produce bit-for-bit identical outputs for all financial quality checks and deduplication states on supported event types.
 - **Strict Boolean Rejection**: Strict validation preventing Python `bool` instances (which subclass `int`) from passing numeric schema checks for prices, sizes, timestamps, or sequence numbers.
 
 ### 2.2 Storage & Durability Engine (IngestLog)
-- **WAL-First IngestLog Append**: Every admitted market event is durably committed to a CRC32C-checksummed WAL segment with synchronous fsync before an acknowledgement is returned.
+- **WAL-First IngestLog Append**: Every admitted market event is durably committed to an IEEE CRC-32 checksummed WAL segment with synchronous fsync before an acknowledgement is returned.
 - **100% Acknowledged-Write Recovery**: Validated across abrupt power loss and SIGKILL chaos drills with zero data loss on acknowledged records.
 - **Decoupled Monotonic Run Identity**: Run-scoped `{run_id}-{n}` identifiers eliminate SQLite primary key collisions across service restarts.
 
-### 2.3 Distributed Safety & Failover (Phase 11 Certification)
-- **Lease Consensus & Epoch Fencing**: Formally verified lease-based coordinator rejecting stale leader writes at storage boundaries during network partitions.
-- **Sub-110ms Failover Lifecycle**: 100 consecutive automated failover trials demonstrated:
-  - **p50 Latency**: `105.01 ms`
-  - **p95 Latency**: `118.42 ms`
-  - **p99 Latency**: `124.80 ms`
-  - **Data Loss**: `0.00%` on acknowledged writes.
-- **High-Throughput Network Fanout**: Non-blocking asynchronous TCP fanout engine demonstrated **32,404.7 frames/s** peak throughput with bounded backpressure queues isolating slow consumers.
+### 2.3 Single-Node Shared Memory & Local Streaming (IPC)
+- **Local SPSC Shared Memory Ring Buffer**: 128-byte cache-line aligned seqlock slots for sub-microsecond IPC between co-located processes on the same host.
+- **Local Loopback TCP Streaming**: Asynchronous socket distribution with bounded per-client queues protecting the engine from slow consumers.
 
 ### 2.4 Cryptographic Lineage & Auditing
 - **SHA-256 Merkle Chain**: Every canonical event and quarantine decision forms an immutable, cryptographically verifiable hash chain.
@@ -57,6 +52,10 @@ This document provides an honest, auditable record of the verification status of
 ### 3.3 Public PyPI Package Availability
 - **Status**: **NOT PUBLISHED**
 - **Reasoning**: MDRAP is not published on public PyPI. Installation is supported only from local Git checkouts or internal private package repositories.
+
+### 3.4 Multi-Host Distributed Consensus & Clustering
+- **Status**: **NOT SUPPORTED / ARCHITECTURAL NON-GOAL**
+- **Reasoning**: MDRAP is strictly scoped as a single-node embedded validation and capture engine. It does not provide distributed Raft/Paxos quorum election, multi-host network partitioning recovery, or cross-datacenter state replication. See [Scope & Guarantees Specification](product/scope-and-guarantees.md) for supported topologies.
 
 ---
 
