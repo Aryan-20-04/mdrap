@@ -77,6 +77,24 @@ ALLOWED_NETWORK_KEYS = {
     "enable_shm",
     "shm_name",
 }
+ALLOWED_SECURITY_KEYS = {
+    "rate_limit_per_sec",
+    "rate_limit_capacity",
+    "require_hmac",
+    "audit_hash_algorithm",
+    "enabled",
+    "secret_key",
+    "token_salt",
+    "audit_log_path",
+    "allowed_cidrs",
+}
+ALLOWED_SYSTEM_KEYS = {
+    "log_level",
+    "metrics_enabled",
+    "clock_source",
+    "worker_threads",
+    "env",
+}
 
 
 def _validate_numeric_bounds(params: dict[str, Any], prefix: str = "defaults") -> None:
@@ -151,6 +169,20 @@ def validate_config(cfg: dict[str, Any]) -> None:
             p = net["port"]
             if not isinstance(p, int) or p < 1 or p > 65535:
                 raise ConfigValidationError(f"network.port must be integer between 1 and 65535, got {p!r}")
+
+    # Validate security
+    if "security" in cfg:
+        sec = cfg["security"]
+        for k in sec:
+            if k not in ALLOWED_SECURITY_KEYS:
+                raise ConfigValidationError(f"Unknown key '{k}' in [security]. Allowed: {sorted(ALLOWED_SECURITY_KEYS)}")
+
+    # Validate system
+    if "system" in cfg:
+        sys_sec = cfg["system"]
+        for k in sys_sec:
+            if k not in ALLOWED_SYSTEM_KEYS:
+                raise ConfigValidationError(f"Unknown key '{k}' in [system]. Allowed: {sorted(ALLOWED_SYSTEM_KEYS)}")
 
 
 def resolve_precedence(

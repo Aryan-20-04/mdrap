@@ -1290,8 +1290,8 @@ class MarketDataExporter:
                 sheet.column_dimensions[col_letter].width = max(max_len + 3, 12)
 
         wb.save(output_path)
-        if auto_open and sys.platform == "win32":
-            os.system(f'start "" "{output_path}"')
+        if auto_open and sys.platform == "win32" and hasattr(os, "startfile"):
+            os.startfile(output_path)
 
         return output_path
 
@@ -1522,7 +1522,7 @@ class MarketDataExporter:
                 sheet.column_dimensions[col_letter].width = max(max_len + 3, 12)
 
         wb.save(output_path)
-        if auto_open and sys.platform == "win32":
-            os.system(f'start "" "{output_path}"')
+        if auto_open and sys.platform == "win32" and hasattr(os, "startfile"):
+            os.startfile(output_path)
 
         return output_path

@@ -78,6 +78,11 @@ class IngestLog:
     ):
         self.log_dir = os.path.abspath(log_dir)
         os.makedirs(self.log_dir, exist_ok=True)
+        if os.name == "posix":
+            try:
+                os.chmod(self.log_dir, 0o700)
+            except OSError:
+                pass
 
         self.fsync_policy = fsync_policy.lower()
         if self.fsync_policy not in ("always", "grouped_by_time", "grouped_by_size", "never"):
@@ -345,6 +350,12 @@ class IngestLog:
             f.write(hdr)
             f.flush()
             os.fsync(f.fileno())
+
+        if os.name == "posix":
+            try:
+                os.chmod(filename, 0o600)
+            except OSError:
+                pass
 
         # Durable directory sync
         self._sync_dir()
