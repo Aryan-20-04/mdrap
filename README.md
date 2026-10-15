@@ -39,9 +39,9 @@ python -m pip install -e .
 python -m pip install -e ".[api,ui]"
 ```
 
-### Companion Packages
+### Companion & Commercial Packages
 
-Non-core analytical and domain-specific subsystems are segregated into companion distributions in `packages/`:
+Non-core analytical and domain-specific subsystems are segregated into companion distributions (see [Platform Editions & Maintenance Guide](EDITIONS.md) for full free vs. commercial feature matrix):
 
 ```bash
 # Options pricing, binomial trees, implied volatility & Greeks

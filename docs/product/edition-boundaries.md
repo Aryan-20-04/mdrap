@@ -3,7 +3,8 @@
 **Document Version:** 1.0.0  
 **Effective Date:** 2026-10-15  
 **Target Release:** MDRAP v3.1.1  
-**Applicability:** Core Single-Node Distribution (`mdrap-core`) and Companion Extensions
+**Applicability:** Core Single-Node Distribution (`mdrap-core`) and Companion Extensions  
+**Quick Reference:** See [Platform Editions & Maintenance Guide](../../EDITIONS.md) for full comparison matrix and developer synchronization procedures.
 
 ---
 
