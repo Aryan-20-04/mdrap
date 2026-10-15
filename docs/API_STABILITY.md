@@ -143,4 +143,4 @@ If you are developing third-party plugins or integrations for MDRAP:
 1. Only subclass or implement protocols defined in [`src/mdrap/protocols.py`](../src/mdrap/protocols.py).
 2. Register custom validation rules using the [`@register_rule`](../src/mdrap/rules.py) decorator within the user bitmask range (bits 32–63).
 3. Do not rely on unexported modules or private helper methods (`_...`).
-4. Validate extensions against the official 9-gate quality protocol: `./scripts/check.sh`.
+4. Validate extensions against the official 9-gate quality protocol: `python scripts/check.py`.

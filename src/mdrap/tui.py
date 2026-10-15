@@ -9,6 +9,7 @@ Provides real-time visual monitoring directly inside the terminal:
 
 from __future__ import annotations
 
+import math
 import os
 import sys
 import time
@@ -45,7 +46,7 @@ def render_sparkline(values: Sequence[float], width: int = 24) -> str:
     min_v, max_v = min(window), max(window)
     chars = _SPARK_CHARS_UNICODE if _supports_unicode() else _SPARK_CHARS_ASCII
 
-    if math_isclose(min_v, max_v):
+    if math.isclose(min_v, max_v, abs_tol=1e-9):
         return chars[3] * len(window)
 
     span = max_v - min_v
@@ -55,10 +56,6 @@ def render_sparkline(values: Sequence[float], width: int = 24) -> str:
         idx = max(0, min(len(chars) - 1, idx))
         result.append(chars[idx])
     return "".join(result)
-
-
-def math_isclose(a: float, b: float, tol: float = 1e-9) -> bool:
-    return abs(a - b) <= tol
 
 
 class TerminalDashboard:
@@ -80,7 +77,9 @@ class TerminalDashboard:
         """Run live dashboard stream."""
         target = f"sim:{self.symbol}"
         print(f"\033[2J\033[H", end="")  # Clear screen and cursor home
-        print(f"Connecting to MDRAP stream: {target} (Profile: {self.profile.mode.value})...")
+        print(
+            f"Connecting to MDRAP stream: {target} (Profile: {self.profile.mode.value})..."
+        )
         time.sleep(0.1)
 
         try:
@@ -111,10 +110,14 @@ class TerminalDashboard:
             self.valid_count += 1
         elif tick.quality_status == QualityStatus.SUSPICIOUS:
             self.suspicious_count += 1
-            self.recent_alerts.append(f"SUSPICIOUS tick #{tick.sequence_number or len(self.history_prices)}: {tick.reasons}")
+            self.recent_alerts.append(
+                f"SUSPICIOUS tick #{tick.sequence_number or len(self.history_prices)}: {tick.reasons}"
+            )
         else:
             self.invalid_count += 1
-            self.recent_alerts.append(f"INVALID tick #{tick.sequence_number or len(self.history_prices)}: {tick.reasons}")
+            self.recent_alerts.append(
+                f"INVALID tick #{tick.sequence_number or len(self.history_prices)}: {tick.reasons}"
+            )
 
         if len(self.recent_alerts) > 4:
             self.recent_alerts.pop(0)
@@ -129,7 +132,11 @@ class TerminalDashboard:
         p99 = sorted_lats[int(len(sorted_lats) * 0.99)]
 
         price_str = f"${current_tick.price:,.2f}" if current_tick.price else "N/A"
-        status_color = "\033[92m" if current_tick.quality_status == QualityStatus.VALID else "\033[91m"
+        status_color = (
+            "\033[92m"
+            if current_tick.quality_status == QualityStatus.VALID
+            else "\033[91m"
+        )
         reset_color = "\033[0m"
 
         bar = self._bar_char
@@ -159,7 +166,9 @@ class TerminalDashboard:
             for alert in self.recent_alerts[-2:]:
                 out.append(f"   \033[93m!\033[0m {alert[:62]}")
         else:
-            out.append("   \033[90m(Zero anomalies detected; market data stream healthy)\033[0m")
+            out.append(
+                "   \033[90m(Zero anomalies detected; market data stream healthy)\033[0m"
+            )
         out.append("=" * 68)
         out.append(" Press Ctrl+C to halt stream.")
 

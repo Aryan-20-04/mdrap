@@ -58,7 +58,7 @@ core_dependencies:
 - **`src/`**: 73 Python modules, 1 extension package (`adapters/`), C fastpath sources (`fastpath.c`, `mdrap_core.c`), single-source-of-truth definition (`rules.def`).
 - **`tests/`**: 79 test modules spanning unit, integration, RBAC security, chaos drills, fault recovery, and WebSocket distribution.
 - **`benchmarks/`**: 111 benchmark harnesses, historical baseline runs, differential JSON proofs, and micro-benchmarks (`bench_stress_and_resilience.py`, `micro_ffi.py`, `stage_breakdown.py`).
-- **`scripts/`**: Operational utilities for database backups (`backup.py`, `backup.sh`), disaster recovery restore (`restore.py`, `restore.sh`), and environment checks.
+- **`scripts/`**: Operational utilities for database backups (`backup.py`), disaster recovery restore (`restore.py`), and environment checks (`check.py`).
 - **`docs/`**: Architecture diagrams, ADRs (`docs/decisions/`), user manuals, extension guides (`docs/extending/`), and security specifications.
 - **Docker & Deployment**: `Dockerfile` (multi-stage non-root container), `docker-compose.yml`, `Caddyfile` (reverse proxy with TLS & rate limiting).
 - **Examples**: `examples/` directory containing institutional strategy walkthroughs and custom adapter boilerplates.

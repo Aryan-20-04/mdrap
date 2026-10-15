@@ -44,7 +44,7 @@ def _safe_unregister(name: str) -> None:
     try:
         from multiprocessing import resource_tracker
 
-        for target in (name, "/" + name.lstrip("/") if sys.platform != "win32" else name):
+        for target in {name, "/" + name.lstrip("/")}:
             try:
                 resource_tracker.unregister(target, "shared_memory")
             except Exception:
@@ -88,6 +88,7 @@ def _check_arm_shm_safety() -> None:
                     "Weak memory ordering can cause silent data corruption or torn reads. "
                     "Compile the native C fastpath extension or set MDRAP_UNSAFE_SHM=1 to override."
                 )
+
 
 # ---------------------------------------------------------------------------
 # Memory Layout & Cache-Line Alignment Constants (SHM v3)
@@ -224,13 +225,12 @@ class SHMWriter:
                     name=self.name, create=True, size=self.total_size
                 )
 
-        if sys.platform != "win32":
-            shm_file = f"/dev/shm/{self.name}"
-            if os.path.exists(shm_file):
-                try:
-                    os.chmod(shm_file, 0o600)
-                except OSError as exc:
-                    logger.debug("[shm] chmod 0600 error: %s", exc)
+        shm_file = f"/dev/shm/{self.name}"
+        if os.path.exists(shm_file):
+            try:
+                os.chmod(shm_file, 0o600)
+            except OSError as exc:
+                logger.debug("[shm] chmod 0600 error: %s", exc)
 
         # Clear ring slots: write UNCOMMITTED into all commit_seq words
         for i in range(self.slot_count):
@@ -683,7 +683,11 @@ class SHMReader:
             return False
         try:
             # POSIX unlinked segment detection (st_nlink == 0)
-            if hasattr(self.shm, "_fd") and isinstance(self.shm._fd, int) and self.shm._fd >= 0:
+            if (
+                hasattr(self.shm, "_fd")
+                and isinstance(self.shm._fd, int)
+                and self.shm._fd >= 0
+            ):
                 try:
                     if os.fstat(self.shm._fd).st_nlink == 0:
                         self.state = ReaderState.INVALIDATED
@@ -884,7 +888,11 @@ class SHMReader:
                 curr_seq = self.read_latest_seq()
             else:
                 curr_seq = 0
-            yield {"type": "EPOCH_CHANGE", "old_epoch": old_epoch, "new_epoch": self.epoch_id}
+            yield {
+                "type": "EPOCH_CHANGE",
+                "old_epoch": old_epoch,
+                "new_epoch": self.epoch_id,
+            }
 
         while True:
             # Fast in-memory epoch check (nanoseconds, zero syscalls)
@@ -938,7 +946,11 @@ class SHMReader:
                         curr_seq = self.read_latest_seq()
                     else:
                         curr_seq = 0
-                    yield {"type": "EPOCH_CHANGE", "old_epoch": old_epoch, "new_epoch": self.epoch_id}
+                    yield {
+                        "type": "EPOCH_CHANGE",
+                        "old_epoch": old_epoch,
+                        "new_epoch": self.epoch_id,
+                    }
                     continue
 
             # Timeout check

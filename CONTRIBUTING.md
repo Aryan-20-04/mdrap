@@ -89,7 +89,7 @@ Every contribution, whether submitted by core maintainers or external contributo
 6. **Security-sensitive changes require explicit security testing.**
 7. **Performance-sensitive changes require benchmarks.** Measure before claiming; record JSON outputs under `benchmarks/`.
 8. **Native code requires sanitizer testing.** C fastpath hot paths require memory safety verification.
-9. **Changes are locally validated before integration.** Run `./scripts/check.sh` locally.
+9. **Changes are locally validated before integration.** Run `python scripts/check.py` locally.
 10. **A validated local checkpoint is created before merging the feature.**
 11. **The complete system is tested after integration.**
 12. **Performance is benchmarked after integration.**
@@ -147,14 +147,11 @@ python build_fastpath.py
 
 ---
 
-## The Local Validation Command (`check.sh`)
+## The Local Validation Command (`check.py`)
 
 Before opening any pull request or committing changes, execute the 9-gate validation script:
 
 ```bash
-./scripts/check.sh        # Linux / macOS / Git Bash
-# or:
-.\scripts\check.bat       # Windows Command Prompt
 python scripts/check.py   # Universal cross-platform runner
 ```
 

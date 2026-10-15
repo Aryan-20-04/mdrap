@@ -61,14 +61,14 @@ Output:
 
 ## 3. Automated Backup Scheduling (Cron / Linux)
 
-Run `scripts/backup.sh` via cron to automate daily backups and prune archives older than 30 days:
+Run `scripts/backup.py` via cron to automate daily backups and prune archives older than 30 days:
 
 ```bash
 # Open crontab
 crontab -e
 
 # Run online backup every hour at minute 0
-0 * * * * /app/scripts/backup.sh >> /var/log/mdrap_backup.log 2>&1
+0 * * * * python3 /app/scripts/backup.py --db /app/data/mdrap.db --out-dir /app/backups --compress >> /var/log/mdrap_backup.log 2>&1
 ```
 
 ---
