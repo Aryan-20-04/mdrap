@@ -72,28 +72,22 @@ def test_core_pipeline_functional_without_companion():
 
 def test_companion_modules_emit_deprecation_warnings():
     """Verify that importing companion/non-core modules emits DeprecationWarning."""
-    with warnings.catch_warnings(record=True) as recorded:
-        warnings.simplefilter("always")
-        
-        import mdrap.options  # noqa: F401
-        assert any(issubclass(w.category, DeprecationWarning) for w in recorded)
+    import sys
+    import importlib
     
-    with warnings.catch_warnings(record=True) as recorded:
-        warnings.simplefilter("always")
-        import mdrap.tca  # noqa: F401
-        assert any(issubclass(w.category, DeprecationWarning) for w in recorded)
-
-    with warnings.catch_warnings(record=True) as recorded:
-        warnings.simplefilter("always")
-        import mdrap.risk  # noqa: F401
-        assert any(issubclass(w.category, DeprecationWarning) for w in recorded)
-
-    with warnings.catch_warnings(record=True) as recorded:
-        warnings.simplefilter("always")
-        import mdrap.strategy_sdk  # noqa: F401
-        assert any(issubclass(w.category, DeprecationWarning) for w in recorded)
-
-    with warnings.catch_warnings(record=True) as recorded:
-        warnings.simplefilter("always")
-        import mdrap.vessel  # noqa: F401
-        assert any(issubclass(w.category, DeprecationWarning) for w in recorded)
+    companion_mods = [
+        "mdrap.options",
+        "mdrap.tca",
+        "mdrap.risk",
+        "mdrap.strategy_sdk",
+        "mdrap.vessel",
+    ]
+    
+    for mod in companion_mods:
+        sys.modules.pop(mod, None)
+        with warnings.catch_warnings(record=True) as recorded:
+            warnings.simplefilter("always")
+            importlib.import_module(mod)
+            assert any(
+                issubclass(w.category, DeprecationWarning) for w in recorded
+            ), f"{mod} failed to emit DeprecationWarning on import"
