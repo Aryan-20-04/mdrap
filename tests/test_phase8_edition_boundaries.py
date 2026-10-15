@@ -87,7 +87,10 @@ def test_companion_modules_emit_deprecation_warnings():
         sys.modules.pop(mod, None)
         with warnings.catch_warnings(record=True) as recorded:
             warnings.simplefilter("always")
-            importlib.import_module(mod)
+            try:
+                importlib.import_module(mod)
+            except ImportError:
+                pass
             assert any(
                 issubclass(w.category, DeprecationWarning) for w in recorded
             ), f"{mod} failed to emit DeprecationWarning on import"

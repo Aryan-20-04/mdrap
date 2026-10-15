@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import pytest
+pytest.importorskip("mdrap_vessel", reason="Companion package mdrap-contrib-vessel is optional/commercial and not installed")
+
 import sys, os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))

@@ -1,3 +1,6 @@
+import pytest
+pytest.importorskip("mdrap_analytics", reason="Companion package mdrap-analytics is optional/commercial and not installed")
+
 """
 Unit tests for MDRAP Transaction Cost Analysis (TCA) & Best Execution Engine.
 """

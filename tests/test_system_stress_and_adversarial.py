@@ -35,7 +35,11 @@ from mdrap.analytics import (
     VolatilityTracker,
 )
 from mdrap.flow_tracker import OrderFlowTracker, FlowCategory, AggressorSide
-from mdrap.tca import TCAEngine, ExecutionRecord
+try:
+    from mdrap.tca import TCAEngine, ExecutionRecord
+except ImportError:
+    TCAEngine = None
+    ExecutionRecord = None
 from mdrap.stresstest import stress_adversarial_fuzzing, compute_latencies_us
 
 
@@ -533,6 +537,8 @@ class TestAdversarialSystemStress:
 
     def test_tca_engine_adversarial(self):
         """Verify TCAEngine handles NaN, Inf, and negative prices/shares."""
+        if TCAEngine is None:
+            pytest.skip("mdrap_analytics companion package not installed")
         engine = TCAEngine()
 
         records = [

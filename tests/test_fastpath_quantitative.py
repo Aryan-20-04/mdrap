@@ -1,3 +1,6 @@
+import pytest
+pytest.importorskip("mdrap_options", reason="Companion package mdrap-options is optional/commercial and not installed")
+
 import math, os, sys, pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))

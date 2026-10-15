@@ -1,3 +1,6 @@
+import pytest
+pytest.importorskip("mdrap_strategies", reason="Companion package mdrap-strategies is optional/commercial and not installed")
+
 import os
 import sys
 
