@@ -18,7 +18,7 @@ Architectural Principles (from MDRAP System Specification §26):
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import Enum, EnumMeta
+from enum import Enum, EnumMeta, IntEnum
 import functools
 import json
 import math
@@ -66,7 +66,9 @@ def to_fixed_point_price(price: Any, scale: int = DEFAULT_PRICE_SCALE) -> int:
     try:
         f = float(price)
     except (TypeError, ValueError) as exc:
-        raise ValueError(f"Cannot convert non-numeric value to fixed-point price: {price!r}") from exc
+        raise ValueError(
+            f"Cannot convert non-numeric value to fixed-point price: {price!r}"
+        ) from exc
 
     if not math.isfinite(f):
         raise ValueError(f"Cannot convert non-finite value ({f}) to fixed-point price")
@@ -74,12 +76,16 @@ def to_fixed_point_price(price: Any, scale: int = DEFAULT_PRICE_SCALE) -> int:
     return int(round(f * scale))
 
 
-def from_fixed_point_price(scaled_price: int, scale: int = DEFAULT_PRICE_SCALE) -> float:
+def from_fixed_point_price(
+    scaled_price: int, scale: int = DEFAULT_PRICE_SCALE
+) -> float:
     """
     Convert scaled integer back into floating-point price with scale factor.
     """
     if not isinstance(scaled_price, int):
-        raise TypeError(f"scaled_price must be an int, got {type(scaled_price).__name__}")
+        raise TypeError(
+            f"scaled_price must be an int, got {type(scaled_price).__name__}"
+        )
     if scale <= 0:
         raise ValueError(f"scale must be positive, got {scale}")
     return float(scaled_price) / float(scale)
@@ -129,6 +135,55 @@ class QualityStatus(str, Enum):
     VALID = "VALID"
     SUSPICIOUS = "SUSPICIOUS"
     INVALID = "INVALID"
+
+    @property
+    def severity_level(self) -> int:
+        """Numeric severity level: INVALID (2) > SUSPICIOUS (1) > VALID (0)."""
+        if self == QualityStatus.INVALID:
+            return 2
+        if self == QualityStatus.SUSPICIOUS:
+            return 1
+        return 0
+
+    def is_worse_than(self, other: QualityStatus | str) -> bool:
+        """Return True if self has strictly higher severity than other."""
+        other_val = QualityStatus(other) if isinstance(other, str) else other
+        return self.severity_level > other_val.severity_level
+
+    @classmethod
+    def merge(cls, *statuses: QualityStatus | str | None) -> QualityStatus:
+        """Merge multiple statuses obeying strict non-downgrade priority: INVALID > SUSPICIOUS > VALID."""
+        highest = cls.VALID
+        for s in statuses:
+            if not s:
+                continue
+            cur = cls(s) if isinstance(s, str) else s
+            if cur.severity_level > highest.severity_level:
+                highest = cur
+        return highest
+
+
+class OperationalMode(str, Enum):
+    """Operational reliability mode of the MDRAP ingest pipeline (Strategy §2 & §5)."""
+
+    LOSS_DETECTING = "LOSS_DETECTING"  # Bounded memory, explicit drop/gap counters, health degradation
+    DURABLE_CAPTURE = "DURABLE_CAPTURE"  # Acknowledge only after durable flush; backpressure or fail-closed
+    LOSSLESS_TO_SOURCE = "LOSSLESS_TO_SOURCE"  # Supported where upstream transport provides snapshot & replay
+
+
+class AckStatus(IntEnum):
+    """Acknowledgement boundary status for event persistence (Spec §5 & Strategy §6.1)."""
+
+    RECEIVED = 1  # Reached network socket / API boundary
+    VALIDATED = 2  # Frame passed structural schema validation
+    ACCEPTED = 2  # Validated against schema and bounds (alias to VALIDATED)
+    BUFFERED_APP = 3  # Staged in userspace application buffer
+    JOURNALED = 4  # Written into write-ahead log buffer cache
+    WRITTEN_OS = 4  # Flushed to OS kernel buffer cache (alias to JOURNALED)
+    DURABLE = 5  # Synchronized to non-volatile physical storage (fsync)
+    DURABLY_COMMITTED = 5  # Synchronized to non-volatile storage (alias to DURABLE)
+    RECOVERED = 6  # Reconstructed from write-ahead log replay
+    PUBLISHED = 7  # Event committed and dispatched to downstream consumer (SHM/TCP)
 
 
 _CANONICAL_REASONS = (
@@ -233,9 +288,11 @@ class ReasonType(EnumMeta):
     def __contains__(cls, item: Any) -> bool:
         if isinstance(item, str):
             clean = item.upper()
-            return clean in ReasonRegistry._ALL_REGISTERED_REASONS or clean in cls._value2member_map_
+            return (
+                clean in ReasonRegistry._ALL_REGISTERED_REASONS
+                or clean in cls._value2member_map_
+            )
         return super().__contains__(item)
-
 
 
 # Reason codes attached to SUSPICIOUS or INVALID events. Kept as short,
@@ -273,13 +330,18 @@ class Reason(str, Enum, metaclass=ReasonType):
     SECURITY_REJECT = "SECURITY_REJECT"  # Bit 14: Security gate rejection (sanitizer, HMAC, or auth failure)
     HOOK_DROPPED = "HOOK_DROPPED"  # Event was intentionally rejected by a pipeline hook
     HOOK_ERROR = "HOOK_ERROR"  # A pipeline hook raised or returned an invalid event
-    BACKPRESSURE_DROP = "BACKPRESSURE_DROP"  # Event was dropped due to ingress queue backpressure
+    BACKPRESSURE_DROP = (
+        "BACKPRESSURE_DROP"  # Event was dropped due to ingress queue backpressure
+    )
 
     @classmethod
     def _missing_(cls, value: object) -> Any:
         if isinstance(value, str):
             code = value.upper()
-            if code in ReasonRegistry._ALL_REGISTERED_REASONS or code in cls._value2member_map_:
+            if (
+                code in ReasonRegistry._ALL_REGISTERED_REASONS
+                or code in cls._value2member_map_
+            ):
                 obj = str.__new__(cls, code)
                 obj._value_ = code
                 obj._name_ = code
@@ -836,7 +898,12 @@ def safe_parse_market_event(data: Any) -> Tuple[Optional[MarketEvent], List[str]
     # Dispatch to specialized event subtype
     try:
         if raw_et in ("QUOTE", "BBO"):
-            if data.get("bid_price") is None and data.get("bid") is None and data.get("ask_price") is None and data.get("ask") is None:
+            if (
+                data.get("bid_price") is None
+                and data.get("bid") is None
+                and data.get("ask_price") is None
+                and data.get("ask") is None
+            ):
                 errors.append("Missing required quote bid/ask prices")
             bp = _safe_float(data.get("bid_price", data.get("bid", 0.0)))
             bs = _safe_float(data.get("bid_size", data.get("bsize", 0.0)))

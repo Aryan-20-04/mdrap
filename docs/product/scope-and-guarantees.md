@@ -84,16 +84,57 @@ MDRAP does **NOT** provide, and must not be used as:
 - **Sequence Gap Detection vs. Recovery:** MDRAP detects and flags sequence gaps. MDRAP **does not** recover missing events over the wire unless an external upstream protocol (such as ITCH soup-bintcp replay) is connected.
 - **Unsequenced Deduplication Window:** Feeds without sequence numbers rely on an in-memory content hash ring buffer bounded to 64 slots per instrument. Duplicates arriving outside this time/count window cannot be detected without external persistent index lookups.
 
-### 4.3 Durability & WAL Contract
-- **Durability Boundary (`IngestLog`):** Every acknowledged event is written to a segmented on-disk Write-Ahead Log.
-- **Fsync Policies:**
-  - `always`: Synchronous `os.fsync()` before returning acknowledgement (zero data loss on OS crash or power failure).
-  - `grouped_by_size` / `grouped_by_time`: Buffered kernel flushing (potential uncommitted record loss on kernel panic up to buffer window).
-- **Checksum Verification:** Frames are protected by IEEE 802.3 CRC-32 (standard `zlib.crc32`). Torn tails at EOF are detected and truncated during recovery.
+### 4.3 Acknowledgement Boundary Semantics (Spec §5 & Strategy §6.1)
 
-### 4.4 Shared Memory (SHM) Lifecycle
-- **Transport Contract:** Single-Producer Single-Consumer (SPSC) ring buffer with 128-byte slots aligned to cache lines.
-- **Epoch Invalidation:** When a publisher restarts, readers must detect the new epoch, invalidate cursors, and reattach. Unlinked memory segments must not be silently consumed.
+MDRAP explicitly decomposes event lifecycle persistence into 6 distinct stages (`AckStatus`):
+
+| Boundary | `AckStatus` | Technical State & Guarantee |
+|---|---|---|
+| **`received`** | `RECEIVED (1)` | Byte frame arrived from network socket or IPC descriptor into process memory. |
+| **`validated`** | `VALIDATED (2)` | Frame passed structural schema validation, required fields, and bounds checks. |
+| **`accepted`** | `ACCEPTED (2)` | Event accepted into engine deduplication and fold state machine. |
+| **`buffered`** | `BUFFERED_APP (3)` | Encoded frame staged in user-space IngestLog memory buffer. |
+| **`journaled`** | `JOURNALED (4)` | Record flushed to OS kernel page cache via `write()` (`WRITTEN_OS`). |
+| **`durable`** | `DURABLE (5)` | Physical `fsync` completed; data persisted to non-volatile disk (`DURABLY_COMMITTED`). |
+| **`recovered`** | `RECOVERED (6)` | Event re-parsed and state reconstructed during WAL replay. |
+| **`published`** | `PUBLISHED (7)` | Canonical event committed to seqlock SHM ring or dispatched to TCP subscribers. |
+
+> [!IMPORTANT]
+> **Durability Guarantee:** An event is NEVER acknowledged as `durable` until physical storage synchronization (`fsync`) has succeeded.
+
+### 4.4 Explicit Operational Modes & Overload Contracts (Strategy §2 & §5.4)
+
+MDRAP supports 3 distinct operational modes (`OperationalMode`), eliminating contradictions between bounded queues and zero-drop claims:
+
+1. **`LOSS_DETECTING` (Live Stream Mode)**:
+   - *Intended Use:* Live visual dashboards, exploratory research, and resource-constrained environments ("potato PCs").
+   - *Overload Policy:* Bounded queue capacity. If downstream storage or processing stalls, the oldest frames are evicted to preserve real-time low latency. **Every dropped frame increments `_drop_count`, logs a warning, and flags the stream as `DEGRADED`. Dropping is never silent.**
+2. **`DURABLE_CAPTURE` (Forensic Capture Mode)**:
+   - *Intended Use:* Quantitative historical capture, compliance recording, and production execution replay.
+   - *Overload Policy:* An event is acknowledged only after `DURABLE` (`fsync`). If disk I/O stalls, backpressure is propagated to the ingress socket. If backpressure fails or queue overflows, capture halts immediately with an explicit fatal error rather than silently discarding unpersisted data.
+3. **`LOSSLESS_TO_SOURCE` (Deterministic Recovery Mode)**:
+   - *Intended Use:* Institutional feeds with upstream retransmission protocols (e.g. Nasdaq ITCH SoupBinTCP, CME TCP historical replay).
+   - *Overload Policy:* Bounded local memory; sequence gaps trigger retransmission requests or snapshot resynchronization. Losslessness is guaranteed only to the extent supported by upstream exchange recovery.
+
+### 4.5 Terminology Disambiguation & Buzzword Elimination
+
+To ensure technical precision and avoid misleading claims, MDRAP strictly defines its core architectural terms:
+
+| Buzzword | Marketing Misconception | MDRAP Technical Reality & Exact Definition |
+|---|---|---|
+| **"Durable"** | "Saved in memory / fast write" | Physical persistence to non-volatile media confirmed by synchronous `fsync()`. OS page cache writes are classified as `journaled`, not `durable`. |
+| **"Lossless"** | "Queues never drop" | Strictly bounded to `LOSSLESS_TO_SOURCE` protocols with sequence retransmission. Bounded memory queues under sustained overload will either apply backpressure or drop with explicit telemetry. |
+| **"Real-Time"** | "Instantaneous / zero delay" | Strictly bounded by empirical latency distributions ($p50, p90, p99, p99.9$) measured under specified workloads with hardware disclosures. |
+| **"Zero-Copy"** | "No data movement anywhere" | Elimination of user-space Python object and heap allocations between memoryview slicing and mapped shared memory (`/dev/shm`). Kernel socket and DMA copies remain unless hardware-qualified kernel-bypass is configured. |
+| **"Lock-Free"** | "Thread-safe for all topologies" | Single-Producer Single-Consumer (SPSC) seqlock ring buffer without kernel mutexes. Requires explicit CPU cache-line alignment (64 bytes) and memory fences; not interchangeable with multi-producer queues. |
+
+### 4.6 Timestamp Discipline & Clock Domains
+
+Every canonical event explicitly separates four distinct clock domains:
+1. `exchange_timestamp`: Timestamp declared by the originating exchange venue.
+2. `receive_timestamp`: Userspace monotonic clock timestamp when packet arrived at socket.
+3. `processing_timestamp`: Monotonic timestamp when normalization and quality validation completed.
+4. `clock_source`: Explicit enum declaring timestamp source (`"EXCHANGE"`, `"GATEWAY_RECV"`, `"HARDWARE_NIC"`).
 
 ---
 
@@ -101,4 +142,6 @@ MDRAP does **NOT** provide, and must not be used as:
 
 1. **No Universal Numbers:** All published throughput and latency figures represent specific observed runs on specified hardware, operating systems, and workloads.
 2. **Delivery Rate Bound:** Multi-consumer delivery rate is mathematically bounded at $\le 100.0\%$. Background simulator traffic must never contaminate subscriber receipt counts.
-3. **Tail Latency Reporting:** System benchmarks must report $p50$, $p95$, $p99$, and maximum latencies generated from saved raw sample arrays.
+3. **Tail Latency Reporting:** System benchmarks must report $p50$, $p90$, $p99$, $p99.9$, and maximum latencies generated from saved raw sample arrays.
+4. **Environment Manifest Disclosure:** Every benchmark proof must accompany a machine-readable JSON manifest recording CPU, RAM, OS, compiler flags, and input dataset SHA-256 hash.
+

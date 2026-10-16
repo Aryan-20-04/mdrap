@@ -1,0 +1,57 @@
+{
+  "mdrap_version": "3.1.0",
+  "git_commit": "4fecaeb66e7c78dac1aefa7e63558a996b4405c9",
+  "git_branch": "main",
+  "git_dirty": true,
+  "timestamp_utc": "2026-10-15T18:03:25Z",
+  "os_name": "Windows",
+  "os_release": "11",
+  "machine_arch": "AMD64",
+  "cpu_cores_logical": 12,
+  "total_ram_gb": 15.72,
+  "python_version": "3.13.1",
+  "python_compiler": "MSC v.1942 64 bit (AMD64)",
+  "has_native_fastpath": true,
+  "active_profile": "STANDARD",
+  "dataset_hash_sha256": "04f54a6da401d8959204f8fc8635310111174567e833a1b23e6fff84d7b39177",
+  "dataset_records": 10000,
+  "benchmark_boundaries": {
+    "b1_decode_throughput_eps": {
+      "p50": 125000.0,
+      "p99": 110000.0
+    },
+    "b2_validation_latency_ns": {
+      "p50": 85.0,
+      "p99": 180.0
+    },
+    "b3_wal_append_latency_ns": {
+      "p50": 450.0,
+      "p99": 950.0
+    },
+    "b4_durable_flush_latency_us": {
+      "p50": 120.0,
+      "p99": 450.0
+    },
+    "b5_shm_publish_latency_ns": {
+      "p50": 115.0,
+      "p99": 240.0
+    },
+    "b6_end_to_end_latency_us": {
+      "p50": 8.5,
+      "p99": 25.0
+    },
+    "b7_replay_throughput_eps": {
+      "p50": 89800.0,
+      "p99": 85000.0
+    },
+    "b8_recovery_duration_ms": {
+      "value": 14.2
+    },
+    "b9_consumer_overrun_laps": {
+      "value": 0.0
+    },
+    "b10_memory_working_set_mb": {
+      "value": 48.5
+    }
+  }
+}

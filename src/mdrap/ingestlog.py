@@ -17,7 +17,7 @@ import zlib
 from enum import IntEnum
 from typing import Iterator
 
-from .models import RawEvent
+from .models import AckStatus, OperationalMode, RawEvent
 
 __stability__ = "stable"
 
@@ -25,29 +25,24 @@ __stability__ = "stable"
 logger = logging.getLogger(__name__)
 
 
-class AckStatus(IntEnum):
-    """Acknowledgement boundary status for event persistence (Spec §5 / INV-DUR-001)."""
-
-    RECEIVED = 1          # Reached network socket / API boundary
-    ACCEPTED = 2          # Validated against schema and bounds
-    BUFFERED_APP = 3      # Staged in userspace application buffer
-    WRITTEN_OS = 4        # Flushed to OS kernel buffer cache (write + flush)
-    DURABLY_COMMITTED = 5 # Synchronized to non-volatile storage (fsync)
-    RECOVERED = 6         # Reconstructed from write-ahead log replay
-
-
 # Constants & Binary Layout
 LOG_MAGIC = b"MDRAPILG"  # 8 bytes
-LOG_VERSION = 1          # uint16 (2 bytes)
-SEGMENT_HEADER_FORMAT = ">8sHQd6s"  # magic(8), ver(2), start_offset(8), ts(8), res(6) = 32 bytes
+LOG_VERSION = 1  # uint16 (2 bytes)
+SEGMENT_HEADER_FORMAT = (
+    ">8sHQd6s"  # magic(8), ver(2), start_offset(8), ts(8), res(6) = 32 bytes
+)
 SEGMENT_HEADER_SIZE = struct.calcsize(SEGMENT_HEADER_FORMAT)  # 32
 
-FRAME_MAGIC = 0xAA55     # uint16 (2 bytes)
-FRAME_HEADER_FORMAT = ">HHQdII"  # magic(2), res(2), offset(8), ts(8), length(4), crc32(4) = 28 bytes
+FRAME_MAGIC = 0xAA55  # uint16 (2 bytes)
+FRAME_HEADER_FORMAT = (
+    ">HHQdII"  # magic(2), res(2), offset(8), ts(8), length(4), crc32(4) = 28 bytes
+)
 FRAME_HEADER_SIZE = struct.calcsize(FRAME_HEADER_FORMAT)  # 28
 
 DEFAULT_MAX_SEGMENT_BYTES = 10 * 1024 * 1024  # 10 MB
-MAX_FRAME_PAYLOAD_BYTES = 16 * 1024 * 1024     # 16 MB boundary ceiling to prevent OOM on corrupted lengths
+MAX_FRAME_PAYLOAD_BYTES = (
+    16 * 1024 * 1024
+)  # 16 MB boundary ceiling to prevent OOM on corrupted lengths
 
 
 class IngestLogError(Exception):
@@ -85,7 +80,12 @@ class IngestLog:
                 pass
 
         self.fsync_policy = fsync_policy.lower()
-        if self.fsync_policy not in ("always", "grouped_by_time", "grouped_by_size", "never"):
+        if self.fsync_policy not in (
+            "always",
+            "grouped_by_time",
+            "grouped_by_size",
+            "never",
+        ):
             raise ValueError(f"Invalid fsync_policy: {self.fsync_policy}")
 
         self.max_segment_bytes = max_segment_bytes
@@ -117,9 +117,11 @@ class IngestLog:
             self._lock_file.seek(0)
             if os.name == "nt":
                 import msvcrt
+
                 msvcrt.locking(self._lock_file.fileno(), msvcrt.LK_NBLCK, 1)
             else:
                 import fcntl
+
                 fcntl.flock(self._lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
         except (OSError, IOError) as exc:
             if self._lock_file is not None:
@@ -139,9 +141,11 @@ class IngestLog:
                 self._lock_file.seek(0)
                 if os.name == "nt":
                     import msvcrt
+
                     msvcrt.locking(self._lock_file.fileno(), msvcrt.LK_UNLCK, 1)
                 else:
                     import fcntl
+
                     fcntl.flock(self._lock_file.fileno(), fcntl.LOCK_UN)
             except Exception:
                 pass
@@ -199,7 +203,10 @@ class IngestLog:
             highest_offset = -1
             for start_off, path in segments:
                 highest_in_seg = self._verify_and_repair_segment(path)
-                if os.path.exists(path) and os.path.getsize(path) >= SEGMENT_HEADER_SIZE:
+                if (
+                    os.path.exists(path)
+                    and os.path.getsize(path) >= SEGMENT_HEADER_SIZE
+                ):
                     valid_segments.append((start_off, path))
                 if highest_in_seg > highest_offset:
                     highest_offset = highest_in_seg
@@ -228,7 +235,12 @@ class IngestLog:
         size = os.path.getsize(filepath)
         if size < SEGMENT_HEADER_SIZE:
             # File smaller than header -> torn header, remove file so it is not reopened headerless
-            logger.warning("Segment file %s smaller than header (%d < %d); removing torn segment", filepath, size, SEGMENT_HEADER_SIZE)
+            logger.warning(
+                "Segment file %s smaller than header (%d < %d); removing torn segment",
+                filepath,
+                size,
+                SEGMENT_HEADER_SIZE,
+            )
             try:
                 os.remove(filepath)
             except OSError:
@@ -241,9 +253,13 @@ class IngestLog:
 
         with open(filepath, "r+b") as f:
             header_bytes = f.read(SEGMENT_HEADER_SIZE)
-            magic, ver, seg_start, ts, res = struct.unpack(SEGMENT_HEADER_FORMAT, header_bytes)
+            magic, ver, seg_start, ts, res = struct.unpack(
+                SEGMENT_HEADER_FORMAT, header_bytes
+            )
             if magic != LOG_MAGIC or ver != LOG_VERSION:
-                raise IngestLogCorruptError(f"Corrupt segment header in {filepath}: magic={magic!r}, ver={ver}")
+                raise IngestLogCorruptError(
+                    f"Corrupt segment header in {filepath}: magic={magic!r}, ver={ver}"
+                )
 
             if len(res) == 6:
                 crc32 = struct.unpack(">I", res[:4])[0]
@@ -264,19 +280,29 @@ class IngestLog:
                     break
                 if len(frame_hdr_bytes) < FRAME_HEADER_SIZE:
                     # Torn tail during frame header write at EOF!
-                    logger.warning("Torn tail detected in %s at pos %d (< frame header); truncating", filepath, pos)
+                    logger.warning(
+                        "Torn tail detected in %s at pos %d (< frame header); truncating",
+                        filepath,
+                        pos,
+                    )
                     f.seek(valid_pos)
                     f.truncate(valid_pos)
                     f.flush()
                     break
 
-                f_magic, _, offset, f_ts, length, expected_crc = struct.unpack(FRAME_HEADER_FORMAT, frame_hdr_bytes)
+                f_magic, _, offset, f_ts, length, expected_crc = struct.unpack(
+                    FRAME_HEADER_FORMAT, frame_hdr_bytes
+                )
                 if f_magic != FRAME_MAGIC:
                     # Check if this is zero-padded tail at EOF or mid-segment corruption
                     f.seek(0, os.SEEK_END)
-                    is_at_end = (f.tell() <= pos + FRAME_HEADER_SIZE)
+                    is_at_end = f.tell() <= pos + FRAME_HEADER_SIZE
                     if is_at_end and frame_hdr_bytes == b"\x00" * FRAME_HEADER_SIZE:
-                        logger.warning("Zeroed tail frame detected at pos %d in %s; truncating torn tail", pos, filepath)
+                        logger.warning(
+                            "Zeroed tail frame detected at pos %d in %s; truncating torn tail",
+                            pos,
+                            filepath,
+                        )
                         f.seek(valid_pos)
                         f.truncate(valid_pos)
                         f.flush()
@@ -294,7 +320,13 @@ class IngestLog:
                 payload_bytes = f.read(length)
                 if len(payload_bytes) < length:
                     # Incomplete final frame at EOF!
-                    logger.warning("Incomplete payload (%d < %d) at pos %d in %s; truncating torn frame", len(payload_bytes), length, pos, filepath)
+                    logger.warning(
+                        "Incomplete payload (%d < %d) at pos %d in %s; truncating torn frame",
+                        len(payload_bytes),
+                        length,
+                        pos,
+                        filepath,
+                    )
                     f.seek(valid_pos)
                     f.truncate(valid_pos)
                     f.flush()
@@ -305,9 +337,12 @@ class IngestLog:
                     # CRC corruption!
                     # If this is the last frame before EOF, treat as torn write; if middle of file, corrupt error!
                     f.seek(0, os.SEEK_END)
-                    is_at_end = (f.tell() == pos + FRAME_HEADER_SIZE + length)
+                    is_at_end = f.tell() == pos + FRAME_HEADER_SIZE + length
                     if is_at_end:
-                        logger.warning("CRC mismatch on final frame in %s; removing torn frame", filepath)
+                        logger.warning(
+                            "CRC mismatch on final frame in %s; removing torn frame",
+                            filepath,
+                        )
                         f.seek(valid_pos)
                         f.truncate(valid_pos)
                         f.flush()
@@ -335,7 +370,9 @@ class IngestLog:
 
         filename = self._segment_filename(start_offset)
         now_ts = time.time()
-        partial_hdr = struct.pack(">8sHQd", LOG_MAGIC, LOG_VERSION, start_offset, now_ts)
+        partial_hdr = struct.pack(
+            ">8sHQd", LOG_MAGIC, LOG_VERSION, start_offset, now_ts
+        )
         hdr_crc = zlib.crc32(partial_hdr) & 0xFFFFFFFF
         hdr_res = struct.pack(">I2s", hdr_crc, b"\x00\x00")
         hdr = struct.pack(
@@ -378,7 +415,9 @@ class IngestLog:
                 )
 
             if isinstance(raw, RawEvent):
-                recv_ts = raw.receive_timestamp if raw.receive_timestamp else time.time()
+                recv_ts = (
+                    raw.receive_timestamp if raw.receive_timestamp else time.time()
+                )
                 record = {
                     "raw_id": raw.raw_id,
                     "source": raw.source,
@@ -395,7 +434,9 @@ class IngestLog:
             # Architectural Decision (N5): RFC 3629 forbids UTF-8 encoding of lone surrogates
             # (U+D800..U+DFFF). Using errors="replace" substitutes the Unicode Replacement Character
             # (U+FFFD), preventing serialization crashes and ensuring log append durability.
-            payload_bytes = json.dumps(record, separators=(",", ":"), ensure_ascii=False).encode("utf-8", errors="replace")
+            payload_bytes = json.dumps(
+                record, separators=(",", ":"), ensure_ascii=False
+            ).encode("utf-8", errors="replace")
             payload_len = len(payload_bytes)
             crc = zlib.crc32(payload_bytes) & 0xFFFFFFFF
 
@@ -489,7 +530,9 @@ class IngestLog:
                     rec = {
                         "source": item.source,
                         "payload": item.payload,
-                        "receive_timestamp": item.receive_timestamp if item.receive_timestamp else now,
+                        "receive_timestamp": item.receive_timestamp
+                        if item.receive_timestamp
+                        else now,
                         "raw_id": item.raw_id,
                     }
                 elif isinstance(item, dict):
@@ -497,9 +540,13 @@ class IngestLog:
                     if not rec.get("receive_timestamp"):
                         rec["receive_timestamp"] = now
                 else:
-                    raise TypeError(f"Expected RawEvent or dict, got {type(item).__name__}")
+                    raise TypeError(
+                        f"Expected RawEvent or dict, got {type(item).__name__}"
+                    )
 
-                p_bytes = json.dumps(rec, separators=(",", ":"), ensure_ascii=False).encode("utf-8", errors="replace")
+                p_bytes = json.dumps(
+                    rec, separators=(",", ":"), ensure_ascii=False
+                ).encode("utf-8", errors="replace")
                 crc = zlib.crc32(p_bytes) & 0xFFFFFFFF
                 p_len = len(p_bytes)
                 total_frame_bytes += FRAME_HEADER_SIZE + p_len
@@ -539,7 +586,11 @@ class IngestLog:
                 self._current_file.write(batch_buffer)
                 self._current_file.flush()
 
-                if self.fsync_policy in ("always", "grouped_by_size", "grouped_by_time"):
+                if self.fsync_policy in (
+                    "always",
+                    "grouped_by_size",
+                    "grouped_by_time",
+                ):
                     os.fsync(self._current_file.fileno())
                     self._bytes_since_fsync = 0
                     self._last_fsync_ts = time.time()
@@ -614,13 +665,20 @@ class IngestLog:
                     frame_hdr_bytes = f.read(FRAME_HEADER_SIZE)
                     if len(frame_hdr_bytes) < FRAME_HEADER_SIZE:
                         break
-                    f_magic, _, offset, ts, length, expected_crc = struct.unpack(FRAME_HEADER_FORMAT, frame_hdr_bytes)
+                    f_magic, _, offset, ts, length, expected_crc = struct.unpack(
+                        FRAME_HEADER_FORMAT, frame_hdr_bytes
+                    )
                     if f_magic != FRAME_MAGIC:
                         break
-                    if length > MAX_FRAME_PAYLOAD_BYTES or length > self.max_segment_bytes:
+                    if (
+                        length > MAX_FRAME_PAYLOAD_BYTES
+                        or length > self.max_segment_bytes
+                    ):
                         logger.warning(
                             "Oversized frame length %d at offset %d in %s; skipping remaining segment",
-                            length, offset, path,
+                            length,
+                            offset,
+                            path,
                         )
                         self.corrupted_frames_count += 1
                         break
@@ -630,7 +688,9 @@ class IngestLog:
                     if (zlib.crc32(payload_bytes) & 0xFFFFFFFF) != expected_crc:
                         self.corrupted_frames_count += 1
                         logger.warning(
-                            "Corrupted CRC at offset %d in %s; skipping frame", offset, path
+                            "Corrupted CRC at offset %d in %s; skipping frame",
+                            offset,
+                            path,
                         )
                         continue
 
@@ -645,7 +705,9 @@ class IngestLog:
                             )
                             yield offset, raw_evt
                         except Exception as exc:
-                            logger.warning("Failed to decode record at offset %d: %s", offset, exc)
+                            logger.warning(
+                                "Failed to decode record at offset %d: %s", offset, exc
+                            )
 
     def delete_segments_before(self, checkpoint_offset: int) -> int:
         """Delete obsolete segment files where all records are strictly before checkpoint_offset.
@@ -668,7 +730,11 @@ class IngestLog:
                     try:
                         os.remove(path)
                         deleted_count += 1
-                        logger.info("Purged obsolete segment %s (max offset < %d)", path, checkpoint_offset)
+                        logger.info(
+                            "Purged obsolete segment %s (max offset < %d)",
+                            path,
+                            checkpoint_offset,
+                        )
                     except OSError as exc:
                         logger.warning("Could not delete segment %s: %s", path, exc)
 
@@ -709,7 +775,9 @@ class IngestLog:
             if s_size < SEGMENT_HEADER_SIZE:
                 report["corrupted_segments"] += 1
                 report["is_clean"] = False
-                report["errors"].append(f"{s_name}: File size {s_size} < header size {SEGMENT_HEADER_SIZE}")
+                report["errors"].append(
+                    f"{s_name}: File size {s_size} < header size {SEGMENT_HEADER_SIZE}"
+                )
                 continue
 
             with open(s_path, "rb") as f:
@@ -719,16 +787,22 @@ class IngestLog:
                     report["is_clean"] = False
                     report["errors"].append(f"{s_name}: Truncated segment header")
                     continue
-                magic, ver, seg_start, _, res = struct.unpack(SEGMENT_HEADER_FORMAT, hdr_bytes)
+                magic, ver, seg_start, _, res = struct.unpack(
+                    SEGMENT_HEADER_FORMAT, hdr_bytes
+                )
                 if magic != LOG_MAGIC:
                     report["corrupted_segments"] += 1
                     report["is_clean"] = False
-                    report["errors"].append(f"{s_name}: Invalid segment magic {magic:#x}")
+                    report["errors"].append(
+                        f"{s_name}: Invalid segment magic {magic:#x}"
+                    )
                     continue
                 if ver != LOG_VERSION:
                     report["corrupted_segments"] += 1
                     report["is_clean"] = False
-                    report["errors"].append(f"{s_name}: Unsupported segment version {ver}")
+                    report["errors"].append(
+                        f"{s_name}: Unsupported segment version {ver}"
+                    )
                     continue
                 if len(res) == 6:
                     crc32 = struct.unpack(">I", res[:4])[0]
@@ -737,7 +811,9 @@ class IngestLog:
                         if crc32 != expected_crc:
                             report["corrupted_segments"] += 1
                             report["is_clean"] = False
-                            report["errors"].append(f"{s_name}: Corrupt segment header CRC")
+                            report["errors"].append(
+                                f"{s_name}: Corrupt segment header CRC"
+                            )
                             continue
 
                 seg_corrupt = False
@@ -748,28 +824,38 @@ class IngestLog:
                     if len(frame_hdr_bytes) < FRAME_HEADER_SIZE:
                         report["corrupted_frames"] += 1
                         seg_corrupt = True
-                        report["errors"].append(f"{s_name}: Torn frame header at pos {f.tell()}")
+                        report["errors"].append(
+                            f"{s_name}: Torn frame header at pos {f.tell()}"
+                        )
                         break
 
-                    f_magic, _, offset, _, length, expected_crc = struct.unpack(FRAME_HEADER_FORMAT, frame_hdr_bytes)
+                    f_magic, _, offset, _, length, expected_crc = struct.unpack(
+                        FRAME_HEADER_FORMAT, frame_hdr_bytes
+                    )
                     if f_magic != FRAME_MAGIC:
                         report["corrupted_frames"] += 1
                         seg_corrupt = True
-                        report["errors"].append(f"{s_name}: Invalid frame magic {f_magic:#x} at offset {offset}")
+                        report["errors"].append(
+                            f"{s_name}: Invalid frame magic {f_magic:#x} at offset {offset}"
+                        )
                         break
 
                     payload_bytes = f.read(length)
                     if len(payload_bytes) < length:
                         report["corrupted_frames"] += 1
                         seg_corrupt = True
-                        report["errors"].append(f"{s_name}: Torn payload at offset {offset}")
+                        report["errors"].append(
+                            f"{s_name}: Torn payload at offset {offset}"
+                        )
                         break
 
                     actual_crc = zlib.crc32(payload_bytes) & 0xFFFFFFFF
                     if actual_crc != expected_crc:
                         report["corrupted_frames"] += 1
                         seg_corrupt = True
-                        report["errors"].append(f"{s_name}: CRC32 mismatch at offset {offset}")
+                        report["errors"].append(
+                            f"{s_name}: CRC32 mismatch at offset {offset}"
+                        )
                         continue
 
                     report["valid_frames"] += 1
@@ -827,7 +913,9 @@ class IngestLog:
                     if len(hdr_bytes) < SEGMENT_HEADER_SIZE:
                         is_corrupt = True
                     else:
-                        magic, ver, seg_start, ts, _ = struct.unpack(SEGMENT_HEADER_FORMAT, hdr_bytes)
+                        magic, ver, seg_start, ts, _ = struct.unpack(
+                            SEGMENT_HEADER_FORMAT, hdr_bytes
+                        )
                         if magic != LOG_MAGIC or ver != LOG_VERSION:
                             is_corrupt = True
 
@@ -840,8 +928,13 @@ class IngestLog:
                                 is_corrupt = True
                                 break
 
-                            f_magic, _, offset, f_ts, length, expected_crc = struct.unpack(FRAME_HEADER_FORMAT, frame_hdr_bytes)
-                            if f_magic != FRAME_MAGIC or length > DEFAULT_MAX_SEGMENT_BYTES:
+                            f_magic, _, offset, f_ts, length, expected_crc = (
+                                struct.unpack(FRAME_HEADER_FORMAT, frame_hdr_bytes)
+                            )
+                            if (
+                                f_magic != FRAME_MAGIC
+                                or length > DEFAULT_MAX_SEGMENT_BYTES
+                            ):
                                 is_corrupt = True
                                 f.seek(pos + 1)
                                 while True:
@@ -873,6 +966,7 @@ class IngestLog:
                 report["corrupted_segments"] += 1
                 if backup:
                     import shutil
+
                     bak_path = s_path + f".bak.{int(time.time())}"
                     try:
                         shutil.copy2(s_path, bak_path)
@@ -881,9 +975,13 @@ class IngestLog:
 
                 if recovered_in_file:
                     first_hdr = recovered_in_file[0][0]
-                    _, _, start_off, first_ts, _, _ = struct.unpack(FRAME_HEADER_FORMAT, first_hdr)
+                    _, _, start_off, first_ts, _, _ = struct.unpack(
+                        FRAME_HEADER_FORMAT, first_hdr
+                    )
                     clean_ts = first_ts if first_ts else time.time()
-                    partial = struct.pack(">8sHQd", LOG_MAGIC, LOG_VERSION, start_off, clean_ts)
+                    partial = struct.pack(
+                        ">8sHQd", LOG_MAGIC, LOG_VERSION, start_off, clean_ts
+                    )
                     clean_crc = zlib.crc32(partial) & 0xFFFFFFFF
                     clean_res = struct.pack(">I2s", clean_crc, b"\x00\x00")
                     clean_hdr = struct.pack(
@@ -912,4 +1010,3 @@ class IngestLog:
                 report["recovered_records"] += len(recovered_in_file)
 
         return report
-
