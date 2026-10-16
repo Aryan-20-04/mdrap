@@ -696,6 +696,23 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Load replay events from binary journal (.dbn) path",
     )
+    p_replay.add_argument(
+        "--from-wal",
+        default=None,
+        help="Load and replay raw events from IngestLog Write-Ahead Log directory",
+    )
+    p_replay.add_argument(
+        "--verify-equivalence",
+        action="store_true",
+        default=False,
+        help="Verify deterministic replay equivalence across multiple independent engine folds",
+    )
+    p_replay.add_argument(
+        "--iterations",
+        type=int,
+        default=2,
+        help="Number of independent replay folds for --verify-equivalence (default: 2)",
+    )
 
     p_archive = _sub(
         "archive", cmd_archive, "Show raw event archive statistics", ["arc"]

@@ -14,12 +14,14 @@ and configurable speed multipliers (0.1x to 100x or max unthrottled).
 from __future__ import annotations
 
 import contextlib
+import hashlib
+import json
 import sqlite3
 import time
 from dataclasses import dataclass
 from typing import Any, Generator, Iterable, Optional
 
-from .models import CanonicalEvent, EventType, QualityStatus
+from .models import CanonicalEvent, EventType, QualityStatus, RawEvent
 from .journal import BinaryJournalReader
 
 __stability__ = "stable"
@@ -468,3 +470,168 @@ class HistoricalReplayEngine:
             stats = exc.value
 
         return stats or ReplayStats(events_replayed=self._events_processed)
+
+    def load_from_ingestlog(
+        self,
+        log_dir: str,
+        start_offset: int = 0,
+        limit: Optional[int] = None,
+    ) -> list[RawEvent]:
+        """Load RawEvents sequentially from an IngestLog WAL directory."""
+        from .ingestlog import IngestLog
+
+        events: list[RawEvent] = []
+        with IngestLog(log_dir, lock=False) as log:
+            for off, raw_ev in log.iter_from(start_offset):
+                events.append(raw_ev)
+                if limit and len(events) >= limit:
+                    break
+        return events
+
+    def replay_raw_to_engine(
+        self,
+        engine: Any,
+        events: Iterable[RawEvent],
+        initial_state: Any | None = None,
+        clock: Any | None = None,
+    ) -> tuple[Any, list[Any]]:
+        """Replay RawEvents deterministically through an Engine fold.
+
+        Yields identical EngineState and CanonicalEvents across independent runs.
+        Returns (final_state, decisions).
+        """
+        state = (
+            initial_state
+            if initial_state is not None
+            else engine.create_initial_state()
+        )
+        clk = clock if clock is not None else engine.clock
+        decisions = []
+        for off, raw in enumerate(events):
+            state, dec = engine.step(state, raw, clk, offset=off)
+            decisions.append(dec)
+        return state, decisions
+
+    @classmethod
+    def verify_replay_equivalence(
+        cls,
+        log_dir: str,
+        iterations: int = 2,
+        clock_ts: float = 1729000000.0,
+        limit: Optional[int] = None,
+    ) -> dict[str, Any]:
+        """Verify deterministic replay equivalence across multiple independent engine folds.
+
+        Replays all RawEvents in an IngestLog across `iterations` independent Engine instances.
+        Verifies:
+        1. Identical final EngineState (exact match of all counters, dedup window, bbo_state, price_windows).
+        2. Identical stream of CanonicalEvents (exact quality status, reasons, sequence, prices, sizes).
+        3. Identical cryptographic digests of state and event streams.
+
+        Returns a detailed equivalence report.
+        """
+        from .clock import FixedClock
+        from .engine import Engine
+
+        replay_eng = cls()
+        raw_events = replay_eng.load_from_ingestlog(log_dir, limit=limit)
+
+        report: dict[str, Any] = {
+            "wal_path": log_dir,
+            "iterations": iterations,
+            "events_replayed": len(raw_events),
+            "is_equivalent": True,
+            "state_hash": "",
+            "events_hash": "",
+            "counts": {},
+            "errors": [],
+            "runs": [],
+        }
+
+        if not raw_events:
+            report["is_equivalent"] = True
+            report["state_hash"] = hashlib.sha256(b"EMPTY_STATE").hexdigest()
+            report["events_hash"] = hashlib.sha256(b"EMPTY_EVENTS").hexdigest()
+            return report
+
+        base_state_hash = None
+        base_events_hash = None
+        base_counts = None
+
+        for iter_idx in range(iterations):
+            fixed_clock = FixedClock(clock_ts)
+            engine = Engine(clock=fixed_clock)
+            final_state, decisions = replay_eng.replay_raw_to_engine(
+                engine, raw_events, clock=fixed_clock
+            )
+
+            state_dict = final_state.to_dict()
+            state_json = json.dumps(state_dict, sort_keys=True)
+            run_state_hash = hashlib.sha256(state_json.encode("utf-8")).hexdigest()
+
+            canonical_records = []
+            for d in decisions:
+                ce = d.canonical_event
+                if ce is not None:
+                    canonical_records.append(
+                        {
+                            "offset": d.offset,
+                            "instrument_id": ce.instrument_id,
+                            "event_type": ce.event_type.name
+                            if hasattr(ce.event_type, "name")
+                            else str(ce.event_type),
+                            "exchange_ts": ce.exchange_timestamp,
+                            "quality_status": ce.quality_status.name
+                            if hasattr(ce.quality_status, "name")
+                            else str(ce.quality_status),
+                            "reasons": ce.reasons,
+                            "price": ce.price,
+                            "quantity": ce.quantity,
+                            "bid": ce.bid_price,
+                            "ask": ce.ask_price,
+                            "seq": ce.sequence_number,
+                        }
+                    )
+                else:
+                    canonical_records.append(
+                        {
+                            "offset": d.offset,
+                            "quality_status": d.quality_status.name
+                            if hasattr(d.quality_status, "name")
+                            else str(d.quality_status),
+                            "reasons": d.reasons,
+                            "is_duplicate": d.is_duplicate,
+                        }
+                    )
+            events_json = json.dumps(canonical_records, sort_keys=True)
+            run_events_hash = hashlib.sha256(events_json.encode("utf-8")).hexdigest()
+
+            report["runs"].append(
+                {
+                    "iteration": iter_idx + 1,
+                    "state_hash": run_state_hash,
+                    "events_hash": run_events_hash,
+                    "counts": dict(final_state.counts),
+                }
+            )
+
+            if base_state_hash is None:
+                base_state_hash = run_state_hash
+                base_events_hash = run_events_hash
+                base_counts = final_state.counts
+            else:
+                if run_state_hash != base_state_hash:
+                    report["is_equivalent"] = False
+                    report["errors"].append(
+                        f"Iteration {iter_idx + 1} state hash mismatch: {run_state_hash} != {base_state_hash}"
+                    )
+                if run_events_hash != base_events_hash:
+                    report["is_equivalent"] = False
+                    report["errors"].append(
+                        f"Iteration {iter_idx + 1} events hash mismatch: {run_events_hash} != {base_events_hash}"
+                    )
+
+        report["state_hash"] = base_state_hash or ""
+        report["events_hash"] = base_events_hash or ""
+        report["counts"] = base_counts or {}
+        return report

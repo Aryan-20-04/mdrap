@@ -367,13 +367,85 @@ def cmd_replay(args):
     speed = getattr(args, "speed", None)
     from_sqlite = getattr(args, "from_sqlite", None)
     from_journal = getattr(args, "from_journal", None)
+    from_wal = getattr(args, "from_wal", None)
+    verify_eq = getattr(args, "verify_equivalence", False)
+    iterations = getattr(args, "iterations", 2)
     symbol = getattr(args, "symbol", None)
     limit = getattr(args, "limit", None)
+
+    if verify_eq:
+        wal_dir = from_wal or getattr(args, "base_dir", None) or "data/wal"
+        console = Console()
+        if not os.path.exists(wal_dir):
+            console.print(
+                Panel.fit(
+                    f"[bold red]✖ Error: WAL directory '{wal_dir}' does not exist.[/bold red]",
+                    title="MDRAP Replay Equivalence",
+                    border_style="red",
+                )
+            )
+            sys.exit(1)
+
+        res = HistoricalReplayEngine.verify_replay_equivalence(
+            wal_dir, iterations=iterations, limit=limit
+        )
+        if getattr(args, "json", False):
+            print(json.dumps(res, indent=2))
+            return
+
+        if res["is_equivalent"]:
+            console.print()
+            console.print(
+                Panel.fit(
+                    f"[bold green]✔ Deterministic Replay Equivalence Verified[/bold green]\n\n"
+                    f"WAL Directory: [yellow]{res['wal_path']}[/yellow]\n"
+                    f"Folds Executed: [bold cyan]{res['iterations']}[/bold cyan] independent engine runs\n"
+                    f"Events Replayed: [bold cyan]{res['events_replayed']:,}[/bold cyan]\n"
+                    f"State SHA-256: [yellow]{res['state_hash']}[/yellow]\n"
+                    f"Events SHA-256: [yellow]{res['events_hash']}[/yellow]\n"
+                    f"Quality Counts: {res.get('counts', {})}",
+                    title="MDRAP Deterministic Replay Attestation",
+                    border_style="green",
+                )
+            )
+        else:
+            console.print()
+            console.print(
+                Panel.fit(
+                    f"[bold red]✖ Deterministic Replay Equivalence Failed[/bold red]\n\n"
+                    f"Errors:\n" + "\n".join(f"  • {e}" for e in res.get("errors", [])),
+                    title="MDRAP Replay Equivalence Discrepancy",
+                    border_style="red",
+                )
+            )
+            sys.exit(1)
+        return
 
     engine = HistoricalReplayEngine(speed_factor=speed, sync_virtual_clock=True)
     events = []
 
-    if from_sqlite:
+    if from_wal:
+        raw_events = engine.load_from_ingestlog(from_wal, limit=limit)
+        console = Console()
+        _ensure_db_dir(getattr(args, "db", "data/mdrap_replay.db"))
+        store = Store(getattr(args, "db", "data/mdrap_replay.db"))
+        analytics = MarketAnalytics()
+        pipeline = Pipeline(store, analytics=analytics)
+        for raw in raw_events:
+            pipeline.process_one(raw)
+        pipeline.finish()
+        store.commit()
+        store.close()
+        console.print(
+            Panel.fit(
+                f"[bold green]✔ WAL Historical Replay Complete[/bold green]\n\n"
+                f"Events Replayed: [bold cyan]{len(raw_events):,}[/bold cyan]\n"
+                f"Source: [yellow]{from_wal}[/yellow]",
+                border_style="green",
+            )
+        )
+        return
+    elif from_sqlite:
         events = engine.load_from_sqlite(from_sqlite, symbol=symbol, limit=limit)
     elif from_journal:
         events = engine.load_from_journal(from_journal, limit=limit)
@@ -1068,6 +1140,13 @@ def cmd_wal(args):
         t.add_row("Valid Frames", f"[green]{report['valid_frames']:,}[/green]")
         t.add_row("Corrupted Segments", f"[red]{report['corrupted_segments']}[/red]" if report['corrupted_segments'] else "0")
         t.add_row("Corrupted Frames", f"[red]{report['corrupted_frames']}[/red]" if report['corrupted_frames'] else "0")
+        if report.get("manifest_verified") is not None:
+            m_stat = (
+                "[bold green]VALID (Hash Chain Intact)[/bold green]"
+                if report["manifest_verified"]
+                else "[bold red]BROKEN/TAMPERED[/bold red]"
+            )
+            t.add_row("Manifest Cryptographic Integrity", m_stat)
         console.print(t)
         if report["errors"]:
             console.print("\n[bold red]Corruption Details:[/bold red]")
