@@ -234,6 +234,35 @@ def cmd_benchmark(args):
     force_pretty = getattr(args, "pretty", False)
     show_ui = is_interactive or force_pretty
 
+    if getattr(args, "ten_boundaries", False):
+        try:
+            from benchmarks.ten_boundaries import (
+                print_manifest_summary,
+                run_all_ten_boundaries,
+            )
+        except ImportError:
+            from pathlib import Path
+
+            root = Path(__file__).resolve().parent.parent.parent.parent
+            if str(root) not in sys.path:
+                sys.path.insert(0, str(root))
+            from benchmarks.ten_boundaries import (
+                print_manifest_summary,
+                run_all_ten_boundaries,
+            )
+
+        events = getattr(args, "events", None) or cfg.num_events
+        out_dir = getattr(args, "out_dir", None)
+        if out_dir == "benchmarks" or out_dir is None:
+            out_dir = "benchmarks/results"
+        manifest = run_all_ten_boundaries(events=events, seed=cfg.seed, out_dir=out_dir)
+
+        if getattr(args, "json", False) or (not sys.stdout.isatty() and not force_pretty):
+            print(json.dumps(manifest, indent=2))
+        else:
+            print_manifest_summary(manifest, console=console)
+        return
+
     if show_ui:
         render_step_start(
             console,

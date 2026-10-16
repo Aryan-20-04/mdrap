@@ -1,0 +1,140 @@
+{
+  "mdrap_version": "3.1.0",
+  "git_commit": "1794cfc47008295f5c45e4124e87678e1549d9b3",
+  "git_branch": "main",
+  "git_dirty": true,
+  "timestamp_utc": "2026-10-16T14:50:37.213459Z",
+  "environment": {
+    "os": "Windows-11-10.0.26200-SP0",
+    "machine_arch": "AMD64",
+    "cpu_model": "Intel64 Family 6 Model 154 Stepping 4, GenuineIntel",
+    "cpu_cores_logical": 12,
+    "total_ram_gb": 15.72,
+    "python_version": "3.13.1",
+    "python_compiler": "MSC v.1942 64 bit (AMD64)",
+    "has_native_fastpath": true,
+    "has_shm_support": true,
+    "active_profile": "STANDARD"
+  },
+  "dataset": {
+    "dataset_hash_sha256": "61706bd84c3d69d687c727b394feec8dbdbba2573673032702ab53b7134aa3c4",
+    "dataset_records": 5000,
+    "seed": 42
+  },
+  "boundaries": {
+    "b1_decode": {
+      "sbe_decode": {
+        "rate_eps": 633978.7,
+        "wall_s": 0.0079,
+        "latency_ns": {
+          "p50": 1500.0,
+          "p90": 1600.0,
+          "p95": 1600.0,
+          "p99": 1800.0,
+          "p999": 5200.2,
+          "max": 16800.0
+        }
+      },
+      "json_decode": {
+        "rate_eps": 414614.3,
+        "wall_s": 0.0121,
+        "latency_ns": {
+          "p50": 2300.0,
+          "p90": 2500.0,
+          "p95": 2600.0,
+          "p99": 2800.0,
+          "p999": 13710.7,
+          "max": 46100.0
+        }
+      }
+    },
+    "b2_validation": {
+      "rate_eps": 472853.5,
+      "wall_s": 0.0106,
+      "latency_ns": {
+        "p50": 2000.0,
+        "p90": 2600.0,
+        "p95": 2700.0,
+        "p99": 3200.0,
+        "p999": 7900.3,
+        "max": 132700.0
+      }
+    },
+    "b3_wal_append": {
+      "rate_eps": 84226.1,
+      "wall_s": 0.0594,
+      "latency_ns": {
+        "p50": 10900.0,
+        "p90": 12200.0,
+        "p95": 12805.0,
+        "p99": 30402.0,
+        "p999": 126812.6,
+        "max": 384400.0
+      }
+    },
+    "b4_durable_flush": {
+      "rate_eps": 355.1,
+      "wall_s": 1.4082,
+      "latency_us": {
+        "p50": 2719.3,
+        "p90": 2944.05,
+        "p95": 3110.58,
+        "p99": 5321.93,
+        "p999": 7727.14,
+        "max": 7822.3
+      }
+    },
+    "b5_ipc_publish": {
+      "supported": true,
+      "rate_eps": 741169.0,
+      "wall_s": 0.0067,
+      "latency_ns": {
+        "p50": 1200.0,
+        "p90": 1300.0,
+        "p95": 1300.0,
+        "p99": 1400.0,
+        "p999": 4803.8,
+        "max": 32300.0
+      }
+    },
+    "b6_end_to_end": {
+      "rate_eps": 2720.0,
+      "wall_s": 1.832,
+      "latency_us": {
+        "p50": 348.7,
+        "p90": 516.38,
+        "p95": 551.89,
+        "p99": 791.72,
+        "p999": 1819.49,
+        "max": 4469.4
+      }
+    },
+    "b7_historical_replay": {
+      "events_replayed": 5000,
+      "wall_s": 2.1083,
+      "rate_eps": 2371.6
+    },
+    "b8_crash_recovery": {
+      "recovered_events": 5000,
+      "recovery_ms": 63.53
+    },
+    "b9_consumer_backpressure": {
+      "events_pushed": 5000,
+      "wall_s": 0.0049,
+      "producer_rate_eps": 1012617.2,
+      "consumed_events": 643,
+      "dropped_events": 3976,
+      "drop_pct": 79.52
+    },
+    "b10_resource_utilization": {
+      "num_events": 5000,
+      "wall_s": 2.4116,
+      "throughput_eps": 2073.3,
+      "rss_start_mb": 48.95,
+      "rss_end_mb": 48.95,
+      "rss_growth_mb": 0.0,
+      "mb_per_million_events": 0.0,
+      "cpu_utilization_pct": 99.1
+    }
+  }
+}

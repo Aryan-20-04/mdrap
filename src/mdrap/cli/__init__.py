@@ -416,6 +416,14 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Profile with cProfile and dump stats",
     )
+    p_bench.add_argument(
+        "--ten-boundaries",
+        "-b10",
+        dest="ten_boundaries",
+        action="store_true",
+        default=False,
+        help="Execute the reproducible 10-boundary benchmark harness across all system interfaces (§8, Phase 2)",
+    )
 
     # Architectural comparison
     p_compare = _sub(
