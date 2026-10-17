@@ -1,16 +1,47 @@
-"""MDRAP Feed Adapter Protocol & Dynamic Discovery.
+"""MDRAP Feed Adapter Protocol, Standard Adapters & Dynamic Discovery (Phase 4).
 
-Provides the FeedAdapter Protocol for exchange feed ingestion and dynamic
-discovery via standard library `importlib.metadata.entry_points(group="mdrap.adapters")`.
+Provides:
+- Institutional FeedAdapter Protocol.
+- Standardized Adapters: BinanceAdapter, KrakenAdapter, DatabentoAdapter, ITCHAdapter.
+- Dynamic discovery via standard library entry_points.
 """
 
 from __future__ import annotations
 
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 from ..models import CanonicalEvent, RawEvent
+from .base import (
+    AdapterCapabilities,
+    AdapterStreamState,
+    BaseFeedAdapter,
+    LicensingTier,
+    ReconnectTracker,
+    SequenceTracker,
+)
+from .binance import BinanceAdapter
+from .databento import DatabentoAdapter
+from .itch import ITCHAdapter
+from .kraken import KrakenAdapter
+from .reference import ReferenceFeedAdapter
+from .template import TemplateCustomVenueAdapter
 
-__all__ = ["FeedAdapter", "discover_adapters"]
+__all__ = [
+    "FeedAdapter",
+    "discover_adapters",
+    "BaseFeedAdapter",
+    "AdapterCapabilities",
+    "AdapterStreamState",
+    "LicensingTier",
+    "SequenceTracker",
+    "ReconnectTracker",
+    "BinanceAdapter",
+    "KrakenAdapter",
+    "DatabentoAdapter",
+    "ITCHAdapter",
+    "ReferenceFeedAdapter",
+    "TemplateCustomVenueAdapter",
+]
 
 __stability__ = "stable"
 
