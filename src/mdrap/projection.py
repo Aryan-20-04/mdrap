@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import queue
 import sqlite3
 import threading
 import time
@@ -313,6 +314,12 @@ class DuckDBProjection:
                 );
                 """
             )
+            self._conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_duck_inst_ts 
+                ON canonical_events(instrument_id, exchange_timestamp);
+                """
+            )
 
     def checkpoint(self) -> int:
         with self._lock:
@@ -323,33 +330,48 @@ class DuckDBProjection:
             return int(res[0]) if res else -1
 
     def apply(self, batch: list[Any], offset: int) -> None:
-        if not batch:
+        if not batch and offset < 0:
             return
         canonical_rows = []
         for item in batch:
-            ev = getattr(item, "canonical_event", None)
+            ev = item if isinstance(item, CanonicalEvent) else getattr(item, "canonical_event", None)
             if ev is not None:
-                r_json = json.dumps(ev.reasons) if isinstance(ev.reasons, list) else str(ev.reasons or "")
-                ev_type_str = ev.event_type.value if hasattr(ev.event_type, "value") else str(ev.event_type)
-                canonical_rows.append((
-                    ev.event_id,
-                    ev.instrument_id,
-                    ev_type_str,
-                    float(ev.exchange_timestamp or 0.0),
-                    float(ev.receive_timestamp or 0.0),
-                    float(ev.processing_timestamp or 0.0),
-                    ev.source,
-                    ev.sequence_number,
-                    ev.price,
-                    ev.quantity,
-                    ev.bid_price,
-                    ev.ask_price,
-                    ev.bid_size,
-                    ev.ask_size,
-                    ev.quality_status.value if hasattr(ev.quality_status, "value") else str(ev.quality_status),
-                    r_json,
-                    ev.raw_id,
-                ))
+                r_json = (
+                    json.dumps(ev.reasons)
+                    if isinstance(ev.reasons, list)
+                    else str(ev.reasons or "")
+                )
+                ev_type_str = (
+                    ev.event_type.value
+                    if hasattr(ev.event_type, "value")
+                    else str(ev.event_type)
+                )
+                q_status_str = (
+                    ev.quality_status.value
+                    if hasattr(ev.quality_status, "value")
+                    else str(ev.quality_status)
+                )
+                canonical_rows.append(
+                    (
+                        ev.event_id,
+                        ev.instrument_id,
+                        ev_type_str,
+                        float(ev.exchange_timestamp or 0.0),
+                        float(ev.receive_timestamp or 0.0),
+                        float(ev.processing_timestamp or 0.0),
+                        ev.source,
+                        ev.sequence_number,
+                        ev.price,
+                        ev.quantity,
+                        ev.bid_price,
+                        ev.ask_price,
+                        ev.bid_size,
+                        ev.ask_size,
+                        q_status_str,
+                        r_json,
+                        str(ev.raw_id) if ev.raw_id is not None else None,
+                    )
+                )
         with self._lock:
             if canonical_rows:
                 self._conn.executemany(
@@ -358,20 +380,40 @@ class DuckDBProjection:
                     """,
                     canonical_rows,
                 )
-            self._conn.execute(
-                """
-                INSERT OR REPLACE INTO projection_checkpoints VALUES (?, ?, ?);
-                """,
-                [self.name, offset, time.time()],
-            )
+            if offset >= 0:
+                self._conn.execute(
+                    """
+                    INSERT OR REPLACE INTO projection_checkpoints VALUES (?, ?, ?);
+                    """,
+                    [self.name, offset, time.time()],
+                )
 
     def count_canonical(self) -> int:
         with self._lock:
-            return int(self._conn.execute("SELECT COUNT(*) FROM canonical_events").fetchone()[0])
+            return int(
+                self._conn.execute(
+                    "SELECT COUNT(*) FROM canonical_events"
+                ).fetchone()[0]
+            )
 
     def query(self, sql: str, params: list | None = None) -> list:
         with self._lock:
             return self._conn.execute(sql, params or []).fetchall()
+
+    def export_parquet(self, parquet_path: str, compression: str = "snappy") -> int:
+        """Export canonical_events table to a compressed Apache Parquet file."""
+        with self._lock:
+            p_abs = os.path.abspath(parquet_path)
+            os.makedirs(os.path.dirname(p_abs), exist_ok=True)
+            self._conn.execute(
+                f"COPY canonical_events TO '{p_abs}' (FORMAT PARQUET, COMPRESSION '{compression}')"
+            )
+            count = int(
+                self._conn.execute(
+                    "SELECT COUNT(*) FROM canonical_events"
+                ).fetchone()[0]
+            )
+            return count
 
     def close(self) -> None:
         with self._lock:
@@ -379,3 +421,169 @@ class DuckDBProjection:
                 self._conn.close()
             except Exception:
                 pass
+
+
+def export_journal_to_parquet(
+    journal_dir: str, parquet_path: str, compression: str = "snappy"
+) -> int:
+    """Scan IngestLog segments and export canonical events to compressed Apache Parquet."""
+    from .ingestlog import IngestLog
+
+    log = IngestLog(journal_dir)
+    p_abs = os.path.abspath(parquet_path)
+    os.makedirs(os.path.dirname(p_abs), exist_ok=True)
+
+    proj = DuckDBProjection(db_path=":memory:")
+    batch = []
+    scanned = 0
+    for offset, raw in log.iter_from(0):
+        scanned += 1
+        p = raw.payload
+        ev = CanonicalEvent(
+            event_id=f"wal_{offset}",
+            instrument_id=p.get("instrument", ""),
+            event_type=p.get("event_type", "TRADE"),
+            exchange_timestamp=float(p.get("exchange_ts", raw.receive_timestamp)),
+            receive_timestamp=float(raw.receive_timestamp),
+            processing_timestamp=time.time(),
+            source=raw.source,
+            sequence_number=p.get("sequence"),
+            price=p.get("price"),
+            quantity=p.get("quantity"),
+            bid_price=p.get("bid"),
+            ask_price=p.get("ask"),
+            quality_status=QualityStatus.VALID,
+            reasons=[],
+            raw_id=str(offset),
+        )
+        batch.append(ev)
+        if len(batch) >= 2000:
+            proj.apply(batch, offset=offset)
+            batch.clear()
+
+    if batch:
+        proj.apply(batch, offset=scanned - 1)
+        batch.clear()
+
+    count = proj.export_parquet(p_abs, compression=compression)
+    proj.close()
+    return count
+
+
+class AsyncProjectionWorker:
+    """Background worker isolating analytical projections from capture engine latency.
+
+    Engine pushes validated canonical events or decisions into an isolated queue.
+    A background daemon thread drains batches into the underlying projection (SQLite or DuckDB).
+    Analytics query locks, disk IO delays, or projection crashes CANNOT block or poison
+    the primary ingest engine or IngestLog WAL.
+    """
+
+    def __init__(
+        self,
+        projection: Projection,
+        max_queue_size: int = 20_000,
+        batch_size: int = 500,
+        flush_interval_sec: float = 0.05,
+    ) -> None:
+        self.projection = projection
+        self.max_queue_size = max_queue_size
+        self.batch_size = batch_size
+        self.flush_interval_sec = flush_interval_sec
+
+        self._queue: queue.Queue = queue.Queue(maxsize=max_queue_size)
+        self._stop_event = threading.Event()
+        self._items_enqueued: int = 0
+        self._items_committed: int = 0
+        self._batches_committed: int = 0
+        self._drop_count: int = 0
+        self._error_count: int = 0
+        self._last_committed_offset: int = -1
+        self._worker_thread = threading.Thread(
+            target=self._run_loop, daemon=True, name="mdrap-async-projection"
+        )
+        self._worker_thread.start()
+
+    def enqueue(self, item: Any, offset: int = -1) -> bool:
+        """Non-blocking enqueue of an event/decision.
+
+        If the queue is saturated, drops the item and increments drop_count to preserve
+        strict backpressure isolation without blocking the primary capture engine.
+        """
+        try:
+            self._queue.put_nowait((item, offset))
+            self._items_enqueued += 1
+            return True
+        except queue.Full:
+            self._drop_count += 1
+            logger.warning(
+                "[AsyncProjection] Queue full (%d items); dropping analytical projection event #%d",
+                self.max_queue_size,
+                self._drop_count,
+            )
+            return False
+
+    def _run_loop(self) -> None:
+        batch: list[Any] = []
+        highest_offset = -1
+        last_flush = time.time()
+
+        while not self._stop_event.is_set() or not self._queue.empty():
+            try:
+                timeout = max(
+                    0.005, self.flush_interval_sec - (time.time() - last_flush)
+                )
+                item, offset = self._queue.get(timeout=timeout)
+                batch.append(item)
+                if offset > highest_offset:
+                    highest_offset = offset
+                self._queue.task_done()
+            except queue.Empty:
+                pass
+
+            now = time.time()
+            time_to_flush = now - last_flush >= self.flush_interval_sec
+            batch_full = len(batch) >= self.batch_size
+            stopping = self._stop_event.is_set()
+
+            if batch and (time_to_flush or batch_full or stopping):
+                try:
+                    self.projection.apply(batch, offset=highest_offset)
+                    self._items_committed += len(batch)
+                    self._batches_committed += 1
+                    self._last_committed_offset = highest_offset
+                except Exception as exc:
+                    self._error_count += 1
+                    logger.error(
+                        "[AsyncProjection] Failed to apply projection batch: %s",
+                        exc,
+                    )
+                finally:
+                    batch.clear()
+                    last_flush = time.time()
+
+    def stats(self) -> dict[str, Any]:
+        """Return operational telemetry metrics."""
+        return {
+            "queue_depth": self._queue.qsize(),
+            "items_enqueued": self._items_enqueued,
+            "items_committed": self._items_committed,
+            "batches_committed": self._batches_committed,
+            "drops_total": self._drop_count,
+            "errors_total": self._error_count,
+            "last_committed_offset": self._last_committed_offset,
+            "is_alive": self._worker_thread.is_alive(),
+        }
+
+    def flush(self, timeout: float = 5.0) -> None:
+        """Wait until all currently queued items are processed."""
+        self._queue.join()
+        time.sleep(0.02)
+
+    def close(self, timeout: float = 5.0) -> None:
+        """Stop the background worker thread gracefully and flush pending writes."""
+        self._stop_event.set()
+        self._worker_thread.join(timeout=timeout)
+        if hasattr(self.projection, "close"):
+            self.projection.close()
+
