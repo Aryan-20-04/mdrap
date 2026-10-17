@@ -146,10 +146,18 @@ class _CFastReplayRecord(ctypes.Structure):
 
     def to_dict(self) -> dict:
         st_map = {1: "VALID", 2: "SUSPICIOUS", 3: "INVALID"}
-        px = self.price if not math.isnan(self.price) and math.isfinite(self.price) else None
+        px = (
+            self.price
+            if not math.isnan(self.price) and math.isfinite(self.price)
+            else None
+        )
         sz = self.size if not math.isnan(self.size) and self.size >= 0 else None
-        b_px = self.bid if not math.isnan(self.bid) and math.isfinite(self.bid) else None
-        a_px = self.ask if not math.isnan(self.ask) and math.isfinite(self.ask) else None
+        b_px = (
+            self.bid if not math.isnan(self.bid) and math.isfinite(self.bid) else None
+        )
+        a_px = (
+            self.ask if not math.isnan(self.ask) and math.isfinite(self.ask) else None
+        )
         b_sz = (
             self.bid_size
             if not math.isnan(self.bid_size) and self.bid_size >= 0
@@ -1040,7 +1048,10 @@ class FastQualityEngine:
         if getattr(self.cfg, "asset_classes", None):
             inst = event.instrument_id.upper()
             if (
-                any(c in inst for c in ("BTC", "ETH", "SOL", "DOGE", "XRP", "ADA", "USDT"))
+                any(
+                    c in inst
+                    for c in ("BTC", "ETH", "SOL", "DOGE", "XRP", "ADA", "USDT")
+                )
                 and "crypto" in self.cfg.asset_classes
             ):
                 if not self._fallback_engine:

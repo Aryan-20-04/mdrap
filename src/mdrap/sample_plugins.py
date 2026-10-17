@@ -140,7 +140,11 @@ class SampleAuthProvider:
 
     def __init__(self) -> None:
         self._tokens: dict[str, dict[str, Any]] = {
-            "valid_token_123": {"client_id": "client_sample", "role": "ADMIN", "active": True}
+            "valid_token_123": {
+                "client_id": "client_sample",
+                "role": "ADMIN",
+                "active": True,
+            }
         }
 
     def get_entitlement(self, token: str) -> dict[str, Any] | None:

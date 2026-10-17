@@ -157,20 +157,36 @@ class StreamSession:
             from .ingestlog import IngestLog
 
             target_path = parts[1] if len(parts) > 1 else "data/wal"
-            if os.path.isdir(target_path) or (os.path.exists(target_path) and target_path.endswith(".log")):
-                wal_dir = target_path if os.path.isdir(target_path) else os.path.dirname(target_path)
+            if os.path.isdir(target_path) or (
+                os.path.exists(target_path) and target_path.endswith(".log")
+            ):
+                wal_dir = (
+                    target_path
+                    if os.path.isdir(target_path)
+                    else os.path.dirname(target_path)
+                )
                 log = IngestLog(wal_dir)
                 try:
                     for off, raw in log.iter_from(0):
-                        if self._stopped or (self.count is not None and produced >= self.count):
+                        if self._stopped or (
+                            self.count is not None and produced >= self.count
+                        ):
                             break
                         try:
                             if isinstance(raw.payload, dict):
                                 raw.payload.setdefault(
                                     "event_type",
-                                    "TRADE" if ("price" in raw.payload or "quantity" in raw.payload) else "QUOTE",
+                                    "TRADE"
+                                    if (
+                                        "price" in raw.payload
+                                        or "quantity" in raw.payload
+                                    )
+                                    else "QUOTE",
                                 )
-                                if "size" in raw.payload and "quantity" not in raw.payload:
+                                if (
+                                    "size" in raw.payload
+                                    and "quantity" not in raw.payload
+                                ):
                                     raw.payload["quantity"] = raw.payload["size"]
                             raw = self._gateway.ingest(raw)
                             event = self._gateway.normalize(raw)
@@ -187,7 +203,9 @@ class StreamSession:
             elif os.path.isfile(target_path):
                 with open(target_path, "r", encoding="utf-8") as f:
                     for line in f:
-                        if self._stopped or (self.count is not None and produced >= self.count):
+                        if self._stopped or (
+                            self.count is not None and produced >= self.count
+                        ):
                             break
                         line_str = line.strip()
                         if not line_str:
@@ -197,7 +215,9 @@ class StreamSession:
                             if isinstance(data, dict):
                                 data.setdefault(
                                     "event_type",
-                                    "TRADE" if ("price" in data or "quantity" in data) else "QUOTE",
+                                    "TRADE"
+                                    if ("price" in data or "quantity" in data)
+                                    else "QUOTE",
                                 )
                                 if "size" in data and "quantity" not in data:
                                     data["quantity"] = data["size"]
@@ -217,7 +237,9 @@ class StreamSession:
                         except Exception:
                             continue
             else:
-                raise FileNotFoundError(f"WAL directory or file not found: {target_path}")
+                raise FileNotFoundError(
+                    f"WAL directory or file not found: {target_path}"
+                )
 
         # 3. Seqlock Shared Memory (SHM) Low-Latency Ring Buffer
         elif protocol == "shm":
@@ -242,15 +264,27 @@ class StreamSession:
                         ev = CanonicalEvent(
                             event_id=f"shm_{seq}",
                             instrument_id=str(slot.get("sym", "AAPL")),
-                            event_type=EventType.TRADE if slot.get("price") is not None else EventType.QUOTE,
-                            exchange_timestamp=float(slot.get("exchange_ts", time.time())),
+                            event_type=EventType.TRADE
+                            if slot.get("price") is not None
+                            else EventType.QUOTE,
+                            exchange_timestamp=float(
+                                slot.get("exchange_ts", time.time())
+                            ),
                             receive_timestamp=time.time(),
                             processing_timestamp=time.time(),
                             source=str(slot.get("source", "SHM")),
-                            price=float(slot["price"]) if slot.get("price") is not None else None,
-                            quantity=float(slot["size"]) if slot.get("size") is not None else None,
-                            bid_price=float(slot["bid"]) if slot.get("bid") is not None else None,
-                            ask_price=float(slot["ask"]) if slot.get("ask") is not None else None,
+                            price=float(slot["price"])
+                            if slot.get("price") is not None
+                            else None,
+                            quantity=float(slot["size"])
+                            if slot.get("size") is not None
+                            else None,
+                            bid_price=float(slot["bid"])
+                            if slot.get("bid") is not None
+                            else None,
+                            ask_price=float(slot["ask"])
+                            if slot.get("ask") is not None
+                            else None,
                             quality_status=QualityStatus(slot.get("status", "VALID")),
                             sequence_number=seq,
                         )
@@ -327,7 +361,9 @@ def stream(
         ...             break
         ...     print(s.stats())
     """
-    return StreamSession(target=target, profile=profile, count=count, speed=speed, **kwargs)
+    return StreamSession(
+        target=target, profile=profile, count=count, speed=speed, **kwargs
+    )
 
 
 def connect(
@@ -360,7 +396,9 @@ def detect_cpu_features() -> list[str]:
             pass
     elif sys.platform == "darwin":
         try:
-            out = subprocess.check_output(["sysctl", "-n", "machdep.cpu.features"], text=True).lower()
+            out = subprocess.check_output(
+                ["sysctl", "-n", "machdep.cpu.features"], text=True
+            ).lower()
             for feat in ("avx2", "avx", "sse4.2", "neon"):
                 if feat in out:
                     features.append(feat.upper().replace(".", "_"))
@@ -439,13 +477,17 @@ def doctor(verbose: bool = True, as_json: bool = False) -> dict[str, Any]:
         "profile_mode": prof.mode.value,
         "ring_buffer_mb": prof.summary()["ring_buffer_mb"],
         "wal_flush_interval_ms": prof.summary()["wal_flush_interval_ms"],
-        "native_c_accelerator": "COMPILED (AVX2/Native)" if native_ok else "PURE-PYTHON FALLBACK",
+        "native_c_accelerator": "COMPILED (AVX2/Native)"
+        if native_ok
+        else "PURE-PYTHON FALLBACK",
         "disk_sync_speed_mbps": disk_speed_mbps,
         "companion_packages": companions,
         "environment": {
             "os": platform.platform(),
             "machine_arch": platform.machine(),
-            "cpu_model": os.environ.get("PROCESSOR_IDENTIFIER", platform.processor() or "Generic CPU"),
+            "cpu_model": os.environ.get(
+                "PROCESSOR_IDENTIFIER", platform.processor() or "Generic CPU"
+            ),
             "cpu_cores_logical": os.cpu_count() or 1,
             "total_ram_gb": prof.total_ram_gb,
             "python_version": sys.version.split()[0],
@@ -462,7 +504,9 @@ def doctor(verbose: bool = True, as_json: bool = False) -> dict[str, Any]:
         },
         "acceleration": {
             "has_native_fastpath": HAS_FASTPATH,
-            "fastpath_status": "COMPILED (Vectorized C)" if native_ok else "PURE-PYTHON FALLBACK",
+            "fastpath_status": "COMPILED (Vectorized C)"
+            if native_ok
+            else "PURE-PYTHON FALLBACK",
             "has_shm_support": HAS_SHM,
             "c_compilers": compilers_found,
         },
@@ -471,7 +515,9 @@ def doctor(verbose: bool = True, as_json: bool = False) -> dict[str, Any]:
             "fsync_latency_ms": fsync_lat_ms,
         },
         "config": {
-            "config_path": str(cfg_path) if cfg_path else "Built-in defaults (in-memory)",
+            "config_path": str(cfg_path)
+            if cfg_path
+            else "Built-in defaults (in-memory)",
             "config_hash": cfg_hash[:16] if cfg_hash else "none",
         },
     }

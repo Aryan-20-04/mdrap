@@ -21,7 +21,9 @@ import time
 import zlib
 from typing import Any, Dict, List, Optional, Tuple
 
-FRAME_HEADER_FORMAT = ">HHQdII"  # magic(2), res(2), offset(8), ts(8), length(4), crc32(4) = 28 bytes
+FRAME_HEADER_FORMAT = (
+    ">HHQdII"  # magic(2), res(2), offset(8), ts(8), length(4), crc32(4) = 28 bytes
+)
 FRAME_HEADER_SIZE = struct.calcsize(FRAME_HEADER_FORMAT)
 FRAME_MAGIC = 0xAA55
 
@@ -77,7 +79,9 @@ class HistoricalVerifier:
 
         if file_size < 32:
             report.status = "FAIL"
-            report.details.append(f"Segment file too short for header: {file_size} bytes")
+            report.details.append(
+                f"Segment file too short for header: {file_size} bytes"
+            )
             report.duration_seconds = time.perf_counter() - t0
             return report
 
@@ -98,7 +102,9 @@ class HistoricalVerifier:
             while f.tell() < file_size:
                 frame_hdr = f.read(FRAME_HEADER_SIZE)
                 if len(frame_hdr) < FRAME_HEADER_SIZE:
-                    report.details.append(f"Trailing truncated frame header at offset {f.tell()}")
+                    report.details.append(
+                        f"Trailing truncated frame header at offset {f.tell()}"
+                    )
                     break
 
                 magic, res, offset, ts, length, expected_crc = struct.unpack(
@@ -106,13 +112,17 @@ class HistoricalVerifier:
                 )
 
                 if magic != FRAME_MAGIC:
-                    report.details.append(f"Invalid frame magic {hex(magic)} at offset {f.tell() - FRAME_HEADER_SIZE}")
+                    report.details.append(
+                        f"Invalid frame magic {hex(magic)} at offset {f.tell() - FRAME_HEADER_SIZE}"
+                    )
                     report.status = "FAIL"
                     break
 
                 payload = f.read(length)
                 if len(payload) < length:
-                    report.details.append(f"Incomplete payload: expected {length}, got {len(payload)}")
+                    report.details.append(
+                        f"Incomplete payload: expected {length}, got {len(payload)}"
+                    )
                     report.status = "FAIL"
                     break
 
@@ -233,7 +243,9 @@ class HistoricalVerifier:
             integrity_result = cursor.fetchone()
             if not integrity_result or integrity_result[0] != "ok":
                 report.status = "FAIL"
-                report.details.append(f"SQLite PRAGMA integrity_check failed: {integrity_result}")
+                report.details.append(
+                    f"SQLite PRAGMA integrity_check failed: {integrity_result}"
+                )
 
             # Check if canonical_events table exists
             cursor.execute(
@@ -278,7 +290,9 @@ class HistoricalVerifier:
 def main() -> None:
     parser = argparse.ArgumentParser(description="MDRAP Historical Forensic Verifier")
     parser.add_argument("path", help="Path to WAL segment, journal, or SQLite file")
-    parser.add_argument("--json", action="store_true", help="Output results in JSON format")
+    parser.add_argument(
+        "--json", action="store_true", help="Output results in JSON format"
+    )
     args = parser.parse_args()
 
     verifier = HistoricalVerifier()
@@ -297,8 +311,12 @@ def main() -> None:
         print(f"Target: {report.target_path} ({report.target_type})")
         print(f"Status: {report.status}")
         print(f"Records Scanned: {report.records_scanned}")
-        print(f"CRC32 Valid: {report.crc32_valid_count} | Invalid: {report.crc32_invalid_count}")
-        print(f"Sequence Gaps: {report.sequence_gaps} | Inversions: {report.sequence_inversions}")
+        print(
+            f"CRC32 Valid: {report.crc32_valid_count} | Invalid: {report.crc32_invalid_count}"
+        )
+        print(
+            f"Sequence Gaps: {report.sequence_gaps} | Inversions: {report.sequence_inversions}"
+        )
         print(f"Merkle Root: {report.merkle_root}")
         print(f"Duration: {report.duration_seconds}s")
         if report.details:

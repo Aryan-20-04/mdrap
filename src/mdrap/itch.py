@@ -414,7 +414,9 @@ class ITCHOrderBookTracker:
                         event_id=f"itch-e-{msg.match_number or msg.order_ref}",
                         instrument_id=stock,
                         event_type=EventType.TRADE,
-                        exchange_timestamp=self._convert_itch_timestamp(msg.timestamp_ns),
+                        exchange_timestamp=self._convert_itch_timestamp(
+                            msg.timestamp_ns
+                        ),
                         receive_timestamp=time.time(),
                         processing_timestamp=time.time(),
                         source="NASDAQ_ITCH50",
@@ -432,7 +434,9 @@ class ITCHOrderBookTracker:
                         event_id=f"itch-c-{msg.match_number or msg.order_ref}",
                         instrument_id=stock,
                         event_type=EventType.TRADE,
-                        exchange_timestamp=self._convert_itch_timestamp(msg.timestamp_ns),
+                        exchange_timestamp=self._convert_itch_timestamp(
+                            msg.timestamp_ns
+                        ),
                         receive_timestamp=time.time(),
                         processing_timestamp=time.time(),
                         source="NASDAQ_ITCH50",

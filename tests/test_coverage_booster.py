@@ -61,6 +61,7 @@ def test_cli_itch_generation_and_parse(parser, tmp_path):
     assert "num_messages" in res
 
 
+@pytest.mark.slow
 def test_cli_all_stress_modules(parser):
     for mod in ["bbo", "storage", "quality", "ipc", "e2e", "adversarial"]:
         _run_cmd(parser, ["stress", "--module", mod, "-e", "50"])

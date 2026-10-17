@@ -13,6 +13,7 @@ import math
 import time
 from collections import deque
 from dataclasses import dataclass
+from typing import Any
 
 from .models import CanonicalEvent, EventType, QualityStatus, Reason
 
@@ -242,6 +243,7 @@ class QualityEngine:
             self.cfg = config
 
         from .clock import SystemClock
+
         self.clock = clock if clock is not None else SystemClock()
 
         self._slots: dict[tuple[str, str], _SlotState] = {}

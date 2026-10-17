@@ -79,7 +79,11 @@ class Runtime:
 
     def is_alive(self) -> bool:
         with self._lock:
-            return self._state not in (RuntimeState.UNINITIALIZED, RuntimeState.FAILED, RuntimeState.STOPPED)
+            return self._state not in (
+                RuntimeState.UNINITIALIZED,
+                RuntimeState.FAILED,
+                RuntimeState.STOPPED,
+            )
 
     @property
     def drain_success(self) -> bool:
@@ -122,9 +126,14 @@ class Runtime:
                     wal_path = f"{self.config.db_path}.wal"
 
                 # 3. Instantiate Engine
-                if self.config.persistence_mode == PersistenceMode.PRODUCTION_DURABLE.value:
+                if (
+                    self.config.persistence_mode
+                    == PersistenceMode.PRODUCTION_DURABLE.value
+                ):
                     if not wal_path:
-                        raise ValueError("Production durable mode requires a valid wal_path on persistent media")
+                        raise ValueError(
+                            "Production durable mode requires a valid wal_path on persistent media"
+                        )
                     self.engine = Engine.open(
                         wal_path,
                         config={
@@ -150,12 +159,17 @@ class Runtime:
                     self.engine.subscribe(proj)
 
                 self._state = RuntimeState.READY
-                logger.info("[runtime] MDRAP Runtime initialized successfully (state=READY)")
+                logger.info(
+                    "[runtime] MDRAP Runtime initialized successfully (state=READY)"
+                )
 
             except Exception as exc:
                 self.init_error = f"Runtime initialization failed: {exc}"
                 self._state = RuntimeState.FAILED
-                logger.critical("[runtime] %s; cleaning up partially initialized resources", self.init_error)
+                logger.critical(
+                    "[runtime] %s; cleaning up partially initialized resources",
+                    self.init_error,
+                )
                 # Cleanup partially initialized handles
                 self._cleanup_partial()
                 raise
@@ -183,7 +197,9 @@ class Runtime:
             if self._state == RuntimeState.RUNNING:
                 return  # Idempotent
             if self._state != RuntimeState.READY:
-                raise RuntimeError(f"Cannot start runtime from state {self._state.value}")
+                raise RuntimeError(
+                    f"Cannot start runtime from state {self._state.value}"
+                )
 
             self._state = RuntimeState.RUNNING
             self._start_time = time.time()
@@ -194,14 +210,20 @@ class Runtime:
         """Submit events to canonical engine."""
         with self._lock:
             if self._state != RuntimeState.RUNNING:
-                raise RuntimeError(f"Cannot submit events: runtime state is {self._state.value} (expected RUNNING)")
+                raise RuntimeError(
+                    f"Cannot submit events: runtime state is {self._state.value} (expected RUNNING)"
+                )
             if self.engine is None:
                 raise RuntimeError("Engine not available")
             return self.engine.submit(events)
 
     def stop(self, drain_timeout_s: float | None = None) -> bool:
         """Gracefully drain accepted work, execute shutdown callbacks, and close resources."""
-        timeout = drain_timeout_s if drain_timeout_s is not None else self.config.drain_timeout_s
+        timeout = (
+            drain_timeout_s
+            if drain_timeout_s is not None
+            else self.config.drain_timeout_s
+        )
         with self._lock:
             if self._state in (RuntimeState.STOPPED, RuntimeState.UNINITIALIZED):
                 return True
@@ -209,7 +231,10 @@ class Runtime:
                 return self._drain_success
 
             self._state = RuntimeState.DRAINING
-            logger.info("[runtime] Initiating graceful runtime shutdown (timeout=%.1fs)", timeout)
+            logger.info(
+                "[runtime] Initiating graceful runtime shutdown (timeout=%.1fs)",
+                timeout,
+            )
 
         self._stop_event.set()
         t_deadline = time.time() + timeout
@@ -228,12 +253,16 @@ class Runtime:
                 try:
                     self.engine.flush()
                 except Exception as exc:
-                    logger.warning("[runtime] Error flushing engine during drain: %s", exc)
+                    logger.warning(
+                        "[runtime] Error flushing engine during drain: %s", exc
+                    )
                     drain_clean = False
 
             if time.time() > t_deadline:
                 drain_clean = False
-                logger.error("[runtime] Shutdown drain deadline exceeded (incomplete drain)")
+                logger.error(
+                    "[runtime] Shutdown drain deadline exceeded (incomplete drain)"
+                )
 
             # 3. Close engine & store
             self._cleanup_partial()
@@ -249,7 +278,11 @@ class Runtime:
         with self._lock:
             st = self._state.value
             eng_metrics = self.engine.metrics() if self.engine is not None else {}
-            uptime = (time.time() - self._start_time) if self._start_time > 0 and self._state == RuntimeState.RUNNING else 0.0
+            uptime = (
+                (time.time() - self._start_time)
+                if self._start_time > 0 and self._state == RuntimeState.RUNNING
+                else 0.0
+            )
 
             return {
                 "state": st,

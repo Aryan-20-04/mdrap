@@ -15,9 +15,15 @@ import time
 from typing import Any, Optional
 
 from ..models import CanonicalEvent, EventType, QualityStatus, RawEvent
-from .base import AdapterCapabilities, AdapterStreamState, BaseFeedAdapter, LicensingTier
+from .base import (
+    AdapterCapabilities,
+    AdapterStreamState,
+    BaseFeedAdapter,
+    LicensingTier,
+)
 
 logger = logging.getLogger("mdrap.adapters.databento")
+__stability__ = "stable"
 
 # Databento Constants
 FIXED_PX_FACTOR = 1_000_000_000.0  # 1e9 fixed-point scaling factor
@@ -130,17 +136,24 @@ class DatabentoAdapter(BaseFeedAdapter):
         self.enqueue_raw(raw)
         return raw
 
-    def unpack_dbn_frame(self, frame_bytes: bytes, t_recv: Optional[float] = None) -> Optional[RawEvent]:
+    def unpack_dbn_frame(
+        self, frame_bytes: bytes, t_recv: Optional[float] = None
+    ) -> Optional[RawEvent]:
         """Decode a single raw DBN binary message and enqueue it."""
         t_recv = t_recv if t_recv is not None else time.time()
         if len(frame_bytes) < STRUCT_HEADER.size:
             return None
 
-        length, rtype, pub_id, inst_id, ts_event_ns = STRUCT_HEADER.unpack_from(frame_bytes, 0)
+        length, rtype, pub_id, inst_id, ts_event_ns = STRUCT_HEADER.unpack_from(
+            frame_bytes, 0
+        )
         ex_ts = ts_event_ns / 1e9
 
         # TradeMsg (rtype 0x15)
-        if rtype == 0x15 and len(frame_bytes) >= STRUCT_HEADER.size + STRUCT_TRADE_BODY.size:
+        if (
+            rtype == 0x15
+            and len(frame_bytes) >= STRUCT_HEADER.size + STRUCT_TRADE_BODY.size
+        ):
             (
                 px_raw,
                 sz_raw,
@@ -176,13 +189,21 @@ class DatabentoAdapter(BaseFeedAdapter):
             return raw
 
         # MBP-1 / TBBO (rtype 0x01 or 0x02)
-        if rtype in (0x01, 0x02) and len(frame_bytes) >= STRUCT_HEADER.size + STRUCT_TRADE_BODY.size + STRUCT_BID_ASK.size:
+        if (
+            rtype in (0x01, 0x02)
+            and len(frame_bytes)
+            >= STRUCT_HEADER.size + STRUCT_TRADE_BODY.size + STRUCT_BID_ASK.size
+        ):
             body_off = STRUCT_HEADER.size
-            _, _, _, _, _, _, _, _, seq = STRUCT_TRADE_BODY.unpack_from(frame_bytes, body_off)
+            _, _, _, _, _, _, _, _, seq = STRUCT_TRADE_BODY.unpack_from(
+                frame_bytes, body_off
+            )
             self.seq_tracker.observe(seq)
 
             level_off = body_off + STRUCT_TRADE_BODY.size
-            bid_px_raw, ask_px_raw, bid_sz_raw, ask_sz_raw, _, _ = STRUCT_BID_ASK.unpack_from(frame_bytes, level_off)
+            bid_px_raw, ask_px_raw, bid_sz_raw, ask_sz_raw, _, _ = (
+                STRUCT_BID_ASK.unpack_from(frame_bytes, level_off)
+            )
 
             bid = bid_px_raw / FIXED_PX_FACTOR if bid_px_raw != UNDEF_PRICE else None
             ask = ask_px_raw / FIXED_PX_FACTOR if ask_px_raw != UNDEF_PRICE else None
@@ -210,7 +231,9 @@ class DatabentoAdapter(BaseFeedAdapter):
     def normalize(self, raw: RawEvent) -> CanonicalEvent:
         """Translate raw Databento payload into canonical event schema."""
         p = raw.payload if isinstance(raw.payload, dict) else {}
-        ev_type_str = p.get("event_type", "TRADE" if ("price" in p or "quantity" in p) else "QUOTE")
+        ev_type_str = p.get(
+            "event_type", "TRADE" if ("price" in p or "quantity" in p) else "QUOTE"
+        )
         ev_type = EventType.TRADE if ev_type_str == "TRADE" else EventType.QUOTE
 
         ex_ts = float(p.get("exchange_ts", raw.receive_timestamp))

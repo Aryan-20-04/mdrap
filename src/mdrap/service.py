@@ -86,7 +86,11 @@ class MarketDataDaemon:
         if use_engine is not None:
             self.use_engine = use_engine
         else:
-            self.use_engine = os.environ.get("MDRAP_USE_ENGINE", "1").lower() in ("1", "true", "yes")
+            self.use_engine = os.environ.get("MDRAP_USE_ENGINE", "1").lower() in (
+                "1",
+                "true",
+                "yes",
+            )
         env_auth = os.environ.get("MDRAP_REQUIRE_AUTH")
         if require_auth is not None:
             self.require_auth = require_auth
@@ -118,9 +122,11 @@ class MarketDataDaemon:
 
         if self.use_engine:
             from .engine import Engine
+
             self.engine = Engine(clock=None, security=self.security_manager)
             if self.db_path and not self.db_path.startswith(":"):
                 from .projection import SQLiteProjection
+
                 self._engine_projection = SQLiteProjection(self.db_path)
                 self.engine.subscribe(self._engine_projection)
             else:
@@ -646,7 +652,11 @@ class MarketDataDaemon:
                     self._process_and_broadcast(raw)
                 except Exception as exc:
                     self._ingestion_errors += 1
-                    logger.warning("[daemon] Malformed event in live ingestion loop: %s (error: %s)", raw, exc)
+                    logger.warning(
+                        "[daemon] Malformed event in live ingestion loop: %s (error: %s)",
+                        raw,
+                        exc,
+                    )
                 self._last_ingest_ts = time.time()
         else:
             num_events = self.sim_events if self.sim_events > 0 else 10_000_000
@@ -663,7 +673,11 @@ class MarketDataDaemon:
                     self._process_and_broadcast(raw)
                 except Exception as exc:
                     self._ingestion_errors += 1
-                    logger.warning("[daemon] Malformed event in sim ingestion loop: %s (error: %s)", raw, exc)
+                    logger.warning(
+                        "[daemon] Malformed event in sim ingestion loop: %s (error: %s)",
+                        raw,
+                        exc,
+                    )
                 self._last_ingest_ts = time.time()
                 if sleep_s > 0:
                     time.sleep(sleep_s)
@@ -683,6 +697,7 @@ class MarketDataDaemon:
                 self.bbo.observe(ev)
             elif dec and dec.quality_status == QualityStatus.INVALID:
                 from .models import CanonicalEvent, EventType
+
                 payload_dict = raw.payload if isinstance(raw.payload, dict) else {}
                 try:
                     ev_type = EventType(payload_dict.get("event_type", "TICK"))
@@ -691,12 +706,24 @@ class MarketDataDaemon:
 
                 raw_ex_ts = payload_dict.get("exchange_ts")
                 try:
-                    ex_ts = float(raw_ex_ts) if raw_ex_ts is not None else float(raw.receive_timestamp or time.time())
+                    ex_ts = (
+                        float(raw_ex_ts)
+                        if raw_ex_ts is not None
+                        else float(raw.receive_timestamp or time.time())
+                    )
                 except (ValueError, TypeError):
-                    ex_ts = float(raw.receive_timestamp or time.time()) if raw.receive_timestamp else time.time()
+                    ex_ts = (
+                        float(raw.receive_timestamp or time.time())
+                        if raw.receive_timestamp
+                        else time.time()
+                    )
 
                 try:
-                    recv_ts = float(raw.receive_timestamp) if raw.receive_timestamp else time.time()
+                    recv_ts = (
+                        float(raw.receive_timestamp)
+                        if raw.receive_timestamp
+                        else time.time()
+                    )
                 except (ValueError, TypeError):
                     recv_ts = time.time()
 
@@ -990,7 +1017,9 @@ class MarketDataDaemon:
                         sess.is_alive = False
                         logger.warning(
                             "[service] Evicting stalled client (%s) after exceeding %d dropped ticks",
-                            sess.entitlement.client_id if sess.entitlement else "unauthenticated",
+                            sess.entitlement.client_id
+                            if sess.entitlement
+                            else "unauthenticated",
                             sess.max_dropped_ticks,
                         )
                         try:
@@ -1010,7 +1039,9 @@ class MarketDataDaemon:
                         sess.is_alive = False
                         logger.warning(
                             "[service] Evicting stalled client (%s) after exceeding %d dropped depth ticks",
-                            sess.entitlement.client_id if sess.entitlement else "unauthenticated",
+                            sess.entitlement.client_id
+                            if sess.entitlement
+                            else "unauthenticated",
                             sess.max_dropped_ticks,
                         )
                         try:
@@ -1030,7 +1061,9 @@ class MarketDataDaemon:
                         sess.is_alive = False
                         logger.warning(
                             "[service] Evicting stalled client (%s) after exceeding %d dropped VWAP ticks",
-                            sess.entitlement.client_id if sess.entitlement else "unauthenticated",
+                            sess.entitlement.client_id
+                            if sess.entitlement
+                            else "unauthenticated",
                             sess.max_dropped_ticks,
                         )
                         try:
@@ -1040,7 +1073,11 @@ class MarketDataDaemon:
 
     def is_degraded(self) -> tuple[bool, str]:
         """Return whether the daemon is operating in degraded mode due to excessive drops or resource pressure."""
-        if self._running and self._ingest_thread is not None and not self._ingest_thread.is_alive():
+        if (
+            self._running
+            and self._ingest_thread is not None
+            and not self._ingest_thread.is_alive()
+        ):
             return True, "Ingestion worker thread dead"
         if self._ingestion_errors > 100:
             return True, f"High ingestion error count: {self._ingestion_errors}"
@@ -1077,6 +1114,7 @@ class MarketDataDaemon:
                     )
                     else "DEFAULT"
                 )
+                role_breakdown[role_val] = role_breakdown.get(role_val, 0) + 1
         with self._replay_lock:
             replay_buf_size = len(self._replay_buffer)
             replay_buf_stats = self._replay_buffer.stats()
@@ -1092,7 +1130,11 @@ class MarketDataDaemon:
             "dropped_ticks": total_dropped,
             "rate_limited_ticks": total_rate_limited,
             "ingestion_errors": self._ingestion_errors,
-            "ingestion_thread_alive": bool(self._ingest_thread and self._ingest_thread.is_alive()) if self._running else False,
+            "ingestion_thread_alive": bool(
+                self._ingest_thread and self._ingest_thread.is_alive()
+            )
+            if self._running
+            else False,
             "last_ingest_ts": self._last_ingest_ts,
             "degraded": degraded,
             "degraded_reason": degraded_reason,

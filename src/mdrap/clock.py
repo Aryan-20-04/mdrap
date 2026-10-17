@@ -13,7 +13,6 @@ from typing import Protocol, runtime_checkable
 __stability__ = "stable"
 
 
-
 @runtime_checkable
 class Clock(Protocol):
     """Protocol representing a time source."""

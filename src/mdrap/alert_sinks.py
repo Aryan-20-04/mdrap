@@ -23,7 +23,7 @@ import threading
 import time
 import urllib.request
 import urllib.error
-from typing import List, Optional, Tuple
+from typing import Any, List, Optional, Tuple
 
 from .alerts import Alert, AlertEngine, AlertStatus, AlertType
 from .protocols import AlertSink, DeliveryResult
@@ -68,6 +68,7 @@ class RateLimiter:
 
 def _is_restricted_ip(ip_obj: Any) -> bool:
     import ipaddress
+
     if hasattr(ip_obj, "ipv4_mapped") and ip_obj.ipv4_mapped:
         ip_obj = ip_obj.ipv4_mapped
     if (
@@ -90,7 +91,11 @@ class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
 
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         raise urllib.error.HTTPError(
-            req.full_url, code, f"SSRF Protection: HTTP redirect to '{newurl}' refused", headers, fp
+            req.full_url,
+            code,
+            f"SSRF Protection: HTTP redirect to '{newurl}' refused",
+            headers,
+            fp,
         )
 
 
@@ -196,16 +201,6 @@ class BaseHttpAlertSink:
         self.failure_count = 0
         self.is_closed = False
 
-    @staticmethod
-    def _is_ssrf_safe(ip_str: str) -> bool:
-        """Check if an IP address string is safe from SSRF attacks."""
-        import ipaddress
-        try:
-            ip = ipaddress.ip_address(ip_str)
-            return not _is_restricted_ip(ip)
-        except ValueError:
-            return False
-
         # Ensure signing secret is registered in SecurityManager if provided
         if self.security_manager and not self.signing_secret_key:
             # Check or create default alert feed secret
@@ -215,6 +210,17 @@ class BaseHttpAlertSink:
                 )
             except Exception:
                 pass
+
+    @staticmethod
+    def _is_ssrf_safe(ip_str: str) -> bool:
+        """Check if an IP address string is safe from SSRF attacks."""
+        import ipaddress
+
+        try:
+            ip = ipaddress.ip_address(ip_str)
+            return not _is_restricted_ip(ip)
+        except ValueError:
+            return False
 
     def format_payload(self, alert: Alert) -> dict:
         """Format an Alert instance into the specific target's wire payload."""
@@ -357,7 +363,9 @@ class BaseHttpAlertSink:
 class WebhookAlertSink(BaseHttpAlertSink):
     """Generic JSON Webhook Alert Sink."""
 
-    def __init__(self, endpoint_url: str = "", url: str | None = None, **kwargs) -> None:
+    def __init__(
+        self, endpoint_url: str = "", url: str | None = None, **kwargs
+    ) -> None:
         target = url or endpoint_url
         super().__init__(name="webhook", endpoint_url=target, **kwargs)
 

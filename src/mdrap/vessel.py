@@ -16,7 +16,11 @@ warnings.warn(
 try:
     import mdrap_vessel as _impl
 except ImportError:
-    _pkg = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "packages", "mdrap-contrib-vessel")
+    _pkg = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+        "packages",
+        "mdrap-contrib-vessel",
+    )
     if _pkg not in sys.path and os.path.exists(_pkg):
         sys.path.insert(0, _pkg)
     import mdrap_vessel as _impl

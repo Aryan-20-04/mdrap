@@ -142,10 +142,12 @@ class CreateKeyRequest(BaseModel):
         None, description="Optional unix timestamp expiration"
     )
     allowed_sources: Optional[List[str]] = Field(
-        default_factory=list, description="Licensed feed sources (empty for unrestricted)"
+        default_factory=list,
+        description="Licensed feed sources (empty for unrestricted)",
     )
     allowed_symbols: Optional[List[str]] = Field(
-        default_factory=list, description="Licensed instruments/symbols (empty for unrestricted)"
+        default_factory=list,
+        description="Licensed instruments/symbols (empty for unrestricted)",
     )
 
 
@@ -226,15 +228,14 @@ class AppState:
 
         self.wal_path = wal_path or os.environ.get(
             "MDRAP_WAL_PATH",
-            f"{self.db_path}.wal"
-            if self.db_path != ":memory:"
-            else None,
+            f"{self.db_path}.wal" if self.db_path != ":memory:" else None,
         )
-        is_dev = (
-            self.db_path == ":memory:"
-            or os.environ.get("MDRAP_DEV_MODE", "").lower() in ("1", "true", "yes")
+        is_dev = self.db_path == ":memory:" or os.environ.get(
+            "MDRAP_DEV_MODE", ""
+        ).lower() in ("1", "true", "yes")
+        self.persistence_mode = (
+            "development_in_memory" if is_dev else "production_durable"
         )
-        self.persistence_mode = "development_in_memory" if is_dev else "production_durable"
         self.init_error: Optional[str] = None
         self.engine: Optional[Engine] = None
 
@@ -286,7 +287,9 @@ class AppState:
         self.subscriber_drops: Dict[WebSocket, int] = {}
         self.subscriber_tasks: Dict[WebSocket, asyncio.Task] = {}
         self.total_subscriber_drops: int = 0
-        self.max_client_drops: int = int(os.environ.get("MDRAP_MAX_CLIENT_DROPS", "500"))
+        self.max_client_drops: int = int(
+            os.environ.get("MDRAP_MAX_CLIENT_DROPS", "500")
+        )
         self.pipeline_lock = threading.Lock()
         self._lock = asyncio.Lock()
 
@@ -331,8 +334,15 @@ class AppState:
     def is_degraded(self) -> tuple[bool, str]:
         """Check whether the application is running in a degraded state."""
         if self.total_subscriber_drops > 1000:
-            return True, f"Excessive WebSocket subscriber drops: {self.total_subscriber_drops}"
-        if hasattr(self, "_pipeline") and self._pipeline is not None and getattr(self._pipeline, "degraded", False):
+            return (
+                True,
+                f"Excessive WebSocket subscriber drops: {self.total_subscriber_drops}",
+            )
+        if (
+            hasattr(self, "_pipeline")
+            and self._pipeline is not None
+            and getattr(self._pipeline, "degraded", False)
+        ):
             return True, "Pipeline storage writer degraded"
         states = self.watchdog.source_states()
         if states and all(s == "SILENT" for s in states.values()):
@@ -350,14 +360,20 @@ class AppState:
         for ws, sub_syms in list(self.subscribers.items()):
             # Revocation check during stream broadcast
             tok = self.subscriber_tokens.get(ws)
-            ent = self.security_manager.get_entitlement(tok, active_only=True) if tok else None
+            ent = (
+                self.security_manager.get_entitlement(tok, active_only=True)
+                if tok
+                else None
+            )
             if tok and not ent:
                 dead_sockets.append(ws)
                 continue
 
             # Granular licensing check (source & symbol)
             if ent:
-                src = str(event_data.get("source") or event_data.get("chosen_source") or "").upper()
+                src = str(
+                    event_data.get("source") or event_data.get("chosen_source") or ""
+                ).upper()
                 if src and not self.security_manager.check_source_allowed(ent, src):
                     continue
                 if sym and not self.security_manager.check_symbol_allowed(ent, sym):
@@ -374,7 +390,11 @@ class AppState:
                         except RuntimeError:
                             pass
 
-                        if ws_loop is not None and ws_loop.is_running() and ws_loop != cur_loop:
+                        if (
+                            ws_loop is not None
+                            and ws_loop.is_running()
+                            and ws_loop != cur_loop
+                        ):
                             ws_loop.call_soon_threadsafe(q.put_nowait, event_data)
                         else:
                             q.put_nowait(event_data)
@@ -409,7 +429,9 @@ class AppState:
             if task:
                 task.cancel()
             try:
-                await ws.close(code=status.WS_1008_POLICY_VIOLATION, reason="API key revoked")
+                await ws.close(
+                    code=status.WS_1008_POLICY_VIOLATION, reason="API key revoked"
+                )
             except Exception:
                 pass
 
@@ -554,9 +576,7 @@ def create_app(
         # to prevent raw secret leakage in access logs, proxies, referers, and browser histories.
         return None
 
-    _FAILED_AUTH_ATTEMPTS: OrderedDict[str, tuple[int, float]] = (
-        OrderedDict()
-    )
+    _FAILED_AUTH_ATTEMPTS: OrderedDict[str, tuple[int, float]] = OrderedDict()
     _FAILED_AUTH_LOCK = threading.Lock()
     _MAX_TRACKED_AUTH_FAILURES = 4096
     _AUTH_LOCKOUT_MAX_ATTEMPTS = 10
@@ -592,7 +612,9 @@ def create_app(
                 now = time.monotonic()
                 with _FAILED_AUTH_LOCK:
                     while _FAILED_AUTH_ATTEMPTS:
-                        oldest_key, (_, oldest_seen) = next(iter(_FAILED_AUTH_ATTEMPTS.items()))
+                        oldest_key, (_, oldest_seen) = next(
+                            iter(_FAILED_AUTH_ATTEMPTS.items())
+                        )
                         if now - oldest_seen >= _AUTH_LOCKOUT_DURATION_S:
                             _FAILED_AUTH_ATTEMPTS.popitem(last=False)
                         else:
@@ -662,7 +684,9 @@ def create_app(
                 detail={
                     "status": "not_ready",
                     "reason": st.init_error,
-                    "persistence_mode": getattr(st, "persistence_mode", "production_durable"),
+                    "persistence_mode": getattr(
+                        st, "persistence_mode", "production_durable"
+                    ),
                 },
             )
         try:
@@ -687,7 +711,11 @@ def create_app(
                         "reason": "Engine IngestLog WAL is poisoned due to unrecoverable I/O failure",
                     },
                 )
-        if hasattr(st, "_pipeline") and st._pipeline is not None and st._pipeline.degraded:
+        if (
+            hasattr(st, "_pipeline")
+            and st._pipeline is not None
+            and st._pipeline.degraded
+        ):
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail={
@@ -710,13 +738,17 @@ def create_app(
         is_deg, deg_reason = st.is_degraded()
 
         return HealthResponse(
-            status="healthy" if (is_healthy and not is_deg) else ("degraded" if is_healthy else "unhealthy"),
+            status="healthy"
+            if (is_healthy and not is_deg)
+            else ("degraded" if is_healthy else "unhealthy"),
             version=__version__,
             uptime_seconds=uptime,
             engine="running" if (st.engine is not None and is_healthy) else "failed",
             active_feeds_count=len(st.active_feeds),
             db={
-                "path": os.path.basename(str(st.db_path)) if st.db_path != ":memory:" else ":memory:",
+                "path": os.path.basename(str(st.db_path))
+                if st.db_path != ":memory:"
+                else ":memory:",
                 "wal_mode": True,
                 "conflicts": getattr(st.store, "conflicts", 0),
             },
@@ -864,7 +896,10 @@ def create_app(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail=f"Durable storage unavailable: {st.init_error}",
             )
-        if getattr(st, "persistence_mode", "") == "production_durable" and getattr(st, "engine", None) is None:
+        if (
+            getattr(st, "persistence_mode", "") == "production_durable"
+            and getattr(st, "engine", None) is None
+        ):
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="Durable storage engine unavailable in production mode",
@@ -928,7 +963,9 @@ def create_app(
                     detail=f"Client '{_auth.client_id}' is not authorized to ingest for source '{src}'",
                 )
 
-            payload_dict = it.get("payload", {}) if isinstance(it.get("payload"), dict) else {}
+            payload_dict = (
+                it.get("payload", {}) if isinstance(it.get("payload"), dict) else {}
+            )
             sym = str(
                 payload_dict.get("instrument")
                 or payload_dict.get("symbol")
@@ -944,9 +981,7 @@ def create_app(
 
             client_raw_id = str(it.get("raw_id", ""))
             namespaced_raw_id = (
-                f"client_{_auth.client_id}:{client_raw_id}"
-                if client_raw_id
-                else ""
+                f"client_{_auth.client_id}:{client_raw_id}" if client_raw_id else ""
             )
 
             raw_events.append(
@@ -964,6 +999,7 @@ def create_app(
                     decisions = st.engine.submit(batch)
                 res_events = []
                 from .models import CanonicalEvent, EventType, QualityStatus
+
                 for d in decisions:
                     if d.canonical_event is not None:
                         res_events.append(d.canonical_event)
@@ -1129,12 +1165,19 @@ def create_app(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail=f"Durable storage unavailable: {st.init_error}",
             )
-        if getattr(st, "persistence_mode", "") == "production_durable" and getattr(st, "engine", None) is None:
+        if (
+            getattr(st, "persistence_mode", "") == "production_durable"
+            and getattr(st, "engine", None) is None
+        ):
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="Durable storage engine unavailable in production mode",
             )
-        proc = st.engine if hasattr(st, "engine") and st.engine is not None else st.pipeline
+        proc = (
+            st.engine
+            if hasattr(st, "engine") and st.engine is not None
+            else st.pipeline
+        )
         ev = st.store.reprocess_quarantine(event_id, proc)
         if ev is None:
             raise HTTPException(
@@ -1411,7 +1454,9 @@ def create_app(
         # Enforce authenticate -> authorize -> accept.
         # Unauthenticated connections are rejected immediately before accept (WS 1008).
         client_ent = None
-        auth_hdr = websocket.headers.get("authorization") or websocket.headers.get("Authorization")
+        auth_hdr = websocket.headers.get("authorization") or websocket.headers.get(
+            "Authorization"
+        )
         if auth_hdr and auth_hdr.lower().startswith("bearer "):
             token = auth_hdr[7:].strip()
             client_ent = st.security_manager.get_entitlement(token, active_only=True)
@@ -1420,7 +1465,9 @@ def create_app(
             client_ent = st.security_manager.get_entitlement(token, active_only=True)
 
         if not client_ent:
-            await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Unauthorized")
+            await websocket.close(
+                code=status.WS_1008_POLICY_VIOLATION, reason="Unauthorized"
+            )
             return
 
         # Enforce per-IP connection limit to prevent connection exhaustion
@@ -1429,7 +1476,9 @@ def create_app(
             1 for ws in st.subscribers if _resolve_client_ip(ws) == client_ip
         )
         if active_for_ip >= 50:
-            await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Too many connections")
+            await websocket.close(
+                code=status.WS_1008_POLICY_VIOLATION, reason="Too many connections"
+            )
             return
 
         # 2. Accept connection once authenticated
@@ -1491,12 +1540,17 @@ def create_app(
                     if isinstance(syms, str):
                         syms = [syms]
 
-                    curr_ent = st.security_manager.get_entitlement(token, active_only=True) or client_ent
+                    curr_ent = (
+                        st.security_manager.get_entitlement(token, active_only=True)
+                        or client_ent
+                    )
                     unlicensed = []
                     valid_syms = []
                     for s in syms:
                         s_upper = s.upper()
-                        if curr_ent and not st.security_manager.check_symbol_allowed(curr_ent, s_upper):
+                        if curr_ent and not st.security_manager.check_symbol_allowed(
+                            curr_ent, s_upper
+                        ):
                             unlicensed.append(s_upper)
                         else:
                             valid_syms.append(s_upper)
@@ -1642,4 +1696,3 @@ def __getattr__(name: str) -> Any:
     if name == "app":
         return get_app()
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
-

@@ -19,11 +19,13 @@ __stability__ = "experimental"
 
 class FencingTokenError(RuntimeError):
     """Raised when a stale writer attempts to write with an obsolete or expired epoch token."""
+
     pass
 
 
 class QuorumLossError(RuntimeError):
     """Raised when leadership is attempted without majority quorum consensus."""
+
     pass
 
 
@@ -130,7 +132,9 @@ class ConsensusCoordinator:
         self._current_epoch: int = initial_epoch
         self._active_leader: Optional[str] = None
         self._current_token: Optional[EpochToken] = None
-        self._peer_heartbeats: Dict[str, float] = {nid: time.time() for nid in self.cluster_nodes}
+        self._peer_heartbeats: Dict[str, float] = {
+            nid: time.time() for nid in self.cluster_nodes
+        }
         self._isolated_peers: Set[str] = set()
 
     def sync_epoch(self, epoch: int) -> None:
@@ -157,8 +161,7 @@ class ConsensusCoordinator:
         with self._lock:
             # Check reachable peers
             reachable_nodes = [
-                nid for nid in self.cluster_nodes
-                if nid not in self._isolated_peers
+                nid for nid in self.cluster_nodes if nid not in self._isolated_peers
             ]
             if len(reachable_nodes) < self.quorum_size:
                 raise QuorumLossError(
@@ -181,16 +184,19 @@ class ConsensusCoordinator:
         """Renew active leadership lease if quorum remains intact."""
         with self._lock:
             if self._active_leader != self.node_id:
-                raise FencingTokenError(f"Node '{self.node_id}' is not the active leader.")
+                raise FencingTokenError(
+                    f"Node '{self.node_id}' is not the active leader."
+                )
 
             reachable_nodes = [
-                nid for nid in self.cluster_nodes
-                if nid not in self._isolated_peers
+                nid for nid in self.cluster_nodes if nid not in self._isolated_peers
             ]
             if len(reachable_nodes) < self.quorum_size:
                 self._active_leader = None
                 self._current_token = None
-                raise QuorumLossError("Lost quorum during lease renewal; leadership abdicated.")
+                raise QuorumLossError(
+                    "Lost quorum during lease renewal; leadership abdicated."
+                )
 
             self._current_token = EpochToken(
                 epoch=self._current_epoch,
@@ -213,5 +219,7 @@ class ConsensusCoordinator:
                 "cluster_size": len(self.cluster_nodes),
                 "quorum_size": self.quorum_size,
                 "isolated_peers": list(self._isolated_peers),
-                "has_valid_lease": bool(self._current_token and not self._current_token.is_expired),
+                "has_valid_lease": bool(
+                    self._current_token and not self._current_token.is_expired
+                ),
             }

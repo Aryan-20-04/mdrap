@@ -57,8 +57,34 @@ class EngineState:
     price_windows: dict[str, list[float]] = field(default_factory=dict)
     bbo_state: dict[str, dict[str, Any]] = field(default_factory=dict)
     reconciliation_state: dict[str, dict[str, Any]] = field(default_factory=dict)
-    counts: dict[str, int] = field(default_factory=lambda: {"VALID": 0, "SUSPICIOUS": 0, "INVALID": 0})
+    counts: dict[str, int] = field(
+        default_factory=lambda: {"VALID": 0, "SUSPICIOUS": 0, "INVALID": 0}
+    )
     staleness_threshold_s: float = DEFAULT_STALENESS_THRESHOLD_S
+
+    @property
+    def total_events(self) -> int:
+        return self.event_count
+
+    @property
+    def global_sequence(self) -> int:
+        return max(self.sequence_state.values(), default=self.event_count)
+
+    def clone(self) -> EngineState:
+        """Fast clone for transactional isolation and zero-allocation rollback."""
+        return EngineState(
+            event_count=self.event_count,
+            sequence_state=dict(self.sequence_state),
+            dedup_window=list(self.dedup_window),
+            dedup_set=set(self.dedup_set),
+            price_windows={k: list(v) for k, v in self.price_windows.items()},
+            bbo_state={k: dict(v) for k, v in self.bbo_state.items()},
+            reconciliation_state={
+                k: dict(v) for k, v in self.reconciliation_state.items()
+            },
+            counts=dict(self.counts),
+            staleness_threshold_s=self.staleness_threshold_s,
+        )
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -83,7 +109,9 @@ class EngineState:
             bbo_state=data.get("bbo_state", {}),
             reconciliation_state=data.get("reconciliation_state", {}),
             counts=data.get("counts", {"VALID": 0, "SUSPICIOUS": 0, "INVALID": 0}),
-            staleness_threshold_s=data.get("staleness_threshold_s", DEFAULT_STALENESS_THRESHOLD_S),
+            staleness_threshold_s=data.get(
+                "staleness_threshold_s", DEFAULT_STALENESS_THRESHOLD_S
+            ),
         )
         return state
 
@@ -125,6 +153,8 @@ class EngineConfig:
     max_payload_bytes: int = 1024 * 1024  # 1 MB boundary cap (Finding N4)
     security: Any | None = None
     projections: list[Any] = field(default_factory=list)
+    wal_dir: str | None = None
+    snapshot_interval: int = 10_000
 
 
 class Engine:
@@ -151,7 +181,6 @@ class Engine:
         security: Any | None = None,
         **kwargs: Any,
     ) -> None:
-        # Check legacy environment variables (Finding 6)
         if "MDRAP_ASYNC_WRITER" in os.environ:
             warnings.warn(
                 "Environment variable 'MDRAP_ASYNC_WRITER' is deprecated in MDRAP v3.0.0. "
@@ -167,17 +196,29 @@ class Engine:
                 stacklevel=2,
             )
 
-        # Disallow silent kwargs forwarding (Requirement 1)
         valid_legacy_kwargs = {"durability", "quality", "async_writer", "journal"}
         for k in kwargs:
             if k not in valid_legacy_kwargs:
-                raise TypeError(f"Engine.__init__() got an unexpected keyword argument '{k}'")
+                raise TypeError(
+                    f"Engine.__init__() got an unexpected keyword argument '{k}'"
+                )
             else:
                 warnings.warn(
                     f"Parameter '{k}' is deprecated in Engine; use explicit IngestLog and Projection configuration.",
                     DeprecationWarning,
                     stacklevel=2,
                 )
+
+        if isinstance(path, EngineConfig):
+            cfg = path
+            path = cfg.wal_dir or cfg.db_path
+            staleness_threshold_s = cfg.staleness_threshold_s
+            clock = cfg.clock
+            db_path = cfg.db_path
+            fsync_policy = cfg.fsync_policy
+            max_segment_bytes = cfg.max_segment_bytes
+            max_payload_bytes = cfg.max_payload_bytes
+            security = cfg.security
 
         self.staleness_threshold_s = staleness_threshold_s
         self.clock = clock if clock is not None else SystemClock()
@@ -216,7 +257,11 @@ class Engine:
                             self.state.event_count,
                         )
                 except Exception as snap_exc:
-                    logger.warning("[engine] Failed to load snapshot %s: %s; replaying from start", snapshot_file, snap_exc)
+                    logger.warning(
+                        "[engine] Failed to load snapshot %s: %s; replaying from start",
+                        snapshot_file,
+                        snap_exc,
+                    )
 
             # Catch up state only from uncompacted log records since snapshot
             for off, raw in self.log.iter_from(replay_from):
@@ -259,8 +304,12 @@ class Engine:
                 staleness = getattr(config, "staleness_threshold_s", staleness)
                 clock = getattr(config, "clock", clock)
                 fsync_policy = getattr(config, "fsync_policy", fsync_policy)
-                max_segment_bytes = getattr(config, "max_segment_bytes", max_segment_bytes)
-                max_payload_bytes = getattr(config, "max_payload_bytes", max_payload_bytes)
+                max_segment_bytes = getattr(
+                    config, "max_segment_bytes", max_segment_bytes
+                )
+                max_payload_bytes = getattr(
+                    config, "max_payload_bytes", max_payload_bytes
+                )
                 db_path = getattr(config, "db_path", db_path)
                 security = getattr(config, "security", security)
                 projections = getattr(config, "projections", [])
@@ -307,9 +356,13 @@ class Engine:
                 replay_state = self.create_initial_state()
                 for off, raw in self.log.iter_from(0):
                     if off < start_off:
-                        replay_state, _ = self.step(replay_state, raw, self.clock, offset=off)
+                        replay_state, _ = self.step(
+                            replay_state, raw, self.clock, offset=off
+                        )
                     else:
-                        replay_state, dec = self.step(replay_state, raw, self.clock, offset=off)
+                        replay_state, dec = self.step(
+                            replay_state, raw, self.clock, offset=off
+                        )
                         batch.append(dec)
                         if len(batch) >= 2000:
                             projection.apply(batch, batch[-1].offset)
@@ -368,15 +421,25 @@ class Engine:
                         raw.receive_timestamp = self.clock.now()
 
                     # Determine offset before append so deterministic raw_id is stamped and persisted in WAL (N1)
-                    offset = (self.log.next_offset + len(valid_for_wal)) if self.log is not None else (self.state.event_count + len(decisions))
+                    offset = (
+                        (self.log.next_offset + len(valid_for_wal))
+                        if self.log is not None
+                        else (self.state.event_count + len(decisions))
+                    )
                     if not raw.raw_id:
                         raw.raw_id = f"raw_{raw.source}_{offset}"
 
                     # Enforce payload size limit at Engine boundary to protect WAL from stalling (N4)
                     if self.max_payload_bytes > 0:
                         payload = raw.payload
-                        p_len = len(payload) if isinstance(payload, (str, bytes)) else (
-                            len(json.dumps(payload, default=str)) if isinstance(payload, dict) else len(str(payload))
+                        p_len = (
+                            len(payload)
+                            if isinstance(payload, (str, bytes))
+                            else (
+                                len(json.dumps(payload, default=str))
+                                if isinstance(payload, dict)
+                                else len(str(payload))
+                            )
                         )
                         if p_len > self.max_payload_bytes:
                             q_id = f"q_{raw.source}_{offset}"
@@ -385,8 +448,14 @@ class Engine:
                                 "OVERSIZE",
                                 raw.source,
                                 QualityStatus.INVALID.value,
-                                json.dumps([f"Payload size {p_len} bytes exceeds limit {self.max_payload_bytes} bytes"]),
-                                json.dumps({"size": p_len, "truncated": str(payload)[:256]}),
+                                json.dumps(
+                                    [
+                                        f"Payload size {p_len} bytes exceeds limit {self.max_payload_bytes} bytes"
+                                    ]
+                                ),
+                                json.dumps(
+                                    {"size": p_len, "truncated": str(payload)[:256]}
+                                ),
                                 raw.receive_timestamp,
                             )
                             self.state.event_count += 1
@@ -407,11 +476,15 @@ class Engine:
 
                 if self.log is not None and valid_for_wal:
                     allocated = self.log.append_batch(valid_for_wal)
-                    assert allocated == [off for _, off in raw_to_offset], "WAL allocated offsets diverged"
+                    assert allocated == [off for _, off in raw_to_offset], (
+                        "WAL allocated offsets diverged"
+                    )
 
                 for raw, offset in raw_to_offset:
                     offsets.append(offset)
-                    self.state, dec = self.step(self.state, raw, self.clock, offset=offset)
+                    self.state, dec = self.step(
+                        self.state, raw, self.clock, offset=offset
+                    )
                     decisions.append(dec)
 
                 # Dispatch to subscribed projections atomically
@@ -490,15 +563,13 @@ class Engine:
         dec = self.submit(raw)
         return dec.canonical_event if isinstance(dec, EngineDecision) else None
 
-    def process_one(self, raw: RawEvent) -> CanonicalEvent | None:
-        """Alias for process()."""
-        return self.process(raw)
-
     def process_batch(self, raw_events: list[RawEvent]) -> list[CanonicalEvent]:
         """Process a batch of raw events through the engine, returning strictly aligned canonical events."""
         decisions = self.submit(raw_events)
         if isinstance(decisions, list):
-            return [d.canonical_event for d in decisions if d.canonical_event is not None]
+            return [
+                d.canonical_event for d in decisions if d.canonical_event is not None
+            ]
         return []
 
     def flush(self, wait: bool = True) -> None:
@@ -521,7 +592,9 @@ class Engine:
 
     def metrics(self) -> dict[str, Any]:
         """Return engine state counts, durability lag, and health summary."""
-        log_head = self.log.next_offset if self.log is not None else self.state.event_count
+        log_head = (
+            self.log.next_offset if self.log is not None else self.state.event_count
+        )
         log_lag = 0  # IngestLog fsyncs synchronously per policy
 
         max_proj_lag = 0
@@ -610,7 +683,7 @@ class Engine:
     ) -> tuple[EngineState, EngineDecision]:
         """Apply a single deterministic state transition: (state, raw_event, clock) -> (state', decision)."""
         prev_event_count = state.event_count
-        state_backup = copy.deepcopy(state)
+        state_backup = state.clone()
         try:
             return self._step_internal(state, raw_event, clock, offset=offset)
         except Exception as exc:
@@ -636,7 +709,9 @@ class Engine:
                 "MALFORMED",
                 src,
                 QualityStatus.INVALID.value,
-                json.dumps([f"Unhandled engine exception: {type(exc).__name__}: {exc}"]),
+                json.dumps(
+                    [f"Unhandled engine exception: {type(exc).__name__}: {exc}"]
+                ),
                 json.dumps(str(getattr(raw_event, "payload", ""))),
                 recv_ts,
             )
@@ -718,7 +793,11 @@ class Engine:
                         str(payload.get("instrument", "UNKNOWN")),
                         raw_event.source,
                         QualityStatus.INVALID.value,
-                        json.dumps(["Cryptographic HMAC verification failed: missing or tampered signature"]),
+                        json.dumps(
+                            [
+                                "Cryptographic HMAC verification failed: missing or tampered signature"
+                            ]
+                        ),
                         json.dumps(payload, default=str),
                         recv_ts,
                     )
@@ -847,7 +926,11 @@ class Engine:
                 reasons=[Reason.SCHEMA_VIOLATION.value],
                 quarantine_row=q_row,
             )
-        elif event_type_str in ("QUOTE", "BBO") and payload.get("bid") is None and payload.get("ask") is None:
+        elif (
+            event_type_str in ("QUOTE", "BBO")
+            and payload.get("bid") is None
+            and payload.get("ask") is None
+        ):
             event_id = f"q_{raw_event.source}_{offset}"
             q_row = (
                 event_id,
@@ -870,7 +953,11 @@ class Engine:
         # Sequence validation (signed int64)
         seq = payload.get("sequence")
         if seq is not None:
-            if not isinstance(seq, int) or isinstance(seq, bool) or not (-9223372036854775808 <= seq <= 9223372036854775807):
+            if (
+                not isinstance(seq, int)
+                or isinstance(seq, bool)
+                or not (-9223372036854775808 <= seq <= 9223372036854775807)
+            ):
                 event_id = f"q_{raw_event.source}_{offset}"
                 q_row = (
                     event_id,
@@ -967,7 +1054,9 @@ class Engine:
                 elif seq > last_seq + 1:
                     status = QualityStatus.SUSPICIOUS
                     reasons.append(Reason.SEQUENCE_GAP.value)
-            state.sequence_state[slot_key] = max(last_seq if last_seq is not None else -1, seq)
+            state.sequence_state[slot_key] = max(
+                last_seq if last_seq is not None else -1, seq
+            )
         else:
             # Unsequenced deduplication window (N2)
             # Check for business trade/message ID if present
@@ -980,7 +1069,9 @@ class Engine:
                 or payload.get("id")
             )
             if biz_id is not None:
-                dedup_fingerprint = f"{raw_event.source}:{instrument}:{event_type_str}:id={biz_id}"
+                dedup_fingerprint = (
+                    f"{raw_event.source}:{instrument}:{event_type_str}:id={biz_id}"
+                )
             else:
                 dedup_fingerprint = f"{raw_event.source}:{instrument}:{event_type_str}:{exch_ts}:{payload.get('price')}:{payload.get('quantity')}:{payload.get('bid')}:{payload.get('ask')}"
             if dedup_fingerprint in state.dedup_set:
@@ -1019,7 +1110,9 @@ class Engine:
                 std = math.sqrt(variance)
                 sigma_floor = mean * 0.0001
                 effective_std = max(std, sigma_floor)
-                if effective_std > 0 and abs(price - mean) > (DEFAULT_PRICE_STDDEV * effective_std):
+                if effective_std > 0 and abs(price - mean) > (
+                    DEFAULT_PRICE_STDDEV * effective_std
+                ):
                     price_anomaly = True
             elif len(prices) >= 3:
                 mean = sum(prices) / len(prices)
@@ -1050,14 +1143,15 @@ class Engine:
             recent_inst = state.reconciliation_state.setdefault(instrument, {})
             recent_inst[raw_event.source] = (price, exch_ts)
             recent_prices = [
-                p for (p, ts) in recent_inst.values()
-                if abs(exch_ts - ts) <= 0.25
+                p for (p, ts) in recent_inst.values() if abs(exch_ts - ts) <= 0.25
             ]
             if len(recent_prices) >= 2:
                 mean_p = sum(recent_prices) / len(recent_prices)
                 if mean_p > 0:
                     for p in recent_prices:
-                        if abs(p - mean_p) / mean_p > 0.005:  # 0.5% cross-feed disagreement (spec §12)
+                        if (
+                            abs(p - mean_p) / mean_p > 0.005
+                        ):  # 0.5% cross-feed disagreement (spec §12)
                             disagreement = True
                             break
                 if disagreement:
@@ -1127,15 +1221,45 @@ class Engine:
 
         return state, decision
 
-    def snapshot(self, state: EngineState) -> bytes:
-        """Create a deterministic byte snapshot of the current state."""
-        data = state.to_dict()
+    def snapshot(self, target: Any = None) -> bytes | str:
+        """Create a deterministic byte snapshot or save to path."""
+        if isinstance(target, (str, Path)):
+            with self._lock:
+                data = {
+                    "version": 1,
+                    "offset": self.state.event_count - 1,
+                    "timestamp": self.clock.now(),
+                    "event_count": self.state.event_count,
+                    "state": self.state.to_dict(),
+                }
+                with open(target, "w", encoding="utf-8") as f:
+                    json.dump(data, f, sort_keys=True, indent=2)
+                return str(target)
+        st = target if isinstance(target, EngineState) else self.state
+        data = st.to_dict()
         return json.dumps(data, sort_keys=True, separators=(",", ":")).encode("utf-8")
 
-    def restore(self, snapshot_bytes: bytes) -> EngineState:
-        """Restore state from snapshot bytes."""
-        data = json.loads(snapshot_bytes.decode("utf-8"))
-        return EngineState.from_dict(data)
+    @classmethod
+    def restore(
+        cls,
+        snapshot_source: bytes | str | Path,
+        config: Any | None = None,
+    ) -> Any:
+        """Restore state from snapshot bytes or restore an Engine from a snapshot file path."""
+        if isinstance(snapshot_source, (str, Path)):
+            with open(snapshot_source, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            st_dict = data.get("state", data)
+            st = EngineState.from_dict(st_dict)
+            wal_path = getattr(config, "wal_dir", None) if config else None
+            engine = cls.open(
+                wal_path or os.path.dirname(snapshot_source), config=config
+            )
+            engine.state = st
+            return engine
+        data = json.loads(snapshot_source.decode("utf-8"))
+        st_dict = data.get("state", data)
+        return EngineState.from_dict(st_dict)
 
     def create_snapshot(self) -> bytes:
         """Create a deterministic byte snapshot of the current engine state."""
@@ -1188,3 +1312,15 @@ class Engine:
                 "path": final_path,
                 "segments_pruned": pruned,
             }
+
+
+DeterministicEngine = Engine
+
+__all__ = [
+    "Engine",
+    "DeterministicEngine",
+    "EngineConfig",
+    "EngineState",
+    "EngineDecision",
+    "RecoveryMetrics",
+]

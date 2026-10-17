@@ -310,6 +310,7 @@ def test_security_hooks_active_on_ingest(sec_env):
     assert "SECURITY_REJECT" in data_hmac["canonical"][0]["reasons"]
 
 
+@pytest.mark.slow
 def test_memory_flood_bounds_under_256mb():
     """100,000 unique instruments fed through Reconciler and BBOEngine stay strictly bounded."""
     tracemalloc.start()

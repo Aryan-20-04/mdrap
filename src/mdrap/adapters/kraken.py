@@ -14,9 +14,15 @@ import time
 from typing import Any, Optional
 
 from ..models import CanonicalEvent, EventType, QualityStatus, RawEvent
-from .base import AdapterCapabilities, AdapterStreamState, BaseFeedAdapter, LicensingTier
+from .base import (
+    AdapterCapabilities,
+    AdapterStreamState,
+    BaseFeedAdapter,
+    LicensingTier,
+)
 
 logger = logging.getLogger("mdrap.adapters.kraken")
+__stability__ = "stable"
 
 
 class KrakenAdapter(BaseFeedAdapter):
@@ -51,14 +57,15 @@ class KrakenAdapter(BaseFeedAdapter):
             max_burst_eps=50_000,
         )
 
-    def parse_frame(self, data: Any, t_recv: Optional[float] = None) -> Optional[RawEvent]:
+    def parse_frame(
+        self, data: Any, t_recv: Optional[float] = None
+    ) -> Optional[RawEvent]:
         """Parse raw incoming Kraken list-based or dict WebSocket frame and enqueue it."""
         t_recv = t_recv if t_recv is not None else time.time()
 
         # Handle list format: [channelID, dataPayload, channelName, pair]
         if isinstance(data, list) and len(data) >= 2:
             body = data[1]
-            channel_name = str(data[2]) if len(data) > 2 else ""
 
             # Check sequence number if provided in list frame (e.g. sequence is at end or dict)
             seq = None
@@ -78,7 +85,9 @@ class KrakenAdapter(BaseFeedAdapter):
                 if "bs" in body and "as" in body and body["bs"] and body["as"]:
                     bids = [[float(row[0]), float(row[1])] for row in body["bs"][:5]]
                     asks = [[float(row[0]), float(row[1])] for row in body["as"][:5]]
-                    ex_ts = float(body["bs"][0][2]) if len(body["bs"][0]) > 2 else t_recv
+                    ex_ts = (
+                        float(body["bs"][0][2]) if len(body["bs"][0]) > 2 else t_recv
+                    )
 
                     raw = RawEvent(
                         source="KRAKEN",
@@ -189,7 +198,9 @@ class KrakenAdapter(BaseFeedAdapter):
     def normalize(self, raw: RawEvent) -> CanonicalEvent:
         """Translate raw Kraken payload into canonical event schema."""
         p = raw.payload if isinstance(raw.payload, dict) else {}
-        ev_type_str = p.get("event_type", "TRADE" if ("price" in p or "quantity" in p) else "QUOTE")
+        ev_type_str = p.get(
+            "event_type", "TRADE" if ("price" in p or "quantity" in p) else "QUOTE"
+        )
         ev_type = EventType.TRADE if ev_type_str == "TRADE" else EventType.QUOTE
 
         ex_ts = float(p.get("exchange_ts", raw.receive_timestamp))

@@ -39,6 +39,7 @@ class WorkerState(str, Enum):
 
 class FatalWorkerError(Exception):
     """Exception indicating an unrecoverable failure that should not be retried."""
+
     pass
 
 
@@ -240,7 +241,7 @@ class RuntimeSupervisor:
                         # Execute bounded exponential backoff
                         retry_idx = len(info.restart_timestamps)
                         delay = min(
-                            info.spec.restart_delay_base_s * (2 ** retry_idx),
+                            info.spec.restart_delay_base_s * (2**retry_idx),
                             info.spec.restart_delay_max_s,
                         )
                         info.restart_timestamps.append(now)
@@ -257,9 +258,13 @@ class RuntimeSupervisor:
                         to_restart.append((info, delay))
 
             for target_info, delay in to_restart:
+
                 def do_restart(inf=target_info):
                     with self._lock:
-                        if not self._stop_event.is_set() and inf.state == WorkerState.RESTARTING:
+                        if (
+                            not self._stop_event.is_set()
+                            and inf.state == WorkerState.RESTARTING
+                        ):
                             self._start_worker_thread(inf)
 
                 timer = threading.Timer(delay, do_restart)
@@ -275,4 +280,6 @@ class RuntimeSupervisor:
                 try:
                     self._on_fatal_failure(worker_name, reason)
                 except Exception as exc:
-                    logger.exception("[supervisor] on_fatal_failure callback failed: %s", exc)
+                    logger.exception(
+                        "[supervisor] on_fatal_failure callback failed: %s", exc
+                    )

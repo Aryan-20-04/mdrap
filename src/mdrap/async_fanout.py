@@ -56,7 +56,9 @@ class AsyncFanoutManager:
         self.max_incoming_buffer = max_incoming_buffer
         self.eviction_drop_threshold = eviction_drop_threshold
 
-        self._incoming_queue: collections.deque[Tuple[str, bytes, int]] = collections.deque()
+        self._incoming_queue: collections.deque[Tuple[str, bytes, int]] = (
+            collections.deque()
+        )
         self._incoming_lock = threading.Lock()
         self._incoming_cond = threading.Condition(self._incoming_lock)
 
@@ -93,7 +95,9 @@ class AsyncFanoutManager:
     ) -> AsyncConsumerSession:
         """Register a new consumer with an isolated bounded queue."""
         limit = max_queue_size or self.max_buffer_per_client
-        symbols_set = set(s.upper() for s in subscribed_symbols) if subscribed_symbols else None
+        symbols_set = (
+            set(s.upper() for s in subscribed_symbols) if subscribed_symbols else None
+        )
         session = AsyncConsumerSession(
             consumer_id=consumer_id,
             tenant_id=tenant_id,
@@ -160,7 +164,10 @@ class AsyncFanoutManager:
                 for s in sessions:
                     if not s.is_active:
                         continue
-                    if s.subscribed_symbols is not None and sym not in s.subscribed_symbols:
+                    if (
+                        s.subscribed_symbols is not None
+                        and sym not in s.subscribed_symbols
+                    ):
                         continue
 
                     # Non-blocking per-consumer queue append

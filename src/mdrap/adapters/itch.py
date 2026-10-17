@@ -15,9 +15,15 @@ import time
 from typing import Any, Optional
 
 from ..models import CanonicalEvent, EventType, QualityStatus, RawEvent
-from .base import AdapterCapabilities, AdapterStreamState, BaseFeedAdapter, LicensingTier
+from .base import (
+    AdapterCapabilities,
+    AdapterStreamState,
+    BaseFeedAdapter,
+    LicensingTier,
+)
 
 logger = logging.getLogger("mdrap.adapters.itch")
+__stability__ = "stable"
 
 PRICE_FACTOR_ITCH = 10_000.0  # ITCH prices scaled by 10,000.0 (4 decimal places)
 
@@ -132,7 +138,9 @@ class ITCHAdapter(BaseFeedAdapter):
         self.enqueue_raw(raw)
         return raw
 
-    def unpack_itch_message(self, msg_type: bytes, payload_bytes: bytes, t_recv: Optional[float] = None) -> Optional[RawEvent]:
+    def unpack_itch_message(
+        self, msg_type: bytes, payload_bytes: bytes, t_recv: Optional[float] = None
+    ) -> Optional[RawEvent]:
         """Decode a single raw ITCH 5.0 binary frame and enqueue it."""
         t_recv = t_recv if t_recv is not None else time.time()
         full_bytes = msg_type + payload_bytes
@@ -233,7 +241,9 @@ class ITCHAdapter(BaseFeedAdapter):
     def normalize(self, raw: RawEvent) -> CanonicalEvent:
         """Translate raw ITCH payload into canonical event schema."""
         p = raw.payload if isinstance(raw.payload, dict) else {}
-        ev_type_str = p.get("event_type", "TRADE" if ("price" in p or "quantity" in p) else "QUOTE")
+        ev_type_str = p.get(
+            "event_type", "TRADE" if ("price" in p or "quantity" in p) else "QUOTE"
+        )
         ev_type = EventType.TRADE if ev_type_str == "TRADE" else EventType.QUOTE
 
         ex_ts = float(p.get("exchange_ts", raw.receive_timestamp))

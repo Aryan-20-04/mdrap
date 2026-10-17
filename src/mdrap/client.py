@@ -136,7 +136,11 @@ class MarketEvent:
         sym = str(data.get("sym", ""))
 
         if ev_type == "VWAP":
-            curve = data.get("vwap_curve", {}) if isinstance(data.get("vwap_curve"), dict) else {}
+            curve = (
+                data.get("vwap_curve", {})
+                if isinstance(data.get("vwap_curve"), dict)
+                else {}
+            )
             return cls(
                 seq=_safe_int(data.get("seq", 0)),
                 event_type="VWAP",
@@ -151,8 +155,12 @@ class MarketEvent:
                 engine_us=_safe_float(data.get("engine_us", data.get("proc_us", 0.0))),
             )
         elif ev_type == "DEPTH":
-            raw_bids = data.get("bids", []) if isinstance(data.get("bids"), list) else []
-            raw_asks = data.get("asks", []) if isinstance(data.get("asks"), list) else []
+            raw_bids = (
+                data.get("bids", []) if isinstance(data.get("bids"), list) else []
+            )
+            raw_asks = (
+                data.get("asks", []) if isinstance(data.get("asks"), list) else []
+            )
             bids = []
             for b in raw_bids:
                 if isinstance(b, (list, tuple)) and len(b) >= 2:
@@ -182,15 +190,23 @@ class MarketEvent:
                 ask_size=ask_sz,
                 bids=bids,
                 asks=asks,
-                aggregated_bids=data.get("aggregated_bids", []) if isinstance(data.get("aggregated_bids"), list) else [],
-                aggregated_asks=data.get("aggregated_asks", []) if isinstance(data.get("aggregated_asks"), list) else [],
-                vwap_curve=data.get("vwap_curve") if isinstance(data.get("vwap_curve"), dict) else None,
+                aggregated_bids=data.get("aggregated_bids", [])
+                if isinstance(data.get("aggregated_bids"), list)
+                else [],
+                aggregated_asks=data.get("aggregated_asks", [])
+                if isinstance(data.get("aggregated_asks"), list)
+                else [],
+                vwap_curve=data.get("vwap_curve")
+                if isinstance(data.get("vwap_curve"), dict)
+                else None,
                 total_bid_notional=_safe_optional_float(data.get("total_bid_notional")),
                 total_ask_notional=_safe_optional_float(data.get("total_ask_notional")),
                 micro_price=_safe_optional_float(data.get("micro_price")),
                 ofi=_safe_optional_float(data.get("ofi")),
                 is_crossed=bool(data.get("is_crossed", False)),
-                arbitrage=data.get("arbitrage", []) if isinstance(data.get("arbitrage"), list) else [],
+                arbitrage=data.get("arbitrage", [])
+                if isinstance(data.get("arbitrage"), list)
+                else [],
                 exchange_ts=_safe_float(data.get("exchange_ts", 0.0)),
                 ingest_ts=_safe_float(data.get("ingest_ts", 0.0)),
                 broadcast_ts=_safe_float(data.get("broadcast_ts", 0.0)),

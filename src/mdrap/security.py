@@ -290,7 +290,8 @@ class TokenBucketRateLimiter:
                 idle_sources = [
                     k
                     for k, (toks, t) in self._buckets.items()
-                    if (now - t) >= 10.0 and (toks + (now - t) * self.rate) >= self.capacity
+                    if (now - t) >= 10.0
+                    and (toks + (now - t) * self.rate) >= self.capacity
                 ]
                 if idle_sources:
                     for k in idle_sources[: len(self._buckets) - 1024 + 1]:
@@ -536,7 +537,9 @@ class HashedKeyStore(dict):
         legacy_ent = super().get(h_legacy)
         if legacy_ent is not None and (
             hmac.compare_digest(legacy_ent.token_hash or "", h_legacy)
-            or hmac.compare_digest(hashlib.sha256(key.encode("utf-8")).hexdigest(), h_legacy)
+            or hmac.compare_digest(
+                hashlib.sha256(key.encode("utf-8")).hexdigest(), h_legacy
+            )
         ):
             # Audit M3: Transparently migrate legacy unsalted hash to modern salted hash
             legacy_ent.token_hash = h_salted
@@ -1189,7 +1192,9 @@ class SecurityManager:
         """
         old_ent: Optional[ClientEntitlement] = None
         # Try lookup by token or token_hash
-        old_ent = self._api_keys.get_by_token(token_or_client_id) or self._api_keys.get_by_hash(token_or_client_id)
+        old_ent = self._api_keys.get_by_token(
+            token_or_client_id
+        ) or self._api_keys.get_by_hash(token_or_client_id)
         if not old_ent:
             # Try lookup by client_id
             for ent in self._api_keys.values():

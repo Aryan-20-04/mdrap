@@ -65,7 +65,9 @@ class TCPGatewayServer:
         self.server: asyncio.AbstractServer | None = None
         self._stats = {"sent": 0, "dropped": 0, "connected": 0, "auth_failures": 0}
         self.running = False
-        self.client_queue_size: int = int(os.environ.get("MDRAP_TCP_QUEUE_SIZE", "1024"))
+        self.client_queue_size: int = int(
+            os.environ.get("MDRAP_TCP_QUEUE_SIZE", "1024")
+        )
         self.max_buffer_size: int = int(os.environ.get("MDRAP_TCP_MAX_BUFFER", "65536"))
         self._client_queues: dict[asyncio.StreamWriter, asyncio.Queue] = {}
         self._client_tasks: dict[asyncio.StreamWriter, asyncio.Task] = {}
@@ -212,7 +214,10 @@ class TCPGatewayServer:
             if transport is not None and hasattr(transport, "get_write_buffer_size"):
                 try:
                     buf_sz = transport.get_write_buffer_size()
-                    if isinstance(buf_sz, (int, float)) and buf_sz > self.max_buffer_size:
+                    if (
+                        isinstance(buf_sz, (int, float))
+                        and buf_sz > self.max_buffer_size
+                    ):
                         dead.append(w)
                         self._stats["dropped"] += 1
                         continue

@@ -209,6 +209,7 @@ class TestDualDistributionPackagingIsolation:
         assert any("packages" in line for line in output)
         assert any("dist" in line for line in output)
 
+    @pytest.mark.slow
     def test_commercial_packaging_script_execution(self):
         script = os.path.join("scripts", "build_commercial_packages.py")
         res = subprocess.run(

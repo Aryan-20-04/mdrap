@@ -18,6 +18,8 @@ Provides production-grade operational observability with:
 
 from __future__ import annotations
 
+__stability__ = "stable"
+
 import bisect
 import collections
 from dataclasses import dataclass, field
@@ -169,7 +171,9 @@ class TelemetryRegistry:
 
         # 1. Counters: (venue, secondary) -> int
         self._events_received: Dict[Tuple[str, str], int] = collections.defaultdict(int)
-        self._events_quarantined: Dict[Tuple[str, str], int] = collections.defaultdict(int)
+        self._events_quarantined: Dict[Tuple[str, str], int] = collections.defaultdict(
+            int
+        )
         self._drops: Dict[Tuple[str, str], int] = collections.defaultdict(int)
 
         # 2. Histograms: metric_name -> (labels_tuple -> Histogram)
@@ -182,21 +186,27 @@ class TelemetryRegistry:
         # 3. Gauges
         self._gauges: Dict[str, float] = {}
 
-    def record_received(self, venue: str, event_type: str = "TRADE", count: int = 1) -> None:
+    def record_received(
+        self, venue: str, event_type: str = "TRADE", count: int = 1
+    ) -> None:
         """Record received market data event with bounded cardinality."""
         v = _sanitize_label(venue, ALLOWED_VENUES)
         et = _sanitize_label(event_type, ALLOWED_EVENT_TYPES)
         with self._lock:
             self._events_received[(v, et)] += count
 
-    def record_quarantined(self, venue: str, reason: str = "PRICE_OUTLIER", count: int = 1) -> None:
+    def record_quarantined(
+        self, venue: str, reason: str = "PRICE_OUTLIER", count: int = 1
+    ) -> None:
         """Record quarantined market data event with bounded cardinality."""
         v = _sanitize_label(venue, ALLOWED_VENUES)
         r = _sanitize_label(reason, ALLOWED_REASONS)
         with self._lock:
             self._events_quarantined[(v, r)] += count
 
-    def record_drop(self, venue: str, cause: str = "BACKPRESSURE", count: int = 1) -> None:
+    def record_drop(
+        self, venue: str, cause: str = "BACKPRESSURE", count: int = 1
+    ) -> None:
         """Record dropped event with bounded cardinality."""
         v = _sanitize_label(venue, ALLOWED_VENUES)
         c = _sanitize_label(cause, ALLOWED_CAUSES)
@@ -209,7 +219,9 @@ class TelemetryRegistry:
         key = (v,)
         with self._lock:
             if key not in self._histograms["mdrap_wire_latency_seconds"]:
-                self._histograms["mdrap_wire_latency_seconds"][key] = Histogram(BUCKETS_WIRE_LATENCY)
+                self._histograms["mdrap_wire_latency_seconds"][key] = Histogram(
+                    BUCKETS_WIRE_LATENCY
+                )
             hist = self._histograms["mdrap_wire_latency_seconds"][key]
         hist.observe(seconds)
 
@@ -219,7 +231,9 @@ class TelemetryRegistry:
         key = (v,)
         with self._lock:
             if key not in self._histograms["mdrap_engine_latency_seconds"]:
-                self._histograms["mdrap_engine_latency_seconds"][key] = Histogram(BUCKETS_ENGINE_LATENCY)
+                self._histograms["mdrap_engine_latency_seconds"][key] = Histogram(
+                    BUCKETS_ENGINE_LATENCY
+                )
             hist = self._histograms["mdrap_engine_latency_seconds"][key]
         hist.observe(seconds)
 
@@ -228,7 +242,9 @@ class TelemetryRegistry:
         key: Tuple[str, ...] = ()
         with self._lock:
             if key not in self._histograms["mdrap_fsync_latency_seconds"]:
-                self._histograms["mdrap_fsync_latency_seconds"][key] = Histogram(BUCKETS_FSYNC_LATENCY)
+                self._histograms["mdrap_fsync_latency_seconds"][key] = Histogram(
+                    BUCKETS_FSYNC_LATENCY
+                )
             hist = self._histograms["mdrap_fsync_latency_seconds"][key]
         hist.observe(seconds)
 
@@ -249,8 +265,12 @@ class TelemetryRegistry:
                 "events_received_total": rec_tot,
                 "events_quarantined_total": quar_tot,
                 "drops_total": drop_tot,
-                "events_received": {f"{v}:{et}": c for (v, et), c in self._events_received.items()},
-                "events_quarantined": {f"{v}:{r}": c for (v, r), c in self._events_quarantined.items()},
+                "events_received": {
+                    f"{v}:{et}": c for (v, et), c in self._events_received.items()
+                },
+                "events_quarantined": {
+                    f"{v}:{r}": c for (v, r), c in self._events_quarantined.items()
+                },
                 "drops": {f"{v}:{c}": cnt for (v, c), cnt in self._drops.items()},
                 "gauges": dict(self._gauges),
             }
@@ -260,21 +280,31 @@ class TelemetryRegistry:
         lines = []
 
         # 1. Received counter
-        lines.append("# HELP mdrap_events_received_total Total market data events received at gateway boundary.")
+        lines.append(
+            "# HELP mdrap_events_received_total Total market data events received at gateway boundary."
+        )
         lines.append("# TYPE mdrap_events_received_total counter")
         with self._lock:
             for (v, et), count in sorted(self._events_received.items()):
-                lines.append(f'mdrap_events_received_total{{venue="{v}",event_type="{et}"}} {count}')
+                lines.append(
+                    f'mdrap_events_received_total{{venue="{v}",event_type="{et}"}} {count}'
+                )
 
         # 2. Quarantined counter
-        lines.append("# HELP mdrap_events_quarantined_total Total market data events quarantined by quality rule engine.")
+        lines.append(
+            "# HELP mdrap_events_quarantined_total Total market data events quarantined by quality rule engine."
+        )
         lines.append("# TYPE mdrap_events_quarantined_total counter")
         with self._lock:
             for (v, r), count in sorted(self._events_quarantined.items()):
-                lines.append(f'mdrap_events_quarantined_total{{venue="{v}",reason="{r}"}} {count}')
+                lines.append(
+                    f'mdrap_events_quarantined_total{{venue="{v}",reason="{r}"}} {count}'
+                )
 
         # 3. Drops counter
-        lines.append("# HELP mdrap_drops_total Total market data frames dropped due to backpressure or queue limits.")
+        lines.append(
+            "# HELP mdrap_drops_total Total market data frames dropped due to backpressure or queue limits."
+        )
         lines.append("# TYPE mdrap_drops_total counter")
         with self._lock:
             for (v, c), count in sorted(self._drops.items()):
@@ -282,9 +312,18 @@ class TelemetryRegistry:
 
         # 4. Histograms
         hist_defs = [
-            ("mdrap_wire_latency_seconds", "Inbound network wire latency distribution in seconds."),
-            ("mdrap_engine_latency_seconds", "Internal normalization and quality engine latency distribution in seconds."),
-            ("mdrap_fsync_latency_seconds", "Non-volatile storage fsync synchronization latency distribution in seconds."),
+            (
+                "mdrap_wire_latency_seconds",
+                "Inbound network wire latency distribution in seconds.",
+            ),
+            (
+                "mdrap_engine_latency_seconds",
+                "Internal normalization and quality engine latency distribution in seconds.",
+            ),
+            (
+                "mdrap_fsync_latency_seconds",
+                "Non-volatile storage fsync synchronization latency distribution in seconds.",
+            ),
         ]
 
         for m_name, m_help in hist_defs:
@@ -299,11 +338,17 @@ class TelemetryRegistry:
                 cumulative = 0
                 for b_idx, upper_bound in enumerate(snap["boundaries"]):
                     cumulative += snap["counts"][b_idx]
-                    lines.append(f'{m_name}_bucket{{{label_prefix}le="{upper_bound}"}} {cumulative}')
+                    lines.append(
+                        f'{m_name}_bucket{{{label_prefix}le="{upper_bound}"}} {cumulative}'
+                    )
                 cumulative += snap["counts"][-1]
                 lines.append(f'{m_name}_bucket{{{label_prefix}le="+Inf"}} {cumulative}')
-                lines.append(f"{m_name}_sum{{{label_prefix[:-1]}}} {snap['total_sum']:.9f}")
-                lines.append(f"{m_name}_count{{{label_prefix[:-1]}}} {snap['total_count']}")
+                lines.append(
+                    f"{m_name}_sum{{{label_prefix[:-1]}}} {snap['total_sum']:.9f}"
+                )
+                lines.append(
+                    f"{m_name}_count{{{label_prefix[:-1]}}} {snap['total_count']}"
+                )
 
         # 5. Gauges
         with self._lock:
@@ -324,106 +369,130 @@ class TelemetryRegistry:
         rec_datapoints = []
         with self._lock:
             for (v, et), val in self._events_received.items():
-                rec_datapoints.append({
-                    "attributes": [
-                        {"key": "venue", "value": {"stringValue": v}},
-                        {"key": "event_type", "value": {"stringValue": et}},
-                    ],
-                    "startTimeUnixNano": str(start_nano),
-                    "timeUnixNano": str(now_nano),
-                    "asInt": str(val),
-                })
+                rec_datapoints.append(
+                    {
+                        "attributes": [
+                            {"key": "venue", "value": {"stringValue": v}},
+                            {"key": "event_type", "value": {"stringValue": et}},
+                        ],
+                        "startTimeUnixNano": str(start_nano),
+                        "timeUnixNano": str(now_nano),
+                        "asInt": str(val),
+                    }
+                )
         if rec_datapoints:
-            metrics_list.append({
-                "name": "mdrap_events_received_total",
-                "description": "Total market data events received at gateway boundary",
-                "unit": "1",
-                "sum": {
-                    "dataPoints": rec_datapoints,
-                    "aggregationTemporality": 2,  # AGGREGATION_TEMPORALITY_CUMULATIVE
-                    "isMonotonic": True,
-                },
-            })
+            metrics_list.append(
+                {
+                    "name": "mdrap_events_received_total",
+                    "description": "Total market data events received at gateway boundary",
+                    "unit": "1",
+                    "sum": {
+                        "dataPoints": rec_datapoints,
+                        "aggregationTemporality": 2,  # AGGREGATION_TEMPORALITY_CUMULATIVE
+                        "isMonotonic": True,
+                    },
+                }
+            )
 
         # 2. Quarantined counter
         quar_datapoints = []
         with self._lock:
             for (v, r), val in self._events_quarantined.items():
-                quar_datapoints.append({
-                    "attributes": [
-                        {"key": "venue", "value": {"stringValue": v}},
-                        {"key": "reason", "value": {"stringValue": r}},
-                    ],
-                    "startTimeUnixNano": str(start_nano),
-                    "timeUnixNano": str(now_nano),
-                    "asInt": str(val),
-                })
+                quar_datapoints.append(
+                    {
+                        "attributes": [
+                            {"key": "venue", "value": {"stringValue": v}},
+                            {"key": "reason", "value": {"stringValue": r}},
+                        ],
+                        "startTimeUnixNano": str(start_nano),
+                        "timeUnixNano": str(now_nano),
+                        "asInt": str(val),
+                    }
+                )
         if quar_datapoints:
-            metrics_list.append({
-                "name": "mdrap_events_quarantined_total",
-                "description": "Total market data events quarantined by quality engine",
-                "unit": "1",
-                "sum": {
-                    "dataPoints": quar_datapoints,
-                    "aggregationTemporality": 2,
-                    "isMonotonic": True,
-                },
-            })
+            metrics_list.append(
+                {
+                    "name": "mdrap_events_quarantined_total",
+                    "description": "Total market data events quarantined by quality engine",
+                    "unit": "1",
+                    "sum": {
+                        "dataPoints": quar_datapoints,
+                        "aggregationTemporality": 2,
+                        "isMonotonic": True,
+                    },
+                }
+            )
 
         # 3. Drops counter
         drop_datapoints = []
         with self._lock:
             for (v, c), val in self._drops.items():
-                drop_datapoints.append({
-                    "attributes": [
-                        {"key": "venue", "value": {"stringValue": v}},
-                        {"key": "cause", "value": {"stringValue": c}},
-                    ],
-                    "startTimeUnixNano": str(start_nano),
-                    "timeUnixNano": str(now_nano),
-                    "asInt": str(val),
-                })
+                drop_datapoints.append(
+                    {
+                        "attributes": [
+                            {"key": "venue", "value": {"stringValue": v}},
+                            {"key": "cause", "value": {"stringValue": c}},
+                        ],
+                        "startTimeUnixNano": str(start_nano),
+                        "timeUnixNano": str(now_nano),
+                        "asInt": str(val),
+                    }
+                )
         if drop_datapoints:
-            metrics_list.append({
-                "name": "mdrap_drops_total",
-                "description": "Total market data frames dropped due to backpressure",
-                "unit": "1",
-                "sum": {
-                    "dataPoints": drop_datapoints,
-                    "aggregationTemporality": 2,
-                    "isMonotonic": True,
-                },
-            })
+            metrics_list.append(
+                {
+                    "name": "mdrap_drops_total",
+                    "description": "Total market data frames dropped due to backpressure",
+                    "unit": "1",
+                    "sum": {
+                        "dataPoints": drop_datapoints,
+                        "aggregationTemporality": 2,
+                        "isMonotonic": True,
+                    },
+                }
+            )
 
         # 4. Histograms
-        for m_name in ("mdrap_wire_latency_seconds", "mdrap_engine_latency_seconds", "mdrap_fsync_latency_seconds"):
+        for m_name in (
+            "mdrap_wire_latency_seconds",
+            "mdrap_engine_latency_seconds",
+            "mdrap_fsync_latency_seconds",
+        ):
             hist_dps = []
             with self._lock:
                 series_map = dict(self._histograms.get(m_name, {}))
 
             for labels_tuple, hist in series_map.items():
                 snap = hist.snapshot()
-                attrs = [{"key": "venue", "value": {"stringValue": labels_tuple[0]}}] if labels_tuple else []
-                hist_dps.append({
-                    "attributes": attrs,
-                    "startTimeUnixNano": str(start_nano),
-                    "timeUnixNano": str(now_nano),
-                    "count": str(snap["total_count"]),
-                    "sum": snap["total_sum"],
-                    "bucketCounts": [str(c) for c in snap["counts"]],
-                    "explicitBounds": list(snap["boundaries"]),
-                })
+                attrs = (
+                    [{"key": "venue", "value": {"stringValue": labels_tuple[0]}}]
+                    if labels_tuple
+                    else []
+                )
+                hist_dps.append(
+                    {
+                        "attributes": attrs,
+                        "startTimeUnixNano": str(start_nano),
+                        "timeUnixNano": str(now_nano),
+                        "count": str(snap["total_count"]),
+                        "sum": snap["total_sum"],
+                        "bucketCounts": [str(c) for c in snap["counts"]],
+                        "explicitBounds": list(snap["boundaries"]),
+                    }
+                )
 
             if hist_dps:
-                metrics_list.append({
-                    "name": m_name,
-                    "description": f"Latency distribution for {m_name}",
-                    "unit": "s",
-                    "histogram": {
-                        "dataPoints": hist_dps,
-                        "aggregationTemporality": 2,
-                    },
-                })
+                metrics_list.append(
+                    {
+                        "name": m_name,
+                        "description": f"Latency distribution for {m_name}",
+                        "unit": "s",
+                        "histogram": {
+                            "dataPoints": hist_dps,
+                            "aggregationTemporality": 2,
+                        },
+                    }
+                )
 
         return {
             "resourceMetrics": [
@@ -431,7 +500,10 @@ class TelemetryRegistry:
                     "resource": {
                         "attributes": [
                             {"key": "service.name", "value": {"stringValue": "mdrap"}},
-                            {"key": "service.version", "value": {"stringValue": "3.1.0"}},
+                            {
+                                "key": "service.version",
+                                "value": {"stringValue": "3.1.0"},
+                            },
                         ]
                     },
                     "scopeMetrics": [

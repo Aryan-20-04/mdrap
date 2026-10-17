@@ -218,7 +218,9 @@ class SourceWatchdog:
                     else self._last_seen.get(source, 0.0)
                 )
 
-                thresh = self.per_source_thresholds.get(source, self.silence_threshold_s)
+                thresh = self.per_source_thresholds.get(
+                    source, self.silence_threshold_s
+                )
                 if (now_val - last_seen_time) > thresh:
                     self._source_states[source] = SourceState.SILENT
                     alert = WatchdogAlert(
@@ -243,7 +245,9 @@ class SourceWatchdog:
         effective_interval = (
             poll_interval_s
             if poll_interval_s is not None
-            else (interval_s if interval_s is not None else (self.poll_interval_s or 0.25))
+            else (
+                interval_s if interval_s is not None else (self.poll_interval_s or 0.25)
+            )
         )
         with self._lock:
             if self._heartbeat_thread is not None and self._heartbeat_thread.is_alive():

@@ -893,8 +893,6 @@ def safe_parse_market_event(data: Any) -> Tuple[Optional[MarketEvent], List[str]
     raw_et = str(data.get("event_type", data.get("type", "TRADE"))).upper()
     venue = str(data.get("venue", "XNAS"))
 
-    status = QualityStatus.INVALID if errors else QualityStatus.VALID
-
     # Dispatch to specialized event subtype
     try:
         if raw_et in ("QUOTE", "BBO"):

@@ -20,6 +20,7 @@ from typing import Any, Iterator, Optional
 from ..models import CanonicalEvent, EventType, QualityStatus, RawEvent
 
 logger = logging.getLogger("mdrap.adapters")
+__stability__ = "stable"
 
 
 class AdapterStreamState(str, Enum):
@@ -27,19 +28,27 @@ class AdapterStreamState(str, Enum):
 
     INITIALIZED = "INITIALIZED"
     CONNECTING = "CONNECTING"
-    CONNECTED = "CONNECTED"          # Normal healthy streaming
-    DEGRADED = "DEGRADED"            # Sequence gap, backpressure, or reconnection in progress
-    RECONNECTING = "RECONNECTING"    # Backing off and retrying connection
-    DISCONNECTED = "DISCONNECTED"    # Stopped or unrecoverably disconnected
+    CONNECTED = "CONNECTED"  # Normal healthy streaming
+    DEGRADED = "DEGRADED"  # Sequence gap, backpressure, or reconnection in progress
+    RECONNECTING = "RECONNECTING"  # Backing off and retrying connection
+    DISCONNECTED = "DISCONNECTED"  # Stopped or unrecoverably disconnected
 
 
 class LicensingTier(str, Enum):
     """Regulatory and commercial market-data licensing boundaries."""
 
-    PUBLIC_COMMUNITY = "PUBLIC_COMMUNITY"                         # Free public endpoints (Binance/Kraken public WS)
-    COMMERCIAL_INTERNAL_DISPLAY = "COMMERCIAL_INTERNAL_DISPLAY"   # Internal trading and monitoring only
-    NON_DISPLAY_PROP_TRADING = "NON_DISPLAY_PROP_TRADING"         # Algorithmic and proprietary execution
-    REDISTRIBUTION_RESTRICTED = "REDISTRIBUTION_RESTRICTED"       # Redistribution prohibited without vendor license
+    PUBLIC_COMMUNITY = (
+        "PUBLIC_COMMUNITY"  # Free public endpoints (Binance/Kraken public WS)
+    )
+    COMMERCIAL_INTERNAL_DISPLAY = (
+        "COMMERCIAL_INTERNAL_DISPLAY"  # Internal trading and monitoring only
+    )
+    NON_DISPLAY_PROP_TRADING = (
+        "NON_DISPLAY_PROP_TRADING"  # Algorithmic and proprietary execution
+    )
+    REDISTRIBUTION_RESTRICTED = (
+        "REDISTRIBUTION_RESTRICTED"  # Redistribution prohibited without vendor license
+    )
 
 
 @dataclass(frozen=True)
@@ -53,8 +62,8 @@ class AdapterCapabilities:
     supports_snapshots: bool = True
     supports_historical_replay: bool = False
     licensing_tier: LicensingTier = LicensingTier.PUBLIC_COMMUNITY
-    clock_source: str = "EXCHANGE"     # "EXCHANGE", "GATEWAY_RECV", "HYBRID"
-    transport: str = "WEBSOCKET"       # "WEBSOCKET", "TCP_SOCKET", "BINARY_FILE"
+    clock_source: str = "EXCHANGE"  # "EXCHANGE", "GATEWAY_RECV", "HYBRID"
+    transport: str = "WEBSOCKET"  # "WEBSOCKET", "TCP_SOCKET", "BINARY_FILE"
     max_burst_eps: int = 50_000
 
     def to_dict(self) -> dict[str, Any]:
@@ -83,7 +92,9 @@ class SequenceTracker:
         self.missing_frames_total: int = 0
         self.duplicates_total: int = 0
         self.out_of_order_total: int = 0
-        self.gap_history: collections.deque[dict[str, Any]] = collections.deque(maxlen=100)
+        self.gap_history: collections.deque[dict[str, Any]] = collections.deque(
+            maxlen=100
+        )
 
     def observe(self, seq: Optional[int]) -> tuple[bool, Optional[str]]:
         """Validate sequence monotonicity against previous observations.
@@ -166,7 +177,10 @@ class ReconnectTracker:
         self.reconnects_total += 1
         self.last_attempt_time = time.time()
 
-        delay = min(self.max_delay, self.base_delay * (self.backoff_factor ** (self.attempts - 1)))
+        delay = min(
+            self.max_delay,
+            self.base_delay * (self.backoff_factor ** (self.attempts - 1)),
+        )
         jitter = delay * self.jitter_ratio * random.uniform(-1.0, 1.0)
         final_delay = min(self.max_delay, max(0.01, delay + jitter))
         return round(final_delay, 3)
@@ -222,7 +236,9 @@ class BaseFeedAdapter:
                 self.state = AdapterStreamState.CONNECTED
                 self._connected_since = time.time()
                 self.reconnect_tracker.record_success()
-                logger.info("[%s] Adapter connected for symbol %s", self.venue, self.symbol)
+                logger.info(
+                    "[%s] Adapter connected for symbol %s", self.venue, self.symbol
+                )
             except Exception as exc:
                 self.state = AdapterStreamState.RECONNECTING
                 logger.warning("[%s] Failed to connect: %s", self.venue, exc)
@@ -325,13 +341,19 @@ class BaseFeedAdapter:
     def health(self) -> dict[str, Any]:
         """Return connectivity, sequence gaps, drops, and stream diagnostics."""
         with self._lock:
-            uptime = max(0.0, time.time() - self._connected_since) if self._connected_since else 0.0
+            uptime = (
+                max(0.0, time.time() - self._connected_since)
+                if self._connected_since
+                else 0.0
+            )
             return {
                 "venue": self.venue,
                 "symbol": self.symbol,
                 "state": self.state.value,
                 "connected": self.is_connected,
-                "status": "HEALTHY" if self.state == AdapterStreamState.CONNECTED else self.state.value,
+                "status": "HEALTHY"
+                if self.state == AdapterStreamState.CONNECTED
+                else self.state.value,
                 "received_total": self._received_total,
                 "drops_total": self._drops_total,
                 "gaps_total": self.seq_tracker.gaps_total,

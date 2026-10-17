@@ -16,7 +16,11 @@ warnings.warn(
 try:
     import mdrap_analytics as _impl
 except ImportError:
-    _pkg = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "packages", "mdrap-analytics")
+    _pkg = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+        "packages",
+        "mdrap-analytics",
+    )
     if _pkg not in sys.path and os.path.exists(_pkg):
         sys.path.insert(0, _pkg)
     import mdrap_analytics as _impl

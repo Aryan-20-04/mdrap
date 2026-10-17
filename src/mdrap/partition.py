@@ -59,7 +59,10 @@ class SymbolPartitioner:
                 alphabet = [chr(c) for c in range(ord("A"), ord("Z") + 1)]
                 chunk_size = (len(alphabet) + num_shards - 1) // num_shards
                 self.shard_ranges = [
-                    (alphabet[i * chunk_size], alphabet[min((i + 1) * chunk_size - 1, len(alphabet) - 1)])
+                    (
+                        alphabet[i * chunk_size],
+                        alphabet[min((i + 1) * chunk_size - 1, len(alphabet) - 1)],
+                    )
                     for i in range(num_shards)
                 ]
 
@@ -101,7 +104,9 @@ class ConsumerFanoutManager:
     or degrade peer consumers. Implements automated noisy-neighbor eviction.
     """
 
-    def __init__(self, max_buffer_per_client: int = 5000, eviction_timeout_sec: float = 0.05) -> None:
+    def __init__(
+        self, max_buffer_per_client: int = 5000, eviction_timeout_sec: float = 0.05
+    ) -> None:
         self.max_buffer_per_client = max_buffer_per_client
         self.eviction_timeout_sec = eviction_timeout_sec
         self._lock = threading.Lock()
@@ -110,11 +115,18 @@ class ConsumerFanoutManager:
         self._total_evictions: int = 0
 
     def register_consumer(
-        self, consumer_id: str, tenant_id: str, subscribed_symbols: Optional[List[str]] = None
+        self,
+        consumer_id: str,
+        tenant_id: str,
+        subscribed_symbols: Optional[List[str]] = None,
     ) -> ConsumerSession:
         """Register a new consumer with an independent bounded dispatch queue."""
         with self._lock:
-            symbols_set = set(s.upper() for s in subscribed_symbols) if subscribed_symbols else None
+            symbols_set = (
+                set(s.upper() for s in subscribed_symbols)
+                if subscribed_symbols
+                else None
+            )
             session = ConsumerSession(
                 consumer_id=consumer_id,
                 tenant_id=tenant_id,
@@ -149,7 +161,10 @@ class ConsumerFanoutManager:
         for session in sessions:
             if not session.is_active:
                 continue
-            if session.subscribed_symbols is not None and sym not in session.subscribed_symbols:
+            if (
+                session.subscribed_symbols is not None
+                and sym not in session.subscribed_symbols
+            ):
                 continue
 
             try:
@@ -205,10 +220,14 @@ class TenantQuotaManager:
         self.default_max_subscriptions = default_max_subscriptions
         self.default_max_rate_eps = default_max_rate_eps
         self._tenant_quotas: Dict[str, Dict[str, int]] = {}
-        self._tenant_rates: Dict[str, collections.deque] = collections.defaultdict(collections.deque)
+        self._tenant_rates: Dict[str, collections.deque] = collections.defaultdict(
+            collections.deque
+        )
         self._lock = threading.Lock()
 
-    def set_quota(self, tenant_id: str, max_subscriptions: int, max_rate_eps: int) -> None:
+    def set_quota(
+        self, tenant_id: str, max_subscriptions: int, max_rate_eps: int
+    ) -> None:
         """Configure explicit quota limits for a tenant."""
         with self._lock:
             self._tenant_quotas[tenant_id] = {
@@ -216,7 +235,9 @@ class TenantQuotaManager:
                 "max_rate_eps": max_rate_eps,
             }
 
-    def check_subscription_permitted(self, tenant_id: str, requested_symbol_count: int) -> bool:
+    def check_subscription_permitted(
+        self, tenant_id: str, requested_symbol_count: int
+    ) -> bool:
         """Verify whether tenant is permitted to subscribe to the requested symbol count."""
         with self._lock:
             quota = self._tenant_quotas.get(tenant_id, {})
@@ -302,9 +323,13 @@ class FleetCoordinator:
     Maintains partition routing, fleet health metrics, and overall ingestion dispatch.
     """
 
-    def __init__(self, partitioner: SymbolPartitioner, shard_configs: List[ShardConfig]) -> None:
+    def __init__(
+        self, partitioner: SymbolPartitioner, shard_configs: List[ShardConfig]
+    ) -> None:
         self.partitioner = partitioner
-        self.shards: Dict[int, ShardInstance] = {cfg.shard_id: ShardInstance(cfg) for cfg in shard_configs}
+        self.shards: Dict[int, ShardInstance] = {
+            cfg.shard_id: ShardInstance(cfg) for cfg in shard_configs
+        }
         self.quota_manager = TenantQuotaManager()
 
     def start_fleet(self) -> None:
@@ -351,7 +376,9 @@ class FleetCoordinator:
             }
 
         return {
-            "fleet_status": "HEALTHY" if all(s.is_running for s in self.shards.values()) else "DEGRADED",
+            "fleet_status": "HEALTHY"
+            if all(s.is_running for s in self.shards.values())
+            else "DEGRADED",
             "total_shards": len(self.shards),
             "aggregate_events_processed": total_processed,
             "aggregate_queue_backlog": total_backlog,

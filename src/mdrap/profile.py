@@ -233,7 +233,7 @@ def set_cpu_affinity(core_ids: list[int], pid: int | None = None) -> bool:
             mask = 0
             for c in core_ids:
                 if 0 <= c < 64:
-                    mask |= (1 << c)
+                    mask |= 1 << c
             h_proc = ctypes.windll.kernel32.GetCurrentProcess()
             ret = ctypes.windll.kernel32.SetProcessAffinityMask(
                 h_proc, ctypes.c_size_t(mask)
@@ -284,4 +284,3 @@ def set_numa_node(node_id: int) -> bool:
         except Exception:
             pass
     return False
-

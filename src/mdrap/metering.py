@@ -112,9 +112,17 @@ class DurableUsageMeter:
             return False
         if entitlement.expires_at is not None and time.time() > entitlement.expires_at:
             return False
-        if entitlement.allowed_sources and source and source not in entitlement.allowed_sources:
+        if (
+            entitlement.allowed_sources
+            and source
+            and source not in entitlement.allowed_sources
+        ):
             return False
-        if entitlement.allowed_symbols and symbol and symbol not in entitlement.allowed_symbols:
+        if (
+            entitlement.allowed_symbols
+            and symbol
+            and symbol not in entitlement.allowed_symbols
+        ):
             return False
         return True
 
@@ -131,7 +139,7 @@ class DurableUsageMeter:
         window_end: Optional[float] = None,
     ) -> bool:
         """Record billable consumption durably.
-        
+
         Returns True if newly recorded; False if skipped due to duplicate idempotency key.
         """
         now = time.time()

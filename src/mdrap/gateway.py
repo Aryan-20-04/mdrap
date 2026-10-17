@@ -76,7 +76,9 @@ class Gateway:
         self.id_counter = itertools.count(1)
         self.symbol_metadata_cache: dict[str, tuple[str, str]] = {}
         self.source_id_map: dict[str, int] = {s: i for i, s in enumerate(_SOURCES)}
-        self.instrument_id_map: dict[str, int] = {inst: i for i, inst in enumerate(_INSTRUMENTS)}
+        self.instrument_id_map: dict[str, int] = {
+            inst: i for i, inst in enumerate(_INSTRUMENTS)
+        }
 
     def next_raw_id(self) -> str:
         return f"raw-{self.run_id}-{next(self.id_counter)}"
@@ -103,7 +105,9 @@ class Gateway:
             raise SchemaError(f"unknown or missing event_type: {event_type_raw!r}")
 
         required = (
-            REQUIRED_TRADE_FIELDS if event_type_raw == "TRADE" else REQUIRED_QUOTE_FIELDS
+            REQUIRED_TRADE_FIELDS
+            if event_type_raw == "TRADE"
+            else REQUIRED_QUOTE_FIELDS
         )
         for f in required:
             if f not in p:
@@ -118,7 +122,9 @@ class Gateway:
             clock_source = "GATEWAY_RECV"
         elif isinstance(exchange_ts, bool) or not isinstance(exchange_ts, (int, float)):
             raise SchemaError(f"exchange_ts not numeric: {exchange_ts!r}")
-        elif (isinstance(exchange_ts, int) and exchange_ts.bit_length() > 1024) or not math.isfinite(exchange_ts):
+        elif (
+            isinstance(exchange_ts, int) and exchange_ts.bit_length() > 1024
+        ) or not math.isfinite(exchange_ts):
             raise SchemaError(f"exchange_ts not finite: {exchange_ts!r}")
 
         # sequence: optional for feeds that don't provide monotonic sequence numbers (bounded to signed int64)
@@ -246,4 +252,3 @@ def ingest(raw: RawEvent) -> RawEvent:
 
 def normalize(raw: RawEvent) -> CanonicalEvent:
     return _DEFAULT_GATEWAY.normalize(raw)
-

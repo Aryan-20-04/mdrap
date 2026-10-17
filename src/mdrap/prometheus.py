@@ -55,7 +55,9 @@ class PrometheusExporter:
                     res = store.verify_audit_integrity()
                 verified = res[0] if isinstance(res, (tuple, list)) else bool(res)
                 status = 1 if verified else 0
-                new_id = res[2] if (isinstance(res, (tuple, list)) and len(res) > 2) else 0
+                new_id = (
+                    res[2] if (isinstance(res, (tuple, list)) and len(res) > 2) else 0
+                )
             except Exception:
                 status = 0
                 new_id = 0

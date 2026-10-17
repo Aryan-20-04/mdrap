@@ -141,13 +141,18 @@ class SQLiteProjection:
 
                 for item in batch:
                     if isinstance(item, EngineDecision):
-                        if item.canonical_event and item.quality_status != QualityStatus.INVALID:
+                        if (
+                            item.canonical_event
+                            and item.quality_status != QualityStatus.INVALID
+                        ):
                             ev = item.canonical_event
                             canonical_rows.append(
                                 (
                                     ev.event_id,
                                     ev.instrument_id,
-                                    ev.event_type.value if hasattr(ev.event_type, "value") else str(ev.event_type),
+                                    ev.event_type.value
+                                    if hasattr(ev.event_type, "value")
+                                    else str(ev.event_type),
                                     ev.exchange_timestamp,
                                     ev.receive_timestamp,
                                     ev.processing_timestamp,
@@ -159,7 +164,9 @@ class SQLiteProjection:
                                     ev.ask_price,
                                     ev.bid_size,
                                     ev.ask_size,
-                                    ev.quality_status.value if hasattr(ev.quality_status, "value") else str(ev.quality_status),
+                                    ev.quality_status.value
+                                    if hasattr(ev.quality_status, "value")
+                                    else str(ev.quality_status),
                                     json.dumps(ev.reasons),
                                     str(ev.raw_id) if ev.raw_id is not None else None,
                                 )
@@ -172,23 +179,29 @@ class SQLiteProjection:
                                 (
                                     item.event_id,
                                     item.instrument_id,
-                                    item.event_type.value if hasattr(item.event_type, "value") else str(item.event_type),
-                                item.exchange_timestamp,
-                                item.receive_timestamp,
-                                item.processing_timestamp,
-                                item.source,
-                                item.sequence_number,
-                                item.price,
-                                item.quantity,
-                                item.bid_price,
-                                item.ask_price,
-                                item.bid_size,
-                                item.ask_size,
-                                item.quality_status.value if hasattr(item.quality_status, "value") else str(item.quality_status),
-                                json.dumps(item.reasons),
-                                str(item.raw_id) if item.raw_id is not None else None,
+                                    item.event_type.value
+                                    if hasattr(item.event_type, "value")
+                                    else str(item.event_type),
+                                    item.exchange_timestamp,
+                                    item.receive_timestamp,
+                                    item.processing_timestamp,
+                                    item.source,
+                                    item.sequence_number,
+                                    item.price,
+                                    item.quantity,
+                                    item.bid_price,
+                                    item.ask_price,
+                                    item.bid_size,
+                                    item.ask_size,
+                                    item.quality_status.value
+                                    if hasattr(item.quality_status, "value")
+                                    else str(item.quality_status),
+                                    json.dumps(item.reasons),
+                                    str(item.raw_id)
+                                    if item.raw_id is not None
+                                    else None,
+                                )
                             )
-                        )
                         else:
                             q_row = (
                                 item.event_id,
@@ -267,11 +280,15 @@ class SQLiteProjection:
 class DuckDBProjection:
     """Production DuckDB columnar projection for ultra-fast time-series analytical scans."""
 
-    def __init__(self, db_path: str = ":memory:", name: str = "duckdb_canonical") -> None:
+    def __init__(
+        self, db_path: str = ":memory:", name: str = "duckdb_canonical"
+    ) -> None:
         try:
             import duckdb
         except ImportError:
-            raise RuntimeError("duckdb is not installed; install via pip install duckdb")
+            raise RuntimeError(
+                "duckdb is not installed; install via pip install duckdb"
+            )
         self.db_path = db_path
         self.name = name
         self._lock = threading.Lock()
@@ -334,7 +351,11 @@ class DuckDBProjection:
             return
         canonical_rows = []
         for item in batch:
-            ev = item if isinstance(item, CanonicalEvent) else getattr(item, "canonical_event", None)
+            ev = (
+                item
+                if isinstance(item, CanonicalEvent)
+                else getattr(item, "canonical_event", None)
+            )
             if ev is not None:
                 r_json = (
                     json.dumps(ev.reasons)
@@ -391,9 +412,9 @@ class DuckDBProjection:
     def count_canonical(self) -> int:
         with self._lock:
             return int(
-                self._conn.execute(
-                    "SELECT COUNT(*) FROM canonical_events"
-                ).fetchone()[0]
+                self._conn.execute("SELECT COUNT(*) FROM canonical_events").fetchone()[
+                    0
+                ]
             )
 
     def query(self, sql: str, params: list | None = None) -> list:
@@ -409,9 +430,9 @@ class DuckDBProjection:
                 f"COPY canonical_events TO '{p_abs}' (FORMAT PARQUET, COMPRESSION '{compression}')"
             )
             count = int(
-                self._conn.execute(
-                    "SELECT COUNT(*) FROM canonical_events"
-                ).fetchone()[0]
+                self._conn.execute("SELECT COUNT(*) FROM canonical_events").fetchone()[
+                    0
+                ]
             )
             return count
 
@@ -586,4 +607,3 @@ class AsyncProjectionWorker:
         self._worker_thread.join(timeout=timeout)
         if hasattr(self.projection, "close"):
             self.projection.close()
-

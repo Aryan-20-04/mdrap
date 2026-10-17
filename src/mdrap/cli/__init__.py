@@ -411,7 +411,9 @@ def build_parser() -> argparse.ArgumentParser:
         default="grouped_by_time",
         help="IngestLog fsync durability policy (default: grouped_by_time)",
     )
-    _add_events_arg(p_capture, default=0, help_text="Number of events to capture (0 = continuous)")
+    _add_events_arg(
+        p_capture, default=0, help_text="Number of events to capture (0 = continuous)"
+    )
     p_capture.add_argument(
         "--shm",
         default=None,
@@ -1918,7 +1920,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_cfg.add_argument(
         "config_action", nargs="?", default="show", help="Action (show, migrate)"
     )
-    p_cfg.add_argument("--migrate", action="store_true", help="Migrate legacy config.yaml to mdrap.toml")
+    p_cfg.add_argument(
+        "--migrate",
+        action="store_true",
+        help="Migrate legacy config.yaml to mdrap.toml",
+    )
     p_cfg.add_argument("--file", help="Source YAML file to migrate")
     p_cfg.add_argument("--out", help="Target TOML file path (default: mdrap.toml)")
     p_cfg.add_argument("--venue", help="Filter by venue code (e.g. binance, XNSE)")
@@ -2205,7 +2211,6 @@ MNEMONIC_MAP = {
     "tcp-gw": "gateway",
     "sdk-demo": "sdk-demo",
     "sdk": "sdk-demo",
-    "dashboard": "dashboard",
     "dash": "dashboard",
     "itch": "itch",
     "totalview": "itch",
@@ -2264,7 +2269,6 @@ MNEMONIC_MAP = {
     "desk": "desk",
     "navigator": "desk",
     "nav": "desk",
-    "tui": "tui",
     "completion": "completion",
     "complete": "completion",
     "load": "loadtest",

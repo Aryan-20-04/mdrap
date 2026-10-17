@@ -550,7 +550,9 @@ def get_session_phase(
         # Sunday: check if session rolls open across midnight
         if open_h > close_h and hour_frac >= open_h:
             return True, MarketPhase.CONTINUOUS, "Open (Continuous Trading)"
-        if pre_h is not None and (hour_frac >= pre_h if pre_h > open_h else (pre_h <= hour_frac < open_h)):
+        if pre_h is not None and (
+            hour_frac >= pre_h if pre_h > open_h else (pre_h <= hour_frac < open_h)
+        ):
             return False, MarketPhase.PRE_OPEN, "Pre-Open Call Auction"
         return False, MarketPhase.CLOSED, "Closed (Weekend)"
 

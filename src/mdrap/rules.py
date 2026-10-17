@@ -215,7 +215,9 @@ def register_rule(
                     func=fn,
                 )
                 _USER_RULES[bit] = rule
-                reason_registry.register(clean_name, description=description, severity=severity)
+                reason_registry.register(
+                    clean_name, description=description, severity=severity
+                )
                 return fn
             raise ValueError(
                 f"Rule bit {bit} is already registered to '{_USER_RULES[bit].name}'"

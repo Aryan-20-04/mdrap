@@ -105,7 +105,7 @@ class TerminalDashboard:
 
     def run(self) -> None:
         """Run live dashboard stream."""
-        print(f"\033[2J\033[H", end="")  # Clear screen and cursor home
+        print("\033[2J\033[H", end="")  # Clear screen and cursor home
         print(
             f"Connecting to MDRAP stream: {self.target} (Profile: {self.profile.mode.value})..."
         )

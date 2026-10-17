@@ -113,9 +113,7 @@ class LogManifest:
             schema_version=int(data.get("schema_version", 1)),
             log_dir=str(data.get("log_dir", "")),
             manifest_hash=str(data.get("manifest_hash", "")),
-            segments=[
-                SegmentMetadata.from_dict(s) for s in data.get("segments", [])
-            ],
+            segments=[SegmentMetadata.from_dict(s) for s in data.get("segments", [])],
         )
 
 
@@ -233,6 +231,11 @@ class IngestLog:
     def next_offset(self) -> int:
         with self._lock:
             return self._next_offset
+
+    @property
+    def current_segment_path(self) -> str | None:
+        with self._lock:
+            return self._current_filename
 
     def _sync_dir(self) -> None:
         """Durable directory sync ensuring newly created or rotated segment files are committed to disk metadata."""
@@ -938,7 +941,10 @@ class IngestLog:
                 )
 
             # 2. Offset continuity check
-            if expected_next_offset is not None and s.start_offset != expected_next_offset:
+            if (
+                expected_next_offset is not None
+                and s.start_offset != expected_next_offset
+            ):
                 report["is_valid"] = False
                 report["errors"].append(
                     f"Segment {s.segment_filename} offset discontinuity: start_offset {s.start_offset} != expected {expected_next_offset}"

@@ -15,9 +15,15 @@ import time
 from typing import Any, Optional
 
 from ..models import CanonicalEvent, EventType, QualityStatus, RawEvent
-from .base import AdapterCapabilities, AdapterStreamState, BaseFeedAdapter, LicensingTier
+from .base import (
+    AdapterCapabilities,
+    AdapterStreamState,
+    BaseFeedAdapter,
+    LicensingTier,
+)
 
 logger = logging.getLogger("mdrap.adapters.binance")
+__stability__ = "stable"
 
 
 class BinanceAdapter(BaseFeedAdapter):
@@ -53,7 +59,9 @@ class BinanceAdapter(BaseFeedAdapter):
             max_burst_eps=100_000,
         )
 
-    def parse_frame(self, data: dict[str, Any], t_recv: Optional[float] = None) -> Optional[RawEvent]:
+    def parse_frame(
+        self, data: dict[str, Any], t_recv: Optional[float] = None
+    ) -> Optional[RawEvent]:
         """Parse raw incoming Binance WebSocket JSON frame and enqueue it."""
         t_recv = t_recv if t_recv is not None else time.time()
 
@@ -168,7 +176,9 @@ class BinanceAdapter(BaseFeedAdapter):
     def normalize(self, raw: RawEvent) -> CanonicalEvent:
         """Translate raw Binance payload into canonical event schema."""
         p = raw.payload if isinstance(raw.payload, dict) else {}
-        ev_type_str = p.get("event_type", "TRADE" if ("price" in p or "quantity" in p) else "QUOTE")
+        ev_type_str = p.get(
+            "event_type", "TRADE" if ("price" in p or "quantity" in p) else "QUOTE"
+        )
         ev_type = EventType.TRADE if ev_type_str == "TRADE" else EventType.QUOTE
 
         ex_ts = float(p.get("exchange_ts", raw.receive_timestamp))

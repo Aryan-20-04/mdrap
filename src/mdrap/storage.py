@@ -337,7 +337,7 @@ class Store:
         self,
         path: str = ":memory:",
         durability: str = "balanced",
-        persistence_mode: Optional[str] = None,
+        persistence_mode: str | None = None,
     ):
         self.path = path
         self.db_path = path
@@ -431,7 +431,9 @@ class Store:
                     description TEXT NOT NULL
                 );
             """)
-            applied_rows = self.conn.execute("SELECT version FROM schema_migrations;").fetchall()
+            applied_rows = self.conn.execute(
+                "SELECT version FROM schema_migrations;"
+            ).fetchall()
             applied_versions = {r[0] for r in applied_rows}
 
             # Migration 1: Baseline institutional market data schema
@@ -482,7 +484,9 @@ class Store:
 
                 # Auto-migration for api_keys schema (from legacy 'token' column to 'token_hash' + 'role' + 'key_prefix')
                 try:
-                    cur_cols = self.conn.execute("PRAGMA table_info(api_keys)").fetchall()
+                    cur_cols = self.conn.execute(
+                        "PRAGMA table_info(api_keys)"
+                    ).fetchall()
                     col_names = {c[1] for c in cur_cols}
                     if col_names and (
                         "token_hash" not in col_names
@@ -490,7 +494,9 @@ class Store:
                         or "tier" in col_names
                     ):
                         # Legacy table exists with older columns
-                        self.conn.execute("ALTER TABLE api_keys RENAME TO api_keys_legacy")
+                        self.conn.execute(
+                            "ALTER TABLE api_keys RENAME TO api_keys_legacy"
+                        )
                         self.conn.execute("""
                             CREATE TABLE api_keys (
                                 token_hash TEXT PRIMARY KEY,
@@ -520,10 +526,16 @@ class Store:
                                 continue
                             pfx = str(row_dict.get("key_prefix") or "")
                             if not pfx and raw_tok:
-                                pfx = raw_tok[:12] + "..." if len(raw_tok) > 12 else raw_tok
+                                pfx = (
+                                    raw_tok[:12] + "..."
+                                    if len(raw_tok) > 12
+                                    else raw_tok
+                                )
                             elif not pfx:
                                 pfx = tok_hash[:10] + "..."
-                            client_id = str(row_dict.get("client_id") or "Migrated_Client")
+                            client_id = str(
+                                row_dict.get("client_id") or "Migrated_Client"
+                            )
                             role = str(row_dict.get("role") or "VIEWER")
                             active = int(row_dict.get("is_active", 1))
                             created = float(row_dict.get("created_at") or time.time())
@@ -532,7 +544,15 @@ class Store:
                                 """INSERT OR REPLACE INTO api_keys
                                    (token_hash, key_prefix, client_id, role, is_active, created_at, expires_at)
                                    VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                                (tok_hash, pfx, client_id, role, active, created, expires),
+                                (
+                                    tok_hash,
+                                    pfx,
+                                    client_id,
+                                    role,
+                                    active,
+                                    created,
+                                    expires,
+                                ),
                             )
                         self.conn.execute("DROP TABLE api_keys_legacy")
                     elif col_names:
@@ -569,7 +589,11 @@ class Store:
 
                 self.conn.execute(
                     "INSERT INTO schema_migrations (version, applied_at, description) VALUES (?, ?, ?)",
-                    (3, time.time(), "Quarantine Merkle log and API key SHA-256 hash storage"),
+                    (
+                        3,
+                        time.time(),
+                        "Quarantine Merkle log and API key SHA-256 hash storage",
+                    ),
                 )
                 self.conn.execute(f"PRAGMA user_version = {CURRENT_SCHEMA_VERSION};")
                 applied_versions.add(3)
@@ -897,7 +921,9 @@ class Store:
         """Return highest committed WAL offset from projection_checkpoints, or -1."""
         cur = self.conn.cursor()
         try:
-            cur.execute("SELECT last_offset FROM projection_checkpoints WHERE name = 'store_canonical';")
+            cur.execute(
+                "SELECT last_offset FROM projection_checkpoints WHERE name = 'store_canonical';"
+            )
             row = cur.fetchone()
             return row[0] if row else -1
         except sqlite3.OperationalError:
@@ -917,7 +943,10 @@ class Store:
 
         for item in batch:
             if isinstance(item, EngineDecision):
-                if item.canonical_event and item.quality_status != QualityStatus.INVALID:
+                if (
+                    item.canonical_event
+                    and item.quality_status != QualityStatus.INVALID
+                ):
                     canonical_events.append(item.canonical_event)
                 if item.quarantine_row:
                     quarantine_rows.append(item.quarantine_row)
@@ -1726,9 +1755,7 @@ class Store:
                 (since_entry_id,),
             )
         else:
-            expected_prev = (
-                "GENESIS_0000000000000000000000000000000000000000000000000000000000000000"
-            )
+            expected_prev = "GENESIS_0000000000000000000000000000000000000000000000000000000000000000"
             cur = self.conn.execute(
                 "SELECT entry_id, timestamp, entry_hash, prev_root, batch_root, batch_size, format_version "
                 "FROM quarantine_merkle_log ORDER BY entry_id ASC"
@@ -1793,9 +1820,7 @@ class Store:
                 (since_entry_id,),
             )
         else:
-            expected_prev = (
-                "GENESIS_0000000000000000000000000000000000000000000000000000000000000000"
-            )
+            expected_prev = "GENESIS_0000000000000000000000000000000000000000000000000000000000000000"
             cur = self.conn.execute(
                 "SELECT entry_id, timestamp, actor, role, action, details, prev_hash, entry_hash, "
                 "COALESCE(format_version, 1) FROM audit_log ORDER BY entry_id ASC"
@@ -2137,8 +2162,12 @@ class Store:
         }
         key_id = getattr(ent, "key_id", "") or (token_hash[:16] if token_hash else "")
         allowed_cidrs_str = json.dumps(list(getattr(ent, "allowed_cidrs", []) or []))
-        allowed_sources_str = json.dumps(list(getattr(ent, "allowed_sources", []) or []))
-        allowed_symbols_str = json.dumps(list(getattr(ent, "allowed_symbols", []) or []))
+        allowed_sources_str = json.dumps(
+            list(getattr(ent, "allowed_sources", []) or [])
+        )
+        allowed_symbols_str = json.dumps(
+            list(getattr(ent, "allowed_symbols", []) or [])
+        )
 
         if "allowed_symbols" in cur_cols:
             self.conn.execute(
@@ -2233,8 +2262,12 @@ class Store:
                         expires_at=float(row[6]) if row[6] is not None else None,
                         key_id=row[7] or (row[0][:16] if row[0] else ""),
                         allowed_cidrs=list(cidrs) if isinstance(cidrs, list) else [],
-                        allowed_sources=list(sources) if isinstance(sources, list) else [],
-                        allowed_symbols=list(symbols) if isinstance(symbols, list) else [],
+                        allowed_sources=list(sources)
+                        if isinstance(sources, list)
+                        else [],
+                        allowed_symbols=list(symbols)
+                        if isinstance(symbols, list)
+                        else [],
                     )
                 )
             return results

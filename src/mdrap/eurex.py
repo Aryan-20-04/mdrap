@@ -16,6 +16,7 @@ from typing import Any
 from .models import CanonicalEvent, EventType, QualityStatus
 
 __version__ = "1.0.0"
+__stability__ = "stable"
 
 # Eurex T7 Template Constants
 EUREX_TEMPLATE_DEPTH: int = 10130
@@ -26,7 +27,9 @@ EUREX_TEMPLATE_HEARTBEAT: int = 10000
 EUREX_HEADER_STRUCT = struct.Struct("<HIH")  # Or standard format: <IHI
 # Layout: body_len(u32), template_id(u16), msg_seq_num(u32)
 EUREX_HEADER_STRUCT = struct.Struct("<IHI")
-EUREX_HEADER_SIZE = EUREX_HEADER_STRUCT.size  # Exactly 10 bytes (or 12 bytes with padding)
+EUREX_HEADER_SIZE = (
+    EUREX_HEADER_STRUCT.size
+)  # Exactly 10 bytes (or 12 bytes with padding)
 
 # Price scaling factor for Eurex T7 (8 decimal places)
 EUREX_PRICE_DIVISOR = 100_000_000.0
@@ -70,10 +73,14 @@ class EurexT7Decoder:
     def register_security(self, security_id: int, symbol: str) -> None:
         self._security_symbol_map[security_id] = symbol
 
-    def decode_header(self, buf: bytes | memoryview, offset: int = 0) -> tuple[int, int, int]:
+    def decode_header(
+        self, buf: bytes | memoryview, offset: int = 0
+    ) -> tuple[int, int, int]:
         """Decode Eurex frame header: (body_len, template_id, msg_seq_num)."""
         if len(buf) - offset < EUREX_HEADER_SIZE:
-            raise ValueError(f"Buffer too short for Eurex header: {len(buf) - offset} < {EUREX_HEADER_SIZE}")
+            raise ValueError(
+                f"Buffer too short for Eurex header: {len(buf) - offset} < {EUREX_HEADER_SIZE}"
+            )
         body_len, template_id, seq_num = EUREX_HEADER_STRUCT.unpack_from(buf, offset)
         return body_len, template_id, seq_num
 
@@ -86,8 +93,8 @@ class EurexT7Decoder:
 
         if template_id == EUREX_TEMPLATE_DEPTH:
             # Layout: security_id(q), transact_time(Q), bid_px(q), ask_px(q), bid_sz(I), ask_sz(I) = 40 bytes
-            sec_id, transact_time, bid_raw, ask_raw, bid_sz, ask_sz = struct.unpack_from(
-                "<qQqqII", buf, pos
+            sec_id, transact_time, bid_raw, ask_raw, bid_sz, ask_sz = (
+                struct.unpack_from("<qQqqII", buf, pos)
             )
             return EurexDepthMessage(
                 seq_num=seq_num,
@@ -121,7 +128,9 @@ class EurexT7Decoder:
         receive_timestamp: float,
     ) -> CanonicalEvent:
         """Project decoded Eurex message into standard MDRAP CanonicalEvent."""
-        symbol = self._security_symbol_map.get(msg.security_id, f"EUREX_{msg.security_id}")
+        symbol = self._security_symbol_map.get(
+            msg.security_id, f"EUREX_{msg.security_id}"
+        )
         exchange_ts = msg.transact_time_ns / 1_000_000_000.0
 
         if isinstance(msg, EurexTradeMessage):

@@ -6,4 +6,3 @@ _sys.modules[__name__] = _module
 
 if __name__ == "__main__":
     _module.main()
-

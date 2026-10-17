@@ -210,7 +210,9 @@ class Reconciler:
         )
         self.max_instruments = max_instruments
         # instrument_id -> source -> (event, exchange_timestamp)
-        self._latest: OrderedDict[str, dict[str, tuple[CanonicalEvent, float]]] = OrderedDict()
+        self._latest: OrderedDict[str, dict[str, tuple[CanonicalEvent, float]]] = (
+            OrderedDict()
+        )
         self._blocked_sources: set[str] = set()
 
     def block_source(self, source: str) -> None:

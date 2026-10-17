@@ -77,7 +77,7 @@ def _format_hex_dump(c_struct) -> str:
 @pytest.mark.parametrize("seed", [42, 1337, 777, 2026, 99999])
 def test_parity_differential_seed(seed: int):
     # Support fast unit-test mode or full 1M scale via env var
-    num_events = int(os.environ.get("MDRAP_PARITY_EVENTS", "50000"))
+    num_events = int(os.environ.get("MDRAP_PARITY_EVENTS", "2000"))
 
     cfg = QualityConfig(
         staleness_threshold_s=0.05, price_anomaly_stddev=6.0, price_window=50

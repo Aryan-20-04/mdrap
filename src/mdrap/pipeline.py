@@ -191,16 +191,17 @@ class Pipeline:
         )
         self.store = store
         self.clock = clock if clock is not None else SystemClock()
-        self.use_engine: bool = (
-            use_engine
-            or os.environ.get("MDRAP_USE_ENGINE", "0").lower() in ("1", "true", "yes")
-        )
+        self.use_engine: bool = use_engine or os.environ.get(
+            "MDRAP_USE_ENGINE", "0"
+        ).lower() in ("1", "true", "yes")
         if self.use_engine:
             from .engine import Engine
+
             self.engine = Engine(clock=self.clock, security=security)
             db_path = getattr(store, "path", None)
             if db_path and isinstance(db_path, str) and not db_path.startswith(":"):
                 from .projection import SQLiteProjection
+
                 self.engine.subscribe(SQLiteProjection(db_path))
         else:
             self.engine = None
@@ -222,7 +223,9 @@ class Pipeline:
                 from .fastpath import FastQualityEngine, is_available
 
                 self.quality = (
-                    FastQualityEngine(clock=self.clock) if is_available() else QualityEngine(clock=self.clock)
+                    FastQualityEngine(clock=self.clock)
+                    if is_available()
+                    else QualityEngine(clock=self.clock)
                 )
             except Exception as exc:
                 logger.warning(
@@ -313,7 +316,10 @@ class Pipeline:
                 os.makedirs(
                     os.path.dirname(os.path.abspath(self._journal_path)), exist_ok=True
                 )
-                if os.path.exists(self._journal_path) and os.path.getsize(self._journal_path) > 0:
+                if (
+                    os.path.exists(self._journal_path)
+                    and os.path.getsize(self._journal_path) > 0
+                ):
                     try:
                         with open(self._journal_path, "rb+") as f_chk:
                             f_chk.seek(-1, os.SEEK_END)
@@ -321,7 +327,9 @@ class Pipeline:
                                 f_chk.write(b"\n")
                                 f_chk.flush()
                     except Exception as chk_exc:
-                        logger.debug("[pipeline] Journal trailing newline check: %s", chk_exc)
+                        logger.debug(
+                            "[pipeline] Journal trailing newline check: %s", chk_exc
+                        )
                 self._journal_file = open(self._journal_path, "a", encoding="utf-8")
             except Exception as exc:
                 logger.warning(
@@ -646,7 +654,11 @@ class Pipeline:
                 p_dict.get("drop_reason") == "BACKPRESSURE_DROP"
                 or p_dict.get("event_type") == "TOMBSTONE_DROPPED"
             )
-            r_val = Reason.BACKPRESSURE_DROP.value if is_bp_drop else Reason.SCHEMA_VIOLATION.value
+            r_val = (
+                Reason.BACKPRESSURE_DROP.value
+                if is_bp_drop
+                else Reason.SCHEMA_VIOLATION.value
+            )
             desc = "Backpressure drop tombstone" if is_bp_drop else "Schema violation"
             lineage_d = (
                 "quarantined (backpressure drop)"

@@ -18,6 +18,7 @@ from typing import Any
 from .models import CanonicalEvent, EventType, QualityStatus
 
 __version__ = "1.0.0"
+__stability__ = "stable"
 
 # CME MDP 3.0 SBE Constants
 CME_SCHEMA_ID: int = 1
@@ -83,13 +84,21 @@ class CMESBEDecoder:
         """Map numeric CME security_id to canonical ticker symbol."""
         self._security_symbol_map[security_id] = symbol
 
-    def decode_header(self, buf: bytes | memoryview, offset: int = 0) -> tuple[int, int, int, int]:
+    def decode_header(
+        self, buf: bytes | memoryview, offset: int = 0
+    ) -> tuple[int, int, int, int]:
         """Unpack 8-byte SBE message header: (block_length, template_id, schema_id, version)."""
         if len(buf) - offset < SBE_HEADER_SIZE:
-            raise ValueError(f"Buffer too short for SBE header: {len(buf) - offset} < {SBE_HEADER_SIZE}")
-        block_len, template_id, schema_id, version = SBE_HEADER_STRUCT.unpack_from(buf, offset)
+            raise ValueError(
+                f"Buffer too short for SBE header: {len(buf) - offset} < {SBE_HEADER_SIZE}"
+            )
+        block_len, template_id, schema_id, version = SBE_HEADER_STRUCT.unpack_from(
+            buf, offset
+        )
         if schema_id != self.expected_schema_id:
-            raise ValueError(f"Invalid CME SBE schema_id: {schema_id} (expected {self.expected_schema_id})")
+            raise ValueError(
+                f"Invalid CME SBE schema_id: {schema_id} (expected {self.expected_schema_id})"
+            )
         return block_len, template_id, schema_id, version
 
     def decode_packet(self, buf: bytes | memoryview, offset: int = 0) -> CMEMessage:
@@ -104,7 +113,9 @@ class CMESBEDecoder:
 
             # Group header: block_length(u16), num_in_group(u8)
             if pos + 3 > len(buf):
-                return CMEMessage(template_id, schema_id, version, transact_time, match_event, [])
+                return CMEMessage(
+                    template_id, schema_id, version, transact_time, match_event, []
+                )
 
             group_block_len, num_in_group = struct.unpack_from("<HB", buf, pos)
             pos += 3
@@ -114,11 +125,13 @@ class CMESBEDecoder:
                 if pos + group_block_len > len(buf):
                     break
                 # Entry layout: md_entry_px(i64), md_entry_size(i32), security_id(i32), rpt_seq(u32), md_update_action(u8), md_entry_type(c)
-                px_raw, sz_raw, sec_id, rpt_seq, action_raw, type_raw = struct.unpack_from(
-                    "<qiiIBs", buf, pos
+                px_raw, sz_raw, sec_id, rpt_seq, action_raw, type_raw = (
+                    struct.unpack_from("<qiiIBs", buf, pos)
                 )
                 pos += group_block_len
-                price = px_raw / CME_PRICE_DIVISOR if px_raw != 0x7FFFFFFFFFFFFFFF else 0.0
+                price = (
+                    px_raw / CME_PRICE_DIVISOR if px_raw != 0x7FFFFFFFFFFFFFFF else 0.0
+                )
                 entry_type = type_raw.decode("ascii", errors="replace")
                 entries.append(
                     CMEMDEntry(
@@ -126,12 +139,16 @@ class CMESBEDecoder:
                         rpt_seq=rpt_seq,
                         price=price,
                         size=float(sz_raw),
-                        update_action=MDUpdateAction(action_raw) if action_raw in (0, 1, 2, 5) else MDUpdateAction.NEW,
+                        update_action=MDUpdateAction(action_raw)
+                        if action_raw in (0, 1, 2, 5)
+                        else MDUpdateAction.NEW,
                         entry_type=entry_type,
                     )
                 )
 
-            return CMEMessage(template_id, schema_id, version, transact_time, match_event, entries)
+            return CMEMessage(
+                template_id, schema_id, version, transact_time, match_event, entries
+            )
 
         elif template_id == TEMPLATE_MD_INCREMENTAL_REFRESH_VOLUME:
             # Root block: transact_time(u64)
@@ -149,7 +166,9 @@ class CMESBEDecoder:
                     "<qiiIs", buf, pos
                 )
                 pos += group_block_len
-                price = px_raw / CME_PRICE_DIVISOR if px_raw != 0x7FFFFFFFFFFFFFFF else 0.0
+                price = (
+                    px_raw / CME_PRICE_DIVISOR if px_raw != 0x7FFFFFFFFFFFFFFF else 0.0
+                )
                 entries.append(
                     CMEMDEntry(
                         security_id=sec_id,
@@ -160,7 +179,9 @@ class CMESBEDecoder:
                         entry_type=type_raw.decode("ascii", errors="replace"),
                     )
                 )
-            return CMEMessage(template_id, schema_id, version, transact_time, 0, entries)
+            return CMEMessage(
+                template_id, schema_id, version, transact_time, 0, entries
+            )
 
         else:
             # Unsupported or generic template
@@ -174,7 +195,9 @@ class CMESBEDecoder:
         exchange_ts = msg.transact_time_ns / 1_000_000_000.0
 
         for idx, entry in enumerate(msg.entries):
-            symbol = self._security_symbol_map.get(entry.security_id, f"CME_{entry.security_id}")
+            symbol = self._security_symbol_map.get(
+                entry.security_id, f"CME_{entry.security_id}"
+            )
             is_trade = entry.entry_type == "2"
             is_bid = entry.entry_type == "0"
             is_ask = entry.entry_type == "1"
@@ -205,7 +228,9 @@ class CMESBEDecoder:
 
 def pack_cme_incremental_book(
     transact_time_ns: int,
-    entries: list[tuple[int, int, float, float, int, str]],  # (sec_id, rpt_seq, price, size, action, type)
+    entries: list[
+        tuple[int, int, float, float, int, str]
+    ],  # (sec_id, rpt_seq, price, size, action, type)
     schema_id: int = CME_SCHEMA_ID,
     version: int = CME_SCHEMA_VERSION,
 ) -> bytes:
@@ -213,7 +238,9 @@ def pack_cme_incremental_book(
     root_block_len = 9  # u64 transact_time + u8 match_event_indicator
     entry_block_len = 22  # q(8) + i(4) + i(4) + I(4) + B(1) + s(1) = 22 bytes
 
-    header = SBE_HEADER_STRUCT.pack(root_block_len, TEMPLATE_MD_INCREMENTAL_REFRESH_BOOK, schema_id, version)
+    header = SBE_HEADER_STRUCT.pack(
+        root_block_len, TEMPLATE_MD_INCREMENTAL_REFRESH_BOOK, schema_id, version
+    )
     root = struct.pack("<QB", transact_time_ns, 1)
     group_hdr = struct.pack("<HB", entry_block_len, len(entries))
 

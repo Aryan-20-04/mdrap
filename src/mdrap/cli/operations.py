@@ -35,7 +35,9 @@ def cmd_serve(args):
             border_style="cyan",
         )
     )
-    uvicorn.run("mdrap.api:create_app", host=host, port=port, reload=reload, factory=True)
+    uvicorn.run(
+        "mdrap.api:create_app", host=host, port=port, reload=reload, factory=True
+    )
 
 
 def cmd_chaos(args):
@@ -412,8 +414,8 @@ def cmd_replay(args):
             console.print()
             console.print(
                 Panel.fit(
-                    f"[bold red]✖ Deterministic Replay Equivalence Failed[/bold red]\n\n"
-                    f"Errors:\n" + "\n".join(f"  • {e}" for e in res.get("errors", [])),
+                    "[bold red]✖ Deterministic Replay Equivalence Failed[/bold red]\n\n"
+                    "Errors:\n" + "\n".join(f"  • {e}" for e in res.get("errors", [])),
                     title="MDRAP Replay Equivalence Discrepancy",
                     border_style="red",
                 )
@@ -738,13 +740,19 @@ def cmd_gateway(args):
 
 def cmd_config(args):
     """Handle mdrap config show and migration."""
-    if getattr(args, "migrate", False) or getattr(args, "config_action", "") == "migrate":
+    if (
+        getattr(args, "migrate", False)
+        or getattr(args, "config_action", "") == "migrate"
+    ):
         from ..config_loader import migrate_yaml_to_toml
+
         src_yaml = getattr(args, "file", None)
         out_toml = getattr(args, "out", None)
         try:
             dest = migrate_yaml_to_toml(src_yaml, out_toml)
-            Console().print(f"[bold green]Successfully migrated configuration to {dest}[/bold green]")
+            Console().print(
+                f"[bold green]Successfully migrated configuration to {dest}[/bold green]"
+            )
         except Exception as exc:
             Console(stderr=True).print(f"[bold red]Migration error: {exc}[/bold red]")
             sys.exit(1)
@@ -819,6 +827,7 @@ def cmd_doctor(args):
     """Diagnose platform health, compiler availability, engine tier, WAL status, and benchmark smoke."""
     if getattr(args, "json", False):
         from ..facade import doctor
+
         res = doctor(verbose=False, as_json=False)
         print(json.dumps(res, indent=2))
         return
@@ -854,6 +863,7 @@ def cmd_doctor(args):
 
     # 1b. Hardware Profile
     from ..profile import current_profile
+
     prof = current_profile()
     t.add_row(
         "Hardware",
@@ -1134,7 +1144,12 @@ def cmd_wal(args):
             Panel.fit(
                 f"[bold cyan]MDRAP Write-Ahead Log (WAL) Verification[/bold cyan]\n"
                 f"Target Directory: [yellow]{report['wal_path']}[/yellow]\n"
-                f"Status: " + ("[bold green]CLEAN[/bold green]" if report["is_clean"] else "[bold red]CORRUPTED[/bold red]"),
+                f"Status: "
+                + (
+                    "[bold green]CLEAN[/bold green]"
+                    if report["is_clean"]
+                    else "[bold red]CORRUPTED[/bold red]"
+                ),
                 title="WAL Verification",
                 border_style="cyan" if report["is_clean"] else "red",
             )
@@ -1144,8 +1159,18 @@ def cmd_wal(args):
         t.add_column("Value", justify="right")
         t.add_row("Total Segments", str(report["total_segments"]))
         t.add_row("Valid Frames", f"[green]{report['valid_frames']:,}[/green]")
-        t.add_row("Corrupted Segments", f"[red]{report['corrupted_segments']}[/red]" if report['corrupted_segments'] else "0")
-        t.add_row("Corrupted Frames", f"[red]{report['corrupted_frames']}[/red]" if report['corrupted_frames'] else "0")
+        t.add_row(
+            "Corrupted Segments",
+            f"[red]{report['corrupted_segments']}[/red]"
+            if report["corrupted_segments"]
+            else "0",
+        )
+        t.add_row(
+            "Corrupted Frames",
+            f"[red]{report['corrupted_frames']}[/red]"
+            if report["corrupted_frames"]
+            else "0",
+        )
         if report.get("manifest_verified") is not None:
             m_stat = (
                 "[bold green]VALID (Hash Chain Intact)[/bold green]"
@@ -1159,8 +1184,12 @@ def cmd_wal(args):
             for err in report["errors"][:10]:
                 console.print(f"  [red]•[/red] {err}")
             if len(report["errors"]) > 10:
-                console.print(f"  [dim]... and {len(report['errors']) - 10} more errors[/dim]")
-            console.print("\n[yellow]Tip:[/yellow] Run [cyan]mdrap wal salvage[/cyan] to recover valid frames.")
+                console.print(
+                    f"  [dim]... and {len(report['errors']) - 10} more errors[/dim]"
+                )
+            console.print(
+                "\n[yellow]Tip:[/yellow] Run [cyan]mdrap wal salvage[/cyan] to recover valid frames."
+            )
 
     elif action == "salvage":
         backup = getattr(args, "backup", True)
@@ -1183,7 +1212,10 @@ def cmd_wal(args):
         t.add_column("Result", justify="right")
         t.add_row("Scanned Segments", str(report["scanned_segments"]))
         t.add_row("Corrupted Segments Detected", str(report["corrupted_segments"]))
-        t.add_row("Recovered Valid Records", f"[bold green]{report['recovered_records']:,}[/bold green]")
+        t.add_row(
+            "Recovered Valid Records",
+            f"[bold green]{report['recovered_records']:,}[/bold green]",
+        )
         t.add_row("Repaired Files", str(len(report["repaired_files"])))
         console.print(t)
 
@@ -1312,7 +1344,7 @@ price_anomaly_stddev = 4.0
             f"Config Path: [yellow]{out_file}[/yellow]\n"
             f"Hardware Profile: [cyan]{prof.mode.value}[/cyan] ({prof.description})\n"
             f"Default Feed: [cyan]{venue}:{symbol}[/cyan]\n"
-            f"Storage WAL: [cyan]data/wal[/cyan] (Max Segment: {max_segment // (1024*1024)}MB, Sync: {sync_mode})\n\n"
+            f"Storage WAL: [cyan]data/wal[/cyan] (Max Segment: {max_segment // (1024 * 1024)}MB, Sync: {sync_mode})\n\n"
             f"[bold]Next Steps:[/bold]\n"
             f"  [cyan]mdrap doctor[/cyan]          Verify host prerequisites & diagnostics\n"
             f"  [cyan]mdrap capture -s sim:{symbol}[/cyan]  Start headless capture to WAL\n"
@@ -1344,8 +1376,6 @@ def cmd_capture(args):
     is_interactive = sys.stdout.isatty() and not getattr(args, "json", False)
 
     log = IngestLog(log_dir=wal_dir, fsync_policy=durability)
-    gateway = Gateway()
-    quality = QualityEngine()
     shm_writer = SHMWriter(shm_name) if (shm_name and HAS_SHM) else None
 
     stop_requested = False
@@ -1453,7 +1483,9 @@ def cmd_capture(args):
         "throughput_eps": round(rate_eps, 1),
         "total_segments": len(manifest.segments) if manifest else 1,
         "manifest_head_hash": (
-            manifest.segments[-1].sha256 if manifest and manifest.segments else (manifest.manifest_hash if manifest else "")
+            manifest.segments[-1].sha256
+            if manifest and manifest.segments
+            else (manifest.manifest_hash if manifest else "")
         ),
     }
 
@@ -1483,9 +1515,8 @@ def cmd_verify(args):
     console = Console()
     target = getattr(args, "target", None)
     wal_path = getattr(args, "wal_path", None) or target or "data/wal"
-    db_path = (
-        getattr(args, "db", None)
-        or (target if (target and target.endswith(".db")) else "data/mdrap.db")
+    db_path = getattr(args, "db", None) or (
+        target if (target and target.endswith(".db")) else "data/mdrap.db"
     )
     salvage = getattr(args, "salvage", False)
     as_json = getattr(args, "json", False)
@@ -1552,7 +1583,11 @@ def cmd_verify(args):
     db_summary = ""
     if report["database"]:
         d = report["database"]
-        d_stat = "[bold green]OK[/bold green]" if d.get("integrity_ok") else "[bold red]FAIL[/bold red]"
+        d_stat = (
+            "[bold green]OK[/bold green]"
+            if d.get("integrity_ok")
+            else "[bold red]FAIL[/bold red]"
+        )
         db_summary = (
             f"SQLite Database: [yellow]{db_path}[/yellow]\n"
             f"  Integrity Check: {d_stat}\n"
@@ -1619,5 +1654,3 @@ def cmd_metrics(args):
     else:  # prometheus text
         prom_text = registry.export_prometheus()
         sys.stdout.write(prom_text)
-
-

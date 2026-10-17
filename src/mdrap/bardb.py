@@ -81,7 +81,9 @@ class BarAggregator:
     a completed Bar object, and emitted.
     """
 
-    def __init__(self, interval_s: float = 60.0, revision_window_s: float = 0.0) -> None:
+    def __init__(
+        self, interval_s: float = 60.0, revision_window_s: float = 0.0
+    ) -> None:
         """
         Initialize the single-interval candle aggregator.
 
@@ -151,7 +153,9 @@ class BarAggregator:
                 if event.instrument_id not in self._recent_bars:
                     self._recent_bars[event.instrument_id] = {}
                 self._recent_bars[event.instrument_id][current_start] = completed_bar
-                cutoff = current_start - max(self._interval_s * 5, self._revision_window_s)
+                cutoff = current_start - max(
+                    self._interval_s * 5, self._revision_window_s
+                )
                 self._recent_bars[event.instrument_id] = {
                     bs: b
                     for bs, b in self._recent_bars[event.instrument_id].items()
@@ -322,7 +326,9 @@ class BarDatabase:
             "1d",
         ]
         self.aggregators: dict[str, BarAggregator] = {
-            interval: BarAggregator(INTERVALS[interval], revision_window_s=revision_window_s)
+            interval: BarAggregator(
+                INTERVALS[interval], revision_window_s=revision_window_s
+            )
             for interval in self.intervals_config
             if interval in INTERVALS
         }

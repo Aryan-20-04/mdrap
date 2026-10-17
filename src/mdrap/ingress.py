@@ -73,9 +73,13 @@ class FeedAdapterConfig:
 
     def __post_init__(self) -> None:
         if not self.venue or not self.venue.strip():
-            raise IngressError("Adapter configuration must specify a non-empty venue name.")
+            raise IngressError(
+                "Adapter configuration must specify a non-empty venue name."
+            )
         if not self.feed_id or not self.feed_id.strip():
-            raise IngressError("Adapter configuration must specify a non-empty feed_id.")
+            raise IngressError(
+                "Adapter configuration must specify a non-empty feed_id."
+            )
         if self.max_frame_bytes <= 0:
             raise IngressError("max_frame_bytes must be strictly positive.")
 
@@ -117,7 +121,12 @@ class BaseFeedAdapter:
             self.state = AdapterState.CONNECTED
         except Exception as exc:
             self.state = AdapterState.ERROR
-            logger.error("[ingress] Failed to connect adapter %s:%s: %s", self.config.venue, self.config.feed_id, exc)
+            logger.error(
+                "[ingress] Failed to connect adapter %s:%s: %s",
+                self.config.venue,
+                self.config.feed_id,
+                exc,
+            )
             raise
 
     def disconnect(self) -> None:
@@ -165,7 +174,9 @@ class BaseFeedAdapter:
         parsed = self.parse(raw)
         if not self.validate_source_frame(parsed):
             self.stats.validation_failures += 1
-            raise IngressError(f"Source frame validation failed for payload from {self.config.venue}")
+            raise IngressError(
+                f"Source frame validation failed for payload from {self.config.venue}"
+            )
 
         canonical = self._do_normalize(raw, parsed)
         self.stats.normalized_count += 1
@@ -203,7 +214,10 @@ class BaseFeedAdapter:
                 self.stats.duplicates_detected += 1
                 logger.warning(
                     "[ingress] Duplicate or out-of-order sequence %d on %s:%s (expected %d)",
-                    seq, self.config.venue, self.config.feed_id, self._expected_sequence,
+                    seq,
+                    self.config.venue,
+                    self.config.feed_id,
+                    self._expected_sequence,
                 )
             else:
                 gap = seq - self._expected_sequence
@@ -211,7 +225,11 @@ class BaseFeedAdapter:
                 self.stats.missing_events_count += gap
                 logger.warning(
                     "[ingress] Sequence gap of %d detected on %s:%s (expected %d, got %d)",
-                    gap, self.config.venue, self.config.feed_id, self._expected_sequence, seq,
+                    gap,
+                    self.config.venue,
+                    self.config.feed_id,
+                    self._expected_sequence,
+                    seq,
                 )
                 self._expected_sequence = seq + 1
         else:
@@ -251,7 +269,9 @@ class ReplayFeedAdapter(BaseFeedAdapter):
     ) -> None:
         cfg = config or FeedAdapterConfig(venue="REPLAY_SIM", feed_id="REPLAY_CH1")
         super().__init__(cfg)
-        self._frames: collections.deque[dict[str, Any]] = collections.deque(frames or [])
+        self._frames: collections.deque[dict[str, Any]] = collections.deque(
+            frames or []
+        )
         self._initial_frame_count: int = len(self._frames)
 
     def load_frames(self, frames: list[dict[str, Any]]) -> None:
@@ -274,7 +294,9 @@ class ReplayFeedAdapter(BaseFeedAdapter):
 
     def _do_normalize(self, raw: RawEvent, parsed: dict[str, Any]) -> CanonicalEvent:
         sym = str(parsed.get("sym") or parsed.get("instrument") or "AAPL")
-        ex_ts = float(parsed.get("ts") or parsed.get("exchange_ts") or raw.receive_timestamp)
+        ex_ts = float(
+            parsed.get("ts") or parsed.get("exchange_ts") or raw.receive_timestamp
+        )
         px = float(parsed.get("px") or parsed.get("price") or 100.0)
         qty = float(parsed.get("sz") or parsed.get("quantity") or 1.0)
         seq = int(parsed.get("seq") or parsed.get("sequence") or 0)

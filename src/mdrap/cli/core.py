@@ -257,7 +257,9 @@ def cmd_benchmark(args):
             out_dir = "benchmarks/results"
         manifest = run_all_ten_boundaries(events=events, seed=cfg.seed, out_dir=out_dir)
 
-        if getattr(args, "json", False) or (not sys.stdout.isatty() and not force_pretty):
+        if getattr(args, "json", False) or (
+            not sys.stdout.isatty() and not force_pretty
+        ):
             print(json.dumps(manifest, indent=2))
         else:
             print_manifest_summary(manifest, console=console)
