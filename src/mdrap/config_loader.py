@@ -185,6 +185,10 @@ def validate_config(cfg: dict[str, Any]) -> None:
                 raise ConfigValidationError(f"Unknown key '{k}' in [system]. Allowed: {sorted(ALLOWED_SYSTEM_KEYS)}")
 
 
+# Backward-compatible alias
+validate_config_schema = validate_config
+
+
 def resolve_precedence(
     cli_val: Any = None,
     env_var_name: str | None = None,

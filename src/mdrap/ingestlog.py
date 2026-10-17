@@ -762,6 +762,12 @@ class IngestLog:
                 h.update(chunk)
         return h.hexdigest()
 
+    @property
+    def manifest(self) -> LogManifest:
+        """Access the current cryptographic manifest of the IngestLog."""
+        with self._lock:
+            return self._load_manifest_locked()
+
     def _load_manifest_locked(self) -> LogManifest:
         """Load manifest from disk under lock, or initialize a new LogManifest."""
         manifest_path = os.path.join(self.log_dir, MANIFEST_FILENAME)

@@ -34,6 +34,9 @@ from .operations import cmd_config
 from .operations import cmd_doctor
 from .operations import cmd_completion
 from .operations import cmd_wal
+from .operations import cmd_init
+from .operations import cmd_capture
+from .operations import cmd_verify
 from .market import cmd_historical
 from .market import cmd_analytics
 from .market import cmd_watchdog
@@ -343,6 +346,76 @@ def build_parser() -> argparse.ArgumentParser:
         db=True,
     )
 
+    # Phase 3: Init
+    p_init = _sub(
+        "init",
+        cmd_init,
+        "Scaffold a validated mdrap.toml configuration",
+        aliases=["new"],
+    )
+    p_init.add_argument(
+        "path",
+        nargs="?",
+        default="mdrap.toml",
+        help="Target config file path (default: mdrap.toml)",
+    )
+    p_init.add_argument(
+        "-p",
+        "--profile",
+        choices=["auto", "lite", "standard", "ultra"],
+        default="auto",
+        help="Hardware profile optimization target (default: auto)",
+    )
+    p_init.add_argument(
+        "--venue",
+        default="binance",
+        help="Default venue adapter (default: binance)",
+    )
+    p_init.add_argument(
+        "--symbol",
+        default="BTCUSDT",
+        help="Default trading symbol (default: BTCUSDT)",
+    )
+    p_init.add_argument(
+        "-f",
+        "--force",
+        action="store_true",
+        help="Overwrite existing configuration file",
+    )
+
+    # Phase 3: Capture
+    p_capture = _sub(
+        "capture",
+        cmd_capture,
+        "Launch headless market data capture to IngestLog WAL with explicit durability",
+        aliases=["cap"],
+    )
+    p_capture.add_argument(
+        "-s",
+        "--source",
+        default="sim:AAPL",
+        help="Market data source target (e.g. sim:AAPL, binance:BTCUSDT)",
+    )
+    p_capture.add_argument(
+        "-w",
+        "--wal-dir",
+        default="data/wal",
+        help="Target Write-Ahead Log directory (default: data/wal)",
+    )
+    p_capture.add_argument(
+        "-d",
+        "--durability",
+        choices=["grouped_by_time", "always", "grouped_by_count", "os_buffer"],
+        default="grouped_by_time",
+        help="IngestLog fsync durability policy (default: grouped_by_time)",
+    )
+    _add_events_arg(p_capture, default=0, help_text="Number of events to capture (0 = continuous)")
+    p_capture.add_argument(
+        "--shm",
+        default=None,
+        help="Optional seqlock shared memory ring buffer name to broadcast frames",
+    )
+
     # Run pipeline
     p_run = _sub(
         "run",
@@ -550,7 +623,7 @@ def build_parser() -> argparse.ArgumentParser:
         "audit",
         cmd_audit,
         "View and cryptographically verify tamper-evident audit logs",
-        aliases=["verify", "aud"],
+        aliases=["aud"],
         db=True,
     )
     p_audit.add_argument(
@@ -754,6 +827,31 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_false",
         default=True,
         help="Do not create backup files during salvage",
+    )
+
+    # Phase 3: Verify
+    p_verify = _sub(
+        "verify",
+        cmd_verify,
+        "Audit IngestLog checksums, manifest hash chains, and gap counts",
+        aliases=["check-wal"],
+        db=True,
+    )
+    p_verify.add_argument(
+        "target",
+        nargs="?",
+        default=None,
+        help="Optional path to WAL directory or database",
+    )
+    p_verify.add_argument(
+        "--wal-path",
+        default=None,
+        help="IngestLog WAL directory (defaults to data/wal)",
+    )
+    p_verify.add_argument(
+        "--salvage",
+        action="store_true",
+        help="Attempt automated salvage on corrupted segments",
     )
 
     p_ret = _sub(
@@ -1990,7 +2088,11 @@ MNEMONIC_MAP = {
     "api-keys": "keys",
     "aud": "audit",
     "audit": "audit",
-    "verify": "audit",
+    "verify": "verify",
+    "check-wal": "verify",
+    "init": "init",
+    "capture": "capture",
+    "cap": "capture",
     "chaos": "chaos",
     "ch": "chaos",
     "stress": "stress",
@@ -2213,6 +2315,9 @@ ALL_CANONICAL_COMMANDS = [
     "plugins",
     "demo",
     "completion",
+    "init",
+    "capture",
+    "verify",
 ]
 
 
