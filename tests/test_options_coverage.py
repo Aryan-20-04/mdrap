@@ -8,7 +8,11 @@ and OptionsChain max pain calculations.
 from __future__ import annotations
 
 import pytest
-pytest.importorskip("mdrap_options", reason="Companion package mdrap-options is optional/commercial and not installed")
+
+pytest.importorskip(
+    "mdrap_options",
+    reason="Companion package mdrap-options is optional/commercial and not installed",
+)
 
 import math
 import os

@@ -18,7 +18,7 @@ from pathlib import Path
 def test_core_engine_clean_imports_without_companion():
     """Verify core engine imports cleanly and exposes only core primitives."""
     import mdrap
-    
+
     # Core essentials must be present
     assert hasattr(mdrap, "Engine")
     assert hasattr(mdrap, "IngestLog")
@@ -28,7 +28,7 @@ def test_core_engine_clean_imports_without_companion():
     assert hasattr(mdrap, "Reason")
     assert hasattr(mdrap, "Pipeline")
     assert hasattr(mdrap, "SQLiteProjection")
-    
+
     # Non-core financial analytics and vessel intelligence must NOT be in public __all__
     assert "OptionsChain" not in mdrap.__all__
     assert "TCAEngine" not in mdrap.__all__
@@ -41,12 +41,12 @@ def test_core_pipeline_functional_without_companion():
     from mdrap.engine import Engine, EngineConfig
     from mdrap.models import RawEvent, QualityStatus
     from mdrap.ingestlog import IngestLog
-    
+
     with tempfile.TemporaryDirectory() as tmpdir:
         log = IngestLog(tmpdir)
         try:
             engine = Engine.open(None)
-            
+
             raw = RawEvent(
                 source="TEST_FEED",
                 receive_timestamp=1000.0,
@@ -61,7 +61,7 @@ def test_core_pipeline_functional_without_companion():
             )
             dec = engine.submit(raw)
             assert dec.quality_status == QualityStatus.VALID
-            
+
             # Verify persistence to WAL
             off = log.append(raw)
             assert off == 0
@@ -74,7 +74,7 @@ def test_companion_modules_emit_deprecation_warnings():
     """Verify that importing companion/non-core modules emits DeprecationWarning."""
     import sys
     import importlib
-    
+
     companion_mods = [
         "mdrap.options",
         "mdrap.tca",
@@ -82,7 +82,7 @@ def test_companion_modules_emit_deprecation_warnings():
         "mdrap.strategy_sdk",
         "mdrap.vessel",
     ]
-    
+
     for mod in companion_mods:
         sys.modules.pop(mod, None)
         with warnings.catch_warnings(record=True) as recorded:
@@ -91,6 +91,6 @@ def test_companion_modules_emit_deprecation_warnings():
                 importlib.import_module(mod)
             except ImportError:
                 pass
-            assert any(
-                issubclass(w.category, DeprecationWarning) for w in recorded
-            ), f"{mod} failed to emit DeprecationWarning on import"
+            assert any(issubclass(w.category, DeprecationWarning) for w in recorded), (
+                f"{mod} failed to emit DeprecationWarning on import"
+            )

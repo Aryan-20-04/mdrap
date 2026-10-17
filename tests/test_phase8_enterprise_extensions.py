@@ -35,19 +35,25 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "packages" / "mdrap-enterprise"))
 sys.path.insert(0, str(ROOT / "packages" / "mdrap-audit"))
 
-from mdrap_enterprise import (
-    ApiKeyRotator,
-    EnterpriseRole,
-    Tenant,
-    TenantManager,
-    generate_tls_reverse_proxy_config,
-)
-from mdrap_audit import (
-    AuditAttestationCertificate,
-    InclusionProof,
-    MerkleAuditTree,
-    TimestampAnchor,
-)
+try:
+    from mdrap_enterprise import (
+        ApiKeyRotator,
+        EnterpriseRole,
+        Tenant,
+        TenantManager,
+        generate_tls_reverse_proxy_config,
+    )
+    from mdrap_audit import (
+        AuditAttestationCertificate,
+        InclusionProof,
+        MerkleAuditTree,
+        TimestampAnchor,
+    )
+except ImportError:
+    pytest.skip(
+        "Commercial companion packages (mdrap-enterprise, mdrap-audit) not present in open-source core",
+        allow_module_level=True,
+    )
 
 
 class TestEnterpriseRbacAndKeyRotation:
@@ -55,7 +61,9 @@ class TestEnterpriseRbacAndKeyRotation:
 
     def test_tenant_symbol_authorization(self):
         tm = TenantManager()
-        tm.register_tenant("fund_alpha", "Alpha Capital", allowed_symbols=["BTC/USDT", "ETH/USDT"])
+        tm.register_tenant(
+            "fund_alpha", "Alpha Capital", allowed_symbols=["BTC/USDT", "ETH/USDT"]
+        )
         tm.register_tenant("fund_beta", "Beta Prop", allowed_symbols=["*"])
 
         assert tm.check_access("fund_alpha", "BTC/USDT") is True
@@ -87,7 +95,9 @@ class TestEnterpriseRbacAndKeyRotation:
 
     def test_zero_downtime_key_rotation_with_grace_period(self):
         rotator = ApiKeyRotator(default_grace_period_sec=3600.0)
-        old_token, old_rec = rotator.generate_key("tenant_hedge", EnterpriseRole.OPERATOR)
+        old_token, old_rec = rotator.generate_key(
+            "tenant_hedge", EnterpriseRole.OPERATOR
+        )
 
         # Rotate key
         new_token, new_rec = rotator.rotate_key(old_token, grace_period_sec=100.0)
@@ -148,8 +158,7 @@ class TestCryptographicMerkleAuditAttestations:
 
     def test_merkle_tamper_evidence(self):
         records = [
-            {"event_id": f"ev_{i}", "seq": i, "price": 100.0 + i}
-            for i in range(8)
+            {"event_id": f"ev_{i}", "seq": i, "price": 100.0 + i} for i in range(8)
         ]
         tree = MerkleAuditTree(records)
         proof = tree.get_inclusion_proof(3)
@@ -166,7 +175,9 @@ class TestCryptographicMerkleAuditAttestations:
         assert tampered_proof.verify() is False
 
     def test_timestamp_anchor_and_certificate_verification(self):
-        anchor = TimestampAnchor(authority_id="MDRAP-ANCHOR-CH-1", secret_key="test_secret_key_123")
+        anchor = TimestampAnchor(
+            authority_id="MDRAP-ANCHOR-CH-1", secret_key="test_secret_key_123"
+        )
         tree = MerkleAuditTree(["tx1", "tx2", "tx3", "tx4"])
 
         cert = anchor.create_attestation(

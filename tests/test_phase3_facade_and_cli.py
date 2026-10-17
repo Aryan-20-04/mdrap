@@ -89,7 +89,13 @@ class TestFacadeStreamAndConnect:
         for i in range(30):
             raw = RawEvent(
                 source="CME",
-                payload={"instrument": "NQ", "price": 18500.0 + i, "quantity": 5.0, "sequence": i + 1, "exchange_ts": 1729000000.0 + i},
+                payload={
+                    "instrument": "NQ",
+                    "price": 18500.0 + i,
+                    "quantity": 5.0,
+                    "sequence": i + 1,
+                    "exchange_ts": 1729000000.0 + i,
+                },
                 receive_timestamp=1729000000.0 + i,
             )
             log.append(raw)
@@ -105,7 +111,13 @@ class TestFacadeStreamAndConnect:
         jsonl_path = tmp_path / "events.jsonl"
         with open(jsonl_path, "w", encoding="utf-8") as f:
             for i in range(20):
-                record = {"instrument": "SPY", "price": 500.0 + i * 0.1, "quantity": 100.0, "sequence": i + 1, "exchange_ts": 1729000000.0}
+                record = {
+                    "instrument": "SPY",
+                    "price": 500.0 + i * 0.1,
+                    "quantity": 100.0,
+                    "sequence": i + 1,
+                    "exchange_ts": 1729000000.0,
+                }
                 f.write(json.dumps(record) + "\n")
 
         streamed = list(stream(f"file:{jsonl_path}", count=20))
@@ -119,7 +131,14 @@ class TestFacadeStreamAndConnect:
         writer = SHMWriter(shm_name, slot_count=1024)
         try:
             for i in range(1, 15):
-                writer.write_tick(seq=i, symbol="MSFT", price=420.0 + i, size=10.0, exchange_ts=1729000000.0 + i, source="TEST")
+                writer.write_tick(
+                    seq=i,
+                    symbol="MSFT",
+                    price=420.0 + i,
+                    size=10.0,
+                    exchange_ts=1729000000.0 + i,
+                    source="TEST",
+                )
 
             ticks = list(stream(f"shm:{shm_name}", count=10))
             assert len(ticks) >= 1
@@ -149,7 +168,10 @@ class TestFacadeDoctor:
         assert prof["recommended_mode"] in ("LITE", "STANDARD", "ULTRA")
 
         storage = diag["storage_io"]
-        assert storage["disk_sync_speed_mbps"] > 0 or storage["disk_sync_speed_mbps"] == -1.0
+        assert (
+            storage["disk_sync_speed_mbps"] > 0
+            or storage["disk_sync_speed_mbps"] == -1.0
+        )
 
     def test_doctor_json_flag(self):
         diag = doctor(verbose=False, as_json=True)
@@ -195,7 +217,9 @@ class TestCLICommands:
 
     def test_cli_init_force_flag(self, tmp_path):
         target_toml = tmp_path / "existing_mdrap.toml"
-        target_toml.write_text("[defaults]\nstaleness_threshold_s = 0.05\n", encoding="utf-8")
+        target_toml.write_text(
+            "[defaults]\nstaleness_threshold_s = 0.05\n", encoding="utf-8"
+        )
 
         # Without --force, must fail
         cmd_no_force = [sys.executable, "cli.py", "init", str(target_toml)]
@@ -203,7 +227,14 @@ class TestCLICommands:
         assert res_fail.returncode != 0
 
         # With --force, succeeds
-        cmd_force = [sys.executable, "cli.py", "init", str(target_toml), "--force", "--json"]
+        cmd_force = [
+            sys.executable,
+            "cli.py",
+            "init",
+            str(target_toml),
+            "--force",
+            "--json",
+        ]
         res_ok = subprocess.run(cmd_force, capture_output=True, text=True, check=True)
         assert res_ok.returncode == 0
         assert json.loads(res_ok.stdout)["status"] == "OK"

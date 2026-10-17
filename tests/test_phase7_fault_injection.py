@@ -19,8 +19,18 @@ import zlib
 import pytest
 
 from mdrap.models import RawEvent
-from mdrap.ingestlog import IngestLog, FRAME_HEADER_FORMAT, FRAME_HEADER_SIZE, FRAME_MAGIC
-from mdrap.partition import ConsumerFanoutManager, ShardConfig, ShardInstance, SymbolPartitioner
+from mdrap.ingestlog import (
+    IngestLog,
+    FRAME_HEADER_FORMAT,
+    FRAME_HEADER_SIZE,
+    FRAME_MAGIC,
+)
+from mdrap.partition import (
+    ConsumerFanoutManager,
+    ShardConfig,
+    ShardInstance,
+    SymbolPartitioner,
+)
 from mdrap.historical_verifier import HistoricalVerifier
 
 
@@ -34,18 +44,26 @@ def test_fault_injection_trailing_truncation():
                 raw_id=f"raw-{i}",
                 receive_timestamp=float(time.time_ns()),
                 source="FAULT_FEED",
-                payload={"instrument": "AAPL", "event_type": "TRADE", "price": 100.0, "quantity": 1.0, "sequence": i},
+                payload={
+                    "instrument": "AAPL",
+                    "event_type": "TRADE",
+                    "price": 100.0,
+                    "quantity": 1.0,
+                    "sequence": i,
+                },
             )
             log.append(raw)
         log.close()
 
         # Find segment file and artificially append 17 corrupted bytes (partial frame header)
-        seg_files = [f for f in os.listdir(tmp_dir) if f.endswith(".log") or f.endswith(".seg")]
+        seg_files = [
+            f for f in os.listdir(tmp_dir) if f.endswith(".log") or f.endswith(".seg")
+        ]
         assert len(seg_files) > 0
         seg_path = os.path.join(tmp_dir, seg_files[0])
 
         with open(seg_path, "ab") as f:
-            f.write(b"\xAA\x55\x00\x00\x12\x34\x56")  # Truncated partial frame
+            f.write(b"\xaa\x55\x00\x00\x12\x34\x56")  # Truncated partial frame
 
         # Recover using reader
         reader_log = IngestLog(log_dir=tmp_dir, fsync_policy="never", lock=False)
@@ -69,12 +87,20 @@ def test_fault_injection_checksum_mutation():
                 raw_id=f"raw-{i}",
                 receive_timestamp=float(time.time_ns()),
                 source="FAULT_FEED",
-                payload={"instrument": "MSFT", "event_type": "TRADE", "price": 200.0, "quantity": 2.0, "sequence": i},
+                payload={
+                    "instrument": "MSFT",
+                    "event_type": "TRADE",
+                    "price": 200.0,
+                    "quantity": 2.0,
+                    "sequence": i,
+                },
             )
             log.append(raw)
         log.close()
 
-        seg_files = [f for f in os.listdir(tmp_dir) if f.endswith(".log") or f.endswith(".seg")]
+        seg_files = [
+            f for f in os.listdir(tmp_dir) if f.endswith(".log") or f.endswith(".seg")
+        ]
         seg_path = os.path.join(tmp_dir, seg_files[0])
 
         # Mutate 1 byte in the middle of the segment
@@ -82,7 +108,7 @@ def test_fault_injection_checksum_mutation():
             f.seek(64)  # Byte offset inside record 1
             original_byte = f.read(1)
             f.seek(64)
-            f.write(b"\xFF" if original_byte != b"\xFF" else b"\x00")
+            f.write(b"\xff" if original_byte != b"\xff" else b"\x00")
 
         # Run historical verifier
         verifier = HistoricalVerifier()
@@ -127,6 +153,7 @@ def test_fault_injection_fencing_collision():
 
         # Attempt to launch secondary instance on same directory
         from mdrap.ingestlog import IngestLogLockedError
+
         with pytest.raises(IngestLogLockedError):
             _ = IngestLog(log_dir=tmp_dir, lock=True)
 
@@ -148,12 +175,20 @@ def test_fault_injection_oversized_payload_protection():
             raw_id="raw-1",
             receive_timestamp=float(time.time_ns()),
             source="FEED",
-            payload={"instrument": "GOOG", "event_type": "TRADE", "price": 175.0, "quantity": 10.0, "sequence": 1},
+            payload={
+                "instrument": "GOOG",
+                "event_type": "TRADE",
+                "price": 175.0,
+                "quantity": 10.0,
+                "sequence": 1,
+            },
         )
         log.append(raw)
         log.close()
 
-        seg_files = [f for f in os.listdir(tmp_dir) if f.endswith(".log") or f.endswith(".seg")]
+        seg_files = [
+            f for f in os.listdir(tmp_dir) if f.endswith(".log") or f.endswith(".seg")
+        ]
         seg_path = os.path.join(tmp_dir, seg_files[0])
 
         # Forge frame with corrupted length of 100 MB (exceeds 16 MB ceiling)
@@ -170,6 +205,7 @@ def test_fault_injection_oversized_payload_protection():
             f.write(forged_hdr)
 
         from mdrap.ingestlog import IngestLogCorruptError
+
         with pytest.raises(IngestLogCorruptError):
             _ = IngestLog(log_dir=tmp_dir, fsync_policy="never", lock=False)
     finally:

@@ -1,6 +1,11 @@
 import pytest
 from mdrap.models import CanonicalEvent, EventType, QualityStatus
-from mdrap.rules import register_rule, unregister_rule, clear_user_rules, evaluate_user_rules
+from mdrap.rules import (
+    register_rule,
+    unregister_rule,
+    clear_user_rules,
+    evaluate_user_rules,
+)
 from adapters import FeedAdapter, discover_adapters
 from adapters.template import TemplateCustomVenueAdapter
 from mdrap.quality import QualityEngine

@@ -61,6 +61,7 @@ def _make_sample_event(
 # 1. Property-Based Testing
 # ---------------------------------------------------------------------------
 
+
 def test_property_sbe_serialization_roundtrip():
     """Assert byte-for-byte serialization round-trip fidelity across 500 randomized events."""
     rng = random.Random(SEED)
@@ -191,9 +192,12 @@ def test_property_bounded_queue_backpressure():
 # 2. Metamorphic Testing
 # ---------------------------------------------------------------------------
 
+
 def test_metamorphic_batch_size_invariance():
     """Assert that processing 300 events in batch sizes 1, 10, 50, and 100 yields identical totals."""
-    events = [_make_sample_event(i, price=100.0 + (i * 0.1), size=10.0) for i in range(1, 301)]
+    events = [
+        _make_sample_event(i, price=100.0 + (i * 0.1), size=10.0) for i in range(1, 301)
+    ]
 
     def process_batches(batch_size: int) -> tuple[int, float, float]:
         total_count = 0
@@ -233,7 +237,13 @@ def test_metamorphic_live_versus_replay_equivalence():
                 raw_id=f"raw-{i}",
                 receive_timestamp=float(time.time_ns()),
                 source="METAMORPHIC_FEED",
-                payload={"instrument": "AAPL", "event_type": "TRADE", "price": 150.0 + i, "quantity": 10.0, "sequence": i},
+                payload={
+                    "instrument": "AAPL",
+                    "event_type": "TRADE",
+                    "price": 150.0 + i,
+                    "quantity": 10.0,
+                    "sequence": i,
+                },
             )
             live_events.append(raw)
             log.append(raw)
@@ -252,6 +262,7 @@ def test_metamorphic_live_versus_replay_equivalence():
             assert live.payload["sequence"] == replayed.payload["sequence"]
     finally:
         import shutil
+
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
@@ -270,6 +281,7 @@ def test_metamorphic_read_idempotency():
 # ---------------------------------------------------------------------------
 # 3. Differential Testing
 # ---------------------------------------------------------------------------
+
 
 def test_differential_python_versus_native_rules():
     """Assert pure Python normalization agrees with validation rule outcomes."""
@@ -299,6 +311,7 @@ def test_differential_python_versus_native_rules():
 # 4. Historical Verifier Tests
 # ---------------------------------------------------------------------------
 
+
 def test_historical_verifier_on_ingestlog_segment():
     """Test streaming historical verifier on a valid IngestLog directory."""
     tmp_dir = tempfile.mkdtemp()
@@ -309,13 +322,21 @@ def test_historical_verifier_on_ingestlog_segment():
                 raw_id=f"raw-{i}",
                 receive_timestamp=float(time.time_ns()),
                 source="AUDIT_FEED",
-                payload={"instrument": "MSFT", "event_type": "TRADE", "price": 400.0, "quantity": 5.0, "sequence": i},
+                payload={
+                    "instrument": "MSFT",
+                    "event_type": "TRADE",
+                    "price": 400.0,
+                    "quantity": 5.0,
+                    "sequence": i,
+                },
             )
             log.append(raw)
         log.close()
 
         # Find segment file
-        seg_files = [f for f in os.listdir(tmp_dir) if f.endswith(".log") or f.endswith(".seg")]
+        seg_files = [
+            f for f in os.listdir(tmp_dir) if f.endswith(".log") or f.endswith(".seg")
+        ]
         assert len(seg_files) > 0
         seg_path = os.path.join(tmp_dir, seg_files[0])
 
@@ -331,4 +352,5 @@ def test_historical_verifier_on_ingestlog_segment():
         assert len(report.merkle_root) == 64
     finally:
         import shutil
+
         shutil.rmtree(tmp_dir, ignore_errors=True)

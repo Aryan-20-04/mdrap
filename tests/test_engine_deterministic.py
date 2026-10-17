@@ -15,7 +15,13 @@ def test_engine_deterministic_step_and_replay():
     events = [
         RawEvent(
             source="NASDAQ",
-            payload={"instrument": "AAPL", "event_type": "TRADE", "price": 150.0 + i, "sequence": i + 1, "exchange_ts": 1700000000.0 + i * 0.001},
+            payload={
+                "instrument": "AAPL",
+                "event_type": "TRADE",
+                "price": 150.0 + i,
+                "sequence": i + 1,
+                "exchange_ts": 1700000000.0 + i * 0.001,
+            },
             receive_timestamp=1700000000.0 + i * 0.001,
         )
         for i in range(10)
@@ -42,7 +48,10 @@ def test_engine_deterministic_step_and_replay():
         assert d1.quality_status == d2.quality_status
         assert d1.canonical_event.event_id == d2.canonical_event.event_id
         assert d1.canonical_event.price == d2.canonical_event.price
-        assert d1.canonical_event.exchange_timestamp == d2.canonical_event.exchange_timestamp
+        assert (
+            d1.canonical_event.exchange_timestamp
+            == d2.canonical_event.exchange_timestamp
+        )
 
 
 def test_engine_snapshot_and_restore():
@@ -52,7 +61,13 @@ def test_engine_snapshot_and_restore():
     events = [
         RawEvent(
             source="CME",
-            payload={"instrument": "ES", "event_type": "TRADE", "price": 4500.0 + i, "sequence": i + 1, "exchange_ts": 1700000000.0 + i * 0.001},
+            payload={
+                "instrument": "ES",
+                "event_type": "TRADE",
+                "price": 4500.0 + i,
+                "sequence": i + 1,
+                "exchange_ts": 1700000000.0 + i * 0.001,
+            },
             receive_timestamp=1700000000.0 + i * 0.001,
         )
         for i in range(5)
@@ -75,7 +90,13 @@ def test_engine_snapshot_and_restore():
     # Step next event from both states; verify identical outcome
     next_ev = RawEvent(
         source="CME",
-        payload={"instrument": "ES", "event_type": "TRADE", "price": 4510.0, "sequence": 6, "exchange_ts": 1700000000.006},
+        payload={
+            "instrument": "ES",
+            "event_type": "TRADE",
+            "price": 4510.0,
+            "sequence": 6,
+            "exchange_ts": 1700000000.006,
+        },
         receive_timestamp=1700000000.006,
     )
 
@@ -95,8 +116,12 @@ def test_engine_poison_and_invalid_payloads_quarantined():
     bad_events = [
         RawEvent(source="BAD", payload=None),
         RawEvent(source="BAD", payload="not a dict"),
-        RawEvent(source="BAD", payload={"instrument": "AAPL", "sequence": 2**70}),  # integer overflow
-        RawEvent(source="BAD", payload={"instrument": "AAPL", "price": float("nan")}),  # NaN price
+        RawEvent(
+            source="BAD", payload={"instrument": "AAPL", "sequence": 2**70}
+        ),  # integer overflow
+        RawEvent(
+            source="BAD", payload={"instrument": "AAPL", "price": float("nan")}
+        ),  # NaN price
     ]
 
     for ev in bad_events:
@@ -108,7 +133,13 @@ def test_engine_poison_and_invalid_payloads_quarantined():
     # Healthy event following poison events processes cleanly
     healthy_ev = RawEvent(
         source="HEALTHY",
-        payload={"instrument": "AAPL", "event_type": "TRADE", "price": 150.0, "sequence": 1, "exchange_ts": 1700000000.0},
+        payload={
+            "instrument": "AAPL",
+            "event_type": "TRADE",
+            "price": 150.0,
+            "sequence": 1,
+            "exchange_ts": 1700000000.0,
+        },
         receive_timestamp=1700000000.0,
     )
     state, dec_healthy = engine.step(state, healthy_ev, clock)

@@ -24,7 +24,7 @@ def test_systemd_unit_file_security_hardening():
     assert parser.has_section("Install")
 
     service = parser["Service"]
-    
+
     # 1. Non-root user
     assert service.get("User") == "mdrap"
     assert service.get("Group") == "mdrap"
@@ -52,10 +52,15 @@ def test_dockerfile_security_and_non_root():
     dockerfile_path = Path("Dockerfile")
     assert dockerfile_path.is_file(), f"Dockerfile not found at {dockerfile_path}"
 
-    lines = [line.strip() for line in dockerfile_path.read_text(encoding="utf-8").splitlines()]
-    
+    lines = [
+        line.strip()
+        for line in dockerfile_path.read_text(encoding="utf-8").splitlines()
+    ]
+
     user_directives = [line for line in lines if line.startswith("USER")]
-    assert any("mdrap" in u for u in user_directives), "Dockerfile must declare USER mdrap"
+    assert any("mdrap" in u for u in user_directives), (
+        "Dockerfile must declare USER mdrap"
+    )
 
     healthcheck_directives = [line for line in lines if line.startswith("HEALTHCHECK")]
     assert len(healthcheck_directives) > 0, "Dockerfile must declare HEALTHCHECK"

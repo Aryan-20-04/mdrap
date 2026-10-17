@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 import pytest
-pytest.importorskip("mdrap_vessel", reason="Companion package mdrap-contrib-vessel is optional/commercial and not installed")
+
+pytest.importorskip(
+    "mdrap_vessel",
+    reason="Companion package mdrap-contrib-vessel is optional/commercial and not installed",
+)
 
 import math
 import os

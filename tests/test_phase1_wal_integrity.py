@@ -42,11 +42,17 @@ def test_oversized_frame_length_rejected_without_oom(tmp_path):
     log = IngestLog(str(wal_dir))
 
     # Append one valid frame
-    log.append(RawEvent(source="TEST", payload={"msg": "hello"}, receive_timestamp=time.time()))
+    log.append(
+        RawEvent(source="TEST", payload={"msg": "hello"}, receive_timestamp=time.time())
+    )
     log.close()
 
     # Tamper segment by injecting an oversized frame header in the middle
-    seg_files = [f for f in os.listdir(wal_dir) if f.startswith("segment_") and f.endswith(".log")]
+    seg_files = [
+        f
+        for f in os.listdir(wal_dir)
+        if f.startswith("segment_") and f.endswith(".log")
+    ]
     assert len(seg_files) == 1
     seg_path = os.path.join(wal_dir, seg_files[0])
 
@@ -80,10 +86,16 @@ def test_iter_from_tracks_corrupted_frames(tmp_path):
 
     # Append 3 valid records
     for i in range(3):
-        log.append(RawEvent(source="TEST", payload={"i": i}, receive_timestamp=time.time()))
+        log.append(
+            RawEvent(source="TEST", payload={"i": i}, receive_timestamp=time.time())
+        )
     log.close()
 
-    seg_files = [f for f in os.listdir(wal_dir) if f.startswith("segment_") and f.endswith(".log")]
+    seg_files = [
+        f
+        for f in os.listdir(wal_dir)
+        if f.startswith("segment_") and f.endswith(".log")
+    ]
     seg_path = os.path.join(wal_dir, seg_files[0])
 
     # Corrupt the CRC of the middle record (offset 1)
@@ -128,13 +140,17 @@ def test_ingestlog_poisoning_on_io_failure(tmp_path, monkeypatch):
     monkeypatch.setattr(log._current_file, "truncate", mock_truncate)
 
     with pytest.raises(OSError):
-        log.append(RawEvent(source="TEST", payload={"v": 2}, receive_timestamp=time.time()))
+        log.append(
+            RawEvent(source="TEST", payload={"v": 2}, receive_timestamp=time.time())
+        )
 
     assert log._is_poisoned is True
 
     # Subsequent appends must immediately fail with poisoned error
     with pytest.raises(IngestLogError) as exc:
-        log.append(RawEvent(source="TEST", payload={"v": 3}, receive_timestamp=time.time()))
+        log.append(
+            RawEvent(source="TEST", payload={"v": 3}, receive_timestamp=time.time())
+        )
     assert "poisoned" in str(exc.value)
 
     log.close()

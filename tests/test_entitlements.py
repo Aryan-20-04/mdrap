@@ -8,7 +8,12 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from mdrap.client import MarketEvent, MDRAPClient
-from mdrap.security import ClientEntitlement, Role, SecurityManager, TokenBucketRateLimiter
+from mdrap.security import (
+    ClientEntitlement,
+    Role,
+    SecurityManager,
+    TokenBucketRateLimiter,
+)
 from mdrap.service import MarketDataDaemon
 from mdrap.storage import Store
 

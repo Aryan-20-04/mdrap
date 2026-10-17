@@ -94,7 +94,9 @@ class TestCMEMDP3DirectSBEDecoder:
         assert version == CME_SCHEMA_VERSION
 
         # Test schema mismatch rejection
-        bad_buf = pack_cme_incremental_book(1729000000_000_000_000, entries, schema_id=999)
+        bad_buf = pack_cme_incremental_book(
+            1729000000_000_000_000, entries, schema_id=999
+        )
         with pytest.raises(ValueError, match="Invalid CME SBE schema_id"):
             decoder.decode_header(bad_buf)
 

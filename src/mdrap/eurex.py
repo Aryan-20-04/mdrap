@@ -16,7 +16,7 @@ from typing import Any
 from .models import CanonicalEvent, EventType, QualityStatus
 
 __version__ = "1.0.0"
-__stability__ = "stable"
+__stability__ = "beta"
 
 # Eurex T7 Template Constants
 EUREX_TEMPLATE_DEPTH: int = 10130

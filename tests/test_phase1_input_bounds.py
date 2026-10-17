@@ -19,7 +19,14 @@ def test_rejects_boolean_in_numeric_fields():
     # Boolean price
     raw_bool_px = RawEvent(
         source="FEEDX",
-        payload={"instrument": "AAPL", "event_type": "TRADE", "price": True, "quantity": 10.0, "exchange_ts": 1000.0, "sequence": 1},
+        payload={
+            "instrument": "AAPL",
+            "event_type": "TRADE",
+            "price": True,
+            "quantity": 10.0,
+            "exchange_ts": 1000.0,
+            "sequence": 1,
+        },
     )
     with pytest.raises(SchemaError) as exc:
         normalize(raw_bool_px)
@@ -28,7 +35,14 @@ def test_rejects_boolean_in_numeric_fields():
     # Boolean quantity
     raw_bool_qty = RawEvent(
         source="FEEDX",
-        payload={"instrument": "AAPL", "event_type": "TRADE", "price": 100.0, "quantity": False, "exchange_ts": 1000.0, "sequence": 1},
+        payload={
+            "instrument": "AAPL",
+            "event_type": "TRADE",
+            "price": 100.0,
+            "quantity": False,
+            "exchange_ts": 1000.0,
+            "sequence": 1,
+        },
     )
     with pytest.raises(SchemaError) as exc:
         normalize(raw_bool_qty)
@@ -37,7 +51,14 @@ def test_rejects_boolean_in_numeric_fields():
     # Boolean sequence
     raw_bool_seq = RawEvent(
         source="FEEDX",
-        payload={"instrument": "AAPL", "event_type": "TRADE", "price": 100.0, "quantity": 10.0, "exchange_ts": 1000.0, "sequence": True},
+        payload={
+            "instrument": "AAPL",
+            "event_type": "TRADE",
+            "price": 100.0,
+            "quantity": 10.0,
+            "exchange_ts": 1000.0,
+            "sequence": True,
+        },
     )
     with pytest.raises(SchemaError) as exc:
         normalize(raw_bool_seq)
@@ -46,7 +67,14 @@ def test_rejects_boolean_in_numeric_fields():
     # Boolean exchange_ts
     raw_bool_ts = RawEvent(
         source="FEEDX",
-        payload={"instrument": "AAPL", "event_type": "TRADE", "price": 100.0, "quantity": 10.0, "exchange_ts": True, "sequence": 1},
+        payload={
+            "instrument": "AAPL",
+            "event_type": "TRADE",
+            "price": 100.0,
+            "quantity": 10.0,
+            "exchange_ts": True,
+            "sequence": 1,
+        },
     )
     with pytest.raises(SchemaError) as exc:
         normalize(raw_bool_ts)
@@ -59,7 +87,14 @@ def test_rejects_nan_and_inf_in_trade_and_quote():
         # Trade price
         raw_trade = RawEvent(
             source="FEEDX",
-            payload={"instrument": "AAPL", "event_type": "TRADE", "price": bad_val, "quantity": 10.0, "exchange_ts": 1000.0, "sequence": 1},
+            payload={
+                "instrument": "AAPL",
+                "event_type": "TRADE",
+                "price": bad_val,
+                "quantity": 10.0,
+                "exchange_ts": 1000.0,
+                "sequence": 1,
+            },
         )
         with pytest.raises(SchemaError):
             normalize(raw_trade)
@@ -67,7 +102,14 @@ def test_rejects_nan_and_inf_in_trade_and_quote():
         # Quote bid/ask
         raw_quote = RawEvent(
             source="FEEDX",
-            payload={"instrument": "AAPL", "event_type": "QUOTE", "bid": bad_val, "ask": 100.0, "exchange_ts": 1000.0, "sequence": 1},
+            payload={
+                "instrument": "AAPL",
+                "event_type": "QUOTE",
+                "bid": bad_val,
+                "ask": 100.0,
+                "exchange_ts": 1000.0,
+                "sequence": 1,
+            },
         )
         with pytest.raises(SchemaError):
             normalize(raw_quote)
@@ -77,12 +119,48 @@ def test_rejects_zero_and_negative_prices_and_quantities():
     """Non-positive prices and quantities must be rejected."""
     # Zero price
     with pytest.raises(SchemaError):
-        normalize(RawEvent(source="FEEDX", payload={"instrument": "AAPL", "event_type": "TRADE", "price": 0.0, "quantity": 10.0, "exchange_ts": 1000.0, "sequence": 1}))
+        normalize(
+            RawEvent(
+                source="FEEDX",
+                payload={
+                    "instrument": "AAPL",
+                    "event_type": "TRADE",
+                    "price": 0.0,
+                    "quantity": 10.0,
+                    "exchange_ts": 1000.0,
+                    "sequence": 1,
+                },
+            )
+        )
 
     # Negative price
     with pytest.raises(SchemaError):
-        normalize(RawEvent(source="FEEDX", payload={"instrument": "AAPL", "event_type": "TRADE", "price": -50.0, "quantity": 10.0, "exchange_ts": 1000.0, "sequence": 1}))
+        normalize(
+            RawEvent(
+                source="FEEDX",
+                payload={
+                    "instrument": "AAPL",
+                    "event_type": "TRADE",
+                    "price": -50.0,
+                    "quantity": 10.0,
+                    "exchange_ts": 1000.0,
+                    "sequence": 1,
+                },
+            )
+        )
 
     # Negative quantity
     with pytest.raises(SchemaError):
-        normalize(RawEvent(source="FEEDX", payload={"instrument": "AAPL", "event_type": "TRADE", "price": 100.0, "quantity": -1.0, "exchange_ts": 1000.0, "sequence": 1}))
+        normalize(
+            RawEvent(
+                source="FEEDX",
+                payload={
+                    "instrument": "AAPL",
+                    "event_type": "TRADE",
+                    "price": 100.0,
+                    "quantity": -1.0,
+                    "exchange_ts": 1000.0,
+                    "sequence": 1,
+                },
+            )
+        )

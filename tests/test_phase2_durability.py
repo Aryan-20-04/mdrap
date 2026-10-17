@@ -27,7 +27,14 @@ def test_phase2_replay_determinism(tmp_path):
     for i in range(25):
         raw = RawEvent(
             source="NASDAQ",
-            payload={"instrument": "MSFT", "event_type": "TRADE", "quantity": 10.0, "price": 400.0 + i, "sequence": i + 1, "exchange_ts": 1700000000.0 + i},
+            payload={
+                "instrument": "MSFT",
+                "event_type": "TRADE",
+                "quantity": 10.0,
+                "price": 400.0 + i,
+                "sequence": i + 1,
+                "exchange_ts": 1700000000.0 + i,
+            },
             receive_timestamp=1700000000.0 + i,
         )
         log.append(raw)
@@ -71,8 +78,12 @@ def test_phase2_replay_determinism(tmp_path):
         assert d1.canonical_event.price == d2.canonical_event.price
 
     # Verify identical SQLite rows
-    rows1 = proj1._conn.execute("SELECT * FROM canonical_events ORDER BY exchange_timestamp ASC").fetchall()
-    rows2 = proj2._conn.execute("SELECT * FROM canonical_events ORDER BY exchange_timestamp ASC").fetchall()
+    rows1 = proj1._conn.execute(
+        "SELECT * FROM canonical_events ORDER BY exchange_timestamp ASC"
+    ).fetchall()
+    rows2 = proj2._conn.execute(
+        "SELECT * FROM canonical_events ORDER BY exchange_timestamp ASC"
+    ).fetchall()
     assert rows1 == rows2
 
     proj1.close()
@@ -87,7 +98,9 @@ def test_phase2_torn_writes(tmp_path):
     log = IngestLog(log_dir=log_dir, fsync_policy="always")
 
     for i in range(10):
-        log.append(RawEvent(source="TEST", payload={"instrument": "TSLA", "price": 250.0 + i}))
+        log.append(
+            RawEvent(source="TEST", payload={"instrument": "TSLA", "price": 250.0 + i})
+        )
     log.close()
 
     seg_path = log._list_segment_files()[0][1]
@@ -111,7 +124,9 @@ def test_phase2_bit_flips(tmp_path):
     log = IngestLog(log_dir=log_dir, fsync_policy="always")
 
     for i in range(10):
-        log.append(RawEvent(source="TEST", payload={"instrument": "META", "price": 500.0 + i}))
+        log.append(
+            RawEvent(source="TEST", payload={"instrument": "META", "price": 500.0 + i})
+        )
     log.close()
 
     seg_path = log._list_segment_files()[0][1]
@@ -136,7 +151,17 @@ def test_phase2_restart_dedup(tmp_path):
     clock = FixedClock(1700000000.0)
     state = engine.create_initial_state()
 
-    raw1 = RawEvent(source="SRC", payload={"instrument": "AMZN", "event_type": "TRADE", "quantity": 10.0, "price": 170.0, "sequence": 1, "exchange_ts": 1700000000.0})
+    raw1 = RawEvent(
+        source="SRC",
+        payload={
+            "instrument": "AMZN",
+            "event_type": "TRADE",
+            "quantity": 10.0,
+            "price": 170.0,
+            "sequence": 1,
+            "exchange_ts": 1700000000.0,
+        },
+    )
     state, dec1 = engine.step(state, raw1, clock, offset=0)
 
     # First apply: commits row, advances checkpoint to 0
@@ -144,7 +169,17 @@ def test_phase2_restart_dedup(tmp_path):
     assert proj.count_canonical() == 1
     assert proj.checkpoint() == 0
 
-    raw2 = RawEvent(source="SRC", payload={"instrument": "AMZN", "event_type": "TRADE", "quantity": 10.0, "price": 171.0, "sequence": 2, "exchange_ts": 1700000001.0})
+    raw2 = RawEvent(
+        source="SRC",
+        payload={
+            "instrument": "AMZN",
+            "event_type": "TRADE",
+            "quantity": 10.0,
+            "price": 171.0,
+            "sequence": 2,
+            "exchange_ts": 1700000001.0,
+        },
+    )
     state, dec2 = engine.step(state, raw2, clock, offset=1)
 
     # Simulate crash before checkpoint: insert row directly into SQLite but without advancing projection_checkpoints
@@ -161,11 +196,23 @@ def test_phase2_restart_dedup(tmp_path):
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
         """,
         (
-            ev.event_id, ev.instrument_id, ev.event_type.value,
-            ev.exchange_timestamp, ev.receive_timestamp, ev.processing_timestamp,
-            ev.source, ev.sequence_number, ev.price, ev.quantity,
-            ev.bid_price, ev.ask_price, ev.bid_size, ev.ask_size,
-            ev.quality_status.value, "[]", str(ev.raw_id),
+            ev.event_id,
+            ev.instrument_id,
+            ev.event_type.value,
+            ev.exchange_timestamp,
+            ev.receive_timestamp,
+            ev.processing_timestamp,
+            ev.source,
+            ev.sequence_number,
+            ev.price,
+            ev.quantity,
+            ev.bid_price,
+            ev.ask_price,
+            ev.bid_size,
+            ev.ask_size,
+            ev.quality_status.value,
+            "[]",
+            str(ev.raw_id),
         ),
     )
     proj._conn.commit()

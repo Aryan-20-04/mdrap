@@ -284,12 +284,42 @@ def test_no_silent_drops_under_backpressure():
         on_drop=on_drop,
     )
 
-    ev1 = RawEvent(source="BINANCE", payload={"instrument": "BTC/USD", "event_type": "QUOTE", "bid": 60000.0, "ask": 60001.0}, receive_timestamp=time.time(), raw_id="raw-1")
-    ev2 = RawEvent(source="BINANCE", payload={"instrument": "BTC/USD", "event_type": "QUOTE", "bid": 60001.0, "ask": 60002.0}, receive_timestamp=time.time(), raw_id="raw-2")
+    ev1 = RawEvent(
+        source="BINANCE",
+        payload={
+            "instrument": "BTC/USD",
+            "event_type": "QUOTE",
+            "bid": 60000.0,
+            "ask": 60001.0,
+        },
+        receive_timestamp=time.time(),
+        raw_id="raw-1",
+    )
+    ev2 = RawEvent(
+        source="BINANCE",
+        payload={
+            "instrument": "BTC/USD",
+            "event_type": "QUOTE",
+            "bid": 60001.0,
+            "ask": 60002.0,
+        },
+        receive_timestamp=time.time(),
+        raw_id="raw-2",
+    )
     manager._queue.put(ev1)
     manager._queue.put(ev2)
 
-    ev3 = RawEvent(source="BINANCE", payload={"instrument": "BTC/USD", "event_type": "QUOTE", "bid": 60002.0, "ask": 60003.0}, receive_timestamp=time.time(), raw_id="raw-3")
+    ev3 = RawEvent(
+        source="BINANCE",
+        payload={
+            "instrument": "BTC/USD",
+            "event_type": "QUOTE",
+            "bid": 60002.0,
+            "ask": 60003.0,
+        },
+        receive_timestamp=time.time(),
+        raw_id="raw-3",
+    )
 
     # Simulate backpressure eviction
     try:
@@ -327,4 +357,3 @@ def test_no_silent_drops_under_backpressure():
     dec = engine.submit(tombstone)
     assert dec.quality_status == QualityStatus.INVALID
     assert Reason.BACKPRESSURE_DROP.value in dec.reasons
-

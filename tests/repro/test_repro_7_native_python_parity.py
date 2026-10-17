@@ -35,7 +35,9 @@ def test_native_and_python_agree_on_per_instrument_lateness_configuration():
     )
 
     py_engine = QualityEngine(config=custom_cfg)
-    native_engine = FastQualityEngine(config=custom_cfg, staleness_threshold_s=0.1)  # Default global fastpath config
+    native_engine = FastQualityEngine(
+        config=custom_cfg, staleness_threshold_s=0.1
+    )  # Default global fastpath config
 
     # Event with 200ms network delay (receive_ts - exchange_ts = 0.200s)
     # Under custom_cfg (0.5s), this event is NOT stale.

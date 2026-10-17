@@ -86,9 +86,13 @@ def test_1_3_rate_limiter_10k_rotating_sources_bounded_memory_and_rate():
 
     # Total allowed requests across all 10k rotating sources cannot exceed capacity + rate refill
     max_expected = 100.0 + elapsed * 100.0 + 5.0
-    assert allowed_count <= max_expected, f"Rate amplification: allowed {allowed_count} > max theoretical {max_expected}"
+    assert allowed_count <= max_expected, (
+        f"Rate amplification: allowed {allowed_count} > max theoretical {max_expected}"
+    )
     # Memory is strictly bounded: cannot grow beyond 1025 buckets
-    assert len(limiter._buckets) <= 1025, f"Bucket leak: {len(limiter._buckets)} entries"
+    assert len(limiter._buckets) <= 1025, (
+        f"Bucket leak: {len(limiter._buckets)} entries"
+    )
 
 
 def test_1_5_active_watchdog_detects_total_silence_within_two_seconds():
@@ -117,7 +121,9 @@ def test_1_5_active_watchdog_detects_total_silence_within_two_seconds():
         # Stop all input and wait 0.8 seconds (threshold is 0.5s)
         time.sleep(0.8)
         assert wd._source_states["FEED_A"] == SourceState.SILENT
-        assert any(a.alert_type == "SILENCE" and a.source == "FEED_A" for a in wd._alerts)
+        assert any(
+            a.alert_type == "SILENCE" and a.source == "FEED_A" for a in wd._alerts
+        )
     finally:
         wd.stop_heartbeat()
 
@@ -134,9 +140,19 @@ def test_1_7_in_memory_sqlite_single_connection_multi_thread():
     def _worker(thread_id: int):
         try:
             for j in range(25):
-                store.write_quarantine_batch([
-                    (f"raw_{thread_id}_{j}", "AAPL", f"FEED_{thread_id}", "INVALID", "PARITY_TEST", '{"idx": 1}', time.time())
-                ])
+                store.write_quarantine_batch(
+                    [
+                        (
+                            f"raw_{thread_id}_{j}",
+                            "AAPL",
+                            f"FEED_{thread_id}",
+                            "INVALID",
+                            "PARITY_TEST",
+                            '{"idx": 1}',
+                            time.time(),
+                        )
+                    ]
+                )
         except Exception as exc:
             errors.append(exc)
 
@@ -155,15 +171,21 @@ def test_1_8_arm_fail_closed_guard():
     from mdrap.shm import _check_arm_shm_safety
 
     # Mock platform.machine to report 'aarch64' and HAS_FASTPATH to False
-    with patch("platform.machine", return_value="aarch64"), \
-         patch.dict(os.environ, {"MDRAP_UNSAFE_SHM": "0"}):
+    with (
+        patch("platform.machine", return_value="aarch64"),
+        patch.dict(os.environ, {"MDRAP_UNSAFE_SHM": "0"}),
+    ):
         with patch("mdrap.fastpath.HAS_FASTPATH", False):
-            with pytest.raises(RuntimeError, match="Refusing to run lock-free Shared Memory on ARM64"):
+            with pytest.raises(
+                RuntimeError, match="Refusing to run lock-free Shared Memory on ARM64"
+            ):
                 _check_arm_shm_safety()
 
     # With MDRAP_UNSAFE_SHM=1 override, it must pass
-    with patch("platform.machine", return_value="aarch64"), \
-         patch.dict(os.environ, {"MDRAP_UNSAFE_SHM": "1"}):
+    with (
+        patch("platform.machine", return_value="aarch64"),
+        patch.dict(os.environ, {"MDRAP_UNSAFE_SHM": "1"}),
+    ):
         with patch("mdrap.fastpath.HAS_FASTPATH", False):
             _check_arm_shm_safety()  # Should not raise
 
@@ -214,6 +236,7 @@ def test_1_10_raw_archive_fd_leak_prevention():
         assert len(archive._file_handles) == 0
     finally:
         import shutil
+
         shutil.rmtree(temp_dir, ignore_errors=True)
 
 
@@ -249,13 +272,15 @@ def test_1_6_replay_lock_concurrency():
         seq = 0
         while not stop_event.is_set() and seq < 500:
             seq += 1
-            daemon._record_replay({
-                "seq": seq,
-                "sym": "AAPL",
-                "source": "FEED_A",
-                "type": "TICK",
-                "price": 150.0 + (seq % 10),
-            })
+            daemon._record_replay(
+                {
+                    "seq": seq,
+                    "sym": "AAPL",
+                    "source": "FEED_A",
+                    "type": "TICK",
+                    "price": 150.0 + (seq % 10),
+                }
+            )
             time.sleep(0.001)
 
     def _reader():

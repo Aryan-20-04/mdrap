@@ -190,6 +190,13 @@ def _make_canonical(
         (EventType.TRADE, None, None, None, QualityStatus.INVALID),  # missing price
         (EventType.QUOTE, None, None, None, QualityStatus.INVALID),  # missing bid/ask
         (EventType.QUOTE, None, 101.0, 100.0, QualityStatus.INVALID),  # crossed quote
+        (
+            EventType.BBO,
+            None,
+            99.5,
+            100.5,
+            QualityStatus.INVALID,
+        ),  # BBO is derived, invalid as raw ingress
         (EventType.UNKNOWN, 100.0, None, None, QualityStatus.INVALID),
         (EventType.BOOK, 100.0, None, None, QualityStatus.INVALID),
         (EventType.DEPTH, 100.0, None, None, QualityStatus.INVALID),
@@ -214,8 +221,12 @@ def test_f10_c_fastpath_vs_python_parity(
     res_c = c_eng.evaluate(ev_c)
     res_py = py_eng.evaluate(ev_py)
 
-    assert res_c.quality_status == expected_status, f"C returned {res_c.quality_status}, expected {expected_status}"
-    assert res_py.quality_status == expected_status, f"Py returned {res_py.quality_status}, expected {expected_status}"
+    assert res_c.quality_status == expected_status, (
+        f"C returned {res_c.quality_status}, expected {expected_status}"
+    )
+    assert res_py.quality_status == expected_status, (
+        f"Py returned {res_py.quality_status}, expected {expected_status}"
+    )
     assert res_c.quality_status == res_py.quality_status
     assert set(res_c.reasons) == set(res_py.reasons)
 
@@ -227,12 +238,17 @@ def test_f10_fastpath_batch_evaluate_parity() -> None:
         (EventType.QUOTE, None, 99.5, 100.5, 2),
         (EventType.TRADE, None, None, None, 3),  # Invalid: no price
         (EventType.QUOTE, None, 101.0, 100.0, 4),  # Invalid: crossed
-        (EventType.UNKNOWN, 100.0, None, None, 5),  # Invalid: unknown type
-        (EventType.DEPTH, 100.0, None, None, 6),  # Invalid: depth
+        (EventType.BBO, None, 99.5, 100.5, 5),  # Invalid: BBO ingress
+        (EventType.UNKNOWN, 100.0, None, None, 6),  # Invalid: unknown type
+        (EventType.DEPTH, 100.0, None, None, 7),  # Invalid: depth
     ]
 
-    events_single = [_make_canonical(t, px, b, a, seq) for t, px, b, a, seq in test_specs]
-    events_batch = [_make_canonical(t, px, b, a, seq) for t, px, b, a, seq in test_specs]
+    events_single = [
+        _make_canonical(t, px, b, a, seq) for t, px, b, a, seq in test_specs
+    ]
+    events_batch = [
+        _make_canonical(t, px, b, a, seq) for t, px, b, a, seq in test_specs
+    ]
 
     eng_single = FastQualityEngine()
     eng_batch = FastQualityEngine()
@@ -242,12 +258,106 @@ def test_f10_fastpath_batch_evaluate_parity() -> None:
 
     assert len(results_single) == len(results_batch)
     for idx, (res_s, res_b) in enumerate(zip(results_single, results_batch)):
-        assert (
-            res_s.quality_status == res_b.quality_status
-        ), f"Batch mismatch at {idx}: single={res_s.quality_status}, batch={res_b.quality_status}"
-        assert set(res_s.reasons) == set(
-            res_b.reasons
-        ), f"Reason mismatch at {idx}: single={res_s.reasons}, batch={res_b.reasons}"
+        assert res_s.quality_status == res_b.quality_status, (
+            f"Batch mismatch at {idx}: single={res_s.quality_status}, batch={res_b.quality_status}"
+        )
+        assert set(res_s.reasons) == set(res_b.reasons), (
+            f"Reason mismatch at {idx}: single={res_s.reasons}, batch={res_b.reasons}"
+        )
+
+
+def test_f10_all_event_types_stream_fuzz() -> None:
+    """F-10: Verify 100% agreement across FastQualityEngine, QualityEngine, and Engine on all event types."""
+    import random
+
+    rng = random.Random(42)
+
+    c_eng = FastQualityEngine()
+    py_eng = QualityEngine()
+
+    all_types = [
+        EventType.TRADE,
+        EventType.QUOTE,
+        EventType.BBO,
+        EventType.BOOK,
+        EventType.DEPTH,
+        EventType.UNKNOWN,
+        "TRADE",
+        "QUOTE",
+        "BBO",
+        "BOOK",
+        "DEPTH",
+        "UNKNOWN",
+        "FOOBAR_ANOMALOUS",
+    ]
+
+    with Engine.open(None) as pipeline_engine:
+        for i in range(5000):
+            ev_choice = rng.choice(all_types)
+            seq = i + 1
+            is_trade = ev_choice in (EventType.TRADE, "TRADE")
+            is_quote = ev_choice in (EventType.QUOTE, "QUOTE")
+
+            px = (
+                round(rng.uniform(100.0, 200.0), 2)
+                if (is_trade or rng.random() < 0.2)
+                else None
+            )
+            bid = (
+                round(rng.uniform(99.0, 100.0), 2)
+                if (is_quote or rng.random() < 0.2)
+                else None
+            )
+            ask = round(bid + rng.uniform(0.1, 2.0), 2) if bid is not None else None
+
+            # Occasionally inject crossed quote
+            if is_quote and rng.random() < 0.1 and bid is not None:
+                ask = round(bid - 1.0, 2)
+
+            ev_c = _make_canonical(ev_choice, price=px, bid=bid, ask=ask, seq=seq)
+            ev_py = _make_canonical(ev_choice, price=px, bid=bid, ask=ask, seq=seq)
+
+            res_c = c_eng.evaluate(ev_c)
+            res_py = py_eng.evaluate(ev_py)
+
+            # C and Python standalone engines must agree 100%
+            assert res_c.quality_status == res_py.quality_status, (
+                f"Divergence at #{i} on {ev_choice}"
+            )
+            assert set(res_c.reasons) == set(res_py.reasons), (
+                f"Reason divergence at #{i} on {ev_choice}"
+            )
+
+            # Engine.submit must also agree on status
+            ev_type_str = (
+                ev_choice.value if hasattr(ev_choice, "value") else str(ev_choice)
+            )
+            p_dict: dict = {
+                "instrument": "AAPL",
+                "event_type": ev_type_str,
+                "sequence": seq,
+            }
+            if px is not None:
+                p_dict["price"] = px
+                p_dict["quantity"] = 10.0
+            if bid is not None:
+                p_dict["bid"] = bid
+            if ask is not None:
+                p_dict["ask"] = ask
+
+            raw = RawEvent(
+                source="FEEDX", payload=p_dict, receive_timestamp=1000.0 + seq
+            )
+            dec = pipeline_engine.submit(raw)
+
+            # For non-TRADE/QUOTE, all engines must reject as INVALID
+            if not is_trade and not is_quote:
+                assert res_c.quality_status == QualityStatus.INVALID
+                assert res_py.quality_status == QualityStatus.INVALID
+                assert dec.quality_status == QualityStatus.INVALID
+                assert Reason.SCHEMA_VIOLATION.value in dec.reasons
+            elif dec.quality_status == QualityStatus.INVALID:
+                assert res_py.quality_status == QualityStatus.INVALID
 
 
 def test_f12_fastpath_fallback_parity_when_native_disabled(monkeypatch) -> None:
@@ -256,7 +366,9 @@ def test_f12_fastpath_fallback_parity_when_native_disabled(monkeypatch) -> None:
     eng_fallback = FastQualityEngine()
     py_eng = QualityEngine()
 
-    for i, ev_type in enumerate((EventType.TRADE, EventType.QUOTE, EventType.UNKNOWN, "GARBAGE")):
+    for i, ev_type in enumerate(
+        (EventType.TRADE, EventType.QUOTE, EventType.UNKNOWN, "GARBAGE")
+    ):
         ev1 = _make_canonical(ev_type, price=100.0, bid=99.0, ask=101.0, seq=50 + i)
         ev2 = _make_canonical(ev_type, price=100.0, bid=99.0, ask=101.0, seq=50 + i)
 

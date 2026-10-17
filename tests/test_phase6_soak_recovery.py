@@ -74,7 +74,9 @@ def test_soak_kill_recovery_zero_loss(soak_env):
     rss_start = get_rss_mb()
     peak_rss = rss_start
 
-    print(f"\nStarting soak test: {num_rounds} rounds of {events_per_round} events with kill-restart...")
+    print(
+        f"\nStarting soak test: {num_rounds} rounds of {events_per_round} events with kill-restart..."
+    )
 
     for round_idx in range(num_rounds):
         # 1. Boot Engine
@@ -114,7 +116,9 @@ def test_soak_kill_recovery_zero_loss(soak_env):
 
         # Check lag after reboot
         m = rebooted.metrics()
-        assert m["projection_lag"] == 0, f"Projection lag not zero after round {round_idx} reboot"
+        assert m["projection_lag"] == 0, (
+            f"Projection lag not zero after round {round_idx} reboot"
+        )
         assert m["health_status"] == "HEALTHY"
         assert m["log_head_offset"] == total_acknowledged
 

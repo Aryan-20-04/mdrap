@@ -13,6 +13,7 @@ warnings.warn(
     stacklevel=2,
 )
 
+_impl = None
 try:
     import mdrap_analytics as _impl
 except ImportError:
@@ -23,7 +24,30 @@ except ImportError:
     )
     if _pkg not in sys.path and os.path.exists(_pkg):
         sys.path.insert(0, _pkg)
-    import mdrap_analytics as _impl
+    try:
+        import mdrap_analytics as _impl
+    except ImportError:
+        _impl = None
 
 __stability__ = "experimental"
-sys.modules[__name__] = _impl
+
+if _impl is not None:
+    sys.modules[__name__] = _impl
+else:
+
+    class TCAEngine:
+        def __init__(self, *args, **kwargs):
+            raise NotImplementedError(
+                "TCAEngine requires the 'mdrap_analytics' companion package. "
+                "Install packages/mdrap-analytics to use Transaction Cost Analysis features."
+            )
+
+    class ExecutionRecord:
+        def __init__(self, *args, **kwargs):
+            pass
+
+    class TCAMetrics:
+        def __init__(self, *args, **kwargs):
+            pass
+
+    __all__ = ["TCAEngine", "ExecutionRecord", "TCAMetrics"]

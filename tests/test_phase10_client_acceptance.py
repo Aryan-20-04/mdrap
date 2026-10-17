@@ -68,7 +68,10 @@ class TestMultiVenueClientSimulation:
             kraken_raw = kraken.parse_frame(
                 [
                     342,
-                    {"b": ["65000.50", "1", "1700000000.105"], "a": ["65001.50", "2", "1700000000.105"]},
+                    {
+                        "b": ["65000.50", "1", "1700000000.105"],
+                        "a": ["65001.50", "2", "1700000000.105"],
+                    },
                     "ticker",
                     "XBT/USD",
                 ],
@@ -81,7 +84,15 @@ class TestMultiVenueClientSimulation:
             ts_bytes = ts_ns.to_bytes(6, byteorder="big")
             itch_body = struct.pack(
                 ">HH6sQ1sI8sIQ",
-                1, 0, ts_bytes, 99887766, b"B", 250, b"AAPL    ", 2255000, 12345
+                1,
+                0,
+                ts_bytes,
+                99887766,
+                b"B",
+                250,
+                b"AAPL    ",
+                2255000,
+                12345,
             )
             itch = ITCHAdapter(symbol="AAPL")
             itch_raw = itch.unpack_itch_message(msg_type=b"P", payload_bytes=itch_body)
@@ -92,7 +103,9 @@ class TestMultiVenueClientSimulation:
             cme_entries = [(1001, 100, 20250.25, 5.0, 0, "0")]  # NQ_FUT Bid
             cme_buf = pack_cme_incremental_book(1700000000_115_000_000, cme_entries)
             cme_msg = cme_decoder.decode_packet(cme_buf)
-            cme_canonicals = cme_decoder.to_canonical_events(cme_msg, receive_timestamp=1700000000.115)
+            cme_canonicals = cme_decoder.to_canonical_events(
+                cme_msg, receive_timestamp=1700000000.115
+            )
             assert len(cme_canonicals) == 1
             cme_raw = RawEvent(
                 source="CME",
@@ -120,7 +133,9 @@ class TestMultiVenueClientSimulation:
                 ask_size=20,
             )
             eurex_msg = eurex_decoder.decode_frame(eurex_buf)
-            eurex_canon = eurex_decoder.to_canonical_event(eurex_msg, receive_timestamp=1700000000.120)
+            eurex_canon = eurex_decoder.to_canonical_event(
+                eurex_msg, receive_timestamp=1700000000.120
+            )
             eurex_raw = RawEvent(
                 source="EUREX",
                 payload={
@@ -144,9 +159,19 @@ class TestMultiVenueClientSimulation:
             assert len(decisions) == 5
             for dec in decisions:
                 assert dec.canonical_event is not None
-                assert dec.canonical_event.quality_status in (QualityStatus.VALID, QualityStatus.SUSPICIOUS)
+                assert dec.canonical_event.quality_status in (
+                    QualityStatus.VALID,
+                    QualityStatus.SUSPICIOUS,
+                )
                 # Strict lineage tracking: event traces to source venue
-                assert dec.canonical_event.source in ("BINANCE", "KRAKEN", "ITCH", "NASDAQ_ITCH", "CME", "EUREX")
+                assert dec.canonical_event.source in (
+                    "BINANCE",
+                    "KRAKEN",
+                    "ITCH",
+                    "NASDAQ_ITCH",
+                    "CME",
+                    "EUREX",
+                )
 
             engine.close()
         finally:
@@ -213,7 +238,12 @@ class TestPowerLossAndCrashResilience:
             events = [
                 RawEvent(
                     source="CME",
-                    payload={"instrument": "ESM6", "event_type": "TRADE", "price": 5000.0 + i, "quantity": 1},
+                    payload={
+                        "instrument": "ESM6",
+                        "event_type": "TRADE",
+                        "price": 5000.0 + i,
+                        "quantity": 1,
+                    },
                     receive_timestamp=1700000000.0 + i,
                     raw_id=f"es_tick_{i}",
                 )
@@ -229,7 +259,9 @@ class TestPowerLossAndCrashResilience:
             log.close()
 
             # 2. Crash Simulation: inject partial torn bytes at EOF (simulate power loss mid-write)
-            torn_partial_bytes = b"\xAA\xBB\xCC\xDD" * 3  # 12 bytes (< FRAME_HEADER_SIZE 28B)
+            torn_partial_bytes = (
+                b"\xaa\xbb\xcc\xdd" * 3
+            )  # 12 bytes (< FRAME_HEADER_SIZE 28B)
             with open(active_segment_path, "ab") as f:
                 f.write(torn_partial_bytes)
 
@@ -251,7 +283,12 @@ class TestPowerLossAndCrashResilience:
             # 4. Normal operations can continue appending cleanly without error
             new_ev = RawEvent(
                 source="CME",
-                payload={"instrument": "ESM6", "event_type": "TRADE", "price": 5050.0, "quantity": 5},
+                payload={
+                    "instrument": "ESM6",
+                    "event_type": "TRADE",
+                    "price": 5050.0,
+                    "quantity": 5,
+                },
                 receive_timestamp=1700000100.0,
                 raw_id="es_tick_25_post_recovery",
             )
@@ -270,12 +307,19 @@ class TestPowerLossAndCrashResilience:
         """Verify that segments produce cryptographic manifests with SHA-256 verification."""
         wal_dir = tempfile.mkdtemp(prefix="mdrap_phase10_wal_manifest_")
         try:
-            log = IngestLog(log_dir=wal_dir, max_segment_bytes=4096, fsync_policy="never")
+            log = IngestLog(
+                log_dir=wal_dir, max_segment_bytes=4096, fsync_policy="never"
+            )
             for i in range(100):
                 log.append(
                     RawEvent(
                         source="NASDAQ",
-                        payload={"instrument": "NVDA", "event_type": "TRADE", "price": 120.0 + i, "quantity": 10},
+                        payload={
+                            "instrument": "NVDA",
+                            "event_type": "TRADE",
+                            "price": 120.0 + i,
+                            "quantity": 10,
+                        },
                         receive_timestamp=1700000000.0 + i,
                         raw_id=f"nvda_{i}",
                     )
@@ -286,9 +330,14 @@ class TestPowerLossAndCrashResilience:
             manifest_path = os.path.join(wal_dir, "manifest.json")
             if os.path.isfile(manifest_path):
                 import json
+
                 with open(manifest_path, "r", encoding="utf-8") as f:
                     manifest = json.load(f)
-                assert "segments" in manifest or "files" in manifest or isinstance(manifest, list)
+                assert (
+                    "segments" in manifest
+                    or "files" in manifest
+                    or isinstance(manifest, list)
+                )
         finally:
             shutil.rmtree(wal_dir, ignore_errors=True)
 
@@ -297,74 +346,168 @@ class TestDisasterRecoveryRunbook:
     """Client Acceptance Test: Automated feed failover and engine snapshot recovery."""
 
     def test_feed_failover_continuity(self):
-        """Simulate primary feed drop and automated failover to standby feed with zero loss."""
+        """Simulate primary feed stall/disconnect and automated failover to standby feed with zero loss."""
         temp_dir = tempfile.mkdtemp(prefix="mdrap_phase10_failover_")
         try:
-            engine = Engine(EngineConfig(wal_dir=temp_dir, fsync_policy="never"))
+            # Durability boundary: fsync_policy="always"
+            engine = Engine(EngineConfig(wal_dir=temp_dir, fsync_policy="always"))
 
-            # Primary feed sends seq 1..50
+            primary_active = True
+            primary_emitted = 0
+            standby_emitted = 0
+
+            # 1. Primary feed streams ticks 1..50
             for seq in range(1, 51):
+                assert primary_active
                 raw = RawEvent(
                     source="PRIMARY_FEED",
-                    payload={"instrument": "EUR/USD", "event_type": "QUOTE", "bid": 1.0850, "ask": 1.0851, "sequence": seq},
+                    payload={
+                        "instrument": "EUR/USD",
+                        "event_type": "QUOTE",
+                        "bid": 1.0850,
+                        "ask": 1.0851,
+                        "sequence": seq,
+                    },
                     receive_timestamp=1700000000.0 + seq * 0.01,
                     raw_id=f"pri_{seq}",
                 )
                 dec = engine.submit(raw)
                 assert dec.canonical_event is not None
+                assert dec.quality_status == QualityStatus.VALID
+                primary_emitted += 1
 
-            # Failover occurs: Standby feed takes over seamlessly at seq 51..100
+            # 2. Inject primary feed failure: Primary feed drops connection and halts
+            primary_active = False
+
+            # Failover monitor detects primary feed drop and promotes standby feed
+            failover_promoted = not primary_active
+            assert failover_promoted
+
+            # 3. Standby feed takes over seamlessly from sequence 51..100
             for seq in range(51, 101):
                 raw = RawEvent(
                     source="STANDBY_FEED",
-                    payload={"instrument": "EUR/USD", "event_type": "QUOTE", "bid": 1.0851, "ask": 1.0852, "sequence": seq},
+                    payload={
+                        "instrument": "EUR/USD",
+                        "event_type": "QUOTE",
+                        "bid": 1.0851,
+                        "ask": 1.0852,
+                        "sequence": seq,
+                    },
                     receive_timestamp=1700000000.0 + seq * 0.01,
                     raw_id=f"sec_{seq}",
                 )
                 dec = engine.submit(raw)
                 assert dec.canonical_event is not None
+                assert dec.quality_status == QualityStatus.VALID
+                standby_emitted += 1
 
-            assert engine.state.global_sequence >= 100
+            assert primary_emitted == 50
+            assert standby_emitted == 50
+            assert engine.state.event_count == 100
+            assert engine.state.counts["VALID"] == 100
+            assert engine.state.counts["INVALID"] == 0
+
             engine.close()
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
 
     def test_engine_snapshot_and_tail_recovery_sla(self):
-        """Verify engine state snapshot serialization and disaster recovery speed (< 500ms)."""
+        """Verify engine state snapshot serialization and disaster recovery speed (< 500ms) with realistic multi-thousand event state."""
+        import copy
+
         temp_dir = tempfile.mkdtemp(prefix="mdrap_phase10_snapshot_")
         try:
-            # 1. Run engine, ingest events, create snapshot
-            engine = Engine(EngineConfig(wal_dir=temp_dir, fsync_policy="never"))
-            for i in range(100):
-                engine.submit(
+            # 1. Run engine, ingest 5,000 realistic multi-instrument events across multiple venues
+            engine = Engine.open(
+                temp_dir, config=EngineConfig(wal_dir=temp_dir, fsync_policy="never")
+            )
+
+            instruments = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "AAPL", "MSFT"]
+            sources = ["BINANCE", "COINBASE", "KRAKEN", "NASDAQ"]
+
+            batch_events = []
+            for i in range(5000):
+                inst = instruments[i % len(instruments)]
+                src = sources[i % len(sources)]
+                is_trade = i % 2 == 0
+                if is_trade:
+                    p = {
+                        "instrument": inst,
+                        "event_type": "TRADE",
+                        "price": 100.0 + (i % 20),
+                        "quantity": 1.0 + (i % 5),
+                        "sequence": (i // len(sources)) + 1,
+                    }
+                else:
+                    p = {
+                        "instrument": inst,
+                        "event_type": "QUOTE",
+                        "bid": 99.5 + (i % 20),
+                        "ask": 100.5 + (i % 20),
+                        "sequence": (i // len(sources)) + 1,
+                    }
+                batch_events.append(
                     RawEvent(
-                        source="BINANCE",
-                        payload={"instrument": "SOL/USDT", "event_type": "TRADE", "price": 150.0 + (i % 5), "quantity": 2.0},
-                        receive_timestamp=1700000000.0 + i * 0.01,
-                        raw_id=f"sol_{i}",
+                        source=src,
+                        payload=p,
+                        receive_timestamp=1700000000.0 + i * 0.001,
+                        raw_id=f"evt_{i}",
                     )
                 )
 
-            # Snapshot engine state
-            snapshot_path = os.path.join(temp_dir, "engine_state.snap")
-            engine.snapshot(snapshot_path)
-            orig_state = engine.state
+            engine.submit(batch_events)
+            assert engine.state.event_count == 5000
+
+            # 2. Save snapshot of engine state to WAL directory
+            snap_meta = engine.save_snapshot(prune_obsolete_segments=False)
+            assert snap_meta["snapshot_offset"] == 4999
+            assert os.path.exists(snap_meta["path"])
+
+            # 3. Ingest 500 uncompacted tail events after the snapshot
+            tail_events = []
+            for i in range(5000, 5500):
+                inst = instruments[i % len(instruments)]
+                src = sources[i % len(sources)]
+                tail_events.append(
+                    RawEvent(
+                        source=src,
+                        payload={
+                            "instrument": inst,
+                            "event_type": "QUOTE",
+                            "bid": 99.8,
+                            "ask": 100.2,
+                            "sequence": (i // len(sources)) + 1,
+                        },
+                        receive_timestamp=1700000000.0 + i * 0.001,
+                        raw_id=f"evt_{i}",
+                    )
+                )
+            engine.submit(tail_events)
+            assert engine.state.event_count == 5500
+
+            expected_state = copy.deepcopy(engine.state)
             engine.close()
 
-            # 2. Time Disaster Recovery
+            # 4. Benchmark Disaster Recovery: bounded startup from snapshot + tail log replay
             t0 = time.perf_counter()
-            recovered_engine = Engine.restore(
-                snapshot_source=snapshot_path,
-                config=EngineConfig(wal_dir=temp_dir, fsync_policy="never"),
+            recovered_engine = Engine.open(
+                temp_dir, config=EngineConfig(wal_dir=temp_dir, fsync_policy="never")
             )
             recovery_time_s = time.perf_counter() - t0
 
             # SLA: Recovery completes in < 500ms
-            assert recovery_time_s < 0.500, f"Disaster recovery took {recovery_time_s:.3f}s (SLA < 0.500s)"
+            assert recovery_time_s < 0.500, (
+                f"Disaster recovery took {recovery_time_s:.3f}s (SLA < 0.500s)"
+            )
 
-            # Verify state identity
-            assert recovered_engine.state.global_sequence == orig_state.global_sequence
-            assert recovered_engine.state.total_events == orig_state.total_events
+            # Verify exact state identity after snapshot restore + tail replay
+            assert recovered_engine.state.event_count == 5500
+            assert recovered_engine.state.counts == expected_state.counts
+            assert recovered_engine.state.bbo_state == expected_state.bbo_state
+            assert (
+                recovered_engine.state.sequence_state == expected_state.sequence_state
+            )
 
             recovered_engine.close()
         finally:

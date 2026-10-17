@@ -208,13 +208,19 @@ class TestManifestAndEnvironment:
         assert manifest_path.is_file()
         with open(manifest_path, "r", encoding="utf-8") as f:
             disk_data = json.load(f)
-        assert disk_data["dataset"]["dataset_hash_sha256"] == manifest["dataset"]["dataset_hash_sha256"]
+        assert (
+            disk_data["dataset"]["dataset_hash_sha256"]
+            == manifest["dataset"]["dataset_hash_sha256"]
+        )
 
         latest_path = Path(out_dir) / "latest_manifest.json"
         assert latest_path.is_file()
         with open(latest_path, "r", encoding="utf-8") as f:
             latest_data = json.load(f)
-        assert latest_data["dataset"]["dataset_hash_sha256"] == manifest["dataset"]["dataset_hash_sha256"]
+        assert (
+            latest_data["dataset"]["dataset_hash_sha256"]
+            == manifest["dataset"]["dataset_hash_sha256"]
+        )
 
 
 class TestCLIIntegration:
@@ -235,14 +241,14 @@ class TestCLIIntegration:
         ]
         result = subprocess.run(cmd, capture_output=True, text=True, check=True)
         assert result.returncode == 0
-        
+
         # Parse output JSON (ignore any initial debug lines)
         raw_output = result.stdout.strip()
         # Find JSON object start
         json_start = raw_output.find("{")
         assert json_start != -1
         data = json.loads(raw_output[json_start:])
-        
+
         assert "boundaries" in data
         assert "b1_decode" in data["boundaries"]
         assert "b10_resource_utilization" in data["boundaries"]

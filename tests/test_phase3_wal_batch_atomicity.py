@@ -43,7 +43,9 @@ def test_f04_unserializable_event_in_batch_aborts_without_orphan_frames(tmp_path
     log = IngestLog(log_dir)
     try:
         e1 = RawEvent(source="A", receive_timestamp=1.0, payload={"i": "X", "val": 1})
-        e2 = RawEvent(source="A", receive_timestamp=1.0, payload={"i": "X", "val": object()})  # Unserializable
+        e2 = RawEvent(
+            source="A", receive_timestamp=1.0, payload={"i": "X", "val": object()}
+        )  # Unserializable
 
         with pytest.raises(TypeError):
             log.append_batch([e1, e2])
@@ -61,10 +63,16 @@ def test_f04_unserializable_event_in_batch_aborts_without_orphan_frames(tmp_path
         assert list(log2.iter_from(0)) == []
 
         # Subsequent valid batch proceeds from offset 0 with zero duplicate offsets
-        valid_offsets = log2.append_batch([
-            RawEvent(source="A", receive_timestamp=1.0, payload={"i": "X", "val": 10}),
-            RawEvent(source="A", receive_timestamp=1.0, payload={"i": "X", "val": 20}),
-        ])
+        valid_offsets = log2.append_batch(
+            [
+                RawEvent(
+                    source="A", receive_timestamp=1.0, payload={"i": "X", "val": 10}
+                ),
+                RawEvent(
+                    source="A", receive_timestamp=1.0, payload={"i": "X", "val": 20}
+                ),
+            ]
+        )
         assert valid_offsets == [0, 1]
         assert log2.next_offset == 2
         recs = list(log2.iter_from(0))
@@ -83,21 +91,39 @@ def test_f04_io_failure_during_batch_rolls_back_cleanly_without_orphans(tmp_path
 
     try:
         # Pre-fill segment 0 with 2 events
-        initial_offsets = log.append_batch([
-            RawEvent(source="A", receive_timestamp=1.0, payload={"i": "A", "val": 1}),
-            RawEvent(source="A", receive_timestamp=1.0, payload={"i": "A", "val": 2}),
-        ])
+        initial_offsets = log.append_batch(
+            [
+                RawEvent(
+                    source="A", receive_timestamp=1.0, payload={"i": "A", "val": 1}
+                ),
+                RawEvent(
+                    source="A", receive_timestamp=1.0, payload={"i": "A", "val": 2}
+                ),
+            ]
+        )
         assert initial_offsets == [0, 1]
         assert log.next_offset == 2
 
         # Prepare batch of 5 events that will force rotation to segment 1
         batch_events = [
-            RawEvent(source="B", receive_timestamp=2.0, payload={"i": "B", "val": 10 + i})
+            RawEvent(
+                source="B", receive_timestamp=2.0, payload={"i": "B", "val": 10 + i}
+            )
             for i in range(5)
         ]
 
         # Inject simulated disk write failure on fsync (after rotation)
-        with mock.patch("os.fsync", side_effect=OSError("Simulated disk sync failure")):
+        orig_fsync = os.fsync
+        call_count = 0
+
+        def fail_on_batch_commit(fd):
+            nonlocal call_count
+            call_count += 1
+            if call_count >= 4:
+                raise OSError("Simulated disk sync failure")
+            return orig_fsync(fd)
+
+        with mock.patch("os.fsync", side_effect=fail_on_batch_commit):
             with pytest.raises(OSError) as exc_info:
                 log.append_batch(batch_events)
             assert "Simulated disk sync failure" in str(exc_info.value)
@@ -126,10 +152,7 @@ def test_f06_wal_verify_clean_and_corrupt(tmp_path):
     log_dir = str(tmp_path / "wal_verify_test")
     log = IngestLog(log_dir)
     try:
-        log.append_batch([
-            RawEvent(source="SRC", payload={"k": i})
-            for i in range(10)
-        ])
+        log.append_batch([RawEvent(source="SRC", payload={"k": i}) for i in range(10)])
     finally:
         log.close()
 

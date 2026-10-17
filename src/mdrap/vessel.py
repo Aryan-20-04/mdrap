@@ -13,6 +13,7 @@ warnings.warn(
     stacklevel=2,
 )
 
+_impl = None
 try:
     import mdrap_vessel as _impl
 except ImportError:
@@ -23,7 +24,40 @@ except ImportError:
     )
     if _pkg not in sys.path and os.path.exists(_pkg):
         sys.path.insert(0, _pkg)
-    import mdrap_vessel as _impl
+    try:
+        import mdrap_vessel as _impl
+    except ImportError:
+        _impl = None
 
 __stability__ = "experimental"
-sys.modules[__name__] = _impl
+
+if _impl is not None:
+    sys.modules[__name__] = _impl
+else:
+
+    class VesselTracker:
+        def __init__(self, *args, **kwargs):
+            raise NotImplementedError(
+                "VesselTracker requires the 'mdrap_vessel' companion package. "
+                "Install packages/mdrap-contrib-vessel to use maritime intelligence features."
+            )
+
+    class Vessel:
+        pass
+
+    GLOBAL_CHOKEPOINTS: dict = {}
+
+    def haversine_nm(lat1, lon1, lat2, lon2):
+        import math
+
+        r_nm = 3440.065
+        phi1, phi2 = math.radians(lat1), math.radians(lat2)
+        dphi = math.radians(lat2 - lat1)
+        dlam = math.radians(lon2 - lon1)
+        a = (
+            math.sin(dphi / 2) ** 2
+            + math.cos(phi1) * math.cos(phi2) * math.sin(dlam / 2) ** 2
+        )
+        return 2 * r_nm * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+    __all__ = ["VesselTracker", "Vessel", "GLOBAL_CHOKEPOINTS", "haversine_nm"]

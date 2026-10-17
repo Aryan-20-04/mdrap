@@ -24,12 +24,26 @@ def test_deterministic_replay_and_recovery_metrics(tmp_path):
         # Valid trade
         RawEvent(
             source="NASDAQ",
-            payload={"instrument": "AAPL", "event_type": "TRADE", "price": 150.0, "quantity": 10.0, "sequence": 1, "exchange_ts": time.time()},
+            payload={
+                "instrument": "AAPL",
+                "event_type": "TRADE",
+                "price": 150.0,
+                "quantity": 10.0,
+                "sequence": 1,
+                "exchange_ts": time.time(),
+            },
         ),
         # Valid quote
         RawEvent(
             source="NASDAQ",
-            payload={"instrument": "AAPL", "event_type": "QUOTE", "bid": 149.9, "ask": 150.1, "sequence": 2, "exchange_ts": time.time()},
+            payload={
+                "instrument": "AAPL",
+                "event_type": "QUOTE",
+                "bid": 149.9,
+                "ask": 150.1,
+                "sequence": 2,
+                "exchange_ts": time.time(),
+            },
         ),
         # Invalid schema payload (empty)
         RawEvent(
@@ -39,7 +53,14 @@ def test_deterministic_replay_and_recovery_metrics(tmp_path):
         # Another valid trade
         RawEvent(
             source="NASDAQ",
-            payload={"instrument": "AAPL", "event_type": "TRADE", "price": 150.2, "quantity": 5.0, "sequence": 3, "exchange_ts": time.time()},
+            payload={
+                "instrument": "AAPL",
+                "event_type": "TRADE",
+                "price": 150.2,
+                "quantity": 5.0,
+                "sequence": 3,
+                "exchange_ts": time.time(),
+            },
         ),
     ]
 
@@ -61,7 +82,9 @@ def test_deterministic_replay_and_recovery_metrics(tmp_path):
         assert d_live.reasons == d_replay.reasons
         if d_live.canonical_event and d_replay.canonical_event:
             assert d_live.canonical_event.price == d_replay.canonical_event.price
-            assert d_live.canonical_event.bid_price == d_replay.canonical_event.bid_price
+            assert (
+                d_live.canonical_event.bid_price == d_replay.canonical_event.bid_price
+            )
 
     # Telemetry and recovery metrics accounting
     assert isinstance(metrics, RecoveryMetrics)
@@ -81,7 +104,14 @@ def test_submit_exception_safety_state_rollback(tmp_path, monkeypatch):
     # Commit initial valid event
     ev1 = RawEvent(
         source="NASDAQ",
-        payload={"instrument": "MSFT", "event_type": "TRADE", "price": 300.0, "quantity": 10.0, "sequence": 1, "exchange_ts": time.time()},
+        payload={
+            "instrument": "MSFT",
+            "event_type": "TRADE",
+            "price": 300.0,
+            "quantity": 10.0,
+            "sequence": 1,
+            "exchange_ts": time.time(),
+        },
     )
     engine.submit(ev1)
     assert engine.state.event_count == 1
@@ -97,7 +127,14 @@ def test_submit_exception_safety_state_rollback(tmp_path, monkeypatch):
 
     ev_fail = RawEvent(
         source="NASDAQ",
-        payload={"instrument": "MSFT", "event_type": "TRADE", "price": 301.0, "quantity": 20.0, "sequence": 2, "exchange_ts": time.time()},
+        payload={
+            "instrument": "MSFT",
+            "event_type": "TRADE",
+            "price": 301.0,
+            "quantity": 20.0,
+            "sequence": 2,
+            "exchange_ts": time.time(),
+        },
     )
 
     with pytest.raises(OSError) as exc_info:

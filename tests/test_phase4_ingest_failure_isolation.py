@@ -86,6 +86,7 @@ def test_f08_ingestion_thread_crash_reflected_in_degraded_and_stats(tmp_path):
         daemon._ingest_thread = None
 
         is_deg2, reason2 = daemon.is_degraded()
+
         # If thread is None or dead while _running=True, status must report degraded
         # Wait, if _ingest_thread is None, let's test a dead thread object:
         class DummyDeadThread:

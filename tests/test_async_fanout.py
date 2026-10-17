@@ -24,9 +24,15 @@ from mdrap.async_fanout import AsyncFanoutManager
 def test_basic_fanout_broadcast():
     mgr = AsyncFanoutManager(max_buffer_per_client=100)
     try:
-        c1 = mgr.register_consumer("client_1", tenant_id="t1", subscribed_symbols=["AAPL"])
-        c2 = mgr.register_consumer("client_2", tenant_id="t2", subscribed_symbols=["MSFT"])
-        c3 = mgr.register_consumer("client_3", tenant_id="t3", subscribed_symbols=None)  # All
+        c1 = mgr.register_consumer(
+            "client_1", tenant_id="t1", subscribed_symbols=["AAPL"]
+        )
+        c2 = mgr.register_consumer(
+            "client_2", tenant_id="t2", subscribed_symbols=["MSFT"]
+        )
+        c3 = mgr.register_consumer(
+            "client_3", tenant_id="t3", subscribed_symbols=None
+        )  # All
 
         # Publish AAPL
         mgr.publish_event("AAPL", b"FRAME_AAPL_1", seq=1)
@@ -146,7 +152,9 @@ def test_100_concurrent_consumers_scale():
                 count += 1
             consumed_counts[idx] = count
 
-        threads = [threading.Thread(target=reader, args=(i,)) for i in range(num_clients)]
+        threads = [
+            threading.Thread(target=reader, args=(i,)) for i in range(num_clients)
+        ]
         for t in threads:
             t.start()
         for t in threads:
@@ -154,7 +162,9 @@ def test_100_concurrent_consumers_scale():
 
         # Verify all 100 clients received exactly 50 events
         for i in range(num_clients):
-            assert consumed_counts[i] == 50, f"Consumer {i} received {consumed_counts[i]} instead of 50"
+            assert consumed_counts[i] == 50, (
+                f"Consumer {i} received {consumed_counts[i]} instead of 50"
+            )
 
         final_st = mgr.stats()
         assert final_st["total_dispatched"] == 100 * 50

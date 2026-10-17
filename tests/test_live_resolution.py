@@ -15,7 +15,11 @@ from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from mdrap.live import resolve_venue_symbols, LiveConnector, INTERNATIONAL_EXCHANGE_SUFFIXES
+from mdrap.live import (
+    resolve_venue_symbols,
+    LiveConnector,
+    INTERNATIONAL_EXCHANGE_SUFFIXES,
+)
 from mdrap.terminal_display import (
     get_currency_symbol,
     render_candlestick_chart,

@@ -18,7 +18,7 @@ This document provides an honest, auditable record of the verification status of
 ## 2. What Is Verified
 
 ### 2.1 Test Suite & Mathematical Parity
-- **1,275 Automated Tests**: Clean baseline test execution on Windows AMD64 (`suite_baseline_20261015.log`; 60 slow/network tests deselected by default).
+- **1,450+ Automated Tests**: Clean baseline test execution on Windows and Linux (`tests/`; slow/network tests deselected by default).
 - **Dual-Tier Parity Guarantee**: Native C hot-path kernel (`src/fastpath.c`, `src/mdrap_core.c`) and pure Python fallback produce bit-for-bit identical outputs for all financial quality checks and deduplication states on supported event types.
 - **Strict Boolean Rejection**: Strict validation preventing Python `bool` instances (which subclass `int`) from passing numeric schema checks for prices, sizes, timestamps, or sequence numbers.
 

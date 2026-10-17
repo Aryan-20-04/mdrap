@@ -79,7 +79,7 @@ def test_5_2_runbooks_torn_tail_salvage_and_key_rotation():
         assert len(seg_files) > 0
         seg_file = seg_files[0]
         with open(seg_file, "ab") as f:
-            f.write(b"\xAA\x55\x00\x01\xDE\xAD\xBE\xEF")  # Incomplete corrupt frame
+            f.write(b"\xaa\x55\x00\x01\xde\xad\xbe\xef")  # Incomplete corrupt frame
 
         # Run automated salvage procedure
         salvage_stats = IngestLog.salvage(wal_dir, backup=True)
@@ -165,9 +165,13 @@ def test_5_5_supply_chain_and_docs_integrity():
     """Task 5.5 & 5.6: Verify existence of production runbooks, STRIDE matrix, and architecture documentation."""
     repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     runbooks_path = os.path.join(repo_root, "docs", "operations", "RUNBOOKS.md")
-    stride_path = os.path.join(repo_root, "docs", "operations", "STRIDE_THREAT_MODEL.md")
+    stride_path = os.path.join(
+        repo_root, "docs", "operations", "STRIDE_THREAT_MODEL.md"
+    )
     arch_path = os.path.join(repo_root, "docs", "architecture.md")
 
     assert os.path.exists(runbooks_path), "RUNBOOKS.md must exist in docs/operations/"
-    assert os.path.exists(stride_path), "STRIDE_THREAT_MODEL.md must exist in docs/operations/"
+    assert os.path.exists(stride_path), (
+        "STRIDE_THREAT_MODEL.md must exist in docs/operations/"
+    )
     assert os.path.exists(arch_path), "architecture.md must exist in docs/"

@@ -31,11 +31,15 @@ def test_sbe_binary_layout_conformance():
     ev_type = 1
     q_flag = 0
 
-    frame = struct.pack("<16sQqddII8s", inst, seq, ex_ts, price, qty, ev_type, q_flag, b"\x00" * 8)
+    frame = struct.pack(
+        "<16sQqddII8s", inst, seq, ex_ts, price, qty, ev_type, q_flag, b"\x00" * 8
+    )
     assert len(frame) == 64
 
     # Unpack and verify
-    u_inst, u_seq, u_ts, u_px, u_qty, u_type, u_q, _ = struct.unpack("<16sQqddII8s", frame)
+    u_inst, u_seq, u_ts, u_px, u_qty, u_type, u_q, _ = struct.unpack(
+        "<16sQqddII8s", frame
+    )
     assert u_inst.split(b"\x00")[0] == b"AAPL"
     assert u_seq == 1042
     assert u_ts == ex_ts
@@ -48,6 +52,7 @@ def test_sbe_binary_layout_conformance():
 def test_cpp_consumer_sdk_execution():
     """Verify standalone native C++ consumer executable runs and passes all invariants."""
     import shutil
+
     cpp_exe = os.path.abspath("sdk/cpp/examples/consumer_example.exe")
     if not os.path.exists(cpp_exe):
         gxx = shutil.which("g++")
@@ -57,10 +62,12 @@ def test_cpp_consumer_sdk_execution():
             [
                 gxx,
                 "-std=c++17",
-                "-I", "sdk/cpp/include",
+                "-I",
+                "sdk/cpp/include",
                 "sdk/cpp/src/consumer.cpp",
                 "sdk/cpp/examples/consumer_example.cpp",
-                "-o", cpp_exe,
+                "-o",
+                cpp_exe,
             ],
             check=True,
         )
@@ -75,6 +82,7 @@ def test_cpp_consumer_sdk_execution():
 def test_java_consumer_sdk_execution():
     """Verify standalone Java consumer execution runs and passes all invariants."""
     import shutil
+
     java_cp = os.path.abspath("sdk/java/build")
     java_exe = shutil.which("java") or r"C:\Program Files\Java\jdk-20\bin\java.exe"
     javac_exe = shutil.which("javac") or r"C:\Program Files\Java\jdk-20\bin\javac.exe"

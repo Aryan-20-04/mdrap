@@ -58,9 +58,13 @@ def test_exception_in_pipeline_with_block_preserves_journal(tmp_path):
     # The journal MUST NOT be truncated to 0 bytes when an exception occurred!
     assert os.path.exists(journal_path), "Journal file was deleted"
     journal_size = os.path.getsize(journal_path)
-    assert journal_size > 0, "Journal was blindly truncated on exception, destroying uncommitted data!"
+    assert journal_size > 0, (
+        "Journal was blindly truncated on exception, destroying uncommitted data!"
+    )
 
     # Furthermore, reopening the Store must recover the acknowledged event
     recovered_store = Store(db_path)
-    count = recovered_store.conn.execute("SELECT count(*) FROM canonical_events").fetchone()[0]
+    count = recovered_store.conn.execute(
+        "SELECT count(*) FROM canonical_events"
+    ).fetchone()[0]
     assert count == 1, "Failed to recover uncommitted event from surviving journal"

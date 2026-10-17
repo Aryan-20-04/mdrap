@@ -31,7 +31,7 @@ def test_service_client_session_bounded_and_eviction():
         use_live=False,
         enable_shm=False,
     )
-    
+
     # Mock client socket
     mock_sock = MagicMock(spec=socket.socket)
     sess = _ClientSession(
@@ -40,7 +40,7 @@ def test_service_client_session_bounded_and_eviction():
         queue=queue.Queue(maxsize=5),
         max_dropped_ticks=10,
     )
-    
+
     daemon._sessions[mock_sock] = sess
     daemon._subscribers[mock_sock] = sess.symbols
 
@@ -87,7 +87,7 @@ def test_service_degradation_state_on_excessive_drops():
         use_live=False,
         enable_shm=False,
     )
-    
+
     degraded, reason = daemon.is_degraded()
     assert degraded is False
     assert reason == ""
@@ -118,14 +118,18 @@ async def test_api_websocket_subscriber_bounded_and_eviction():
 
     # Fill queue to capacity
     for i in range(3):
-        await app_state.broadcast_event({"instrument_id": "BTC/USD", "price": 50000 + i})
+        await app_state.broadcast_event(
+            {"instrument_id": "BTC/USD", "price": 50000 + i}
+        )
 
     assert q.full()
     assert app_state.total_subscriber_drops == 0
 
     # Next 4 broadcasts -> drops 1 to 4
     for i in range(4):
-        await app_state.broadcast_event({"instrument_id": "BTC/USD", "price": 50010 + i})
+        await app_state.broadcast_event(
+            {"instrument_id": "BTC/USD", "price": 50010 + i}
+        )
 
     assert app_state.total_subscriber_drops == 4
     assert app_state.subscriber_drops[mock_ws] == 4

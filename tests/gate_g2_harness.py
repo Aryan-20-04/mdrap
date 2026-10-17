@@ -93,7 +93,15 @@ def execute_single_kill_run(run_id: int, base_tmp: str) -> dict:
 
     # Spawn worker subprocess
     proc = subprocess.Popen(
-        [sys.executable, worker_script, log_dir, db_path, ack_file, str(num_events), str(kill_after)],
+        [
+            sys.executable,
+            worker_script,
+            log_dir,
+            db_path,
+            ack_file,
+            str(num_events),
+            str(kill_after),
+        ],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
@@ -201,7 +209,7 @@ def run_gate_g2_harness(total_runs: int = 1000, max_workers: int = 8) -> dict:
         shutil.rmtree(base_tmp, ignore_errors=True)
 
     elapsed_s = time.time() - start_time
-    passed = (total_lost == 0 and total_conflicts == 0)
+    passed = total_lost == 0 and total_conflicts == 0
 
     results = {
         "gate": "G2",

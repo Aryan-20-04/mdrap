@@ -85,7 +85,9 @@ def test_c2_deterministic_replay_unstamped_timestamp(tmp_path):
     wal_dir = tmp_path / "c2_wal"
     clock = FixedClock(1700000000.0)
 
-    engine = Engine.open(wal_dir, config={"clock": clock, "staleness_threshold_s": 0.05})
+    engine = Engine.open(
+        wal_dir, config={"clock": clock, "staleness_threshold_s": 0.05}
+    )
     raw = RawEvent(
         source="FEEDX",
         payload={
@@ -302,11 +304,14 @@ def test_store_durability_mode_validation(tmp_path):
 def test_n1_live_equals_replay_property(tmp_path):
     """N1 Property Test: Live submission IDs and states must match WAL replay bit-for-bit."""
     import random
+
     rng = random.Random(42)
     wal_dir = tmp_path / "n1_prop_wal"
     clock = FixedClock(1700000000.0)
 
-    engine = Engine.open(wal_dir, config={"clock": clock, "staleness_threshold_s": 10.0})
+    engine = Engine.open(
+        wal_dir, config={"clock": clock, "staleness_threshold_s": 10.0}
+    )
 
     sources = ["BINANCE", "KRAKEN", "COINBASE", "BYBIT"]
     instruments = ["BTC/USD", "ETH/USD", "SOL/USD"]
@@ -342,7 +347,9 @@ def test_n1_live_equals_replay_property(tmp_path):
     engine.close()
 
     # Reopen and replay
-    engine_replay = Engine.open(wal_dir, config={"clock": clock, "staleness_threshold_s": 10.0})
+    engine_replay = Engine.open(
+        wal_dir, config={"clock": clock, "staleness_threshold_s": 10.0}
+    )
     replay_decisions = engine_replay.replay(0)
 
     assert len(replay_decisions) == len(live_decisions)
@@ -350,7 +357,9 @@ def test_n1_live_equals_replay_property(tmp_path):
     assert engine_replay.state.counts == live_counts
 
     for live_dec, rep_dec in zip(live_decisions, replay_decisions):
-        assert live_dec.event_id == rep_dec.event_id, f"ID mismatch: live={live_dec.event_id}, rep={rep_dec.event_id}"
+        assert live_dec.event_id == rep_dec.event_id, (
+            f"ID mismatch: live={live_dec.event_id}, rep={rep_dec.event_id}"
+        )
         assert live_dec.quality_status == rep_dec.quality_status
         assert live_dec.reasons == rep_dec.reasons
         if live_dec.canonical_event and rep_dec.canonical_event:
@@ -368,7 +377,13 @@ def test_n3_state_consistency_on_step_exception(monkeypatch):
 
     raw = RawEvent(
         source="BINANCE",
-        payload={"instrument": "BTC/USD", "event_type": "TRADE", "price": 100.0, "quantity": 1.0, "exchange_ts": 1700000000.0},
+        payload={
+            "instrument": "BTC/USD",
+            "event_type": "TRADE",
+            "price": 100.0,
+            "quantity": 1.0,
+            "exchange_ts": 1700000000.0,
+        },
         receive_timestamp=1700000000.0,
     )
 
@@ -386,7 +401,13 @@ def test_n3_state_consistency_on_step_exception(monkeypatch):
 
     raw_fail = RawEvent(
         source="BINANCE",
-        payload={"instrument": "ETH/USD", "event_type": "TRADE", "price": 200.0, "quantity": 1.0, "exchange_ts": 1700000000.0},
+        payload={
+            "instrument": "ETH/USD",
+            "event_type": "TRADE",
+            "price": 200.0,
+            "quantity": 1.0,
+            "exchange_ts": 1700000000.0,
+        },
         receive_timestamp=1700000000.0,
     )
 
@@ -407,7 +428,13 @@ def test_n4_max_payload_bytes_boundary(tmp_path):
     # Event within size limit
     normal_raw = RawEvent(
         source="KRAKEN",
-        payload={"instrument": "BTC/USD", "event_type": "TRADE", "price": 50000.0, "quantity": 1.0, "exchange_ts": 1700000000.0},
+        payload={
+            "instrument": "BTC/USD",
+            "event_type": "TRADE",
+            "price": 50000.0,
+            "quantity": 1.0,
+            "exchange_ts": 1700000000.0,
+        },
         receive_timestamp=1700000000.0,
     )
     dec_ok = engine.submit(normal_raw)
@@ -452,7 +479,11 @@ def test_m1_raw_archive_path_traversal(tmp_path):
     ]
 
     for bad_src in traversal_sources:
-        archive.write(RawEvent(source=bad_src, payload={"test": 1}, receive_timestamp=1700000000.0))
+        archive.write(
+            RawEvent(
+                source=bad_src, payload={"test": 1}, receive_timestamp=1700000000.0
+            )
+        )
 
     archive.flush()
     archive.close()
@@ -461,7 +492,9 @@ def test_m1_raw_archive_path_traversal(tmp_path):
     created_files = list(archive_dir.rglob("*.jsonl"))
     assert len(created_files) > 0
     for f in created_files:
-        assert str(f.resolve()).startswith(str(archive_dir.resolve())), f"File escaped archive dir: {f}"
+        assert str(f.resolve()).startswith(str(archive_dir.resolve())), (
+            f"File escaped archive dir: {f}"
+        )
         # Ensure filenames do not contain path traversal components
         assert ".." not in f.name
         assert "/" not in f.name
@@ -492,7 +525,12 @@ def test_cb_ingestlog_salvage_utility(tmp_path):
     wal_dir = tmp_path / "salvage_wal"
     log = IngestLog(str(wal_dir))
     for i in range(10):
-        log.append(RawEvent(source="NASDAQ", payload={"instrument": "AAPL", "price": 150.0 + i, "seq": i}))
+        log.append(
+            RawEvent(
+                source="NASDAQ",
+                payload={"instrument": "AAPL", "price": 150.0 + i, "seq": i},
+            )
+        )
     log.close()
 
     # Corrupt payload byte of record 5 in middle of segment
@@ -533,7 +571,12 @@ def test_cb_ingestlog_verify_utility(tmp_path):
     wal_dir = tmp_path / "verify_wal"
     log = IngestLog(str(wal_dir))
     for i in range(15):
-        log.append(RawEvent(source="COINBASE", payload={"instrument": "BTC/USD", "price": 50000.0 + i, "seq": i}))
+        log.append(
+            RawEvent(
+                source="COINBASE",
+                payload={"instrument": "BTC/USD", "price": 50000.0 + i, "seq": i},
+            )
+        )
     log.close()
 
     # 1. Clean verification check
@@ -572,7 +615,17 @@ def test_cli_wal_verify_and_salvage_commands(tmp_path, capsys):
     wal_dir = tmp_path / "cli_wal"
     log = IngestLog(str(wal_dir))
     for i in range(5):
-        log.append(RawEvent(source="KRAKEN", payload={"instrument": "ETH/USD", "event_type": "TRADE", "price": 3000.0 + i, "seq": i}))
+        log.append(
+            RawEvent(
+                source="KRAKEN",
+                payload={
+                    "instrument": "ETH/USD",
+                    "event_type": "TRADE",
+                    "price": 3000.0 + i,
+                    "seq": i,
+                },
+            )
+        )
     log.close()
 
     # 1. Test verify command with JSON output
@@ -613,7 +666,9 @@ def test_pipeline_glued_record_bug_prevention(tmp_path):
 
     # Simulate an abrupt crash that leaves an incomplete fragment without trailing newline
     with open(jrn_path, "w", encoding="utf-8") as f:
-        f.write('{"type": "canonical", "payload": {"event_id": "ev_1", "instrument_id": "BTC/USD"}}\n')
+        f.write(
+            '{"type": "canonical", "payload": {"event_id": "ev_1", "instrument_id": "BTC/USD"}}\n'
+        )
         f.write('{"type": "canonical", "payload": {"event_id": "ev_2"')  # Torn tail!
 
     store = Store(db_path)
@@ -699,7 +754,10 @@ def test_phase3_ingestlog_group_commit_batching(tmp_path):
 
     # 1. Direct IngestLog append_batch
     batch_raw = [
-        RawEvent(source="COINBASE", payload={"instrument": "BTC/USD", "price": 50000.0 + i, "seq": i})
+        RawEvent(
+            source="COINBASE",
+            payload={"instrument": "BTC/USD", "price": 50000.0 + i, "seq": i},
+        )
         for i in range(50)
     ]
     offsets = log.append_batch(batch_raw)
@@ -816,12 +874,16 @@ def test_phase4_from_dict_bad_input_and_nan_safety():
     assert ev2.quality_status == QualityStatus.INVALID
 
     # 3. ClientMarketEvent.from_dict with NaN price
-    c_nan = ClientMarketEvent.from_dict({"sym": "BTC/USD", "price": float("nan"), "status": "VALID"})
+    c_nan = ClientMarketEvent.from_dict(
+        {"sym": "BTC/USD", "price": float("nan"), "status": "VALID"}
+    )
     assert c_nan.price is None
     assert c_nan.status == "INVALID"
 
     # 4. ClientMarketEvent.from_dict with string price
-    c_bad = ClientMarketEvent.from_dict({"sym": "BTC/USD", "price": "corrupt_data", "exchange_ts": "bad_ts"})
+    c_bad = ClientMarketEvent.from_dict(
+        {"sym": "BTC/USD", "price": "corrupt_data", "exchange_ts": "bad_ts"}
+    )
     assert c_bad.price is None
     assert c_bad.exchange_ts == 0.0
     assert c_bad.status == "INVALID"
@@ -887,7 +949,9 @@ def test_phase4_api_ingest_durable_engine_wal_path(tmp_path):
     op_ent = sec.register_api_key(client_id="OpClient", role="OPERATOR")
     token = op_ent.token
 
-    state = AppState(db_path=str(db_file), store=store, security_manager=sec, wal_path=str(wal_dir))
+    state = AppState(
+        db_path=str(db_file), store=store, security_manager=sec, wal_path=str(wal_dir)
+    )
     app = create_app(state=state)
     client = TestClient(app)
 
@@ -955,18 +1019,40 @@ def test_granular_entitlements_venue_and_symbol_licensing(tmp_path):
 
     # 1. Direct authorization checks
     # Valid source & symbol
-    sec.authorize(ent, Role.OPERATOR, action_name="feed_ingest", source="BINANCE", symbol="BTC/USD")
-    sec.authorize(ent, Role.OPERATOR, action_name="feed_ingest", source="KRAKEN", symbol="BTCUSD")  # Normalized
-    sec.authorize(ent, Role.OPERATOR, action_name="feed_ingest", source="BINANCE", symbol="ETHUSD")  # Normalized
+    sec.authorize(
+        ent,
+        Role.OPERATOR,
+        action_name="feed_ingest",
+        source="BINANCE",
+        symbol="BTC/USD",
+    )
+    sec.authorize(
+        ent, Role.OPERATOR, action_name="feed_ingest", source="KRAKEN", symbol="BTCUSD"
+    )  # Normalized
+    sec.authorize(
+        ent, Role.OPERATOR, action_name="feed_ingest", source="BINANCE", symbol="ETHUSD"
+    )  # Normalized
 
     # Unlicensed source
     with pytest.raises(AccessDenied) as exc:
-        sec.authorize(ent, Role.OPERATOR, action_name="feed_ingest", source="COINBASE", symbol="BTC/USD")
+        sec.authorize(
+            ent,
+            Role.OPERATOR,
+            action_name="feed_ingest",
+            source="COINBASE",
+            symbol="BTC/USD",
+        )
     assert "feed source 'COINBASE'" in str(exc.value)
 
     # Unlicensed symbol
     with pytest.raises(AccessDenied) as exc:
-        sec.authorize(ent, Role.OPERATOR, action_name="feed_ingest", source="BINANCE", symbol="SOL/USD")
+        sec.authorize(
+            ent,
+            Role.OPERATOR,
+            action_name="feed_ingest",
+            source="BINANCE",
+            symbol="SOL/USD",
+        )
     assert "instrument 'SOL/USD'" in str(exc.value)
 
     # 2. Store persistence and roundtrip
@@ -984,6 +1070,7 @@ def test_granular_entitlements_venue_and_symbol_licensing(tmp_path):
 def test_granular_entitlements_rest_and_websocket_enforcement(tmp_path):
     """Verify REST and WebSocket enforcement of granular symbol and source licensing."""
     import asyncio
+
     pytest.importorskip("fastapi")
     pytest.importorskip("starlette")
     from starlette.testclient import TestClient
@@ -1014,7 +1101,10 @@ def test_granular_entitlements_rest_and_websocket_enforcement(tmp_path):
     # 1. Ingest with unauthorized source -> 403 Forbidden
     resp = client.post(
         "/v1/ingest",
-        json={"source": "COINBASE", "payload": {"instrument": "BTC/USD", "price": 50000.0, "quantity": 1.0}},
+        json={
+            "source": "COINBASE",
+            "payload": {"instrument": "BTC/USD", "price": 50000.0, "quantity": 1.0},
+        },
         headers=headers,
     )
     assert resp.status_code == 403
@@ -1023,7 +1113,10 @@ def test_granular_entitlements_rest_and_websocket_enforcement(tmp_path):
     # 2. Ingest with unauthorized symbol -> 403 Forbidden
     resp = client.post(
         "/v1/ingest",
-        json={"source": "BINANCE", "payload": {"instrument": "ETH/USD", "price": 3000.0, "quantity": 1.0}},
+        json={
+            "source": "BINANCE",
+            "payload": {"instrument": "ETH/USD", "price": 3000.0, "quantity": 1.0},
+        },
         headers=headers,
     )
     assert resp.status_code == 403
@@ -1032,7 +1125,16 @@ def test_granular_entitlements_rest_and_websocket_enforcement(tmp_path):
     # 3. Ingest with authorized source and symbol -> 200 OK
     resp = client.post(
         "/v1/ingest",
-        json={"source": "BINANCE", "payload": {"instrument": "BTC/USD", "price": 60000.0, "quantity": 1.0, "sequence": 1, "exchange_ts": time.time()}},
+        json={
+            "source": "BINANCE",
+            "payload": {
+                "instrument": "BTC/USD",
+                "price": 60000.0,
+                "quantity": 1.0,
+                "sequence": 1,
+                "exchange_ts": time.time(),
+            },
+        },
         headers=headers,
     )
     assert resp.status_code == 200
@@ -1046,7 +1148,9 @@ def test_granular_entitlements_rest_and_websocket_enforcement(tmp_path):
     assert resp_depth.status_code == 403
 
     # 5. WebSocket licensing enforcement
-    with client.websocket_connect("/v1/events/stream", headers={"X-API-Key": token}) as ws:
+    with client.websocket_connect(
+        "/v1/events/stream", headers={"X-API-Key": token}
+    ) as ws:
         ack = ws.receive_json()
         assert ack["type"] == "ACK"
 
@@ -1054,7 +1158,9 @@ def test_granular_entitlements_rest_and_websocket_enforcement(tmp_path):
         ws.send_json({"action": "SUB", "symbols": ["ETH/USD"]})
         err_msg = ws.receive_json()
         assert err_msg["type"] == "ERROR"
-        assert "Access denied: Not licensed for instrument(s): ETH/USD" in err_msg["error"]
+        assert (
+            "Access denied: Not licensed for instrument(s): ETH/USD" in err_msg["error"]
+        )
 
         # Subscribe to licensed symbol -> receives update
         ws.send_json({"action": "SUB", "symbols": ["BTC/USD"]})
@@ -1063,28 +1169,40 @@ def test_granular_entitlements_rest_and_websocket_enforcement(tmp_path):
         assert "BTC/USD" in sub_msg["subscribed"]
 
         # Broadcast unlicensed instrument event -> subscriber does not receive it
-        asyncio.run(state.broadcast_event({
-            "type": "CANONICAL_TICK",
-            "instrument_id": "ETH/USD",
-            "price": 3100.0,
-            "source": "BINANCE",
-        }))
+        asyncio.run(
+            state.broadcast_event(
+                {
+                    "type": "CANONICAL_TICK",
+                    "instrument_id": "ETH/USD",
+                    "price": 3100.0,
+                    "source": "BINANCE",
+                }
+            )
+        )
 
         # Broadcast unlicensed source event -> subscriber does not receive it
-        asyncio.run(state.broadcast_event({
-            "type": "CANONICAL_TICK",
-            "instrument_id": "BTC/USD",
-            "price": 60100.0,
-            "source": "COINBASE",
-        }))
+        asyncio.run(
+            state.broadcast_event(
+                {
+                    "type": "CANONICAL_TICK",
+                    "instrument_id": "BTC/USD",
+                    "price": 60100.0,
+                    "source": "COINBASE",
+                }
+            )
+        )
 
         # Broadcast licensed event -> subscriber receives it
-        asyncio.run(state.broadcast_event({
-            "type": "CANONICAL_TICK",
-            "instrument_id": "BTC/USD",
-            "price": 60200.0,
-            "source": "BINANCE",
-        }))
+        asyncio.run(
+            state.broadcast_event(
+                {
+                    "type": "CANONICAL_TICK",
+                    "instrument_id": "BTC/USD",
+                    "price": 60200.0,
+                    "source": "BINANCE",
+                }
+            )
+        )
 
         received = ws.receive_json()
         assert received["type"] == "CANONICAL_TICK"
@@ -1152,16 +1270,16 @@ def test_depth_ladder_nan_inf_immunity():
             "instrument": "BTC/USD",
             "exchange_ts": 1000.0,
             "bids": [
-                [float("inf"), 1.0],      # Poison bid price
-                [100.0, float("nan")],    # Poison bid size
-                [100.0, float("inf")],    # Poison bid size
-                [99.0, 5.0],              # Valid bid
+                [float("inf"), 1.0],  # Poison bid price
+                [100.0, float("nan")],  # Poison bid size
+                [100.0, float("inf")],  # Poison bid size
+                [99.0, 5.0],  # Valid bid
             ],
             "asks": [
-                [float("nan"), 2.0],      # Poison ask price
-                [-float("inf"), 2.0],     # Poison ask price
-                [101.0, float("nan")],    # Poison ask size
-                [102.0, 3.0],             # Valid ask
+                [float("nan"), 2.0],  # Poison ask price
+                [-float("inf"), 2.0],  # Poison ask price
+                [101.0, float("nan")],  # Poison ask size
+                [102.0, 3.0],  # Valid ask
             ],
         },
         receive_timestamp=1000.001,
@@ -1188,14 +1306,22 @@ def test_depth_ladder_nan_inf_immunity():
 
 def test_ingestlog_segment_header_crc_and_tamper_detection(tmp_path):
     """Verify segment header CRC is verified and bit-flips in header are detected loudly."""
-    from mdrap.ingestlog import IngestLog, IngestLogCorruptError, SEGMENT_HEADER_SIZE, SEGMENT_HEADER_FORMAT
+    from mdrap.ingestlog import (
+        IngestLog,
+        IngestLogCorruptError,
+        SEGMENT_HEADER_SIZE,
+        SEGMENT_HEADER_FORMAT,
+    )
     from mdrap.models import RawEvent
 
     wal_dir = tmp_path / "crc_wal"
     log = IngestLog(str(wal_dir))
 
     # Append an event to force segment file creation
-    raw = RawEvent(source="BINANCE", payload={"instrument": "BTC/USD", "price": 50000.0, "quantity": 1.0})
+    raw = RawEvent(
+        source="BINANCE",
+        payload={"instrument": "BTC/USD", "price": 50000.0, "quantity": 1.0},
+    )
     log.append(raw)
     log.flush()
     log.close()
@@ -1237,7 +1363,14 @@ def test_ingestlog_segment_header_crc_and_tamper_detection(tmp_path):
 
 def test_ingestlog_legacy_header_backward_compatibility(tmp_path):
     """Verify legacy segment headers with zeroed reserved bytes remain 100% compatible."""
-    from mdrap.ingestlog import IngestLog, LOG_MAGIC, LOG_VERSION, SEGMENT_HEADER_FORMAT, FRAME_MAGIC, FRAME_HEADER_FORMAT
+    from mdrap.ingestlog import (
+        IngestLog,
+        LOG_MAGIC,
+        LOG_VERSION,
+        SEGMENT_HEADER_FORMAT,
+        FRAME_MAGIC,
+        FRAME_HEADER_FORMAT,
+    )
     from mdrap.models import RawEvent
 
     wal_dir = tmp_path / "legacy_wal"
@@ -1253,7 +1386,9 @@ def test_ingestlog_legacy_header_backward_compatibility(tmp_path):
         1700000000.0,
         b"\x00" * 6,
     )
-    payload_bytes = json.dumps({"source": "TEST", "payload": {"instrument": "BTC/USD", "price": 100.0}}).encode("utf-8")
+    payload_bytes = json.dumps(
+        {"source": "TEST", "payload": {"instrument": "BTC/USD", "price": 100.0}}
+    ).encode("utf-8")
     payload_crc = zlib.crc32(payload_bytes) & 0xFFFFFFFF
     frame_hdr = struct.pack(
         FRAME_HEADER_FORMAT,
@@ -1302,7 +1437,9 @@ def test_phase2_architectural_unification(tmp_path):
     sec = SecurityManager(store=store)
     op_ent = sec.register_api_key(client_id="UniOp", role="OPERATOR")
 
-    state = AppState(db_path=str(db_file), store=store, security_manager=sec, wal_path=str(wal_dir))
+    state = AppState(
+        db_path=str(db_file), store=store, security_manager=sec, wal_path=str(wal_dir)
+    )
     assert state._pipeline is None, "Legacy Pipeline must not be eagerly instantiated"
 
     # 3. Accessing state.pipeline triggers DeprecationWarning
@@ -1336,7 +1473,14 @@ def test_phase2_architectural_unification(tmp_path):
     # 5. Engine process_one contract
     single_raw = RawEvent(
         source="BINANCE",
-        payload={"instrument": "BTC/USDT", "event_type": "TRADE", "price": 60000.0, "quantity": 1.0, "sequence": 2, "exchange_ts": t_now},
+        payload={
+            "instrument": "BTC/USDT",
+            "event_type": "TRADE",
+            "price": 60000.0,
+            "quantity": 1.0,
+            "sequence": 2,
+            "exchange_ts": t_now,
+        },
         receive_timestamp=t_now,
     )
     can_ev = state.engine.process_one(single_raw)
@@ -1348,10 +1492,18 @@ def test_phase2_architectural_unification(tmp_path):
     sec_engine = Engine(security=sec)
     bad_hmac_raw = RawEvent(
         source="SECURE_FEED",
-        payload={"instrument": "SOL/USD", "price": 140.0, "signature": "bad_sig", "sequence": 1, "exchange_ts": t_now},
+        payload={
+            "instrument": "SOL/USD",
+            "price": 140.0,
+            "signature": "bad_sig",
+            "sequence": 1,
+            "exchange_ts": t_now,
+        },
         receive_timestamp=t_now,
     )
-    _, hmac_dec = sec_engine.step(sec_engine.create_initial_state(), bad_hmac_raw, sec_engine.clock)
+    _, hmac_dec = sec_engine.step(
+        sec_engine.create_initial_state(), bad_hmac_raw, sec_engine.clock
+    )
     assert hmac_dec.canonical_event is None
     assert "SECURITY_REJECT" in hmac_dec.reasons
 
@@ -1403,14 +1555,23 @@ def test_phase3_concurrency_and_reliability(tmp_path):
     raws = [
         RawEvent(
             source="COINBASE",
-            payload={"instrument": "ETH/USD", "event_type": "TRADE", "price": 3000.0 + i, "quantity": 1.0, "sequence": i + 1, "exchange_ts": t0},
+            payload={
+                "instrument": "ETH/USD",
+                "event_type": "TRADE",
+                "price": 3000.0 + i,
+                "quantity": 1.0,
+                "sequence": i + 1,
+                "exchange_ts": t0,
+            },
             receive_timestamp=t0,
         )
         for i in range(3)
     ]
     state.engine.submit(raws)
 
-    assert state._pipeline is None, "Prometheus export must not eagerly instantiate Pipeline"
+    assert state._pipeline is None, (
+        "Prometheus export must not eagerly instantiate Pipeline"
+    )
     metrics_text = global_prometheus_exporter.render(state)
     assert state._pipeline is None, "Pipeline must remain None after metric scrape"
     assert "mdrap_events_processed_total 3" in metrics_text
@@ -1427,7 +1588,9 @@ def test_phase4_financial_microstructure_and_venues(tmp_path):
     import datetime
 
     # 1. BarDB configurable revision window supports late ticks
-    with BarDatabase(str(tmp_path / "bars_rev.db"), intervals=["1m"], revision_window_s=120.0) as db:
+    with BarDatabase(
+        str(tmp_path / "bars_rev.db"), intervals=["1m"], revision_window_s=120.0
+    ) as db:
         # Initial bucket: t=10s, 70s (rollover closes bucket 0..60s)
         ev1 = CanonicalEvent(
             event_id="t1",
@@ -1525,13 +1688,17 @@ def test_phase4_financial_microstructure_and_venues(tmp_path):
     # 3. Venue registry midnight session roll (CME/NYMEX opens Sunday evening at 23:00 UTC)
     nymex = get_venue("XNYM")
     # Sunday 2026-09-13 at 23:30 UTC
-    sun_night = datetime.datetime(2026, 9, 13, 23, 30, tzinfo=datetime.timezone.utc).timestamp()
+    sun_night = datetime.datetime(
+        2026, 9, 13, 23, 30, tzinfo=datetime.timezone.utc
+    ).timestamp()
     is_open, phase, desc = get_session_phase(nymex, sun_night)
     assert is_open, f"NYMEX should be open Sunday evening: {desc}"
     assert phase == MarketPhase.CONTINUOUS
 
     # Saturday 2026-09-12 at 12:00 UTC -> closed
-    sat_noon = datetime.datetime(2026, 9, 12, 12, 0, tzinfo=datetime.timezone.utc).timestamp()
+    sat_noon = datetime.datetime(
+        2026, 9, 12, 12, 0, tzinfo=datetime.timezone.utc
+    ).timestamp()
     is_open_sat, phase_sat, _ = get_session_phase(nymex, sat_noon)
     assert not is_open_sat
     assert phase_sat == MarketPhase.CLOSED
@@ -1541,12 +1708,3 @@ def test_phase4_financial_microstructure_and_venues(tmp_path):
     is_open_crypto_sat, phase_crypto_sat, _ = get_session_phase(binance, sat_noon)
     assert is_open_crypto_sat
     assert phase_crypto_sat == MarketPhase.CONTINUOUS
-
-
-
-
-
-
-
-
-

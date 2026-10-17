@@ -49,11 +49,15 @@ def sec_env():
     sec = SecurityManager(store=store)
 
     # Entitlement with restricted source permissions
-    binance_only_ent = sec.register_api_key(client_id="BinanceOnlyClient", role=Role.OPERATOR)
+    binance_only_ent = sec.register_api_key(
+        client_id="BinanceOnlyClient", role=Role.OPERATOR
+    )
     binance_only_ent.allowed_sources = ["BINANCE"]
 
     # Entitlement with unrestricted permissions
-    all_sources_ent = sec.register_api_key(client_id="GlobalOpClient", role=Role.OPERATOR)
+    all_sources_ent = sec.register_api_key(
+        client_id="GlobalOpClient", role=Role.OPERATOR
+    )
 
     # Viewer entitlement for websocket
     viewer_ent = sec.register_api_key(client_id="ViewerClient", role=Role.VIEWER)

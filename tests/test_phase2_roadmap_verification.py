@@ -185,7 +185,10 @@ def test_2_1_shm_seqlock_uncommitted_slot_and_torn_read_protection():
                     return (999999,)  # Mismatched c2
             return orig_unpack(fmt, buf, off)
 
-        with mock.patch("mdrap.fastpath.native_shm_read_slot", side_effect=RuntimeError("test fallback")):
+        with mock.patch(
+            "mdrap.fastpath.native_shm_read_slot",
+            side_effect=RuntimeError("test fallback"),
+        ):
             with mock.patch("struct.unpack_from", side_effect=mock_unpack_torn):
                 torn_item = reader.read_slot(1)
                 # Must detect torn read and return None!
@@ -351,13 +354,15 @@ def test_2_7_journal_crc32_and_torn_tail_crash_recovery():
         # 1. Write 10 valid records
         with BinaryJournal(jpath, initial_records=64) as j:
             for i in range(1, 11):
-                j.append_tick(seq=i, symbol="AAPL", source="BATS", price=150.0 + i, size=10.0)
+                j.append_tick(
+                    seq=i, symbol="AAPL", source="BATS", price=150.0 + i, size=10.0
+                )
 
         # 2. Tamper the 10th record to simulate torn write (flip bit in payload, CRC mismatch)
         with open(jpath, "r+b") as f:
             offset_10th = JOURNAL_HEADER_SIZE + (9 * SLOT_SIZE)
             f.seek(offset_10th + 48)  # price offset
-            f.write(b"\xFF\xFF\xFF\xFF")  # Corrupt price bytes without updating CRC
+            f.write(b"\xff\xff\xff\xff")  # Corrupt price bytes without updating CRC
 
         # 3. Simulate header reset (uncommitted crash)
         with open(jpath, "r+b") as f:
@@ -408,13 +413,17 @@ def test_2_8_incremental_merkle_audit_verification():
                 )
 
             # Incremental verification: verify ONLY entries since entry_id=6
-            ok_inc, msg_inc, last_inc_id = store.verify_audit_integrity(since_entry_id=6)
+            ok_inc, msg_inc, last_inc_id = store.verify_audit_integrity(
+                since_entry_id=6
+            )
             assert ok_inc is True
             assert last_inc_id == 8
 
             # If entry 7 is tampered with, incremental verification flags it
             with store.transaction() as cur:
-                cur.execute("UPDATE audit_log SET details = 'TAMPERED' WHERE entry_id = 7")
+                cur.execute(
+                    "UPDATE audit_log SET details = 'TAMPERED' WHERE entry_id = 7"
+                )
 
             ok_bad, msg_bad, _ = store.verify_audit_integrity(since_entry_id=6)
             assert ok_bad is False

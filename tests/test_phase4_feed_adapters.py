@@ -58,7 +58,9 @@ class TestFeedAdapterProtocolAndCapabilities:
             (ITCHAdapter, "AAPL", LicensingTier.NON_DISPLAY_PROP_TRADING),
         ],
     )
-    def test_adapter_protocol_and_capabilities(self, adapter_cls, symbol, expected_tier):
+    def test_adapter_protocol_and_capabilities(
+        self, adapter_cls, symbol, expected_tier
+    ):
         adapter = adapter_cls(symbol=symbol)
         assert isinstance(adapter, FeedAdapter)
 

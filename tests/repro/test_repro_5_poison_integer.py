@@ -81,7 +81,10 @@ def test_poison_integer_quarantined_and_neighbors_survive(tmp_path):
 
     # Poison record 1 must be quarantined, NOT crashing the process
     assert results[1] is not None
-    assert results[1].quality_status in (QualityStatus.INVALID, QualityStatus.SUSPICIOUS)
+    assert results[1].quality_status in (
+        QualityStatus.INVALID,
+        QualityStatus.SUSPICIOUS,
+    )
 
     # Neighbor 2 must be VALID
     assert results[2] is not None

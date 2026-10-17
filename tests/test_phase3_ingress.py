@@ -81,7 +81,13 @@ def test_ingress_normalization():
         FeedAdapterConfig(venue="BINANCE", feed_id="DEPTH", session_id="SESS_A"),
         frames=[
             {"seq": 1, "sym": "BTC-USDT", "px": 65000.50, "sz": 1.25, "type": "TRADE"},
-            {"seq": 2, "sym": "ETH-USDT", "bid": 2500.0, "ask": 2500.5, "type": "QUOTE"},
+            {
+                "seq": 2,
+                "sym": "ETH-USDT",
+                "bid": 2500.0,
+                "ask": 2500.5,
+                "type": "QUOTE",
+            },
         ],
     )
     adapter.connect()

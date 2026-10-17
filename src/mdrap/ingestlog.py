@@ -477,25 +477,29 @@ class IngestLog:
             now_ts,
             hdr_res,
         )
-        with open(filename, "wb") as f:
-            f.write(hdr)
-            f.flush()
-            os.fsync(f.fileno())
+        try:
+            with open(filename, "wb") as f:
+                f.write(hdr)
+                f.flush()
+                os.fsync(f.fileno())
 
-        if os.name == "posix":
-            try:
-                os.chmod(filename, 0o600)
-            except OSError:
-                pass
+            if os.name == "posix":
+                try:
+                    os.chmod(filename, 0o600)
+                except OSError:
+                    pass
 
-        # Durable directory sync
-        self._sync_dir()
+            # Durable directory sync
+            self._sync_dir()
 
-        self._current_filename = filename
-        self._current_segment_start_offset = start_offset
-        self._current_file = open(filename, "a+b")
-        self._current_file.seek(0, os.SEEK_END)
-        self._bytes_since_fsync = 0
+            self._current_filename = filename
+            self._current_segment_start_offset = start_offset
+            self._current_file = open(filename, "a+b")
+            self._current_file.seek(0, os.SEEK_END)
+            self._bytes_since_fsync = 0
+        except Exception:
+            self._is_poisoned = True
+            raise
 
     def append(self, raw: RawEvent | dict) -> int:
         """Append an event to the log. Returns the assigned offset after durability ACK.
@@ -648,35 +652,37 @@ class IngestLog:
 
             start_off = self._next_offset
 
-            # Rotate before write if active segment cannot fit the entire batch
-            if self._current_file is None:
-                self._rotate_to_new_segment(start_off)
-            else:
-                curr_size = self._current_file.tell()
-                if curr_size + total_frame_bytes > self.max_segment_bytes:
-                    self._rotate_to_new_segment(start_off)
-
-            # Stage 2: Assemble batch buffer
-            batch_buffer = bytearray()
-            allocated_offsets: list[int] = []
-            for idx, (p_bytes, p_len, crc) in enumerate(prepared):
-                off = start_off + idx
-                frame_hdr = struct.pack(
-                    FRAME_HEADER_FORMAT,
-                    FRAME_MAGIC,
-                    0,
-                    off,
-                    now,
-                    p_len,
-                    crc,
-                )
-                batch_buffer.extend(frame_hdr)
-                batch_buffer.extend(p_bytes)
-                allocated_offsets.append(off)
-
-            # Stage 3: Atomic write and commit
-            write_pos = self._current_file.tell()
+            # Move rotation and write inside transactional try-except (N-01)
+            write_pos = None
             try:
+                # Rotate before write if active segment cannot fit the entire batch
+                if self._current_file is None:
+                    self._rotate_to_new_segment(start_off)
+                else:
+                    curr_size = self._current_file.tell()
+                    if curr_size + total_frame_bytes > self.max_segment_bytes:
+                        self._rotate_to_new_segment(start_off)
+
+                # Stage 2: Assemble batch buffer
+                batch_buffer = bytearray()
+                allocated_offsets: list[int] = []
+                for idx, (p_bytes, p_len, crc) in enumerate(prepared):
+                    off = start_off + idx
+                    frame_hdr = struct.pack(
+                        FRAME_HEADER_FORMAT,
+                        FRAME_MAGIC,
+                        0,
+                        off,
+                        now,
+                        p_len,
+                        crc,
+                    )
+                    batch_buffer.extend(frame_hdr)
+                    batch_buffer.extend(p_bytes)
+                    allocated_offsets.append(off)
+
+                # Stage 3: Atomic write and commit
+                write_pos = self._current_file.tell()
                 self._current_file.write(batch_buffer)
                 self._current_file.flush()
 
@@ -693,11 +699,18 @@ class IngestLog:
 
                 self._next_offset = start_off + len(prepared)
             except Exception:
-                try:
-                    self._current_file.seek(write_pos)
-                    self._current_file.truncate(write_pos)
-                    self._current_file.flush()
-                except Exception:
+                if (
+                    write_pos is not None
+                    and self._current_file
+                    and not self._current_file.closed
+                ):
+                    try:
+                        self._current_file.seek(write_pos)
+                        self._current_file.truncate(write_pos)
+                        self._current_file.flush()
+                    except Exception:
+                        self._is_poisoned = True
+                else:
                     self._is_poisoned = True
                 raise
 

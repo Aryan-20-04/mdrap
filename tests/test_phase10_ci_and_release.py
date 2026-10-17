@@ -22,18 +22,18 @@ def test_workflow_files_exist_and_cover_matrix():
     """Verify that CI workflows exist and specify multi-platform matrix."""
     ci_path = _REPO_ROOT / ".github" / "workflows" / "ci.yml"
     assert ci_path.exists(), "ci.yml workflow missing"
-    
+
     content = ci_path.read_text(encoding="utf-8")
-    
+
     # Verify operating systems in matrix
     assert "ubuntu-latest" in content
     assert "windows-latest" in content
     assert "macos-latest" in content
-    
+
     # Verify Python versions
     for ver in ("3.10", "3.11", "3.12", "3.13"):
         assert ver in content
-        
+
     # Verify pure Python fallback parity step is present
     assert "MDRAP_DISABLE_FASTPATH" in content
 
@@ -44,7 +44,7 @@ def test_wheels_and_sanitizers_workflows_valid():
     assert wheels_path.exists(), "wheels.yml missing"
     wheels_content = wheels_path.read_text(encoding="utf-8")
     assert "cibuildwheel" in wheels_content
-    
+
     sanitizers_path = _REPO_ROOT / ".github" / "workflows" / "safety_sanitizers.yml"
     assert sanitizers_path.exists(), "safety_sanitizers.yml missing"
     sanitizers_content = sanitizers_path.read_text(encoding="utf-8")
@@ -56,13 +56,13 @@ def test_wheels_and_sanitizers_workflows_valid():
 def test_version_consistency_across_packages():
     """Verify that _version.py, contrib, and compat packages share identical canonical version."""
     from mdrap._version import __version__ as core_ver
-    
+
     # Contrib pyproject.toml
     contrib_toml = _REPO_ROOT / "contrib" / "pyproject.toml"
     with open(contrib_toml, "rb") as f:
         contrib_data = tomllib.load(f)
     assert contrib_data["project"]["version"] == core_ver
-    
+
     # Compat pyproject.toml
     compat_toml = _REPO_ROOT / "compat" / "pyproject.toml"
     with open(compat_toml, "rb") as f:

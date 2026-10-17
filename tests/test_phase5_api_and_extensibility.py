@@ -246,7 +246,14 @@ def test_strict_batch_alignment_on_engine_submit(tmp_path):
         # 0: Valid
         RawEvent(
             source="FEED_A",
-            payload={"instrument": "AAPL", "event_type": "TRADE", "price": 150.0, "quantity": 10.0, "sequence": 1, "exchange_ts": 1700000000.0},
+            payload={
+                "instrument": "AAPL",
+                "event_type": "TRADE",
+                "price": 150.0,
+                "quantity": 10.0,
+                "sequence": 1,
+                "exchange_ts": 1700000000.0,
+            },
             receive_timestamp=1700000000.001,
             raw_id="ev_0",
         ),
@@ -260,14 +267,26 @@ def test_strict_batch_alignment_on_engine_submit(tmp_path):
         # 2: Valid
         RawEvent(
             source="FEED_A",
-            payload={"instrument": "AAPL", "event_type": "TRADE", "price": 150.5, "quantity": 10.0, "sequence": 2, "exchange_ts": 1700000000.003},
+            payload={
+                "instrument": "AAPL",
+                "event_type": "TRADE",
+                "price": 150.5,
+                "quantity": 10.0,
+                "sequence": 2,
+                "exchange_ts": 1700000000.003,
+            },
             receive_timestamp=1700000000.003,
             raw_id="ev_2",
         ),
         # 3: Missing instrument
         RawEvent(
             source="FEED_A",
-            payload={"price": 150.6, "quantity": 10.0, "sequence": 3, "exchange_ts": 1700000000.004},
+            payload={
+                "price": 150.6,
+                "quantity": 10.0,
+                "sequence": 3,
+                "exchange_ts": 1700000000.004,
+            },
             receive_timestamp=1700000000.004,
             raw_id="ev_3",
         ),
@@ -303,7 +322,14 @@ def test_pipeline_strict_align_mode():
     events = [
         RawEvent(
             source="TEST",
-            payload={"instrument": "MSFT", "event_type": "TRADE", "price": 300.0, "quantity": 5.0, "sequence": 1, "exchange_ts": 1700000000.0},
+            payload={
+                "instrument": "MSFT",
+                "event_type": "TRADE",
+                "price": 300.0,
+                "quantity": 5.0,
+                "sequence": 1,
+                "exchange_ts": 1700000000.0,
+            },
             receive_timestamp=1700000000.001,
             raw_id="msft_1",
         ),
@@ -315,7 +341,14 @@ def test_pipeline_strict_align_mode():
         ),
         RawEvent(
             source="TEST",
-            payload={"instrument": "MSFT", "event_type": "TRADE", "price": 301.0, "quantity": 5.0, "sequence": 2, "exchange_ts": 1700000001.0},
+            payload={
+                "instrument": "MSFT",
+                "event_type": "TRADE",
+                "price": 301.0,
+                "quantity": 5.0,
+                "sequence": 2,
+                "exchange_ts": 1700000001.0,
+            },
             receive_timestamp=1700000001.001,
             raw_id="msft_3",
         ),
@@ -336,7 +369,9 @@ def test_engine_rejection_of_silent_kwargs():
     with pytest.raises(TypeError, match="unexpected keyword argument 'invalid_flag'"):
         Engine(invalid_flag=True)
 
-    with pytest.raises(TypeError, match="unexpected keyword argument 'unsupported_option'"):
+    with pytest.raises(
+        TypeError, match="unexpected keyword argument 'unsupported_option'"
+    ):
         Engine(unsupported_option=123)
 
 
@@ -375,7 +410,13 @@ def test_multi_engine_process_isolation(tmp_path):
     events_a = [
         RawEvent(
             source="FEED_SHARED",
-            payload={"instrument": "AAPL", "event_type": "TRADE", "price": 100.0 + i, "sequence": i + 1, "exchange_ts": 1700000000.0 + i},
+            payload={
+                "instrument": "AAPL",
+                "event_type": "TRADE",
+                "price": 100.0 + i,
+                "sequence": i + 1,
+                "exchange_ts": 1700000000.0 + i,
+            },
             receive_timestamp=1700000000.001 + i,
             raw_id=f"a_{i}",
         )
@@ -387,7 +428,13 @@ def test_multi_engine_process_isolation(tmp_path):
     # If state were global, this would be flagged as DUPLICATE or OUT_OF_ORDER!
     event_b = RawEvent(
         source="FEED_SHARED",
-        payload={"instrument": "AAPL", "event_type": "TRADE", "price": 200.0, "sequence": 1, "exchange_ts": 1700000000.0},
+        payload={
+            "instrument": "AAPL",
+            "event_type": "TRADE",
+            "price": 200.0,
+            "sequence": 1,
+            "exchange_ts": 1700000000.0,
+        },
         receive_timestamp=1700000000.001,
         raw_id="b_0",
     )
@@ -432,7 +479,10 @@ def test_extensible_reason_registry():
     )
     assert registered_code == "CUSTOM_CRYPTO_DEPEG"
     assert reg.has("CUSTOM_CRYPTO_DEPEG")
-    assert reg.describe("CUSTOM_CRYPTO_DEPEG") == "Stablecoin market price depegged beyond 200 bps tolerance"
+    assert (
+        reg.describe("CUSTOM_CRYPTO_DEPEG")
+        == "Stablecoin market price depegged beyond 200 bps tolerance"
+    )
     assert reg.severity("CUSTOM_CRYPTO_DEPEG") == QualityStatus.INVALID
 
     # Test global Reason enum integration
@@ -462,7 +512,9 @@ def test_third_party_quality_rule_pack():
     assert reason_registry.has("SAMPLE_PRICE_SPIKE")
 
     # Plugin validation accepts the initializer
-    is_valid, reason = validate_plugin("mdrap.quality_rules", register_sample_quality_rules)
+    is_valid, reason = validate_plugin(
+        "mdrap.quality_rules", register_sample_quality_rules
+    )
     assert is_valid is True
     assert reason is None
 

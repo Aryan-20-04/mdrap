@@ -35,6 +35,7 @@ from mdrap.analytics import (
     VolatilityTracker,
 )
 from mdrap.flow_tracker import OrderFlowTracker, FlowCategory, AggressorSide
+
 try:
     from mdrap.tca import TCAEngine, ExecutionRecord
 except ImportError:

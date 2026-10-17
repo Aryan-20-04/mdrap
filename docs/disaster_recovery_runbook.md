@@ -11,8 +11,13 @@
 The Market Data Reliability & Acceleration Platform (MDRAP) operates as a zero-loss, deterministic market-data sidecar positioned directly upstream of trading algorithms, algorithmic execution engines, and risk management systems.
 
 ### Service Level Objectives (SLOs)
-* **Recovery Point Objective (RPO):** $0$ acknowledged ticks ($RPO = 0$). Every event acknowledged as `COMMITTED` is durably written to the binary Write-Ahead Log (`IngestLog`) with synchronous CRC-32 integrity framing.
-* **Recovery Time Objective (RTO):** $< 5.0$ seconds for full engine cold start; $< 500$ milliseconds for state restoration from local snapshot and tail uncompacted log.
+* **Recovery Point Objective (RPO):** $0$ acknowledged ticks ($RPO = 0$) **strictly under `fsync_policy="always"` on surviving non-volatile storage media**.
+  - Under `fsync_policy="always"` (the default configuration in `IngestLog`, `EngineConfig`, and `runtime.py`), every record is flushed and synced (`os.fsync`) to non-volatile storage before durability ACK is returned.
+  - If configured with `fsync_policy="grouped_by_size"`, RPO is bounded by the group buffer threshold (up to 64 KB of uncommitted writes).
+  - If configured with `fsync_policy="grouped_by_time"`, RPO is bounded by the group commit timer (up to 50 ms of uncommitted writes).
+  - If configured with `fsync_policy="never"`, persistence is asynchronous and subject to operating system page cache flush semantics.
+  - *Storage Boundary Constraint:* Total physical hardware loss or storage media destruction without off-host backups voids local RPO guarantees.
+* **Recovery Time Objective (RTO):** $< 5.0$ seconds for full engine cold start; $< 500$ milliseconds for state restoration from local snapshot and uncompacted tail log.
 * **Durability Boundary:** Authoritative `IngestLog` WAL. Engine state is a pure, deterministic fold over the log:
   $$\text{EngineState}_{t+1} = \text{step}(\text{EngineState}_t, \text{RawEvent}_t, \text{Clock}_t)$$
 
@@ -130,6 +135,48 @@ Incoming Ticks -> Gateway -> Quality Validation -> IngestLog WAL (Append + CRC32
    python -m mdrap.cli metrics --shm
    ```
 2. Restart stalled downstream consumer processes.
+
+### Scenario E: Disk Saturation & Storage Exhaustion (ENOSPC)
+
+#### Symptoms
+* File system write failures or `OSError: [Errno 28] No space left on device`.
+* `IngestLogPoisonedError` raised on subsequent writes to protect state from silent corruption.
+
+#### Automated Safeguards
+* IngestLog transactions immediately execute rollback and enter a poisoned state (`_is_poisoned = True`) to prevent partial or unfsynced frames from corrupting active segments.
+* Segment pruning APIs (`delete_segments_before`) allow automated deletion of segments older than the active snapshot.
+
+#### Operator Action Items
+1. Clear unneeded older segments prior to the active snapshot:
+   ```bash
+   python -m mdrap.cli prune --wal-dir data/wal --before-offset <snapshot_offset>
+   ```
+2. Reopen and verify WAL log integrity after freeing disk space:
+   ```bash
+   python -m mdrap.cli verify --wal-dir data/wal
+   ```
+
+---
+
+### Scenario F: Process Crash & Tail Truncation Recovery
+
+#### Symptoms
+* SIGKILL or OS crash occurring mid-write during active market trading.
+* Trailing bytes written without CRC verification at the segment boundary.
+
+#### Automated Safeguards
+* Startup recovery scans backwards from EOF, detecting zero-padded preallocations, partial headers (< 28B), and CRC mismatches on torn frames.
+* Automatic truncation truncates precisely to the last valid CRC32 frame boundary. Zero corrupt data enters the downstream state machine.
+
+#### Operator Action Items
+1. Check recovery logs on service restart:
+   ```bash
+   python -m mdrap.cli doctor
+   ```
+2. Verify continuous offset lineage from offset 0 to log head:
+   ```bash
+   python -m mdrap.cli verify --wal-dir data/wal
+   ```
 
 ---
 

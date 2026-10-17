@@ -331,7 +331,7 @@ def build_parser() -> argparse.ArgumentParser:
         "desk",
         cmd_desk,
         "Launch interactive keyboard-first modal desk navigator (Vim/Excel ergonomics)",
-        ["nav"],
+        ["nav", "navigator"],
     )
     _sub(
         "status",

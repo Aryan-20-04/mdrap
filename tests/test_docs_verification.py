@@ -169,4 +169,3 @@ def test_quickstart_canonical_engine_walkthrough(tmp_path):
     assert len(ticks) == 1
     assert ticks[0]["price"] == 200.0
     engine.close()
-

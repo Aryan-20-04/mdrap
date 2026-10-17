@@ -29,25 +29,34 @@ def test_e2e_crash_salvage_and_replay_recovery():
             RawEvent(
                 source="VENUE_A",
                 receive_timestamp=1000.0 + i,
-                payload={"instrument": "MSFT", "event_type": "TRADE", "exchange_ts": 1000.0 + i, "sequence": i + 1, "price": 400.0 + i, "quantity": 10},
+                payload={
+                    "instrument": "MSFT",
+                    "event_type": "TRADE",
+                    "exchange_ts": 1000.0 + i,
+                    "sequence": i + 1,
+                    "price": 400.0 + i,
+                    "quantity": 10,
+                },
             )
             for i in range(20)
         ]
         log1.append_batch(events)
         log1.flush()
-        
+
         # Simulate abrupt crash while appending a 21st record (torn frame header)
         seg_file = log1._current_filename
         log1.close()
 
         with open(seg_file, "ab") as f:
-            f.write(b"\xAA\xBB\xCC\xDD\x01\x02")  # 6 bytes of torn trailing garbage
+            f.write(b"\xaa\xbb\xcc\xdd\x01\x02")  # 6 bytes of torn trailing garbage
 
         # Phase 2: Cold restart and recovery
         log2 = IngestLog(tmpdir)
         try:
             records = list(log2.iter_from(0))
-            assert len(records) == 20, f"Expected 20 salvaged records, got {len(records)}"
+            assert len(records) == 20, (
+                f"Expected 20 salvaged records, got {len(records)}"
+            )
             assert records[-1][0] == 19
             assert records[-1][1].payload["sequence"] == 20
         finally:
@@ -59,7 +68,7 @@ def test_e2e_soak_burst_stability():
     with tempfile.TemporaryDirectory() as tmpdir:
         engine = Engine.open(None)
         log = IngestLog(tmpdir)
-        
+
         valid_count = 0
         try:
             for i in range(5000):
@@ -79,7 +88,7 @@ def test_e2e_soak_burst_stability():
                 if dec.quality_status == QualityStatus.VALID:
                     valid_count += 1
                 log.append(raw)
-                
+
             assert valid_count == 5000
             assert log.next_offset == 5000
         finally:

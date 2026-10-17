@@ -15,8 +15,28 @@ def test_event_id_unique_across_process_restarts():
     gw1 = Gateway(run_id="boot_aaa111")
     gw2 = Gateway(run_id="boot_bbb222")
 
-    raw1 = gw1.ingest(RawEvent(source="FEEDX", payload={"instrument": "AAPL", "event_type": "TRADE", "price": 100.0, "quantity": 1.0}))
-    raw2 = gw2.ingest(RawEvent(source="FEEDX", payload={"instrument": "AAPL", "event_type": "TRADE", "price": 100.0, "quantity": 1.0}))
+    raw1 = gw1.ingest(
+        RawEvent(
+            source="FEEDX",
+            payload={
+                "instrument": "AAPL",
+                "event_type": "TRADE",
+                "price": 100.0,
+                "quantity": 1.0,
+            },
+        )
+    )
+    raw2 = gw2.ingest(
+        RawEvent(
+            source="FEEDX",
+            payload={
+                "instrument": "AAPL",
+                "event_type": "TRADE",
+                "price": 100.0,
+                "quantity": 1.0,
+            },
+        )
+    )
 
     assert raw1.raw_id != raw2.raw_id
     assert "boot_aaa111" in raw1.raw_id

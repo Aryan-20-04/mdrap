@@ -73,7 +73,9 @@ def test_fail_closed_entitlement_enforcement(tmp_path):
         client_id="Client1",
         is_active=False,
     )
-    assert meter.verify_entitlement(inactive_ent, source="NASDAQ", symbol="AAPL") is False
+    assert (
+        meter.verify_entitlement(inactive_ent, source="NASDAQ", symbol="AAPL") is False
+    )
 
     # 3. Expired entitlement fails closed
     expired_ent = ClientEntitlement(
@@ -82,7 +84,9 @@ def test_fail_closed_entitlement_enforcement(tmp_path):
         is_active=True,
         expires_at=time.time() - 100.0,
     )
-    assert meter.verify_entitlement(expired_ent, source="NASDAQ", symbol="AAPL") is False
+    assert (
+        meter.verify_entitlement(expired_ent, source="NASDAQ", symbol="AAPL") is False
+    )
 
     # 4. Scope-restricted entitlement enforcement
     scoped_ent = ClientEntitlement(
@@ -95,7 +99,9 @@ def test_fail_closed_entitlement_enforcement(tmp_path):
     # Allowed
     assert meter.verify_entitlement(scoped_ent, source="NASDAQ", symbol="AAPL") is True
     # Disallowed source
-    assert meter.verify_entitlement(scoped_ent, source="BINANCE", symbol="AAPL") is False
+    assert (
+        meter.verify_entitlement(scoped_ent, source="BINANCE", symbol="AAPL") is False
+    )
     # Disallowed symbol
     assert meter.verify_entitlement(scoped_ent, source="NASDAQ", symbol="GOOG") is False
 

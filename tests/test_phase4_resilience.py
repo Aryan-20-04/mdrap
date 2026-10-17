@@ -40,7 +40,11 @@ def test_wal_partial_write_truncation_recovery(tmp_path):
     log.close()
 
     # Find the active segment file
-    seg_files = [os.path.join(wal_dir, f) for f in os.listdir(wal_dir) if f.startswith("segment_") and f.endswith(".log")]
+    seg_files = [
+        os.path.join(wal_dir, f)
+        for f in os.listdir(wal_dir)
+        if f.startswith("segment_") and f.endswith(".log")
+    ]
     assert len(seg_files) == 1
     seg_path = seg_files[0]
     orig_size = os.path.getsize(seg_path)
@@ -86,9 +90,12 @@ def test_sbe_corrupted_wire_frame_handling():
     assert len(corrupt_frame) == 64
 
     # Unpack frame and verify QualityEngine catches NaN price as invalid/suspicious
-    u_inst, u_seq, u_ts, u_px, u_qty, u_type, u_q, _ = struct.unpack("<16sQqddII8s", corrupt_frame)
+    u_inst, u_seq, u_ts, u_px, u_qty, u_type, u_q, _ = struct.unpack(
+        "<16sQqddII8s", corrupt_frame
+    )
     quality = QualityEngine()
     from mdrap.models import CanonicalEvent
+
     ev = CanonicalEvent(
         event_id="test_nan",
         instrument_id="AAPL",
@@ -138,7 +145,9 @@ def test_failover_split_brain_fencing():
 def test_ingress_disconnect_reconnect_audit():
     """Ingress adapter safely handles reconnects and audits missing sequences caused by network drops."""
     adapter = ReplayFeedAdapter(
-        FeedAdapterConfig(venue="NASDAQ", feed_id="ITCH_CH1", gap_detection_enabled=True),
+        FeedAdapterConfig(
+            venue="NASDAQ", feed_id="ITCH_CH1", gap_detection_enabled=True
+        ),
         frames=[
             {"seq": 100, "sym": "TSLA", "px": 250.0, "sz": 10.0, "type": "TRADE"},
             {"seq": 101, "sym": "TSLA", "px": 250.2, "sz": 10.0, "type": "TRADE"},

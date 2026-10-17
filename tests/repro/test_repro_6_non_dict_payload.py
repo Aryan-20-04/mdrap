@@ -40,9 +40,13 @@ def test_non_dict_payload_quarantines_safely_without_crashing(tmp_path, bad_payl
     try:
         result = pipeline.process_one(raw)
     except AttributeError as err:
-        pytest.fail(f"Pipeline crashed with unhandled AttributeError on non-dict payload: {err}")
+        pytest.fail(
+            f"Pipeline crashed with unhandled AttributeError on non-dict payload: {err}"
+        )
 
-    assert result is not None, "Pipeline dropped non-dict event silently instead of returning quarantine record"
+    assert result is not None, (
+        "Pipeline dropped non-dict event silently instead of returning quarantine record"
+    )
     assert result.quality_status in (QualityStatus.INVALID, QualityStatus.SUSPICIOUS)
 
     pipeline.finish()
@@ -51,4 +55,6 @@ def test_non_dict_payload_quarantines_safely_without_crashing(tmp_path, bad_payl
     quar_count = store.conn.execute(
         "SELECT count(*) FROM quarantine_events WHERE source = 'NON_DICT_REPRO'"
     ).fetchone()[0]
-    assert quar_count == 1, "Non-dict payload was not recorded in quarantine_events table"
+    assert quar_count == 1, (
+        "Non-dict payload was not recorded in quarantine_events table"
+    )

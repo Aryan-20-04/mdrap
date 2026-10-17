@@ -78,7 +78,10 @@ class EngineState:
             dedup_window=list(self.dedup_window),
             dedup_set=set(self.dedup_set),
             price_windows={k: list(v) for k, v in self.price_windows.items()},
-            bbo_state={k: dict(v) for k, v in self.bbo_state.items()},
+            bbo_state={
+                k: {src: dict(q) for src, q in v.items()}
+                for k, v in self.bbo_state.items()
+            },
             reconciliation_state={
                 k: dict(v) for k, v in self.reconciliation_state.items()
             },
@@ -886,7 +889,7 @@ class Engine:
         else:
             event_type_str = ""
 
-        if event_type_str not in ("TRADE", "QUOTE", "BBO", "BOOK", "DEPTH"):
+        if event_type_str not in ("TRADE", "QUOTE"):
             event_id = f"q_{raw_event.source}_{offset}"
             q_row = (
                 event_id,
@@ -927,7 +930,7 @@ class Engine:
                 quarantine_row=q_row,
             )
         elif (
-            event_type_str in ("QUOTE", "BBO")
+            event_type_str == "QUOTE"
             and payload.get("bid") is None
             and payload.get("ask") is None
         ):
@@ -937,7 +940,7 @@ class Engine:
                 instrument,
                 raw_event.source,
                 QualityStatus.INVALID.value,
-                json.dumps(["QUOTE/BBO event requires at least one of bid or ask"]),
+                json.dumps(["QUOTE event requires at least one of bid or ask"]),
                 json.dumps(payload, default=str),
                 recv_ts,
             )

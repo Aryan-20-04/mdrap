@@ -100,9 +100,7 @@ class TestPhase6EmpiricalExperiments:
         assert mv_ns > 0.0
 
     def test_exp3_seqlock_wraparound_zero_torn_reads(self):
-        wraps, torn, overruns = verify_shm_wraparound(
-            slot_count=128, write_events=512
-        )
+        wraps, torn, overruns = verify_shm_wraparound(slot_count=128, write_events=512)
         assert torn == 0
         assert wraps >= 2
 
@@ -123,6 +121,7 @@ class TestPhase6EmpiricalExperiments:
 
             # Adversarial mutation on projection database
             import sqlite3
+
             conn = sqlite3.connect(db_path)
             conn.execute("DELETE FROM historical_trades")
             conn.commit()
@@ -130,6 +129,7 @@ class TestPhase6EmpiricalExperiments:
 
             # Verify canonical log is unaffected
             from mdrap.ingestlog import IngestLog
+
             log = IngestLog(wal_dir)
             assert sum(1 for _ in log.iter_from(0)) == 1_000
             assert log.corrupted_frames_count == 0

@@ -29,9 +29,23 @@ def test_companion_options_standalone():
         expiry_days=30.0,
         option_type=opt.OptionType.CALL,
     )
-    p = opt.bsm_price(S=100.0, K=100.0, T=30.0 / 365.0, r=0.05, sigma=0.20, option_type=opt.OptionType.CALL)
+    p = opt.bsm_price(
+        S=100.0,
+        K=100.0,
+        T=30.0 / 365.0,
+        r=0.05,
+        sigma=0.20,
+        option_type=opt.OptionType.CALL,
+    )
     assert p > 0.0
-    g = opt.bsm_greeks(S=100.0, K=100.0, T=30.0 / 365.0, r=0.05, sigma=0.20, option_type=opt.OptionType.CALL)
+    g = opt.bsm_greeks(
+        S=100.0,
+        K=100.0,
+        T=30.0 / 365.0,
+        r=0.05,
+        sigma=0.20,
+        option_type=opt.OptionType.CALL,
+    )
     assert 0.4 < g.delta < 0.7
     assert g.gamma > 0.0
 

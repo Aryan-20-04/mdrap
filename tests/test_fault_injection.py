@@ -313,7 +313,10 @@ def test_fault_partial_projection_commits_recovery(temp_dir):
     proj = SQLiteProjection(db_path)
     with proj._lock:
         cur = proj._conn.cursor()
-        cur.execute("UPDATE projection_checkpoints SET last_offset = 7 WHERE name = ?;", (proj.name,))
+        cur.execute(
+            "UPDATE projection_checkpoints SET last_offset = 7 WHERE name = ?;",
+            (proj.name,),
+        )
         # Delete canonical rows >= 8 to match partial commit
         cur.execute("DELETE FROM canonical_events WHERE rowid > 8;")
     proj.close()

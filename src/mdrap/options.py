@@ -13,6 +13,7 @@ warnings.warn(
     stacklevel=2,
 )
 
+_impl = None
 try:
     import mdrap_options as _impl
 except ImportError:
@@ -23,7 +24,28 @@ except ImportError:
     )
     if _pkg not in sys.path and os.path.exists(_pkg):
         sys.path.insert(0, _pkg)
-    import mdrap_options as _impl
+    try:
+        import mdrap_options as _impl
+    except ImportError:
+        _impl = None
 
 __stability__ = "experimental"
-sys.modules[__name__] = _impl
+
+if _impl is not None:
+    sys.modules[__name__] = _impl
+else:
+
+    class OptionsChain:
+        def __init__(self, *args, **kwargs):
+            raise NotImplementedError(
+                "OptionsChain requires the 'mdrap_options' companion package. "
+                "Install packages/mdrap-options to use options and derivatives pricing features."
+            )
+
+    class BlackScholes:
+        pass
+
+    class BinomialTree:
+        pass
+
+    __all__ = ["OptionsChain", "BlackScholes", "BinomialTree"]

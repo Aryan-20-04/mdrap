@@ -35,9 +35,9 @@ def test_f11_all_audit_delivery_rates_bounded_at_100() -> None:
                 for tier_name, tier_metrics in tiers.items():
                     if "delivery_rate_percent" in tier_metrics:
                         rate = tier_metrics["delivery_rate_percent"]
-                        assert (
-                            0.0 <= rate <= 100.0
-                        ), f"{path} tier {tier_name} has invalid delivery rate {rate}%"
+                        assert 0.0 <= rate <= 100.0, (
+                            f"{path} tier {tier_name} has invalid delivery rate {rate}%"
+                        )
 
 
 def test_f02_f03_failover_results_consistent_with_raw_samples() -> None:
@@ -46,7 +46,11 @@ def test_f02_f03_failover_results_consistent_with_raw_samples() -> None:
         os.path.dirname(__file__), "..", "audit", "phase10", "failover_raw_samples.json"
     )
     summary_path = os.path.join(
-        os.path.dirname(__file__), "..", "audit", "phase10", "failover_benchmark_results.json"
+        os.path.dirname(__file__),
+        "..",
+        "audit",
+        "phase10",
+        "failover_benchmark_results.json",
     )
 
     if not os.path.isfile(raw_path) or not os.path.isfile(summary_path):

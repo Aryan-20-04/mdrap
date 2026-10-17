@@ -92,7 +92,9 @@ class TestStrictBoundedCardinality:
         reg = TelemetryRegistry()
         # Feed 100 distinct malicious/arbitrary venues
         for i in range(100):
-            reg.record_received(venue=f"MALICIOUS_INJECTED_VENUE_{i}", event_type="TRADE", count=1)
+            reg.record_received(
+                venue=f"MALICIOUS_INJECTED_VENUE_{i}", event_type="TRADE", count=1
+            )
 
         summary = reg.summary()
         assert summary["events_received_total"] == 100
@@ -104,7 +106,9 @@ class TestStrictBoundedCardinality:
     def test_unapproved_reason_sanitized_to_other(self):
         reg = TelemetryRegistry()
         for i in range(50):
-            reg.record_quarantined(venue="SIM", reason=f"RANDOM_ERROR_STRING_{i}", count=2)
+            reg.record_quarantined(
+                venue="SIM", reason=f"RANDOM_ERROR_STRING_{i}", count=2
+            )
 
         summary = reg.summary()
         assert summary["events_quarantined_total"] == 100
@@ -133,9 +137,15 @@ class TestDualExportFormats:
         assert isinstance(prom_text, str)
         assert "# HELP mdrap_events_received_total" in prom_text
         assert "# TYPE mdrap_events_received_total counter" in prom_text
-        assert 'mdrap_events_received_total{venue="BINANCE",event_type="TRADE"} 42' in prom_text
-        assert 'mdrap_events_quarantined_total{venue="BINANCE",reason="PRICE_STALE"} 2' in prom_text
-        assert "mdrap_wire_latency_seconds_count{venue=\"BINANCE\"} 1" in prom_text
+        assert (
+            'mdrap_events_received_total{venue="BINANCE",event_type="TRADE"} 42'
+            in prom_text
+        )
+        assert (
+            'mdrap_events_quarantined_total{venue="BINANCE",reason="PRICE_STALE"} 2'
+            in prom_text
+        )
+        assert 'mdrap_wire_latency_seconds_count{venue="BINANCE"} 1' in prom_text
         assert "mdrap_active_streams 3.0" in prom_text
 
     def test_otlp_json_format(self):

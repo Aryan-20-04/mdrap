@@ -5,16 +5,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [3.1.0] - 2026-10-10
 
-> [!NOTE]
-> **Audit Clarification (2026-10-15):** The multi-node "Distributed Safety", "Quorum Consensus", and "Failover Lifecycle" entries below were measured against an in-process local simulation (`ConsensusCoordinator`) and loopback sockets; they are NOT supported as multi-host distributed cluster features. MDRAP is strictly scoped as an embedded single-node market data engine. See [`docs/product/scope-and-guarantees.md`](docs/product/scope-and-guarantees.md).
-
 ### Added
 - **Phase 7–11 Single-Node Hardening & Production-Readiness Evaluation**:
-  - **Mode B Networked Staging Validation**: Multi-process and multi-node networked staging validation across independent network endpoints and failure domains.
-  - **Quorum Consensus & Split-Brain Fencing**: Formalized lease-based consensus coordination with strict epoch-fenced storage boundaries preventing split-brain writes during network partitions.
-  - **Sub-110ms Failover Lifecycle**: Verified automatic failover benchmark across 100 trials achieving median p50 failover detection, election, and recovery of **105.01 ms** (p95: 118.42 ms, p99: 124.80 ms) with 100% acknowledged write recovery.
-  - **High-Throughput Asynchronous Network Fanout**: Non-blocking asynchronous TCP fanout engine delivering **32,404.7 frames/s** peak throughput with bounded client backpressure queues.
-  - **Comprehensive Production-Readiness Gap Assessment**: Documented 14-gate release criteria and Mode B certification evidence manifest (`audit/phase11/`).
+  - **In-Process Consensus & Lease Fencing Prototype**: Evaluated simulated lease-based coordinator (`ConsensusCoordinator`) and epoch-fenced writer boundaries (`FencedWALWriter`) in local single-node test scenarios. Distributed clustering across independent physical hosts is out of scope and unsupported (see `docs/product/scope-and-guarantees.md`).
+  - **Single-Node Failover Transition Benchmark**: Measured in-process simulated failover transition across 100 trials with a 100ms lease timer (detection p50: 101.30 ms; total transition p50: 104.99 ms, p95: 106.98 ms, p99: 108.44 ms, max: 122.44 ms).
+  - **Local Loopback TCP Fanout Evaluation**: Asynchronous non-blocking loopback TCP fanout delivering **32,404.7 frames/s** aggregate delivery across 25 concurrent local client threads with bounded backpressure queues.
+  - **Comprehensive Production-Readiness Gap Assessment**: Documented 14-gate release criteria and release certification evidence manifest (`audit/phase11/`).
 - **Companion Package Architecture & Modularization**:
   - Segregated non-core domain subsystems into dedicated companion distributions:
     - `packages/mdrap-options` (`mdrap_options`): Derivatives pricing, binomial trees, implied volatility, and Greeks.

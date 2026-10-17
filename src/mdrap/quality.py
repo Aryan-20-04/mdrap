@@ -335,9 +335,12 @@ class QualityEngine:
         is_quote = event.event_type == EventType.QUOTE or event.event_type == "QUOTE"
         is_trade = event.event_type == EventType.TRADE or event.event_type == "TRADE"
 
-        bad = False
         if not is_trade and not is_quote:
-            bad = True
+            self._mark(event, QualityStatus.INVALID, Reason.SCHEMA_VIOLATION)
+            self._bump(Reason.SCHEMA_VIOLATION)
+            return event
+
+        bad = False
 
         has_price = event.price is not None
         has_qty = event.quantity is not None

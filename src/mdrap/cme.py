@@ -18,7 +18,7 @@ from typing import Any
 from .models import CanonicalEvent, EventType, QualityStatus
 
 __version__ = "1.0.0"
-__stability__ = "stable"
+__stability__ = "beta"
 
 # CME MDP 3.0 SBE Constants
 CME_SCHEMA_ID: int = 1

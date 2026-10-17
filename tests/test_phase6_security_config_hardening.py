@@ -32,7 +32,9 @@ def test_config_validation_rejects_unknown_sections() -> None:
     }
     with pytest.raises(ConfigValidationError) as exc:
         validate_config(bad_cfg)
-    assert "Unknown configuration section 'malicious_or_unknown_section'" in str(exc.value)
+    assert "Unknown configuration section 'malicious_or_unknown_section'" in str(
+        exc.value
+    )
 
 
 def test_config_validation_rejects_unknown_security_keys() -> None:

@@ -85,15 +85,21 @@ def test_independent_consumer_integration():
 
     # Frame 1: Seq 100
     inst_b1 = b"AAPL" + b"\x00" * 12
-    f1 = struct.pack("<16sQqddII8s", inst_b1, 100, 1000000000, 150.25, 50.0, 1, 0, b"\x00" * 8)
+    f1 = struct.pack(
+        "<16sQqddII8s", inst_b1, 100, 1000000000, 150.25, 50.0, 1, 0, b"\x00" * 8
+    )
     frames_data.append(f1)
 
     # Frame 2: Seq 101
-    f2 = struct.pack("<16sQqddII8s", inst_b1, 101, 1000001000, 150.30, 25.0, 1, 0, b"\x00" * 8)
+    f2 = struct.pack(
+        "<16sQqddII8s", inst_b1, 101, 1000001000, 150.30, 25.0, 1, 0, b"\x00" * 8
+    )
     frames_data.append(f2)
 
     # Frame 3: Seq 105 (Gap of 3 missing: 102, 103, 104)
-    f3 = struct.pack("<16sQqddII8s", inst_b1, 105, 1000005000, 150.35, 100.0, 1, 0, b"\x00" * 8)
+    f3 = struct.pack(
+        "<16sQqddII8s", inst_b1, 105, 1000005000, 150.35, 100.0, 1, 0, b"\x00" * 8
+    )
     frames_data.append(f3)
 
     # Independent consumer simulation
@@ -106,7 +112,9 @@ def test_independent_consumer_integration():
 
         def process_frame(self, raw_bytes: bytes) -> dict:
             assert len(raw_bytes) == 64
-            inst, seq, ex_ts, px, sz, ev_type, q_flag, _ = struct.unpack("<16sQqddII8s", raw_bytes)
+            inst, seq, ex_ts, px, sz, ev_type, q_flag, _ = struct.unpack(
+                "<16sQqddII8s", raw_bytes
+            )
             sym = inst.split(b"\x00")[0].decode("ascii")
 
             # Sequence gap auditing
@@ -172,7 +180,9 @@ def test_incident_exercise_persistence_mitigation(tmp_path):
     os.makedirs(wal_dir, exist_ok=True)
 
     log = IngestLog(log_dir=wal_dir)
-    raw = RawEvent(raw_id="inc_1", source="TEST", receive_timestamp=time.time(), payload={"seq": 1})
+    raw = RawEvent(
+        raw_id="inc_1", source="TEST", receive_timestamp=time.time(), payload={"seq": 1}
+    )
     off = log.append(raw)
     assert off >= 0
 
@@ -181,6 +191,13 @@ def test_incident_exercise_persistence_mitigation(tmp_path):
 
     # Subsequent append must raise IOError/ValueError and must NOT claim durable ACK
     with pytest.raises((ValueError, OSError, IOError)):
-        log.append(RawEvent(raw_id="inc_2", source="TEST", receive_timestamp=time.time(), payload={"seq": 2}))
+        log.append(
+            RawEvent(
+                raw_id="inc_2",
+                source="TEST",
+                receive_timestamp=time.time(),
+                payload={"seq": 2},
+            )
+        )
 
     log.close()

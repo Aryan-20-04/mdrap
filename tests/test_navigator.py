@@ -217,13 +217,16 @@ class TestNavigatorDesk(unittest.TestCase):
 
 class TestNavigatorCLIIntegration(unittest.TestCase):
     def test_parser_desk_command_and_aliases(self):
-        from cli import build_parser, cmd_desk
+        from cli import build_parser, cmd_desk, cmd_tui
 
         parser = build_parser()
 
-        for alias in ["desk", "nav", "navigator", "tui"]:
+        for alias in ["desk", "nav", "navigator"]:
             args = parser.parse_args([alias])
             self.assertEqual(args.func, cmd_desk)
+
+        args_tui = parser.parse_args(["tui"])
+        self.assertEqual(args_tui.func, cmd_tui)
 
     def test_quick_action_0(self):
         from cli import QUICK_ACTIONS

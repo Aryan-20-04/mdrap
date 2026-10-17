@@ -47,7 +47,9 @@ def test_unknown_top_level_section_fails():
     cfg = {
         "unknown_section": {"foo": "bar"},
     }
-    with pytest.raises(ConfigValidationError, match="Unknown configuration section 'unknown_section'"):
+    with pytest.raises(
+        ConfigValidationError, match="Unknown configuration section 'unknown_section'"
+    ):
         validate_config(cfg)
 
 
@@ -59,26 +61,37 @@ def test_unknown_key_in_defaults_fails():
             "spelling_mistake_key": 42,
         }
     }
-    with pytest.raises(ConfigValidationError, match="Unknown key 'spelling_mistake_key' in \\[defaults\\]"):
+    with pytest.raises(
+        ConfigValidationError,
+        match="Unknown key 'spelling_mistake_key' in \\[defaults\\]",
+    ):
         validate_config(cfg)
 
 
 def test_invalid_numeric_bounds():
     """Verify non-positive or out-of-range bounds are rejected."""
     # Negative staleness
-    with pytest.raises(ConfigValidationError, match="staleness_threshold_s must be > 0"):
+    with pytest.raises(
+        ConfigValidationError, match="staleness_threshold_s must be > 0"
+    ):
         validate_config({"defaults": {"staleness_threshold_s": -0.5}})
 
     # Price window < 2
-    with pytest.raises(ConfigValidationError, match="price_window must be integer >= 2"):
+    with pytest.raises(
+        ConfigValidationError, match="price_window must be integer >= 2"
+    ):
         validate_config({"defaults": {"price_window": 1}})
 
     # Circuit filter pct >= 1.0
-    with pytest.raises(ConfigValidationError, match="circuit_filter_pct must be between 0 and 1.0"):
+    with pytest.raises(
+        ConfigValidationError, match="circuit_filter_pct must be between 0 and 1.0"
+    ):
         validate_config({"defaults": {"circuit_filter_pct": 1.5}})
 
     # Invalid port > 65535
-    with pytest.raises(ConfigValidationError, match="network.port must be integer between 1 and 65535"):
+    with pytest.raises(
+        ConfigValidationError, match="network.port must be integer between 1 and 65535"
+    ):
         validate_config({"network": {"port": 70000}})
 
 

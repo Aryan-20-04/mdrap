@@ -32,8 +32,12 @@ def test_symbol_partitioner_range_and_hash():
 def test_partitioned_routing_and_isolation():
     """Verify that events are routed to independent shards with isolated sequence numbers."""
     shards = [
-        ShardConfig(shard_id=0, name="Shard_A_L", symbol_prefix_start="A", symbol_prefix_end="L"),
-        ShardConfig(shard_id=1, name="Shard_M_Z", symbol_prefix_start="M", symbol_prefix_end="Z"),
+        ShardConfig(
+            shard_id=0, name="Shard_A_L", symbol_prefix_start="A", symbol_prefix_end="L"
+        ),
+        ShardConfig(
+            shard_id=1, name="Shard_M_Z", symbol_prefix_start="M", symbol_prefix_end="Z"
+        ),
     ]
     partitioner = SymbolPartitioner(num_shards=2, mode="range")
     fleet = FleetCoordinator(partitioner=partitioner, shard_configs=shards)

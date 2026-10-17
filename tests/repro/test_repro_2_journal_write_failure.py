@@ -55,11 +55,15 @@ def test_journal_write_failure_fails_closed_and_logs_error(tmp_path, caplog):
         try:
             ack = pipeline.process_one(raw)
             # If it didn't raise, it must not return a successful acknowledgement
-            assert ack is None, "Event was falsely acknowledged despite journal write failure"
+            assert ack is None, (
+                "Event was falsely acknowledged despite journal write failure"
+            )
         except Exception:
             # Expected to raise under fail_closed policy
             pass
 
         # An ERROR-level log record MUST be emitted when durability fails
         error_logs = [r for r in caplog.records if r.levelno >= logging.ERROR]
-        assert len(error_logs) > 0, "No ERROR-level log recorded for journal write failure"
+        assert len(error_logs) > 0, (
+            "No ERROR-level log recorded for journal write failure"
+        )

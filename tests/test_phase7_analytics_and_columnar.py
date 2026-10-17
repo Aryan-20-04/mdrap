@@ -44,7 +44,9 @@ class TestAsyncProjectionWorker:
     def test_async_projection_lifecycle(self, tmp_path):
         db_path = str(tmp_path / "async_proj.db")
         proj = SQLiteProjection(db_path=db_path)
-        worker = AsyncProjectionWorker(proj, max_queue_size=1000, batch_size=50, flush_interval_sec=0.02)
+        worker = AsyncProjectionWorker(
+            proj, max_queue_size=1000, batch_size=50, flush_interval_sec=0.02
+        )
 
         # Enqueue 100 canonical events
         now = time.time()
@@ -87,7 +89,9 @@ class TestAsyncProjectionWorker:
 
         slow_proj = SlowProjection()
         # Very small queue size = 5
-        worker = AsyncProjectionWorker(slow_proj, max_queue_size=5, batch_size=2, flush_interval_sec=0.1)
+        worker = AsyncProjectionWorker(
+            slow_proj, max_queue_size=5, batch_size=2, flush_interval_sec=0.1
+        )
 
         dropped = 0
         for i in range(50):
@@ -109,7 +113,9 @@ class TestAsyncProjectionWorker:
                 return -1
 
         fail_proj = FailingProjection()
-        worker = AsyncProjectionWorker(fail_proj, max_queue_size=100, batch_size=10, flush_interval_sec=0.01)
+        worker = AsyncProjectionWorker(
+            fail_proj, max_queue_size=100, batch_size=10, flush_interval_sec=0.01
+        )
 
         # Enqueue must remain non-blocking and return True without raising exception
         for i in range(25):
@@ -249,15 +255,25 @@ class TestParquetExporterAndLineage:
         log.close()
 
         # Calculate pre-export log file sizes
-        sizes_before = {f: os.path.getsize(os.path.join(wal_dir, f)) for f in os.listdir(wal_dir) if f.endswith(".log")}
+        sizes_before = {
+            f: os.path.getsize(os.path.join(wal_dir, f))
+            for f in os.listdir(wal_dir)
+            if f.endswith(".log")
+        }
 
         parquet_path = str(tmp_path / "exported_journal.parquet")
-        exported_count = export_journal_to_parquet(wal_dir, parquet_path, compression="snappy")
+        exported_count = export_journal_to_parquet(
+            wal_dir, parquet_path, compression="snappy"
+        )
         assert exported_count == 100
         assert os.path.exists(parquet_path)
 
         # Immutability verification: canonical IngestLog files are byte-for-byte identical
-        sizes_after = {f: os.path.getsize(os.path.join(wal_dir, f)) for f in os.listdir(wal_dir) if f.endswith(".log")}
+        sizes_after = {
+            f: os.path.getsize(os.path.join(wal_dir, f))
+            for f in os.listdir(wal_dir)
+            if f.endswith(".log")
+        }
         assert sizes_before == sizes_after
 
         # Verify IngestLog integrity

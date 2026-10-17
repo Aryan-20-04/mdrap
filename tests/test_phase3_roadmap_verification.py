@@ -114,8 +114,12 @@ def test_3_2_shadow_run_diff_zero():
             for raw, _ in sim.generate():
                 # Process via legacy Pipeline
                 ev_pipe = pipe.process_one(raw)
-                pipe_status = ev_pipe.quality_status if ev_pipe else QualityStatus.INVALID
-                pipe_reasons = sorted(ev_pipe.reasons) if ev_pipe else ["SCHEMA_VIOLATION"]
+                pipe_status = (
+                    ev_pipe.quality_status if ev_pipe else QualityStatus.INVALID
+                )
+                pipe_reasons = (
+                    sorted(ev_pipe.reasons) if ev_pipe else ["SCHEMA_VIOLATION"]
+                )
                 pipe_verdicts.append((pipe_status, pipe_reasons))
 
                 # Process via Engine.submit()
@@ -131,7 +135,9 @@ def test_3_2_shadow_run_diff_zero():
                 if p_v != e_v:
                     diffs.append((idx, p_v, e_v))
 
-            assert len(diffs) == 0, f"Found {len(diffs)} diffs between Pipeline and Engine: {diffs[:5]}"
+            assert len(diffs) == 0, (
+                f"Found {len(diffs)} diffs between Pipeline and Engine: {diffs[:5]}"
+            )
         finally:
             pipe.close()
             engine.close()

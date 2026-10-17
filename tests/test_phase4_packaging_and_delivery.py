@@ -98,6 +98,6 @@ def test_wheel_metadata_and_entry_point():
     with open(pyproject_path, "r", encoding="utf-8") as f:
         content = f.read()
 
-    assert '[project.scripts]' in content
+    assert "[project.scripts]" in content
     assert 'mdrap = "mdrap.cli:main"' in content
     assert 'include = ["mdrap", "mdrap.*"]' in content

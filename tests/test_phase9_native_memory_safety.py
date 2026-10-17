@@ -52,7 +52,11 @@ def test_sbe_bounds_checking_truncated_and_corrupt():
         ]
 
     c_unpack = _NATIVE_LIB.fastpath_sbe_unpack_tick
-    c_unpack.argtypes = [ctypes.c_char_p, ctypes.c_size_t, ctypes.POINTER(_CSbeTickPayload)]
+    c_unpack.argtypes = [
+        ctypes.c_char_p,
+        ctypes.c_size_t,
+        ctypes.POINTER(_CSbeTickPayload),
+    ]
     c_unpack.restype = ctypes.c_int32
 
     payload = _CSbeTickPayload()
@@ -64,12 +68,17 @@ def test_sbe_bounds_checking_truncated_and_corrupt():
         assert rc == 0, f"Expected rejection (0) for size {size}, got {rc}"
 
     # 2. Wrong template ID (must be TEMPLATE_TICK = 101)
-    wrong_template_hdr = HEADER_STRUCT.pack(120, 9999, SBE_SCHEMA_ID, SBE_SCHEMA_VERSION) + b"\x00" * 120
+    wrong_template_hdr = (
+        HEADER_STRUCT.pack(120, 9999, SBE_SCHEMA_ID, SBE_SCHEMA_VERSION) + b"\x00" * 120
+    )
     rc = c_unpack(wrong_template_hdr, len(wrong_template_hdr), ctypes.byref(payload))
     assert rc == 0, f"Expected rejection (0) for wrong template id, got {rc}"
 
     # 3. Valid template ID (101) with 128 bytes total must unpack cleanly
-    valid_frame = HEADER_STRUCT.pack(120, TEMPLATE_TICK, SBE_SCHEMA_ID, SBE_SCHEMA_VERSION) + b"\x00" * 120
+    valid_frame = (
+        HEADER_STRUCT.pack(120, TEMPLATE_TICK, SBE_SCHEMA_ID, SBE_SCHEMA_VERSION)
+        + b"\x00" * 120
+    )
     rc = c_unpack(valid_frame, len(valid_frame), ctypes.byref(payload))
     assert rc == 1, f"Expected success (1) for valid frame, got {rc}"
 
@@ -85,7 +94,7 @@ def test_seqlock_struct_sizes_and_alignments():
         VERSION,
         UNCOMMITTED,
     )
-    
+
     assert HEADER_SIZE == 128
     assert SLOT_SIZE == 128
     assert HEADER_LINE1_STRUCT.size == 64
@@ -98,7 +107,7 @@ def test_seqlock_struct_sizes_and_alignments():
 def test_fastpath_engine_nan_inf_boundary_handling():
     """Verify that NaN, Infinity, and zero/negative prices are trapped safely by C kernel."""
     eng = FastQualityEngine()
-    
+
     # 1. Price is NaN
     ev_nan = CanonicalEvent(
         event_id="nan1",

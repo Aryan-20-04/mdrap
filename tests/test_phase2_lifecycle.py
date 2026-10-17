@@ -58,7 +58,14 @@ def test_runtime_lifecycle_full_happy_path(tmp_path):
     # Submit event
     raw = RawEvent(
         source="FEEDX",
-        payload={"instrument": "AAPL", "event_type": "TRADE", "price": 150.0, "quantity": 10.0, "sequence": 1, "exchange_ts": time.time()},
+        payload={
+            "instrument": "AAPL",
+            "event_type": "TRADE",
+            "price": 150.0,
+            "quantity": 10.0,
+            "sequence": 1,
+            "exchange_ts": time.time(),
+        },
     )
     dec = rt.submit(raw)
     assert dec.quality_status == QualityStatus.VALID

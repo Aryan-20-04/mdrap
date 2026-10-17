@@ -42,7 +42,9 @@ def test_4_1_profile_first_hotpath_allocations_and_timing():
             per_tick_us = elapsed_us / 500.0
 
             # Hot path must sustain sub-millisecond per-event processing in memory/WAL
-            assert per_tick_us < 500.0, f"Per tick latency {per_tick_us:.2f}us exceeded 500us"
+            assert per_tick_us < 500.0, (
+                f"Per tick latency {per_tick_us:.2f}us exceeded 500us"
+            )
         finally:
             engine.close()
 
@@ -82,7 +84,9 @@ def test_4_3_ingestlog_as_source_of_truth_kill_and_rebuild():
 
         # 1. Produce 200 events into IngestLog with primary projection
         engine = Engine.open(wal_path, config={"db_path": db_path_1})
-        sim = FeedSimulator(SimulatorConfig(seed=42, num_events=200, price_anomaly_rate=0.05))
+        sim = FeedSimulator(
+            SimulatorConfig(seed=42, num_events=200, price_anomaly_rate=0.05)
+        )
         try:
             for raw, _ in sim.generate():
                 engine.submit(raw)

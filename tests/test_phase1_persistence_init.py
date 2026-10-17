@@ -27,7 +27,10 @@ def test_production_mode_storage_failure_blocks_readiness_and_ingest(tmp_path):
     op_key = sec.register_api_key(client_id="ProdTester", role=Role.OPERATOR)
 
     # Simulate uncreatable WAL directory or open failure by raising during Engine.open
-    with patch("mdrap.engine.Engine.open", side_effect=OSError("Disk mount read-only / permission denied")):
+    with patch(
+        "mdrap.engine.Engine.open",
+        side_effect=OSError("Disk mount read-only / permission denied"),
+    ):
         state = AppState(
             db_path=str(db_file),
             store=store,
@@ -59,7 +62,15 @@ def test_production_mode_storage_failure_blocks_readiness_and_ingest(tmp_path):
     # 3. Ingestion MUST fail with 503 and never write to in-memory fallback
     r_ingest = client.post(
         "/v1/ingest",
-        json={"source": "FEEDX", "payload": {"instrument": "AAPL", "event_type": "TRADE", "price": 150.0, "quantity": 10.0}},
+        json={
+            "source": "FEEDX",
+            "payload": {
+                "instrument": "AAPL",
+                "event_type": "TRADE",
+                "price": 150.0,
+                "quantity": 10.0,
+            },
+        },
         headers={"X-API-Key": op_key.token},
     )
     assert r_ingest.status_code == 503
@@ -90,11 +101,22 @@ def test_development_mode_explicit_in_memory_allowed(monkeypatch):
 
     r_health = client.get("/health")
     assert r_health.status_code == 200
-    assert r_health.json()["persistence_mode"] == PersistenceMode.DEVELOPMENT_IN_MEMORY.value
+    assert (
+        r_health.json()["persistence_mode"]
+        == PersistenceMode.DEVELOPMENT_IN_MEMORY.value
+    )
 
     r_ingest = client.post(
         "/v1/ingest",
-        json={"source": "FEEDX", "payload": {"instrument": "AAPL", "event_type": "TRADE", "price": 150.0, "quantity": 10.0}},
+        json={
+            "source": "FEEDX",
+            "payload": {
+                "instrument": "AAPL",
+                "event_type": "TRADE",
+                "price": 150.0,
+                "quantity": 10.0,
+            },
+        },
         headers={"X-API-Key": op_key.token},
     )
     assert r_ingest.status_code == 200

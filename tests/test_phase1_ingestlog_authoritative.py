@@ -52,7 +52,13 @@ class TestIngestLogFramingAndManifest:
 
         raw = RawEvent(
             source="CME",
-            payload={"instrument": "NQ", "price": 18500.25, "quantity": 10.0, "exchange_ts": 1729000000.0, "sequence": 101},
+            payload={
+                "instrument": "NQ",
+                "price": 18500.25,
+                "quantity": 10.0,
+                "exchange_ts": 1729000000.0,
+                "sequence": 101,
+            },
             receive_timestamp=1729000000.001,
             raw_id="raw_cme_101",
         )
@@ -69,7 +75,9 @@ class TestIngestLogFramingAndManifest:
             # Segment Header (32 bytes)
             hdr_bytes = f.read(SEGMENT_HEADER_SIZE)
             assert len(hdr_bytes) == SEGMENT_HEADER_SIZE
-            magic, ver, start_off, ts, res = struct.unpack(SEGMENT_HEADER_FORMAT, hdr_bytes)
+            magic, ver, start_off, ts, res = struct.unpack(
+                SEGMENT_HEADER_FORMAT, hdr_bytes
+            )
             assert magic == LOG_MAGIC
             assert ver == LOG_VERSION
             assert start_off == 0
@@ -77,7 +85,9 @@ class TestIngestLogFramingAndManifest:
             # Frame Header (28 bytes)
             frame_hdr_bytes = f.read(FRAME_HEADER_SIZE)
             assert len(frame_hdr_bytes) == FRAME_HEADER_SIZE
-            f_magic, _, f_off, f_ts, length, crc32 = struct.unpack(FRAME_HEADER_FORMAT, frame_hdr_bytes)
+            f_magic, _, f_off, f_ts, length, crc32 = struct.unpack(
+                FRAME_HEADER_FORMAT, frame_hdr_bytes
+            )
             assert f_magic == FRAME_MAGIC
             assert f_off == 0
             assert length > 0
@@ -99,7 +109,12 @@ class TestIngestLogFramingAndManifest:
         for i in range(20):
             raw = RawEvent(
                 source="NASDAQ",
-                payload={"instrument": "AAPL", "price": 150.0 + i, "exchange_ts": 1729000000.0 + i, "sequence": i},
+                payload={
+                    "instrument": "AAPL",
+                    "price": 150.0 + i,
+                    "exchange_ts": 1729000000.0 + i,
+                    "sequence": i,
+                },
                 receive_timestamp=1729000000.0 + i,
                 raw_id=f"aapl_{i}",
             )
@@ -145,7 +160,11 @@ class TestIngestLogFramingAndManifest:
         log_dir = str(tmp_path / "wal_tamper")
         log = IngestLog(log_dir=log_dir, max_segment_bytes=512, fsync_policy="always")
         for i in range(15):
-            log.append(RawEvent(source="TEST", payload={"instrument": "TSLA", "price": 200.0 + i}))
+            log.append(
+                RawEvent(
+                    source="TEST", payload={"instrument": "TSLA", "price": 200.0 + i}
+                )
+            )
         log.close()
 
         # Verify initial clean state
@@ -175,7 +194,11 @@ class TestIngestLogFramingAndManifest:
         log_dir = str(tmp_path / "wal_chain_break")
         log = IngestLog(log_dir=log_dir, max_segment_bytes=512, fsync_policy="always")
         for i in range(15):
-            log.append(RawEvent(source="TEST", payload={"instrument": "NVDA", "price": 120.0 + i}))
+            log.append(
+                RawEvent(
+                    source="TEST", payload={"instrument": "NVDA", "price": 120.0 + i}
+                )
+            )
         log.close()
 
         manifest_path = os.path.join(log_dir, MANIFEST_FILENAME)
@@ -200,7 +223,11 @@ class TestCrashRecoveryMatrix:
         log_dir = str(tmp_path / "crash_torn_hdr")
         log = IngestLog(log_dir=log_dir, fsync_policy="always")
         for i in range(5):
-            log.append(RawEvent(source="TEST", payload={"instrument": "SPY", "price": 500.0 + i}))
+            log.append(
+                RawEvent(
+                    source="TEST", payload={"instrument": "SPY", "price": 500.0 + i}
+                )
+            )
         log.close()
 
         # Corrupt: inject torn 12-byte fragment of a frame header at EOF
@@ -219,7 +246,9 @@ class TestCrashRecoveryMatrix:
         assert reopened.next_offset == 5
 
         # Monotonic resumption
-        new_off = reopened.append(RawEvent(source="TEST", payload={"instrument": "SPY", "price": 505.0}))
+        new_off = reopened.append(
+            RawEvent(source="TEST", payload={"instrument": "SPY", "price": 505.0})
+        )
         assert new_off == 5
         reopened.close()
 
@@ -227,7 +256,11 @@ class TestCrashRecoveryMatrix:
         log_dir = str(tmp_path / "crash_torn_payload")
         log = IngestLog(log_dir=log_dir, fsync_policy="always")
         for i in range(4):
-            log.append(RawEvent(source="TEST", payload={"instrument": "QQQ", "price": 450.0 + i}))
+            log.append(
+                RawEvent(
+                    source="TEST", payload={"instrument": "QQQ", "price": 450.0 + i}
+                )
+            )
         log.close()
 
         seg_file = log._list_segment_files()[0][1]
@@ -258,7 +291,11 @@ class TestCrashRecoveryMatrix:
         log_dir = str(tmp_path / "crash_corrupted_crc")
         log = IngestLog(log_dir=log_dir, fsync_policy="always")
         for i in range(3):
-            log.append(RawEvent(source="TEST", payload={"instrument": "IWM", "price": 200.0 + i}))
+            log.append(
+                RawEvent(
+                    source="TEST", payload={"instrument": "IWM", "price": 200.0 + i}
+                )
+            )
         log.close()
 
         seg_file = log._list_segment_files()[0][1]
@@ -290,7 +327,11 @@ class TestCrashRecoveryMatrix:
         log_dir = str(tmp_path / "crash_zeroed_tail")
         log = IngestLog(log_dir=log_dir, fsync_policy="always")
         for i in range(3):
-            log.append(RawEvent(source="TEST", payload={"instrument": "DIA", "price": 380.0 + i}))
+            log.append(
+                RawEvent(
+                    source="TEST", payload={"instrument": "DIA", "price": 380.0 + i}
+                )
+            )
         log.close()
 
         seg_file = log._list_segment_files()[0][1]
@@ -316,15 +357,65 @@ class TestDeterministicReplayEquivalence:
         # Ingest a diverse sequence of events: valid trades, quotes, duplicates, and out-of-order events
         events = [
             # Normal trade
-            RawEvent(source="CME", payload={"instrument": "NQ", "event_type": "TRADE", "price": 18500.0, "quantity": 5.0, "exchange_ts": 1729000000.1, "sequence": 1}),
+            RawEvent(
+                source="CME",
+                payload={
+                    "instrument": "NQ",
+                    "event_type": "TRADE",
+                    "price": 18500.0,
+                    "quantity": 5.0,
+                    "exchange_ts": 1729000000.1,
+                    "sequence": 1,
+                },
+            ),
             # Normal quote
-            RawEvent(source="CME", payload={"instrument": "NQ", "event_type": "QUOTE", "bid": 18499.5, "ask": 18500.5, "exchange_ts": 1729000000.2, "sequence": 2}),
+            RawEvent(
+                source="CME",
+                payload={
+                    "instrument": "NQ",
+                    "event_type": "QUOTE",
+                    "bid": 18499.5,
+                    "ask": 18500.5,
+                    "exchange_ts": 1729000000.2,
+                    "sequence": 2,
+                },
+            ),
             # Duplicate sequence event
-            RawEvent(source="CME", payload={"instrument": "NQ", "event_type": "TRADE", "price": 18500.0, "quantity": 5.0, "exchange_ts": 1729000000.1, "sequence": 1}),
+            RawEvent(
+                source="CME",
+                payload={
+                    "instrument": "NQ",
+                    "event_type": "TRADE",
+                    "price": 18500.0,
+                    "quantity": 5.0,
+                    "exchange_ts": 1729000000.1,
+                    "sequence": 1,
+                },
+            ),
             # Another instrument trade
-            RawEvent(source="NASDAQ", payload={"instrument": "AAPL", "event_type": "TRADE", "price": 220.50, "quantity": 100.0, "exchange_ts": 1729000000.3, "sequence": 10}),
+            RawEvent(
+                source="NASDAQ",
+                payload={
+                    "instrument": "AAPL",
+                    "event_type": "TRADE",
+                    "price": 220.50,
+                    "quantity": 100.0,
+                    "exchange_ts": 1729000000.3,
+                    "sequence": 10,
+                },
+            ),
             # Stale / crossed quote (should be flagged by engine)
-            RawEvent(source="NASDAQ", payload={"instrument": "AAPL", "event_type": "QUOTE", "bid": 221.00, "ask": 220.00, "exchange_ts": 1729000000.4, "sequence": 11}),
+            RawEvent(
+                source="NASDAQ",
+                payload={
+                    "instrument": "AAPL",
+                    "event_type": "QUOTE",
+                    "bid": 221.00,
+                    "ask": 220.00,
+                    "exchange_ts": 1729000000.4,
+                    "sequence": 11,
+                },
+            ),
         ]
 
         for ev in events:
@@ -332,7 +423,9 @@ class TestDeterministicReplayEquivalence:
         log.close()
 
         # Run 3 independent engine replay folds
-        res = HistoricalReplayEngine.verify_replay_equivalence(log_dir, iterations=3, clock_ts=1729000000.0)
+        res = HistoricalReplayEngine.verify_replay_equivalence(
+            log_dir, iterations=3, clock_ts=1729000000.0
+        )
 
         assert res["is_equivalent"] is True
         assert res["events_replayed"] == len(events)
@@ -350,7 +443,17 @@ class TestDeterministicReplayEquivalence:
         wal_dir = str(tmp_path / "cli_wal")
         log = IngestLog(log_dir=wal_dir, fsync_policy="always")
         for i in range(10):
-            log.append(RawEvent(source="BINANCE", payload={"instrument": "BTC-USDT", "price": 65000.0 + i, "exchange_ts": 1729000000.0 + i, "sequence": i}))
+            log.append(
+                RawEvent(
+                    source="BINANCE",
+                    payload={
+                        "instrument": "BTC-USDT",
+                        "price": 65000.0 + i,
+                        "exchange_ts": 1729000000.0 + i,
+                        "sequence": i,
+                    },
+                )
+            )
         log.close()
 
         # Invoke CLI cmd_replay with --from-wal and --verify-equivalence
