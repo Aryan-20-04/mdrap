@@ -206,3 +206,82 @@ def current_profile() -> HardwareProfile:
     if _CURRENT_PROFILE is None:
         _CURRENT_PROFILE = HardwareProfile.detect()
     return _CURRENT_PROFILE
+
+
+def set_cpu_affinity(core_ids: list[int], pid: int | None = None) -> bool:
+    """Pin process execution to specific CPU cores.
+
+    Supports Linux (sched_setaffinity) and Windows (SetProcessAffinityMask).
+    Returns True if affinity was successfully applied, False on unsupported platforms or failure.
+    """
+    if not core_ids:
+        return False
+
+    # 1. Linux sched_setaffinity
+    if hasattr(os, "sched_setaffinity"):
+        try:
+            os.sched_setaffinity(pid or 0, set(core_ids))
+            return True
+        except Exception:
+            return False
+
+    # 2. Windows SetProcessAffinityMask
+    if sys.platform == "win32":
+        try:
+            import ctypes
+
+            mask = 0
+            for c in core_ids:
+                if 0 <= c < 64:
+                    mask |= (1 << c)
+            h_proc = ctypes.windll.kernel32.GetCurrentProcess()
+            ret = ctypes.windll.kernel32.SetProcessAffinityMask(
+                h_proc, ctypes.c_size_t(mask)
+            )
+            return bool(ret != 0)
+        except Exception:
+            return False
+
+    return False
+
+
+def get_cpu_affinity(pid: int | None = None) -> list[int]:
+    """Return currently assigned CPU cores for the process."""
+    if hasattr(os, "sched_getaffinity"):
+        try:
+            return sorted(list(os.sched_getaffinity(pid or 0)))
+        except Exception:
+            pass
+
+    if sys.platform == "win32":
+        try:
+            import ctypes
+
+            h_proc = ctypes.windll.kernel32.GetCurrentProcess()
+            proc_mask = ctypes.c_size_t()
+            sys_mask = ctypes.c_size_t()
+            if ctypes.windll.kernel32.GetProcessAffinityMask(
+                h_proc, ctypes.byref(proc_mask), ctypes.byref(sys_mask)
+            ):
+                val = proc_mask.value
+                return [i for i in range(64) if (val & (1 << i))]
+        except Exception:
+            pass
+
+    return list(range(os.cpu_count() or 1))
+
+
+def set_numa_node(node_id: int) -> bool:
+    """Bind process memory allocation to a specific NUMA node on Linux."""
+    if sys.platform.startswith("linux"):
+        try:
+            import ctypes
+
+            libnuma = ctypes.CDLL("libnuma.so.1")
+            if hasattr(libnuma, "numa_run_on_node"):
+                ret = libnuma.numa_run_on_node(int(node_id))
+                return ret == 0
+        except Exception:
+            pass
+    return False
+
