@@ -56,12 +56,10 @@ class OHLCVAggregator:
             }
         else:
             b = self._buckets[key]
-            first_ts = b.get("_first_ts", b.get("bucket_start", 0.0))
-            last_ts = b.get("_last_ts", b.get("bucket_start", 0.0))
-            if event.exchange_timestamp < first_ts:
+            if event.exchange_timestamp < b["_first_ts"]:
                 b["open"] = event.price
                 b["_first_ts"] = event.exchange_timestamp
-            if event.exchange_timestamp >= last_ts:
+            if event.exchange_timestamp >= b["_last_ts"]:
                 b["close"] = event.price
                 b["_last_ts"] = event.exchange_timestamp
 
@@ -85,15 +83,14 @@ class OHLCVAggregator:
         }
 
     def candles(self) -> list[dict]:
-        sorted_keys = sorted(self._buckets.keys())
-        return [self._format_candle(self._buckets[k]) for k in sorted_keys]
+        return [self._format_candle(self._buckets[k]) for k in sorted(self._buckets)]
 
     def candles_for(self, instrument_id: str) -> list[dict]:
-        res = []
-        for k in sorted(self._buckets.keys()):
-            if k[0] == instrument_id:
-                res.append(self._format_candle(self._buckets[k]))
-        return res
+        return [
+            self._format_candle(self._buckets[k])
+            for k in sorted(self._buckets)
+            if k[0] == instrument_id
+        ]
 
 
 class SpreadAnalyzer:

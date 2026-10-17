@@ -138,7 +138,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Feed Adapter Protocol & Reference Implementation**: Formalized `FeedAdapter` protocol (`connect`, `disconnect`, `receive`, `normalize`, `health`) and built `ReferenceFeedAdapter` (`src/adapters/reference.py`) with complete authoring guide (`docs/extending/feed-adapter-guide.md`).
 - **Python Public SDK Contract**: Clean top-level SDK import (`from mdrap import Client, MDRAPClient, MarketEvent`) with authenticated REST, WebSocket streaming, and client-side error handling.
 - **Automated Regression & Efficiency Sweeps**: Standalone benchmark suite (`benchmarks/run_performance_suite.py`), regression gate (`benchmarks/check_regression.py`), and scaling efficiency sweep (`benchmarks/efficiency_sweep.py`).
-- **Clean-Room Bootstrap Verification**: Cross-platform bootstrap runner (`scripts/bootstrap.py` and `scripts/bootstrap.sh`) for clean-clone environment compilation and smoke test validation.
+- **Clean-Room Bootstrap Verification**: Cross-platform bootstrap runner (`scripts/bootstrap.py`) for clean-clone environment compilation and smoke test validation.
 
 ### Changed
 - **Reconciliation Engine Determinism**: Hardened source tie-breaking using strictly sorted unique venue keys, guaranteeing 100% deterministic consensus across identical feeds regardless of input stream order.
