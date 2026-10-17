@@ -37,6 +37,8 @@ from .operations import cmd_wal
 from .operations import cmd_init
 from .operations import cmd_capture
 from .operations import cmd_verify
+from .operations import cmd_tui
+from .operations import cmd_metrics
 from .market import cmd_historical
 from .market import cmd_analytics
 from .market import cmd_watchdog
@@ -852,6 +854,52 @@ def build_parser() -> argparse.ArgumentParser:
         "--salvage",
         action="store_true",
         help="Attempt automated salvage on corrupted segments",
+    )
+
+    # Phase 5: Live Terminal UI (TUI)
+    p_tui = _sub(
+        "tui",
+        cmd_tui,
+        "Launch the real-time visual terminal dashboard (TUI)",
+        aliases=["live-tui", "term"],
+    )
+    p_tui.add_argument(
+        "symbol",
+        nargs="?",
+        default="BTC/USDT",
+        help="Instrument symbol or stream target (default: BTC/USDT)",
+    )
+    p_tui.add_argument(
+        "-t",
+        "--target",
+        default=None,
+        help="Custom stream target (e.g. sim:AAPL, binance:BTCUSDT, wal:data/wal, shm:mdrap_live)",
+    )
+    p_tui.add_argument(
+        "-n",
+        "--ticks",
+        type=int,
+        default=None,
+        help="Maximum ticks to display before exiting",
+    )
+    p_tui.add_argument(
+        "--render-once",
+        action="store_true",
+        help="Render a single frame snapshot to stdout without live streaming",
+    )
+
+    # Phase 5: Metrics (OpenTelemetry & Prometheus)
+    p_metrics = _sub(
+        "metrics",
+        cmd_metrics,
+        "Export operational OpenTelemetry / Prometheus telemetry",
+        aliases=["telemetry"],
+    )
+    p_metrics.add_argument(
+        "--format",
+        choices=["prometheus", "otlp", "json", "summary"],
+        default="prometheus",
+        help="Export exposition format (default: prometheus)",
     )
 
     p_ret = _sub(
@@ -2093,6 +2141,10 @@ MNEMONIC_MAP = {
     "init": "init",
     "capture": "capture",
     "cap": "capture",
+    "dashboard": "dashboard",
+    "tui": "tui",
+    "metrics": "metrics",
+    "telemetry": "metrics",
     "chaos": "chaos",
     "ch": "chaos",
     "stress": "stress",
@@ -2212,7 +2264,7 @@ MNEMONIC_MAP = {
     "desk": "desk",
     "navigator": "desk",
     "nav": "desk",
-    "tui": "desk",
+    "tui": "tui",
     "completion": "completion",
     "complete": "completion",
     "load": "loadtest",
@@ -2549,8 +2601,10 @@ def cmd_shell(args=None, parser=None):
                 cli_tokens = ["top"] + rest
             elif verb in ("columnar", "col", "duck", "duckdb"):
                 cli_tokens = ["columnar"] + rest
-            elif verb in ("desk", "navigator", "nav", "tui"):
+            elif verb in ("desk", "navigator", "nav"):
                 cli_tokens = ["desk"] + rest
+            elif verb in ("tui", "live-tui", "term"):
+                cli_tokens = ["tui"] + rest
             elif verb == "daemon":
                 if not rest:
                     cli_tokens = ["daemon", "--speed", "2000"]
@@ -2833,8 +2887,10 @@ def main():
                     raw_cmd = suggested
                     sys.argv[1] = suggested
 
-        if raw_cmd in ("desk", "navigator", "nav", "tui"):
+        if raw_cmd in ("desk", "navigator", "nav"):
             sys.argv = [sys.argv[0], "desk"] + sys.argv[2:]
+        elif raw_cmd in ("tui", "live-tui", "term"):
+            sys.argv = [sys.argv[0], "tui"] + sys.argv[2:]
         elif raw_cmd in ("live", "stream"):
             sym = sys.argv[2] if len(sys.argv) > 2 else "BTC/USD"
             sym = KNOWN_SYMBOLS.get(sym.upper(), sym)

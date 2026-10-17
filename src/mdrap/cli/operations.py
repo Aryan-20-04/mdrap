@@ -1570,3 +1570,54 @@ def cmd_verify(args):
     )
 
 
+def cmd_tui(args):
+    """Launch the real-time visual terminal dashboard (TUI)."""
+    from ..tui import TerminalDashboard
+    from ..models import CanonicalEvent, EventType, QualityStatus
+
+    symbol = getattr(args, "symbol", "BTC/USDT")
+    target = getattr(args, "target", None)
+    max_ticks = getattr(args, "ticks", None) or getattr(args, "max_events", None)
+    render_once = getattr(args, "render_once", False)
+
+    dash = TerminalDashboard(symbol=symbol, target=target, max_ticks=max_ticks)
+    if render_once:
+        tick = CanonicalEvent(
+            event_id="tui_snapshot",
+            instrument_id=symbol,
+            event_type=EventType.TRADE,
+            exchange_timestamp=time.time(),
+            receive_timestamp=time.time(),
+            processing_timestamp=time.time(),
+            source="SIM",
+            price=65000.0,
+            quantity=1.5,
+            bid_price=64999.9,
+            ask_price=65000.1,
+            quality_status=QualityStatus.VALID,
+        )
+        dash._record_tick(tick)
+        print(dash.render_frame_to_string(tick))
+        return
+
+    dash.run()
+
+
+def cmd_metrics(args):
+    """Export operational OpenTelemetry / Prometheus telemetry."""
+    from ..telemetry import get_telemetry
+
+    registry = get_telemetry()
+    fmt = getattr(args, "format", "prometheus").lower()
+
+    if fmt == "otlp":
+        data = registry.export_otlp_json()
+        print(json.dumps(data, indent=2))
+    elif fmt in ("json", "summary"):
+        data = registry.summary()
+        print(json.dumps(data, indent=2))
+    else:  # prometheus text
+        prom_text = registry.export_prometheus()
+        sys.stdout.write(prom_text)
+
+
