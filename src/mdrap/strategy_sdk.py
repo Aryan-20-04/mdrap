@@ -14,20 +14,23 @@ warnings.warn(
 )
 
 _impl = None
-try:
-    import mdrap_strategies as _impl
-except ImportError:
-    _pkg = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-        "packages",
-        "mdrap-strategies",
-    )
-    if _pkg not in sys.path and os.path.exists(_pkg):
-        sys.path.insert(0, _pkg)
+if os.environ.get("MDRAP_DISABLE_COMPANIONS") != "1":
     try:
         import mdrap_strategies as _impl
     except ImportError:
-        _impl = None
+        _pkg = os.path.join(
+            os.path.dirname(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            ),
+            "packages",
+            "mdrap-strategies",
+        )
+        if _pkg not in sys.path and os.path.exists(_pkg):
+            sys.path.insert(0, _pkg)
+        try:
+            import mdrap_strategies as _impl
+        except ImportError:
+            _impl = None
 
 __stability__ = "experimental"
 
@@ -39,9 +42,11 @@ else:
         _is_stub = True
 
         def __init__(self, *args, **kwargs):
-            raise NotImplementedError(
-                "StrategySDK requires the 'mdrap_strategies' companion package. "
-                "Install packages/mdrap-strategies to use algorithmic strategy execution."
+            from .exceptions import CompanionPackageMissing
+
+            raise CompanionPackageMissing(
+                "mdrap_strategies",
+                "pip install packages/mdrap-strategies",
             )
 
     class Strategy(_StubStrategy):

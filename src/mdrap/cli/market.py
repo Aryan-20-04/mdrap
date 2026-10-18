@@ -1976,17 +1976,36 @@ def cmd_tca(args):
 
     try:
         engine = TCAEngine()
-    except (NotImplementedError, AttributeError) as exc:
-        console.print(
-            Panel(
-                f"[bold yellow]{exc}[/bold yellow]\n\n"
-                "[dim]To enable institutional TCA and Best Execution analysis:\n"
-                "  [green]pip install packages/mdrap-analytics[/green][/dim]",
-                title="[bold cyan]Companion Package Required[/bold cyan]",
-                border_style="yellow",
-            )
-        )
-        return
+    except (Exception,) as exc:
+        if "Companion" in type(exc).__name__ or isinstance(
+            exc, (NotImplementedError, AttributeError)
+        ):
+            if getattr(args, "json", False):
+                import json
+
+                print(
+                    json.dumps(
+                        {
+                            "report_type": "TCA_BENCHMARK",
+                            "status": "COMPANION_PACKAGE_REQUIRED",
+                            "error": str(exc),
+                            "install_hint": "pip install packages/mdrap-analytics",
+                        },
+                        indent=2,
+                    )
+                )
+            else:
+                console.print(
+                    Panel(
+                        f"[bold yellow]{exc}[/bold yellow]\n\n"
+                        "[dim]To enable institutional TCA and Best Execution analysis:\n"
+                        "  [green]pip install packages/mdrap-analytics[/green][/dim]",
+                        title="[bold cyan]Companion Package Required[/bold cyan]",
+                        border_style="yellow",
+                    )
+                )
+            return 3
+        raise
 
     batch_res = engine.evaluate_batch(execs)
     scorecards = batch_res.get("broker_scorecards", [])
@@ -2266,29 +2285,33 @@ def cmd_report(args):
 
         try:
             engine = TCAEngine()
-        except (NotImplementedError, AttributeError) as exc:
-            if getattr(args, "json", False):
-                print(
-                    json.dumps(
-                        {
-                            "report_type": "MIFID_II_RTS_28",
-                            "status": "COMPANION_PACKAGE_REQUIRED",
-                            "top_execution_venues": [],
-                            "note": "RTS 28 calculation requires mdrap_analytics companion package",
-                        }
+        except (Exception,) as exc:
+            if "Companion" in type(exc).__name__ or isinstance(
+                exc, (NotImplementedError, AttributeError)
+            ):
+                if getattr(args, "json", False):
+                    print(
+                        json.dumps(
+                            {
+                                "report_type": "MIFID_II_RTS_28",
+                                "status": "COMPANION_PACKAGE_REQUIRED",
+                                "top_execution_venues": [],
+                                "note": "RTS 28 calculation requires mdrap_analytics companion package",
+                            }
+                        )
                     )
-                )
-            else:
-                console.print(
-                    Panel(
-                        f"[bold yellow]{exc}[/bold yellow]\n\n"
-                        "[dim]To enable MiFID II RTS 28 reporting:\n"
-                        "  [green]pip install packages/mdrap-analytics[/green][/dim]",
-                        title="[bold cyan]Companion Package Required[/bold cyan]",
-                        border_style="yellow",
+                else:
+                    console.print(
+                        Panel(
+                            f"[bold yellow]{exc}[/bold yellow]\n\n"
+                            "[dim]To enable MiFID II RTS 28 reporting:\n"
+                            "  [green]pip install packages/mdrap-analytics[/green][/dim]",
+                            title="[bold cyan]Companion Package Required[/bold cyan]",
+                            border_style="yellow",
+                        )
                     )
-                )
-            return
+                return 3
+            raise
 
         batch_res = engine.evaluate_batch(execs)
         scorecards = batch_res.get("broker_scorecards", [])

@@ -217,13 +217,14 @@ def cmd_strategy(args):
     sym_list = [s.strip().upper() for s in sym.split(",")] if not is_all_market else []
     display_sym = "WHOLE MARKET UNIVERSE" if is_all_market else sym
 
-    console.print(
-        Panel(
-            f"[bold cyan]MDRAP Paper Trading Strategy Engine (§26)[/bold cyan]\n"
-            f"• Strategy: [bold yellow]{strat_name}[/bold yellow]  |  Universe: [bold green]{display_sym}[/bold green]  |  Events: [white]{events_count:,}[/white]",
-            expand=False,
+    if not getattr(args, "json", False):
+        console.print(
+            Panel(
+                f"[bold cyan]MDRAP Paper Trading Strategy Engine (§26)[/bold cyan]\n"
+                f"• Strategy: [bold yellow]{strat_name}[/bold yellow]  |  Universe: [bold green]{display_sym}[/bold green]  |  Events: [white]{events_count:,}[/white]",
+                expand=False,
+            )
         )
-    )
 
     try:
         if strat_name == "spread_capture":
@@ -243,17 +244,36 @@ def cmd_strategy(args):
             strat = WhaleMomentumStrategy(
                 symbol=sym, trade_size=100.0, stop_loss_pct=0.5
             )
-    except (NotImplementedError, TypeError) as exc:
-        console.print(
-            Panel(
-                f"[bold yellow]{exc}[/bold yellow]\n\n"
-                "[dim]To enable algorithmic strategy execution and backtesting:\n"
-                "  [green]pip install packages/mdrap-strategies[/green][/dim]",
-                title="[bold cyan]Companion Package Required[/bold cyan]",
-                border_style="yellow",
-            )
-        )
-        return
+    except (Exception,) as exc:
+        if "Companion" in type(exc).__name__ or isinstance(
+            exc, (NotImplementedError, TypeError, AttributeError)
+        ):
+            if getattr(args, "json", False):
+                import json
+
+                print(
+                    json.dumps(
+                        {
+                            "status": "COMPANION_PACKAGE_REQUIRED",
+                            "strategy": strat_name,
+                            "error": str(exc),
+                            "install_hint": "pip install packages/mdrap-strategies",
+                        },
+                        indent=2,
+                    )
+                )
+            else:
+                console.print(
+                    Panel(
+                        f"[bold yellow]{exc}[/bold yellow]\n\n"
+                        "[dim]To enable algorithmic strategy execution and backtesting:\n"
+                        "  [green]pip install packages/mdrap-strategies[/green][/dim]",
+                        title="[bold cyan]Companion Package Required[/bold cyan]",
+                        border_style="yellow",
+                    )
+                )
+            return 3
+        raise
 
     flow_tracker = OrderFlowTracker()
 
@@ -1085,17 +1105,35 @@ def cmd_vessel(args):
 
     try:
         tracker = VesselTracker()
-    except (NotImplementedError, AttributeError) as exc:
-        console.print(
-            Panel(
-                f"[bold yellow]{exc}[/bold yellow]\n\n"
-                "[dim]To enable maritime AIS intelligence and commodity tanker tracking:\n"
-                "  [green]pip install packages/mdrap-contrib-vessel[/green][/dim]",
-                title="[bold cyan]Companion Package Required[/bold cyan]",
-                border_style="yellow",
-            )
-        )
-        return
+    except (Exception,) as exc:
+        if "Companion" in type(exc).__name__ or isinstance(
+            exc, (NotImplementedError, AttributeError)
+        ):
+            if getattr(args, "json", False):
+                import json
+
+                print(
+                    json.dumps(
+                        {
+                            "status": "COMPANION_PACKAGE_REQUIRED",
+                            "error": str(exc),
+                            "install_hint": "pip install packages/mdrap-contrib-vessel",
+                        },
+                        indent=2,
+                    )
+                )
+            else:
+                console.print(
+                    Panel(
+                        f"[bold yellow]{exc}[/bold yellow]\n\n"
+                        "[dim]To enable maritime AIS intelligence and commodity tanker tracking:\n"
+                        "  [green]pip install packages/mdrap-contrib-vessel[/green][/dim]",
+                        title="[bold cyan]Companion Package Required[/bold cyan]",
+                        border_style="yellow",
+                    )
+                )
+            return 3
+        raise
     try:
         if action in ("list", "all", "ls"):
             vessels = tracker.list_vessels(

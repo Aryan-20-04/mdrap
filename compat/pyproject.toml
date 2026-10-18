@@ -4,12 +4,12 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mdrap-compat"
-version = "3.1.1"
+version = "3.1.2"
 description = "Opt-in legacy top-level import shims for MDRAP 3.0"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
-dependencies = ["mdrap-core>=3.1.1", "mdrap-contrib>=3.1.1"]
+dependencies = ["mdrap-core>=3.1.2", "mdrap-contrib>=3.1.2"]
 
 [tool.setuptools]
 package-dir = {"" = "src"}

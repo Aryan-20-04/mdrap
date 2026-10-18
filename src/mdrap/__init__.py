@@ -37,6 +37,7 @@ from .pipeline import Pipeline, EnginePipeline
 from .projection import SQLiteProjection, DuckDBProjection
 from .storage import Store
 from .profile import HardwareProfile, ProfileMode, current_profile
+from .exceptions import CompanionPackageMissing, require_companion
 from .facade import stream, connect, doctor
 
 # Backward-compatible alias for deterministic engine
@@ -95,6 +96,8 @@ __all__ = [
     "stream",
     "connect",
     "doctor",
+    "CompanionPackageMissing",
+    "require_companion",
 ]
 
 __stability__ = "stable"

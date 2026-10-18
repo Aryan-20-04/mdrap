@@ -110,10 +110,12 @@ class FencedWALWriter:
 
 class ConsensusCoordinator:
     """
-    Lightweight, quorum-based high availability and lease coordinator.
+    In-process simulated quorum and lease coordinator.
 
-    Coordinates primary-backup failover and authoritative epoch token generation
-    across cluster nodes using majority voting (N/2 + 1).
+    NOTE: This is an in-process simulation intended for single-node testing and
+    fencing pattern validation. It coordinates primary-backup transitions and
+    epoch token generation in memory and does NOT provide distributed network
+    consensus across independent hosts.
     """
 
     def __init__(

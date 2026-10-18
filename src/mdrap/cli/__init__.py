@@ -3168,6 +3168,38 @@ def main():
 
     args = parser.parse_args()
     if hasattr(args, "func"):
-        args.func(args)
+        from ..exceptions import CompanionPackageMissing
+
+        try:
+            ret = args.func(args)
+            if isinstance(ret, int) and ret != 0:
+                sys.exit(ret)
+        except CompanionPackageMissing as exc:
+            if getattr(args, "json", False):
+                import json
+
+                print(
+                    json.dumps(
+                        {
+                            "status": "COMPANION_PACKAGE_REQUIRED",
+                            "package": exc.package_name,
+                            "error": str(exc),
+                            "install_hint": exc.install_hint,
+                        },
+                        indent=2,
+                    )
+                )
+            else:
+                console = Console(stderr=True)
+                console.print(
+                    Panel(
+                        f"[bold yellow]{exc}[/bold yellow]\n\n"
+                        f"[dim]To enable this feature, install the companion package:\n"
+                        f"  [green]{exc.install_hint}[/green][/dim]",
+                        title="[bold cyan]Companion Package Required[/bold cyan]",
+                        border_style="yellow",
+                    )
+                )
+            sys.exit(3)
     else:
         parser.print_help()

@@ -343,11 +343,11 @@ class TestPowerLossAndCrashResilience:
 
 
 class TestDisasterRecoveryRunbook:
-    """Client Acceptance Test: Automated feed failover and engine snapshot recovery."""
+    """Client Acceptance Test: Two-source continuity and engine snapshot recovery."""
 
-    def test_feed_failover_continuity(self):
-        """Simulate primary feed stall/disconnect and automated failover to standby feed with zero loss."""
-        temp_dir = tempfile.mkdtemp(prefix="mdrap_phase10_failover_")
+    def test_two_source_continuity_no_loss(self):
+        """Verify seamless two-source stream continuity across feed switch with zero event loss."""
+        temp_dir = tempfile.mkdtemp(prefix="mdrap_phase10_continuity_")
         try:
             # Durability boundary: fsync_policy="always"
             engine = Engine(EngineConfig(wal_dir=temp_dir, fsync_policy="always"))

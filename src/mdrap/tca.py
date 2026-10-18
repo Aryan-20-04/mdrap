@@ -14,20 +14,23 @@ warnings.warn(
 )
 
 _impl = None
-try:
-    import mdrap_analytics as _impl
-except ImportError:
-    _pkg = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-        "packages",
-        "mdrap-analytics",
-    )
-    if _pkg not in sys.path and os.path.exists(_pkg):
-        sys.path.insert(0, _pkg)
+if os.environ.get("MDRAP_DISABLE_COMPANIONS") != "1":
     try:
         import mdrap_analytics as _impl
     except ImportError:
-        _impl = None
+        _pkg = os.path.join(
+            os.path.dirname(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            ),
+            "packages",
+            "mdrap-analytics",
+        )
+        if _pkg not in sys.path and os.path.exists(_pkg):
+            sys.path.insert(0, _pkg)
+        try:
+            import mdrap_analytics as _impl
+        except ImportError:
+            _impl = None
 
 __stability__ = "experimental"
 
@@ -118,9 +121,11 @@ else:
         _is_stub = True
 
         def __init__(self, *args, **kwargs):
-            raise NotImplementedError(
-                "TCAEngine requires the 'mdrap_analytics' companion package. "
-                "Install packages/mdrap-analytics to use Transaction Cost Analysis features."
+            from .exceptions import CompanionPackageMissing
+
+            raise CompanionPackageMissing(
+                "mdrap_analytics",
+                "pip install packages/mdrap-analytics",
             )
 
         @staticmethod

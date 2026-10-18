@@ -1,6 +1,6 @@
 # MDRAP Institutional Disaster Recovery Runbook
 
-**Release Target:** v3.1.1  
+**Release Target:** v3.1.2  
 **Target Audience:** Market Data Infrastructure Engineers, SREs, Risk Officers, Operations Desks  
 **Compliance Mandate:** Institutional Tier-1 Architecture Spec §26 & Disaster Recovery Standards
 

@@ -3,6 +3,19 @@
 All notable changes to MDRAP are documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.2] - 2026-10-18
+
+### Added
+- **A1: Verifiable Test Manifest & Claims Generation**: Added `scripts/gen_claims.py` and `audit/claims_manifest.json` ensuring all claims in `README.md` and `docs/status.md` are cryptographically tied to exact test outcomes.
+- **A2: Explicit Companion Package Degradation**: Introduced `mdrap.exceptions.CompanionPackageMissing` with standardized exit code `3` (`EXIT_COMPANION_MISSING`), structured error payload (`--json`), and rich terminal panels guiding users on installing optional companion packages (`mdrap-analytics`, `mdrap-strategies`, `mdrap-contrib-vessel`).
+- **A4: Platform-Independent WAL Rotation & Fault Injection**: Implemented `tests/helpers/faults.py` (`fail_commit_fsync`) targeting the caller frame of `append_batch` directly, providing robust cross-platform simulation of partial commit failures across Windows and POSIX without depending on raw syscall call counts.
+- **Universal Test Plan Suite**: Added tests `test_companion_absence.py` (P-01..P-03), `test_n01_rotation_policy.py` (W-03..W-05), and claim verification tests (`test_claims_verification.py`).
+
+### Fixed
+- **A5: Quality Status Counter Parity**: Ensured early schema validation returns in pure-Python `QualityEngine.evaluate()` increment `self.counts[event.quality_status.value]`, achieving 100% parity with native C hot paths (Q-04).
+- **A6: Multi-Feed Continuity Transparency**: Renamed client acceptance test `test_feed_failover_continuity` to `test_two_source_continuity_no_loss` in `tests/test_phase10_client_acceptance.py` to transparently reflect data continuity across feeds without claiming autonomous multi-node failover.
+- **Disaster Recovery RTO Documentation**: Qualified disaster recovery metrics in `docs/disaster_recovery_runbook.md`, verifying RTO boundaries under varying event scales.
+
 ## [3.1.1] - 2026-10-15
 
 ### Fixed

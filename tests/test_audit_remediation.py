@@ -992,7 +992,7 @@ def test_phase4_version_discipline_metadata():
     """Phase 4: Version metadata exposes commit hash, segment version, and stability policy."""
     import mdrap._version as v
 
-    assert v.__version__ == "3.1.1"
+    assert v.__version__ == "3.1.2"
     assert v.__segment_version__ == 1
     assert v.__journal_version__ == 1
     assert hasattr(v, "__commit__")

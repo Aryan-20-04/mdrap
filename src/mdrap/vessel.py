@@ -14,20 +14,23 @@ warnings.warn(
 )
 
 _impl = None
-try:
-    import mdrap_vessel as _impl
-except ImportError:
-    _pkg = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-        "packages",
-        "mdrap-contrib-vessel",
-    )
-    if _pkg not in sys.path and os.path.exists(_pkg):
-        sys.path.insert(0, _pkg)
+if os.environ.get("MDRAP_DISABLE_COMPANIONS") != "1":
     try:
         import mdrap_vessel as _impl
     except ImportError:
-        _impl = None
+        _pkg = os.path.join(
+            os.path.dirname(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            ),
+            "packages",
+            "mdrap-contrib-vessel",
+        )
+        if _pkg not in sys.path and os.path.exists(_pkg):
+            sys.path.insert(0, _pkg)
+        try:
+            import mdrap_vessel as _impl
+        except ImportError:
+            _impl = None
 
 __stability__ = "experimental"
 
@@ -37,9 +40,11 @@ else:
 
     class VesselTracker:
         def __init__(self, *args, **kwargs):
-            raise NotImplementedError(
-                "VesselTracker requires the 'mdrap_vessel' companion package. "
-                "Install packages/mdrap-contrib-vessel to use maritime intelligence features."
+            from .exceptions import CompanionPackageMissing
+
+            raise CompanionPackageMissing(
+                "mdrap_vessel",
+                "pip install packages/mdrap-contrib-vessel",
             )
 
     class Vessel:
