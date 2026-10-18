@@ -4,12 +4,12 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mdrap-contrib"
-version = "3.1.0"
+version = "3.1.1"
 description = "Optional MDRAP command line and peripheral integrations"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
-dependencies = ["mdrap-core>=3.1.0"]
+dependencies = ["mdrap-core>=3.1.1"]
 
 [project.scripts]
 mdrap = "mdrap.cli:main"

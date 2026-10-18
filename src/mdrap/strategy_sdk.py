@@ -35,12 +35,17 @@ if _impl is not None:
     sys.modules[__name__] = _impl
 else:
 
-    class Strategy:
+    class _StubStrategy:
+        _is_stub = True
+
         def __init__(self, *args, **kwargs):
             raise NotImplementedError(
                 "StrategySDK requires the 'mdrap_strategies' companion package. "
                 "Install packages/mdrap-strategies to use algorithmic strategy execution."
             )
+
+    class Strategy(_StubStrategy):
+        pass
 
     class StrategyRunner:
         def __init__(self, *args, **kwargs):
@@ -51,39 +56,48 @@ else:
             pass
 
     class RiskLimits:
-        pass
+        def __init__(self, *args, **kwargs):
+            pass
 
     class Order:
-        pass
+        def __init__(self, *args, **kwargs):
+            pass
 
     class OrderBook:
-        pass
+        def __init__(self, *args, **kwargs):
+            pass
 
     class OrderBookSnapshot:
-        pass
+        def __init__(self, *args, **kwargs):
+            pass
 
     class OrderSide:
-        pass
+        def __init__(self, *args, **kwargs):
+            pass
 
     class OrderStatus:
-        pass
+        def __init__(self, *args, **kwargs):
+            pass
 
     class OrderType:
-        pass
+        def __init__(self, *args, **kwargs):
+            pass
 
     class PaperExecutor:
-        pass
+        def __init__(self, *args, **kwargs):
+            pass
 
     class Position:
+        def __init__(self, *args, **kwargs):
+            pass
+
+    class SpreadCaptureMarketMaker(_StubStrategy):
         pass
 
-    class SpreadCaptureMarketMaker:
+    class WhaleMomentumStrategy(_StubStrategy):
         pass
 
-    class WhaleMomentumStrategy:
-        pass
-
-    class AvellanedaStoikovStrategy:
+    class AvellanedaStoikovStrategy(_StubStrategy):
         pass
 
     __all__ = [

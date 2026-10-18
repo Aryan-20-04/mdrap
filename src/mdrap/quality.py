@@ -338,6 +338,7 @@ class QualityEngine:
         if not is_trade and not is_quote:
             self._mark(event, QualityStatus.INVALID, Reason.SCHEMA_VIOLATION)
             self._bump(Reason.SCHEMA_VIOLATION)
+            self.counts[event.quality_status.value] += 1
             return event
 
         bad = False

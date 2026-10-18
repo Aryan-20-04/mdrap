@@ -1974,7 +1974,20 @@ def cmd_tca(args):
             symbol=sym, count=cnt, seed=getattr(args, "seed", 42)
         )
 
-    engine = TCAEngine()
+    try:
+        engine = TCAEngine()
+    except (NotImplementedError, AttributeError) as exc:
+        console.print(
+            Panel(
+                f"[bold yellow]{exc}[/bold yellow]\n\n"
+                "[dim]To enable institutional TCA and Best Execution analysis:\n"
+                "  [green]pip install packages/mdrap-analytics[/green][/dim]",
+                title="[bold cyan]Companion Package Required[/bold cyan]",
+                border_style="yellow",
+            )
+        )
+        return
+
     batch_res = engine.evaluate_batch(execs)
     scorecards = batch_res.get("broker_scorecards", [])
 
@@ -2129,6 +2142,7 @@ def cmd_tca(args):
 def cmd_report(args):
     """Generate institutional fund regulatory compliance reports (SEC 13F, MiFID II RTS 28)."""
     import datetime
+    import json
 
     report_type = (
         getattr(args, "report_type", None) or getattr(args, "type", "13f") or "13f"
@@ -2250,7 +2264,32 @@ def cmd_report(args):
                 symbol=sym, count=100, seed=getattr(args, "seed", 42)
             )
 
-        engine = TCAEngine()
+        try:
+            engine = TCAEngine()
+        except (NotImplementedError, AttributeError) as exc:
+            if getattr(args, "json", False):
+                print(
+                    json.dumps(
+                        {
+                            "report_type": "MIFID_II_RTS_28",
+                            "status": "COMPANION_PACKAGE_REQUIRED",
+                            "top_execution_venues": [],
+                            "note": "RTS 28 calculation requires mdrap_analytics companion package",
+                        }
+                    )
+                )
+            else:
+                console.print(
+                    Panel(
+                        f"[bold yellow]{exc}[/bold yellow]\n\n"
+                        "[dim]To enable MiFID II RTS 28 reporting:\n"
+                        "  [green]pip install packages/mdrap-analytics[/green][/dim]",
+                        title="[bold cyan]Companion Package Required[/bold cyan]",
+                        border_style="yellow",
+                    )
+                )
+            return
+
         batch_res = engine.evaluate_batch(execs)
         scorecards = batch_res.get("broker_scorecards", [])
 

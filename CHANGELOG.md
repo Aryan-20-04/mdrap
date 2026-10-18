@@ -3,6 +3,18 @@
 All notable changes to MDRAP are documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.1] - 2026-10-15
+
+### Fixed
+- **N-08: Python Engine Quality Count Parity**: Fixed early return in pure-Python `QualityEngine.evaluate()` to increment `self.counts[event.quality_status.value]` on structural validation errors, guaranteeing 100% counter parity with the native C accelerator across all event sequences.
+- **N-10: Cross-Platform WAL Batch Rollback Test Portability**: Fixed `test_f04_io_failure_during_batch_rolls_back_cleanly_without_orphans` by inspecting caller stack for `append_batch` rather than counting raw `os.fsync` calls, eliminating Linux directory fsync (`_sync_dir`) counting discrepancies.
+- **N-11: Companion Package Clean Checkout Graceful Fallback**: Added stub definitions and demo generators to `mdrap.tca` and `mdrap.strategy_sdk`. Hardened CLI commands (`tca`, `strategy`, `vessel`, `report rts28`) to catch missing companion exceptions and display clear, styled Rich guidance panels directing users to install `packages/` companions.
+- **DuckDB Optional Dependency Declaration**: Declared `duckdb` and `pyarrow` under `columnar` in `[project.optional-dependencies]` in `pyproject.toml` and guarded columnar projection tests with `pytest.importorskip("duckdb")`.
+
+### Changed
+- **N-12: Documentation Test Counts & Staging Claims Alignment**: Updated `README.md` and `docs/status.md` to reflect 1,300+ core tests on clean public checkouts and clarified Mode B multi-node failover boundaries.
+- **N-13: Disaster Recovery Scale-Dependent RTO Boundaries**: Documented recovery time scale boundaries in `docs/disaster_recovery_runbook.md`, verifying RTO < 500 ms holds up to 5,000 tail events and establishing baseline linear replay rates of ~12,500 ev/s for tail recovery beyond 50,000 events.
+
 ## [3.1.0] - 2026-10-10
 
 ### Added

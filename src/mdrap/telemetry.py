@@ -31,6 +31,8 @@ import threading
 import time
 from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
+from ._version import __version__
+
 logger = logging.getLogger("mdrap.telemetry")
 
 # Strict cardinality sets to avoid hot-path label explosion (Phase 5)
@@ -502,13 +504,16 @@ class TelemetryRegistry:
                             {"key": "service.name", "value": {"stringValue": "mdrap"}},
                             {
                                 "key": "service.version",
-                                "value": {"stringValue": "3.1.0"},
+                                "value": {"stringValue": __version__},
                             },
                         ]
                     },
                     "scopeMetrics": [
                         {
-                            "scope": {"name": "mdrap.telemetry", "version": "3.1.0"},
+                            "scope": {
+                                "name": "mdrap.telemetry",
+                                "version": __version__,
+                            },
                             "metrics": metrics_list,
                         }
                     ],

@@ -359,6 +359,11 @@ def test_f10_all_event_types_stream_fuzz() -> None:
             elif dec.quality_status == QualityStatus.INVALID:
                 assert res_py.quality_status == QualityStatus.INVALID
 
+        # Aggregate status counter parity check across entire mixed stream (N-08)
+        assert c_eng.counts == py_eng.counts, (
+            f"Status counts diverged: C={c_eng.counts} vs Python={py_eng.counts}"
+        )
+
 
 def test_f12_fastpath_fallback_parity_when_native_disabled(monkeypatch) -> None:
     """F-12: Verify FastQualityEngine under fallback mode matches QualityEngine directly."""

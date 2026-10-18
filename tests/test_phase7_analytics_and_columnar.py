@@ -131,6 +131,10 @@ class TestAsyncProjectionWorker:
 class TestDuckDBColumnarProjection:
     """Verifies DuckDB analytical columnar projection and high-speed querying."""
 
+    @pytest.fixture(autouse=True)
+    def _require_duckdb(self):
+        pytest.importorskip("duckdb")
+
     def test_duckdb_projection_apply_and_query(self, tmp_path):
         db_path = str(tmp_path / "test_duck.duckdb")
         proj = DuckDBProjection(db_path=db_path)
@@ -200,6 +204,10 @@ class TestDuckDBColumnarProjection:
 
 class TestParquetExporterAndLineage:
     """Verifies Apache Parquet direct export and IngestLog immutability."""
+
+    @pytest.fixture(autouse=True)
+    def _require_duckdb(self):
+        pytest.importorskip("duckdb")
 
     def test_duckdb_export_parquet(self, tmp_path):
         proj = DuckDBProjection(db_path=":memory:")

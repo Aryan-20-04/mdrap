@@ -124,8 +124,8 @@ MDRAP adheres to Design Principle 2: **Measure before claiming**.
 
 | Milestone | Scope | Verified Result | Status |
 | --- | --- | --- | --- |
-| **Mode A** | Single-Node Process & IPC | 1,450+ automated test suite passed cleanly | **VERIFIED** |
-| **Mode B** | Independent-Host Staging | Multi-host distributed failover & consensus clustering | **GATED** |
+| **Mode A** | Single-Node Process & IPC | 1,300+ core test suite passed cleanly | **VERIFIED** |
+| **Mode B** | Distributed Failover & Consensus (Multi-host) | Multi-host distributed failover & consensus clustering | **GATED** |
 | **Mode C** | Live Venue Production Feeds | Direct exchange connectivity & licensing | **GATED** |
 | **Mode D** | Physical Kernel-Bypass NIC/FPGA | Dedicated bare-metal testbench validation | **GATED** |
 

@@ -1,6 +1,6 @@
 # MDRAP Platform Status & Verification Assessment
 
-This document provides an honest, auditable record of the verification status of MDRAP as of Phase 11 (`v3.1.0`). It clearly delineates between verified platform tiers, explicitly gated deployment modes, and known architectural boundaries.
+This document provides an honest, auditable record of the verification status of MDRAP as of Phase 11 (`v3.1.1`). It clearly delineates between verified platform tiers, explicitly gated deployment modes, and known architectural boundaries.
 
 ---
 
@@ -18,7 +18,7 @@ This document provides an honest, auditable record of the verification status of
 ## 2. What Is Verified
 
 ### 2.1 Test Suite & Mathematical Parity
-- **1,450+ Automated Tests**: Clean baseline test execution on Windows and Linux (`tests/`; slow/network tests deselected by default).
+- **1,300+ Core Automated Tests**: Clean baseline test execution on Windows and Linux (`tests/`; slow/network tests deselected by default).
 - **Dual-Tier Parity Guarantee**: Native C hot-path kernel (`src/fastpath.c`, `src/mdrap_core.c`) and pure Python fallback produce bit-for-bit identical outputs for all financial quality checks and deduplication states on supported event types.
 - **Strict Boolean Rejection**: Strict validation preventing Python `bool` instances (which subclass `int`) from passing numeric schema checks for prices, sizes, timestamps, or sequence numbers.
 

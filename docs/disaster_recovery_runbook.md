@@ -1,6 +1,6 @@
 # MDRAP Institutional Disaster Recovery Runbook
 
-**Release Target:** v3.1.0  
+**Release Target:** v3.1.1  
 **Target Audience:** Market Data Infrastructure Engineers, SREs, Risk Officers, Operations Desks  
 **Compliance Mandate:** Institutional Tier-1 Architecture Spec §26 & Disaster Recovery Standards
 
@@ -18,6 +18,7 @@ The Market Data Reliability & Acceleration Platform (MDRAP) operates as a zero-l
   - If configured with `fsync_policy="never"`, persistence is asynchronous and subject to operating system page cache flush semantics.
   - *Storage Boundary Constraint:* Total physical hardware loss or storage media destruction without off-host backups voids local RPO guarantees.
 * **Recovery Time Objective (RTO):** $< 5.0$ seconds for full engine cold start; $< 500$ milliseconds for state restoration from local snapshot and uncompacted tail log.
+  - *Scale-Dependent Recovery Bounds:* The $< 500$ ms RTO target holds strictly for up to 5,000 uncompacted tail events. Because state restoration replays the sequential log, larger un-snapshotted tails recover at a baseline single-core linear replay throughput of $\approx 12,500$ events/second (e.g., 50,000 events require $\approx 4.0$ seconds without snapshot compaction).
 * **Durability Boundary:** Authoritative `IngestLog` WAL. Engine state is a pure, deterministic fold over the log:
   $$\text{EngineState}_{t+1} = \text{step}(\text{EngineState}_t, \text{RawEvent}_t, \text{Clock}_t)$$
 

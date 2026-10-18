@@ -11,7 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 DIST = ROOT / "dist"
-VERSION = "3.1.0"
+VERSION = "3.1.1"
 
 
 def build(project: Path, distribution: str) -> tuple[Path, Path]:

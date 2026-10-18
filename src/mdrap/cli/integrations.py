@@ -225,16 +225,35 @@ def cmd_strategy(args):
         )
     )
 
-    if strat_name == "spread_capture":
-        strat = SpreadCaptureMarketMaker(
-            symbol=sym, min_spread_bps=3.0, quote_size=50.0
+    try:
+        if strat_name == "spread_capture":
+            strat = SpreadCaptureMarketMaker(
+                symbol=sym, min_spread_bps=3.0, quote_size=50.0
+            )
+        elif strat_name in (
+            "avellaneda_stoikov",
+            "as_mm",
+            "hft_mm",
+            "hft_market_maker",
+        ):
+            strat = AvellanedaStoikovStrategy(
+                symbol=sym, gamma=0.1, kappa=1.5, quote_size=50.0, max_inventory=500.0
+            )
+        else:
+            strat = WhaleMomentumStrategy(
+                symbol=sym, trade_size=100.0, stop_loss_pct=0.5
+            )
+    except (NotImplementedError, TypeError) as exc:
+        console.print(
+            Panel(
+                f"[bold yellow]{exc}[/bold yellow]\n\n"
+                "[dim]To enable algorithmic strategy execution and backtesting:\n"
+                "  [green]pip install packages/mdrap-strategies[/green][/dim]",
+                title="[bold cyan]Companion Package Required[/bold cyan]",
+                border_style="yellow",
+            )
         )
-    elif strat_name in ("avellaneda_stoikov", "as_mm", "hft_mm", "hft_market_maker"):
-        strat = AvellanedaStoikovStrategy(
-            symbol=sym, gamma=0.1, kappa=1.5, quote_size=50.0, max_inventory=500.0
-        )
-    else:
-        strat = WhaleMomentumStrategy(symbol=sym, trade_size=100.0, stop_loss_pct=0.5)
+        return
 
     flow_tracker = OrderFlowTracker()
 
@@ -1064,7 +1083,19 @@ def cmd_vessel(args):
     status = getattr(args, "status", None)
     limit = getattr(args, "limit", 25) or 25
 
-    tracker = VesselTracker()
+    try:
+        tracker = VesselTracker()
+    except (NotImplementedError, AttributeError) as exc:
+        console.print(
+            Panel(
+                f"[bold yellow]{exc}[/bold yellow]\n\n"
+                "[dim]To enable maritime AIS intelligence and commodity tanker tracking:\n"
+                "  [green]pip install packages/mdrap-contrib-vessel[/green][/dim]",
+                title="[bold cyan]Companion Package Required[/bold cyan]",
+                border_style="yellow",
+            )
+        )
+        return
     try:
         if action in ("list", "all", "ls"):
             vessels = tracker.list_vessels(

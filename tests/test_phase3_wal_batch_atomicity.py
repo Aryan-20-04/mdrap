@@ -113,13 +113,26 @@ def test_f04_io_failure_during_batch_rolls_back_cleanly_without_orphans(tmp_path
         ]
 
         # Inject simulated disk write failure on fsync (after rotation)
+        # N-10: Target the batch commit fsync directly by caller name rather than call count,
+        # ensuring portable execution across Linux (where _sync_dir calls os.fsync) and Windows.
+        import inspect
+
         orig_fsync = os.fsync
-        call_count = 0
 
         def fail_on_batch_commit(fd):
-            nonlocal call_count
-            call_count += 1
-            if call_count >= 4:
+            real_caller = None
+            for frame_info in inspect.stack():
+                func_name = frame_info.function
+                if func_name not in (
+                    "fail_on_batch_commit",
+                    "hook",
+                    "_execute_mock_call",
+                    "_mock_call",
+                    "__call__",
+                ):
+                    real_caller = func_name
+                    break
+            if real_caller == "append_batch":
                 raise OSError("Simulated disk sync failure")
             return orig_fsync(fd)
 
