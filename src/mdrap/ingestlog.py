@@ -29,7 +29,12 @@ logger = logging.getLogger(__name__)
 
 # Constants & Binary Layout
 LOG_MAGIC = b"MDRAPILG"  # 8 bytes
-LOG_VERSION = 1  # uint16 (2 bytes)
+LOG_VERSION_V0 = 0  # Legacy unversioned frame header (v3.0 - v3.1.2)
+LOG_VERSION_V1 = 1
+LOG_VERSION_V2 = 2
+LOG_VERSION = LOG_VERSION_V2  # uint16 (2 bytes)
+SUPPORTED_LOG_VERSIONS = (LOG_VERSION_V0, LOG_VERSION_V1, LOG_VERSION_V2)
+
 SEGMENT_HEADER_FORMAT = (
     ">8sHQd6s"  # magic(8), ver(2), start_offset(8), ts(8), res(6) = 32 bytes
 )
@@ -37,9 +42,45 @@ SEGMENT_HEADER_SIZE = struct.calcsize(SEGMENT_HEADER_FORMAT)  # 32
 
 FRAME_MAGIC = 0xAA55  # uint16 (2 bytes)
 FRAME_HEADER_FORMAT = (
-    ">HHQdII"  # magic(2), res(2), offset(8), ts(8), length(4), crc32(4) = 28 bytes
+    ">HHQdII"  # magic(2), ver(2), offset(8), ts(8), length(4), crc32(4) = 28 bytes
 )
 FRAME_HEADER_SIZE = struct.calcsize(FRAME_HEADER_FORMAT)  # 28
+
+
+def compute_frame_crc(
+    hdr_prefix: bytes, payload_bytes: bytes, version: int = LOG_VERSION
+) -> int:
+    """Compute frame CRC32.
+
+    In format version 1, CRC covers payload only.
+    In format version 2 (F-06, W-08), CRC covers both 24-byte header prefix and payload,
+    guaranteeing any bit-flip in magic, offset, timestamp, or length is detected.
+    """
+    if version >= 2:
+        c = zlib.crc32(hdr_prefix)
+        return zlib.crc32(payload_bytes, c) & 0xFFFFFFFF
+    return zlib.crc32(payload_bytes) & 0xFFFFFFFF
+
+
+def pack_frame_header(
+    offset: int,
+    now: float,
+    payload_len: int,
+    payload_bytes: bytes,
+    version: int = LOG_VERSION,
+) -> bytes:
+    """Pack 28-byte frame header with CRC32."""
+    hdr_prefix = struct.pack(
+        ">HHQdI",
+        FRAME_MAGIC,
+        version,
+        offset,
+        now,
+        payload_len,
+    )
+    crc = compute_frame_crc(hdr_prefix, payload_bytes, version)
+    return hdr_prefix + struct.pack(">I", crc)
+
 
 # Configurable segment limits (§12, §26)
 SEGMENT_LIMIT_LITE = 10 * 1024 * 1024  # 10 MB (Lite / Potato PC profile)
@@ -237,6 +278,11 @@ class IngestLog:
         with self._lock:
             return self._current_filename
 
+    @property
+    def is_poisoned(self) -> bool:
+        with self._lock:
+            return self._is_poisoned
+
     def _sync_dir(self) -> None:
         """Durable directory sync ensuring newly created or rotated segment files are committed to disk metadata."""
         if os.name != "nt":
@@ -333,7 +379,7 @@ class IngestLog:
             magic, ver, seg_start, ts, res = struct.unpack(
                 SEGMENT_HEADER_FORMAT, header_bytes
             )
-            if magic != LOG_MAGIC or ver != LOG_VERSION:
+            if magic != LOG_MAGIC or ver not in SUPPORTED_LOG_VERSIONS:
                 raise IngestLogCorruptError(
                     f"Corrupt segment header in {filepath}: magic={magic!r}, ver={ver}"
                 )
@@ -367,7 +413,7 @@ class IngestLog:
                     f.flush()
                     break
 
-                f_magic, _, offset, f_ts, length, expected_crc = struct.unpack(
+                f_magic, f_ver, offset, f_ts, length, expected_crc = struct.unpack(
                     FRAME_HEADER_FORMAT, frame_hdr_bytes
                 )
                 if f_magic != FRAME_MAGIC:
@@ -410,7 +456,10 @@ class IngestLog:
                     f.flush()
                     break
 
-                actual_crc = zlib.crc32(payload_bytes) & 0xFFFFFFFF
+                effective_ver = f_ver if f_ver in SUPPORTED_LOG_VERSIONS else ver
+                actual_crc = compute_frame_crc(
+                    frame_hdr_bytes[:24], payload_bytes, version=effective_ver
+                )
                 if actual_crc != expected_crc:
                     # CRC corruption!
                     # If this is the last frame before EOF, treat as torn write; if middle of file, corrupt error!
@@ -536,18 +585,10 @@ class IngestLog:
                 record, separators=(",", ":"), ensure_ascii=False
             ).encode("utf-8", errors="replace")
             payload_len = len(payload_bytes)
-            crc = zlib.crc32(payload_bytes) & 0xFFFFFFFF
-
             offset = self._next_offset
             now = time.time()
-            frame_hdr = struct.pack(
-                FRAME_HEADER_FORMAT,
-                FRAME_MAGIC,
-                0,
-                offset,
-                now,
-                payload_len,
-                crc,
+            frame_hdr = pack_frame_header(
+                offset, now, payload_len, payload_bytes, version=LOG_VERSION
             )
 
             # Check if active segment exceeds max_segment_bytes
@@ -666,16 +707,10 @@ class IngestLog:
                 # Stage 2: Assemble batch buffer
                 batch_buffer = bytearray()
                 allocated_offsets: list[int] = []
-                for idx, (p_bytes, p_len, crc) in enumerate(prepared):
+                for idx, (p_bytes, p_len, _) in enumerate(prepared):
                     off = start_off + idx
-                    frame_hdr = struct.pack(
-                        FRAME_HEADER_FORMAT,
-                        FRAME_MAGIC,
-                        0,
-                        off,
-                        now,
-                        p_len,
-                        crc,
+                    frame_hdr = pack_frame_header(
+                        off, now, p_len, p_bytes, version=LOG_VERSION
                     )
                     batch_buffer.extend(frame_hdr)
                     batch_buffer.extend(p_bytes)
@@ -1028,14 +1063,14 @@ class IngestLog:
                 if len(hdr_bytes) < SEGMENT_HEADER_SIZE:
                     continue
                 magic, ver, _, _, _ = struct.unpack(SEGMENT_HEADER_FORMAT, hdr_bytes)
-                if magic != LOG_MAGIC or ver != LOG_VERSION:
+                if magic != LOG_MAGIC or ver not in SUPPORTED_LOG_VERSIONS:
                     continue
 
                 while True:
                     frame_hdr_bytes = f.read(FRAME_HEADER_SIZE)
                     if len(frame_hdr_bytes) < FRAME_HEADER_SIZE:
                         break
-                    f_magic, _, offset, ts, length, expected_crc = struct.unpack(
+                    f_magic, f_ver, offset, ts, length, expected_crc = struct.unpack(
                         FRAME_HEADER_FORMAT, frame_hdr_bytes
                     )
                     if f_magic != FRAME_MAGIC:
@@ -1055,7 +1090,11 @@ class IngestLog:
                     payload_bytes = f.read(length)
                     if len(payload_bytes) < length:
                         break
-                    if (zlib.crc32(payload_bytes) & 0xFFFFFFFF) != expected_crc:
+                    effective_ver = f_ver if f_ver in SUPPORTED_LOG_VERSIONS else ver
+                    actual_crc = compute_frame_crc(
+                        frame_hdr_bytes[:24], payload_bytes, version=effective_ver
+                    )
+                    if actual_crc != expected_crc:
                         self.corrupted_frames_count += 1
                         logger.warning(
                             "Corrupted CRC at offset %d in %s; skipping frame",
@@ -1178,7 +1217,7 @@ class IngestLog:
                         f"{s_name}: Invalid segment magic {magic:#x}"
                     )
                     continue
-                if ver != LOG_VERSION:
+                if ver not in SUPPORTED_LOG_VERSIONS:
                     report["corrupted_segments"] += 1
                     report["is_clean"] = False
                     report["errors"].append(
@@ -1210,7 +1249,7 @@ class IngestLog:
                         )
                         break
 
-                    f_magic, _, offset, _, length, expected_crc = struct.unpack(
+                    f_magic, f_ver, offset, _, length, expected_crc = struct.unpack(
                         FRAME_HEADER_FORMAT, frame_hdr_bytes
                     )
                     if f_magic != FRAME_MAGIC:
@@ -1230,7 +1269,10 @@ class IngestLog:
                         )
                         break
 
-                    actual_crc = zlib.crc32(payload_bytes) & 0xFFFFFFFF
+                    effective_ver = f_ver if f_ver in SUPPORTED_LOG_VERSIONS else ver
+                    actual_crc = compute_frame_crc(
+                        frame_hdr_bytes[:24], payload_bytes, version=effective_ver
+                    )
                     if actual_crc != expected_crc:
                         report["corrupted_frames"] += 1
                         seg_corrupt = True
@@ -1307,7 +1349,7 @@ class IngestLog:
                         magic, ver, seg_start, ts, _ = struct.unpack(
                             SEGMENT_HEADER_FORMAT, hdr_bytes
                         )
-                        if magic != LOG_MAGIC or ver != LOG_VERSION:
+                        if magic != LOG_MAGIC or ver not in SUPPORTED_LOG_VERSIONS:
                             is_corrupt = True
 
                         while True:
@@ -1319,7 +1361,7 @@ class IngestLog:
                                 is_corrupt = True
                                 break
 
-                            f_magic, _, offset, f_ts, length, expected_crc = (
+                            f_magic, f_ver, offset, f_ts, length, expected_crc = (
                                 struct.unpack(FRAME_HEADER_FORMAT, frame_hdr_bytes)
                             )
                             if (
@@ -1346,7 +1388,14 @@ class IngestLog:
                                 is_corrupt = True
                                 break
 
-                            actual_crc = zlib.crc32(payload_bytes) & 0xFFFFFFFF
+                            effective_ver = (
+                                f_ver if f_ver in SUPPORTED_LOG_VERSIONS else ver
+                            )
+                            actual_crc = compute_frame_crc(
+                                frame_hdr_bytes[:24],
+                                payload_bytes,
+                                version=effective_ver,
+                            )
                             if actual_crc != expected_crc:
                                 is_corrupt = True
                                 continue
@@ -1370,15 +1419,16 @@ class IngestLog:
                         FRAME_HEADER_FORMAT, first_hdr
                     )
                     clean_ts = first_ts if first_ts else time.time()
+                    seg_ver = ver if ver in SUPPORTED_LOG_VERSIONS else LOG_VERSION
                     partial = struct.pack(
-                        ">8sHQd", LOG_MAGIC, LOG_VERSION, start_off, clean_ts
+                        ">8sHQd", LOG_MAGIC, seg_ver, start_off, clean_ts
                     )
                     clean_crc = zlib.crc32(partial) & 0xFFFFFFFF
                     clean_res = struct.pack(">I2s", clean_crc, b"\x00\x00")
                     clean_hdr = struct.pack(
                         SEGMENT_HEADER_FORMAT,
                         LOG_MAGIC,
-                        LOG_VERSION,
+                        seg_ver,
                         start_off,
                         clean_ts,
                         clean_res,

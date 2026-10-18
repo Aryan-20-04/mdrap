@@ -1,0 +1,106 @@
+{
+  "metadata": {
+    "os": "Windows-11-10.0.26200-SP0",
+    "processor": "Intel64 Family 6 Model 154 Stepping 4, GenuineIntel",
+    "cpu_count": 12,
+    "python_version": "3.13.1",
+    "git_commit": "f69a41c66eaa7e9ceb1f9da5ca4ea072f829b243",
+    "timestamp": 1792314270.4388227,
+    "timestamp_iso": "2026-10-18T09:04:30Z"
+  },
+  "engine_step": {
+    "repetitions": 30,
+    "events_per_rep": 300,
+    "total_samples": 9000,
+    "latencies_us": {
+      "p50": 15.9,
+      "p95": 29.31,
+      "p99": 56.4,
+      "max": 1003.8
+    },
+    "median_of_p50s_us": 16.35,
+    "run_p50s_us": [
+      15.3,
+      15.6,
+      15.7,
+      16.6,
+      16.9
+    ]
+  },
+  "persistence_always": {
+    "fsync_policy": "always",
+    "total_events": 900,
+    "batch_size": 100,
+    "elapsed_s": 0.0629,
+    "throughput_eps": 14311.5,
+    "batch_latencies_ms": {
+      "p50": 6.742,
+      "p95": 8.737,
+      "p99": 9.056,
+      "max": 9.136
+    }
+  },
+  "persistence_grouped": {
+    "fsync_policy": "grouped_by_time",
+    "total_events": 1800,
+    "batch_size": 200,
+    "elapsed_s": 0.0948,
+    "throughput_eps": 18982.3,
+    "batch_latencies_ms": {
+      "p50": 10.596,
+      "p95": 11.679,
+      "p99": 12.017,
+      "max": 12.101
+    }
+  },
+  "fanout": {
+    "1_clients": {
+      "num_clients": 1,
+      "events_published": 2000,
+      "total_frames_received": 2000,
+      "expected_total_frames": 2000,
+      "delivery_rate_percent": 100.0,
+      "duplicate_frames_count": 0,
+      "publish_throughput_eps": 1149095.1,
+      "egress_throughput_frames_per_sec": 438856.3,
+      "publisher_handoff_latency_us": {
+        "p50": 0.5,
+        "p95": 0.6,
+        "p99": 0.8,
+        "max": 14.1
+      }
+    },
+    "10_clients": {
+      "num_clients": 10,
+      "events_published": 2000,
+      "total_frames_received": 20000,
+      "expected_total_frames": 20000,
+      "delivery_rate_percent": 100.0,
+      "duplicate_frames_count": 0,
+      "publish_throughput_eps": 887902.3,
+      "egress_throughput_frames_per_sec": 642752.0,
+      "publisher_handoff_latency_us": {
+        "p50": 0.6,
+        "p95": 1.1,
+        "p99": 1.6,
+        "max": 37.4
+      }
+    },
+    "25_clients": {
+      "num_clients": 25,
+      "events_published": 2000,
+      "total_frames_received": 50000,
+      "expected_total_frames": 50000,
+      "delivery_rate_percent": 100.0,
+      "duplicate_frames_count": 0,
+      "publish_throughput_eps": 1127586.4,
+      "egress_throughput_frames_per_sec": 680184.2,
+      "publisher_handoff_latency_us": {
+        "p50": 0.5,
+        "p95": 0.6,
+        "p99": 0.9,
+        "max": 12.3
+      }
+    }
+  }
+}

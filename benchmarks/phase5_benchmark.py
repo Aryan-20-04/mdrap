@@ -30,7 +30,13 @@ from mdrap.quality import QualityEngine
 
 def _compute_percentiles(latencies_ns: List[int]) -> Dict[str, float]:
     if not latencies_ns:
-        return {"p50_us": 0.0, "p95_us": 0.0, "p99_us": 0.0, "p999_us": 0.0, "max_us": 0.0}
+        return {
+            "p50_us": 0.0,
+            "p95_us": 0.0,
+            "p99_us": 0.0,
+            "p999_us": 0.0,
+            "max_us": 0.0,
+        }
     latencies_ns.sort()
     n = len(latencies_ns)
     return {
@@ -107,7 +113,9 @@ def benchmark_pilot_pipeline(event_count: int = 25000) -> Dict[str, Any]:
             )
 
             # Independent Consumer unpack
-            u_inst, u_seq, u_ts, u_px, u_sz, _, _, _ = struct.unpack("<16sQqddII8s", sbe)
+            u_inst, u_seq, u_ts, u_px, u_sz, _, _, _ = struct.unpack(
+                "<16sQqddII8s", sbe
+            )
             consumed_events += 1
 
             s1 = time.perf_counter_ns()
@@ -130,7 +138,9 @@ def benchmark_pilot_pipeline(event_count: int = 25000) -> Dict[str, Any]:
             "events_consumed": consumed_events,
             "elapsed_s": round(total_time_s, 4),
             "throughput_eps": rate,
-            "mem_delta_mb": round((mem_after_current - mem_before_current) / (1024 * 1024), 3),
+            "mem_delta_mb": round(
+                (mem_after_current - mem_before_current) / (1024 * 1024), 3
+            ),
             "mem_peak_mb": round(mem_peak / (1024 * 1024), 3),
             **pct,
         }

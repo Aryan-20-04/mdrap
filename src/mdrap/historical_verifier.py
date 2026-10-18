@@ -21,6 +21,8 @@ import time
 import zlib
 from typing import Any, Dict, List, Optional, Tuple
 
+from mdrap.ingestlog import compute_frame_crc
+
 FRAME_HEADER_FORMAT = (
     ">HHQdII"  # magic(2), res(2), offset(8), ts(8), length(4), crc32(4) = 28 bytes
 )
@@ -96,6 +98,11 @@ class HistoricalVerifier:
                 report.duration_seconds = time.perf_counter() - t0
                 return report
 
+            seg_ver = (
+                struct.unpack(">H", header_bytes[8:10])[0]
+                if len(header_bytes) >= 10
+                else 1
+            )
             last_seq: Optional[int] = None
             last_ts: float = 0.0
 
@@ -107,7 +114,7 @@ class HistoricalVerifier:
                     )
                     break
 
-                magic, res, offset, ts, length, expected_crc = struct.unpack(
+                magic, f_ver, offset, ts, length, expected_crc = struct.unpack(
                     FRAME_HEADER_FORMAT, frame_hdr
                 )
 
@@ -126,7 +133,10 @@ class HistoricalVerifier:
                     report.status = "FAIL"
                     break
 
-                actual_crc = zlib.crc32(payload) & 0xFFFFFFFF
+                effective_ver = f_ver if f_ver in (0, 1, 2) else seg_ver
+                actual_crc = compute_frame_crc(
+                    frame_hdr[:24], payload, version=effective_ver
+                )
                 if actual_crc == expected_crc:
                     report.crc32_valid_count += 1
                 else:

@@ -16,7 +16,12 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT_DIR / "src"))
 
-from mdrap.partition import ShardConfig, SymbolPartitioner, FleetCoordinator, ConsumerFanoutManager
+from mdrap.partition import (
+    ShardConfig,
+    SymbolPartitioner,
+    FleetCoordinator,
+    ConsumerFanoutManager,
+)
 
 
 def run_benchmark(num_events: int = 20000) -> dict:
@@ -24,7 +29,18 @@ def run_benchmark(num_events: int = 20000) -> dict:
     start_rss = tracemalloc.get_traced_memory()[0]
 
     # Generate synthetic event stream
-    symbols = ["AAPL", "AMZN", "GOOGL", "MSFT", "NVDA", "TSLA", "META", "BRK", "JPM", "V"]
+    symbols = [
+        "AAPL",
+        "AMZN",
+        "GOOGL",
+        "MSFT",
+        "NVDA",
+        "TSLA",
+        "META",
+        "BRK",
+        "JPM",
+        "V",
+    ]
     test_events = []
     for i in range(num_events):
         sym = symbols[i % len(symbols)]
@@ -33,8 +49,12 @@ def run_benchmark(num_events: int = 20000) -> dict:
 
     # --- Phase 1: 2-Shard Partitioned Fleet Run ---
     shards = [
-        ShardConfig(shard_id=0, name="Shard_A_L", symbol_prefix_start="A", symbol_prefix_end="L"),
-        ShardConfig(shard_id=1, name="Shard_M_Z", symbol_prefix_start="M", symbol_prefix_end="Z"),
+        ShardConfig(
+            shard_id=0, name="Shard_A_L", symbol_prefix_start="A", symbol_prefix_end="L"
+        ),
+        ShardConfig(
+            shard_id=1, name="Shard_M_Z", symbol_prefix_start="M", symbol_prefix_end="Z"
+        ),
     ]
     partitioner = SymbolPartitioner(num_shards=2, mode="range")
     fleet = FleetCoordinator(partitioner=partitioner, shard_configs=shards)
@@ -112,8 +132,12 @@ def run_benchmark(num_events: int = 20000) -> dict:
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(results, f, indent=2)
 
-    print(f"Benchmark completed: {num_events} events in {elapsed:.3f}s ({throughput:.1f} eps)")
-    print(f"Latency: p50={p50:.1f}µs, p99={p99:.1f}µs | Mem delta: {results['memory']['delta_mb']} MB")
+    print(
+        f"Benchmark completed: {num_events} events in {elapsed:.3f}s ({throughput:.1f} eps)"
+    )
+    print(
+        f"Latency: p50={p50:.1f}µs, p99={p99:.1f}µs | Mem delta: {results['memory']['delta_mb']} MB"
+    )
     print(f"Saved results to {out_path}")
     return results
 

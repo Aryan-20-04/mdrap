@@ -238,17 +238,24 @@ def run_analytical_query(db_path: str, backend: str = "sqlite") -> tuple[float, 
     return query_time_ms, len(rows) > 0
 
 
-def run_experiment_4(num_records: int = 15_000, backend: str = "sqlite") -> ColumnarScanReport:
+def run_experiment_4(
+    num_records: int = 15_000, backend: str = "sqlite"
+) -> ColumnarScanReport:
     """Execute Experiment 4: Historical IngestLog scan, projection, and query benchmark."""
     temp_dir = tempfile.mkdtemp(prefix="mdrap_exp4_")
     try:
         wal_dir = os.path.join(temp_dir, "wal")
         os.makedirs(wal_dir, exist_ok=True)
-        db_path = os.path.join(temp_dir, "analytics.duckdb" if (backend == "duckdb" or (backend == "auto" and HAS_DUCKDB)) else "analytics.db")
+        db_path = os.path.join(
+            temp_dir,
+            "analytics.duckdb"
+            if (backend == "duckdb" or (backend == "auto" and HAS_DUCKDB))
+            else "analytics.db",
+        )
 
         journal_bytes = populate_sample_journal(wal_dir, num_records=num_records)
-        scan_sec, scanned_cnt, projected_bytes, chosen_backend = project_to_analytical_store(
-            wal_dir, db_path, backend=backend
+        scan_sec, scanned_cnt, projected_bytes, chosen_backend = (
+            project_to_analytical_store(wal_dir, db_path, backend=backend)
         )
         query_ms, query_ok = run_analytical_query(db_path, backend=chosen_backend)
 

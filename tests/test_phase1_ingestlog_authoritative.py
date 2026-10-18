@@ -37,6 +37,7 @@ from mdrap.ingestlog import (
     IngestLogCorruptError,
     LogManifest,
     SegmentMetadata,
+    compute_frame_crc,
 )
 from mdrap.models import EventType, QualityStatus, RawEvent
 from mdrap.replay import HistoricalReplayEngine
@@ -95,7 +96,10 @@ class TestIngestLogFramingAndManifest:
             # Frame Payload
             payload_bytes = f.read(length)
             assert len(payload_bytes) == length
-            assert (zlib.crc32(payload_bytes) & 0xFFFFFFFF) == crc32
+            assert (
+                compute_frame_crc(frame_hdr_bytes[:24], payload_bytes, version=ver)
+                == crc32
+            )
 
             payload_data = json.loads(payload_bytes.decode("utf-8"))
             assert payload_data["source"] == "CME"

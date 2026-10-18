@@ -84,3 +84,26 @@ def test_c05_single_node_consensus_disclosure():
         or "simulation" in doc.lower()
         or "in-process" in doc.lower()
     ), "ConsensusCoordinator docstring must disclose single-process/simulated nature"
+
+
+def test_x01_call_site_review_record():
+    """Verify zero eval, exec, pickle, shell=True, and non-test assert in src/ (X-01)."""
+    disallowed_patterns = {
+        "eval": re.compile(r"\beval\s*\("),
+        "exec": re.compile(r"\bexec\s*\("),
+        "pickle": re.compile(r"\bpickle\b"),
+        "shell_true": re.compile(r"shell\s*=\s*True"),
+        "assert": re.compile(r"^\s*assert\b"),
+    }
+    src_dir = REPO_ROOT / "src"
+    violations = []
+    for py_file in src_dir.rglob("*.py"):
+        content = py_file.read_text(encoding="utf-8", errors="ignore")
+        for line_no, line in enumerate(content.splitlines(), 1):
+            for pat_name, pattern in disallowed_patterns.items():
+                if pattern.search(line):
+                    violations.append(
+                        f"{py_file.name}:{line_no} [{pat_name}]: {line.strip()}"
+                    )
+
+    assert not violations, f"Found disallowed call sites in src/: {violations}"

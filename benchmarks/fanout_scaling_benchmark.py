@@ -23,7 +23,9 @@ def run_fanout_benchmark(client_counts=[1, 25, 50, 100], events_per_tier=10000):
         "tiers": {},
     }
 
-    print(f"=== MDRAP Phase 8 Fan-Out Concurrency Benchmark ({events_per_tier} events/tier) ===")
+    print(
+        f"=== MDRAP Phase 8 Fan-Out Concurrency Benchmark ({events_per_tier} events/tier) ==="
+    )
 
     for n_clients in client_counts:
         mgr = AsyncFanoutManager(max_buffer_per_client=events_per_tier + 1000)
@@ -103,7 +105,9 @@ def run_fanout_benchmark(client_counts=[1, 25, 50, 100], events_per_tier=10000):
             },
             "events_published": events_per_tier,
             "total_frames_delivered": total_delivered,
-            "delivery_rate_percent": round((total_delivered / (events_per_tier * n_clients)) * 100.0, 2),
+            "delivery_rate_percent": round(
+                (total_delivered / (events_per_tier * n_clients)) * 100.0, 2
+            ),
         }
         results["tiers"][f"{n_clients}_clients"] = tier_res
 

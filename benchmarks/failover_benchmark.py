@@ -28,7 +28,9 @@ from mdrap.models import RawEvent
 
 
 def run_failover_benchmark(num_trials=20):
-    print(f"=== MDRAP Phase 8 HA Failover & Fencing Benchmark ({num_trials} trials) ===")
+    print(
+        f"=== MDRAP Phase 8 HA Failover & Fencing Benchmark ({num_trials} trials) ==="
+    )
     nodes = ["node_primary", "node_secondary", "node_arbiter"]
     failover_latencies_ms = []
     stale_rejection_latencies_us = []
@@ -124,7 +126,9 @@ def run_failover_benchmark(num_trials=20):
 
 def run_wal_recovery_benchmark(num_trials=10, events_per_trial=5000):
     """Benchmark true single-node crash recovery and WAL replay performance."""
-    print(f"=== MDRAP Single-Node WAL Crash Recovery Benchmark ({num_trials} trials, {events_per_trial} events/trial) ===")
+    print(
+        f"=== MDRAP Single-Node WAL Crash Recovery Benchmark ({num_trials} trials, {events_per_trial} events/trial) ==="
+    )
     recovery_times_ms = []
 
     for trial in range(num_trials):
@@ -133,11 +137,19 @@ def run_wal_recovery_benchmark(num_trials=10, events_per_trial=5000):
             # 1. Populate WAL
             log = IngestLog(tmp, max_segment_bytes=64 * 1024)
             for i in range(events_per_trial):
-                log.append(RawEvent(
-                    source="BENCH",
-                    payload={"instrument": "AAPL", "event_type": "TRADE", "price": 150.0 + i, "sequence": i + 1, "exchange_ts": 1000.0 + i},
-                    receive_timestamp=1000.0 + i,
-                ))
+                log.append(
+                    RawEvent(
+                        source="BENCH",
+                        payload={
+                            "instrument": "AAPL",
+                            "event_type": "TRADE",
+                            "price": 150.0 + i,
+                            "sequence": i + 1,
+                            "exchange_ts": 1000.0 + i,
+                        },
+                        receive_timestamp=1000.0 + i,
+                    )
+                )
             log.close()
 
             # 2. Benchmark recovery on reopen

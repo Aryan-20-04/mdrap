@@ -45,7 +45,12 @@ from mdrap._version import __version__
 from mdrap.clock import FixedClock, SystemClock
 from mdrap.engine import Engine, EngineConfig
 from mdrap.fastpath import HAS_FASTPATH
-from mdrap.ingestlog import FRAME_HEADER_FORMAT, FRAME_HEADER_SIZE, FRAME_MAGIC, IngestLog
+from mdrap.ingestlog import (
+    FRAME_HEADER_FORMAT,
+    FRAME_HEADER_SIZE,
+    FRAME_MAGIC,
+    IngestLog,
+)
 from mdrap.metrics import get_rss_mb
 from mdrap.models import CanonicalEvent, EventType, QualityStatus, RawEvent
 from mdrap.profile import current_profile
@@ -96,14 +101,18 @@ def get_git_info() -> tuple[str, str, bool]:
         )
         branch = (
             subprocess.check_output(
-                ["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=str(ROOT), stderr=subprocess.DEVNULL
+                ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                cwd=str(ROOT),
+                stderr=subprocess.DEVNULL,
             )
             .decode("utf-8")
             .strip()
         )
         status = (
             subprocess.check_output(
-                ["git", "status", "--porcelain"], cwd=str(ROOT), stderr=subprocess.DEVNULL
+                ["git", "status", "--porcelain"],
+                cwd=str(ROOT),
+                stderr=subprocess.DEVNULL,
             )
             .decode("utf-8")
             .strip()
@@ -121,7 +130,9 @@ def get_cpu_model() -> str:
             return proc
     elif sys.platform == "darwin":
         try:
-            return subprocess.check_output(["sysctl", "-n", "machdep.cpu.brand_string"], text=True).strip()
+            return subprocess.check_output(
+                ["sysctl", "-n", "machdep.cpu.brand_string"], text=True
+            ).strip()
         except Exception:
             pass
     elif sys.platform.startswith("linux"):
@@ -138,7 +149,9 @@ def get_cpu_model() -> str:
 # ---------------------------------------------------------------------------
 # Boundary 1: Binary SBE / JSON Decode-Only Throughput
 # ---------------------------------------------------------------------------
-def measure_boundary_1_decode(num_events: int = 10_000, seed: int = 42) -> dict[str, Any]:
+def measure_boundary_1_decode(
+    num_events: int = 10_000, seed: int = 42
+) -> dict[str, Any]:
     """Boundary 1: Measure raw binary SBE and JSON decode-only latency and throughput."""
     sim = FeedSimulator(SimulatorConfig(seed=seed, num_events=num_events))
     events = [raw for raw, _ in sim.generate()]
@@ -223,7 +236,9 @@ def measure_boundary_1_decode(num_events: int = 10_000, seed: int = 42) -> dict[
 # ---------------------------------------------------------------------------
 # Boundary 2: Quality Validation Rule Evaluation Time
 # ---------------------------------------------------------------------------
-def measure_boundary_2_validation(num_events: int = 10_000, seed: int = 42) -> dict[str, Any]:
+def measure_boundary_2_validation(
+    num_events: int = 10_000, seed: int = 42
+) -> dict[str, Any]:
     """Boundary 2: Measure quality validation rule evaluation time in nanoseconds per tick."""
     sim = FeedSimulator(SimulatorConfig(seed=seed, num_events=num_events))
     quality = QualityEngine()
@@ -233,9 +248,17 @@ def measure_boundary_2_validation(num_events: int = 10_000, seed: int = 42) -> d
         p = raw.payload
         exch_ts = p.get("exchange_ts")
         exch_val = float(exch_ts) if isinstance(exch_ts, (int, float)) else 1729000000.0
-        recv_ts = float(raw.receive_timestamp) if isinstance(raw.receive_timestamp, (int, float)) else 1729000000.0
+        recv_ts = (
+            float(raw.receive_timestamp)
+            if isinstance(raw.receive_timestamp, (int, float))
+            else 1729000000.0
+        )
         price = float(p["price"]) if isinstance(p.get("price"), (int, float)) else None
-        qty = float(p["quantity"]) if isinstance(p.get("quantity"), (int, float)) else None
+        qty = (
+            float(p["quantity"])
+            if isinstance(p.get("quantity"), (int, float))
+            else None
+        )
         bid = float(p["bid"]) if isinstance(p.get("bid"), (int, float)) else None
         ask = float(p["ask"]) if isinstance(p.get("ask"), (int, float)) else None
         seq = int(p["sequence"]) if isinstance(p.get("sequence"), int) else idx
@@ -281,7 +304,9 @@ def measure_boundary_2_validation(num_events: int = 10_000, seed: int = 42) -> d
 # ---------------------------------------------------------------------------
 # Boundary 3: IngestLog Buffer Append Latency
 # ---------------------------------------------------------------------------
-def measure_boundary_3_wal_append(num_events: int = 10_000, seed: int = 42) -> dict[str, Any]:
+def measure_boundary_3_wal_append(
+    num_events: int = 10_000, seed: int = 42
+) -> dict[str, Any]:
     """Boundary 3: Measure userspace/buffer append latency into IngestLog before fsync."""
     temp_dir = tempfile.mkdtemp(prefix="mdrap_b3_")
     log = IngestLog(temp_dir, fsync_policy="never")
@@ -311,7 +336,9 @@ def measure_boundary_3_wal_append(num_events: int = 10_000, seed: int = 42) -> d
 # ---------------------------------------------------------------------------
 # Boundary 4: Append-to-Durable-Flush Latency
 # ---------------------------------------------------------------------------
-def measure_boundary_4_durable_flush(num_events: int = 500, seed: int = 42) -> dict[str, Any]:
+def measure_boundary_4_durable_flush(
+    num_events: int = 500, seed: int = 42
+) -> dict[str, Any]:
     """Boundary 4: Measure append-to-durable fsync latency in microseconds (durable commit)."""
     temp_dir = tempfile.mkdtemp(prefix="mdrap_b4_")
     log = IngestLog(temp_dir, fsync_policy="always")
@@ -341,7 +368,9 @@ def measure_boundary_4_durable_flush(num_events: int = 500, seed: int = 42) -> d
 # ---------------------------------------------------------------------------
 # Boundary 5: IPC Publication Latency (Seqlock SHM Commit)
 # ---------------------------------------------------------------------------
-def measure_boundary_5_ipc_publish(num_events: int = 10_000, seed: int = 42) -> dict[str, Any]:
+def measure_boundary_5_ipc_publish(
+    num_events: int = 10_000, seed: int = 42
+) -> dict[str, Any]:
     """Boundary 5: Measure lock-free seqlock SHM ring buffer commit latency in nanoseconds."""
     shm_name = f"mdrap_bench_b5_{os.getpid()}_{int(time.time())}"
     writer = None
@@ -351,7 +380,13 @@ def measure_boundary_5_ipc_publish(num_events: int = 10_000, seed: int = 42) -> 
 
         # Warmup
         for i in range(200):
-            writer.write_tick(seq=i, symbol="AAPL", price=150.0, exchange_ts=1729000000.0, source="TEST")
+            writer.write_tick(
+                seq=i,
+                symbol="AAPL",
+                price=150.0,
+                exchange_ts=1729000000.0,
+                source="TEST",
+            )
 
         t_start = time.perf_counter()
         for i in range(num_events):
@@ -396,7 +431,9 @@ def measure_boundary_5_ipc_publish(num_events: int = 10_000, seed: int = 42) -> 
 # ---------------------------------------------------------------------------
 # Boundary 6: End-to-End Ingest-to-Consumer Latency
 # ---------------------------------------------------------------------------
-def measure_boundary_6_end_to_end(num_events: int = 5_000, seed: int = 42) -> dict[str, Any]:
+def measure_boundary_6_end_to_end(
+    num_events: int = 5_000, seed: int = 42
+) -> dict[str, Any]:
     """Boundary 6: Measure wire-to-consumer latency from raw ingest to consumer read in microseconds."""
     shm_name = f"mdrap_bench_b6_{os.getpid()}_{int(time.time())}"
     writer = None
@@ -467,7 +504,9 @@ def measure_boundary_6_end_to_end(num_events: int = 5_000, seed: int = 42) -> di
 # ---------------------------------------------------------------------------
 # Boundary 7: Historical Replay Throughput
 # ---------------------------------------------------------------------------
-def measure_boundary_7_replay(num_events: int = 10_000, seed: int = 42) -> dict[str, Any]:
+def measure_boundary_7_replay(
+    num_events: int = 10_000, seed: int = 42
+) -> dict[str, Any]:
     """Boundary 7: Measure historical replay throughput from persisted IngestLog into an Engine."""
     temp_dir = tempfile.mkdtemp(prefix="mdrap_b7_")
     log = IngestLog(temp_dir, fsync_policy="grouped_by_time")
@@ -483,7 +522,9 @@ def measure_boundary_7_replay(num_events: int = 10_000, seed: int = 42) -> dict[
     fixed_clock = FixedClock(1729000000.0)
 
     t_start = time.perf_counter()
-    state, decisions = replay_eng.replay_raw_to_engine(engine, raw_events, clock=fixed_clock)
+    state, decisions = replay_eng.replay_raw_to_engine(
+        engine, raw_events, clock=fixed_clock
+    )
     t_end = time.perf_counter()
     wall_s = max(1e-6, t_end - t_start)
 
@@ -499,7 +540,9 @@ def measure_boundary_7_replay(num_events: int = 10_000, seed: int = 42) -> dict[
 # ---------------------------------------------------------------------------
 # Boundary 8: Crash Recovery Duration
 # ---------------------------------------------------------------------------
-def measure_boundary_8_crash_recovery(num_events: int = 5_000, seed: int = 42) -> dict[str, Any]:
+def measure_boundary_8_crash_recovery(
+    num_events: int = 5_000, seed: int = 42
+) -> dict[str, Any]:
     """Boundary 8: Measure recovery duration in milliseconds when recovering from torn tail."""
     temp_dir = tempfile.mkdtemp(prefix="mdrap_b8_")
     log = IngestLog(temp_dir, fsync_policy="grouped_by_time")
@@ -532,7 +575,9 @@ def measure_boundary_8_crash_recovery(num_events: int = 5_000, seed: int = 42) -
 # ---------------------------------------------------------------------------
 # Boundary 9: Sustained Throughput Under Simulated Consumer Backpressure
 # ---------------------------------------------------------------------------
-def measure_boundary_9_backpressure(num_events: int = 10_000, seed: int = 42) -> dict[str, Any]:
+def measure_boundary_9_backpressure(
+    num_events: int = 10_000, seed: int = 42
+) -> dict[str, Any]:
     """Boundary 9: Measure throughput and explicit drop counters under consumer backpressure."""
     q: queue.Queue = queue.Queue(maxsize=1024)
     dropped_count = 0
@@ -585,7 +630,9 @@ measure_boundary_9_consumer_backpressure = measure_boundary_9_backpressure
 # ---------------------------------------------------------------------------
 # Boundary 10: Memory Footprint & CPU Utilization per 1,000,000 Events
 # ---------------------------------------------------------------------------
-def measure_boundary_10_resource_utilization(num_events: int = 20_000, seed: int = 42) -> dict[str, Any]:
+def measure_boundary_10_resource_utilization(
+    num_events: int = 20_000, seed: int = 42
+) -> dict[str, Any]:
     """Boundary 10: Measure RSS memory growth and CPU utilization across high volume ingestion."""
     gc.collect()
     rss_start = get_rss_mb()
@@ -634,14 +681,18 @@ def discover_environment() -> dict[str, Any]:
         "python_compiler": platform.python_compiler(),
         "has_native_fastpath": HAS_FASTPATH,
         "has_shm_support": HAS_SHM,
-        "active_profile": prof.mode.name if hasattr(prof.mode, "name") else str(prof.mode),
+        "active_profile": prof.mode.name
+        if hasattr(prof.mode, "name")
+        else str(prof.mode),
     }
 
 
 def compute_dataset_hash(num_events: int, seed: int) -> dict[str, Any]:
     """Compute deterministic SHA-256 dataset hash for reproducible benchmarks."""
     hasher = hashlib.sha256()
-    hasher.update(f"MDRAP_10_BOUNDARIES_SEED_{seed}_EVENTS_{num_events}".encode("utf-8"))
+    hasher.update(
+        f"MDRAP_10_BOUNDARIES_SEED_{seed}_EVENTS_{num_events}".encode("utf-8")
+    )
     return {
         "dataset_hash_sha256": hasher.hexdigest(),
         "dataset_records": num_events,
@@ -660,7 +711,9 @@ def run_all_ten_boundaries(
     """Execute all 10 isolated measurement boundaries and emit machine-readable manifest."""
     commit, branch, dirty = get_git_info()
 
-    now_utc = datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z")
+    now_utc = (
+        datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z")
+    )
     timestamp_epoch = int(time.time())
 
     manifest: dict[str, Any] = {
@@ -675,34 +728,54 @@ def run_all_ten_boundaries(
     }
 
     # Run Boundary 1
-    manifest["boundaries"]["b1_decode"] = measure_boundary_1_decode(num_events=events, seed=seed)
+    manifest["boundaries"]["b1_decode"] = measure_boundary_1_decode(
+        num_events=events, seed=seed
+    )
 
     # Run Boundary 2
-    manifest["boundaries"]["b2_validation"] = measure_boundary_2_validation(num_events=events, seed=seed)
+    manifest["boundaries"]["b2_validation"] = measure_boundary_2_validation(
+        num_events=events, seed=seed
+    )
 
     # Run Boundary 3
-    manifest["boundaries"]["b3_wal_append"] = measure_boundary_3_wal_append(num_events=events, seed=seed)
+    manifest["boundaries"]["b3_wal_append"] = measure_boundary_3_wal_append(
+        num_events=events, seed=seed
+    )
 
     # Run Boundary 4 (capped to 500 for durable fsync benchmark)
-    manifest["boundaries"]["b4_durable_flush"] = measure_boundary_4_durable_flush(num_events=min(500, events), seed=seed)
+    manifest["boundaries"]["b4_durable_flush"] = measure_boundary_4_durable_flush(
+        num_events=min(500, events), seed=seed
+    )
 
     # Run Boundary 5
-    manifest["boundaries"]["b5_ipc_publish"] = measure_boundary_5_ipc_publish(num_events=events)
+    manifest["boundaries"]["b5_ipc_publish"] = measure_boundary_5_ipc_publish(
+        num_events=events
+    )
 
     # Run Boundary 6
-    manifest["boundaries"]["b6_end_to_end"] = measure_boundary_6_end_to_end(num_events=min(5000, events), seed=seed)
+    manifest["boundaries"]["b6_end_to_end"] = measure_boundary_6_end_to_end(
+        num_events=min(5000, events), seed=seed
+    )
 
     # Run Boundary 7
-    manifest["boundaries"]["b7_historical_replay"] = measure_boundary_7_replay(num_events=events, seed=seed)
+    manifest["boundaries"]["b7_historical_replay"] = measure_boundary_7_replay(
+        num_events=events, seed=seed
+    )
 
     # Run Boundary 8
-    manifest["boundaries"]["b8_crash_recovery"] = measure_boundary_8_crash_recovery(num_events=min(5000, events), seed=seed)
+    manifest["boundaries"]["b8_crash_recovery"] = measure_boundary_8_crash_recovery(
+        num_events=min(5000, events), seed=seed
+    )
 
     # Run Boundary 9
-    manifest["boundaries"]["b9_consumer_backpressure"] = measure_boundary_9_backpressure(num_events=events)
+    manifest["boundaries"]["b9_consumer_backpressure"] = (
+        measure_boundary_9_backpressure(num_events=events)
+    )
 
     # Run Boundary 10
-    manifest["boundaries"]["b10_resource_utilization"] = measure_boundary_10_resource_utilization(num_events=events, seed=seed)
+    manifest["boundaries"]["b10_resource_utilization"] = (
+        measure_boundary_10_resource_utilization(num_events=events, seed=seed)
+    )
 
     # Determine output path
     results_dir = Path(out_dir) if out_dir else (ROOT / "benchmarks" / "results")
@@ -727,14 +800,41 @@ def run_all_ten_boundaries(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="MDRAP Reproducible 10-Boundary Benchmark Suite")
-    parser.add_argument("-e", "--events", type=int, default=10_000, help="Number of events for benchmarks (default: 10,000)")
-    parser.add_argument("-s", "--seed", type=int, default=42, help="Deterministic random seed (default: 42)")
-    parser.add_argument("-o", "--out-dir", type=str, default=None, help="Directory to save benchmark manifest")
-    parser.add_argument("--json", action="store_true", default=False, help="Print raw JSON manifest to stdout")
+    parser = argparse.ArgumentParser(
+        description="MDRAP Reproducible 10-Boundary Benchmark Suite"
+    )
+    parser.add_argument(
+        "-e",
+        "--events",
+        type=int,
+        default=10_000,
+        help="Number of events for benchmarks (default: 10,000)",
+    )
+    parser.add_argument(
+        "-s",
+        "--seed",
+        type=int,
+        default=42,
+        help="Deterministic random seed (default: 42)",
+    )
+    parser.add_argument(
+        "-o",
+        "--out-dir",
+        type=str,
+        default=None,
+        help="Directory to save benchmark manifest",
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        default=False,
+        help="Print raw JSON manifest to stdout",
+    )
     args = parser.parse_args()
 
-    results = run_all_ten_boundaries(events=args.events, seed=args.seed, out_dir=args.out_dir)
+    results = run_all_ten_boundaries(
+        events=args.events, seed=args.seed, out_dir=args.out_dir
+    )
 
     if args.json:
         print(json.dumps(results, indent=2))
@@ -830,7 +930,9 @@ def print_manifest_summary(results: dict[str, Any], console: Any = None) -> None
         f"{b5['rate_eps']:,.0f} writes/s" if b5.get("supported") else "N/A",
         f"{b5['latency_ns']['p50']} ns" if b5.get("supported") else "N/A",
         f"{b5['latency_ns']['p99']} ns" if b5.get("supported") else "N/A",
-        f"{b5['latency_ns']['p999']} / {b5['latency_ns']['max']} ns" if b5.get("supported") else "N/A",
+        f"{b5['latency_ns']['p999']} / {b5['latency_ns']['max']} ns"
+        if b5.get("supported")
+        else "N/A",
     )
 
     # B6
@@ -840,7 +942,9 @@ def print_manifest_summary(results: dict[str, Any], console: Any = None) -> None
         f"{b6['rate_eps']:,.0f} eps" if b6.get("supported", True) else "N/A",
         f"{b6['latency_us']['p50']} us" if b6.get("supported", True) else "N/A",
         f"{b6['latency_us']['p99']} us" if b6.get("supported", True) else "N/A",
-        f"{b6['latency_us']['p999']} / {b6['latency_us']['max']} us" if b6.get("supported", True) else "N/A",
+        f"{b6['latency_us']['p999']} / {b6['latency_us']['max']} us"
+        if b6.get("supported", True)
+        else "N/A",
     )
 
     # B7

@@ -114,15 +114,21 @@ def run_ingress_benchmarks():
     }
 
     tcp_64 = measure_tcp_loopback_latency(10000, 64)
-    print(f"TCP 64B:  p50={tcp_64['latency_us']['p50']}s | p99={tcp_64['latency_us']['p99']}s | max={tcp_64['latency_us']['max']}s")
+    print(
+        f"TCP 64B:  p50={tcp_64['latency_us']['p50']}s | p99={tcp_64['latency_us']['p99']}s | max={tcp_64['latency_us']['max']}s"
+    )
     results["measurements"].append(tcp_64)
 
     tcp_256 = measure_tcp_loopback_latency(10000, 256)
-    print(f"TCP 256B: p50={tcp_256['latency_us']['p50']}s | p99={tcp_256['latency_us']['p99']}s | max={tcp_256['latency_us']['max']}s")
+    print(
+        f"TCP 256B: p50={tcp_256['latency_us']['p50']}s | p99={tcp_256['latency_us']['p99']}s | max={tcp_256['latency_us']['max']}s"
+    )
     results["measurements"].append(tcp_256)
 
     udp_64 = measure_udp_loopback_latency(10000, 64)
-    print(f"UDP 64B:  p50={udp_64['latency_us']['p50']}s | p99={udp_64['latency_us']['p99']}s | max={udp_64['latency_us']['max']}s")
+    print(
+        f"UDP 64B:  p50={udp_64['latency_us']['p50']}s | p99={udp_64['latency_us']['p99']}s | max={udp_64['latency_us']['max']}s"
+    )
     results["measurements"].append(udp_64)
 
     out_path = os.path.join(

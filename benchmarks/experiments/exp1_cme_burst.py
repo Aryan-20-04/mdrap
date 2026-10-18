@@ -73,7 +73,9 @@ def generate_cme_burst_trace(
     for i in range(total_packets):
         is_burst = rng.random() < burst_intensity
         # Burst: packets arrive within 1-5 microseconds; Quiescent: 100-300 microseconds
-        dt = rng.uniform(0.000001, 0.000005) if is_burst else rng.uniform(0.0001, 0.0003)
+        dt = (
+            rng.uniform(0.000001, 0.000005) if is_burst else rng.uniform(0.0001, 0.0003)
+        )
         t += dt
 
         inst = rng.choice(instruments)
@@ -92,9 +94,7 @@ def generate_cme_burst_trace(
             "sequence": seq,
             "channel_id": f"CME_CH_{hash(inst) % 8}",
         }
-        trace.append(
-            RawEvent(source="CME_MDP3", payload=payload, receive_timestamp=t)
-        )
+        trace.append(RawEvent(source="CME_MDP3", payload=payload, receive_timestamp=t))
 
     return trace
 

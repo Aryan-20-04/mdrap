@@ -22,7 +22,9 @@ from mdrap.sbe import HEADER_STRUCT, TEMPLATE_TICK, SBE_SCHEMA_ID, SBE_SCHEMA_VE
 def test_native_c_library_loaded():
     """Verify that native C accelerator is compiled and successfully loaded."""
     if not HAS_FASTPATH or _NATIVE_LIB is None:
-        pytest.skip("Native C fastpath not compiled or disabled; pure-Python fallback active")
+        pytest.skip(
+            "Native C fastpath not compiled or disabled; pure-Python fallback active"
+        )
     assert HAS_FASTPATH is True
     assert _NATIVE_LIB is not None
 

@@ -479,9 +479,11 @@ class Engine:
 
                 if self.log is not None and valid_for_wal:
                     allocated = self.log.append_batch(valid_for_wal)
-                    assert allocated == [off for _, off in raw_to_offset], (
-                        "WAL allocated offsets diverged"
-                    )
+                    expected_offsets = [off for _, off in raw_to_offset]
+                    if allocated != expected_offsets:
+                        raise RuntimeError(
+                            f"WAL allocated offsets diverged: expected {expected_offsets}, got {allocated}"
+                        )
 
                 for raw, offset in raw_to_offset:
                     offsets.append(offset)

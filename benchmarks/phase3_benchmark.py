@@ -40,7 +40,13 @@ def _compute_percentiles(latencies_ns: list[int]) -> dict[str, float]:
 def benchmark_ingress_adapter(event_count: int = 50000) -> dict[str, Any]:
     print(f"[*] Running Ingress Adapter Benchmark ({event_count:,} events)...")
     frames = [
-        {"seq": i, "sym": "AAPL", "px": 150.0 + (i % 100) * 0.01, "sz": 10.0, "type": "TRADE"}
+        {
+            "seq": i,
+            "sym": "AAPL",
+            "px": 150.0 + (i % 100) * 0.01,
+            "sz": 10.0,
+            "type": "TRADE",
+        }
         for i in range(1, event_count + 1)
     ]
     adapter = ReplayFeedAdapter(
@@ -109,9 +115,15 @@ def benchmark_durable_metering(batch_count: int = 20000) -> dict[str, Any]:
 
 
 def benchmark_failover_heartbeats(hb_count: int = 50000) -> dict[str, Any]:
-    print(f"[*] Running High Availability Heartbeat Benchmark ({hb_count:,} heartbeats)...")
-    primary = FailoverNode("primary-1", initial_state=NodeState.PRIMARY, initial_epoch=1)
-    standby = FailoverNode("standby-1", initial_state=NodeState.STANDBY, initial_epoch=1)
+    print(
+        f"[*] Running High Availability Heartbeat Benchmark ({hb_count:,} heartbeats)..."
+    )
+    primary = FailoverNode(
+        "primary-1", initial_state=NodeState.PRIMARY, initial_epoch=1
+    )
+    standby = FailoverNode(
+        "standby-1", initial_state=NodeState.STANDBY, initial_epoch=1
+    )
 
     latencies_ns: list[int] = []
     t0 = time.perf_counter()

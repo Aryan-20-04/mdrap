@@ -30,7 +30,13 @@ from mdrap.quality import QualityEngine
 
 def _compute_percentiles(latencies_ns: list[int]) -> dict[str, float]:
     if not latencies_ns:
-        return {"p50_us": 0.0, "p95_us": 0.0, "p99_us": 0.0, "p999_us": 0.0, "max_us": 0.0}
+        return {
+            "p50_us": 0.0,
+            "p95_us": 0.0,
+            "p99_us": 0.0,
+            "p999_us": 0.0,
+            "max_us": 0.0,
+        }
     latencies_ns.sort()
     n = len(latencies_ns)
     return {
@@ -45,7 +51,13 @@ def _compute_percentiles(latencies_ns: list[int]) -> dict[str, float]:
 def benchmark_sustained_soak(event_count: int = 50000) -> dict[str, Any]:
     print(f"[*] Running Sustained Load Soak Benchmark ({event_count:,} events)...")
     frames = [
-        {"seq": i, "sym": "NVDA", "px": 120.0 + (i % 50) * 0.01, "sz": 25.0, "type": "TRADE"}
+        {
+            "seq": i,
+            "sym": "NVDA",
+            "px": 120.0 + (i % 50) * 0.01,
+            "sz": 25.0,
+            "type": "TRADE",
+        }
         for i in range(1, event_count + 1)
     ]
     adapter = ReplayFeedAdapter(
@@ -82,16 +94,26 @@ def benchmark_sustained_soak(event_count: int = 50000) -> dict[str, Any]:
         "event_count": event_count,
         "elapsed_s": round(total_time_s, 4),
         "throughput_eps": rate,
-        "mem_delta_mb": round((mem_after_current - mem_before_current) / (1024 * 1024), 3),
+        "mem_delta_mb": round(
+            (mem_after_current - mem_before_current) / (1024 * 1024), 3
+        ),
         "mem_peak_mb": round(mem_after_peak / (1024 * 1024), 3),
         **pct,
     }
 
 
 def benchmark_pipeline_stage_profile(event_count: int = 20000) -> dict[str, Any]:
-    print(f"[*] Running Stage Breakdown Micro-Latency Profile ({event_count:,} events)...")
+    print(
+        f"[*] Running Stage Breakdown Micro-Latency Profile ({event_count:,} events)..."
+    )
     frames = [
-        {"seq": i, "sym": "MSFT", "px": 420.0 + (i % 20) * 0.05, "sz": 50.0, "type": "TRADE"}
+        {
+            "seq": i,
+            "sym": "MSFT",
+            "px": 420.0 + (i % 20) * 0.05,
+            "sz": 50.0,
+            "type": "TRADE",
+        }
         for i in range(1, event_count + 1)
     ]
     adapter = ReplayFeedAdapter(
@@ -170,11 +192,13 @@ def benchmark_capacity_scaling() -> list[dict[str, Any]]:
         elapsed = time.perf_counter() - t0
         rate = round(count / elapsed, 1)
 
-        sweep_results.append({
-            "batch_size": count,
-            "elapsed_s": round(elapsed, 4),
-            "rate_eps": rate,
-        })
+        sweep_results.append(
+            {
+                "batch_size": count,
+                "elapsed_s": round(elapsed, 4),
+                "rate_eps": rate,
+            }
+        )
         adapter.disconnect()
 
     return sweep_results
@@ -194,7 +218,9 @@ def run_phase4_benchmarks() -> dict[str, Any]:
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(results, f, indent=2)
 
-    print(f"\n[+] Phase 4 Benchmark completed successfully. Output written to {out_path}")
+    print(
+        f"\n[+] Phase 4 Benchmark completed successfully. Output written to {out_path}"
+    )
     return results
 
 

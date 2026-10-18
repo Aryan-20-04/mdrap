@@ -181,7 +181,9 @@ def run_runtime_lifecycle_benchmark() -> dict[str, Any]:
             "init_duration_ms": round(init_duration_ms, 2),
             "events_processed": 1000,
             "proc_duration_s": round(proc_duration_s, 4),
-            "ingest_eps": round(1000 / proc_duration_s, 1) if proc_duration_s > 0 else 0.0,
+            "ingest_eps": round(1000 / proc_duration_s, 1)
+            if proc_duration_s > 0
+            else 0.0,
             "stop_drain_duration_ms": round(stop_duration_ms, 2),
             "drain_success": rt.drain_success,
         }
@@ -195,19 +197,27 @@ def main():
     print("\n[1/3] Benchmarking Engine Step Processing...")
     engine_results = run_engine_step_benchmark(20_000)
     print(f"  Throughput: {engine_results['throughput_eps']:,.1f} EPS")
-    print(f"  Latency: p50={engine_results['latency_us']['p50']}us, p95={engine_results['latency_us']['p95']}us, p99={engine_results['latency_us']['p99']}us")
+    print(
+        f"  Latency: p50={engine_results['latency_us']['p50']}us, p95={engine_results['latency_us']['p95']}us, p99={engine_results['latency_us']['p99']}us"
+    )
 
     print("\n[2/3] Benchmarking Bounded Queue Saturation Backpressure...")
     queue_results = run_bounded_queue_saturation_benchmark(15_000)
     print(f"  Throughput: {queue_results['throughput_ops_sec']:,.1f} Ops/s")
-    print(f"  Drops Recorded: {queue_results['dropped']} (Enqueued: {queue_results['enqueued']})")
-    print(f"  Latency: p50={queue_results['latency_us']['p50']}us, p99={queue_results['latency_us']['p99']}us")
+    print(
+        f"  Drops Recorded: {queue_results['dropped']} (Enqueued: {queue_results['enqueued']})"
+    )
+    print(
+        f"  Latency: p50={queue_results['latency_us']['p50']}us, p99={queue_results['latency_us']['p99']}us"
+    )
 
     print("\n[3/3] Benchmarking Runtime Lifecycle & Persistence Drain...")
     lifecycle_results = run_runtime_lifecycle_benchmark()
     print(f"  Init Time: {lifecycle_results['init_duration_ms']} ms")
     print(f"  Ingest Throughput: {lifecycle_results['ingest_eps']:,.1f} EPS")
-    print(f"  Stop & Drain Time: {lifecycle_results['stop_drain_duration_ms']} ms (Success: {lifecycle_results['drain_success']})")
+    print(
+        f"  Stop & Drain Time: {lifecycle_results['stop_drain_duration_ms']} ms (Success: {lifecycle_results['drain_success']})"
+    )
 
     results = {
         "timestamp": time.time(),

@@ -77,14 +77,18 @@ class TestExperiment1BurstQueueing:
         assert all(t2 >= t1 for t1, t2 in zip(timestamps[:-1], timestamps[1:]))
 
     def test_cme_burst_trace_generation(self):
-        trace = generate_cme_burst_trace(total_packets=600, burst_intensity=0.30, seed=42)
+        trace = generate_cme_burst_trace(
+            total_packets=600, burst_intensity=0.30, seed=42
+        )
         assert len(trace) == 600
         instruments = {e.payload["instrument"] for e in trace}
         assert "NQ_FUT" in instruments
         assert "ES_FUT" in instruments
         # Verify sequence numbers are monotonic per instrument
         for inst in instruments:
-            inst_seqs = [e.payload["sequence"] for e in trace if e.payload["instrument"] == inst]
+            inst_seqs = [
+                e.payload["sequence"] for e in trace if e.payload["instrument"] == inst
+            ]
             assert sorted(inst_seqs) == inst_seqs
             assert len(inst_seqs) == len(set(inst_seqs))
 
@@ -174,6 +178,7 @@ class TestExperiment4HistoricalReplayColumnar:
 
             # Execute destructive analytical query
             import sqlite3
+
             conn = sqlite3.connect(db_path)
             conn.execute("DROP TABLE historical_trades")
             conn.commit()
@@ -181,6 +186,7 @@ class TestExperiment4HistoricalReplayColumnar:
 
             # Prove canonical IngestLog is untouched
             from mdrap.ingestlog import IngestLog
+
             log = IngestLog(wal_dir)
             recovered = sum(1 for _ in log.iter_from(0))
             assert recovered == 1_000

@@ -66,7 +66,9 @@ def get_system_metadata() -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # 1. Pure Python Pipeline Benchmark
 # ---------------------------------------------------------------------------
-def benchmark_python_pipeline(num_events: int = 20_000, seed: int = 42) -> dict[str, Any]:
+def benchmark_python_pipeline(
+    num_events: int = 20_000, seed: int = 42
+) -> dict[str, Any]:
     """Measure pure Python in-memory state transition throughput and latencies."""
     engine = Engine()
     sim = FeedSimulator(SimulatorConfig(seed=seed, num_events=num_events))
@@ -107,7 +109,9 @@ def benchmark_python_pipeline(num_events: int = 20_000, seed: int = 42) -> dict[
 # ---------------------------------------------------------------------------
 # 2. Native Pipeline Benchmark
 # ---------------------------------------------------------------------------
-def benchmark_native_pipeline(num_events: int = 20_000, seed: int = 42) -> dict[str, Any]:
+def benchmark_native_pipeline(
+    num_events: int = 20_000, seed: int = 42
+) -> dict[str, Any]:
     """Measure C fastpath quality evaluation if available, or report pure Python fallback."""
     try:
         from mdrap.fastpath import FastQualityEngine, is_fastpath_available
@@ -182,7 +186,9 @@ def benchmark_ingest_log(num_events: int = 20_000, seed: int = 42) -> dict[str, 
 # ---------------------------------------------------------------------------
 # 4. SQLite Projection Benchmark
 # ---------------------------------------------------------------------------
-def benchmark_projection(num_events: int = 20_000, batch_size: int = 500, seed: int = 42) -> dict[str, Any]:
+def benchmark_projection(
+    num_events: int = 20_000, batch_size: int = 500, seed: int = 42
+) -> dict[str, Any]:
     """Measure SQLite projection atomic batch apply throughput."""
     temp_dir = tempfile.mkdtemp(prefix="mdrap_bench_proj_")
     db_path = os.path.join(temp_dir, "projection.db")
@@ -219,7 +225,9 @@ def benchmark_projection(num_events: int = 20_000, batch_size: int = 500, seed: 
 # ---------------------------------------------------------------------------
 # 5. End-to-End Engine Pipeline Benchmark
 # ---------------------------------------------------------------------------
-def benchmark_end_to_end(num_events: int = 20_000, batch_size: int = 500, seed: int = 42) -> dict[str, Any]:
+def benchmark_end_to_end(
+    num_events: int = 20_000, batch_size: int = 500, seed: int = 42
+) -> dict[str, Any]:
     """Measure end-to-end Engine: IngestLog WAL + deterministic state fold + SQLite projection."""
     temp_dir = tempfile.mkdtemp(prefix="mdrap_bench_e2e_")
     wal_dir = os.path.join(temp_dir, "wal")
@@ -271,41 +279,60 @@ def benchmark_end_to_end(num_events: int = 20_000, batch_size: int = 500, seed: 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="MDRAP Phase 6 Benchmark Suite")
-    parser.add_argument("--events", type=int, default=10_000, help="Number of events to simulate per test")
-    parser.add_argument("--batch-size", type=int, default=500, help="Batch size for batch tests")
-    parser.add_argument("--output", type=str, default="", help="Path to save output JSON")
+    parser.add_argument(
+        "--events",
+        type=int,
+        default=10_000,
+        help="Number of events to simulate per test",
+    )
+    parser.add_argument(
+        "--batch-size", type=int, default=500, help="Batch size for batch tests"
+    )
+    parser.add_argument(
+        "--output", type=str, default="", help="Path to save output JSON"
+    )
     args = parser.parse_args()
 
     meta = get_system_metadata()
 
     print("=" * 66)
     print("MDRAP Phase 6 Comprehensive Benchmark Suite")
-    print(f"Platform: {meta['os']} | CPU: {meta['processor']} ({meta['cpu_count']} cores)")
+    print(
+        f"Platform: {meta['os']} | CPU: {meta['processor']} ({meta['cpu_count']} cores)"
+    )
     print(f"Python: {meta['python_version']} | Commit: {meta['git_commit'][:10]}")
     print("=" * 66)
 
     print(f"\n1. Measuring Pure Python Pipeline ({args.events} events)...")
     res_py = benchmark_python_pipeline(num_events=args.events)
     print(f"   Throughput: {res_py['events_per_second']:,} ev/s")
-    print(f"   p50: {res_py['latencies_us']['p50']} us | p99: {res_py['latencies_us']['p99']} us | p99.9: {res_py['latencies_us']['p999']} us")
+    print(
+        f"   p50: {res_py['latencies_us']['p50']} us | p99: {res_py['latencies_us']['p99']} us | p99.9: {res_py['latencies_us']['p999']} us"
+    )
 
     print(f"\n2. Measuring Native / Fastpath Pipeline ({args.events} events)...")
     res_native = benchmark_native_pipeline(num_events=args.events)
-    print(f"   Throughput: {res_native['events_per_second']:,} ev/s (accelerated={res_native['native_accelerated']})")
+    print(
+        f"   Throughput: {res_native['events_per_second']:,} ev/s (accelerated={res_native['native_accelerated']})"
+    )
 
     print(f"\n3. Measuring IngestLog WAL ({args.events} events)...")
     res_wal = benchmark_ingest_log(num_events=args.events)
     print(f"   Append Rate: {res_wal['append_rate_eps']:,} ev/s")
     print(f"   Recovery Rate: {res_wal['recovery_rate_eps']:,} ev/s")
 
-    print(f"\n4. Measuring SQLite Projection ({args.events} events, batch_size={args.batch_size})...")
+    print(
+        f"\n4. Measuring SQLite Projection ({args.events} events, batch_size={args.batch_size})..."
+    )
     res_proj = benchmark_projection(num_events=args.events, batch_size=args.batch_size)
     print(f"   Throughput: {res_proj['events_per_second']:,} ev/s")
 
     print(f"\n5. Measuring End-to-End Engine Pipeline ({args.events} events)...")
     res_e2e = benchmark_end_to_end(num_events=args.events, batch_size=args.batch_size)
     print(f"   Throughput: {res_e2e['events_per_second']:,} ev/s")
-    print(f"   Health: {res_e2e['health_status']} | Projection Lag: {res_e2e['projection_lag']}")
+    print(
+        f"   Health: {res_e2e['health_status']} | Projection Lag: {res_e2e['projection_lag']}"
+    )
 
     full_report = {
         "metadata": meta,

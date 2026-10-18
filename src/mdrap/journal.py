@@ -43,9 +43,11 @@ DEFAULT_INITIAL_RECORDS = 65536  # 8 MB initial preallocation
 GROWTH_FACTOR = 2
 
 # Journal Header: magic[4], u16 version, u16 record_size, u64 epoch, u64 record_count,
-#                u64 first_seq, u64 last_seq, double created_ts, double updated_ts, pad[72]
 JOURNAL_HDR_STRUCT = struct.Struct("<4sHHQQQQdd72s")
-assert JOURNAL_HDR_STRUCT.size == JOURNAL_HEADER_SIZE
+if JOURNAL_HDR_STRUCT.size != JOURNAL_HEADER_SIZE:
+    raise RuntimeError(
+        f"JOURNAL_HDR_STRUCT size mismatch: {JOURNAL_HDR_STRUCT.size} != {JOURNAL_HEADER_SIZE}"
+    )
 
 
 class BinaryJournal:

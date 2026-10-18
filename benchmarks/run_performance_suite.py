@@ -26,12 +26,14 @@ def run_benchmark(num_events: int = 50_000, seed: int = 42) -> dict[str, Any]:
     """Execute timed benchmark run and return standardized performance payload."""
     try:
         import psutil
+
         proc = psutil.Process()
         has_psutil = True
         mem_before = proc.memory_info().rss
         t0_cpu = proc.cpu_times()
     except ImportError:
         import tracemalloc
+
         has_psutil = False
         tracemalloc.start()
 
