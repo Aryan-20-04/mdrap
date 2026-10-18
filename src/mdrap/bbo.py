@@ -326,3 +326,17 @@ class BBOEngine:
             "instruments_covered": len(self._current_bbos),
             "venues_contributing": len(self._attribution),
         }
+
+    def apply(self, batch: list[Any], offset: int) -> None:
+        """Apply a batch of engine decisions/events to update BBO state."""
+        for item in batch:
+            ev = (
+                item
+                if isinstance(item, CanonicalEvent)
+                else getattr(item, "canonical_event", None)
+            )
+            if ev is not None:
+                try:
+                    self.observe(ev)
+                except Exception:
+                    pass

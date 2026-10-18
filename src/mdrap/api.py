@@ -248,6 +248,10 @@ class AppState:
             )
             if self.store:
                 self.engine.subscribe(self.store)
+            if self.bbo:
+                self.engine.subscribe(self.bbo)
+            if self.watchdog:
+                self.engine.subscribe(self.watchdog)
         else:
             try:
                 if self.wal_path:
@@ -269,6 +273,10 @@ class AppState:
                     )
                 if self.store:
                     self.engine.subscribe(self.store)
+                if self.bbo:
+                    self.engine.subscribe(self.bbo)
+                if self.watchdog:
+                    self.engine.subscribe(self.watchdog)
             except Exception as exc:
                 self.init_error = f"Durable storage initialization failed: {exc}"
                 logger.critical(
@@ -1021,13 +1029,10 @@ def create_app(
                             )
                         )
                 return res_events
-            if getattr(st, "persistence_mode", "") == "production_durable":
-                raise HTTPException(
-                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                    detail=f"Durable storage engine unavailable in production mode: {getattr(st, 'init_error', 'uninitialized')}",
-                )
-            with st.pipeline_lock:
-                return [e for e in st.pipeline.process_batch(batch) if e is not None]
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=f"Durable storage engine unavailable: {getattr(st, 'init_error', 'uninitialized')}",
+            )
 
         # 4. Offload synchronous batch processing to worker thread pool
         results = await asyncio.to_thread(_process_batch_locked, raw_events)

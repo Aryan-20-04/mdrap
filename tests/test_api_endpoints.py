@@ -44,8 +44,8 @@ def api_env():
     app = create_app(state=state)
     client = TestClient(app)
 
-    if hasattr(state.pipeline.quality, "reset"):
-        state.pipeline.quality.reset()
+    if hasattr(state, "_quality_engine") and hasattr(state._quality_engine, "reset"):
+        state._quality_engine.reset()
 
     yield {
         "client": client,
@@ -59,8 +59,8 @@ def api_env():
         "db_path": db_path,
     }
 
-    if hasattr(state.pipeline.quality, "reset"):
-        state.pipeline.quality.reset()
+    if hasattr(state, "_quality_engine") and hasattr(state._quality_engine, "reset"):
+        state._quality_engine.reset()
     store.close()
     if os.path.exists(db_path):
         try:

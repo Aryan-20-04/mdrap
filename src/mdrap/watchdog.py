@@ -353,3 +353,17 @@ class SourceWatchdog:
         """Check if a specific source is HEALTHY."""
         with self._lock:
             return self._source_states.get(source) == SourceState.HEALTHY
+
+    def apply(self, batch: list[Any], offset: int) -> None:
+        """Apply a batch of engine decisions/events to watchdog monitoring."""
+        for item in batch:
+            ev = (
+                item
+                if hasattr(item, "source")
+                else getattr(item, "canonical_event", None)
+            )
+            if ev is not None:
+                try:
+                    self.observe(ev)
+                except Exception:
+                    pass
