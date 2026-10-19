@@ -77,6 +77,8 @@ class MarketDataDaemon:
         ssl_context: Any = None,
         tls_cert: Optional[str] = None,
         tls_key: Optional[str] = None,
+        tls_ca_cert: Optional[str] = None,
+        require_client_cert: bool = False,
         allow_insecure_bind: bool = False,
     ):
         self.host = host
@@ -90,6 +92,11 @@ class MarketDataDaemon:
         self.ssl_context = ssl_context
         self.tls_cert = tls_cert or os.environ.get("MDRAP_TLS_CERT")
         self.tls_key = tls_key or os.environ.get("MDRAP_TLS_KEY")
+        self.tls_ca_cert = tls_ca_cert or os.environ.get("MDRAP_TLS_CA_CERT")
+        self.require_client_cert = require_client_cert or (
+            os.environ.get("MDRAP_REQUIRE_CLIENT_CERT", "0").lower()
+            in ("1", "true", "yes")
+        )
         self.allow_insecure_bind = allow_insecure_bind or (
             os.environ.get("MDRAP_ALLOW_INSECURE_BIND", "0").lower()
             in ("1", "true", "yes")
@@ -100,6 +107,10 @@ class MarketDataDaemon:
 
             ctx = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
             ctx.load_cert_chain(certfile=self.tls_cert, keyfile=self.tls_key)
+            if self.tls_ca_cert:
+                ctx.load_verify_locations(cafile=self.tls_ca_cert)
+            if self.require_client_cert:
+                ctx.verify_mode = ssl.CERT_REQUIRED
             self.ssl_context = ctx
 
         if not self._is_loopback_host(self.host):
@@ -1216,12 +1227,23 @@ class StreamClient:
         auth_token: Optional[str] = None,
         ssl_context: Any = None,
         use_tls: bool = False,
+        client_cert: Optional[str] = None,
+        client_key: Optional[str] = None,
+        ca_cert: Optional[str] = None,
     ):
         self.host = host
         self.port = port
         self.timeout = timeout
         self.ssl_context = ssl_context
-        self.use_tls = use_tls or (ssl_context is not None)
+        self.client_cert = client_cert
+        self.client_key = client_key
+        self.ca_cert = ca_cert
+        self.use_tls = (
+            use_tls
+            or (ssl_context is not None)
+            or (client_cert is not None)
+            or (ca_cert is not None)
+        )
         import os
 
         self.auth_token = (
@@ -1232,6 +1254,19 @@ class StreamClient:
         self.sock: Optional[socket.socket] = None
         self._query_sock: Optional[socket.socket] = None
         self._query_lock = threading.Lock()
+
+    def _build_client_ssl_context(self) -> Any:
+        import ssl
+
+        if self.ssl_context:
+            return self.ssl_context
+        ca = self.ca_cert or os.environ.get("MDRAP_TLS_CA_CERT")
+        ctx = ssl.create_default_context(cafile=ca)
+        cert = self.client_cert or os.environ.get("MDRAP_CLIENT_CERT")
+        key = self.client_key or os.environ.get("MDRAP_CLIENT_KEY")
+        if cert and key:
+            ctx.load_cert_chain(certfile=cert, keyfile=key)
+        return ctx
 
     @staticmethod
     def _recv_json_line(sock: socket.socket) -> dict:
@@ -1256,9 +1291,7 @@ class StreamClient:
         raw_sock.connect((self.host, self.port))
         raw_sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         if self.use_tls:
-            import ssl
-
-            ctx = self.ssl_context or ssl.create_default_context()
+            ctx = self._build_client_ssl_context()
             hostname = (
                 self.host if not MarketDataDaemon._is_loopback_host(self.host) else None
             )
@@ -1283,9 +1316,7 @@ class StreamClient:
         raw_sock.connect((self.host, self.port))
         raw_sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         if self.use_tls:
-            import ssl
-
-            ctx = self.ssl_context or ssl.create_default_context()
+            ctx = self._build_client_ssl_context()
             hostname = (
                 self.host if not MarketDataDaemon._is_loopback_host(self.host) else None
             )

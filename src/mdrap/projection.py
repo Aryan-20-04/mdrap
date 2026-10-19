@@ -1,11 +1,14 @@
-"""Atomic SQLite Projection for MDRAP.
+"""Atomic SQLite and Downstream Projections for MDRAP.
 
 Implements the Projection interface:
     apply(batch, offset)
     checkpoint()
 
-Guarantees atomic commit of (rows + checkpoint) in a single SQLite transaction,
-providing conflict-free, idempotent replay and crash recovery.
+Architectural Invariant:
+    The IngestLog WAL is the authoritative, immutable source of truth.
+    Downstream SQLite, DuckDB, and Parquet projections are rebuildable,
+    materialized views. When projections lag, fail, or need schema changes,
+    they can be deterministically reconstructed from the WAL.
 """
 
 from __future__ import annotations
@@ -269,6 +272,13 @@ class SQLiteProjection:
             cur.execute("SELECT COUNT(*) FROM quarantine_events;")
             return cur.fetchone()[0]
 
+    def query(self, sql: str, params: list | tuple | None = None) -> list:
+        """Execute a read query on the SQLite projection."""
+        with self._lock:
+            cur = self._conn.cursor()
+            cur.execute(sql, params or [])
+            return cur.fetchall()
+
     def close(self) -> None:
         with self._lock:
             try:
@@ -520,6 +530,8 @@ class AsyncProjectionWorker:
         self._drop_count: int = 0
         self._error_count: int = 0
         self._last_committed_offset: int = -1
+        self._highest_enqueued_offset: int = -1
+        self._flush_trigger = threading.Event()
         self._worker_thread = threading.Thread(
             target=self._run_loop, daemon=True, name="mdrap-async-projection"
         )
@@ -534,6 +546,8 @@ class AsyncProjectionWorker:
         try:
             self._queue.put_nowait((item, offset))
             self._items_enqueued += 1
+            if offset > self._highest_enqueued_offset:
+                self._highest_enqueued_offset = offset
             return True
         except queue.Full:
             self._drop_count += 1
@@ -566,8 +580,9 @@ class AsyncProjectionWorker:
             time_to_flush = now - last_flush >= self.flush_interval_sec
             batch_full = len(batch) >= self.batch_size
             stopping = self._stop_event.is_set()
+            flush_triggered = self._flush_trigger.is_set()
 
-            if batch and (time_to_flush or batch_full or stopping):
+            if batch and (time_to_flush or batch_full or stopping or flush_triggered):
                 try:
                     self.projection.apply(batch, offset=highest_offset)
                     self._items_committed += len(batch)
@@ -582,9 +597,15 @@ class AsyncProjectionWorker:
                 finally:
                     batch.clear()
                     last_flush = time.time()
+                    self._flush_trigger.clear()
 
     def stats(self) -> dict[str, Any]:
-        """Return operational telemetry metrics."""
+        """Return operational telemetry metrics including projection lag."""
+        lag = (
+            max(0, self._highest_enqueued_offset - self._last_committed_offset)
+            if self._highest_enqueued_offset >= 0
+            else 0
+        )
         return {
             "queue_depth": self._queue.qsize(),
             "items_enqueued": self._items_enqueued,
@@ -593,13 +614,25 @@ class AsyncProjectionWorker:
             "drops_total": self._drop_count,
             "errors_total": self._error_count,
             "last_committed_offset": self._last_committed_offset,
+            "highest_enqueued_offset": self._highest_enqueued_offset,
+            "lag_offsets": lag,
+            "is_lagging": lag > 1000
+            or self._queue.qsize() > (self.max_queue_size // 2),
             "is_alive": self._worker_thread.is_alive(),
         }
 
     def flush(self, timeout: float = 5.0) -> None:
-        """Wait until all currently queued items are processed."""
-        self._queue.join()
-        time.sleep(0.02)
+        """Wait until all currently queued and batched items are durably committed."""
+        self._flush_trigger.set()
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            self._flush_trigger.set()
+            if (
+                self._queue.empty()
+                and self._last_committed_offset >= self._highest_enqueued_offset
+            ):
+                break
+            time.sleep(0.005)
 
     def close(self, timeout: float = 5.0) -> None:
         """Stop the background worker thread gracefully and flush pending writes."""
@@ -607,3 +640,53 @@ class AsyncProjectionWorker:
         self._worker_thread.join(timeout=timeout)
         if hasattr(self.projection, "close"):
             self.projection.close()
+
+
+def rebuild_projection_from_wal(
+    journal_dir: str,
+    projection: Projection,
+    start_offset: int = 0,
+    batch_size: int = 2000,
+) -> int:
+    """Rebuild an analytical projection (SQLite, DuckDB, etc.) from the immutable IngestLog WAL.
+
+    Invariant:
+        The IngestLog WAL is the authoritative source of truth. Projections are ephemeral,
+        rebuildable materialized views. If a projection database is corrupted, deleted,
+        or lagging, it can be deterministically replayed and reconstructed from the WAL.
+
+    Args:
+        journal_dir: Path to directory containing IngestLog WAL segments.
+        projection: The target Projection instance (e.g. SQLiteProjection).
+        start_offset: Offset from which to begin replay (default: 0).
+        batch_size: Number of records to accumulate before invoking projection.apply().
+
+    Returns:
+        Total number of records applied to the projection.
+    """
+    from .ingestlog import IngestLog
+    from .engine import Engine
+
+    log = IngestLog(journal_dir)
+    engine = Engine()
+    state = engine.create_initial_state()
+
+    batch: list[Any] = []
+    applied_count = 0
+    highest_offset = -1
+
+    for offset, raw in log.iter_from(start_offset):
+        state, decision = engine.step(state, raw, engine.clock, offset=offset)
+        batch.append(decision)
+        highest_offset = offset
+        applied_count += 1
+
+        if len(batch) >= batch_size:
+            projection.apply(batch, offset=highest_offset)
+            batch.clear()
+
+    if batch:
+        projection.apply(batch, offset=highest_offset)
+        batch.clear()
+
+    return applied_count

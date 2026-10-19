@@ -12,7 +12,7 @@ import os
 import warnings
 
 from ._version import __version__
-from .client import Client, MDRAPClient, MarketEvent as ClientMarketEvent
+from .client import Client, MDRAPClient, AsyncClient, MarketEvent as ClientMarketEvent
 
 from .models import (
     CanonicalEvent,
@@ -35,7 +35,12 @@ from .ingestlog import (
     IngestLogPoisonedError,
 )
 from .pipeline import Pipeline, EnginePipeline
-from .projection import SQLiteProjection, DuckDBProjection
+from .projection import (
+    SQLiteProjection,
+    DuckDBProjection,
+    AsyncProjectionWorker,
+    rebuild_projection_from_wal,
+)
 from .storage import Store
 from .profile import HardwareProfile, ProfileMode, current_profile
 from .exceptions import CompanionPackageMissing, require_companion
@@ -64,6 +69,7 @@ __all__ = [
     "__version__",
     "Client",
     "MDRAPClient",
+    "AsyncClient",
     "ClientMarketEvent",
     "MarketEvent",
     "RawEvent",
@@ -86,6 +92,8 @@ __all__ = [
     "EngineState",
     "SQLiteProjection",
     "DuckDBProjection",
+    "AsyncProjectionWorker",
+    "rebuild_projection_from_wal",
     "Pipeline",
     "EnginePipeline",
     "Store",

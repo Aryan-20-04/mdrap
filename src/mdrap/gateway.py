@@ -64,8 +64,15 @@ REQUIRED_QUOTE_FIELDS = (
     "ask",
 )
 
+REQUIRED_STATUS_FIELDS = (
+    "instrument",
+    "event_type",
+)
+
 _EVENT_TYPE_TRADE = EventType.TRADE
 _EVENT_TYPE_QUOTE = EventType.QUOTE
+_EVENT_TYPE_HALT = EventType.HALT
+_EVENT_TYPE_STATUS = EventType.STATUS
 
 
 class Gateway:
@@ -101,14 +108,16 @@ class Gateway:
             raise SchemaError(f"payload must be a dict, got {type(p).__name__}")
 
         event_type_raw = p.get("event_type")
-        if event_type_raw not in ("TRADE", "QUOTE"):
+        if event_type_raw not in ("TRADE", "QUOTE", "HALT", "STATUS"):
             raise SchemaError(f"unknown or missing event_type: {event_type_raw!r}")
 
-        required = (
-            REQUIRED_TRADE_FIELDS
-            if event_type_raw == "TRADE"
-            else REQUIRED_QUOTE_FIELDS
-        )
+        if event_type_raw == "TRADE":
+            required = REQUIRED_TRADE_FIELDS
+        elif event_type_raw == "QUOTE":
+            required = REQUIRED_QUOTE_FIELDS
+        else:
+            required = REQUIRED_STATUS_FIELDS
+
         for f in required:
             if f not in p:
                 missing = [req for req in required if req not in p]
@@ -146,12 +155,21 @@ class Gateway:
         if i_id is None:
             i_id = self.instrument_id_map[instrument] = len(self.instrument_id_map)
 
+        if event_type_raw == "TRADE":
+            ev_type = _EVENT_TYPE_TRADE
+        elif event_type_raw == "QUOTE":
+            ev_type = _EVENT_TYPE_QUOTE
+        elif event_type_raw == "HALT":
+            ev_type = _EVENT_TYPE_HALT
+        elif event_type_raw == "STATUS":
+            ev_type = _EVENT_TYPE_STATUS
+        else:
+            ev_type = EventType.UNKNOWN
+
         event = CanonicalEvent(
             event_id=self.next_event_id(),
             instrument_id=instrument,
-            event_type=_EVENT_TYPE_TRADE
-            if event_type_raw == "TRADE"
-            else _EVENT_TYPE_QUOTE,
+            event_type=ev_type,
             exchange_timestamp=float(exchange_ts),
             receive_timestamp=raw.receive_timestamp,
             processing_timestamp=0.0,  # Populated after quality evaluation
@@ -203,7 +221,7 @@ class Gateway:
                 raise SchemaError(f"invalid quantity: {qty!r}")
             event.price = float(price)
             event.quantity = float(qty)
-        else:
+        elif event_type_raw == "QUOTE":
             bid, ask = p["bid"], p["ask"]
             if (
                 isinstance(bid, bool)
@@ -226,6 +244,9 @@ class Gateway:
                 raise SchemaError("ask_size not numeric")
             event.bid_size = float(bid_sz)
             event.ask_size = float(ask_sz)
+        else:
+            # HALT and STATUS events carry trading halt or session state without trade/quote requirement
+            pass
 
         return event
 

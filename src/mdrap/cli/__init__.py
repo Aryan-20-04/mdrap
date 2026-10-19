@@ -283,6 +283,18 @@ def build_parser() -> argparse.ArgumentParser:
         dest="no_color",
         help="Suppress all ANSI color and styling (honors NO_COLOR=1)",
     )
+    parser.add_argument(
+        "--log-format",
+        choices=["text", "json"],
+        default="text",
+        help="Structured logging format: 'text' or 'json'",
+    )
+    parser.add_argument(
+        "--log-level",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        default="INFO",
+        help="Logging verbosity level",
+    )
     sub = parser.add_subparsers(
         dest="command", required=False, parser_class=MDRAPArgumentParser
     )
@@ -3190,6 +3202,15 @@ def main():
         return
 
     args = parser.parse_args()
+    log_fmt = getattr(args, "log_format", "text")
+    log_lvl = getattr(args, "log_level", "INFO")
+    if (isinstance(log_fmt, str) and log_fmt != "text") or (
+        isinstance(log_lvl, str) and log_lvl != "INFO"
+    ):
+        from ..log import configure_logging
+
+        configure_logging(level=log_lvl, log_format=log_fmt)
+
     if hasattr(args, "func"):
         from ..exceptions import CompanionPackageMissing
 

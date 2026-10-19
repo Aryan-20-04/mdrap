@@ -63,6 +63,7 @@ class SourceWatchdog:
         self.adaptive_silence_count: int = 0
         self._alerts: list[WatchdogAlert] = []
         self._blocked_sources: set[str] = set()
+        self._halted_instruments: set[str] = set()
 
         self._lock = threading.RLock()
         self._heartbeat_thread: threading.Thread | None = None
@@ -84,6 +85,40 @@ class SourceWatchdog:
             now_ts = getattr(event, "receive_timestamp", None)
         if now_ts is None:
             now_ts = time.time()
+
+        # Invariant 2.2: Track exchange halts and trading status
+        inst = getattr(event, "instrument_id", None) or getattr(
+            event, "instrument", None
+        )
+        ev_type = getattr(event, "event_type", None)
+        ev_type_str = (
+            ev_type.value if hasattr(ev_type, "value") else str(ev_type or "").upper()
+        )
+        payload = (
+            getattr(event, "payload", {})
+            if isinstance(getattr(event, "payload", None), dict)
+            else {}
+        )
+        status_field = str(
+            payload.get("status") or payload.get("trading_status") or ""
+        ).upper()
+        if inst:
+            inst_str = str(inst)
+            if ev_type_str == "HALT" or status_field in (
+                "HALT",
+                "HALTED",
+                "PAUSED",
+                "SUSPENDED",
+            ):
+                self._halted_instruments.add(inst_str)
+            elif ev_type_str == "STATUS" and status_field in (
+                "RESUME",
+                "RESUMED",
+                "ACTIVE",
+                "TRADING",
+                "OPEN",
+            ):
+                self._halted_instruments.discard(inst_str)
 
         prev_ts = self._last_seen.get(source_in)
         if prev_ts is not None and now_ts > prev_ts:
@@ -353,6 +388,42 @@ class SourceWatchdog:
         """Check if a specific source is HEALTHY."""
         with self._lock:
             return self._source_states.get(source) == SourceState.HEALTHY
+
+    def record_halt(self, instrument: str) -> None:
+        """Mark an instrument as halted."""
+        with self._lock:
+            self._halted_instruments.add(str(instrument))
+
+    def record_resume(self, instrument: str) -> None:
+        """Mark a halted instrument as resumed/active."""
+        with self._lock:
+            self._halted_instruments.discard(str(instrument))
+
+    def is_halted(self, instrument: str) -> bool:
+        """Check if an instrument is currently in a trading halt."""
+        with self._lock:
+            return str(instrument) in self._halted_instruments
+
+    def halted_instruments(self) -> set[str]:
+        """Return a copy of the set of currently halted instruments."""
+        with self._lock:
+            return set(self._halted_instruments)
+
+    def check_instrument_staleness(
+        self,
+        instrument: str,
+        last_ts: float,
+        current_time: float,
+        threshold_s: float = 2.0,
+    ) -> bool:
+        """Evaluate if an instrument is stale, honoring trading halt invariant.
+
+        Invariant 2.2: An instrument in halt is legitimately silent and must NOT be flagged as STALE.
+        """
+        with self._lock:
+            if str(instrument) in self._halted_instruments:
+                return False  # Legitimately silent due to exchange halt
+            return (current_time - last_ts) > threshold_s
 
     def apply(self, batch: list[Any], offset: int) -> None:
         """Apply a batch of engine decisions/events to watchdog monitoring."""

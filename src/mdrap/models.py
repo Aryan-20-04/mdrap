@@ -118,6 +118,8 @@ class EventType(str, Enum):
     BBO = "BBO"
     BOOK = "BOOK"
     DEPTH = "DEPTH"
+    HALT = "HALT"
+    STATUS = "STATUS"
     UNKNOWN = "UNKNOWN"
 
 

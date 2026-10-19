@@ -1181,5 +1181,96 @@ class MDrapClient:
         return df
 
 
-# Canonical Institutional Client Alias
+class AsyncClient:
+    """Modern asynchronous institutional client for MDRAP REST and streaming services.
+
+    Provides ergonomic async context management, non-blocking ingestion,
+    health checks, and telemetry retrieval.
+
+    Example:
+        ```python
+        async with AsyncClient(base_url="http://127.0.0.1:8000", api_key="live_key") as client:
+            status = await client.health()
+            res = await client.submit({"instrument": "AAPL", "price": 150.25, "quantity": 100})
+            print(res)
+        ```
+    """
+
+    def __init__(
+        self,
+        base_url: str = "http://127.0.0.1:8000",
+        api_key: Optional[str] = None,
+        timeout: float = 10.0,
+    ) -> None:
+        self.base_url = (base_url or "http://127.0.0.1:8000").rstrip("/")
+        self.api_key = api_key or os.environ.get("MDRAP_API_KEY", "")
+        self.timeout = timeout
+        self._closed = False
+
+    async def __aenter__(self) -> "AsyncClient":
+        return self
+
+    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        await self.close()
+
+    async def close(self) -> None:
+        self._closed = True
+
+    def _headers(self) -> Dict[str, str]:
+        headers = {
+            "Content-Type": "application/json",
+            "User-Agent": f"MDRAP-AsyncClient/{__version__}",
+        }
+        if self.api_key:
+            headers["X-API-Key"] = self.api_key
+            headers["Authorization"] = f"Bearer {self.api_key}"
+        return headers
+
+    def _request_sync(
+        self, method: str, path: str, payload: Optional[Any] = None
+    ) -> Dict[str, Any]:
+        url = f"{self.base_url}{path}"
+        data = json.dumps(payload).encode("utf-8") if payload is not None else None
+        req = urllib.request.Request(
+            url, data=data, headers=self._headers(), method=method
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                raw_bytes = resp.read()
+                if not raw_bytes:
+                    return {}
+                return json.loads(raw_bytes.decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            body = exc.read().decode("utf-8", errors="replace")
+            try:
+                err_dict = json.loads(body)
+                raise RuntimeError(f"HTTP {exc.code}: {err_dict}") from exc
+            except Exception:
+                raise RuntimeError(f"HTTP {exc.code}: {body}") from exc
+
+    async def health(self) -> Dict[str, Any]:
+        """Query /v1/health or /health endpoint asynchronously."""
+        return await asyncio.to_thread(self._request_sync, "GET", "/v1/health")
+
+    async def get_metrics(self) -> Dict[str, Any]:
+        """Query /v1/metrics or /metrics endpoint asynchronously."""
+        return await asyncio.to_thread(self._request_sync, "GET", "/v1/metrics")
+
+    async def submit(self, event: Any) -> Dict[str, Any]:
+        """Submit a single raw market data event asynchronously."""
+        payload = event.to_dict() if hasattr(event, "to_dict") else event
+        return await asyncio.to_thread(
+            self._request_sync, "POST", "/v1/ingest", payload
+        )
+
+    async def submit_batch(self, events: List[Any]) -> Dict[str, Any]:
+        """Submit a batch of raw market data events atomically asynchronously."""
+        payload = [e.to_dict() if hasattr(e, "to_dict") else e for e in events]
+        return await asyncio.to_thread(
+            self._request_sync, "POST", "/v1/ingest/batch", payload
+        )
+
+
+# Canonical Institutional Client Aliases
 Client = MDRAPClient
+AsyncMDRAPClient = AsyncClient

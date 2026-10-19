@@ -337,8 +337,14 @@ class QualityEngine:
         # Stage 1: Structural Validation
         is_quote = event.event_type == EventType.QUOTE or event.event_type == "QUOTE"
         is_trade = event.event_type == EventType.TRADE or event.event_type == "TRADE"
+        is_status = event.event_type in (
+            EventType.HALT,
+            EventType.STATUS,
+            "HALT",
+            "STATUS",
+        )
 
-        if not is_trade and not is_quote:
+        if not is_trade and not is_quote and not is_status:
             self._mark(event, QualityStatus.INVALID, Reason.SCHEMA_VIOLATION)
             self._bump(Reason.SCHEMA_VIOLATION)
             self.counts[event.quality_status.value] += 1
@@ -358,9 +364,12 @@ class QualityEngine:
         if is_trade:
             if not has_price:
                 bad = True
-        else:
+        elif is_quote:
             if not has_bid and not has_ask:
                 bad = True
+        else:
+            # HALT and STATUS events require no prices or quotes
+            pass
 
         def num_bad(v: float, allow_n: bool) -> bool:
             return not math.isfinite(v) or (not allow_n and v < 0.0)
@@ -559,7 +568,13 @@ class QualityEngine:
             elif plausible:
                 sl.last_ts = event.exchange_timestamp
 
-            if (
+            is_status_event = event.event_type in (
+                EventType.HALT,
+                EventType.STATUS,
+                "HALT",
+                "STATUS",
+            )
+            if not is_status_event and (
                 event.receive_timestamp - event.exchange_timestamp
                 > cfg.staleness_threshold_s
             ):

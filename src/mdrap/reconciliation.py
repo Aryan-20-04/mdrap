@@ -25,6 +25,7 @@ from __future__ import annotations
 
 from collections import OrderedDict
 from dataclasses import dataclass, field
+from typing import Protocol, runtime_checkable
 
 from .models import CanonicalEvent, QualityStatus, Reason
 
@@ -58,6 +59,9 @@ class ReliabilityConfig:
     alpha: float = DEFAULT_RELIABILITY_ALPHA
     disagreement_pct_threshold: float = DEFAULT_DISAGREEMENT_PCT_THRESHOLD
     agreement_window_s: float = DEFAULT_AGREEMENT_WINDOW_S
+
+
+ReconciliationConfig = ReliabilityConfig
 
 
 @dataclass
@@ -186,6 +190,187 @@ class CanonicalDecision:
     quality_reasons: list[str] = field(default_factory=list)
 
 
+@runtime_checkable
+class ReconciliationStrategy(Protocol):
+    """Protocol defining multi-feed arbitration and canonical selection strategies."""
+
+    def select(
+        self,
+        instrument_id: str,
+        candidates: dict[str, tuple[CanonicalEvent, float]],
+        scores: dict[str, float],
+        agreement_window_s: float,
+        disagreement_pct_threshold: float,
+        blocked_sources: set[str] | None = None,
+        market_now: float | None = None,
+    ) -> CanonicalDecision | None:
+        """Arbitrate between competing candidate observations to select canonical reality."""
+        ...
+
+
+class HighestReliabilityStrategy:
+    """Canonical selection strategy electing the feed with highest composite reliability score.
+
+    Default production strategy in MDRAP.
+    """
+
+    def select(
+        self,
+        instrument_id: str,
+        candidates: dict[str, tuple[CanonicalEvent, float]],
+        scores: dict[str, float],
+        agreement_window_s: float,
+        disagreement_pct_threshold: float,
+        blocked_sources: set[str] | None = None,
+        market_now: float | None = None,
+    ) -> CanonicalDecision | None:
+        blocked = blocked_sources or set()
+        recent_sources: list[str] = []
+        recent_prices: dict[str, float] = {}
+        chosen_source = ""
+        chosen_event = None
+        best_score = -1.0
+        total_price = 0.0
+
+        for src in sorted(candidates.keys()):
+            ev, ts = candidates[src]
+            if market_now is not None and abs(market_now - ts) > agreement_window_s:
+                continue
+            if src in blocked or ev.price is None:
+                continue
+            p = ev.price
+            recent_sources.append(src)
+            recent_prices[src] = p
+            total_price += p
+            sc = scores.get(src, 0.0)
+            if sc > best_score or (
+                sc == best_score and (chosen_source == "" or src < chosen_source)
+            ):
+                best_score = sc
+                chosen_source = src
+                chosen_event = ev
+
+        n_recent = len(recent_sources)
+        if n_recent < 2 or chosen_event is None:
+            return None
+
+        mean_price = total_price / n_recent
+        disagreement = False
+        if mean_price > 0:
+            for p in recent_prices.values():
+                if abs(p - mean_price) / mean_price > disagreement_pct_threshold:
+                    disagreement = True
+                    break
+
+        quality_reasons: list[str] = []
+        if disagreement:
+            quality_reasons.append(Reason.CROSS_FEED_DISAGREEMENT.value)
+            reason = (
+                f"disagreement across {recent_sources} "
+                f"(prices={recent_prices}); selected highest-reliability source"
+            )
+        else:
+            reason = (
+                "sources agree within threshold; selected highest-reliability source"
+            )
+
+        return CanonicalDecision(
+            instrument_id=instrument_id,
+            chosen_source=chosen_source,
+            chosen_event_id=chosen_event.event_id,
+            disagreement=disagreement,
+            reason=reason,
+            competing_sources=recent_sources,
+            quality_reasons=quality_reasons,
+        )
+
+
+class MedianPriceStrategy:
+    """Outlier-resistant canonical selection strategy electing the feed with the median price.
+
+    Particularly effective in hostile or noisy multi-feed environments where a single
+    rogue feed may broadcast erroneous or manipulated price spikes. Selects the observation
+    whose price is closest to the multi-feed median.
+    """
+
+    def select(
+        self,
+        instrument_id: str,
+        candidates: dict[str, tuple[CanonicalEvent, float]],
+        scores: dict[str, float],
+        agreement_window_s: float,
+        disagreement_pct_threshold: float,
+        blocked_sources: set[str] | None = None,
+        market_now: float | None = None,
+    ) -> CanonicalDecision | None:
+        blocked = blocked_sources or set()
+        active_items: list[tuple[str, CanonicalEvent, float]] = []
+
+        for src in sorted(candidates.keys()):
+            ev, ts = candidates[src]
+            if market_now is not None and abs(market_now - ts) > agreement_window_s:
+                continue
+            if src in blocked or ev.price is None:
+                continue
+            active_items.append((src, ev, ev.price))
+
+        n_recent = len(active_items)
+        if n_recent < 2:
+            return None
+
+        # Sort by price ascending; tie-break by source name
+        active_items.sort(key=lambda item: (item[2], item[0]))
+        recent_sources = [item[0] for item in active_items]
+        recent_prices = {item[0]: item[2] for item in active_items}
+
+        prices = [item[2] for item in active_items]
+        mid = n_recent // 2
+        if n_recent % 2 == 1:
+            median_price = prices[mid]
+            chosen_idx = mid
+        else:
+            median_price = (prices[mid - 1] + prices[mid]) / 2.0
+            dist_left = abs(prices[mid - 1] - median_price)
+            dist_right = abs(prices[mid] - median_price)
+            if dist_left < dist_right:
+                chosen_idx = mid - 1
+            elif dist_right < dist_left:
+                chosen_idx = mid
+            else:
+                score_left = scores.get(active_items[mid - 1][0], 0.0)
+                score_right = scores.get(active_items[mid][0], 0.0)
+                chosen_idx = mid - 1 if score_left >= score_right else mid
+
+        chosen_source, chosen_event, _ = active_items[chosen_idx]
+
+        disagreement = False
+        if median_price > 0:
+            for p in prices:
+                if abs(p - median_price) / median_price > disagreement_pct_threshold:
+                    disagreement = True
+                    break
+
+        quality_reasons: list[str] = []
+        if disagreement:
+            quality_reasons.append(Reason.CROSS_FEED_DISAGREEMENT.value)
+            reason = (
+                f"disagreement across {recent_sources} "
+                f"(prices={recent_prices}); selected median-price source {chosen_source}"
+            )
+        else:
+            reason = f"sources agree within threshold; selected median-price source {chosen_source}"
+
+        return CanonicalDecision(
+            instrument_id=instrument_id,
+            chosen_source=chosen_source,
+            chosen_event_id=chosen_event.event_id,
+            disagreement=disagreement,
+            reason=reason,
+            competing_sources=recent_sources,
+            quality_reasons=quality_reasons,
+        )
+
+
 class Reconciler:
     """Arbitrates concurrent multi-source quotes and trades to establish canonical reality.
 
@@ -200,6 +385,7 @@ class Reconciler:
         config: ReliabilityConfig | None = None,
         cfg: ReliabilityConfig | None = None,
         max_instruments: int = 100_000,
+        strategy: ReconciliationStrategy | None = None,
     ):
         resolved_cfg = cfg or config or ReliabilityConfig()
         self.cfg = resolved_cfg
@@ -209,6 +395,9 @@ class Reconciler:
             else ReliabilityTracker(config=resolved_cfg)
         )
         self.max_instruments = max_instruments
+        self.strategy: ReconciliationStrategy = (
+            strategy if strategy is not None else HighestReliabilityStrategy()
+        )
         # instrument_id -> source -> (event, exchange_timestamp)
         self._latest: OrderedDict[str, dict[str, tuple[CanonicalEvent, float]]] = (
             OrderedDict()
@@ -224,7 +413,7 @@ class Reconciler:
         self._blocked_sources.discard(source)
 
     def reconcile(self, event: CanonicalEvent) -> CanonicalDecision | None:
-        """Evaluate cross-feed agreement and elect the canonical event.
+        """Evaluate cross-feed agreement and elect the canonical event using configured strategy.
 
         Temporal Windowing Invariant:
           Recency is strictly evaluated using *simulated market time* (`exchange_timestamp`)
@@ -249,65 +438,14 @@ class Reconciler:
         if len(per_instrument) < 2:
             return None
 
-        window = self.cfg.agreement_window_s
-        blocked = self._blocked_sources
-        scores = self.reliability._cached_scores
-
-        recent_sources: list[str] = []
-        recent_prices: dict[str, float] = {}
-        chosen_source = ""
-        chosen_event = None
-        best_score = -1.0
-        total_price = 0.0
-
-        for src in sorted(per_instrument.keys()):
-            ev, ts = per_instrument[src]
-            if abs(market_now - ts) <= window and src not in blocked:
-                p = ev.price
-                recent_sources.append(src)
-                recent_prices[src] = p
-                total_price += p
-                sc = scores.get(src, 0.0)
-                if sc > best_score or (
-                    sc == best_score and (chosen_source == "" or src < chosen_source)
-                ):
-                    best_score = sc
-                    chosen_source = src
-                    chosen_event = ev
-
-        n_recent = len(recent_sources)
-        if n_recent < 2 or chosen_event is None:
-            return None
-
-        mean_price = total_price / n_recent
-        thresh = self.cfg.disagreement_pct_threshold
-        disagreement = False
-        if mean_price > 0:
-            for p in recent_prices.values():
-                if abs(p - mean_price) / mean_price > thresh:
-                    disagreement = True
-                    break
-
-        quality_reasons: list[str] = []
-        if disagreement:
-            quality_reasons.append(Reason.CROSS_FEED_DISAGREEMENT.value)
-            reason = (
-                f"disagreement across {recent_sources} "
-                f"(prices={recent_prices}); selected highest-reliability source"
-            )
-        else:
-            reason = (
-                "sources agree within threshold; selected highest-reliability source"
-            )
-
-        return CanonicalDecision(
+        return self.strategy.select(
             instrument_id=event.instrument_id,
-            chosen_source=chosen_source,
-            chosen_event_id=chosen_event.event_id,
-            disagreement=disagreement,
-            reason=reason,
-            competing_sources=recent_sources,
-            quality_reasons=quality_reasons,
+            candidates=per_instrument,
+            scores=self.reliability._cached_scores,
+            agreement_window_s=self.cfg.agreement_window_s,
+            disagreement_pct_threshold=self.cfg.disagreement_pct_threshold,
+            blocked_sources=self._blocked_sources,
+            market_now=market_now,
         )
 
 

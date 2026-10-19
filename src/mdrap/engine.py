@@ -1022,102 +1022,72 @@ class Engine:
                 quarantine_row=q_row,
             )
 
-    def _step_internal(
+    def _stage_security_envelope(
         self,
-        state: EngineState,
+        payload: dict,
         raw_event: RawEvent,
-        clock: Clock,
-        offset: int | None = None,
-        txn: Transaction | None = None,
-    ) -> tuple[EngineState, EngineDecision]:
-        if offset is None:
-            offset = state.event_count
+        offset: int,
+        recv_ts: float,
+    ) -> tuple[bool, EngineDecision | None]:
+        if self.security is None:
+            return True, None
 
-        if txn is not None:
-            txn.record_event_count()
-        state.event_count += 1
-        now_ts = clock.now()
-        recv_ts = raw_event.receive_timestamp if raw_event.receive_timestamp else now_ts
-
-        def _bump_invalid() -> None:
-            if txn is not None:
-                txn.record_count("INVALID")
-            state.counts["INVALID"] += 1
-
-        # 1. Payload validation (Finding 5, Finding 6)
-        payload = raw_event.payload
-        if not isinstance(payload, dict):
+        is_valid, err_msg = self.security.sanitize_payload(payload)
+        if not is_valid:
             event_id = f"q_{raw_event.source}_{offset}"
             q_row = (
                 event_id,
                 "MALFORMED",
                 raw_event.source,
                 QualityStatus.INVALID.value,
-                json.dumps(["Payload is not a dictionary"]),
+                json.dumps([f"Payload failed security sanitization: {err_msg}"]),
                 json.dumps(str(payload)),
                 recv_ts,
             )
-            _bump_invalid()
-            decision = EngineDecision(
+            return False, EngineDecision(
                 offset=offset,
                 event_id=event_id,
                 quality_status=QualityStatus.INVALID,
-                reasons=[Reason.SCHEMA_VIOLATION.value],
+                reasons=[Reason.MALFORMED.value],
                 quarantine_row=q_row,
             )
-            return state, decision
 
-        # 1b. Security sanitization and cryptographic HMAC verification
-        if self.security is not None:
-            is_valid, err_msg = self.security.sanitize_payload(payload)
-            if not is_valid:
+        if self.security.hmac_required(raw_event.source) or "signature" in payload:
+            sig = payload.get("signature")
+            if not sig or not self.security.verify_payload(
+                raw_event.source, payload, sig
+            ):
                 event_id = f"q_{raw_event.source}_{offset}"
                 q_row = (
                     event_id,
-                    "MALFORMED",
+                    str(payload.get("instrument", "UNKNOWN")),
                     raw_event.source,
                     QualityStatus.INVALID.value,
-                    json.dumps([f"Payload failed security sanitization: {err_msg}"]),
-                    json.dumps(str(payload)),
+                    json.dumps(
+                        [
+                            "Cryptographic HMAC verification failed: missing or tampered signature"
+                        ]
+                    ),
+                    json.dumps(payload, default=str),
                     recv_ts,
                 )
-                _bump_invalid()
-                return state, EngineDecision(
+                return False, EngineDecision(
                     offset=offset,
                     event_id=event_id,
                     quality_status=QualityStatus.INVALID,
-                    reasons=[Reason.MALFORMED.value],
+                    reasons=[Reason.SECURITY_REJECT.value],
                     quarantine_row=q_row,
                 )
-            if self.security.hmac_required(raw_event.source) or "signature" in payload:
-                sig = payload.get("signature")
-                if not sig or not self.security.verify_payload(
-                    raw_event.source, payload, sig
-                ):
-                    event_id = f"q_{raw_event.source}_{offset}"
-                    q_row = (
-                        event_id,
-                        str(payload.get("instrument", "UNKNOWN")),
-                        raw_event.source,
-                        QualityStatus.INVALID.value,
-                        json.dumps(
-                            [
-                                "Cryptographic HMAC verification failed: missing or tampered signature"
-                            ]
-                        ),
-                        json.dumps(payload, default=str),
-                        recv_ts,
-                    )
-                    _bump_invalid()
-                    return state, EngineDecision(
-                        offset=offset,
-                        event_id=event_id,
-                        quality_status=QualityStatus.INVALID,
-                        reasons=[Reason.SECURITY_REJECT.value],
-                        quarantine_row=q_row,
-                    )
 
-        # 2. Schema field validation
+        return True, None
+
+    def _stage_schema_validation(
+        self,
+        payload: dict,
+        raw_event: RawEvent,
+        offset: int,
+        recv_ts: float,
+    ) -> tuple[bool, str, str, int | None, float, EngineDecision | None]:
         instrument = payload.get("instrument")
         raw_event_type = payload.get("event_type")
 
@@ -1136,13 +1106,19 @@ class Engine:
                 json.dumps(payload, default=str),
                 recv_ts,
             )
-            _bump_invalid()
-            return state, EngineDecision(
-                offset=offset,
-                event_id=event_id,
-                quality_status=QualityStatus.INVALID,
-                reasons=[Reason.BACKPRESSURE_DROP.value],
-                quarantine_row=q_row,
+            return (
+                False,
+                "",
+                "",
+                None,
+                0.0,
+                EngineDecision(
+                    offset=offset,
+                    event_id=event_id,
+                    quality_status=QualityStatus.INVALID,
+                    reasons=[Reason.BACKPRESSURE_DROP.value],
+                    quarantine_row=q_row,
+                ),
             )
 
         if not instrument or not isinstance(instrument, str):
@@ -1156,16 +1132,21 @@ class Engine:
                 json.dumps(payload, default=str),
                 recv_ts,
             )
-            _bump_invalid()
-            return state, EngineDecision(
-                offset=offset,
-                event_id=event_id,
-                quality_status=QualityStatus.INVALID,
-                reasons=[Reason.SCHEMA_VIOLATION.value],
-                quarantine_row=q_row,
+            return (
+                False,
+                "",
+                "",
+                None,
+                0.0,
+                EngineDecision(
+                    offset=offset,
+                    event_id=event_id,
+                    quality_status=QualityStatus.INVALID,
+                    reasons=[Reason.SCHEMA_VIOLATION.value],
+                    quarantine_row=q_row,
+                ),
             )
 
-        # F-09: Event type validation - missing or unknown types must be quarantined as INVALID
         if raw_event_type is None:
             event_id = f"q_{raw_event.source}_{offset}"
             q_row = (
@@ -1177,13 +1158,19 @@ class Engine:
                 json.dumps(payload, default=str),
                 recv_ts,
             )
-            _bump_invalid()
-            return state, EngineDecision(
-                offset=offset,
-                event_id=event_id,
-                quality_status=QualityStatus.INVALID,
-                reasons=[Reason.SCHEMA_VIOLATION.value],
-                quarantine_row=q_row,
+            return (
+                False,
+                "",
+                "",
+                None,
+                0.0,
+                EngineDecision(
+                    offset=offset,
+                    event_id=event_id,
+                    quality_status=QualityStatus.INVALID,
+                    reasons=[Reason.SCHEMA_VIOLATION.value],
+                    quarantine_row=q_row,
+                ),
             )
 
         if isinstance(raw_event_type, EventType):
@@ -1193,7 +1180,7 @@ class Engine:
         else:
             event_type_str = ""
 
-        if event_type_str not in ("TRADE", "QUOTE"):
+        if event_type_str not in ("TRADE", "QUOTE", "HALT", "STATUS"):
             event_id = f"q_{raw_event.source}_{offset}"
             q_row = (
                 event_id,
@@ -1204,13 +1191,19 @@ class Engine:
                 json.dumps(payload, default=str),
                 recv_ts,
             )
-            _bump_invalid()
-            return state, EngineDecision(
-                offset=offset,
-                event_id=event_id,
-                quality_status=QualityStatus.INVALID,
-                reasons=[Reason.SCHEMA_VIOLATION.value],
-                quarantine_row=q_row,
+            return (
+                False,
+                "",
+                "",
+                None,
+                0.0,
+                EngineDecision(
+                    offset=offset,
+                    event_id=event_id,
+                    quality_status=QualityStatus.INVALID,
+                    reasons=[Reason.SCHEMA_VIOLATION.value],
+                    quarantine_row=q_row,
+                ),
             )
 
         # Structural validation per event type
@@ -1225,13 +1218,19 @@ class Engine:
                 json.dumps(payload, default=str),
                 recv_ts,
             )
-            _bump_invalid()
-            return state, EngineDecision(
-                offset=offset,
-                event_id=event_id,
-                quality_status=QualityStatus.INVALID,
-                reasons=[Reason.SCHEMA_VIOLATION.value],
-                quarantine_row=q_row,
+            return (
+                False,
+                "",
+                "",
+                None,
+                0.0,
+                EngineDecision(
+                    offset=offset,
+                    event_id=event_id,
+                    quality_status=QualityStatus.INVALID,
+                    reasons=[Reason.SCHEMA_VIOLATION.value],
+                    quarantine_row=q_row,
+                ),
             )
         elif (
             event_type_str == "QUOTE"
@@ -1248,16 +1247,23 @@ class Engine:
                 json.dumps(payload, default=str),
                 recv_ts,
             )
-            _bump_invalid()
-            return state, EngineDecision(
-                offset=offset,
-                event_id=event_id,
-                quality_status=QualityStatus.INVALID,
-                reasons=[Reason.SCHEMA_VIOLATION.value],
-                quarantine_row=q_row,
+            return (
+                False,
+                "",
+                "",
+                None,
+                0.0,
+                EngineDecision(
+                    offset=offset,
+                    event_id=event_id,
+                    quality_status=QualityStatus.INVALID,
+                    reasons=[Reason.SCHEMA_VIOLATION.value],
+                    quarantine_row=q_row,
+                ),
             )
+        elif event_type_str in ("HALT", "STATUS"):
+            pass
 
-        # Sequence validation (signed int64)
         seq = payload.get("sequence")
         if seq is not None:
             if (
@@ -1275,16 +1281,21 @@ class Engine:
                     json.dumps(payload, default=str),
                     recv_ts,
                 )
-                _bump_invalid()
-                return state, EngineDecision(
-                    offset=offset,
-                    event_id=event_id,
-                    quality_status=QualityStatus.INVALID,
-                    reasons=[Reason.SCHEMA_VIOLATION.value],
-                    quarantine_row=q_row,
+                return (
+                    False,
+                    "",
+                    "",
+                    None,
+                    0.0,
+                    EngineDecision(
+                        offset=offset,
+                        event_id=event_id,
+                        quality_status=QualityStatus.INVALID,
+                        reasons=[Reason.SCHEMA_VIOLATION.value],
+                        quarantine_row=q_row,
+                    ),
                 )
 
-        # Exchange timestamp validation
         exch_ts = payload.get("exchange_ts")
         if exch_ts is None:
             exch_ts = recv_ts
@@ -1299,16 +1310,21 @@ class Engine:
                 json.dumps(payload, default=str),
                 recv_ts,
             )
-            _bump_invalid()
-            return state, EngineDecision(
-                offset=offset,
-                event_id=event_id,
-                quality_status=QualityStatus.INVALID,
-                reasons=[Reason.SCHEMA_VIOLATION.value],
-                quarantine_row=q_row,
+            return (
+                False,
+                "",
+                "",
+                None,
+                0.0,
+                EngineDecision(
+                    offset=offset,
+                    event_id=event_id,
+                    quality_status=QualityStatus.INVALID,
+                    reasons=[Reason.SCHEMA_VIOLATION.value],
+                    quarantine_row=q_row,
+                ),
             )
 
-        # Numeric field finite validation
         for num_field in ("price", "quantity", "bid", "ask", "bid_size", "ask_size"):
             val = payload.get(num_field)
             if val is not None and not _is_finite_num(val):
@@ -1322,28 +1338,33 @@ class Engine:
                     json.dumps(payload, default=str),
                     recv_ts,
                 )
-                _bump_invalid()
-                return state, EngineDecision(
-                    offset=offset,
-                    event_id=event_id,
-                    quality_status=QualityStatus.INVALID,
-                    reasons=[Reason.SCHEMA_VIOLATION.value],
-                    quarantine_row=q_row,
+                return (
+                    False,
+                    "",
+                    "",
+                    None,
+                    0.0,
+                    EngineDecision(
+                        offset=offset,
+                        event_id=event_id,
+                        quality_status=QualityStatus.INVALID,
+                        reasons=[Reason.SCHEMA_VIOLATION.value],
+                        quarantine_row=q_row,
+                    ),
                 )
 
-        # 3. Deterministic Event Identity (Week 4)
-        # Derive durable ID from log offset and source identity
-        if raw_event.raw_id:
-            event_id = str(raw_event.raw_id)
-        elif seq is not None:
-            event_id = f"evt_{raw_event.source}_{instrument}_{seq}"
-        else:
-            event_id = f"evt_{raw_event.source}_{instrument}_{offset}"
+        return True, instrument, event_type_str, seq, float(exch_ts), None
 
-        status = QualityStatus.VALID
-        reasons: list[str] = []
-        is_duplicate = False
-
+    def _stage_session_and_epoch(
+        self,
+        state: EngineState,
+        payload: dict,
+        raw_event: RawEvent,
+        instrument: str,
+        seq: int | None,
+        exch_ts: float,
+        txn: Transaction | None,
+    ) -> tuple[int, str, str, str | None, bool]:
         stream_key = f"{raw_event.source}:{instrument}"
         current_epoch = state.epoch_state.get(stream_key, 0)
         current_session = state.session_state.get(stream_key)
@@ -1387,7 +1408,6 @@ class Engine:
             state.epoch_state[stream_key] = current_epoch
             if new_session_id is not None:
                 state.session_state[stream_key] = str(new_session_id)
-            reasons.append(Reason.EPOCH_RESET.value)
         elif new_session_id is not None and current_session is None:
             if txn is not None:
                 had_sess = stream_key in state.session_state
@@ -1397,7 +1417,6 @@ class Engine:
                 )
             state.session_state[stream_key] = str(new_session_id)
 
-        # Update last observed timestamp for auto-detect gap tracking
         if last_epoch_ts != exch_ts:
             if txn is not None and not epoch_reset_triggered:
                 had_ts = stream_key in state.epoch_ts
@@ -1408,15 +1427,42 @@ class Engine:
             state.epoch_ts[stream_key] = exch_ts
 
         slot_key = f"{stream_key}:{current_epoch}" if current_epoch > 0 else stream_key
+        return (
+            current_epoch,
+            stream_key,
+            slot_key,
+            str(new_session_id) if new_session_id is not None else None,
+            epoch_reset_triggered,
+        )
 
-        # Sequenced deduplication & gap detection
+    def _stage_sequence_and_dedup(
+        self,
+        state: EngineState,
+        payload: dict,
+        raw_event: RawEvent,
+        instrument: str,
+        event_type_str: str,
+        seq: int | None,
+        exch_ts: float,
+        recv_ts: float,
+        current_epoch: int,
+        stream_key: str,
+        slot_key: str,
+        status: QualityStatus,
+        reasons: list[str],
+        txn: Transaction | None,
+    ) -> tuple[QualityStatus, list[str], bool]:
+        is_duplicate = False
+        reasons_out = list(reasons)
+        cur_status = status
+
         if seq is not None:
             last_seq = state.sequence_state.get(slot_key)
             if last_seq is not None:
                 if seq == last_seq:
                     is_duplicate = True
-                    status = QualityStatus.INVALID
-                    reasons.append(Reason.DUPLICATE.value)
+                    cur_status = QualityStatus.merge(cur_status, QualityStatus.INVALID)
+                    reasons_out.append(Reason.DUPLICATE.value)
                 elif seq < last_seq:
                     filled = None
                     if self.gap_manager is not None:
@@ -1428,13 +1474,17 @@ class Engine:
                             now_ts=recv_ts,
                         )
                     if filled is not None:
-                        reasons.append(Reason.GAP_FILLED.value)
+                        reasons_out.append(Reason.GAP_FILLED.value)
                     else:
-                        status = QualityStatus.SUSPICIOUS
-                        reasons.append(Reason.OUT_OF_ORDER.value)
+                        cur_status = QualityStatus.merge(
+                            cur_status, QualityStatus.SUSPICIOUS
+                        )
+                        reasons_out.append(Reason.OUT_OF_ORDER.value)
                 elif seq > last_seq + 1:
-                    status = QualityStatus.SUSPICIOUS
-                    reasons.append(Reason.SEQUENCE_GAP.value)
+                    cur_status = QualityStatus.merge(
+                        cur_status, QualityStatus.SUSPICIOUS
+                    )
+                    reasons_out.append(Reason.SEQUENCE_GAP.value)
                     if self.gap_manager is not None:
                         self.gap_manager.record_gap(
                             source=raw_event.source,
@@ -1454,8 +1504,6 @@ class Engine:
             if slot_key != stream_key:
                 state.sequence_state[stream_key] = seq
         else:
-            # Unsequenced deduplication window (N2)
-            # Check for business trade/message ID if present
             biz_id = (
                 payload.get("trade_id")
                 or payload.get("msg_id")
@@ -1472,8 +1520,8 @@ class Engine:
                 dedup_fingerprint = f"{raw_event.source}:{instrument}:{event_type_str}:{exch_ts}:{payload.get('price')}:{payload.get('quantity')}:{payload.get('bid')}:{payload.get('ask')}"
             if dedup_fingerprint in state.dedup_set:
                 is_duplicate = True
-                status = QualityStatus.INVALID
-                reasons.append(Reason.DUPLICATE.value)
+                cur_status = QualityStatus.merge(cur_status, QualityStatus.INVALID)
+                reasons_out.append(Reason.DUPLICATE.value)
             else:
                 state.dedup_set.add(dedup_fingerprint)
                 state.dedup_window.append(dedup_fingerprint)
@@ -1484,23 +1532,51 @@ class Engine:
                 if txn is not None:
                     txn.record_dedup(dedup_fingerprint, evicted)
 
-        # Staleness check
-        if status != QualityStatus.INVALID:
-            if recv_ts - exch_ts > state.staleness_threshold_s:
-                if status == QualityStatus.VALID:
-                    status = QualityStatus.SUSPICIOUS
-                reasons.append(Reason.STALE.value)
+        return cur_status, reasons_out, is_duplicate
 
-        # Quote crossed book check
+    def _stage_quote_and_staleness(
+        self,
+        payload: dict,
+        event_type_str: str,
+        exch_ts: float,
+        recv_ts: float,
+        staleness_threshold_s: float,
+        status: QualityStatus,
+        reasons: list[str],
+    ) -> tuple[QualityStatus, list[str]]:
+        reasons_out = list(reasons)
+        cur_status = status
+
+        if cur_status != QualityStatus.INVALID and event_type_str not in (
+            "HALT",
+            "STATUS",
+        ):
+            if recv_ts - exch_ts > staleness_threshold_s:
+                cur_status = QualityStatus.merge(cur_status, QualityStatus.SUSPICIOUS)
+                reasons_out.append(Reason.STALE.value)
+
         bid = payload.get("bid")
         ask = payload.get("ask")
         if bid is not None and ask is not None and bid > ask:
-            status = QualityStatus.INVALID
-            reasons.append(Reason.CROSSED_QUOTE.value)
+            cur_status = QualityStatus.merge(cur_status, QualityStatus.INVALID)
+            reasons_out.append(Reason.CROSSED_QUOTE.value)
 
-        # Price sanity check (Welford / rolling price corridor)
-        price = payload.get("price")
-        if price is not None and status != QualityStatus.INVALID:
+        return cur_status, reasons_out
+
+    def _stage_price_corridor(
+        self,
+        state: EngineState,
+        payload: dict,
+        slot_key: str,
+        price: float | None,
+        status: QualityStatus,
+        reasons: list[str],
+        txn: Transaction | None,
+    ) -> tuple[QualityStatus, list[str]]:
+        reasons_out = list(reasons)
+        cur_status = status
+
+        if price is not None and cur_status != QualityStatus.INVALID:
             if txn is not None:
                 txn.record_price_window(slot_key)
             prices = state.price_windows.setdefault(slot_key, [])
@@ -1521,15 +1597,33 @@ class Engine:
                     price_anomaly = True
 
             if price_anomaly:
-                if status == QualityStatus.VALID:
-                    status = QualityStatus.SUSPICIOUS
-                reasons.append(Reason.PRICE_ANOMALY.value)
+                cur_status = QualityStatus.merge(cur_status, QualityStatus.SUSPICIOUS)
+                reasons_out.append(Reason.PRICE_ANOMALY.value)
             else:
                 prices.append(price)
                 if len(prices) > DEFAULT_PRICE_WINDOW:
                     prices.pop(0)
 
-        # Update BBO state per source
+        return cur_status, reasons_out
+
+    def _stage_bbo_and_reconciliation(
+        self,
+        state: EngineState,
+        payload: dict,
+        raw_event: RawEvent,
+        instrument: str,
+        price: float | None,
+        exch_ts: float,
+        status: QualityStatus,
+        reasons: list[str],
+        txn: Transaction | None,
+    ) -> tuple[QualityStatus, list[str], bool]:
+        reasons_out = list(reasons)
+        cur_status = status
+        disagreement = False
+
+        bid = payload.get("bid")
+        ask = payload.get("ask")
         if bid is not None or ask is not None:
             if txn is not None:
                 txn.record_bbo(instrument, raw_event.source)
@@ -1540,9 +1634,7 @@ class Engine:
             if ask is not None:
                 current_src["ask"] = float(ask)
 
-        # Cross-feed reconciliation
-        disagreement = False
-        if price is not None and status != QualityStatus.INVALID:
+        if price is not None and cur_status != QualityStatus.INVALID:
             if txn is not None:
                 txn.record_reconciliation(instrument, raw_event.source)
             recent_inst = state.reconciliation_state.setdefault(instrument, {})
@@ -1554,16 +1646,145 @@ class Engine:
                 mean_p = sum(recent_prices) / len(recent_prices)
                 if mean_p > 0:
                     for p in recent_prices:
-                        if (
-                            abs(p - mean_p) / mean_p > 0.005
-                        ):  # 0.5% cross-feed disagreement (spec §12)
+                        if abs(p - mean_p) / mean_p > 0.005:
                             disagreement = True
                             break
                 if disagreement:
-                    reasons.append(Reason.CROSS_FEED_DISAGREEMENT.value)
-                    if status == QualityStatus.VALID:
-                        status = QualityStatus.SUSPICIOUS
+                    reasons_out.append(Reason.CROSS_FEED_DISAGREEMENT.value)
+                    cur_status = QualityStatus.merge(
+                        cur_status, QualityStatus.SUSPICIOUS
+                    )
 
+        return cur_status, reasons_out, disagreement
+
+    def _step_internal(
+        self,
+        state: EngineState,
+        raw_event: RawEvent,
+        clock: Clock,
+        offset: int | None = None,
+        txn: Transaction | None = None,
+    ) -> tuple[EngineState, EngineDecision]:
+        if offset is None:
+            offset = state.event_count
+
+        if txn is not None:
+            txn.record_event_count()
+        state.event_count += 1
+        now_ts = clock.now()
+        recv_ts = raw_event.receive_timestamp if raw_event.receive_timestamp else now_ts
+
+        def _bump_invalid() -> None:
+            if txn is not None:
+                txn.record_count("INVALID")
+            state.counts["INVALID"] += 1
+
+        payload = raw_event.payload
+        if not isinstance(payload, dict):
+            event_id = f"q_{raw_event.source}_{offset}"
+            q_row = (
+                event_id,
+                "MALFORMED",
+                raw_event.source,
+                QualityStatus.INVALID.value,
+                json.dumps(["Payload is not a dictionary"]),
+                json.dumps(str(payload)),
+                recv_ts,
+            )
+            _bump_invalid()
+            return state, EngineDecision(
+                offset=offset,
+                event_id=event_id,
+                quality_status=QualityStatus.INVALID,
+                reasons=[Reason.SCHEMA_VIOLATION.value],
+                quarantine_row=q_row,
+            )
+
+        # Stage 1: Security & Cryptographic Envelope
+        is_sec_valid, sec_dec = self._stage_security_envelope(
+            payload, raw_event, offset, recv_ts
+        )
+        if not is_sec_valid and sec_dec is not None:
+            _bump_invalid()
+            return state, sec_dec
+
+        # Stage 2: Schema Field & Structural Validation
+        is_schema_valid, instrument, event_type_str, seq, exch_ts, schema_dec = (
+            self._stage_schema_validation(payload, raw_event, offset, recv_ts)
+        )
+        if not is_schema_valid and schema_dec is not None:
+            _bump_invalid()
+            return state, schema_dec
+
+        # Derive event_id
+        if raw_event.raw_id:
+            event_id = str(raw_event.raw_id)
+        elif seq is not None:
+            event_id = f"evt_{raw_event.source}_{instrument}_{seq}"
+        else:
+            event_id = f"evt_{raw_event.source}_{instrument}_{offset}"
+
+        status = QualityStatus.VALID
+        reasons: list[str] = []
+
+        # Stage 3: Session and Sequence Epochs
+        current_epoch, stream_key, slot_key, new_session_id, epoch_reset = (
+            self._stage_session_and_epoch(
+                state, payload, raw_event, instrument, seq, exch_ts, txn
+            )
+        )
+        if epoch_reset:
+            reasons.append(Reason.EPOCH_RESET.value)
+
+        # Stage 4: Sequence Ordering & Deduplication
+        status, reasons, is_duplicate = self._stage_sequence_and_dedup(
+            state,
+            payload,
+            raw_event,
+            instrument,
+            event_type_str,
+            seq,
+            exch_ts,
+            recv_ts,
+            current_epoch,
+            stream_key,
+            slot_key,
+            status,
+            reasons,
+            txn,
+        )
+
+        # Stage 5: Staleness & Quote Book Consistency
+        status, reasons = self._stage_quote_and_staleness(
+            payload,
+            event_type_str,
+            exch_ts,
+            recv_ts,
+            state.staleness_threshold_s,
+            status,
+            reasons,
+        )
+
+        # Stage 6: Statistical Price Corridor Evaluation
+        price = payload.get("price")
+        status, reasons = self._stage_price_corridor(
+            state, payload, slot_key, price, status, reasons, txn
+        )
+
+        # Stage 7: BBO Tracking & Cross-Feed Reconciliation
+        status, reasons, disagreement = self._stage_bbo_and_reconciliation(
+            state,
+            payload,
+            raw_event,
+            instrument,
+            price,
+            exch_ts,
+            status,
+            reasons,
+            txn,
+        )
+
+        # Stage 8: Monotonic Counter & Packaging
         if txn is not None:
             txn.record_count(status.name)
         state.counts[status.name] += 1
@@ -1606,8 +1827,8 @@ class Engine:
             sequence_number=seq,
             price=price,
             quantity=payload.get("quantity"),
-            bid_price=bid,
-            ask_price=ask,
+            bid_price=payload.get("bid"),
+            ask_price=payload.get("ask"),
             bid_size=payload.get("bid_size"),
             ask_size=payload.get("ask_size"),
             quality_status=status,
