@@ -78,6 +78,7 @@ except ImportError:
         dedup_cache_size: int = DEFAULT_DEDUP_CACHE_SIZE
         allow_negative: bool = False
         unseq_dup_status: str = "SUSPICIOUS"
+        session_policy: str = "strict"
 
         def for_instrument(self, instrument_id: str) -> QualityConfig:
             return self
@@ -143,6 +144,7 @@ class _SlotState:
         "fold_count",
         "pending",
         "ready",
+        "session_id",
     )
 
     def __init__(self, window: int):
@@ -164,6 +166,7 @@ class _SlotState:
             int, tuple[float, CanonicalEvent, bool, bool, bool, bool]
         ] = {}
         self.ready: list[CanonicalEvent] = []
+        self.session_id: str | None = None
 
     def fold_price(self, x: float, window: int) -> None:
         if self.n >= window:
@@ -387,6 +390,35 @@ class QualityEngine:
         # Stage 2: Sequence / Duplicate Detection
         if event.sequence_number is not None and event.sequence_number >= 0:
             seq = int(event.sequence_number)
+            is_epoch_reset = False
+            if Reason.EPOCH_RESET.value in event.reasons:
+                is_epoch_reset = True
+            elif getattr(cfg, "session_policy", "strict") == "session_marker":
+                if (
+                    event.session_id is not None
+                    and sl.session_id is not None
+                    and event.session_id != sl.session_id
+                ):
+                    is_epoch_reset = True
+            elif getattr(cfg, "session_policy", "strict") == "auto_detect":
+                if sl.has_seq and sl.has_ts:
+                    if (
+                        sl.last_seq - seq >= 50 or (sl.last_seq > 10 and seq <= 10)
+                    ) and (event.exchange_timestamp - sl.last_ts >= 60.0):
+                        is_epoch_reset = True
+
+            if is_epoch_reset:
+                sl.last_seq = -1
+                sl.has_seq = False
+                sl.seen = 0
+                sl.cand_plus1 = 0
+                sl.pending.clear()
+                self._mark(event, QualityStatus.VALID, Reason.EPOCH_RESET)
+                self._bump(Reason.EPOCH_RESET)
+
+            if event.session_id is not None:
+                sl.session_id = event.session_id
+
             if not sl.has_seq:
                 sl.last_seq = seq
                 sl.seen = 1

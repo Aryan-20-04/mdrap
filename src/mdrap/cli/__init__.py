@@ -37,6 +37,7 @@ from .operations import cmd_wal
 from .operations import cmd_init
 from .operations import cmd_capture
 from .operations import cmd_verify
+from .operations import cmd_explain
 from .operations import cmd_tui
 from .operations import cmd_metrics
 from .market import cmd_historical
@@ -856,6 +857,24 @@ def build_parser() -> argparse.ArgumentParser:
         "--salvage",
         action="store_true",
         help="Attempt automated salvage on corrupted segments",
+    )
+
+    # Program I-7: Event Decision Explainer
+    p_explain = _sub(
+        "explain",
+        cmd_explain,
+        "Reconstruct state and explain decision reasons for a WAL event offset",
+        aliases=["expl", "why"],
+    )
+    p_explain.add_argument(
+        "offset",
+        type=int,
+        help="WAL event offset to inspect and explain",
+    )
+    p_explain.add_argument(
+        "--wal-path",
+        default="data/wal",
+        help="Write-Ahead Log directory (default: data/wal)",
     )
 
     # Phase 5: Live Terminal UI (TUI)
@@ -2040,6 +2059,9 @@ KNOWN_SYMBOLS = {
 }
 
 MNEMONIC_MAP = {
+    "explain": "explain",
+    "expl": "explain",
+    "why": "explain",
     # Market Desk
     "bbo": "bbo",
     "nbbo": "bbo",
@@ -2374,6 +2396,7 @@ ALL_CANONICAL_COMMANDS = [
     "init",
     "capture",
     "verify",
+    "explain",
 ]
 
 

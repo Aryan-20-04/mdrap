@@ -1654,3 +1654,208 @@ def cmd_metrics(args):
     else:  # prometheus text
         prom_text = registry.export_prometheus()
         sys.stdout.write(prom_text)
+
+
+def cmd_explain(args):
+    """Reconstruct engine state and explain decision reasons for an event at offset (Program I-7)."""
+    from ..engine import Engine
+    from ..models import QualityStatus, ReasonRegistry
+
+    console = Console()
+    target_offset = getattr(args, "offset", 0)
+    wal_path = getattr(args, "wal_path", "data/wal")
+    as_json = getattr(args, "json", False)
+
+    if not os.path.exists(wal_path):
+        err = f"WAL directory '{wal_path}' does not exist"
+        if as_json:
+            print(json.dumps({"error": err, "offset": target_offset}, indent=2))
+        else:
+            console.print(f"[bold red]Error:[/bold red] {err}")
+        return 1
+
+    try:
+        engine = Engine.open(wal_path)
+    except Exception as exc:
+        err = f"Failed to open IngestLog at '{wal_path}': {exc}"
+        if as_json:
+            print(json.dumps({"error": err, "offset": target_offset}, indent=2))
+        else:
+            console.print(f"[bold red]Error:[/bold red] {err}")
+        return 1
+
+    target_raw = None
+    state = engine.create_initial_state()
+    state_before = None
+    target_decision = None
+
+    try:
+        found = False
+        for off, raw in engine.log.iter_from(0):
+            if off < target_offset:
+                state, _ = engine.step(state, raw, engine.clock, offset=off)
+            elif off == target_offset:
+                state_before = state.clone()
+                state, target_decision = engine.step(
+                    state, raw, engine.clock, offset=off
+                )
+                target_raw = raw
+                found = True
+                break
+
+        if not found or target_raw is None or target_decision is None:
+            err = f"Offset {target_offset} not found in WAL (log head offset: {engine.log.next_offset})"
+            if as_json:
+                print(
+                    json.dumps(
+                        {
+                            "error": err,
+                            "offset": target_offset,
+                            "log_head": engine.log.next_offset,
+                        },
+                        indent=2,
+                    )
+                )
+            else:
+                console.print(f"[bold red]Error:[/bold red] {err}")
+            return 1
+
+        reg = ReasonRegistry()
+        reasons_annotated = [
+            {
+                "code": r,
+                "description": reg.describe(r) or r.replace("_", " ").title(),
+                "severity": reg.severity(r).value,
+            }
+            for r in target_decision.reasons
+        ]
+
+        p = target_raw.payload if isinstance(target_raw.payload, dict) else {}
+        stream_key = f"{target_raw.source}:{p.get('instrument', 'UNKNOWN')}"
+        state_context = {
+            "stream_key": stream_key,
+            "event_count_before": state_before.event_count,
+            "active_epoch": state_before.epoch_state.get(stream_key, 0),
+            "last_sequence": state_before.sequence_state.get(stream_key),
+            "price_history_samples": len(
+                state_before.price_windows.get(stream_key, [])
+            ),
+        }
+
+        report = {
+            "offset": target_offset,
+            "source": target_raw.source,
+            "raw_id": target_raw.raw_id,
+            "receive_timestamp": target_raw.receive_timestamp,
+            "payload": target_raw.payload,
+            "quality_status": target_decision.quality_status.value,
+            "reasons": target_decision.reasons,
+            "reasons_annotated": reasons_annotated,
+            "canonical_event": target_decision.canonical_event.to_dict()
+            if target_decision.canonical_event
+            else None,
+            "quarantined": target_decision.quarantine_row is not None,
+            "quarantine_row": target_decision.quarantine_row,
+            "state_context": state_context,
+        }
+
+        if as_json:
+            print(json.dumps(report, indent=2, default=str))
+            return 0
+
+        # Rich interactive output
+        status_color = (
+            "green"
+            if target_decision.quality_status == QualityStatus.VALID
+            else "yellow"
+            if target_decision.quality_status == QualityStatus.SUSPICIOUS
+            else "red"
+        )
+        badge = (
+            f"[{status_color}]{target_decision.quality_status.value}[/{status_color}]"
+        )
+
+        console.print()
+        render_brand_header(
+            console,
+            title=f"MDRAP EVENT DECISION EXPLAINER (Offset #{target_offset})",
+            subtitle=f"Source: {target_raw.source} | Instrument: {p.get('instrument', 'UNKNOWN')}",
+            badge=badge,
+            meta=f"WAL: {wal_path}",
+        )
+
+        # 1. Raw Event Table
+        t_raw_cols = [("Field", "left", "cyan"), ("Value", "left", "bold")]
+        t_raw_rows = [
+            ("Offset", str(target_offset)),
+            ("Source Venue", str(target_raw.source)),
+            ("Instrument", str(p.get("instrument", ""))),
+            ("Event Type", str(p.get("event_type", ""))),
+            ("Sequence", str(p.get("sequence", "N/A"))),
+            ("Price", str(p.get("price", "N/A"))),
+            ("Quantity / Size", str(p.get("quantity", p.get("bid_size", "N/A")))),
+            ("Bid / Ask", f"{p.get('bid', 'N/A')} / {p.get('ask', 'N/A')}"),
+            ("Exchange Timestamp", str(p.get("exchange_ts", "N/A"))),
+            ("Receive Timestamp", str(target_raw.receive_timestamp)),
+        ]
+        console.print(_t("Raw Event Ingest Frame", t_raw_cols, t_raw_rows))
+        console.print()
+
+        # 2. Reasons Table
+        t_reas_cols = [
+            ("Reason Code", "left", "bold yellow"),
+            ("Severity", "center"),
+            ("Description", "left"),
+        ]
+        t_reas_rows = []
+        if reasons_annotated:
+            for ra in reasons_annotated:
+                sev_style = (
+                    "green"
+                    if ra["severity"] == "VALID"
+                    else "yellow"
+                    if ra["severity"] == "SUSPICIOUS"
+                    else "red"
+                )
+                t_reas_rows.append(
+                    (
+                        ra["code"],
+                        f"[{sev_style}]{ra['severity']}[/{sev_style}]",
+                        ra["description"],
+                    )
+                )
+        else:
+            t_reas_rows.append(
+                (
+                    "[dim]None[/dim]",
+                    "[green]VALID[/green]",
+                    "Event passed all quality rules without anomalies",
+                )
+            )
+        console.print(
+            _t("Quality Classification Reasons & Invariants", t_reas_cols, t_reas_rows)
+        )
+        console.print()
+
+        # 3. State Context Table
+        t_st_cols = [("State Variable", "left", "cyan"), ("Value", "left", "white")]
+        t_st_rows = [
+            ("Stream Key", stream_key),
+            ("Prior Events Processed", str(state_context["event_count_before"])),
+            ("Active Epoch ID", str(state_context["active_epoch"])),
+            (
+                "Last Sequence Seen",
+                str(
+                    state_context["last_sequence"]
+                    if state_context["last_sequence"] is not None
+                    else "None (First in stream)"
+                ),
+            ),
+            ("Rolling Price Samples", str(state_context["price_history_samples"])),
+        ]
+        console.print(_t("Reconstructed State Machine Context", t_st_cols, t_st_rows))
+        console.print()
+
+        return 0
+    finally:
+        engine.close()

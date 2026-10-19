@@ -205,6 +205,8 @@ _CANONICAL_REASONS = (
     "HOOK_DROPPED",
     "HOOK_ERROR",
     "BACKPRESSURE_DROP",
+    "EPOCH_RESET",
+    "GAP_FILLED",
 )
 
 
@@ -215,8 +217,14 @@ class ReasonRegistry:
 
     def __init__(self) -> None:
         self._reasons: dict[str, str] = {r: r for r in _CANONICAL_REASONS}
-        self._descriptions: dict[str, str] = {}
-        self._severities: dict[str, QualityStatus] = {}
+        self._descriptions: dict[str, str] = {
+            "EPOCH_RESET": "Exchange sequence epoch reset at session boundary",
+            "GAP_FILLED": "Previously missing packet filled by late arrival",
+        }
+        self._severities: dict[str, QualityStatus] = {
+            "EPOCH_RESET": QualityStatus.VALID,
+            "GAP_FILLED": QualityStatus.VALID,
+        }
 
     def register(
         self,
@@ -333,6 +341,8 @@ class Reason(str, Enum, metaclass=ReasonType):
     BACKPRESSURE_DROP = (
         "BACKPRESSURE_DROP"  # Event was dropped due to ingress queue backpressure
     )
+    EPOCH_RESET = "EPOCH_RESET"  # Exchange sequence epoch reset at session boundary
+    GAP_FILLED = "GAP_FILLED"  # Previously missing packet filled by late arrival
 
     @classmethod
     def _missing_(cls, value: object) -> Any:
@@ -433,6 +443,7 @@ class RawEvent:
     receive_timestamp: float = 0.0
     raw_id: str = ""
     wire: str | bytes = ""
+    session_id: str | None = None
 
 
 @dataclass(slots=True)
@@ -469,6 +480,7 @@ class CanonicalEvent:
     raw_id: str = ""
     source_id: int = -1
     instrument_id_int: int = -1
+    session_id: str | None = None
 
     # Multi-asset class extensions
     asset_class: AssetClass = AssetClass.EQUITY
@@ -504,6 +516,13 @@ class CanonicalEvent:
         precision jitter from triggering false negative duplicate evaluations.
         """
         if self.sequence_number is not None:
+            if self.session_id:
+                return (
+                    self.source,
+                    self.instrument_id,
+                    self.sequence_number,
+                    self.session_id,
+                )
             return (self.source, self.instrument_id, self.sequence_number)
 
         # Include quote fields so distinct quotes at the same timestamp don't collide.

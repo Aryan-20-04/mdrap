@@ -74,6 +74,10 @@ class MarketDataDaemon:
         enable_shm: bool = True,
         shm_name: str = "mdrap_feed",
         use_engine: Optional[bool] = None,
+        ssl_context: Any = None,
+        tls_cert: Optional[str] = None,
+        tls_key: Optional[str] = None,
+        allow_insecure_bind: bool = False,
     ):
         self.host = host
         self.port = port
@@ -83,6 +87,28 @@ class MarketDataDaemon:
         self.sim_speed_eps = sim_speed_eps
         self.enable_shm = enable_shm
         self.shm_name = shm_name
+        self.ssl_context = ssl_context
+        self.tls_cert = tls_cert or os.environ.get("MDRAP_TLS_CERT")
+        self.tls_key = tls_key or os.environ.get("MDRAP_TLS_KEY")
+        self.allow_insecure_bind = allow_insecure_bind or (
+            os.environ.get("MDRAP_ALLOW_INSECURE_BIND", "0").lower()
+            in ("1", "true", "yes")
+        )
+
+        if self.ssl_context is None and self.tls_cert and self.tls_key:
+            import ssl
+
+            ctx = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+            ctx.load_cert_chain(certfile=self.tls_cert, keyfile=self.tls_key)
+            self.ssl_context = ctx
+
+        if not self._is_loopback_host(self.host):
+            if self.ssl_context is None and not self.allow_insecure_bind:
+                raise ValueError(
+                    f"Non-loopback binding '{self.host}' rejected: plaintext transport over public/external interfaces is prohibited. "
+                    "Configure ssl_context, or tls_cert and tls_key (or set allow_insecure_bind=True / MDRAP_ALLOW_INSECURE_BIND=1)."
+                )
+
         if use_engine is not None:
             self.use_engine = use_engine
         else:
@@ -168,6 +194,22 @@ class MarketDataDaemon:
         self._last_ingest_ts = 0.0
         self._ingest_thread: Optional[threading.Thread] = None
         self._server_thread: Optional[threading.Thread] = None
+
+    @staticmethod
+    def _is_loopback_host(host: str) -> bool:
+        """Return True if host is a loopback address (127.0.0.1, localhost, ::1)."""
+        if not host:
+            return False
+        clean = host.strip().lower()
+        if clean in ("127.0.0.1", "localhost", "::1"):
+            return True
+        try:
+            import ipaddress
+
+            ip = ipaddress.ip_address(clean)
+            return ip.is_loopback
+        except ValueError:
+            return False
 
     def start(self, blocking: bool = True) -> None:
         """Start the background socket server, feed workers, and ingestion engine."""
@@ -282,6 +324,18 @@ class MarketDataDaemon:
         while self._running and self._server_sock:
             try:
                 client_sock, _addr = self._server_sock.accept()
+                if self.ssl_context is not None:
+                    try:
+                        client_sock = self.ssl_context.wrap_socket(
+                            client_sock, server_side=True
+                        )
+                    except Exception as ssl_err:
+                        logger.warning("[service] TLS handshake failed: %s", ssl_err)
+                        try:
+                            client_sock.close()
+                        except Exception:
+                            pass
+                        continue
                 client_sock.settimeout(None)
                 client_sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
                 sess = _ClientSession(sock=client_sock)
@@ -1160,10 +1214,14 @@ class StreamClient:
         port: int = 9876,
         timeout: float = 5.0,
         auth_token: Optional[str] = None,
+        ssl_context: Any = None,
+        use_tls: bool = False,
     ):
         self.host = host
         self.port = port
         self.timeout = timeout
+        self.ssl_context = ssl_context
+        self.use_tls = use_tls or (ssl_context is not None)
         import os
 
         self.auth_token = (
@@ -1193,10 +1251,21 @@ class StreamClient:
             return {}
 
     def connect(self) -> None:
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.sock.settimeout(self.timeout)
-        self.sock.connect((self.host, self.port))
-        self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        raw_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        raw_sock.settimeout(self.timeout)
+        raw_sock.connect((self.host, self.port))
+        raw_sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        if self.use_tls:
+            import ssl
+
+            ctx = self.ssl_context or ssl.create_default_context()
+            hostname = (
+                self.host if not MarketDataDaemon._is_loopback_host(self.host) else None
+            )
+            self.sock = ctx.wrap_socket(raw_sock, server_hostname=hostname)
+        else:
+            self.sock = raw_sock
+
         if self.auth_token:
             self.sock.sendall(f"AUTH {self.auth_token}\n".encode("utf-8"))
             ack = self._recv_json_line(self.sock)
@@ -1209,10 +1278,21 @@ class StreamClient:
         """Get or lazily establish a persistent, authenticated keep-alive query socket."""
         if self._query_sock is not None:
             return self._query_sock
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(self.timeout)
-        sock.connect((self.host, self.port))
-        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        raw_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        raw_sock.settimeout(self.timeout)
+        raw_sock.connect((self.host, self.port))
+        raw_sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        if self.use_tls:
+            import ssl
+
+            ctx = self.ssl_context or ssl.create_default_context()
+            hostname = (
+                self.host if not MarketDataDaemon._is_loopback_host(self.host) else None
+            )
+            sock = ctx.wrap_socket(raw_sock, server_hostname=hostname)
+        else:
+            sock = raw_sock
+
         if self.auth_token:
             sock.sendall(f"AUTH {self.auth_token}\n".encode("utf-8"))
             ack = self._recv_json_line(sock)

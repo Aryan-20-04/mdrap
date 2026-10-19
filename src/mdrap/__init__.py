@@ -27,6 +27,7 @@ from .models import (
 )
 from .clock import Clock, FixedClock, SystemClock
 from .engine import Engine, EngineConfig, EngineDecision, EngineState
+from .gap import GapManager, GapRecord, GapState
 from .ingestlog import (
     IngestLog,
     IngestLogError,
@@ -90,6 +91,9 @@ __all__ = [
     "Store",
     "Engine",
     "EngineConfig",
+    "GapManager",
+    "GapRecord",
+    "GapState",
     "HardwareProfile",
     "ProfileMode",
     "current_profile",

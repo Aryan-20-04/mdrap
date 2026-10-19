@@ -69,6 +69,7 @@ class QualityConfig:
     unseq_dup_status: str = "SUSPICIOUS"
     reorder_window_s: float = DEFAULT_REORDER_WINDOW_S
     reorder_max_slots: int = DEFAULT_REORDER_MAX_SLOTS
+    session_policy: str = "strict"  # strict, session_marker, auto_detect
     asset_classes: Dict[str, Dict[str, float]] = field(default_factory=dict)
 
     def for_instrument(self, instrument_id: str) -> "QualityConfig":

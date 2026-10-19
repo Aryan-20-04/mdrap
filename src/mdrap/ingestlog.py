@@ -198,12 +198,17 @@ class IngestLog:
             "grouped_by_time",
             "grouped_by_size",
             "never",
+            "true_group_commit",
         ):
             raise ValueError(f"Invalid fsync_policy: {self.fsync_policy}")
 
         self.max_segment_bytes = max_segment_bytes
         self._lock = threading.RLock()
+        self._group_commit_cv = threading.Condition(self._lock)
+        self._group_commit_flushing: bool = False
         self._next_offset = 0
+        self._synced_offset: int = -1
+        self._pending_sync_offset: int = -1
         self._current_file = None
         self._current_filename: str | None = None
         self._current_segment_start_offset = 0
@@ -216,7 +221,14 @@ class IngestLog:
         if lock:
             self._acquire_process_lock()
 
-        self._recover_and_open()
+        try:
+            self._recover_and_open()
+            self._synced_offset = self._next_offset - 1
+            self._pending_sync_offset = self._next_offset - 1
+        except Exception:
+            if lock:
+                self._release_process_lock()
+            raise
 
     def _acquire_process_lock(self) -> None:
         """Acquire an exclusive advisory lock on the log directory to prevent concurrent writers."""
@@ -610,24 +622,62 @@ class IngestLog:
                 frame_total_len = FRAME_HEADER_SIZE + payload_len
                 self._bytes_since_fsync += frame_total_len
 
+                # Advance offset and pending sync
+                self._next_offset += 1
+                self._pending_sync_offset = offset
+
                 # Durability policy execution before ACK
                 if self.fsync_policy == "always":
                     os.fsync(self._current_file.fileno())
                     self._bytes_since_fsync = 0
+                    self._synced_offset = offset
                 elif self.fsync_policy == "grouped_by_size":
                     if self._bytes_since_fsync >= 64 * 1024:  # 64 KB threshold
                         os.fsync(self._current_file.fileno())
                         self._bytes_since_fsync = 0
+                        self._synced_offset = offset
                 elif self.fsync_policy == "grouped_by_time":
                     now_ts = time.time()
                     if now_ts - self._last_fsync_ts >= 0.05:  # 50 ms
                         os.fsync(self._current_file.fileno())
                         self._last_fsync_ts = now_ts
                         self._bytes_since_fsync = 0
-
-                # Advance offset ONLY after successful write, flush, and fsync
-                self._next_offset += 1
+                        self._synced_offset = offset
+                elif self.fsync_policy == "true_group_commit":
+                    my_offset = offset
+                    while self._synced_offset < my_offset:
+                        if self._is_poisoned:
+                            raise IngestLogPoisonedError(
+                                "IngestLog is in a poisoned state during true group commit"
+                            )
+                        if not self._group_commit_flushing:
+                            self._group_commit_flushing = True
+                            target_offset = self._pending_sync_offset
+                            fileno = self._current_file.fileno()
+                            saved_state = self._group_commit_cv._release_save()
+                            try:
+                                os.fsync(fileno)
+                                fsync_err = None
+                            except Exception as exc:
+                                fsync_err = exc
+                            finally:
+                                self._group_commit_cv._acquire_restore(saved_state)
+                                self._group_commit_flushing = False
+                                if fsync_err is None:
+                                    self._synced_offset = max(
+                                        self._synced_offset, target_offset
+                                    )
+                                    self._bytes_since_fsync = 0
+                                    self._group_commit_cv.notify_all()
+                                else:
+                                    self._is_poisoned = True
+                                    self._group_commit_cv.notify_all()
+                                    raise fsync_err
+                        else:
+                            self._group_commit_cv.wait()
             except Exception:
+                if self._next_offset == offset + 1:
+                    self._next_offset = offset
                 try:
                     self._current_file.seek(write_pos)
                     self._current_file.truncate(write_pos)
@@ -725,10 +775,14 @@ class IngestLog:
                     "always",
                     "grouped_by_size",
                     "grouped_by_time",
+                    "true_group_commit",
                 ):
                     os.fsync(self._current_file.fileno())
                     self._bytes_since_fsync = 0
                     self._last_fsync_ts = time.time()
+                    self._synced_offset = allocated_offsets[-1]
+                    self._pending_sync_offset = allocated_offsets[-1]
+                    self._group_commit_cv.notify_all()
                 else:
                     self._bytes_since_fsync += len(batch_buffer)
 
@@ -759,6 +813,9 @@ class IngestLog:
                 os.fsync(self._current_file.fileno())
                 self._bytes_since_fsync = 0
                 self._last_fsync_ts = time.time()
+                self._synced_offset = self._next_offset - 1
+                self._pending_sync_offset = self._next_offset - 1
+                self._group_commit_cv.notify_all()
 
     def close(self) -> None:
         """Close current active segment and release process lock."""
@@ -767,6 +824,9 @@ class IngestLog:
                 try:
                     self._current_file.flush()
                     os.fsync(self._current_file.fileno())
+                    self._synced_offset = self._next_offset - 1
+                    self._pending_sync_offset = self._next_offset - 1
+                    self._group_commit_cv.notify_all()
                     self._current_file.close()
                 except Exception:
                     pass
