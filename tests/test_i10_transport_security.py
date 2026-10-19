@@ -17,7 +17,9 @@ def test_non_loopback_binding_rejected_without_tls() -> None:
         MarketDataDaemon(host="0.0.0.0", enable_shm=False)
 
     # 2. External IPv4
-    with pytest.raises(ValueError, match="Non-loopback binding '192.168.1.100' rejected"):
+    with pytest.raises(
+        ValueError, match="Non-loopback binding '192.168.1.100' rejected"
+    ):
         MarketDataDaemon(host="192.168.1.100", enable_shm=False)
 
     # 3. External IPv6

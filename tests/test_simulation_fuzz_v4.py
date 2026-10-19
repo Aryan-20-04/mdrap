@@ -165,7 +165,9 @@ def test_v4_simulation_fuzz_contiguous_offsets_and_priority(seed: int) -> None:
 
         # State counter conservation
         counts = engine.state.counts
-        assert counts["VALID"] + counts["SUSPICIOUS"] + counts["INVALID"] == total_events
+        assert (
+            counts["VALID"] + counts["SUSPICIOUS"] + counts["INVALID"] == total_events
+        )
         assert engine.state.event_count == total_events
         engine.close()
 
@@ -235,7 +237,9 @@ def test_v4_simulation_fuzz_replay_determinism(tmp_path: Path) -> None:
 
     # 2. Replay run from clean initial state
     engine_replay = Engine(path=wal_dir, clock=clock, staleness_threshold_s=5.0)
-    replayed_decisions, metrics = engine_replay.replay(from_offset=0, return_metrics=True)
+    replayed_decisions, metrics = engine_replay.replay(
+        from_offset=0, return_metrics=True
+    )
 
     assert metrics.replayed_records == 250
     replay_state_dict = engine_replay.state.to_dict()
@@ -267,7 +271,10 @@ def test_v4_simulation_fuzz_historical_regressions_codified(tmp_path: Path) -> N
     )
     dec_c1 = engine.submit(poison_raw)
     assert dec_c1.quality_status == QualityStatus.INVALID
-    assert Reason.MALFORMED.value in dec_c1.reasons or Reason.SCHEMA_VIOLATION.value in dec_c1.reasons
+    assert (
+        Reason.MALFORMED.value in dec_c1.reasons
+        or Reason.SCHEMA_VIOLATION.value in dec_c1.reasons
+    )
 
     # C2: Missing receive_timestamp uses clock fallback and renames deterministically
     no_recv_raw = RawEvent(

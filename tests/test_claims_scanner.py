@@ -39,7 +39,9 @@ def test_documentation_free_of_forbidden_superlatives():
 def test_scanner_detects_deliberate_violation(tmp_path):
     """Test scanner catches bad words on a dummy document."""
     bad_doc = tmp_path / "bad.md"
-    bad_doc.write_text("MDRAP offers unbreakable security and zero latency trading.", encoding="utf-8")
+    bad_doc.write_text(
+        "MDRAP offers unbreakable security and zero latency trading.", encoding="utf-8"
+    )
     violations = scan_file_for_superlatives(bad_doc)
     assert len(violations) >= 2
     matched = [v[1].lower() for v in violations]

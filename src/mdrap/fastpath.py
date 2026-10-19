@@ -36,8 +36,8 @@ except ImportError:
 # ---------------------------------------------------------------------------
 # Native C Kernel ABI Geometry Constants (Matching fastpath.c)
 # ---------------------------------------------------------------------------
-MAX_SOURCES: int = 32
-MAX_INSTRUMENTS: int = 8192
+MAX_SOURCES: int = int(os.environ.get("MDRAP_FASTPATH_MAX_SOURCES", "32"))
+MAX_INSTRUMENTS: int = int(os.environ.get("MDRAP_FASTPATH_MAX_INSTRUMENTS", "8192"))
 INSTRUMENT_SHIFT: int = 13
 TOTAL_SLOTS: int = MAX_SOURCES * MAX_INSTRUMENTS
 
@@ -861,6 +861,10 @@ class FastQualityEngine:
 
         self.counts = {"VALID": 0, "SUSPICIOUS": 0, "INVALID": 0}
         self.reason_counts: dict[str, int] = {}
+        self.max_sources: int = MAX_SOURCES
+        self.max_instruments: int = MAX_INSTRUMENTS
+        self.fallback_count: int = 0
+        self.slot_overflow_count: int = 0
         self._source_map = dict(_SOURCE_ID_MAP)
         self._inst_map = dict(_INSTRUMENT_ID_MAP)
         self._fallback_engine: QualityEngine | None = None
@@ -1064,9 +1068,22 @@ class FastQualityEngine:
                     self.reason_counts[r] = self.reason_counts.get(r, 0) + 1
                 return res
 
-        # Graceful fallback: C static tables have MAX_SOURCES=32, MAX_INSTRUMENTS=8192.
-        # If the number of unique sources or instruments exceeds C bounds, evaluate with Python engine.
-        if s_id >= MAX_SOURCES or i_id >= MAX_INSTRUMENTS:
+        # Graceful fallback: C static tables have MAX_SOURCES, MAX_INSTRUMENTS bounds.
+        # If the number of unique sources or instruments exceeds bounds, evaluate with Python engine.
+        if s_id >= self.max_sources or i_id >= self.max_instruments:
+            self.fallback_count += 1
+            self.slot_overflow_count += 1
+            if self.slot_overflow_count == 1 or self.slot_overflow_count % 10000 == 0:
+                logger.warning(
+                    "[fastpath] Slot capacity exceeded (s_id=%d >= %d or i_id=%d >= %d). "
+                    "Routing event to pure-Python fallback engine (total fallbacks: %d). "
+                    "Configure MDRAP_FASTPATH_MAX_INSTRUMENTS to scale native capacity.",
+                    s_id,
+                    self.max_sources,
+                    i_id,
+                    self.max_instruments,
+                    self.slot_overflow_count,
+                )
             if not self._fallback_engine:
                 self._fallback_engine = QualityEngine(self.cfg)
             res = self._fallback_engine.evaluate(event)
@@ -1227,7 +1244,9 @@ class FastQualityEngine:
             s_id = self._get_source_id(ev.source)
             i_id = self._get_instrument_id(ev.instrument_id)
 
-            if s_id >= MAX_SOURCES or i_id >= MAX_INSTRUMENTS:
+            if s_id >= self.max_sources or i_id >= self.max_instruments:
+                self.fallback_count += 1
+                self.slot_overflow_count += 1
                 needs_fallback.append(idx)
                 continue
 
@@ -1451,6 +1470,18 @@ class FastQualityEngine:
                     status="VALID",
                 )
         return buf
+
+    def stats(self) -> dict[str, Any]:
+        """Return operational and capacity telemetry metrics."""
+        return {
+            "counts": dict(self.counts),
+            "reason_counts": dict(self.reason_counts),
+            "fallback_count": self.fallback_count,
+            "slot_overflow_count": self.slot_overflow_count,
+            "max_sources": self.max_sources,
+            "max_instruments": self.max_instruments,
+            "is_native": self.is_native,
+        }
 
 
 # Phase 5: Explicit Two-Tier Architecture Aliases and Runtime Switch

@@ -121,7 +121,9 @@ def test_i01_lockstep_oracle_exactness():
             assert dec.quality_status == QualityStatus.INVALID
         else:
             # Normal success path
-            control_state, dec_ctrl = orig_step_internal(control_state, raw, clock, offset=i)
+            control_state, dec_ctrl = orig_step_internal(
+                control_state, raw, clock, offset=i
+            )
             new_state, dec_test = engine.step(engine.state, raw, clock, offset=i)
             engine.state = new_state
             assert dec_test.quality_status == dec_ctrl.quality_status
@@ -137,7 +139,9 @@ def test_i01_lockstep_oracle_exactness():
     engine.close()
 
     assert injected_faults > 800, f"Expected ~1,000 faults, got {injected_faults}"
-    assert state_mismatches == 0, f"State diverged from deepcopy control oracle: {state_mismatches} mismatches"
+    assert state_mismatches == 0, (
+        f"State diverged from deepcopy control oracle: {state_mismatches} mismatches"
+    )
 
 
 def test_i01_universe_scale_step_latency_flat():
@@ -165,7 +169,9 @@ def test_i01_universe_scale_step_latency_flat():
                 "SRC_B": (100.06, 1700000000.0),
             }
             # Populate price window
-            st.price_windows[f"SRC_A:{inst}"] = [100.0 + (j % 5) * 0.1 for j in range(25)]
+            st.price_windows[f"SRC_A:{inst}"] = [
+                100.0 + (j % 5) * 0.1 for j in range(25)
+            ]
 
         # Warmup
         for i in range(50):
@@ -233,7 +239,9 @@ def test_i01_submit_batch_atomicity(tmp_path, monkeypatch):
     proj.should_fail = True
 
     # Create batch of 50 events
-    batch = [_make_market_raw(i + 1, instrument="AAPL", price=150.0 + i) for i in range(50)]
+    batch = [
+        _make_market_raw(i + 1, instrument="AAPL", price=150.0 + i) for i in range(50)
+    ]
 
     with pytest.raises(IOError) as exc_info:
         engine.submit(batch)
@@ -241,7 +249,9 @@ def test_i01_submit_batch_atomicity(tmp_path, monkeypatch):
 
     # Assert 100% rollback: event_count, bbo_state, price_windows, etc.
     current_state = engine.state.to_dict()
-    assert current_state == baseline_state, "Batch failure leaked partial mutations into engine state"
+    assert current_state == baseline_state, (
+        "Batch failure leaked partial mutations into engine state"
+    )
 
     engine.close()
 

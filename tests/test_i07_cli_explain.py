@@ -52,7 +52,9 @@ def test_cli_explain_json_valid_event(capsys: pytest.CaptureFixture[str]) -> Non
         assert data["reasons"] == []
         assert data["quarantined"] is False
         assert data["state_context"]["stream_key"] == "BINANCE:BTC-USDT"
-        assert data["state_context"]["last_sequence"] is None  # before event 0 was processed
+        assert (
+            data["state_context"]["last_sequence"] is None
+        )  # before event 0 was processed
 
 
 def test_cli_explain_json_sequence_gap(capsys: pytest.CaptureFixture[str]) -> None:
@@ -166,7 +168,12 @@ def test_cli_explain_error_handling(capsys: pytest.CaptureFixture[str]) -> None:
     # 2. Offset beyond log head
     with tempfile.TemporaryDirectory() as wal_dir:
         log = IngestLog(wal_dir, fsync_policy="always")
-        log.append(RawEvent(source="TEST", payload={"instrument": "X", "event_type": "TRADE", "price": 10.0}))
+        log.append(
+            RawEvent(
+                source="TEST",
+                payload={"instrument": "X", "event_type": "TRADE", "price": 10.0},
+            )
+        )
         log.close()
 
         args_bad_offset = argparse.Namespace(

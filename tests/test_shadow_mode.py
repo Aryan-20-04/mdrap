@@ -17,6 +17,7 @@ from scripts.shadow_poc import generate_synthetic_poc_feed
 def test_shadow_evaluator_confusion_matrix():
     """Verify precision, recall, and false positive calculation against known ground truth."""
     import time
+
     now = time.time()
     evaluator = ShadowModeEvaluator()
 
@@ -83,7 +84,10 @@ def test_shadow_evaluator_confusion_matrix():
     baseline_tags = {
         "ev_tn": {"is_anomaly": False, "reason": "Normal quote"},
         "ev_tp": {"is_anomaly": True, "reason": "Crossed market"},
-        "ev_fn": {"is_anomaly": True, "reason": "Simulated external ground truth alert"},
+        "ev_fn": {
+            "is_anomaly": True,
+            "reason": "Simulated external ground truth alert",
+        },
         "ev_fp": {"is_anomaly": False, "reason": "Considered normal by baseline"},
     }
 
