@@ -654,14 +654,15 @@ class IngestLog:
                             self._group_commit_flushing = True
                             target_offset = self._pending_sync_offset
                             fileno = self._current_file.fileno()
-                            saved_state = self._group_commit_cv._release_save()
+                            # Standard portable lock handoff: release self._lock during disk sync
+                            self._lock.release()
                             try:
                                 os.fsync(fileno)
                                 fsync_err = None
                             except Exception as exc:
                                 fsync_err = exc
                             finally:
-                                self._group_commit_cv._acquire_restore(saved_state)
+                                self._lock.acquire()
                                 self._group_commit_flushing = False
                                 if fsync_err is None:
                                     self._synced_offset = max(

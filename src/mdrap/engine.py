@@ -781,6 +781,15 @@ class Engine:
                 batch_txn.rollback()
                 raise
 
+    def submit_microbatch(self, events: list[RawEvent]) -> list[EngineDecision]:
+        """Durable atomic micro-batch submission API (Item A4).
+
+        Processes and persists events in a single group-commit fsync and atomic
+        SQLite projection transaction.
+        """
+        res = self.submit(events)
+        return res if isinstance(res, list) else ([res] if res is not None else [])
+
     def replay(
         self,
         from_offset: int = 0,

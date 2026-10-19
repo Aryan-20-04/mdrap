@@ -349,3 +349,34 @@ def test_standard_error_schema_returned(api_env):
     assert body["error"]["code"] == 401
     assert "message" in body["error"]
     assert "detail" in body
+
+
+def test_server_ingest_batch_endpoint(api_env):
+    """Verify /v1/ingest/batch handles multi-event arrays with atomic ingestion (Item A4 / Item 4.5)."""
+    client = api_env["client"]
+    op_headers = {"X-API-Key": api_env["operator_key"]}
+
+    batch_payload = [
+        {
+            "source": "BINANCE",
+            "raw_id": f"batch_{i}",
+            "payload": {
+                "instrument": "ETH/USD",
+                "event_type": "TRADE",
+                "price": 3000.0 + i,
+                "quantity": 1.5,
+                "sequence": 100 + i,
+                "exchange_ts": 1700000000.0 + i * 0.001,
+            },
+        }
+        for i in range(10)
+    ]
+
+    r = client.post("/v1/ingest/batch", json=batch_payload, headers=op_headers)
+    assert r.status_code == 200
+    data = r.json()
+    assert data["status"] == "ok"
+    assert data["ingested"] == 10
+    assert len(data["canonical"]) == 10
+    assert data["canonical"][0]["price"] == 3000.0
+    assert data["canonical"][9]["price"] == 3009.0

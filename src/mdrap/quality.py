@@ -328,7 +328,7 @@ class QualityEngine:
             sl = self._slots[key] = _SlotState(window)
         return sl
 
-    def evaluate(self, event: CanonicalEvent) -> CanonicalEvent:
+    def evaluate(self, event: CanonicalEvent) -> CanonicalEvent | None:
         """Execute stateful data quality checks across all dimensions."""
         key = (event.source, event.instrument_id)
         cfg = self._get_cfg(event.instrument_id)

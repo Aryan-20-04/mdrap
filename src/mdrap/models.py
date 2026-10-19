@@ -30,8 +30,8 @@ __stability__ = "stable"
 
 
 def _safe_float(val: Any, default: float = 0.0) -> float:
-    """Safely convert value to finite float without raising or accepting NaN/inf."""
-    if val is None:
+    """Safely convert value to finite float without raising or accepting NaN/inf/bool."""
+    if val is None or isinstance(val, bool):
         return default
     try:
         f = float(val)
@@ -41,8 +41,8 @@ def _safe_float(val: Any, default: float = 0.0) -> float:
 
 
 def _safe_optional_float(val: Any) -> Optional[float]:
-    """Safely convert value to finite float, returning None on invalid/NaN/inf/None."""
-    if val is None:
+    """Safely convert value to finite float, returning None on invalid/NaN/inf/None/bool."""
+    if val is None or isinstance(val, bool):
         return None
     try:
         f = float(val)
@@ -833,16 +833,6 @@ class DepthEvent(MarketEvent):
             }
         )
         return d
-
-
-def _safe_float(val: Any, default: float = 0.0) -> float:
-    if isinstance(val, bool):
-        return default
-    try:
-        f = float(val)
-        return f if math.isfinite(f) else default
-    except (ValueError, TypeError, OverflowError):
-        return default
 
 
 def _safe_int(val: Any) -> Optional[int]:

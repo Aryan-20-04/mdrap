@@ -1,9 +1,14 @@
 FROM python:3.12-slim-bookworm AS builder
 
 WORKDIR /build
-COPY pyproject.toml README.md LICENSE ./
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc python3-dev libc6-dev make \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY pyproject.toml README.md LICENSE build_fastpath.py ./
 COPY src/ ./src/
-RUN python -m pip install --no-cache-dir --upgrade pip build && \
+RUN python build_fastpath.py && \
+    python -m pip install --no-cache-dir --upgrade pip build && \
     python -m pip wheel --wheel-dir /wheels ".[api,ui]"
 
 FROM python:3.12-slim-bookworm AS runner

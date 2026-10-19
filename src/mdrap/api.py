@@ -1061,6 +1061,14 @@ def create_app(
             "canonical": [ev.to_dict() for ev in results],
         }
 
+    @router.post("/ingest/batch", tags=["Ingestion"])
+    async def ingest_batch_events(
+        request: Request,
+        _auth: ClientEntitlement = Depends(require_role(Role.OPERATOR)),
+    ):
+        """High-throughput batch ingestion API with explicit batch semantics (Item A4 / Item 4.5)."""
+        return await ingest_events(request=request, _auth=_auth)
+
     # 3. Canonical Events Query
     @router.get("/events", tags=["Events"])
     def query_events(
