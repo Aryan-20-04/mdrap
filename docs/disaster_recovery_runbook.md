@@ -146,7 +146,7 @@ Incoming Ticks -> Gateway -> Quality Validation -> IngestLog WAL (Append + CRC32
 #### Automated Safeguards
 * Low-latency SPSC seqlock shared memory buffer (`src/mdrap/shm.py`) employs cache-line padded 128-byte slots.
 * Slow consumers are cleanly notified via sequence overrun detection (`ReaderLagError`).
-* Core engine writer **NEVER** blocks, ensuring zero latency impact on live order book execution.
+* Core engine writer **NEVER** blocks, preventing stalling of live order book execution.
 
 #### Operator Action Items
 1. Inspect reader lag across shared memory consumers:

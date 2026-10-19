@@ -150,4 +150,4 @@ To avoid storing variable-length strings in hot records, strings are interned at
 }
 ```
 
-The dictionary is published via shared memory and SQLite control tables, allowing consumers to map `symbol_id` back to human-readable tickers with zero latency penalty on the hot path.
+The dictionary is published via shared memory and SQLite control tables, allowing consumers to map `symbol_id` back to human-readable tickers with minimal overhead on the hot path.

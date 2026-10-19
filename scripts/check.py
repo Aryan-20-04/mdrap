@@ -61,6 +61,12 @@ def gate_rules_sync():
     if res.returncode != 0:
         raise RuntimeError("rules.def parity check failed")
 
+    res2 = subprocess.run(
+        [sys.executable, "scripts/claims_scanner.py", "--check"], cwd=_REPO_ROOT
+    )
+    if res2.returncode != 0:
+        raise RuntimeError("Claims governance audit failed")
+
 
 def gate_dependency_audit():
     req_path = os.path.join(_REPO_ROOT, "requirements.txt")
@@ -174,6 +180,7 @@ def main():
             "tests/test_security_hardening_review.py",
             "tests/test_key_storage_hardening.py",
             "tests/test_api_security_hardening.py",
+            "tests/test_claims_scanner.py",
             "-q",
         ],
     )
