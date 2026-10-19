@@ -1,0 +1,55 @@
+{
+  "suite": "MDRAP Scaled Universe Benchmark (Program I-8)",
+  "timestamp": "2026-10-19T09:19:44Z",
+  "events_per_scale": 10000,
+  "results": {
+    "24": {
+      "universe_size": 24,
+      "events_measured": 10000,
+      "elapsed_seconds": 6.3651,
+      "throughput_eps": 1571.1,
+      "latency_us": {
+        "p50": 585.4,
+        "p90": 773.2,
+        "p95": 830.4,
+        "p99": 1120.2,
+        "p999": 1743.3,
+        "max": 16235.2,
+        "mean": 622.71
+      },
+      "memory_delta_kb": 398.44
+    },
+    "1000": {
+      "universe_size": 1000,
+      "events_measured": 10000,
+      "elapsed_seconds": 6.1722,
+      "throughput_eps": 1620.2,
+      "latency_us": {
+        "p50": 596.5,
+        "p90": 756.8,
+        "p95": 828.9,
+        "p99": 1035.6,
+        "p999": 3469.5,
+        "max": 20008.1,
+        "mean": 601.55
+      },
+      "memory_delta_kb": 720.45
+    },
+    "10000": {
+      "universe_size": 10000,
+      "events_measured": 10000,
+      "elapsed_seconds": 5.2661,
+      "throughput_eps": 1899.0,
+      "latency_us": {
+        "p50": 497.4,
+        "p90": 630.9,
+        "p95": 694.6,
+        "p99": 892.1,
+        "p999": 1920.1,
+        "max": 4881.0,
+        "mean": 511.1
+      },
+      "memory_delta_kb": 595.42
+    }
+  }
+}

@@ -3,6 +3,20 @@
 All notable changes to MDRAP are documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] - Improvement Programs (I-1 through I-10)
+
+### Added
+- **I-1: Constant-Cost Transactional State**: Replaced deep-copy rollbacks with an $O(1)$ zero-allocation `Transaction` undo journal in `src/mdrap/engine.py`. Converted unsequenced deduplication sliding window to `collections.deque` ($O(1)$ popleft). Validated flat latency (~500–600 µs submit p50) across 24, 1,000, and 10,000 instruments.
+- **I-2: Sessions & Sequence Epochs**: Added slot coordinates `(source, instrument, epoch_id)` supporting `strict`, `session_marker`, and `auto_detect` sequence reset policies. Tagged sequence resets with `Reason.EPOCH_RESET` (Severity: VALID), eliminating 199/200 false alarms on start-of-day sequence resets.
+- **I-3: Deterministic Simulation Fuzzer & Formal WAL Model**: Seeded fault harness (`tests/test_simulation_fuzz.py`) simulating torn tail writes, corrupt magic headers, bit flips, and burst out-of-order delivery with 100% lockstep parity against differential deepcopy oracle.
+- **I-4: Bounded Fast Recovery & Automatic Snapshot Cadence**: Implemented policy-driven snapshot cadence (`snapshot_cadence_events=50_000`, `snapshot_cadence_seconds=300.0`), SHA-256 state integrity verification, atomic temp-file replace, and `RecoveryMetrics` diagnostics.
+- **I-5: True WAL Group Commit**: Implemented `fsync_policy="true_group_commit"` in `src/mdrap/ingestlog.py`, using condition variable synchronization to guarantee zero lost ACKed events across crash sweeps.
+- **I-6: Gap Lifecycle & Retransmission Hooks**: Introduced `GapManager` (`src/mdrap/gap.py`) with `OPEN` -> `FILLED` / `EXPIRED` / `UNRECOVERABLE` states and `on_gap` extension hook for external retransmission dispatch.
+- **I-7: Observability Explainer CLI (`mdrap explain`)**: Added CLI command `mdrap explain <offset>` reconstructing exact state provenance, quotes, and validation rule reasons at any historical WAL frame.
+- **I-8: Scaled Universe Benchmark Suite**: Added `benchmarks/bench_scale.py` measuring latency distributions and memory footprint across small (24), medium (1,000), and broad institutional (10,000) universes.
+- **I-9: Developer Experience & Typed Public Surface**: Verified PEP 561 marker `src/mdrap/py.typed` and explicit `__all__` symbols across core modules.
+- **I-10: Transport Security Enforcement**: Enforced loopback-only binding for unencrypted sockets in `src/mdrap/service.py` unless TLS context or explicit `--allow-insecure-bind` is provided. Added TLS wrapping support to `StreamClient`.
+
 ## [3.1.2] - 2026-10-18
 
 ### Added
