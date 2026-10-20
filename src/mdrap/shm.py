@@ -60,6 +60,17 @@ try:
 except ImportError:
     HAS_SHM = False
 
+try:
+    from .fastpath import (
+        HAS_FASTPATH,
+        native_shm_read_slot as _native_shm_read_slot,
+        native_shm_write_tick as _native_shm_write_tick,
+    )
+except (ImportError, AttributeError):
+    HAS_FASTPATH = False
+    _native_shm_read_slot = None
+    _native_shm_write_tick = None
+
 __stability__ = "stable"
 
 
@@ -340,35 +351,34 @@ class SHMWriter:
             return
 
         # Native acquire/release atomic publication fast path
-        try:
-            from .fastpath import native_shm_write_tick
-
-            if native_shm_write_tick(
-                self.shm.buf,
-                self.slot_count,
-                seq,
-                symbol,
-                source,
-                price,
-                size,
-                bid,
-                ask,
-                bid_size,
-                ask_size,
-                status,
-                is_crossed,
-                exchange_ts,
-                ingest_ts,
-                broadcast_ts,
-                engine_us,
-            ):
-                self._head_seq = seq + 1
-                now = time.time()
-                if (seq & 0x1FF) == 0 or (now - self._last_heartbeat) >= 0.1:
-                    self.update_heartbeat()
-                return
-        except Exception as exc:
-            logger.debug("[shm] Native write fallback: %s", exc)
+        if _native_shm_write_tick is not None:
+            try:
+                if _native_shm_write_tick(
+                    self.shm.buf,
+                    self.slot_count,
+                    seq,
+                    symbol,
+                    source,
+                    price,
+                    size,
+                    bid,
+                    ask,
+                    bid_size,
+                    ask_size,
+                    status,
+                    is_crossed,
+                    exchange_ts,
+                    ingest_ts,
+                    broadcast_ts,
+                    engine_us,
+                ):
+                    self._head_seq = seq + 1
+                    now = time.time()
+                    if (seq & 0x1FF) == 0 or (now - self._last_heartbeat) >= 0.1:
+                        self.update_heartbeat()
+                    return
+            except Exception as exc:
+                logger.debug("[shm] Native write fallback: %s", exc)
 
         slot_idx = seq & self.mask
         offset = HEADER_SIZE + (slot_idx * SLOT_SIZE)
@@ -751,14 +761,13 @@ class SHMReader:
                 self.overrun_stats.watermark_events += 1
 
         # Native acquire/release atomic slot read fast path
-        try:
-            from .fastpath import native_shm_read_slot
-
-            native_item = native_shm_read_slot(self.shm.buf, self.slot_count, seq)
-            if native_item is not None:
-                return native_item
-        except Exception as exc:
-            logger.debug("[shm] Native slot read fallback: %s", exc)
+        if _native_shm_read_slot is not None:
+            try:
+                native_item = _native_shm_read_slot(self.shm.buf, self.slot_count, seq)
+                if native_item is not None:
+                    return native_item
+            except Exception as exc:
+                logger.debug("[shm] Native slot read fallback: %s", exc)
 
         slot_idx = seq & self.mask
         offset = HEADER_SIZE + (slot_idx * SLOT_SIZE)
