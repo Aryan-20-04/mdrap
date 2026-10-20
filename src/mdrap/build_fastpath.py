@@ -121,6 +121,7 @@ def build(target_dir: Optional[str] = None, quiet: bool = False) -> bool:
             "-O3",
             "-march=native",
             "-mavx2",
+            "-ffp-contract=off",
             "-shared",
             "-fPIC",
         ]
@@ -246,7 +247,7 @@ def build_core(target_dir: Optional[str] = None, quiet: bool = False) -> bool:
     unique_incs = list(dict.fromkeys(inc_dirs))
 
     if compiler in ("gcc", "clang"):
-        cmd = [compiler, "-O3", "-march=native", "-mavx2", "-D_GNU_SOURCE"]
+        cmd = [compiler, "-O3", "-march=native", "-mavx2", "-ffp-contract=off", "-D_GNU_SOURCE"]
         for inc in unique_incs:
             cmd.extend(["-I", inc])
         cmd.extend(["-o", out_bin, c_source])
@@ -349,6 +350,7 @@ def build_extension(target_dir: Optional[str] = None, quiet: bool = False) -> bo
             "-O3",
             "-march=native",
             "-mavx2",
+            "-ffp-contract=off",
             "-shared",
             "-I",
             py_include,

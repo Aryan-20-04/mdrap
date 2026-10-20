@@ -21,6 +21,7 @@ __pycache__/
 mdrap-core
 mdrap-core.exe
 _fastpath_native.*
+_fastpath_c.*
 build/
 dist/
 bin/

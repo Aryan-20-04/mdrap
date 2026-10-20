@@ -508,6 +508,10 @@ class CanonicalEvent:
     source_id: int = -1
     instrument_id_int: int = -1
     session_id: str | None = None
+    exchange_ts_ns: int = 0
+    receive_ts_ns: int = 0
+    processing_ts_ns: int = 0
+    scaled_price: int = 0
 
     # Multi-asset class extensions
     asset_class: AssetClass = AssetClass.EQUITY
@@ -553,12 +557,13 @@ class CanonicalEvent:
             return (self.source, self.instrument_id, self.sequence_number)
 
         # Include quote fields so distinct quotes at the same timestamp don't collide.
+        ts_part = self.exchange_ts_ns if self.exchange_ts_ns > 0 else round(self.exchange_timestamp, 6)
         if self.event_type == EventType.QUOTE:
             return (
                 self.source,
                 self.instrument_id,
                 self.event_type.value,
-                round(self.exchange_timestamp, 6),
+                ts_part,
                 self.bid_price,
                 self.ask_price,
                 self.bid_size,
@@ -568,7 +573,7 @@ class CanonicalEvent:
             self.source,
             self.instrument_id,
             self.event_type.value,
-            round(self.exchange_timestamp, 6),
+            ts_part,
             self.price,
             self.quantity,
         )
@@ -617,6 +622,10 @@ class CanonicalEvent:
             "maturity_date": self.maturity_date,
             "yield_to_worst": self.yield_to_worst,
             "duration": self.duration,
+            "exchange_ts_ns": self.exchange_ts_ns,
+            "receive_ts_ns": self.receive_ts_ns,
+            "processing_ts_ns": self.processing_ts_ns,
+            "scaled_price": self.scaled_price,
         }
 
     def to_json(self) -> str:
@@ -666,13 +675,35 @@ class CanonicalEvent:
             qs = QualityStatus.INVALID
             reasons_list.append(Reason.SCHEMA_VIOLATION.value)
 
+        raw_ex_ts = _safe_float(data.get("exchange_timestamp", 0.0))
+        raw_ex_ns = data.get("exchange_ts_ns")
+        ex_ts_ns = int(raw_ex_ns) if raw_ex_ns is not None else int(raw_ex_ts * 1_000_000_000)
+
+        raw_rc_ts = _safe_float(data.get("receive_timestamp", 0.0))
+        raw_rc_ns = data.get("receive_ts_ns")
+        rc_ts_ns = int(raw_rc_ns) if raw_rc_ns is not None else int(raw_rc_ts * 1_000_000_000)
+
+        raw_pr_ts = _safe_float(data.get("processing_timestamp", 0.0))
+        raw_pr_ns = data.get("processing_ts_ns")
+        pr_ts_ns = int(raw_pr_ns) if raw_pr_ns is not None else int(raw_pr_ts * 1_000_000_000)
+
+        raw_sc_p = data.get("scaled_price")
+        try:
+            scaled_price = int(raw_sc_p) if raw_sc_p is not None else (to_fixed_point_price(parsed_price) if parsed_price is not None else 0)
+        except Exception:
+            scaled_price = 0
+
         return cls(
             event_id=str(data.get("event_id", "")),
             instrument_id=str(data.get("instrument_id", "")),
             event_type=et,
-            exchange_timestamp=_safe_float(data.get("exchange_timestamp", 0.0)),
-            receive_timestamp=_safe_float(data.get("receive_timestamp", 0.0)),
-            processing_timestamp=_safe_float(data.get("processing_timestamp", 0.0)),
+            exchange_timestamp=raw_ex_ts,
+            receive_timestamp=raw_rc_ts,
+            processing_timestamp=raw_pr_ts,
+            exchange_ts_ns=ex_ts_ns,
+            receive_ts_ns=rc_ts_ns,
+            processing_ts_ns=pr_ts_ns,
+            scaled_price=scaled_price,
             source=str(data.get("source", "UNKNOWN")),
             sequence_number=seq_num,
             price=parsed_price,

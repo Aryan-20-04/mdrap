@@ -741,12 +741,20 @@ class Engine:
                             f"WAL allocated offsets diverged: expected {expected_offsets}, got {allocated}"
                         )
 
-                for raw, offset in raw_to_offset:
-                    offsets.append(offset)
-                    self.state, dec = self.step(
-                        self.state, raw, self.clock, offset=offset, txn=batch_txn
+                if len(raw_to_offset) > 1:
+                    for raw, offset in raw_to_offset:
+                        offsets.append(offset)
+                    self.state, batch_decs = self.step_batch(
+                        self.state, raw_to_offset, self.clock, txn=batch_txn
                     )
-                    decisions.append(dec)
+                    decisions.extend(batch_decs)
+                else:
+                    for raw, offset in raw_to_offset:
+                        offsets.append(offset)
+                        self.state, dec = self.step(
+                            self.state, raw, self.clock, offset=offset, txn=batch_txn
+                        )
+                        decisions.append(dec)
 
                 # Dispatch to subscribed projections atomically
                 if self._projections and decisions:
@@ -1027,6 +1035,24 @@ class Engine:
                 reasons=[Reason.SCHEMA_VIOLATION.value],
                 quarantine_row=q_row,
             )
+
+    def step_batch(
+        self,
+        state: EngineState,
+        events: list[tuple[RawEvent, int]] | list[RawEvent],
+        clock: Clock,
+        txn: Transaction | None = None,
+    ) -> tuple[EngineState, list[EngineDecision]]:
+        """Apply a batch of deterministic state transitions with aligned offsets."""
+        decisions: list[EngineDecision] = []
+        for item in events:
+            if isinstance(item, tuple):
+                raw, offset = item
+            else:
+                raw, offset = item, None
+            state, dec = self.step(state, raw, clock, offset=offset, txn=txn)
+            decisions.append(dec)
+        return state, decisions
 
     def _stage_security_envelope(
         self,

@@ -40,7 +40,7 @@
 #define DEDUP_GEN_SLOTS 131072u                       /* 2^17 keys per generation   */
 #define DEDUP_GEN_MASK  (DEDUP_GEN_SLOTS - 1u)
 #define DEDUP_GEN_MAX   (DEDUP_GEN_SLOTS / 2u)        /* rotate at 50% load         */
-#define DEDUP_MAX_PROBE 32
+#define DEDUP_MAX_PROBE 64
 #define DEDUP_CACHE_SIZE (2u * DEDUP_GEN_SLOTS)       /* kept for source compat     */
 #define DEDUP_MASK      (DEDUP_GEN_SLOTS - 1u)        /* kept for source compat     */
 
@@ -134,13 +134,14 @@ enum ReasonBits {
 #endif
 
 /* --- C-4: presence mask (occupies the 4 bytes of former implicit padding) --- */
-#define FE_MASK_VALID 0x80000000u   /* set by wrapper => bits below are authoritative */
-#define FE_HAS_PRICE  0x01u
-#define FE_HAS_QTY    0x02u
-#define FE_HAS_BID    0x04u
-#define FE_HAS_ASK    0x08u
-#define FE_HAS_BID_SZ 0x10u
-#define FE_HAS_ASK_SZ 0x20u
+#define FE_MASK_VALID      0x80000000u   /* set by wrapper => bits below are authoritative */
+#define FE_HAS_PRICE       0x01u
+#define FE_HAS_QTY         0x02u
+#define FE_HAS_BID         0x04u
+#define FE_HAS_ASK         0x08u
+#define FE_HAS_BID_SZ      0x10u
+#define FE_HAS_ASK_SZ      0x20u
+#define FE_TS_NANOSECONDS  0x40u         /* timestamps are uint64 nanoseconds since epoch */
 
 #pragma pack(push, 8)
 typedef struct {
@@ -148,8 +149,14 @@ typedef struct {
     int32_t instrument_id;
     int32_t event_type;      // 0 = TRADE, 1 = QUOTE
     uint32_t present_mask;   // NEW (was padding). 0 => legacy semantics: NAN means "absent"
-    double exchange_ts;
-    double receive_ts;
+    union {
+        double exchange_ts;
+        int64_t exchange_ts_ns;
+    };
+    union {
+        double receive_ts;
+        int64_t receive_ts_ns;
+    };
     int64_t sequence_num;    // -1 if not present
     double price;            // NAN if None (legacy mode)
     double quantity;
@@ -266,6 +273,7 @@ typedef struct FastEngine {
     uint32_t ring_in_chunk;
     uint64_t stat_ring_oom;
     uint64_t stat_dedup_rotations;
+    uint64_t stat_dedup_evictions;
     uint32_t source_epoch[MAX_SOURCES];
     FastSlot *slots;               /* TOTAL_SLOTS zero-filled slots (lazy pages) */
     double inv_n[MAX_WINDOW + 1];
@@ -315,7 +323,11 @@ static inline uint64_t unseq_dedup_key(const FastEngine *eng, const FastEvent *e
     uint64_t h = eng->hash_seed;
     h = hcomb(h, ((uint64_t)(uint32_t)ev->source_id << 32) | (uint32_t)ev->instrument_id);
     h = hcomb(h, ((uint64_t)epoch << 32) | (uint32_t)ev->event_type);
-    h = hcomb(h, dbits(ev->exchange_ts));
+    if (ev->present_mask & FE_TS_NANOSECONDS) {
+        h = hcomb(h, (uint64_t)ev->exchange_ts_ns);
+    } else {
+        h = hcomb(h, dbits(ev->exchange_ts));
+    }
     if (ev->event_type == 1) {
         h = hcomb(h, dbits(ev->bid_price)); h = hcomb(h, dbits(ev->ask_price));
         h = hcomb(h, dbits(ev->bid_size));  h = hcomb(h, dbits(ev->ask_size));
@@ -349,7 +361,12 @@ static inline int dedup_check_insert(FastEngine *eng, uint64_t key) {
     }
     /* new key, or a key that only lives in the older generation: (re)insert into the active one
      * so a key that keeps recurring never ages out of the window */
-    act[free_slot == DEDUP_GEN_SLOTS ? idx : free_slot] = key;
+    if (free_slot == DEDUP_GEN_SLOTS) {
+        act[idx] = key;
+        eng->stat_dedup_evictions++;
+    } else {
+        act[free_slot] = key;
+    }
     if (++eng->dedup_count >= DEDUP_GEN_MAX) {
         eng->dedup_active ^= 1u;
         memset(eng->dedup_keys[eng->dedup_active], 0, sizeof eng->dedup_keys[0]);
@@ -578,9 +595,9 @@ EXPORT void fastpath_engine_configure(FastEngine *eng,
     MD_UNLOCK(&eng->lock);
 }
 
-EXPORT void fastpath_engine_counters(const FastEngine *eng, uint64_t *out /* [3]: ring_oom, dedup_rotations, ring_chunks */) {
+EXPORT void fastpath_engine_counters(const FastEngine *eng, uint64_t *out /* [4]: ring_oom, dedup_rotations, ring_chunks, dedup_evictions */) {
     if (!eng || !out) return;
-    out[0] = eng->stat_ring_oom; out[1] = eng->stat_dedup_rotations; out[2] = eng->ring_chunk_count;
+    out[0] = eng->stat_ring_oom; out[1] = eng->stat_dedup_rotations; out[2] = eng->ring_chunk_count; out[3] = eng->stat_dedup_evictions;
 }
 
 /* ============================================================================
@@ -633,9 +650,20 @@ static void evaluate_nolock(FastEngine *eng, const FastEvent *ev, FastResult *re
         (has_bsz   && num_bad(ev->bid_size,  0))         ||
         (has_asz   && num_bad(ev->ask_size,  0)))
         bad = 1;
-    const int ex_fin = isfinite(ev->exchange_ts) != 0;
-    const int rc_fin = isfinite(ev->receive_ts) != 0;
-    if (!ex_fin || !rc_fin) bad = 1;                                   /* NaN/inf timestamps    */
+    const int is_ns = (pm & FE_TS_NANOSECONDS) != 0u;
+    int ex_fin = 1, rc_fin = 1;
+    double ex_sec = 0.0, rc_sec = 0.0;
+    if (is_ns) {
+        if (ev->exchange_ts_ns <= 0 || ev->receive_ts_ns <= 0) bad = 1;
+        ex_sec = (double)ev->exchange_ts_ns * 1e-9;
+        rc_sec = (double)ev->receive_ts_ns * 1e-9;
+    } else {
+        ex_fin = isfinite(ev->exchange_ts) != 0;
+        rc_fin = isfinite(ev->receive_ts) != 0;
+        if (!ex_fin || !rc_fin) bad = 1;                                   /* NaN/inf timestamps    */
+        ex_sec = ev->exchange_ts;
+        rc_sec = ev->receive_ts;
+    }
     if (bad) mark(res, STATUS_INVALID, REASON_SCHEMA_VIOLATION);
 
     /* --- C-1: sequence / duplicate detection ---------------------------------------- */
@@ -648,20 +676,20 @@ static void evaluate_nolock(FastEngine *eng, const FastEvent *ev, FastResult *re
 
     /* --- C-5: timestamp watermark, never advanced by implausible values --------------- */
     if (ex_fin && rc_fin) {
-        const int plausible = ev->exchange_ts <= ev->receive_ts + eng->max_future_skew_s;
+        const int plausible = ex_sec <= ex_sec + eng->max_future_skew_s && (ex_sec <= rc_sec + eng->max_future_skew_s);
 #ifndef FASTPATH_NO_TS_REASON      /* define only if you have NOT added TS_IMPLAUSIBLE to rules.def */
         if (!plausible) mark(res, STATUS_SUSPICIOUS, REASON_TS_IMPLAUSIBLE);
 #else
         if (!plausible) mark(res, STATUS_SUSPICIOUS, REASON_OUT_OF_ORDER);
 #endif
         if (!(sl->flags & SLOT_HAS_TS)) {
-            if (plausible) { sl->last_ts = ev->exchange_ts; sl->flags |= SLOT_HAS_TS; }
-        } else if (ev->exchange_ts < sl->last_ts) {
+            if (plausible) { sl->last_ts = ex_sec; sl->flags |= SLOT_HAS_TS; }
+        } else if (ex_sec < sl->last_ts) {
             mark(res, STATUS_SUSPICIOUS, REASON_OUT_OF_ORDER);
         } else if (plausible) {
-            sl->last_ts = ev->exchange_ts;
+            sl->last_ts = ex_sec;
         }
-        if (ev->receive_ts - ev->exchange_ts > eng->staleness_threshold_s)
+        if (rc_sec - ex_sec > eng->staleness_threshold_s)
             mark(res, STATUS_SUSPICIOUS, REASON_STALE);
     }
 
@@ -1248,16 +1276,24 @@ EXPORT int32_t fastpath_shm_read_slot_v3(
     const uint64_t head = MD_LOAD_ACQ_U64(buf + SHM3_OFF_HEAD);
     if (head > target_seq && (head - target_seq > slot_count)) return -1; /* lapped */
     const uint8_t *slot = buf + SHM3_HDR_SIZE + (size_t)(target_seq & (slot_count - 1u)) * SHM3_SLOT_SIZE;
-    const uint64_t c1 = MD_LOAD_ACQ_U64(slot);
-    if (c1 != target_seq) return (c1 == MD_UNCOMMITTED || c1 < target_seq) ? 0 : -1;
-    uint64_t words[16];
-    words[0] = c1;
-    for (int w = 1; w < 16; ++w) words[w] = MD_LOAD_RLX_U64(slot + (size_t)w * 8u);
-    MD_FENCE_ACQUIRE();
-    const uint64_t c2 = MD_LOAD_RLX_U64(slot);                       /* seqlock: re-read AFTER the copy */
-    if (c2 != c1) return -1;
-    memcpy(out, words, sizeof words);
-    return 1;
+    for (int retry = 0; retry < 3; ++retry) {
+        const uint64_t c1 = MD_LOAD_ACQ_U64(slot);
+        if (c1 != target_seq) {
+            if (c1 == MD_UNCOMMITTED || c1 < target_seq) return 0;
+            return -1;
+        }
+        uint64_t words[16];
+        words[0] = c1;
+        for (int w = 1; w < 16; ++w) words[w] = MD_LOAD_RLX_U64(slot + (size_t)w * 8u);
+        MD_FENCE_ACQUIRE();
+        const uint64_t c2 = MD_LOAD_RLX_U64(slot);                       /* seqlock: re-read AFTER the copy */
+        if (c2 == c1) {
+            memcpy(out, words, sizeof words);
+            return 1;
+        }
+        MD_CPU_RELAX();
+    }
+    return -1;
 }
 
 EXPORT uint64_t fastpath_shm_head_v3(const uint8_t *buf)  { return buf ? MD_LOAD_ACQ_U64(buf + SHM3_OFF_HEAD)  : 0u; }
