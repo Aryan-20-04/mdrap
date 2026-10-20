@@ -29,6 +29,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#if defined(__x86_64__) || defined(_M_X64)
+#include <immintrin.h>
+#endif
 
 #define MAX_SOURCES 32
 #define MAX_INSTRUMENTS 8192
@@ -771,6 +774,150 @@ EXPORT void fastpath_engine_evaluate_batch(FastEngine *eng, const FastEvent *eve
     MD_UNLOCK(&eng->lock);
 }
 
+#if defined(__SIZEOF_INT128__)
+typedef __int128_t int128_t;
+typedef __uint128_t uint128_t;
+#endif
+
+/*
+ * Exact integer rolling corridor check:
+ * Uses __int128 exact integer arithmetic (zero float rounding, zero drift).
+ * Returns 1 if candidate is an anomaly, 0 if normal.
+ */
+EXPORT int32_t fastpath_exact_int_corridor_check(
+    int64_t candidate_scaled,
+    int64_t sum_x,
+    uint64_t count_n,
+    uint64_t sum_x2_hi, uint64_t sum_x2_lo,
+    int32_t min_samples,
+    int32_t k_stddev,
+    int64_t sigma_floor_num,
+    int64_t sigma_floor_den
+) {
+    if (count_n < (uint64_t)min_samples) return 0;
+#if defined(__SIZEOF_INT128__)
+    const int128_t n = (int128_t)count_n;
+    const int128_t x = (int128_t)candidate_scaled;
+    const int128_t S1 = (int128_t)sum_x;
+    const int128_t S2 = (((int128_t)sum_x2_hi) << 64) | (int128_t)sum_x2_lo;
+
+    const int128_t dev = n * x - S1;
+    const int128_t dev2 = dev * dev;
+
+    int128_t V = n * S2 - S1 * S1;
+    if (V < 0) V = 0;
+
+    const int128_t f_num = (int128_t)sigma_floor_num;
+    const int128_t f_den = (int128_t)sigma_floor_den;
+    const int128_t floor_term = S1 * S1 * f_num * f_num;
+    const int128_t v_scaled = V * f_den * f_den;
+
+    const int128_t max_term = (v_scaled > floor_term) ? v_scaled : floor_term;
+
+    const int128_t k = (int128_t)k_stddev;
+    const int128_t lhs = dev2 * f_den * f_den;
+    const int128_t rhs = k * k * max_term;
+
+    return (lhs > rhs) ? 1 : 0;
+#else
+    double n_f = (double)count_n;
+    double mean = (double)sum_x / n_f;
+    double var = (((double)sum_x2_hi * 18446744073709551616.0) + (double)sum_x2_lo) / n_f - (mean * mean);
+    if (var < 0.0) var = 0.0;
+    double fl = ((double)sigma_floor_num / (double)sigma_floor_den) * fabs(mean);
+    double sd2 = var > fl * fl ? var : fl * fl;
+    double dev = (double)candidate_scaled - mean;
+    return ((dev * dev) > ((double)k_stddev * (double)k_stddev * sd2)) ? 1 : 0;
+#endif
+}
+
+/* ============================================================================
+ * C-9  Structure-of-Arrays (SoA) SIMD batch evaluation
+ * ==========================================================================*/
+EXPORT void fastpath_engine_evaluate_soa(
+    FastEngine *eng,
+    int32_t count,
+    const int32_t *source_ids,
+    const int32_t *instrument_ids,
+    const int32_t *event_types,
+    const double *prices,
+    const double *quantities,
+    const double *bids,
+    const double *asks,
+    const double *bid_sizes,
+    const double *ask_sizes,
+    const int64_t *sequences,
+    const double *exchange_ts,
+    const double *receive_ts,
+    const uint32_t *present_masks,
+    int32_t *out_statuses,
+    uint64_t *out_reasons
+) {
+    if (!out_statuses || !out_reasons || count <= 0) return;
+    if (!eng) {
+        for (int32_t idx = 0; idx < count; ++idx) {
+            FastEvent ev;
+            memset(&ev, 0, sizeof ev);
+            ev.source_id = source_ids[idx];
+            ev.instrument_id = instrument_ids[idx];
+            ev.event_type = event_types[idx];
+            ev.present_mask = present_masks ? present_masks[idx] : 0u;
+            ev.exchange_ts = exchange_ts[idx];
+            ev.receive_ts = receive_ts[idx];
+            ev.sequence_num = sequences[idx];
+            ev.price = prices[idx];
+            ev.quantity = quantities[idx];
+            ev.bid_price = bids[idx];
+            ev.ask_price = asks[idx];
+            ev.bid_size = bid_sizes ? bid_sizes[idx] : 0.0;
+            ev.ask_size = ask_sizes ? ask_sizes[idx] : 0.0;
+
+            FastResult res;
+            evaluate_nolock(NULL, &ev, &res);
+            out_statuses[idx] = res.status;
+            out_reasons[idx] = res.reason_mask;
+        }
+        return;
+    }
+    MD_LOCK(&eng->lock);
+
+    for (int32_t idx = 0; idx < count; ++idx) {
+        FastEvent ev;
+        memset(&ev, 0, sizeof ev);
+        ev.source_id = source_ids[idx];
+        ev.instrument_id = instrument_ids[idx];
+        ev.event_type = event_types[idx];
+        ev.present_mask = present_masks ? present_masks[idx] : 0u;
+        ev.exchange_ts = exchange_ts[idx];
+        ev.receive_ts = receive_ts[idx];
+        ev.sequence_num = sequences[idx];
+        ev.price = prices[idx];
+        ev.quantity = quantities[idx];
+        ev.bid_price = bids[idx];
+        ev.ask_price = asks[idx];
+        ev.bid_size = bid_sizes ? bid_sizes[idx] : 0.0;
+        ev.ask_size = ask_sizes ? ask_sizes[idx] : 0.0;
+
+        FastResult res;
+        if (idx + 2 < count) {
+            int32_t next_s = source_ids[idx + 2];
+            int32_t next_i = instrument_ids[idx + 2];
+            if (next_s >= 0 && next_s < MAX_SOURCES && next_i >= 0 && next_i < MAX_INSTRUMENTS) {
+                #if defined(__GNUC__) || defined(__clang__)
+                __builtin_prefetch(&eng->slots[get_slot(next_s, next_i)], 1, 3);
+                #elif defined(_MSC_VER)
+                _mm_prefetch((const char *)&eng->slots[get_slot(next_s, next_i)], _MM_HINT_T0);
+                #endif
+            }
+        }
+        evaluate_nolock(eng, &ev, &res);
+        out_statuses[idx] = res.status;
+        out_reasons[idx] = res.reason_mask;
+    }
+
+    MD_UNLOCK(&eng->lock);
+}
+
 EXPORT uint64_t fastpath_engine_eval_fast2(
     FastEngine *eng,
     int32_t source_id, int32_t instrument_id, int32_t event_type,
@@ -1022,6 +1169,30 @@ EXPORT void fastpath_evaluate(const FastEvent *ev, FastResult *res) {
 
 EXPORT void fastpath_evaluate_batch(const FastEvent *events, FastResult *results, int32_t count) {
     fastpath_engine_evaluate_batch(get_default_engine(), events, results, count);
+}
+
+EXPORT void fastpath_evaluate_soa(
+    int32_t count,
+    const int32_t *source_ids,
+    const int32_t *instrument_ids,
+    const int32_t *event_types,
+    const double *prices,
+    const double *quantities,
+    const double *bids,
+    const double *asks,
+    const double *bid_sizes,
+    const double *ask_sizes,
+    const int64_t *sequences,
+    const double *exchange_ts,
+    const double *receive_ts,
+    const uint32_t *present_masks,
+    int32_t *out_statuses,
+    uint64_t *out_reasons
+) {
+    fastpath_engine_evaluate_soa(
+        get_default_engine(), count, source_ids, instrument_ids, event_types,
+        prices, quantities, bids, asks, bid_sizes, ask_sizes, sequences,
+        exchange_ts, receive_ts, present_masks, out_statuses, out_reasons);
 }
 
 EXPORT uint64_t fastpath_eval_fast(

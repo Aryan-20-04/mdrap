@@ -428,6 +428,42 @@ def _load_native_lib():
                 ]
                 lib.fastpath_engine_evaluate_batch.restype = None
 
+            if hasattr(lib, "fastpath_exact_int_corridor_check"):
+                lib.fastpath_exact_int_corridor_check.argtypes = [
+                    ctypes.c_int64,
+                    ctypes.c_int64,
+                    ctypes.c_uint64,
+                    ctypes.c_uint64,
+                    ctypes.c_uint64,
+                    ctypes.c_int32,
+                    ctypes.c_int32,
+                    ctypes.c_int64,
+                    ctypes.c_int64,
+                ]
+                lib.fastpath_exact_int_corridor_check.restype = ctypes.c_int32
+
+            if hasattr(lib, "fastpath_engine_evaluate_soa"):
+                lib.fastpath_engine_evaluate_soa.argtypes = [
+                    ctypes.c_void_p,
+                    ctypes.c_int32,
+                    ctypes.POINTER(ctypes.c_int32),
+                    ctypes.POINTER(ctypes.c_int32),
+                    ctypes.POINTER(ctypes.c_int32),
+                    ctypes.POINTER(ctypes.c_double),
+                    ctypes.POINTER(ctypes.c_double),
+                    ctypes.POINTER(ctypes.c_double),
+                    ctypes.POINTER(ctypes.c_double),
+                    ctypes.POINTER(ctypes.c_double),
+                    ctypes.POINTER(ctypes.c_double),
+                    ctypes.POINTER(ctypes.c_int64),
+                    ctypes.POINTER(ctypes.c_double),
+                    ctypes.POINTER(ctypes.c_double),
+                    ctypes.POINTER(ctypes.c_uint32),
+                    ctypes.POINTER(ctypes.c_int32),
+                    ctypes.POINTER(ctypes.c_uint64),
+                ]
+                lib.fastpath_engine_evaluate_soa.restype = None
+
             # Phase F: Replay Buffer bindings
             if hasattr(lib, "fastpath_replay_record"):
                 lib.fastpath_replay_record.argtypes = [
@@ -2408,3 +2444,63 @@ def fast_batch_fleet_geofence(
                 for i in range(count)
             ]
     return None
+
+
+def exact_int_corridor_check(
+    candidate_scaled: int,
+    sum_x: int,
+    count_n: int,
+    sum_x2: int,
+    min_samples: int = 20,
+    k_stddev: int = 4,
+    sigma_floor_num: int = 1,
+    sigma_floor_den: int = 5000,
+) -> bool:
+    """Exact integer rolling price corridor anomaly check with zero drift and zero division.
+
+    Uses 128-bit exact integer arithmetic in native C when available, with
+    exact bit-for-bit arbitrary precision integer fallback in pure Python.
+    """
+    if count_n < min_samples:
+        return False
+
+    if _NATIVE_LIB and hasattr(_NATIVE_LIB, "fastpath_exact_int_corridor_check"):
+        hi = (sum_x2 >> 64) & 0xFFFFFFFFFFFFFFFF
+        lo = sum_x2 & 0xFFFFFFFFFFFFFFFF
+        return (
+            _NATIVE_LIB.fastpath_exact_int_corridor_check(
+                candidate_scaled,
+                sum_x,
+                count_n,
+                hi,
+                lo,
+                min_samples,
+                k_stddev,
+                sigma_floor_num,
+                sigma_floor_den,
+            )
+            == 1
+        )
+
+    # Pure Python exact integer reference
+    n = count_n
+    x = candidate_scaled
+    s1 = sum_x
+    s2 = sum_x2
+
+    dev = n * x - s1
+    dev2 = dev * dev
+
+    v = n * s2 - s1 * s1
+    if v < 0:
+        v = 0
+
+    floor_term = s1 * s1 * sigma_floor_num * sigma_floor_num
+    v_scaled = v * sigma_floor_den * sigma_floor_den
+
+    max_term = v_scaled if v_scaled > floor_term else floor_term
+
+    lhs = dev2 * sigma_floor_den * sigma_floor_den
+    rhs = k_stddev * k_stddev * max_term
+
+    return lhs > rhs

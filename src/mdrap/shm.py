@@ -61,15 +61,12 @@ except ImportError:
     HAS_SHM = False
 
 try:
-    from .fastpath import (
-        HAS_FASTPATH,
-        native_shm_read_slot as _native_shm_read_slot,
-        native_shm_write_tick as _native_shm_write_tick,
-    )
+    from . import fastpath
+
+    HAS_FASTPATH = getattr(fastpath, "HAS_FASTPATH", False)
 except (ImportError, AttributeError):
+    fastpath = None
     HAS_FASTPATH = False
-    _native_shm_read_slot = None
-    _native_shm_write_tick = None
 
 __stability__ = "stable"
 
@@ -351,9 +348,12 @@ class SHMWriter:
             return
 
         # Native acquire/release atomic publication fast path
-        if _native_shm_write_tick is not None:
+        write_fn = (
+            getattr(fastpath, "native_shm_write_tick", None) if fastpath else None
+        )
+        if write_fn is not None:
             try:
-                if _native_shm_write_tick(
+                if write_fn(
                     self.shm.buf,
                     self.slot_count,
                     seq,
@@ -761,9 +761,10 @@ class SHMReader:
                 self.overrun_stats.watermark_events += 1
 
         # Native acquire/release atomic slot read fast path
-        if _native_shm_read_slot is not None:
+        read_fn = getattr(fastpath, "native_shm_read_slot", None) if fastpath else None
+        if read_fn is not None:
             try:
-                native_item = _native_shm_read_slot(self.shm.buf, self.slot_count, seq)
+                native_item = read_fn(self.shm.buf, self.slot_count, seq)
                 if native_item is not None:
                     return native_item
             except Exception as exc:
