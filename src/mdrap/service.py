@@ -102,6 +102,17 @@ class MarketDataDaemon:
             in ("1", "true", "yes")
         )
 
+        if (
+            self.require_client_cert
+            and not self.tls_ca_cert
+            and self.ssl_context is None
+        ):
+            raise ValueError(
+                "require_client_cert=True requires tls_ca_cert (or MDRAP_TLS_CA_CERT) "
+                "to validate incoming client certificates. Falling back to system trust store "
+                "is prohibited for institutional mTLS."
+            )
+
         if self.ssl_context is None and self.tls_cert and self.tls_key:
             import ssl
 

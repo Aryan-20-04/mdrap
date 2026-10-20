@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import subprocess
 
-__version__ = "3.1.2"
+__version__ = "4.0.0"
 __stability__ = "stable"
 __segment_version__ = 1
 __journal_version__ = 1

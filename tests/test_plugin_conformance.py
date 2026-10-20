@@ -234,7 +234,7 @@ def test_plugin_validation_version_handshake():
     """Verify version handshake rejects plugins requiring future MDRAP versions."""
 
     class FuturePlugin:
-        __min_mdrap_version__ = "4.0.0"
+        __min_mdrap_version__ = "5.0.0"
 
         def connect(self) -> None:
             pass
@@ -248,7 +248,7 @@ def test_plugin_validation_version_handshake():
     is_valid, reason = validate_plugin("mdrap.adapters", FuturePlugin())
     assert is_valid is False
     assert reason is not None
-    assert "Version mismatch: plugin requires MDRAP >= 4.0.0" in reason
+    assert "Version mismatch: plugin requires MDRAP >= 5.0.0" in reason
 
     class CompatiblePlugin:
         __min_mdrap_version__ = "2.9.0"

@@ -92,10 +92,10 @@ MAX_FRAME_PAYLOAD_BYTES = (
     16 * 1024 * 1024
 )  # 16 MB boundary ceiling to prevent OOM on corrupted lengths
 
-# Sparse Index binary layout & geometry (Item 4.3)
-SPARSE_INDEX_MAGIC = b"MDIDX001"
-SPARSE_INDEX_HDR_FORMAT = ">8sII"  # magic(8), interval(4), count(4) = 16 bytes
-SPARSE_INDEX_HDR_SIZE = struct.calcsize(SPARSE_INDEX_HDR_FORMAT)  # 16
+# Sparse Index binary layout & geometry (Item 4.3 / N-14)
+SPARSE_INDEX_MAGIC = b"MDIDX002"
+SPARSE_INDEX_HDR_FORMAT = ">8sIIQQI"  # magic(8), interval(4), count(4), file_size(8), last_offset(8), crc(4) = 36 bytes
+SPARSE_INDEX_HDR_SIZE = struct.calcsize(SPARSE_INDEX_HDR_FORMAT)  # 36
 SPARSE_INDEX_ENTRY_FORMAT = ">QQ"  # offset(8), byte_pos(8) = 16 bytes
 SPARSE_INDEX_ENTRY_SIZE = struct.calcsize(SPARSE_INDEX_ENTRY_FORMAT)  # 16
 DEFAULT_SPARSE_INDEX_INTERVAL = 1024
@@ -104,7 +104,7 @@ DEFAULT_SPARSE_INDEX_INTERVAL = 1024
 def build_sparse_index(
     segment_path: str, interval: int = DEFAULT_SPARSE_INDEX_INTERVAL
 ) -> list[tuple[int, int]]:
-    """Build or rebuild a binary sparse index of (offset, byte_pos) for a segment file.
+    """Build or rebuild a verified binary sparse index of (offset, byte_pos) for a segment file.
 
     Fast-forwards past payload lengths without JSON parsing, achieving gigabyte-per-second
     sparse indexing throughput.
@@ -117,6 +117,9 @@ def build_sparse_index(
         or os.path.getsize(segment_path) < SEGMENT_HEADER_SIZE
     ):
         return entries
+
+    seg_size = os.path.getsize(segment_path)
+    last_offset = -1
 
     with open(segment_path, "rb") as f:
         hdr = f.read(SEGMENT_HEADER_SIZE)
@@ -134,6 +137,7 @@ def build_sparse_index(
             if f_magic != FRAME_MAGIC or length > MAX_FRAME_PAYLOAD_BYTES:
                 break
 
+            last_offset = offset
             if offset % interval == 0 or not entries:
                 entries.append((offset, pos))
 
@@ -141,14 +145,31 @@ def build_sparse_index(
 
     try:
         tmp_idx = idx_path + f".tmp.{os.getpid()}"
+        partial_hdr = struct.pack(
+            ">8sIIQQ",
+            SPARSE_INDEX_MAGIC,
+            interval,
+            len(entries),
+            seg_size,
+            last_offset if last_offset >= 0 else 0,
+        )
+        entries_bytes = b"".join(
+            struct.pack(SPARSE_INDEX_ENTRY_FORMAT, off, b_pos) for off, b_pos in entries
+        )
+        hdr_crc = zlib.crc32(partial_hdr + entries_bytes) & 0xFFFFFFFF
         with open(tmp_idx, "wb") as f_idx:
             f_idx.write(
                 struct.pack(
-                    SPARSE_INDEX_HDR_FORMAT, SPARSE_INDEX_MAGIC, interval, len(entries)
+                    SPARSE_INDEX_HDR_FORMAT,
+                    SPARSE_INDEX_MAGIC,
+                    interval,
+                    len(entries),
+                    seg_size,
+                    last_offset if last_offset >= 0 else 0,
+                    hdr_crc,
                 )
             )
-            for off, b_pos in entries:
-                f_idx.write(struct.pack(SPARSE_INDEX_ENTRY_FORMAT, off, b_pos))
+            f_idx.write(entries_bytes)
         os.replace(tmp_idx, idx_path)
     except Exception as exc:
         logger.debug("Failed writing sparse index file %s: %s", idx_path, exc)
@@ -159,32 +180,92 @@ def build_sparse_index(
 def load_sparse_index(
     segment_path: str, interval: int = DEFAULT_SPARSE_INDEX_INTERVAL
 ) -> list[tuple[int, int]]:
-    """Load binary sparse index from disk, or build it on-the-fly if missing/corrupted."""
+    """Load binary sparse index from disk, or build it on-the-fly if missing, stale, or corrupted."""
     idx_path = os.path.splitext(segment_path)[0] + ".idx"
-    if os.path.isfile(idx_path):
+    if os.path.isfile(idx_path) and os.path.isfile(segment_path):
         try:
+            current_seg_size = os.path.getsize(segment_path)
             with open(idx_path, "rb") as f:
                 hdr_bytes = f.read(SPARSE_INDEX_HDR_SIZE)
                 if len(hdr_bytes) == SPARSE_INDEX_HDR_SIZE:
-                    magic, intv, count = struct.unpack(
+                    magic, intv, count, bound_size, last_off, exp_crc = struct.unpack(
                         SPARSE_INDEX_HDR_FORMAT, hdr_bytes
                     )
-                    if magic == SPARSE_INDEX_MAGIC and count > 0:
+                    partial_hdr = struct.pack(
+                        ">8sIIQQ", magic, intv, count, bound_size, last_off
+                    )
+                    if (
+                        magic == SPARSE_INDEX_MAGIC
+                        and bound_size == current_seg_size
+                        and count > 0
+                    ):
                         expected_data_len = count * SPARSE_INDEX_ENTRY_SIZE
                         data = f.read(expected_data_len)
                         if len(data) == expected_data_len:
-                            entries = []
-                            for i in range(count):
-                                off, b_pos = struct.unpack_from(
-                                    SPARSE_INDEX_ENTRY_FORMAT,
-                                    data,
-                                    i * SPARSE_INDEX_ENTRY_SIZE,
-                                )
-                                entries.append((off, b_pos))
-                            return entries
+                            actual_crc = zlib.crc32(partial_hdr + data) & 0xFFFFFFFF
+                            if actual_crc == exp_crc:
+                                entries = []
+                                for i in range(count):
+                                    off, b_pos = struct.unpack_from(
+                                        SPARSE_INDEX_ENTRY_FORMAT,
+                                        data,
+                                        i * SPARSE_INDEX_ENTRY_SIZE,
+                                    )
+                                    if (
+                                        b_pos >= current_seg_size
+                                        or b_pos < SEGMENT_HEADER_SIZE
+                                    ):
+                                        entries = []
+                                        break
+                                    entries.append((off, b_pos))
+                                if entries:
+                                    return entries
         except Exception:
             pass
     return build_sparse_index(segment_path, interval=interval)
+
+
+def _verify_candidate_frame(
+    f: Any,
+    candidate_pos: int,
+    expected_offset: int,
+    seg_file_size: int,
+    default_ver: int = LOG_VERSION,
+) -> bool:
+    """Verify that candidate_pos points to a valid, uncorrupted frame matching expected_offset."""
+    if (
+        candidate_pos < SEGMENT_HEADER_SIZE
+        or candidate_pos + FRAME_HEADER_SIZE > seg_file_size
+    ):
+        return False
+    saved_pos = f.tell()
+    try:
+        f.seek(candidate_pos)
+        frame_hdr_bytes = f.read(FRAME_HEADER_SIZE)
+        if len(frame_hdr_bytes) < FRAME_HEADER_SIZE:
+            return False
+        f_magic, f_ver, offset, ts, length, expected_crc = struct.unpack(
+            FRAME_HEADER_FORMAT, frame_hdr_bytes
+        )
+        if (
+            f_magic != FRAME_MAGIC
+            or offset != expected_offset
+            or length > MAX_FRAME_PAYLOAD_BYTES
+            or candidate_pos + FRAME_HEADER_SIZE + length > seg_file_size
+        ):
+            return False
+        payload_bytes = f.read(length)
+        if len(payload_bytes) < length:
+            return False
+        effective_ver = f_ver if f_ver in SUPPORTED_LOG_VERSIONS else default_ver
+        actual_crc = compute_frame_crc(
+            frame_hdr_bytes[:24], payload_bytes, version=effective_ver
+        )
+        return actual_crc == expected_crc
+    except Exception:
+        return False
+    finally:
+        f.seek(saved_pos)
 
 
 GENESIS_HASH = "0" * 64
@@ -592,6 +673,18 @@ class IngestLog:
                 valid_pos = pos + FRAME_HEADER_SIZE + length
                 if offset > highest_offset:
                     highest_offset = offset
+
+        if os.path.exists(filepath) and os.path.getsize(filepath) != size:
+            idx_path = os.path.splitext(filepath)[0] + ".idx"
+            try:
+                if os.path.isfile(idx_path):
+                    os.remove(idx_path)
+            except OSError:
+                pass
+            try:
+                build_sparse_index(filepath, interval=self.sparse_index_interval)
+            except Exception:
+                pass
 
         return highest_offset
 
@@ -1234,6 +1327,7 @@ class IngestLog:
                 if magic != LOG_MAGIC or ver not in SUPPORTED_LOG_VERSIONS:
                     continue
 
+                sought_from_index = False
                 if start_offset > seg_start:
                     sparse_idx = load_sparse_index(
                         path, interval=self.sparse_index_interval
@@ -1242,8 +1336,26 @@ class IngestLog:
                         offsets = [e[0] for e in sparse_idx]
                         b_idx = bisect.bisect_right(offsets, start_offset) - 1
                         if b_idx >= 0:
-                            f.seek(sparse_idx[b_idx][1])
+                            cand_off, cand_pos = sparse_idx[b_idx]
+                            seg_sz = os.path.getsize(path)
+                            if _verify_candidate_frame(
+                                f, cand_pos, cand_off, seg_sz, ver
+                            ):
+                                f.seek(cand_pos)
+                                sought_from_index = True
+                            else:
+                                logger.warning(
+                                    "Sparse index entry (%d, %d) invalid in %s; falling back to linear scan",
+                                    cand_off,
+                                    cand_pos,
+                                    path,
+                                )
+                                build_sparse_index(
+                                    path, interval=self.sparse_index_interval
+                                )
+                                f.seek(SEGMENT_HEADER_SIZE)
 
+                yielded_in_seg = False
                 while True:
                     frame_hdr_bytes = f.read(FRAME_HEADER_SIZE)
                     if len(frame_hdr_bytes) < FRAME_HEADER_SIZE:
@@ -1252,11 +1364,19 @@ class IngestLog:
                         FRAME_HEADER_FORMAT, frame_hdr_bytes
                     )
                     if f_magic != FRAME_MAGIC:
+                        if sought_from_index and not yielded_in_seg:
+                            f.seek(SEGMENT_HEADER_SIZE)
+                            sought_from_index = False
+                            continue
                         break
                     if (
                         length > MAX_FRAME_PAYLOAD_BYTES
                         or length > self.max_segment_bytes
                     ):
+                        if sought_from_index and not yielded_in_seg:
+                            f.seek(SEGMENT_HEADER_SIZE)
+                            sought_from_index = False
+                            continue
                         logger.warning(
                             "Oversized frame length %d at offset %d in %s; skipping remaining segment",
                             length,
@@ -1267,6 +1387,10 @@ class IngestLog:
                         break
                     payload_bytes = f.read(length)
                     if len(payload_bytes) < length:
+                        if sought_from_index and not yielded_in_seg:
+                            f.seek(SEGMENT_HEADER_SIZE)
+                            sought_from_index = False
+                            continue
                         break
                     effective_ver = f_ver if f_ver in SUPPORTED_LOG_VERSIONS else ver
                     actual_crc = compute_frame_crc(
@@ -1290,6 +1414,7 @@ class IngestLog:
                                 receive_timestamp=rec.get("receive_timestamp") or ts,
                                 raw_id=rec.get("raw_id"),
                             )
+                            yielded_in_seg = True
                             yield offset, raw_evt
                         except Exception as exc:
                             logger.warning(
@@ -1325,6 +1450,7 @@ class IngestLog:
                 if magic != LOG_MAGIC or ver not in SUPPORTED_LOG_VERSIONS:
                     continue
 
+                sought_from_index = False
                 if target_offset > seg_start:
                     sparse_idx = load_sparse_index(
                         path, interval=self.sparse_index_interval
@@ -1333,7 +1459,24 @@ class IngestLog:
                         offsets = [e[0] for e in sparse_idx]
                         b_idx = bisect.bisect_right(offsets, target_offset) - 1
                         if b_idx >= 0:
-                            f.seek(sparse_idx[b_idx][1])
+                            cand_off, cand_pos = sparse_idx[b_idx]
+                            seg_sz = os.path.getsize(path)
+                            if _verify_candidate_frame(
+                                f, cand_pos, cand_off, seg_sz, ver
+                            ):
+                                f.seek(cand_pos)
+                                sought_from_index = True
+                            else:
+                                logger.warning(
+                                    "Sparse index entry (%d, %d) invalid in %s; falling back to linear scan",
+                                    cand_off,
+                                    cand_pos,
+                                    path,
+                                )
+                                build_sparse_index(
+                                    path, interval=self.sparse_index_interval
+                                )
+                                f.seek(SEGMENT_HEADER_SIZE)
 
                 while True:
                     frame_hdr_bytes = f.read(FRAME_HEADER_SIZE)
@@ -1343,13 +1486,25 @@ class IngestLog:
                         FRAME_HEADER_FORMAT, frame_hdr_bytes
                     )
                     if f_magic != FRAME_MAGIC or length > MAX_FRAME_PAYLOAD_BYTES:
+                        if sought_from_index:
+                            f.seek(SEGMENT_HEADER_SIZE)
+                            sought_from_index = False
+                            continue
                         break
 
                     if offset > target_offset:
+                        if sought_from_index:
+                            f.seek(SEGMENT_HEADER_SIZE)
+                            sought_from_index = False
+                            continue
                         return None
 
                     payload_bytes = f.read(length)
                     if len(payload_bytes) < length:
+                        if sought_from_index:
+                            f.seek(SEGMENT_HEADER_SIZE)
+                            sought_from_index = False
+                            continue
                         break
 
                     if offset == target_offset:
@@ -1710,9 +1865,25 @@ class IngestLog:
                         os.fsync(f_out.fileno())
                     report["repaired_files"].append(s_path)
                     report["recovered_records"] += len(recovered_in_file)
+                    idx_path = os.path.splitext(s_path)[0] + ".idx"
+                    try:
+                        if os.path.isfile(idx_path):
+                            os.remove(idx_path)
+                    except OSError:
+                        pass
+                    try:
+                        build_sparse_index(s_path)
+                    except Exception:
+                        pass
                 else:
                     try:
                         os.remove(s_path)
+                    except OSError:
+                        pass
+                    idx_path = os.path.splitext(s_path)[0] + ".idx"
+                    try:
+                        if os.path.isfile(idx_path):
+                            os.remove(idx_path)
                     except OSError:
                         pass
             else:

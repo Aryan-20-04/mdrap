@@ -3,9 +3,28 @@
 All notable changes to MDRAP are documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] - Improvement Programs (I-1 through I-10)
+## [4.0.0] - 2026-10-20
 
-### Added
+### Section 22 Audit Remediation (Findings N-14 through N-19)
+- **N-14: Sparse WAL Index Resilience & Point-of-Use Verification**:
+  - Upgraded binary sparse index format to `MDIDX002` with 36-byte header binding segment file size and last offset, with CRC32 integrity verification over header and entries.
+  - Implemented point-of-use frame verification (`_verify_candidate_frame`) in `iter_from()` and `seek_record()` validating `FRAME_MAGIC`, offset, length, and payload CRC prior to seeking.
+  - Added self-healing fallback: on index corruption, shifted byte positions, or truncation, queries transparently rewind to segment header (`SEGMENT_HEADER_SIZE`), scan linearly, and rebuild the index file.
+  - Wired automatic index cleanup and rebuild into `IngestLog.salvage()` and torn-tail recovery (`_verify_and_repair_segment()`), guaranteeing 100% record reachability without silent drops or skips.
+- **N-15: Fastpath Native Capacity Clamping & False Invalid Elimination**:
+  - Bound native C compiled static table limits via `fastpath_get_compiled_max_sources()` (32) and `fastpath_get_compiled_max_instruments()` (8192).
+  - Enforced `effective_max_instruments = min(max_instruments, compiled_max_instruments)` in `FastQualityEngine` with dynamic property setters.
+  - Clamped fast-path routing so instrument and source IDs exceeding compiled capacities automatically divert to pure-Python fallback, eliminating false `INVALID / SCHEMA_VIOLATION` classifications and maintaining bit-for-bit parity across tiers.
+- **N-16: Multi-Run Benchmark Variance Scoring**:
+  - Updated `benchmarks/bench_fallback_cliff.py` to execute multi-run measurement loops (`--runs 5`), tracking min, median, max throughput, and latency percentiles across native in-bounds, overflow fallback, and pure-Python execution tiers.
+- **N-17: Strict Mutual TLS (mTLS) CA Enforcement**:
+  - Configured `MarketDataDaemon.__init__` to strictly raise `ValueError` when `require_client_cert=True` is set without a designated `tls_ca_cert` (or `MDRAP_TLS_CA_CERT`).
+  - Prohibited fallback to host system trust store for institutional client certificate validation.
+- **N-18 & N-19: Release Integrity & Verifiable Claims Manifest**:
+  - Aligned documentation test claims with clean-checkout verification figures.
+  - Promoted platform release to canonical version `4.0.0`.
+
+### Improvement Programs (I-1 through I-10)
 - **I-1: Constant-Cost Transactional State**: Replaced deep-copy rollbacks with an $O(1)$ zero-allocation `Transaction` undo journal in `src/mdrap/engine.py`. Converted unsequenced deduplication sliding window to `collections.deque` ($O(1)$ popleft). Validated flat latency (~500–600 µs submit p50) across 24, 1,000, and 10,000 instruments.
 - **I-2: Sessions & Sequence Epochs**: Added slot coordinates `(source, instrument, epoch_id)` supporting `strict`, `session_marker`, and `auto_detect` sequence reset policies. Tagged sequence resets with `Reason.EPOCH_RESET` (Severity: VALID), eliminating 199/200 false alarms on start-of-day sequence resets.
 - **I-3: Deterministic Simulation Fuzzer & Formal WAL Model**: Seeded fault harness (`tests/test_simulation_fuzz.py`) simulating torn tail writes, corrupt magic headers, bit flips, and burst out-of-order delivery with 100% lockstep parity against differential deepcopy oracle.

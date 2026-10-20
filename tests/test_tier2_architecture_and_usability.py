@@ -209,8 +209,10 @@ def test_mtls_service_configuration():
         port=9999,
         allow_insecure_bind=True,
         require_client_cert=True,
+        tls_ca_cert="dummy_ca.crt",
     )
     assert daemon.require_client_cert is True
+    assert daemon.tls_ca_cert == "dummy_ca.crt"
 
     client = StreamClient(
         host="127.0.0.1",

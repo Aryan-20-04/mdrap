@@ -959,6 +959,14 @@ EXPORT void fastpath_init(double staleness_threshold_s, double anomaly_stddev, i
     }
 }
 
+EXPORT int32_t fastpath_get_compiled_max_sources(void) {
+    return MAX_SOURCES;
+}
+
+EXPORT int32_t fastpath_get_compiled_max_instruments(void) {
+    return MAX_INSTRUMENTS;
+}
+
 EXPORT void fastpath_reset(void) {
     if (g_default_engine) {
         fastpath_engine_reset(g_default_engine);

@@ -36,6 +36,8 @@ except ImportError:
 # ---------------------------------------------------------------------------
 # Native C Kernel ABI Geometry Constants (Matching fastpath.c)
 # ---------------------------------------------------------------------------
+COMPILED_MAX_SOURCES: int = 32
+COMPILED_MAX_INSTRUMENTS: int = 8192
 MAX_SOURCES: int = int(os.environ.get("MDRAP_FASTPATH_MAX_SOURCES", "32"))
 MAX_INSTRUMENTS: int = int(os.environ.get("MDRAP_FASTPATH_MAX_INSTRUMENTS", "8192"))
 INSTRUMENT_SHIFT: int = 13
@@ -317,6 +319,14 @@ def _load_native_lib():
             if hasattr(lib, "fastpath_noop"):
                 lib.fastpath_noop.argtypes = lib.fastpath_eval_fast.argtypes
                 lib.fastpath_noop.restype = ctypes.c_uint64
+
+            if hasattr(lib, "fastpath_get_compiled_max_sources"):
+                lib.fastpath_get_compiled_max_sources.argtypes = []
+                lib.fastpath_get_compiled_max_sources.restype = ctypes.c_int32
+
+            if hasattr(lib, "fastpath_get_compiled_max_instruments"):
+                lib.fastpath_get_compiled_max_instruments.argtypes = []
+                lib.fastpath_get_compiled_max_instruments.restype = ctypes.c_int32
 
             # Phase 2: Explicit FastEngine context bindings
             if hasattr(lib, "fastpath_engine_abi_version"):
@@ -804,6 +814,11 @@ def _load_native_lib():
 
 
 _NATIVE_LIB = _load_native_lib()
+if _NATIVE_LIB is not None:
+    if hasattr(_NATIVE_LIB, "fastpath_get_compiled_max_sources"):
+        COMPILED_MAX_SOURCES = _NATIVE_LIB.fastpath_get_compiled_max_sources()
+    if hasattr(_NATIVE_LIB, "fastpath_get_compiled_max_instruments"):
+        COMPILED_MAX_INSTRUMENTS = _NATIVE_LIB.fastpath_get_compiled_max_instruments()
 HAS_FASTPATH: bool = bool(_NATIVE_LIB is not None)
 _FAST_EVAL = _NATIVE_LIB.fastpath_eval_fast if _NATIVE_LIB else None
 _ENGINE_FAST_EVAL = (
@@ -861,8 +876,33 @@ class FastQualityEngine:
 
         self.counts = {"VALID": 0, "SUSPICIOUS": 0, "INVALID": 0}
         self.reason_counts: dict[str, int] = {}
-        self.max_sources: int = MAX_SOURCES
-        self.max_instruments: int = MAX_INSTRUMENTS
+        self.compiled_max_sources: int = COMPILED_MAX_SOURCES
+        self.compiled_max_instruments: int = COMPILED_MAX_INSTRUMENTS
+        env_sources = os.environ.get("MDRAP_FASTPATH_MAX_SOURCES")
+        self._max_sources: int = int(env_sources) if env_sources else MAX_SOURCES
+        env_instruments = os.environ.get("MDRAP_FASTPATH_MAX_INSTRUMENTS")
+        self._max_instruments: int = (
+            int(env_instruments) if env_instruments else MAX_INSTRUMENTS
+        )
+        self.effective_max_sources: int = min(
+            self._max_sources, self.compiled_max_sources
+        )
+        self.effective_max_instruments: int = min(
+            self._max_instruments, self.compiled_max_instruments
+        )
+        if (
+            self._max_instruments > self.compiled_max_instruments
+            or self._max_sources > self.compiled_max_sources
+        ):
+            logger.warning(
+                "[fastpath] Configured capacity (sources=%d, instruments=%d) exceeds compiled native C capacity (sources=%d, instruments=%d). "
+                "Native static tables remain bounded at compiled limits; events exceeding compiled limits will automatically route "
+                "to pure-Python fallback to prevent false schema violations.",
+                self._max_sources,
+                self._max_instruments,
+                self.compiled_max_sources,
+                self.compiled_max_instruments,
+            )
         self.fallback_count: int = 0
         self.slot_overflow_count: int = 0
         self._source_map = dict(_SOURCE_ID_MAP)
@@ -986,6 +1026,26 @@ class FastQualityEngine:
             self._inst_map[inst] = len(self._inst_map)
         return self._inst_map[inst]
 
+    @property
+    def max_instruments(self) -> int:
+        return self._max_instruments
+
+    @max_instruments.setter
+    def max_instruments(self, val: int) -> None:
+        self._max_instruments = int(val)
+        self.effective_max_instruments = min(
+            self._max_instruments, self.compiled_max_instruments
+        )
+
+    @property
+    def max_sources(self) -> int:
+        return self._max_sources
+
+    @max_sources.setter
+    def max_sources(self, val: int) -> None:
+        self._max_sources = int(val)
+        self.effective_max_sources = min(self._max_sources, self.compiled_max_sources)
+
     def evaluate(self, event: CanonicalEvent) -> CanonicalEvent:
         if self.thread_safe:
             with self._eval_lock:
@@ -1068,21 +1128,23 @@ class FastQualityEngine:
                     self.reason_counts[r] = self.reason_counts.get(r, 0) + 1
                 return res
 
-        # Graceful fallback: C static tables have MAX_SOURCES, MAX_INSTRUMENTS bounds.
-        # If the number of unique sources or instruments exceeds bounds, evaluate with Python engine.
-        if s_id >= self.max_sources or i_id >= self.max_instruments:
+        # Graceful fallback: C static tables have COMPILED_MAX_SOURCES, COMPILED_MAX_INSTRUMENTS bounds.
+        # If the number of unique sources or instruments exceeds effective compiled bounds, evaluate with Python engine.
+        if s_id >= self.effective_max_sources or i_id >= self.effective_max_instruments:
             self.fallback_count += 1
             self.slot_overflow_count += 1
             if self.slot_overflow_count == 1 or self.slot_overflow_count % 10000 == 0:
                 logger.warning(
                     "[fastpath] Slot capacity exceeded (s_id=%d >= %d or i_id=%d >= %d). "
                     "Routing event to pure-Python fallback engine (total fallbacks: %d). "
-                    "Configure MDRAP_FASTPATH_MAX_INSTRUMENTS to scale native capacity.",
+                    "Native capacity is safely bounded at compiled limits (%d sources, %d instruments).",
                     s_id,
-                    self.max_sources,
+                    self.effective_max_sources,
                     i_id,
-                    self.max_instruments,
+                    self.effective_max_instruments,
                     self.slot_overflow_count,
+                    self.compiled_max_sources,
+                    self.compiled_max_instruments,
                 )
             if not self._fallback_engine:
                 self._fallback_engine = QualityEngine(self.cfg)
@@ -1244,7 +1306,10 @@ class FastQualityEngine:
             s_id = self._get_source_id(ev.source)
             i_id = self._get_instrument_id(ev.instrument_id)
 
-            if s_id >= self.max_sources or i_id >= self.max_instruments:
+            if (
+                s_id >= self.effective_max_sources
+                or i_id >= self.effective_max_instruments
+            ):
                 self.fallback_count += 1
                 self.slot_overflow_count += 1
                 needs_fallback.append(idx)
@@ -1480,6 +1545,10 @@ class FastQualityEngine:
             "slot_overflow_count": self.slot_overflow_count,
             "max_sources": self.max_sources,
             "max_instruments": self.max_instruments,
+            "compiled_max_sources": self.compiled_max_sources,
+            "compiled_max_instruments": self.compiled_max_instruments,
+            "effective_max_sources": self.effective_max_sources,
+            "effective_max_instruments": self.effective_max_instruments,
             "is_native": self.is_native,
         }
 

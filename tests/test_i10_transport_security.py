@@ -73,3 +73,45 @@ def test_non_loopback_binding_allowed_with_explicit_override() -> None:
         daemon2.close()
     finally:
         os.environ.pop("MDRAP_ALLOW_INSECURE_BIND", None)
+
+
+def test_require_client_cert_requires_ca_cert() -> None:
+    """Test that require_client_cert=True requires tls_ca_cert or ssl_context (Finding N-17)."""
+    # 1. Constructor flag without CA cert raises ValueError
+    with pytest.raises(
+        ValueError, match="require_client_cert=True requires tls_ca_cert"
+    ):
+        MarketDataDaemon(
+            host="127.0.0.1",
+            require_client_cert=True,
+            tls_ca_cert=None,
+            db_path=":memory:",
+            enable_shm=False,
+        )
+
+    # 2. Environment variable MDRAP_REQUIRE_CLIENT_CERT=1 without CA cert raises ValueError
+    try:
+        os.environ["MDRAP_REQUIRE_CLIENT_CERT"] = "1"
+        with pytest.raises(
+            ValueError, match="require_client_cert=True requires tls_ca_cert"
+        ):
+            MarketDataDaemon(
+                host="127.0.0.1",
+                tls_ca_cert=None,
+                db_path=":memory:",
+                enable_shm=False,
+            )
+    finally:
+        os.environ.pop("MDRAP_REQUIRE_CLIENT_CERT", None)
+
+    # 3. Supplying ssl_context directly bypasses CA cert check
+    dummy_ctx = MagicMock(spec=ssl.SSLContext)
+    daemon = MarketDataDaemon(
+        host="127.0.0.1",
+        require_client_cert=True,
+        ssl_context=dummy_ctx,
+        db_path=":memory:",
+        enable_shm=False,
+    )
+    assert daemon.require_client_cert is True
+    daemon.close()

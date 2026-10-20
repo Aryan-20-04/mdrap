@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import statistics
 import sys
 import time
 
@@ -79,55 +80,82 @@ def bench_engine(engine: Any, events: list[CanonicalEvent], name: str) -> dict[s
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="MDRAP Fallback Cliff Benchmark")
+    parser = argparse.ArgumentParser(description="MDRAP Fallback Cliff Benchmark (Item 4.1 / N-16)")
     parser.add_argument("--events", type=int, default=30_000, help="Number of events per scenario")
+    parser.add_argument("--runs", type=int, default=5, help="Number of measurement runs for variance scoring")
     args = parser.parse_args()
 
-    print(f"[*] Running Fallback Cliff Benchmark with {args.events:,} events per run...")
+    print(f"[*] Running Fallback Cliff Benchmark with {args.events:,} events over {args.runs} runs...")
     cfg = QualityConfig()
 
-    # Scenario 1: Native In-Bounds (Instruments 0..2000 < MAX_INSTRUMENTS)
-    eng_native = FastQualityEngine(cfg)
-    in_bounds_events = generate_test_events(args.events, instrument_prefix="INBOUNDS", id_offset=0)
-    res_in_bounds = bench_engine(eng_native, in_bounds_events, "Native In-Bounds (<8192)")
+    runs_data: dict[str, list[dict[str, Any]]] = {
+        "Native In-Bounds (<8192)": [],
+        "Native Slot Overflow (Fallback)": [],
+        "Pure Python Baseline": [],
+    }
+    cliff_ratios: list[float] = []
+    total_divergences = 0
+    total_fallbacks = 0
 
-    # Scenario 2: Native Overflow -> Pure Python Fallback (Instruments starting at offset 20000 >= MAX_INSTRUMENTS)
-    eng_overflow = FastQualityEngine(cfg)
-    # Register 8200 dummy instruments so subsequent instruments exceed MAX_INSTRUMENTS
-    for i in range(8250):
-        eng_overflow._get_instrument_id(f"FILLER_{i}")
+    for run_idx in range(1, args.runs + 1):
+        # Scenario 1: Native In-Bounds (Instruments 0..2000 < MAX_INSTRUMENTS)
+        eng_native = FastQualityEngine(cfg)
+        in_bounds_events = generate_test_events(args.events, instrument_prefix="INBOUNDS", id_offset=0)
+        res_in_bounds = bench_engine(eng_native, in_bounds_events, "Native In-Bounds (<8192)")
 
-    overflow_events = generate_test_events(args.events, instrument_prefix="OVERFLOW", id_offset=9000)
-    res_overflow = bench_engine(eng_overflow, overflow_events, "Native Slot Overflow (Fallback)")
+        # Scenario 2: Native Overflow -> Pure Python Fallback (Instruments starting at offset 20000 >= MAX_INSTRUMENTS)
+        eng_overflow = FastQualityEngine(cfg)
+        for i in range(8250):
+            eng_overflow._get_instrument_id(f"FILLER_{i}")
+        overflow_events = generate_test_events(args.events, instrument_prefix="OVERFLOW", id_offset=9000)
+        res_overflow = bench_engine(eng_overflow, overflow_events, "Native Slot Overflow (Fallback)")
 
-    # Scenario 3: Pure Python QualityEngine
-    eng_python = QualityEngine(cfg)
-    py_events = generate_test_events(args.events, instrument_prefix="PYTHON", id_offset=0)
-    res_python = bench_engine(eng_python, py_events, "Pure Python Baseline")
+        # Scenario 3: Pure Python QualityEngine
+        eng_python = QualityEngine(cfg)
+        py_events = generate_test_events(args.events, instrument_prefix="PYTHON", id_offset=0)
+        res_python = bench_engine(eng_python, py_events, "Pure Python Baseline")
 
-    # Divergence verification
-    native_st = [eng_native.evaluate(ev).quality_status for ev in in_bounds_events[:500]]
-    py_st = [eng_python.evaluate(ev).quality_status for ev in in_bounds_events[:500]]
-    divergences = sum(1 for a, b in zip(native_st, py_st) if a != b)
+        # Correctness check on first run
+        if run_idx == 1:
+            native_st = [eng_native.evaluate(ev).quality_status for ev in in_bounds_events[:500]]
+            py_st = [eng_python.evaluate(ev).quality_status for ev in in_bounds_events[:500]]
+            total_divergences = sum(1 for a, b in zip(native_st, py_st) if a != b)
+            total_fallbacks = eng_overflow.fallback_count
 
-    cliff_ratio = (
-        res_in_bounds["throughput_eps"] / res_overflow["throughput_eps"]
-        if res_overflow["throughput_eps"] > 0
-        else 1.0
-    )
+        ratio = (
+            res_in_bounds["throughput_eps"] / res_overflow["throughput_eps"]
+            if res_overflow["throughput_eps"] > 0
+            else 1.0
+        )
+        cliff_ratios.append(ratio)
+        runs_data["Native In-Bounds (<8192)"].append(res_in_bounds)
+        runs_data["Native Slot Overflow (Fallback)"].append(res_overflow)
+        runs_data["Pure Python Baseline"].append(res_python)
 
-    print("\n" + "=" * 80)
-    print("MDRAP FALLBACK CLIFF MEASUREMENT SCORECARD (Item 4.1)")
-    print("=" * 80)
-    print(f"{'Execution Mode':<35} | {'Throughput':<14} | {'p50 (us)':<10} | {'p99 (us)':<10}")
-    print("-" * 80)
-    for r in [res_in_bounds, res_overflow, res_python]:
-        print(f"{r['name']:<35} | {r['throughput_eps']:>10.1f} EPS | {r['latency_p50_us']:>8.2f} us | {r['latency_p99_us']:>8.2f} us")
-    print("-" * 80)
-    print(f"Fallback Cliff Ratio (In-Bounds / Fallback): {cliff_ratio:.2f}x throughput difference")
-    print(f"Correctness Divergences Across Modes:      {divergences} (100% parity verified)")
-    print(f"Native Engine Fallback Invocations:       {eng_overflow.fallback_count} recorded")
-    print("=" * 80)
+    print("\n" + "=" * 88)
+    print(f"MDRAP MULTI-RUN FALLBACK CLIFF SCORECARD ({args.runs} runs, {args.events:,} events/run)")
+    print("=" * 88)
+    print(f"{'Execution Mode':<32} | {'Median EPS':<12} | {'Min - Max EPS':<22} | {'Median p50':<11}")
+    print("-" * 88)
+
+    for mode, results in runs_data.items():
+        tps = [r["throughput_eps"] for r in results]
+        p50s = [r["latency_p50_us"] for r in results]
+        med_tp = statistics.median(tps)
+        min_tp = min(tps)
+        max_tp = max(tps)
+        med_p50 = statistics.median(p50s)
+        tp_range = f"{min_tp:>9.1f} - {max_tp:>9.1f}"
+        print(f"{mode:<32} | {med_tp:>10.1f} | {tp_range:<22} | {med_p50:>8.2f} us")
+
+    print("-" * 88)
+    med_cliff = statistics.median(cliff_ratios)
+    min_cliff = min(cliff_ratios)
+    max_cliff = max(cliff_ratios)
+    print(f"Fallback Cliff Ratio Range:      {min_cliff:.2f}x - {max_cliff:.2f}x (median: {med_cliff:.2f}x)")
+    print(f"Correctness Divergences Across Modes: {total_divergences} (100% parity verified)")
+    print(f"Native Engine Fallback Invocations:  {total_fallbacks} recorded")
+    print("=" * 88)
 
     return 0
 
