@@ -33,12 +33,11 @@ __stability__ = "stable"
 
 def _is_finite_num(val: Any) -> bool:
     """Safe check if value is a finite number, protecting against huge ints that raise OverflowError."""
-    if isinstance(val, bool):
-        return False
-    if isinstance(val, int):
-        return val.bit_length() <= 1024
-    if isinstance(val, float):
+    t = type(val)
+    if t is float:
         return math.isfinite(val)
+    if t is int:
+        return val.bit_length() <= 1024
     return False
 
 
@@ -66,6 +65,9 @@ class EngineState:
     epoch_state: dict[str, int] = field(default_factory=dict)
     epoch_ts: dict[str, float] = field(default_factory=dict)
     session_state: dict[str, str] = field(default_factory=dict)
+    _price_stats: dict[str, tuple[float, float, int]] = field(
+        default_factory=dict, repr=False
+    )
 
     def __post_init__(self) -> None:
         if not isinstance(self.dedup_window, deque):
@@ -99,6 +101,7 @@ class EngineState:
             epoch_state=dict(self.epoch_state),
             epoch_ts=dict(self.epoch_ts),
             session_state=dict(self.session_state),
+            _price_stats={k: v for k, v in self._price_stats.items()},
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -232,6 +235,8 @@ class Transaction:
                     d[k] = old_val
                 else:
                     d.pop(k, None)
+                if d is self.state.price_windows:
+                    self.state._price_stats.pop(k, None)
             elif op == _OP_BBO:
                 inst, src, had_inst, had_src, old_quote = (
                     item[1],
@@ -1580,10 +1585,33 @@ class Engine:
             if txn is not None:
                 txn.record_price_window(slot_key)
             prices = state.price_windows.setdefault(slot_key, [])
+            n_prices = len(prices)
             price_anomaly = False
-            if len(prices) >= 20:
-                mean = sum(prices) / len(prices)
-                variance = sum((p - mean) ** 2 for p in prices) / len(prices)
+
+            stats = state._price_stats.get(slot_key)
+            if stats is None and n_prices >= 3:
+                mean = sum(prices) / n_prices
+                m2 = sum((p - mean) ** 2 for p in prices)
+                stats = (mean, m2, 0)
+                state._price_stats[slot_key] = stats
+
+            if stats is not None and n_prices >= 20:
+                mean, m2, _ = stats
+                variance = m2 / n_prices
+                std = math.sqrt(variance) if variance > 0.0 else 0.0
+                sigma_floor = mean * 0.0001
+                effective_std = max(std, sigma_floor)
+                if effective_std > 0 and abs(price - mean) > (
+                    DEFAULT_PRICE_STDDEV * effective_std
+                ):
+                    price_anomaly = True
+            elif stats is not None and n_prices >= 3:
+                mean = stats[0]
+                if mean > 0 and abs(price - mean) / mean > 0.10:
+                    price_anomaly = True
+            elif n_prices >= 20:
+                mean = sum(prices) / n_prices
+                variance = sum((p - mean) ** 2 for p in prices) / n_prices
                 std = math.sqrt(variance)
                 sigma_floor = mean * 0.0001
                 effective_std = max(std, sigma_floor)
@@ -1591,8 +1619,8 @@ class Engine:
                     DEFAULT_PRICE_STDDEV * effective_std
                 ):
                     price_anomaly = True
-            elif len(prices) >= 3:
-                mean = sum(prices) / len(prices)
+            elif n_prices >= 3:
+                mean = sum(prices) / n_prices
                 if mean > 0 and abs(price - mean) / mean > 0.10:
                     price_anomaly = True
 
@@ -1600,9 +1628,38 @@ class Engine:
                 cur_status = QualityStatus.merge(cur_status, QualityStatus.SUSPICIOUS)
                 reasons_out.append(Reason.PRICE_ANOMALY.value)
             else:
-                prices.append(price)
-                if len(prices) > DEFAULT_PRICE_WINDOW:
+                if n_prices >= DEFAULT_PRICE_WINDOW:
+                    old_p = prices[0]
                     prices.pop(0)
+                    prices.append(price)
+                    if stats is not None:
+                        mean, m2, upd_cnt = stats
+                        d = price - old_p
+                        nm = mean + d / DEFAULT_PRICE_WINDOW
+                        m2 = m2 + d * ((price - nm) + (old_p - mean))
+                        if m2 < 0.0:
+                            m2 = 0.0
+                        upd_cnt += 1
+                        if upd_cnt >= 200:
+                            nm = sum(prices) / DEFAULT_PRICE_WINDOW
+                            m2 = sum((p - nm) ** 2 for p in prices)
+                            upd_cnt = 0
+                        state._price_stats[slot_key] = (nm, m2, upd_cnt)
+                else:
+                    prices.append(price)
+                    new_n = len(prices)
+                    if stats is not None:
+                        mean, m2, upd_cnt = stats
+                        delta = price - mean
+                        nm = mean + delta / new_n
+                        m2 = m2 + delta * (price - nm)
+                        if m2 < 0.0:
+                            m2 = 0.0
+                        state._price_stats[slot_key] = (nm, m2, upd_cnt + 1)
+                    elif new_n >= 3:
+                        nm = sum(prices) / new_n
+                        m2 = sum((p - nm) ** 2 for p in prices)
+                        state._price_stats[slot_key] = (nm, m2, 0)
 
         return cur_status, reasons_out
 
@@ -1639,21 +1696,28 @@ class Engine:
                 txn.record_reconciliation(instrument, raw_event.source)
             recent_inst = state.reconciliation_state.setdefault(instrument, {})
             recent_inst[raw_event.source] = (price, exch_ts)
-            recent_prices = [
-                p for (p, ts) in recent_inst.values() if abs(exch_ts - ts) <= 0.25
-            ]
-            if len(recent_prices) >= 2:
-                mean_p = sum(recent_prices) / len(recent_prices)
-                if mean_p > 0:
-                    for p in recent_prices:
-                        if abs(p - mean_p) / mean_p > 0.005:
-                            disagreement = True
-                            break
-                if disagreement:
-                    reasons_out.append(Reason.CROSS_FEED_DISAGREEMENT.value)
-                    cur_status = QualityStatus.merge(
-                        cur_status, QualityStatus.SUSPICIOUS
-                    )
+            if len(recent_inst) >= 2:
+                p_sum = 0.0
+                p_count = 0
+                for p, ts in recent_inst.values():
+                    if abs(exch_ts - ts) <= 0.25:
+                        p_sum += p
+                        p_count += 1
+                if p_count >= 2:
+                    mean_p = p_sum / p_count
+                    if mean_p > 0:
+                        for p, ts in recent_inst.values():
+                            if (
+                                abs(exch_ts - ts) <= 0.25
+                                and abs(p - mean_p) / mean_p > 0.005
+                            ):
+                                disagreement = True
+                                break
+                    if disagreement:
+                        reasons_out.append(Reason.CROSS_FEED_DISAGREEMENT.value)
+                        cur_status = QualityStatus.merge(
+                            cur_status, QualityStatus.SUSPICIOUS
+                        )
 
         return cur_status, reasons_out, disagreement
 

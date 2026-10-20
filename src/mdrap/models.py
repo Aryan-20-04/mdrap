@@ -155,13 +155,38 @@ class QualityStatus(str, Enum):
     @classmethod
     def merge(cls, *statuses: QualityStatus | str | None) -> QualityStatus:
         """Merge multiple statuses obeying strict non-downgrade priority: INVALID > SUSPICIOUS > VALID."""
+        if len(statuses) == 2:
+            s1, s2 = statuses
+            if not s1:
+                return cls(s2) if isinstance(s2, str) else (s2 or cls.VALID)
+            if not s2:
+                return cls(s1) if isinstance(s1, str) else s1
+            sev1 = (
+                s1.severity_level
+                if hasattr(s1, "severity_level")
+                else (2 if s1 == "INVALID" else (1 if s1 == "SUSPICIOUS" else 0))
+            )
+            sev2 = (
+                s2.severity_level
+                if hasattr(s2, "severity_level")
+                else (2 if s2 == "INVALID" else (1 if s2 == "SUSPICIOUS" else 0))
+            )
+            if sev2 > sev1:
+                return cls(s2) if isinstance(s2, str) else s2
+            return cls(s1) if isinstance(s1, str) else s1
+
         highest = cls.VALID
+        highest_sev = 0
         for s in statuses:
             if not s:
                 continue
             cur = cls(s) if isinstance(s, str) else s
-            if cur.severity_level > highest.severity_level:
+            cur_sev = cur.severity_level
+            if cur_sev > highest_sev:
                 highest = cur
+                highest_sev = cur_sev
+                if highest_sev == 2:
+                    break
         return highest
 
 
