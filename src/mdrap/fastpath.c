@@ -88,13 +88,13 @@ enum ReasonBits {
     #define MD_LOAD_ACQ_U64(p)      md_load_acq_u64_msvc((volatile const uint64_t *)(p))
     #define MD_CPU_RELAX()          __yield()
   #elif defined(_M_X64) || defined(_M_AMD64)
-    #define MD_FENCE_RELEASE()      _mm_sfence()
-    #define MD_FENCE_ACQUIRE()      _mm_lfence()
-    #define MD_STORE_REL_U64(p, v)  do { _mm_sfence(); *(volatile uint64_t *)(p) = (uint64_t)(v); } while (0)
+    #define MD_FENCE_RELEASE()      _ReadWriteBarrier()
+    #define MD_FENCE_ACQUIRE()      _ReadWriteBarrier()
+    #define MD_STORE_REL_U64(p, v)  do { _ReadWriteBarrier(); *(volatile uint64_t *)(p) = (uint64_t)(v); } while (0)
     #define MD_STORE_RLX_U64(p, v)  (*(volatile uint64_t *)(p) = (uint64_t)(v))
     static inline uint64_t md_load_acq_u64_msvc(volatile const uint64_t *p) {
         uint64_t v = *p;
-        _mm_lfence();
+        _ReadWriteBarrier();
         return v;
     }
     #define MD_LOAD_ACQ_U64(p)      md_load_acq_u64_msvc((volatile const uint64_t *)(p))
@@ -754,7 +754,20 @@ EXPORT void fastpath_engine_evaluate_batch(FastEngine *eng, const FastEvent *eve
     if (!events || !results || count <= 0) return;
     if (!eng) { for (int32_t i = 0; i < count; ++i) evaluate_nolock(NULL, &events[i], &results[i]); return; }
     MD_LOCK(&eng->lock);                             /* one lock per batch: ~free */
-    for (int32_t i = 0; i < count; ++i) evaluate_nolock(eng, &events[i], &results[i]);
+    for (int32_t i = 0; i < count; ++i) {
+        if (i + 2 < count) {
+            int32_t next_s = events[i + 2].source_id;
+            int32_t next_i = events[i + 2].instrument_id;
+            if (next_s >= 0 && next_s < MAX_SOURCES && next_i >= 0 && next_i < MAX_INSTRUMENTS) {
+                #if defined(__GNUC__) || defined(__clang__)
+                __builtin_prefetch(&eng->slots[get_slot(next_s, next_i)], 1, 3);
+                #elif defined(_MSC_VER)
+                _mm_prefetch((const char *)&eng->slots[get_slot(next_s, next_i)], _MM_HINT_T0);
+                #endif
+            }
+        }
+        evaluate_nolock(eng, &events[i], &results[i]);
+    }
     MD_UNLOCK(&eng->lock);
 }
 

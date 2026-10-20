@@ -557,7 +557,11 @@ class CanonicalEvent:
             return (self.source, self.instrument_id, self.sequence_number)
 
         # Include quote fields so distinct quotes at the same timestamp don't collide.
-        ts_part = self.exchange_ts_ns if self.exchange_ts_ns > 0 else round(self.exchange_timestamp, 6)
+        ts_part = (
+            self.exchange_ts_ns
+            if self.exchange_ts_ns > 0
+            else round(self.exchange_timestamp, 6)
+        )
         if self.event_type == EventType.QUOTE:
             return (
                 self.source,
@@ -677,19 +681,33 @@ class CanonicalEvent:
 
         raw_ex_ts = _safe_float(data.get("exchange_timestamp", 0.0))
         raw_ex_ns = data.get("exchange_ts_ns")
-        ex_ts_ns = int(raw_ex_ns) if raw_ex_ns is not None else int(raw_ex_ts * 1_000_000_000)
+        ex_ts_ns = (
+            int(raw_ex_ns) if raw_ex_ns is not None else int(raw_ex_ts * 1_000_000_000)
+        )
 
         raw_rc_ts = _safe_float(data.get("receive_timestamp", 0.0))
         raw_rc_ns = data.get("receive_ts_ns")
-        rc_ts_ns = int(raw_rc_ns) if raw_rc_ns is not None else int(raw_rc_ts * 1_000_000_000)
+        rc_ts_ns = (
+            int(raw_rc_ns) if raw_rc_ns is not None else int(raw_rc_ts * 1_000_000_000)
+        )
 
         raw_pr_ts = _safe_float(data.get("processing_timestamp", 0.0))
         raw_pr_ns = data.get("processing_ts_ns")
-        pr_ts_ns = int(raw_pr_ns) if raw_pr_ns is not None else int(raw_pr_ts * 1_000_000_000)
+        pr_ts_ns = (
+            int(raw_pr_ns) if raw_pr_ns is not None else int(raw_pr_ts * 1_000_000_000)
+        )
 
         raw_sc_p = data.get("scaled_price")
         try:
-            scaled_price = int(raw_sc_p) if raw_sc_p is not None else (to_fixed_point_price(parsed_price) if parsed_price is not None else 0)
+            scaled_price = (
+                int(raw_sc_p)
+                if raw_sc_p is not None
+                else (
+                    to_fixed_point_price(parsed_price)
+                    if parsed_price is not None
+                    else 0
+                )
+            )
         except Exception:
             scaled_price = 0
 
