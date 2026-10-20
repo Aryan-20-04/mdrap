@@ -4,53 +4,53 @@
     "processor": "Intel64 Family 6 Model 154 Stepping 4, GenuineIntel",
     "cpu_count": 12,
     "python_version": "3.13.1",
-    "git_commit": "5f33a7422aea43e5a42fdb443243a54e12960e06",
-    "timestamp": 1792516045.9088233,
-    "timestamp_iso": "2026-10-20T17:07:25Z"
+    "git_commit": "d11cce88deb3d4041a38904f0c1ec030b1a6e9a5",
+    "timestamp": 1792520680.5070841,
+    "timestamp_iso": "2026-10-20T18:24:40Z"
   },
   "engine_step": {
     "repetitions": 30,
     "events_per_rep": 300,
     "total_samples": 9000,
     "latencies_us": {
-      "p50": 11.9,
-      "p95": 35.0,
-      "p99": 71.51,
-      "max": 769.7
+      "p50": 8.3,
+      "p95": 9.7,
+      "p99": 14.3,
+      "max": 177.0
     },
-    "median_of_p50s_us": 12.4,
+    "median_of_p50s_us": 8.15,
     "run_p50s_us": [
-      10.1,
-      11.2,
-      11.25,
-      11.1,
-      11.55
+      7.1,
+      7.8,
+      8.7,
+      9.2,
+      9.2
     ]
   },
   "persistence_always": {
     "fsync_policy": "always",
     "total_events": 900,
     "batch_size": 100,
-    "elapsed_s": 0.0525,
-    "throughput_eps": 17148.6,
+    "elapsed_s": 0.0416,
+    "throughput_eps": 21615.0,
     "batch_latencies_ms": {
-      "p50": 5.802,
-      "p95": 6.447,
-      "p99": 6.741,
-      "max": 6.815
+      "p50": 4.603,
+      "p95": 4.795,
+      "p99": 4.836,
+      "max": 4.846
     }
   },
   "persistence_grouped": {
     "fsync_policy": "grouped_by_time",
     "total_events": 1800,
     "batch_size": 200,
-    "elapsed_s": 0.0845,
-    "throughput_eps": 21309.8,
+    "elapsed_s": 0.0607,
+    "throughput_eps": 29653.9,
     "batch_latencies_ms": {
-      "p50": 9.646,
-      "p95": 10.174,
-      "p99": 10.177,
-      "max": 10.177
+      "p50": 6.825,
+      "p95": 6.907,
+      "p99": 6.91,
+      "max": 6.911
     }
   },
   "fanout": {
@@ -61,13 +61,13 @@
       "expected_total_frames": 2000,
       "delivery_rate_percent": 100.0,
       "duplicate_frames_count": 0,
-      "publish_throughput_eps": 1378359.7,
-      "egress_throughput_frames_per_sec": 457927.9,
+      "publish_throughput_eps": 1379976.5,
+      "egress_throughput_frames_per_sec": 577884.4,
       "publisher_handoff_latency_us": {
-        "p50": 0.5,
+        "p50": 0.4,
         "p95": 0.5,
         "p99": 0.6,
-        "max": 7.9
+        "max": 41.1
       }
     },
     "10_clients": {
@@ -77,13 +77,13 @@
       "expected_total_frames": 20000,
       "delivery_rate_percent": 100.0,
       "duplicate_frames_count": 0,
-      "publish_throughput_eps": 1361192.4,
-      "egress_throughput_frames_per_sec": 607413.5,
+      "publish_throughput_eps": 1529870.7,
+      "egress_throughput_frames_per_sec": 948726.1,
       "publisher_handoff_latency_us": {
-        "p50": 0.5,
-        "p95": 0.6,
-        "p99": 0.8,
-        "max": 10.7
+        "p50": 0.4,
+        "p95": 0.5,
+        "p99": 0.6,
+        "max": 8.5
       }
     },
     "25_clients": {
@@ -93,13 +93,13 @@
       "expected_total_frames": 50000,
       "delivery_rate_percent": 100.0,
       "duplicate_frames_count": 0,
-      "publish_throughput_eps": 604193.1,
-      "egress_throughput_frames_per_sec": 621104.9,
+      "publish_throughput_eps": 655974.3,
+      "egress_throughput_frames_per_sec": 971802.2,
       "publisher_handoff_latency_us": {
-        "p50": 0.8,
-        "p95": 1.1,
-        "p99": 1.8,
-        "max": 415.0
+        "p50": 0.9,
+        "p95": 1.2,
+        "p99": 1.9,
+        "max": 26.7
       }
     }
   }
