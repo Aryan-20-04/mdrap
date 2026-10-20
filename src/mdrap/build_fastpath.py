@@ -122,6 +122,7 @@ def build(target_dir: Optional[str] = None, quiet: bool = False) -> bool:
             "-march=native",
             "-mavx2",
             "-ffp-contract=off",
+            "-flto",
             "-shared",
             "-fPIC",
         ]
@@ -253,6 +254,7 @@ def build_core(target_dir: Optional[str] = None, quiet: bool = False) -> bool:
             "-march=native",
             "-mavx2",
             "-ffp-contract=off",
+            "-flto",
             "-D_GNU_SOURCE",
         ]
         for inc in unique_incs:
@@ -358,6 +360,7 @@ def build_extension(target_dir: Optional[str] = None, quiet: bool = False) -> bo
             "-march=native",
             "-mavx2",
             "-ffp-contract=off",
+            "-flto",
             "-shared",
             "-I",
             py_include,
