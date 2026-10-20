@@ -122,11 +122,12 @@ class EngineState:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> EngineState:
         dedup_win = data.get("dedup_window", [])
+        dedup_items = [tuple(x) if isinstance(x, list) else x for x in dedup_win]
         state = cls(
             event_count=data.get("event_count", 0),
             sequence_state=data.get("sequence_state", {}),
-            dedup_window=deque(dedup_win),
-            dedup_set=set(dedup_win),
+            dedup_window=deque(dedup_items),
+            dedup_set=set(dedup_items),
             price_windows=data.get("price_windows", {}),
             bbo_state=data.get("bbo_state", {}),
             reconciliation_state=data.get("reconciliation_state", {}),
@@ -1519,10 +1520,22 @@ class Engine:
             )
             if biz_id is not None:
                 dedup_fingerprint = (
-                    f"{raw_event.source}:{instrument}:{event_type_str}:id={biz_id}"
+                    raw_event.source,
+                    instrument,
+                    event_type_str,
+                    f"id={biz_id}",
                 )
             else:
-                dedup_fingerprint = f"{raw_event.source}:{instrument}:{event_type_str}:{exch_ts}:{payload.get('price')}:{payload.get('quantity')}:{payload.get('bid')}:{payload.get('ask')}"
+                dedup_fingerprint = (
+                    raw_event.source,
+                    instrument,
+                    event_type_str,
+                    exch_ts,
+                    payload.get("price"),
+                    payload.get("quantity"),
+                    payload.get("bid"),
+                    payload.get("ask"),
+                )
             if dedup_fingerprint in state.dedup_set:
                 is_duplicate = True
                 cur_status = QualityStatus.merge(cur_status, QualityStatus.INVALID)
