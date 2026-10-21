@@ -153,6 +153,15 @@ include = ["mdrap", "mdrap.*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
+filterwarnings = [
+    "ignore:.*PytestDeprecationWarning.*:DeprecationWarning",
+    "ignore:.*pytest_asyncio.*:DeprecationWarning",
+    "ignore:.*StarletteDeprecationWarning.*",
+    "ignore:.*Using .httpx. with .starlette.testclient.*:DeprecationWarning",
+    "ignore:.*is deprecated in MDRAP v3.0.0.*:DeprecationWarning",
+    "ignore:.*are deprecated and non-core to the market data engine.*:DeprecationWarning",
+    "ignore:.*scheduled for migration to mdrap_analytics.*:DeprecationWarning",
+]
 
 [tool.ruff]
 line-length = 88

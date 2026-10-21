@@ -16,6 +16,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Iterator, List, Optional
 
+from .clock import Clock, NanosecondClock
+
 __stability__ = "stable"
 
 # Linux AF_XDP protocol constants (linux/if_xdp.h)
@@ -115,11 +117,13 @@ class KernelBypassReceiver:
         queue_id: int = 0,
         umem_config: Optional[UMEMConfig] = None,
         on_packet: Optional[Callable[[memoryview, float], Any]] = None,
+        clock: Optional[Clock] = None,
     ) -> None:
         self.ifname = ifname
         self.queue_id = queue_id
         self.config = umem_config or UMEMConfig()
         self.on_packet = on_packet
+        self.clock: Clock = clock or NanosecondClock()
         self.stats = KernelBypassStats()
         self.running: bool = False
 
@@ -145,7 +149,7 @@ class KernelBypassReceiver:
 
     def poll_batch(self, max_packets: int = 64) -> int:
         """Poll a batch of packets from the RX ring with zero kernel copies."""
-        now = time.time()
+        now = self.clock.now()
         count = 0
         limit = min(max_packets, len(self._rx_queue))
 

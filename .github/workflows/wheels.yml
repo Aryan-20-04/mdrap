@@ -19,7 +19,8 @@ jobs:
       - name: Build wheels
         uses: pypa/cibuildwheel@v2.22.0
         env:
-          CIBW_TEST_COMMAND: "python -c \"import mdrap; from mdrap.engine import Engine; from mdrap.ingestlog import IngestLog; print('Wheel test passed')\""
+          CIBW_BEFORE_BUILD: "python -m mdrap.build_fastpath"
+          CIBW_TEST_COMMAND: "python -c \"import mdrap; from mdrap.engine import Engine; from mdrap.ingestlog import IngestLog; from mdrap.fastpath import HAS_FASTPATH; print('Wheel test passed; fastpath active:', HAS_FASTPATH)\""
 
       - uses: actions/upload-artifact@v4
         with:
@@ -48,7 +49,7 @@ jobs:
           python -m venv .venv-test
           source .venv-test/bin/activate || source .venv-test/Scripts/activate
           pip install dist/*.whl
-          python -c "import mdrap; from mdrap.engine import Engine; from mdrap.ingestlog import IngestLog; from mdrap.projection import SQLiteProjection; print('Smoke test verified on', '${{ matrix.os }}')"
+          python -c "import mdrap; from mdrap.engine import Engine; from mdrap.ingestlog import IngestLog; from mdrap.projection import SQLiteProjection; from mdrap.fastpath import HAS_FASTPATH; print('Smoke test verified on', '${{ matrix.os }}', 'fastpath:', HAS_FASTPATH)"
           mdrap --help
 
   publish:
