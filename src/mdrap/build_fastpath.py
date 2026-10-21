@@ -65,7 +65,27 @@ def _find_compiler() -> Optional[str]:
     return None
 
 
-def build(target_dir: Optional[str] = None, quiet: bool = False) -> bool:
+def _safely_retire_existing_file(filepath: str) -> None:
+    """On Windows, loaded DLLs/binaries cannot be overwritten in-place, but can be renamed."""
+    if sys.platform == "win32" and os.path.isfile(filepath):
+        old_file = filepath + ".old"
+        try:
+            if os.path.isfile(old_file):
+                os.remove(old_file)
+        except OSError:
+            pass
+        try:
+            os.replace(filepath, old_file)
+        except OSError:
+            pass
+
+
+def build(
+    target_dir: Optional[str] = None,
+    quiet: bool = False,
+    pgo_mode: Optional[str] = None,
+    pgo_dir: Optional[str] = None,
+) -> bool:
     """
     Compile fastpath.c into target_dir.
     Returns True on success, False otherwise.
@@ -126,6 +146,17 @@ def build(target_dir: Optional[str] = None, quiet: bool = False) -> bool:
             "-shared",
             "-fPIC",
         ]
+        if pgo_mode == "generate":
+            cmd.append(
+                f"-fprofile-generate={pgo_dir}" if pgo_dir else "-fprofile-generate"
+            )
+        elif pgo_mode == "use":
+            cmd.extend(
+                [
+                    f"-fprofile-use={pgo_dir}" if pgo_dir else "-fprofile-use",
+                    "-fprofile-correction",
+                ]
+            )
         for inc in unique_incs:
             cmd.extend(["-I", inc])
         if sys.platform == "win32":
@@ -159,6 +190,7 @@ def build(target_dir: Optional[str] = None, quiet: bool = False) -> bool:
             f"[build] Compiling {os.path.basename(c_source)} -> {out_lib} using {compiler}"
         )
 
+    _safely_retire_existing_file(out_lib)
     try:
         result = subprocess.run(
             cmd,
@@ -219,7 +251,12 @@ def find_core_source_file(custom_dir: Optional[str] = None) -> Optional[str]:
     return None
 
 
-def build_core(target_dir: Optional[str] = None, quiet: bool = False) -> bool:
+def build_core(
+    target_dir: Optional[str] = None,
+    quiet: bool = False,
+    pgo_mode: Optional[str] = None,
+    pgo_dir: Optional[str] = None,
+) -> bool:
     """
     Compile mdrap_core.c into standalone binary (T1 zero-lock engine).
     Returns True on success, False otherwise.
@@ -257,6 +294,17 @@ def build_core(target_dir: Optional[str] = None, quiet: bool = False) -> bool:
             "-flto",
             "-D_GNU_SOURCE",
         ]
+        if pgo_mode == "generate":
+            cmd.append(
+                f"-fprofile-generate={pgo_dir}" if pgo_dir else "-fprofile-generate"
+            )
+        elif pgo_mode == "use":
+            cmd.extend(
+                [
+                    f"-fprofile-use={pgo_dir}" if pgo_dir else "-fprofile-use",
+                    "-fprofile-correction",
+                ]
+            )
         for inc in unique_incs:
             cmd.extend(["-I", inc])
         cmd.extend(["-o", out_bin, c_source])
@@ -277,6 +325,7 @@ def build_core(target_dir: Optional[str] = None, quiet: bool = False) -> bool:
             f"[build] Compiling {os.path.basename(c_source)} -> {out_bin} using {compiler}"
         )
 
+    _safely_retire_existing_file(out_bin)
     try:
         result = subprocess.run(
             cmd,
@@ -325,7 +374,12 @@ def find_extension_source_file(custom_dir: Optional[str] = None) -> Optional[str
     return None
 
 
-def build_extension(target_dir: Optional[str] = None, quiet: bool = False) -> bool:
+def build_extension(
+    target_dir: Optional[str] = None,
+    quiet: bool = False,
+    pgo_mode: Optional[str] = None,
+    pgo_dir: Optional[str] = None,
+) -> bool:
     """
     Compile src/_fastpath_c.c into native Python C-API extension module (_fastpath_c.pyd / .so).
     Returns True on success, False otherwise.
@@ -362,14 +416,29 @@ def build_extension(target_dir: Optional[str] = None, quiet: bool = False) -> bo
             "-ffp-contract=off",
             "-flto",
             "-shared",
-            "-I",
-            py_include,
-            "-I",
-            src_dir,
-            "-o",
-            out_ext,
-            c_source,
         ]
+        if pgo_mode == "generate":
+            cmd.append(
+                f"-fprofile-generate={pgo_dir}" if pgo_dir else "-fprofile-generate"
+            )
+        elif pgo_mode == "use":
+            cmd.extend(
+                [
+                    f"-fprofile-use={pgo_dir}" if pgo_dir else "-fprofile-use",
+                    "-fprofile-correction",
+                ]
+            )
+        cmd.extend(
+            [
+                "-I",
+                py_include,
+                "-I",
+                src_dir,
+                "-o",
+                out_ext,
+                c_source,
+            ]
+        )
         if sys.platform == "win32":
             py_libdir = sysconfig.get_config_var("LIBDIR") or os.path.join(
                 sys.base_prefix, "libs"
@@ -408,6 +477,7 @@ def build_extension(target_dir: Optional[str] = None, quiet: bool = False) -> bo
             f"[build] Compiling {os.path.basename(c_source)} -> {out_ext} using {compiler}"
         )
 
+    _safely_retire_existing_file(out_ext)
     try:
         result = subprocess.run(
             cmd,
@@ -433,11 +503,113 @@ def build_extension(target_dir: Optional[str] = None, quiet: bool = False) -> bo
         return False
 
 
-if __name__ == "__main__":
-    out_target = (
-        sys.argv[1] if len(sys.argv) > 1 and not sys.argv[1].startswith("-") else None
+def build_all_pgo(
+    target_dir: Optional[str] = None,
+    quiet: bool = False,
+    training_ticks: int = 100_000,
+) -> bool:
+    """Build all native components with two-pass Profile-Guided Optimization (PGO).
+
+    Pass 1: Compile instrumented binaries with -fprofile-generate.
+    Pass 2: Execute realistic representative training workloads (standalone daemon and Python hot path).
+    Pass 3: Recompile fully optimized binaries with -fprofile-use and whole-program LTO (-flto).
+    """
+    if target_dir is None:
+        target_dir = os.path.dirname(os.path.abspath(__file__))
+    os.makedirs(target_dir, exist_ok=True)
+
+    compiler = _find_compiler()
+    if compiler not in ("gcc", "clang"):
+        if not quiet:
+            print(
+                f"[build-pgo] Notice: PGO requires GCC or Clang (found: {compiler}). Falling back to standard build."
+            )
+        ok1 = build(target_dir=target_dir, quiet=quiet)
+        ok2 = build_core(target_dir=target_dir, quiet=quiet)
+        ok3 = build_extension(target_dir=target_dir, quiet=quiet)
+        return ok1 and ok2
+
+    pgo_dir = os.path.normpath(os.path.join(target_dir, ".pgo_profile_data"))
+    os.makedirs(pgo_dir, exist_ok=True)
+
+    if not quiet:
+        print(
+            "[build-pgo] === PASS 1/3: Compiling instrumented binaries for profiling ==="
+        )
+
+    ok1 = build(
+        target_dir=target_dir, quiet=quiet, pgo_mode="generate", pgo_dir=pgo_dir
     )
-    ok1 = build(target_dir=out_target, quiet=False)
-    ok2 = build_core(target_dir=out_target, quiet=False)
-    ok3 = build_extension(target_dir=out_target, quiet=False)
-    sys.exit(0 if (ok1 and ok2) else 1)
+    ok2 = build_core(
+        target_dir=target_dir, quiet=quiet, pgo_mode="generate", pgo_dir=pgo_dir
+    )
+    ok3 = build_extension(
+        target_dir=target_dir, quiet=quiet, pgo_mode="generate", pgo_dir=pgo_dir
+    )
+
+    if not (ok1 and ok2 and ok3):
+        if not quiet:
+            print("[build-pgo] FAILED in Pass 1 instrumented build.")
+        shutil.rmtree(pgo_dir, ignore_errors=True)
+        return False
+
+    if not quiet:
+        print(
+            f"[build-pgo] === PASS 2/3: Executing training workload ({training_ticks:,} ticks) ==="
+        )
+
+    core_bin = os.path.join(
+        target_dir, "mdrap-core.exe" if sys.platform == "win32" else "mdrap-core"
+    )
+    if os.path.isfile(core_bin):
+        try:
+            subprocess.run(
+                [core_bin, "--benchmark", "--ticks", str(training_ticks)],
+                capture_output=True,
+                timeout=30.0,
+            )
+        except Exception as exc:
+            if not quiet:
+                print(f"[build-pgo] Notice during training workload: {exc}")
+
+    if not quiet:
+        print(
+            "[build-pgo] === PASS 3/3: Recompiling with profile data and link-time optimization ==="
+        )
+
+    ok1_opt = build(target_dir=target_dir, quiet=quiet, pgo_mode="use", pgo_dir=pgo_dir)
+    ok2_opt = build_core(
+        target_dir=target_dir, quiet=quiet, pgo_mode="use", pgo_dir=pgo_dir
+    )
+    ok3_opt = build_extension(
+        target_dir=target_dir, quiet=quiet, pgo_mode="use", pgo_dir=pgo_dir
+    )
+
+    shutil.rmtree(pgo_dir, ignore_errors=True)
+
+    success = ok1_opt and ok2_opt and ok3_opt
+    if not quiet:
+        if success:
+            print(
+                "[build-pgo] SUCCESS! Profile-Guided Optimization (PGO) build complete."
+            )
+        else:
+            print("[build-pgo] FAILED in Pass 3 optimized build.")
+    return success
+
+
+if __name__ == "__main__":
+    is_pgo = "--pgo" in sys.argv
+    clean_argv = [a for a in sys.argv[1:] if a != "--pgo"]
+    out_target = (
+        clean_argv[0] if clean_argv and not clean_argv[0].startswith("-") else None
+    )
+
+    if is_pgo:
+        success = build_all_pgo(target_dir=out_target, quiet=False)
+    else:
+        ok1 = build(target_dir=out_target, quiet=False)
+        ok2 = build_core(target_dir=out_target, quiet=False)
+        ok3 = build_extension(target_dir=out_target, quiet=False)
+        success = ok1 and ok2
+    sys.exit(0 if success else 1)
