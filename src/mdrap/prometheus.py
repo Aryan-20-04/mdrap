@@ -375,7 +375,53 @@ class PrometheusExporter:
         )
 
         # -------------------------------------------------------------------
-        # 6. HTTP API Operational Metrics
+        # 6. Native Fastpath & Acceleration Metrics
+        # -------------------------------------------------------------------
+        quality_eng = getattr(engine, "quality", None) or getattr(
+            pipeline, "quality", None
+        )
+        if quality_eng is None and state:
+            quality_eng = getattr(state, "quality_engine", None)
+
+        is_native = int(
+            self._custom_gauges.get(
+                "fastpath_native_active",
+                1 if getattr(quality_eng, "is_native", False) else 0,
+            )
+        )
+        fp_fallbacks = int(
+            self._custom_counters.get(
+                "fastpath_fallbacks", getattr(quality_eng, "fallback_count", 0)
+            )
+        )
+        fp_overflows = int(
+            self._custom_counters.get(
+                "fastpath_slot_overflows",
+                getattr(quality_eng, "slot_overflow_count", 0),
+            )
+        )
+
+        add_metric(
+            "mdrap_fastpath_native_active",
+            "gauge",
+            "Whether native C fastpath accelerator is active (1=active, 0=pure python)",
+            is_native,
+        )
+        add_metric(
+            "mdrap_fastpath_fallbacks_total",
+            "counter",
+            "Total events routed to Python fallback engine",
+            fp_fallbacks,
+        )
+        add_metric(
+            "mdrap_fastpath_slot_overflows_total",
+            "counter",
+            "Total events exceeding compiled fastpath slot capacity (sources/instruments)",
+            fp_overflows,
+        )
+
+        # -------------------------------------------------------------------
+        # 7. HTTP API Operational Metrics
         # -------------------------------------------------------------------
         if self._api_requests:
             lines.append(

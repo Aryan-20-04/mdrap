@@ -90,6 +90,72 @@ def test_exact_integer_corridor_sigma_floor():
     )
 
 
+def test_exact_integer_corridor_parameter_guards():
+    """Verify exact integer corridor cleanly returns False when invalid bounds (den <= 0, k <= 0, n < min_samples) are passed."""
+    base = 10_000_000_000
+    n = 30
+    prices = [base for _ in range(n)]
+    s1 = sum(prices)
+    s2 = sum(p * p for p in prices)
+    cand_jump = base + 1_000_000_000
+
+    # Denominator zero or negative
+    assert not exact_int_corridor_check(
+        candidate_scaled=cand_jump,
+        sum_x=s1,
+        count_n=n,
+        sum_x2=s2,
+        min_samples=20,
+        k_stddev=4,
+        sigma_floor_num=1,
+        sigma_floor_den=0,
+    )
+    assert not exact_int_corridor_check(
+        candidate_scaled=cand_jump,
+        sum_x=s1,
+        count_n=n,
+        sum_x2=s2,
+        min_samples=20,
+        k_stddev=4,
+        sigma_floor_num=1,
+        sigma_floor_den=-5000,
+    )
+
+    # k_stddev zero or negative
+    assert not exact_int_corridor_check(
+        candidate_scaled=cand_jump,
+        sum_x=s1,
+        count_n=n,
+        sum_x2=s2,
+        min_samples=20,
+        k_stddev=0,
+        sigma_floor_num=1,
+        sigma_floor_den=5000,
+    )
+    assert not exact_int_corridor_check(
+        candidate_scaled=cand_jump,
+        sum_x=s1,
+        count_n=n,
+        sum_x2=s2,
+        min_samples=20,
+        k_stddev=-3,
+        sigma_floor_num=1,
+        sigma_floor_den=5000,
+    )
+
+    # count_n < min_samples
+    assert not exact_int_corridor_check(
+        candidate_scaled=cand_jump,
+        sum_x=s1,
+        count_n=10,
+        sum_x2=s2,
+        min_samples=20,
+        k_stddev=4,
+        sigma_floor_num=1,
+        sigma_floor_den=5000,
+    )
+
+
 def test_exact_integer_corridor_zero_drift_sliding():
     """Verify that incremental integer addition and subtraction has ZERO drift over 10,000 steps."""
     window = 30

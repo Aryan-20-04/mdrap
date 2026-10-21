@@ -897,9 +897,20 @@ class FastQualityEngine:
     ):
         if config is None:
             try:
-                from .config import load_config
+                from .config_loader import (
+                    find_config_path,
+                    load_config,
+                    resolve_config,
+                    to_quality_config,
+                )
 
-                self.cfg = load_config().quality
+                cfg_path = find_config_path()
+                if cfg_path:
+                    raw_cfg = load_config(cfg_path, validate=False)
+                    resolved, _ = resolve_config(raw_cfg)
+                    self.cfg = to_quality_config(resolved)
+                else:
+                    self.cfg = QualityConfig()
             except Exception:
                 self.cfg = QualityConfig()
         else:
@@ -2461,7 +2472,7 @@ def exact_int_corridor_check(
     Uses 128-bit exact integer arithmetic in native C when available, with
     exact bit-for-bit arbitrary precision integer fallback in pure Python.
     """
-    if count_n < min_samples:
+    if count_n < min_samples or sigma_floor_den <= 0 or k_stddev <= 0:
         return False
 
     if _NATIVE_LIB and hasattr(_NATIVE_LIB, "fastpath_exact_int_corridor_check"):

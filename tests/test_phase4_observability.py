@@ -38,6 +38,22 @@ def test_prometheus_metrics_export_formatting():
     assert 'mdrap_api_requests_total{method="GET",endpoint="/health"} 1' in rendered
     assert 'mdrap_api_requests_total{method="POST",endpoint="/v1/events"} 2' in rendered
     assert 'mdrap_api_errors_total{method="POST",endpoint="/v1/events"} 1' in rendered
+    assert "mdrap_fastpath_native_active" in rendered
+    assert "mdrap_fastpath_fallbacks_total" in rendered
+    assert "mdrap_fastpath_slot_overflows_total" in rendered
+
+
+def test_prometheus_fastpath_acceleration_metrics():
+    """PrometheusExporter renders native fastpath and slot overflow metrics correctly."""
+    exporter = PrometheusExporter()
+    exporter.set_gauge("fastpath_native_active", 1.0)
+    exporter.inc_counter("fastpath_fallbacks", 12.0)
+    exporter.inc_counter("fastpath_slot_overflows", 3.0)
+
+    rendered = exporter.render()
+    assert "mdrap_fastpath_native_active 1" in rendered
+    assert "mdrap_fastpath_fallbacks_total 12" in rendered
+    assert "mdrap_fastpath_slot_overflows_total 3" in rendered
 
 
 def test_source_watchdog_alerting():

@@ -794,7 +794,7 @@ EXPORT int32_t fastpath_exact_int_corridor_check(
     int64_t sigma_floor_num,
     int64_t sigma_floor_den
 ) {
-    if (count_n < (uint64_t)min_samples) return 0;
+    if (count_n < (uint64_t)min_samples || sigma_floor_den <= 0 || k_stddev <= 0) return 0;
 #if defined(__SIZEOF_INT128__)
     const int128_t n = (int128_t)count_n;
     const int128_t x = (int128_t)candidate_scaled;

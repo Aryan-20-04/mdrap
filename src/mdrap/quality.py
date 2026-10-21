@@ -237,9 +237,20 @@ class QualityEngine:
     def __init__(self, config: QualityConfig | None = None, clock: Any = None):
         if config is None:
             try:
-                from .config import load_config
+                from .config_loader import (
+                    find_config_path,
+                    load_config,
+                    resolve_config,
+                    to_quality_config,
+                )
 
-                self.cfg = load_config().quality
+                cfg_path = find_config_path()
+                if cfg_path:
+                    raw_cfg = load_config(cfg_path, validate=False)
+                    resolved, _ = resolve_config(raw_cfg)
+                    self.cfg = to_quality_config(resolved)
+                else:
+                    self.cfg = QualityConfig()
             except Exception:
                 self.cfg = QualityConfig()
         else:
