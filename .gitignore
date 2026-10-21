@@ -18,6 +18,7 @@ __pycache__/
 *.lib
 *.exp
 *.exe
+*.old
 mdrap-core
 mdrap-core.exe
 _fastpath_native.*
