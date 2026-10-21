@@ -224,7 +224,11 @@ def test_differential_fuzz_tri_engine(seed: int):
         oracle_core_reasons = set(oracle_reasons)
         py_core_reasons = set(ev_py.reasons)
         # Check critical failure parity
-        for crit in (Reason.SCHEMA_VIOLATION.value, Reason.CROSSED_QUOTE.value, Reason.TS_IMPLAUSIBLE.value):
+        for crit in (
+            Reason.SCHEMA_VIOLATION.value,
+            Reason.CROSSED_QUOTE.value,
+            Reason.TS_IMPLAUSIBLE.value,
+        ):
             assert (crit in oracle_core_reasons) == (crit in py_core_reasons), (
                 f"Mismatch on {crit} at idx={i}: Oracle={oracle_reasons}, Python={ev_py.reasons}"
             )
@@ -297,6 +301,10 @@ def test_property_live_equals_replay(tmp_path):
 
     for i, (live_dec, rep_dec) in enumerate(zip(live_decisions, replay_decisions)):
         assert live_dec.offset == rep_dec.offset, f"Offset mismatch at {i}"
-        assert live_dec.event_id == rep_dec.event_id, f"Event ID mismatch at {i}: {live_dec.event_id} vs {rep_dec.event_id}"
-        assert live_dec.quality_status == rep_dec.quality_status, f"QualityStatus mismatch at {i}"
+        assert live_dec.event_id == rep_dec.event_id, (
+            f"Event ID mismatch at {i}: {live_dec.event_id} vs {rep_dec.event_id}"
+        )
+        assert live_dec.quality_status == rep_dec.quality_status, (
+            f"QualityStatus mismatch at {i}"
+        )
         assert set(live_dec.reasons) == set(rep_dec.reasons), f"Reasons mismatch at {i}"

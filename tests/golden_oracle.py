@@ -85,7 +85,7 @@ class GoldenOracle:
                 reasons.append(r_name)
             bit = REASON_BITS.get(r_name)
             if bit is not None:
-                reason_mask |= (1 << bit)
+                reason_mask |= 1 << bit
             if r_status.severity_level > status.severity_level:
                 status = r_status
 
@@ -101,13 +101,28 @@ class GoldenOracle:
             _mark(Reason.SCHEMA_VIOLATION.value, QualityStatus.INVALID)
             bad_schema = True
 
-        has_price = event.price is not None and not (isinstance(event.price, float) and math.isnan(event.price))
-        has_qty = event.quantity is not None and not (isinstance(event.quantity, float) and math.isnan(event.quantity))
-        has_bid = event.bid_price is not None and not (isinstance(event.bid_price, float) and math.isnan(event.bid_price))
-        has_ask = event.ask_price is not None and not (isinstance(event.ask_price, float) and math.isnan(event.ask_price))
+        has_price = event.price is not None and not (
+            isinstance(event.price, float) and math.isnan(event.price)
+        )
+        has_qty = event.quantity is not None and not (
+            isinstance(event.quantity, float) and math.isnan(event.quantity)
+        )
+        has_bid = event.bid_price is not None and not (
+            isinstance(event.bid_price, float) and math.isnan(event.bid_price)
+        )
+        has_ask = event.ask_price is not None and not (
+            isinstance(event.ask_price, float) and math.isnan(event.ask_price)
+        )
 
         # Check numeric fields for non-finite values (Inf or NaN)
-        for val in (event.price, event.quantity, event.bid_price, event.ask_price, event.bid_size, event.ask_size):
+        for val in (
+            event.price,
+            event.quantity,
+            event.bid_price,
+            event.ask_price,
+            event.bid_size,
+            event.ask_size,
+        ):
             if val is not None and not math.isfinite(val):
                 _mark(Reason.SCHEMA_VIOLATION.value, QualityStatus.INVALID)
                 bad_schema = True
@@ -130,7 +145,11 @@ class GoldenOracle:
             if not has_price:
                 _mark(Reason.SCHEMA_VIOLATION.value, QualityStatus.INVALID)
                 bad_schema = True
-            elif not self.config.allow_negative and event.price is not None and event.price < 0.0:
+            elif (
+                not self.config.allow_negative
+                and event.price is not None
+                and event.price < 0.0
+            ):
                 _mark(Reason.SCHEMA_VIOLATION.value, QualityStatus.INVALID)
                 bad_schema = True
             if has_qty and event.quantity is not None and event.quantity < 0.0:
@@ -138,13 +157,16 @@ class GoldenOracle:
                 bad_schema = True
 
         slot_key = (event.source, event.instrument_id)
-        slot = self._slot_state.setdefault(slot_key, {
-            "last_seq": 0,
-            "seen": 0,
-            "has_seq": False,
-            "cand_plus1": 0,
-            "last_ts": None,
-        })
+        slot = self._slot_state.setdefault(
+            slot_key,
+            {
+                "last_seq": 0,
+                "seen": 0,
+                "has_seq": False,
+                "cand_plus1": 0,
+                "last_ts": None,
+            },
+        )
 
         # 2. Sequence validation & deduplication
         if event.sequence_number is not None:
@@ -164,7 +186,11 @@ class GoldenOracle:
                     if jump > self.config.seq_jump_limit:
                         _mark(Reason.SEQUENCE_GAP.value, QualityStatus.SUSPICIOUS)
                         cand = slot["cand_plus1"] - 1
-                        if slot["cand_plus1"] != 0 and seq > cand and (seq - cand) <= self.config.seq_jump_limit:
+                        if (
+                            slot["cand_plus1"] != 0
+                            and seq > cand
+                            and (seq - cand) <= self.config.seq_jump_limit
+                        ):
                             slot["last_seq"] = seq
                             slot["seen"] = 1
                             slot["cand_plus1"] = 0
@@ -173,7 +199,11 @@ class GoldenOracle:
                     else:
                         if jump > 1:
                             _mark(Reason.SEQUENCE_GAP.value, QualityStatus.SUSPICIOUS)
-                        slot["seen"] = ((slot["seen"] << jump) | 1) & SEQUENCE_BITMAP_MASK if jump < 64 else 1
+                        slot["seen"] = (
+                            ((slot["seen"] << jump) | 1) & SEQUENCE_BITMAP_MASK
+                            if jump < 64
+                            else 1
+                        )
                         slot["last_seq"] = seq
                         slot["cand_plus1"] = 0
                 else:
@@ -182,13 +212,17 @@ class GoldenOracle:
                         if (slot["seen"] >> d) & 1:
                             _mark(Reason.DUPLICATE.value, QualityStatus.INVALID)
                         else:
-                            slot["seen"] |= (1 << d)
+                            slot["seen"] |= 1 << d
                             _mark(Reason.OUT_OF_ORDER.value, QualityStatus.SUSPICIOUS)
                     else:
                         _mark(Reason.OUT_OF_ORDER.value, QualityStatus.SUSPICIOUS)
         elif ex_fin:
             # Unsequenced content-based deduplication
-            ev_type_str = event.event_type.value if hasattr(event.event_type, "value") else str(event.event_type)
+            ev_type_str = (
+                event.event_type.value
+                if hasattr(event.event_type, "value")
+                else str(event.event_type)
+            )
             content_key = (
                 event.source,
                 event.instrument_id,
@@ -208,7 +242,9 @@ class GoldenOracle:
 
         # 3. Timestamps & Monotonicity
         if ex_fin and rc_fin:
-            plausible = event.exchange_timestamp <= (event.receive_timestamp + self.config.max_future_skew_s)
+            plausible = event.exchange_timestamp <= (
+                event.receive_timestamp + self.config.max_future_skew_s
+            )
             if not plausible:
                 _mark(Reason.TS_IMPLAUSIBLE.value, QualityStatus.SUSPICIOUS)
 
@@ -221,19 +257,34 @@ class GoldenOracle:
                 slot["last_ts"] = event.exchange_timestamp
 
             # Staleness
-            if (event.receive_timestamp - event.exchange_timestamp) > self.config.staleness_threshold_s:
+            if (
+                event.receive_timestamp - event.exchange_timestamp
+            ) > self.config.staleness_threshold_s:
                 _mark(Reason.STALE.value, QualityStatus.SUSPICIOUS)
 
         # 4. Quote crossed-market checks
-        if not bad_schema and has_bid and has_ask and event.bid_price is not None and event.ask_price is not None:
+        if (
+            not bad_schema
+            and has_bid
+            and has_ask
+            and event.bid_price is not None
+            and event.ask_price is not None
+        ):
             if event.bid_price > event.ask_price:
                 _mark(Reason.CROSSED_QUOTE.value, QualityStatus.INVALID)
 
         # 5. Price anomaly / corridor check (only for clean trade events)
-        if status != QualityStatus.INVALID and has_price and event.price is not None and math.isfinite(event.price):
+        if (
+            status != QualityStatus.INVALID
+            and has_price
+            and event.price is not None
+            and math.isfinite(event.price)
+        ):
             px = float(event.price)
             prices = self._price_windows.setdefault(slot_key, [])
-            anom_tracker = self._price_anom_trackers.setdefault(slot_key, {"anom_count": 0, "anom_last": 0.0})
+            anom_tracker = self._price_anom_trackers.setdefault(
+                slot_key, {"anom_count": 0, "anom_last": 0.0}
+            )
             n = len(prices)
 
             anomaly = False
@@ -248,9 +299,15 @@ class GoldenOracle:
                 dev = px - mean
 
                 if n >= self.config.price_min_samples:
-                    anomaly = (dev * dev) > (self.config.price_anomaly_stddev * self.config.price_anomaly_stddev * sd2)
+                    anomaly = (dev * dev) > (
+                        self.config.price_anomaly_stddev
+                        * self.config.price_anomaly_stddev
+                        * sd2
+                    )
                 else:
-                    anomaly = abs(mean) > 0.0 and abs(dev) > (WARMUP_PRICE_DEV_RATIO * abs(mean))
+                    anomaly = abs(mean) > 0.0 and abs(dev) > (
+                        WARMUP_PRICE_DEV_RATIO * abs(mean)
+                    )
 
             if anomaly:
                 _mark(Reason.PRICE_ANOMALY.value, QualityStatus.SUSPICIOUS)
@@ -258,13 +315,19 @@ class GoldenOracle:
                 rel = self.config.price_reseed_band_rel * abs(px)
                 if rel > band:
                     band = rel
-                if anom_tracker["anom_count"] > 0 and abs(px - anom_tracker["anom_last"]) <= band:
+                if (
+                    anom_tracker["anom_count"] > 0
+                    and abs(px - anom_tracker["anom_last"]) <= band
+                ):
                     anom_tracker["anom_count"] += 1
                 else:
                     anom_tracker["anom_count"] = 1
                 anom_tracker["anom_last"] = px
 
-                if self.config.price_reseed_after > 0 and anom_tracker["anom_count"] >= self.config.price_reseed_after:
+                if (
+                    self.config.price_reseed_after > 0
+                    and anom_tracker["anom_count"] >= self.config.price_reseed_after
+                ):
                     prices.clear()
                     prices.append(px)
                     anom_tracker["anom_count"] = 0
