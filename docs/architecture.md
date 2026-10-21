@@ -81,8 +81,12 @@ The platform converts noisy, delayed, duplicated, and inconsistent market data f
 - **Native C Accelerator**:
   - Expanded to 8,192 symbols ($2^{13}$) and 32 sources with lazy 96-byte slot allocations.
   - Bitshift slot index: `(source_id << 13) | instrument_id`.
-  - 64-bit sliding sequence bitmap and 2-generation dedup table with zero startup memory footprint.
-  - Measured latency: **24.4 ns/event** in sequenced batch C kernel; **~50 ns** single evaluation; **~16 µs** Python pipeline.
+  - 64-bit sliding sequence bitmap and 64-probe open-addressing 2-generation dedup table with collision eviction tracking.
+  - **Exact `__int128` Price Corridor**: Evaluates rolling variance and price corridor using 128-bit exact integer arithmetic ($V = n S_2 - S_1^2$), eliminating floating-point rounding drift and division overhead while maintaining bit-for-bit parity with Python arbitrary-precision integers.
+  - **Structure-of-Arrays (SoA) SIMD Batch Evaluation**: High-throughput SoA layout (`fastpath_engine_evaluate_soa`) with 2-iteration ahead L1 cache prefetching (`__builtin_prefetch` / `_mm_prefetch`).
+  - **Nanosecond Integer Timestamps**: ABI-safe union in `FastEvent` (0x40 flag) supporting nanosecond timestamps and scaled integer prices, eliminating the ~238 ns double epoch discretization step.
+  - **Toolchain Optimization**: Built with Link-Time Optimization (`-flto`), AVX2 intrinsics, and `-ffp-contract=off`.
+  - Measured latency: **21.9–40.4 ns/event** in sequenced batch C kernel (up to **24.7M–45.5M EPS**); **~50 ns** single evaluation; **~14.4 µs** Python pipeline.
   - Automatic boundary fallback to pure Python if beyond 8,192 symbols.
 
 ### 2.3 Consolidated Depth & Real-Time VWAP Engine (`src/mdrap/depth.py`)
