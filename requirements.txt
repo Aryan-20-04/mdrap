@@ -19,7 +19,7 @@ websockets>=12.0,<15.0        # Real-time WebSocket streaming feed handlers for 
 pyyaml>=6.0,<7.0             # Parses external config.yaml (graceful stdlib fallback parser included)
 
 # --- Columnar Time-Series Storage & Analytics (Phase 3, Optional) ---
-duckdb>=1.0.0,<2.0.0           # Vectorized columnar embedded OLAP database for billion-tick time-series queries
+duckdb>=1.5.6,<2.0.0           # Vectorized columnar embedded OLAP database for billion-tick time-series queries
 pyarrow>=20.0.0                # Apache Parquet columnar file serialization (CVE PYSEC-2026-113 mitigated)
 
 # --- REST / WebSocket API & Distribution (Optional) ---
