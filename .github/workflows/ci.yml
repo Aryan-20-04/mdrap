@@ -60,7 +60,9 @@ jobs:
         run: mdrap doctor --json
 
       - name: Verify Documentation Suite
-        run: pytest tests/test_docs_verification.py -q
+        run: |
+          pytest tests/test_docs_verification.py -q
+          python tools/check_docs.py
 
       - name: Build and Inspect Core and Contrib Artifacts
         run: python scripts/verify_release_artifacts.py
