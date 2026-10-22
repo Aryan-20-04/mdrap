@@ -21,7 +21,7 @@ The 82 Python modules in `src/` are structured across 12 distinct functional lay
 | [`config.py`](../src/mdrap/config.py) | Configuration dataclasses | `PlatformConfig`, `QualityConfig`, `PipelineConfig`, `StorageConfig` | `stable` |
 | [`config_loader.py`](../src/mdrap/config_loader.py) | YAML config loading | `load_yaml_config` | `stable` |
 | [`rules.py`](../src/mdrap/rules.py) | User-defined quality rules | `@register_rule`, `evaluate_user_rules` | `stable` |
-| [`rules.def`](../src/rules.def) | C X-Macro quality rule definitions | Preprocessor table of validation rules | `stable` |
+| [`rules.def`](../src/mdrap/rules.def) | C X-Macro quality rule definitions | Preprocessor table of validation rules | `stable` |
 | [`protocols.py`](../src/mdrap/protocols.py) | Extension Protocol interfaces | `StorageBackend`, `AuthProvider`, `QualityEvaluator`, `OutputSink` | `stable` |
 
 ### Storage (stable)
@@ -106,7 +106,7 @@ The 82 Python modules in `src/` are structured across 12 distinct functional lay
 | Module | Purpose | Key Exports | Stability |
 |---|---|---|---|
 | [`fastpath.py`](../src/mdrap/fastpath.py) | C FFI acceleration layer | `FastQualityEngine`, `NativeReplayBuffer`, `is_available` | `stable` |
-| [`fastpath.c`](../src/fastpath.c) | C source for native acceleration | Fast validation, ring buffer, and Welford variance routines | `stable` |
+| [`fastpath.c`](../src/mdrap/fastpath.c) | C source for native acceleration | Fast validation, ring buffer, and Welford variance routines | `stable` |
 | [`fastpath.pyi`](../src/mdrap/fastpath.pyi) | Type stubs | Type annotations for native C module | `stable` |
 
 ### CLI & Terminal UI (beta)

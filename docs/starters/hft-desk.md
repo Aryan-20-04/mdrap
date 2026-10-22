@@ -52,7 +52,7 @@ This minimal HFT deployment utilizes only 5 core modules from MDRAP:
 | Component | Module | Role in HFT Architecture |
 |---|---|---|
 | **Core Models & Pipeline** | [`models.py`](src/mdrap/models.py), [`gateway.py`](src/mdrap/gateway.py), [`pipeline.py`](src/mdrap/pipeline.py) | Normalized [`CanonicalEvent`](src/mdrap/models.py) representation, synchronous ingress loop, deterministic GC management (`tuned_gc`). |
-| **Native C Fastpath** | [`fastpath.py`](src/mdrap/fastpath.py), [`fastpath.c`](src/fastpath.c) | Sub-microsecond (24–37 ns) quality scoring across 7 core validation rules (gap, dedup, price sanity, crossed books). |
+| **Native C Fastpath** | [`fastpath.py`](src/mdrap/fastpath.py), [`fastpath.c`](src/mdrap/fastpath.c) | Sub-microsecond (24–37 ns) quality scoring across 7 core validation rules (gap, dedup, price sanity, crossed books). |
 | **SHM Ring Buffer** | [`shm.py`](src/mdrap/shm.py) | High-throughput [`SHMWriter`](src/mdrap/shm.py) and [`SHMReader`](src/mdrap/shm.py) with SPMC lock-free circular ring buffer, two-phase commit, and cache-line padding. |
 | **Binary Wire Protocol** | [`protocol.py`](src/mdrap/protocol.py) | Compact 92-byte pre-compiled struct framing ([`pack_tick_frame`](src/mdrap/protocol.py)) eliminating JSON parsing overhead. |
 | **TCP Streaming Daemon** | [`service.py`](src/mdrap/service.py) | [`MarketDataDaemon`](src/mdrap/service.py) for socket connectivity to remote risk desks and hardware ring replay buffers. |

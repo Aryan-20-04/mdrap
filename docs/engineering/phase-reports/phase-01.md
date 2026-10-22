@@ -14,7 +14,7 @@
   - Finding F-06 proved that the on-disk WAL checksum is standard IEEE CRC-32 (via `zlib.crc32`), not CRC32C.
   - De-marketing these unbacked guarantees immediately protects users from relying on capabilities MDRAP does not implement.
 - **Design Chosen and Alternatives Rejected:**
-  - *Chosen:* Strict de-marketing. Explicitly state that MDRAP is a single-node engine. Re-label `src/mdrap/consensus.py` as an in-process simulation (`__stability__ = "experimental"`). Add authoritative [`docs/product/scope-and-guarantees.md`](../product/scope-and-guarantees.md).
+  - *Chosen:* Strict de-marketing. Explicitly state that MDRAP is a single-node engine. Re-label `src/mdrap/consensus.py` as an in-process simulation (`__stability__ = "experimental"`). Add authoritative [`docs/product/scope-and-guarantees.md`](../../product/scope-and-guarantees.md).
   - *Rejected:* Implementing a distributed Raft/Paxos cluster consensus protocol was rejected because MDRAP's mission is low-latency single-node market data validation and capture before downstream storage. Multi-node clustering adds enormous operational and failure surface.
 - **Files Changed / Created:**
   - `docs/product/scope-and-guarantees.md` (New, authoritative single-node scope and non-goals)

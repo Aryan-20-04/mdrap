@@ -243,6 +243,6 @@ curl -X GET "http://localhost:8000/v1/audit/proofs?from_seq=1000&to_seq=2000" \
 As an external vendor and redistribution service, your architecture does not require execution-specific components:
 
 - **No Local Shared Memory Ring Buffer ([`shm.py`](src/mdrap/shm.py))**: Clients connect over network boundaries via HTTP/WebSocket, not through local POSIX shared memory pointers.
-- **No Native C Fastpath Accelerator ([`fastpath.py`](src/mdrap/fastpath.py), [`fastpath.c`](src/fastpath.c))**: While supported, pure Python quality evaluation (~1.2 µs) is well within public cloud and internet distribution network latency budgets (1–20 ms).
+- **No Native C Fastpath Accelerator ([`fastpath.py`](../../src/mdrap/fastpath.py), [`fastpath.c`](../../src/mdrap/fastpath.c))**: While supported, pure Python quality evaluation (~1.2 µs) is well within public cloud and internet distribution network latency budgets (1–20 ms).
 - **No Backtest Engine or Strategy SDK ([`backtest.py`](src/mdrap/backtest.py), [`strategy_sdk.py`](src/mdrap/strategy_sdk.py))**: Vendors sell clean market data; strategies run on customer infrastructure.
 - **No Derivatives Pricing Engines ([`options.py`](src/mdrap/options.py))**: Avoid computing Greeks on the ingest server unless specifically offering implied volatility derivative feeds.

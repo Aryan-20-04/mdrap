@@ -54,7 +54,7 @@ The three tiers are defined as follows:
   - Core Pipeline: [`models.py`](src/mdrap/models.py), [`gateway.py`](src/mdrap/gateway.py), [`quality.py`](src/mdrap/quality.py), [`reconciliation.py`](src/mdrap/reconciliation.py), [`pipeline.py`](src/mdrap/pipeline.py), [`metrics.py`](src/mdrap/metrics.py), [`config.py`](src/mdrap/config.py), [`rules.py`](src/mdrap/rules.py).
   - Storage & Audit: [`storage.py`](src/mdrap/storage.py), [`archive.py`](src/mdrap/archive.py), [`security.py`](src/mdrap/security.py), [`audit_format.py`](src/mdrap/audit_format.py).
   - Delivery Protocols: [`shm.py`](src/mdrap/shm.py), [`protocol.py`](src/mdrap/protocol.py), [`service.py`](src/mdrap/service.py).
-  - Native Hot Path: [`fastpath.py`](src/mdrap/fastpath.py), [`fastpath.c`](src/fastpath.c).
+  - Native Hot Path: [`fastpath.py`](src/mdrap/fastpath.py), [`fastpath.c`](src/mdrap/fastpath.c).
   - Extension Interfaces: [`adapters/__init__.py`](src/adapters/__init__.py), [`protocols.py`](src/mdrap/protocols.py).
 
 ### 2.2 `beta` Tier

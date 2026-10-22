@@ -3,7 +3,13 @@
 All notable changes to MDRAP are documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [4.0.0] - 2026-10-20
+## [4.0.0] - 2026-10-22
+
+### Infrastructure, Streaming Replication & Low-Latency Extensions
+- **Streaming WAL Journal Replication Daemon**: Added `src/mdrap/journal_replicator.py` supporting point-to-point streaming Write-Ahead Log replication between primary and standby nodes, featuring CRC32 segment validation, offline spooling, and exponential backoff reconnection.
+- **Hardware PTP & Linux Timestamping**: Added `src/mdrap/clock.py` implementing `SO_TIMESTAMPING` cmsg hardware timestamp extraction for Linux network sockets and software drift modeling (`PTPClock`).
+- **AF_XDP Kernel Bypass Driver**: Added `src/mdrap/af_xdp.py` with UMEM chunk allocation and zero-copy packet batch polling simulation.
+- **Documentation Verification Guardrails**: Restructured `README.md` to single golden path (<= 250 lines), created runnable guides in `docs/guides/`, updated `docs/reference/`, established `docs/roadmap.md` for aspirational features, and added `tools/check_docs.py`.
 
 ### Section 22 Audit Remediation (Findings N-14 through N-19)
 - **N-14: Sparse WAL Index Resilience & Point-of-Use Verification**:
