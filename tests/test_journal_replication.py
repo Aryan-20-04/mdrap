@@ -94,3 +94,71 @@ def test_replication_stale_epoch_rejection():
     finally:
         client.close()
         server.stop()
+
+
+def test_replication_client_offline_spooling_and_catchup():
+    """Verify frames are safely spooled while standby is offline and drained when standby connects."""
+    port = 19990
+    received_payloads = []
+
+    class MockTargetLog:
+        def append_raw(self, data: bytes):
+            received_payloads.append(data)
+
+    client = JournalReplicationClient(
+        target_port=port,
+        epoch=1,
+        reconnect_backoff_s=0.01,
+        max_backoff_s=0.1,
+    )
+
+    # 1. Standby is completely offline. Send 3 frames: all must be spooled!
+    assert client.send_frame(sequence=10, payload=b"SPOOLED_1") is False
+    assert client.send_frame(sequence=11, payload=b"SPOOLED_2") is False
+    assert client.send_frame(sequence=12, payload=b"SPOOLED_3") is False
+
+    assert client.stats.spool_queued == 3
+    assert client.stats.spool_dropped == 0
+
+    # 2. Standby server now comes online
+    server = JournalReplicationServer(port=port, target_log=MockTargetLog())
+    server.start()
+    time.sleep(0.05)
+
+    try:
+        # Reset reconnect backoff so it can connect immediately
+        client._next_reconnect_ts = 0.0
+        drained = client.flush_spool()
+        assert drained == 3
+        assert client.stats.spool_queued == 0
+
+        time.sleep(0.05)
+        assert len(received_payloads) == 3
+        assert received_payloads[0] == b"SPOOLED_1"
+        assert received_payloads[1] == b"SPOOLED_2"
+        assert received_payloads[2] == b"SPOOLED_3"
+    finally:
+        client.close()
+        server.stop()
+
+
+def test_replication_spool_capacity_drop():
+    """Verify spool queue drops oldest frames when max_spool_size is exceeded."""
+    client = JournalReplicationClient(
+        target_port=19991,
+        epoch=1,
+        max_spool_size=2,
+        reconnect_backoff_s=10.0,  # Ensure no reconnect attempt
+    )
+
+    client.send_frame(sequence=1, payload=b"P1")
+    client.send_frame(sequence=2, payload=b"P2")
+    assert client.stats.spool_queued == 2
+    assert client.stats.spool_dropped == 0
+
+    # 3rd frame forces eviction of oldest frame (P1)
+    client.send_frame(sequence=3, payload=b"P3")
+    assert client.stats.spool_queued == 2
+    assert client.stats.spool_dropped == 1
+    assert client._spool_queue[0][1] == b"P2"
+    assert client._spool_queue[1][1] == b"P3"

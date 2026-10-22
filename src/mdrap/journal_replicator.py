@@ -65,6 +65,8 @@ class ReplicationStats:
     crc_failures: int = 0
     last_seq: int = 0
     lag_frames: int = 0
+    spool_queued: int = 0
+    spool_dropped: int = 0
 
 
 def pack_replication_frame(
@@ -245,7 +247,7 @@ class JournalReplicationServer:
 
 
 class JournalReplicationClient:
-    """Primary node client streaming IngestLog frames to a Standby peer."""
+    """Primary node client streaming IngestLog frames to a Standby peer with spooling and auto-reconnect."""
 
     def __init__(
         self,
@@ -253,24 +255,42 @@ class JournalReplicationClient:
         target_port: int = 9998,
         epoch: int = 1,
         timeout_s: float = 2.0,
+        max_spool_size: int = 10_000,
+        reconnect_backoff_s: float = 0.5,
+        max_backoff_s: float = 5.0,
     ) -> None:
         self.target_host = target_host
         self.target_port = target_port
         self.epoch = epoch
         self.timeout_s = timeout_s
+        self.max_spool_size = max_spool_size
+        self.reconnect_backoff_s = reconnect_backoff_s
+        self.max_backoff_s = max_backoff_s
         self.stats = ReplicationStats()
         self._sock: Optional[socket.socket] = None
+        self._spool_queue: list[Tuple[int, bytes]] = []
+        self._next_reconnect_ts: float = 0.0
+        self._current_backoff: float = reconnect_backoff_s
 
     def connect(self) -> bool:
-        """Establish TCP connection to the standby peer."""
+        """Establish TCP connection to the standby peer respecting reconnect backoff."""
+        now = time.time()
+        if now < self._next_reconnect_ts:
+            return False
+
         try:
-            self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self._sock.settimeout(self.timeout_s)
-            self._sock.connect((self.target_host, self.target_port))
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(self.timeout_s)
+            sock.connect((self.target_host, self.target_port))
+            self._sock = sock
+            self._current_backoff = self.reconnect_backoff_s
+            self._next_reconnect_ts = 0.0
             return True
         except Exception as exc:
             logger.debug("Failed to connect replication client: %s", exc)
             self._sock = None
+            self._next_reconnect_ts = time.time() + self._current_backoff
+            self._current_backoff = min(self.max_backoff_s, self._current_backoff * 2.0)
             return False
 
     def close(self) -> None:
@@ -282,10 +302,25 @@ class JournalReplicationClient:
                 pass
             self._sock = None
 
-    def send_frame(self, sequence: int, payload: bytes, wait_ack: bool = True) -> bool:
-        """Transmit an IngestLog frame to the standby peer with optional synchronous ACK."""
+    def flush_spool(self) -> int:
+        """Drain and transmit spooled frames to standby peer."""
         if not self._sock and not self.connect():
-            self.stats.errors += 1
+            return 0
+
+        drained = 0
+        while self._spool_queue and self._sock:
+            seq, payload = self._spool_queue[0]
+            if self._send_wire(seq, payload, wait_ack=True):
+                self._spool_queue.pop(0)
+                drained += 1
+                self.stats.spool_queued = len(self._spool_queue)
+            else:
+                break
+        return drained
+
+    def _send_wire(self, sequence: int, payload: bytes, wait_ack: bool = True) -> bool:
+        """Internal low-level wire transmission helper."""
+        if not self._sock:
             return False
 
         frame_bytes = pack_replication_frame(
@@ -301,6 +336,7 @@ class JournalReplicationClient:
                 ack_hdr = self._sock.recv(REPL_HEADER_SIZE)
                 if len(ack_hdr) < REPL_HEADER_SIZE:
                     self.stats.errors += 1
+                    self.close()
                     return False
                 ver, msg_type, ack_seq, ack_epoch, length, crc = (
                     unpack_replication_header(ack_hdr)
@@ -310,10 +346,31 @@ class JournalReplicationClient:
                     return True
                 elif msg_type == MSG_ERROR:
                     self.stats.errors += 1
+                    self.close()
                     return False
             return True
         except Exception as exc:
             self.stats.errors += 1
-            logger.debug("Failed to send replication frame: %s", exc)
+            logger.debug("Wire send failed: %s", exc)
             self.close()
             return False
+
+    def send_frame(self, sequence: int, payload: bytes, wait_ack: bool = True) -> bool:
+        """Transmit an IngestLog frame with automatic spooling during disconnects."""
+        # 1. Attempt draining existing spool if any
+        if self._spool_queue:
+            self.flush_spool()
+
+        # 2. If connected and spool is clear, send directly
+        if self._sock and not self._spool_queue:
+            if self._send_wire(sequence, payload, wait_ack=wait_ack):
+                return True
+
+        # 3. Connection down or send failed: enqueue into spool
+        if len(self._spool_queue) >= self.max_spool_size:
+            self._spool_queue.pop(0)  # Drop oldest frame to protect memory
+            self.stats.spool_dropped += 1
+
+        self._spool_queue.append((sequence, payload))
+        self.stats.spool_queued = len(self._spool_queue)
+        return False

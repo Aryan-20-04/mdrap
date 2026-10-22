@@ -1,8 +1,11 @@
 """Unit tests for Linux AF_XDP / Kernel Bypass Network Adapter & UMEM Ring Buffers."""
 
+import struct
 import pytest
 from mdrap.af_xdp import (
+    HardwareTimestampDissector,
     KernelBypassReceiver,
+    SCM_TIMESTAMPING_STRUCT,
     UMEMConfig,
     VirtualUMEM,
     XdpPacketDesc,
@@ -91,3 +94,25 @@ def test_kernel_bypass_receiver_chunk_exhaustion():
     stats = receiver.get_stats()
     assert stats["rx_dropped"] == 1
     assert stats["fill_ring_starved"] == 1
+
+
+def test_hardware_timestamp_dissector():
+    """Verify HardwareTimestampDissector extracts nanosecond hardware and software timestamps."""
+    # Pack 48 bytes: ts0 (software), ts1 (transformed), ts2 (raw hardware)
+    sec0, nsec0 = 1700000000, 100000000
+    sec1, nsec1 = 1700000000, 200000000
+    sec2, nsec2 = 1700000000, 300000000
+
+    raw_cmsg = SCM_TIMESTAMPING_STRUCT.pack(sec0, nsec0, sec1, nsec1, sec2, nsec2)
+    assert len(raw_cmsg) == 48
+
+    hw_ns, sw_ns = HardwareTimestampDissector.parse_cmsg(raw_cmsg)
+    assert hw_ns == 1700000000300000000
+    assert sw_ns == 1700000000100000000
+
+    # Truncated cmsg returns (None, None)
+    assert HardwareTimestampDissector.parse_cmsg(b"\x00" * 32) == (None, None)
+
+    # Empty/zero cmsg returns (None, None)
+    zero_cmsg = SCM_TIMESTAMPING_STRUCT.pack(0, 0, 0, 0, 0, 0)
+    assert HardwareTimestampDissector.parse_cmsg(zero_cmsg) == (None, None)

@@ -40,6 +40,42 @@ XDP_USE_NEED_WAKEUP = 1 << 3
 # Linux struct xdp_desc binary layout: uint64_t addr, uint32_t len, uint32_t options (16 bytes)
 XDP_DESC_STRUCT = struct.Struct("<QII")
 
+# Linux socket timestamping constants (asm-generic/socket.h & linux/net_tstamp.h)
+SO_TIMESTAMPING = 37
+SCM_TIMESTAMPING = 37
+SOF_TIMESTAMPING_TX_HARDWARE = 1 << 0
+SOF_TIMESTAMPING_TX_SOFTWARE = 1 << 1
+SOF_TIMESTAMPING_RX_HARDWARE = 1 << 2
+SOF_TIMESTAMPING_RX_SOFTWARE = 1 << 3
+SOF_TIMESTAMPING_SOFTWARE = 1 << 4
+SOF_TIMESTAMPING_RAW_HARDWARE = 1 << 6
+
+# 48-byte layout for struct scm_timestamping: 3 * timespec(tv_sec: int64, tv_nsec: int64)
+SCM_TIMESTAMPING_STRUCT = struct.Struct("=qqqqqq")
+
+
+class HardwareTimestampDissector:
+    """Parses Linux SCM_TIMESTAMPING ancillary socket control messages (cmsg)."""
+
+    @staticmethod
+    def parse_cmsg(cmsg_data: bytes) -> tuple[Optional[int], Optional[int]]:
+        """Extract (raw_hardware_ns, software_system_ns) from cmsg binary buffer.
+
+        Returns:
+            (raw_hardware_ns, software_ns) as integer nanoseconds, or None if unavailable.
+        """
+        if len(cmsg_data) < 48:
+            return None, None
+        try:
+            sec0, nsec0, _, _, sec2, nsec2 = SCM_TIMESTAMPING_STRUCT.unpack_from(
+                cmsg_data, 0
+            )
+            sw_ns = (sec0 * 1_000_000_000 + nsec0) if sec0 > 0 else None
+            hw_ns = (sec2 * 1_000_000_000 + nsec2) if sec2 > 0 else None
+            return hw_ns, sw_ns
+        except Exception:
+            return None, None
+
 
 @dataclass(slots=True)
 class UMEMConfig:
