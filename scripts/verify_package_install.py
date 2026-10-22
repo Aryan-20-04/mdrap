@@ -43,7 +43,7 @@ def main() -> None:
             "[importlib.import_module('mdrap.' + name) for name in mods]; "
             "import mdrap.adapters.reference, mdrap.adapters.template, mdrap.plugins; "
             "assert importlib.util.find_spec('mdrap.cli') is None; "
-            "assert importlib.util.find_spec('mdrap.portfolio') is None"
+            "assert importlib.util.find_spec('mdrap.bbo') is None"
         )
         subprocess.run([sys.executable, "-S", "-c", core_code], cwd=core_app, env=core_env, check=True)
         subprocess.run(
@@ -66,7 +66,7 @@ def main() -> None:
         env["MDRAP_WHEEL_TARGET"] = str(target)
         code = (
             "import importlib.util, pathlib; "
-            "import mdrap, mdrap.models, mdrap.plugins, mdrap.cli, mdrap.portfolio, models; "
+            "import mdrap, mdrap.models, mdrap.plugins, mdrap.cli, mdrap.bbo, models; "
             "target = pathlib.Path(mdrap.__file__).resolve().parents[1]; "
             "assert target == pathlib.Path(__import__('os').environ['MDRAP_WHEEL_TARGET']).resolve(); "
             "assert models.APPLICATION_SENTINEL; "
@@ -74,7 +74,7 @@ def main() -> None:
             "assert pathlib.Path(mdrap.models.__file__).resolve().is_relative_to(target); "
             "assert importlib.util.find_spec('mdrap.plugins') is not None; "
             "assert importlib.util.find_spec('mdrap.cli') is not None; "
-            "assert importlib.util.find_spec('mdrap.portfolio') is not None"
+            "assert importlib.util.find_spec('mdrap.bbo') is not None"
         )
         subprocess.run([sys.executable, "-S", "-c", code], cwd=app, env=env, check=True)
         subprocess.run([sys.executable, "-S", "-m", "mdrap.cli", "--help"], cwd=app, env=env, check=True, stdout=subprocess.DEVNULL)

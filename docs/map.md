@@ -87,7 +87,6 @@ The 82 Python modules in `src/` are structured across 12 distinct functional lay
 | [`flow_tracker.py`](../src/mdrap/flow_tracker.py) | Order flow analysis | `OrderFlowTracker`, `LeeReadyClassifier` | `beta` |
 | [`backtest.py`](../src/mdrap/backtest.py) | Backtesting engine | `BacktestEngine` | `beta` |
 | [`tca.py`](../src/mdrap/tca.py) | Transaction cost analysis | `TCAEngine`, `TCAMetrics`, `ExecutionRecord` | `experimental` ⚠️ |
-| [`portfolio.py`](../src/mdrap/portfolio.py) | Portfolio tracking | `PortfolioTracker` | `beta` |
 | [`replay.py`](../src/mdrap/replay.py) | Deterministic historical replay engine | `HistoricalReplayEngine`, `ReplayConfig` | `stable` |
 
 > ⚠️ **`tca.py` compliance notice:** this module implements metrics shaped around SEC Rule 605/606 and MiFID II RTS 27/28 concepts (execution quality, price improvement, venue routing statistics). It has **not been reviewed by a securities compliance professional or counsel**. If you're building a real best-execution or regulatory reporting product on top of it, get that review before relying on its output for any compliance, audit, or regulatory-filing purpose — treat it as a starting implementation of the *shape* of these metrics, not a validated compliance engine.
@@ -96,9 +95,6 @@ The 82 Python modules in `src/` are structured across 12 distinct functional lay
 
 | Module | Purpose | Key Exports | Stability |
 |---|---|---|---|
-| [`research.py`](../src/mdrap/research.py) | Company research engine | `EdgarClient`, `CompanyProfile`, `FilingRecord` | `experimental` |
-| [`news.py`](../src/mdrap/news.py) | Financial news and sentiment | `NewsFeed`, `FinancialSentimentAnalyzer` | `experimental` |
-| [`corporate_actions.py`](../src/mdrap/corporate_actions.py) | Corporate actions engine | `CorporateActionsEngine` | `experimental` |
 | [`vessel.py`](../src/mdrap/vessel.py) | AIS vessel tracking | `VesselTracker`, `Vessel`, `Chokepoint` | `experimental` |
 
 ### Infrastructure & Native Acceleration (stable)

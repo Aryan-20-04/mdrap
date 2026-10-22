@@ -8,7 +8,7 @@ This document provides an honest, auditable record of the verification status of
 
 | Operating Mode | Scope | Verification Status | Operational Clearance |
 | --- | --- | --- | --- |
-| **Mode A** | Single-Host Process Isolation & Native IPC | **VERIFIED** | Sandbox & Single-Node Production Approved |
+| **Mode A** | Single-Host Process Isolation & Native IPC | 1,500+ core test suite passed cleanly | Sandbox & Single-Node Production Approved |
 | **Mode B** | Multi-Host Distributed Clustering & Failover | **NOT SUPPORTED** | Strictly Single-Node Scope (Non-Goal) |
 | **Mode C** | Live Venue Connectivity & Production Exchange Feeds | **GATED** | Requires Direct Licensing & Compliance Sign-Off |
 | **Mode D** | Physical Kernel-Bypass & Hardware Acceleration | **GATED** | Requires Dedicated FPGA / NIC Testbenches |

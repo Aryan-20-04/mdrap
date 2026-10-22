@@ -18,7 +18,6 @@ sys.path.insert(0, os.path.abspath("src"))
 
 from mdrap.ingress import FeedAdapterConfig, ReplayFeedAdapter
 from mdrap.ingestlog import IngestLog
-from mdrap.metering import DurableUsageMeter, MeteringUnit
 from mdrap.models import EventType, QualityStatus
 from mdrap.quality import QualityEngine
 
@@ -26,7 +25,6 @@ from mdrap.quality import QualityEngine
 def run_event_trace(num_events: int = 2500, out_path: str = "audit/phase4/event_trace_results.json"):
     temp_dir = tempfile.mkdtemp(prefix="mdrap_trace_")
     wal_dir = os.path.join(temp_dir, "wal")
-    meter_db = os.path.join(temp_dir, "metering.db")
     os.makedirs(wal_dir, exist_ok=True)
 
     try:
@@ -69,8 +67,7 @@ def run_event_trace(num_events: int = 2500, out_path: str = "audit/phase4/event_
 
         quality_engine = QualityEngine()
         ingest_log = IngestLog(log_dir=wal_dir, max_segment_bytes=10 * 1024 * 1024)
-        usage_meter = DurableUsageMeter(meter_db)
-
+    
         t0 = time.perf_counter()
         processed_count = 0
         valid_count = 0
@@ -112,16 +109,7 @@ def run_event_trace(num_events: int = 2500, out_path: str = "audit/phase4/event_
             )
             sbe_frames_bytes += len(sbe)
 
-            # Usage Meter record
-            usage_meter.record_usage(
-                client_id="Firm_Apex_HFT",
-                tenant_id="Tenant_Prime",
-                source=canon.source,
-                symbol=canon.instrument_id,
-                count=1,
-                idempotency_key=f"trace_evt_{canon.sequence_number}_{canon.event_id}",
-                unit=MeteringUnit.DISTRIBUTED_EVENT,
-            )
+            pass
 
         t1 = time.perf_counter()
         elapsed = t1 - t0

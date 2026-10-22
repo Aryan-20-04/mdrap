@@ -1,15 +1,15 @@
 {
   "mdrap_version": "4.0.0",
-  "commit": "9c22e290b9e77638353c61ed1eec2c738d0b430b",
-  "generated_at": "2026-10-20T06:13:34.733308+00:00",
+  "commit": "b47fabf264b7cb94b0acebf51ebe7794408c35a1",
+  "generated_at": "2026-10-22T14:50:25.782674+00:00",
   "install_command": "pip install -e .",
   "test_counts": {
-    "passed": 1573,
-    "skipped": 1,
+    "passed": 1542,
+    "skipped": 0,
     "deselected": 63,
     "failed": 0,
-    "total": 1574
+    "total": 1542
   },
-  "verified_claim": "1,550+ core test suite passed cleanly",
+  "verified_claim": "1,500+ core test suite passed cleanly",
   "scope": "Single-Node Process & IPC (Mode A)"
 }

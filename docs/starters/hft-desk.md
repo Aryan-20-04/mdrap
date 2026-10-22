@@ -251,5 +251,5 @@ An HFT trading desk should aggressively trim non-critical modules to prevent gar
 - **No REST / WebSocket API Service ([`api.py`](src/mdrap/api.py))**: Avoids HTTP parsing and asyncio loop scheduling overhead.
 - **No Analytical Columnar Engine ([`columnar.py`](src/mdrap/columnar.py))**: DuckDB aggregations belong on an offline analytics node, not on the trading box.
 - **No Historical Backtesting ([`backtest.py`](src/mdrap/backtest.py))**: Keep execution binaries decoupled from backtest runners.
-- **No Research & Sentiment Modules ([`research.py`](src/mdrap/research.py), [`news.py`](src/mdrap/news.py), [`vessel.py`](src/mdrap/vessel.py))**: External web scraping and alternative datasets have no role on the microsecond path.
+- **No Research & Sentiment Modules (`research.py`, `news.py`, [`vessel.py`](src/mdrap/vessel.py))**: External web scraping and alternative datasets have no role on the microsecond path.
 - **No Rich Terminal Cockpit / Interactive CLI ([`terminal_display.py`](src/mdrap/terminal_display.py), [`navigator.py`](src/mdrap/navigator.py))**: TUI formatting consumes hundreds of CPU cycles; use headless daemons with lightweight binary metrics.

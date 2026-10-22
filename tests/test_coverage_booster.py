@@ -19,7 +19,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 import cli
 import mdrap.itch as itch
-import mdrap.research as research
 import mdrap.service as service
 from mdrap.storage import Store
 
@@ -91,54 +90,6 @@ def test_cli_test_all_mocked(parser):
     # Mock pytest.main so it tests the pipeline runner steps inside cmd_test_all in <1s
     with patch("pytest.main", return_value=0):
         _run_cmd(parser, ["test-all", "-s", "42"])
-
-
-def test_research_form4_xml_parsing():
-    sample_xml = """<?xml version="1.0"?>
-    <ownershipDocument>
-        <issuer>
-            <issuerCik>0000320193</issuerCik>
-            <issuerName>Apple Inc</issuerName>
-            <issuerTradingSymbol>AAPL</issuerTradingSymbol>
-        </issuer>
-        <reportingOwner>
-            <reportingOwnerId>
-                <rptOwnerCik>0001234567</rptOwnerCik>
-                <rptOwnerName>Cook Timothy D</rptOwnerName>
-            </reportingOwnerId>
-            <reportingOwnerRelationship>
-                <isDirector>1</isDirector>
-                <isOfficer>1</isOfficer>
-                <officerTitle>Chief Executive Officer</officerTitle>
-            </reportingOwnerRelationship>
-        </reportingOwner>
-        <nonDerivativeTable>
-            <nonDerivativeTransaction>
-                <securityTitle><value>Common Stock</value></securityTitle>
-                <transactionDate><value>2026-09-01</value></transactionDate>
-                <transactionCoding><transactionCode>S</transactionCode></transactionCoding>
-                <transactionAmounts>
-                    <transactionShares><value>50000</value></transactionShares>
-                    <transactionPricePerShare><value>230.50</value></transactionPricePerShare>
-                    <transactionAcquiredDisposedCode><value>D</value></transactionAcquiredDisposedCode>
-                </transactionAmounts>
-                <postTransactionAmounts>
-                    <sharesOwnedFollowingTransaction><value>3000000</value></sharesOwnedFollowingTransaction>
-                </postTransactionAmounts>
-            </nonDerivativeTransaction>
-        </nonDerivativeTable>
-    </ownershipDocument>
-    """
-    trades = research.parse_form4_xml(sample_xml, ticker="AAPL")
-    assert len(trades) == 1
-    tr = trades[0]
-    assert tr.ticker == "AAPL"
-    assert tr.owner_name == "Cook Timothy D"
-    assert tr.officer_title == "Chief Executive Officer"
-    assert tr.shares == 50000.0
-    assert tr.price_per_share == 230.50
-    assert tr.transaction_code == "S"
-    assert tr.action == "SELL"
 
 
 def test_service_terminal_cockpit_frame():

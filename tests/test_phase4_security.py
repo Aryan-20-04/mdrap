@@ -14,7 +14,6 @@ import tempfile
 import time
 import pytest
 from mdrap.ingestlog import IngestLog, IngestLogLockedError
-from mdrap.metering import DurableUsageMeter
 from mdrap.security import AccessDenied, ClientEntitlement, Role, SecurityManager
 from mdrap.storage import Store
 
@@ -60,35 +59,29 @@ def test_token_salt_and_constant_time_verification(tmp_path):
 
 
 def test_fail_closed_entitlement_enforcement(tmp_path):
-    """Metering and distribution entitlement checks fail closed under any discrepancy."""
-    db_path = str(tmp_path / "meter_sec.db")
-    meter = DurableUsageMeter(db_path)
+    """Distribution entitlement and venue/symbol licensing checks fail closed under any discrepancy."""
+    sec = SecurityManager()
 
-    # 1. None entitlement fails closed
-    assert meter.verify_entitlement(None, source="NASDAQ", symbol="AAPL") is False
-
-    # 2. Inactive entitlement fails closed
+    # 1. Inactive entitlement fails closed
     inactive_ent = ClientEntitlement(
         token_hash="hash1",
         client_id="Client1",
         is_active=False,
     )
-    assert (
-        meter.verify_entitlement(inactive_ent, source="NASDAQ", symbol="AAPL") is False
-    )
+    with pytest.raises(AccessDenied):
+        sec.authorize(inactive_ent, Role.VIEWER, action_name="stream_market_data")
 
-    # 3. Expired entitlement fails closed
+    # 2. Expired entitlement fails closed
     expired_ent = ClientEntitlement(
         token_hash="hash2",
         client_id="Client2",
         is_active=True,
         expires_at=time.time() - 100.0,
     )
-    assert (
-        meter.verify_entitlement(expired_ent, source="NASDAQ", symbol="AAPL") is False
-    )
+    with pytest.raises(AccessDenied):
+        sec.authorize(expired_ent, Role.VIEWER, action_name="stream_market_data")
 
-    # 4. Scope-restricted entitlement enforcement
+    # 3. Scope-restricted entitlement enforcement
     scoped_ent = ClientEntitlement(
         token_hash="hash3",
         client_id="Client3",
@@ -97,15 +90,13 @@ def test_fail_closed_entitlement_enforcement(tmp_path):
         allowed_symbols=["AAPL", "MSFT"],
     )
     # Allowed
-    assert meter.verify_entitlement(scoped_ent, source="NASDAQ", symbol="AAPL") is True
+    sec.authorize(scoped_ent, Role.VIEWER, action_name="stream", source="NASDAQ", symbol="AAPL")
     # Disallowed source
-    assert (
-        meter.verify_entitlement(scoped_ent, source="BINANCE", symbol="AAPL") is False
-    )
+    with pytest.raises(AccessDenied):
+        sec.authorize(scoped_ent, Role.VIEWER, action_name="stream", source="BINANCE", symbol="AAPL")
     # Disallowed symbol
-    assert meter.verify_entitlement(scoped_ent, source="NASDAQ", symbol="GOOG") is False
-
-    meter.close()
+    with pytest.raises(AccessDenied):
+        sec.authorize(scoped_ent, Role.VIEWER, action_name="stream", source="NASDAQ", symbol="GOOG")
 
 
 def test_sbe_wire_bounds_and_null_terminator_safety():

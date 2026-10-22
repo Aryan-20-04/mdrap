@@ -2170,84 +2170,10 @@ def cmd_report(args):
     console = Console()
 
     if report_type in ("13f", "form13f", "holdings"):
-        from ..portfolio import PortfolioTracker
-        from ..symbology import resolve_symbol
-
-        db_path = getattr(args, "db", "data/mdrap.db")
-        tracker = PortfolioTracker(db_path=db_path)
-        positions = [p for p in tracker.all_positions() if p.quantity > 0]
-
-        # Calculate preceding calendar quarter end per SEC 13F filing rules
-        today = datetime.date.today()
-        q_ends = [
-            datetime.date(today.year - 1, 12, 31),
-            datetime.date(today.year, 3, 31),
-            datetime.date(today.year, 6, 30),
-            datetime.date(today.year, 9, 30),
-            datetime.date(today.year, 12, 31),
-        ]
-        q_end = [q for q in q_ends if q <= today][-1]
-
-        # Standard Form 13F Information Table format (whole dollars per 2023 SEC amendments)
-        entries = []
-        for p in positions:
-            sym_info = resolve_symbol(p.symbol)
-            cusip_or_isin = sym_info.isin or sym_info.figi or p.symbol
-            val_whole = int(round(p.market_value))
-            val_thousands = round(p.market_value / 1000.0, 1)
-            entries.append(
-                {
-                    "issuer_name": sym_info.name or p.symbol,
-                    "title_of_class": "COMMON STOCK",
-                    "cusip_isin": cusip_or_isin,
-                    "value_usd": val_whole,
-                    "value_usd_000s": val_thousands,
-                    "shares_principal": int(p.quantity),
-                    "investment_discretion": "SOLE",
-                }
-            )
-
-        if getattr(args, "json", False):
-            print(
-                json.dumps(
-                    {
-                        "report": "SEC_FORM_13F",
-                        "compliance_status": "ILLUSTRATIVE_LOCAL_PORTFOLIO",
-                        "quarter_ended": q_end.isoformat(),
-                        "holdings": entries,
-                    },
-                    indent=2,
-                )
-            )
-            return
-
-        table = Table(
-            title="SEC Form 13F Information Table (Institutional Holdings) [ILLUSTRATIVE]"
-        )
-        table.add_column("Name of Issuer", style="cyan")
-        table.add_column("Class", style="dim")
-        table.add_column("CUSIP/ISIN", style="yellow")
-        table.add_column("Value ($)", justify="right", style="green")
-        table.add_column("Shares", justify="right", style="bold")
-        table.add_column("Discretion", style="magenta")
-
-        if not entries:
-            table.add_row("No long equity positions held", "-", "-", "$0", "0", "-")
-        else:
-            for e in entries:
-                table.add_row(
-                    e["issuer_name"][:30],
-                    e["title_of_class"],
-                    e["cusip_isin"],
-                    f"${e['value_usd']:,}",
-                    f"{e['shares_principal']:,}",
-                    e["investment_discretion"],
-                )
-        console.print(table)
         console.print(
-            f"[dim]Quarter Ended: {q_end.isoformat()} | Values reported to nearest dollar per SEC Form 13F instructions (amended 2023). Local portfolio ledger representation.[/dim]\n"
+            "[yellow]Notice:[/yellow] Form 13F holdings reporting relies on portfolio tracking, which is out of core scope for the market data engine sidecar."
         )
-
+        return
     elif report_type in ("rts28", "mifid", "mifid2", "venues"):
         from ..tca import TCAEngine, generate_demo_executions, ExecutionRecord
 

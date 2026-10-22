@@ -396,210 +396,11 @@ def cmd_options(args: argparse.Namespace) -> None:
 # 5. News & Sentiment CLI
 # ---------------------------------------------------------------------------
 def cmd_news(args: argparse.Namespace) -> None:
-    import urllib.request
-    from .news import FinancialSentimentAnalyzer, TickerExtractor, NewsFeed
-
-    action = getattr(args, "action", "latest") or "latest"
-    symbol = getattr(args, "symbol", None)
-    limit = getattr(args, "limit", 10) or 10
-    analyzer = FinancialSentimentAnalyzer()
-
-    # Handle case where user provided symbol positionally or action was an unknown string
-    if action not in ("latest", "analyze", "summary", "fetch"):
-        if not symbol and action.isalpha() and len(action) <= 8:
-            symbol = action.upper()
-            action = "latest"
-        else:
-            action = "analyze"
-
-    feed = NewsFeed()
-
-    def _populate_feed(target_sym: str | None = None) -> None:
-        fetched = False
-        fetch_err = None
-        sym_query = target_sym if target_sym else "AAPL,MSFT,NVDA,TSLA"
-        try:
-            url = f"https://feeds.finance.yahoo.com/rss/2.0/headline?s={sym_query}"
-            req = urllib.request.Request(
-                url,
-                headers={
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-                },
-            )
-            with urllib.request.urlopen(req, timeout=3.0) as resp:
-                xml_data = resp.read().decode("utf-8", errors="replace")
-                items = feed.parse_rss_xml(xml_data, source="YahooFinance")
-                if items:
-                    fetched = True
-        except Exception as exc:
-            fetch_err = str(exc)
-
-        if not fetched and target_sym:
-            try:
-                from .research import EdgarClient
-
-                client = EdgarClient()
-                sec_events = client.get_material_events(target_sym, limit=limit)
-                for ev in sec_events:
-                    desc = getattr(ev, "description", "") or (
-                        ", ".join(getattr(ev, "decoded_items", [])) or "SEC 8-K Event"
-                    )
-                    feed.add_headline(
-                        f"{target_sym}: {desc}",
-                        source="SEC_8K",
-                        url=getattr(ev, "filing_url", ""),
-                    )
-                if sec_events:
-                    fetched = True
-            except Exception as exc:
-                if not fetch_err:
-                    fetch_err = str(exc)
-
-        if not feed._items:
-            if fetch_err:
-                console.print(
-                    f"[dim yellow][Notice] Live news retrieval unavailable ({fetch_err}). No headlines to display.[/dim yellow]"
-                )
-            else:
-                console.print(
-                    "[dim yellow][Notice] No news headlines available for the selected symbols.[/dim yellow]"
-                )
-
-    if action in ("latest", "fetch"):
-        _populate_feed(symbol)
-        items = feed.query(symbol=symbol, limit=limit)
-        if not items and symbol:
-            items = feed.query(limit=limit)
-
-        title = f"Latest Financial News & Sentiment · {symbol.upper() if symbol else 'Market Desk'}"
-        columns = [
-            ("Date / Time", {"style": "dim"}),
-            ("Source", {"style": "cyan"}),
-            ("Symbols", {"style": "bold yellow"}),
-            ("Sentiment", {"justify": "center"}),
-            ("Score", {"justify": "right"}),
-            ("Urgency", {"style": "dim"}),
-            ("Headline", {"style": "white"}),
-        ]
-        rows = []
-        for it in items:
-            color = (
-                "green"
-                if "BULLISH" in it.sentiment.value
-                else ("red" if "BEARISH" in it.sentiment.value else "yellow")
-            )
-            sent_str = f"[{color}]{it.sentiment.value}[/{color}]"
-            score_str = f"{it.sentiment_score:+.2f}"
-            t_str = time.strftime("%Y-%m-%d %H:%M", time.localtime(it.timestamp))
-            syms_str = (
-                ", ".join(it.symbols)
-                if it.symbols
-                else (symbol.upper() if symbol else "-")
-            )
-            urgency_str = (
-                f"[bold red]{it.urgency}[/bold red]"
-                if it.urgency in ("HIGH", "CRITICAL")
-                else it.urgency
-            )
-            rows.append(
-                [
-                    t_str,
-                    it.source,
-                    syms_str,
-                    sent_str,
-                    score_str,
-                    urgency_str,
-                    it.headline,
-                ]
-            )
-
-        console.print(_t(title, columns, rows, border="blue"))
-        if getattr(args, "json", False):
-            import json
-
-            print(
-                json.dumps(
-                    [
-                        {
-                            "headline": i.headline,
-                            "sentiment": i.sentiment.value,
-                            "score": i.sentiment_score,
-                            "symbols": i.symbols,
-                            "timestamp": i.timestamp,
-                        }
-                        for i in items
-                    ],
-                    indent=2,
-                )
-            )
-        return
-
-    elif action == "summary":
-        _populate_feed(symbol)
-        summary = feed.sentiment_summary(symbol=symbol)
-        sym_label = symbol.upper() if symbol else "Market Universe"
-        console.print(Panel.fit(f"[bold]Sentiment Summary for {sym_label}[/bold]"))
-        avg_score = summary["avg_score"]
-        consensus = (
-            "BULLISH"
-            if avg_score > 0.15
-            else ("BEARISH" if avg_score < -0.15 else "NEUTRAL")
-        )
-        cons_color = (
-            "green"
-            if consensus == "BULLISH"
-            else ("red" if consensus == "BEARISH" else "yellow")
-        )
-        console.print(
-            _t(
-                None,
-                [("Metric", {"style": "cyan"}), ("Value", {"style": "bold"})],
-                [
-                    ["Total Articles", str(summary["total"])],
-                    ["Bullish Articles", f"[green]{summary['bullish']}[/green]"],
-                    ["Bearish Articles", f"[red]{summary['bearish']}[/red]"],
-                    ["Neutral Articles", f"[yellow]{summary['neutral']}[/yellow]"],
-                    ["Average Score", f"{avg_score:+.2f}"],
-                    ["Consensus", f"[{cons_color}]{consensus}[/{cons_color}]"],
-                ],
-                border="magenta",
-            )
-        )
-        return
-
-    elif action == "analyze":
-        text = (
-            getattr(args, "text", "")
-            or "Apple beats Q4 revenue expectations, raises dividend and buyback program"
-        )
-        sentiment, score, urgency, kw = analyzer.analyze(text)
-        extractor = TickerExtractor()
-        tickers = extractor.extract(text)
-
-        console.print(Panel.fit(f"[bold]News Headline:[/bold] [italic]{text}[/italic]"))
-        color = (
-            "green"
-            if "BULLISH" in sentiment.value
-            else ("red" if "BEARISH" in sentiment.value else "yellow")
-        )
-        console.print(
-            _t(
-                None,
-                [("Field", {"style": "cyan"}), ("Value", {"style": "bold"})],
-                [
-                    ["Sentiment", f"[{color}]{sentiment.value}[/{color}]"],
-                    ["Sentiment Score", f"{score:+.2f}"],
-                    ["Urgency", urgency],
-                    ["Keywords", ", ".join(kw) if kw else "None"],
-                    ["Extracted Tickers", ", ".join(tickers) if tickers else "None"],
-                ],
-                border="blue",
-            )
-        )
-        return
+    console.print(
+        "[yellow]Notice:[/yellow] Financial news and sentiment analysis is out of core scope for the market data engine sidecar."
+    )
 
 
-# ---------------------------------------------------------------------------
 # 6. Alerting CLI
 # ---------------------------------------------------------------------------
 def cmd_alert(args: argparse.Namespace) -> None:
@@ -650,113 +451,25 @@ def cmd_alert(args: argparse.Namespace) -> None:
 # 7. Watchlist & Portfolio CLI
 # ---------------------------------------------------------------------------
 def cmd_watchlist(args: argparse.Namespace) -> None:
-    from .portfolio import WatchlistManager
-
-    wm = WatchlistManager(db_path=getattr(args, "db", "data/portfolio.db"))
-    action = getattr(args, "action", "list") or "list"
-
-    if action == "list":
-        console.print(
-            _t(
-                "Watchlists",
-                [
-                    ("Name", {"style": "bold cyan"}),
-                    ("Symbols", {"style": "green"}),
-                    ("Description", {"style": "dim"}),
-                ],
-                [[w.name, ", ".join(w.symbols), w.description] for w in wm.list_all()],
-                border="green",
-            )
-        )
-    elif action == "add":
-        name, symbols = getattr(args, "name", "Default"), getattr(args, "symbols", [])
-        wm.add_symbols(name, symbols)
-        console.print(f"[green]Added {symbols} to watchlist '{name}'[/green]")
+    console.print(
+        "[yellow]Notice:[/yellow] Watchlist management is out of core scope for the market data engine sidecar."
+    )
 
 
 def cmd_portfolio(args: argparse.Namespace) -> None:
-    from .portfolio import PortfolioTracker
-    from .venues import format_currency
-    from .fx import convert_currency
-
-    target_curr = getattr(args, "currency", "USD") or "USD"
-    tracker = PortfolioTracker(
-        initial_cash=getattr(args, "capital", 100_000.0),
-        db_path=getattr(args, "db", "data/portfolio.db"),
+    console.print(
+        "[yellow]Notice:[/yellow] Portfolio tracking is out of core scope for the market data engine sidecar."
     )
-    if (getattr(args, "action", "summary") or "summary") == "summary":
-        s = tracker.summary()
-        tot_eq = tracker.total_equity_in(target_curr)
-        c_val = convert_currency(s["cash"], "USD", target_curr)
-        mv_val = convert_currency(s["market_value"], "USD", target_curr)
-        r_pnl = convert_currency(s["realized_pnl"], "USD", target_curr)
-        ur_pnl = convert_currency(s["unrealized_pnl"], "USD", target_curr)
-
-        console.print(
-            _t(
-                f"Portfolio Overview · {target_curr.upper()}",
-                [("Metric", {"style": "cyan"}), ("Value", {"style": "bold green"})],
-                [
-                    ["Total Equity", format_currency(tot_eq, target_curr)],
-                    ["Cash", format_currency(c_val, target_curr)],
-                    ["Market Value", format_currency(mv_val, target_curr)],
-                    ["Realized P&L", format_currency(r_pnl, target_curr)],
-                    ["Unrealized P&L", format_currency(ur_pnl, target_curr)],
-                    ["Active Positions", str(s["position_count"])],
-                ],
-            )
-        )
 
 
-# ---------------------------------------------------------------------------
 # 8. Corporate Actions CLI
 # ---------------------------------------------------------------------------
 def cmd_corpact(args: argparse.Namespace) -> None:
-    from .corporate_actions import CorporateActionsEngine, ActionType
-
-    db_path = getattr(args, "db", "data/corpact.db")
-    engine = CorporateActionsEngine(db_path=db_path)
-    symbol = getattr(args, "symbol", "AAPL") or "AAPL"
-    actions = engine.actions_for(symbol)
-
-    if not actions:
-        if symbol == "AAPL":
-            engine.add_split("AAPL", "2020-08-31", 4.0, "4-for-1 forward stock split")
-            engine.add_split("AAPL", "2014-06-09", 7.0, "7-for-1 forward stock split")
-            engine.add_dividend("AAPL", "2024-02-09", 0.24, "Quarterly cash dividend")
-            actions = engine.actions_for(symbol)
-        elif symbol == "TSLA":
-            engine.add_split("TSLA", "2022-08-25", 3.0, "3-for-1 stock split")
-            actions = engine.actions_for(symbol)
-
-    rows = []
-    for a in actions:
-        val = (
-            f"{a.ratio:.1f}:1"
-            if a.action_type in (ActionType.SPLIT, ActionType.REVERSE_SPLIT)
-            else (
-                f"${a.amount:.2f}"
-                if a.action_type == ActionType.CASH_DIVIDEND
-                else (a.new_symbol or "-")
-            )
-        )
-        rows.append([a.effective_date, a.action_type.value, val, a.description])
     console.print(
-        _t(
-            f"Corporate Actions for {symbol}",
-            [
-                ("Date", {"style": "dim"}),
-                ("Type", {"style": "bold cyan"}),
-                ("Ratio / Amount", {"justify": "right"}),
-                ("Description", {"style": "italic"}),
-            ],
-            rows,
-            border="blue",
-        )
+        "[yellow]Notice:[/yellow] Corporate actions tracking is out of core scope for the market data engine sidecar."
     )
 
 
-# ---------------------------------------------------------------------------
 # 9. ML Feature Store CLI
 # ---------------------------------------------------------------------------
 def cmd_features(args: argparse.Namespace) -> None:

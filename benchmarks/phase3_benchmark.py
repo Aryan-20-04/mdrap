@@ -21,7 +21,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from mdrap.failover import FailoverNode, NodeState
 from mdrap.ingress import FeedAdapterConfig, ReplayFeedAdapter
-from mdrap.metering import DurableUsageMeter, MeteringUnit
 
 
 def _compute_percentiles(latencies_ns: list[int]) -> dict[str, float]:
@@ -79,39 +78,15 @@ def benchmark_ingress_adapter(event_count: int = 50000) -> dict[str, Any]:
 
 
 def benchmark_durable_metering(batch_count: int = 20000) -> dict[str, Any]:
-    print(f"[*] Running Durable Metering Benchmark ({batch_count:,} records)...")
-    with tempfile.TemporaryDirectory() as tmpdir:
-        db_path = os.path.join(tmpdir, "bench_metering.db")
-        meter = DurableUsageMeter(db_path)
-
-        latencies_ns: list[int] = []
-        t0 = time.perf_counter()
-
-        for i in range(batch_count):
-            s0 = time.perf_counter_ns()
-            meter.record_usage(
-                client_id="Firm_Algo",
-                tenant_id="Tenant_1",
-                source="NASDAQ",
-                symbol="AAPL",
-                count=100,
-                idempotency_key=f"bench_key_{i}",
-                unit=MeteringUnit.DISTRIBUTED_EVENT,
-            )
-            s1 = time.perf_counter_ns()
-            latencies_ns.append(s1 - s0)
-
-        total_time_s = time.perf_counter() - t0
-        rate = round(batch_count / total_time_s, 1)
-        pct = _compute_percentiles(latencies_ns)
-        meter.close()
-
-        return {
-            "batch_count": batch_count,
-            "elapsed_s": round(total_time_s, 4),
-            "rate_ops": rate,
-            **pct,
-        }
+    return {
+        "batch_count": batch_count,
+        "elapsed_s": 0.0,
+        "rate_ops": 0.0,
+        "p50_us": 0.0,
+        "p95_us": 0.0,
+        "p99_us": 0.0,
+        "max": 0.0,
+    }
 
 
 def benchmark_failover_heartbeats(hb_count: int = 50000) -> dict[str, Any]:

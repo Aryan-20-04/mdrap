@@ -56,7 +56,7 @@ flowchart TD
 | **Core Pipeline & Quality** | [`pipeline.py`](src/mdrap/pipeline.py), [`quality.py`](src/mdrap/quality.py), [`models.py`](src/mdrap/models.py) | Ingests raw historical records, validates timestamp monotonicity and price consistency, and enforces quality status (`VALID`, `SUSPICIOUS`, `INVALID`). |
 | **CHD History Replay** | [`chd_history.py`](src/mdrap/chd_history.py), [`chd.py`](src/mdrap/chd.py) | Fast historical replay of compressed exchange order books and tick streams with nano-precision timestamp alignment. |
 | **Columnar Storage (DuckDB)** | [`columnar.py`](src/mdrap/columnar.py) | Embedded [`ColumnarStore`](src/mdrap/columnar.py) powering sub-second vectorized aggregations, windowed metrics, and Parquet persistence. |
-| **Corporate Actions Engine** | [`corporate_actions.py`](src/mdrap/corporate_actions.py) | Normalizes raw historical prices against stock splits, reverse splits, cash dividends, and ticker renames to avoid phantom returns. |
+| **Corporate Actions Engine** | `corporate_actions.py` | Normalizes raw historical prices against stock splits, reverse splits, cash dividends, and ticker renames to avoid phantom returns. |
 | **Alpha Feature Store** | [`features.py`](src/mdrap/features.py) | Point-in-time technical and microstructure features: `sma()`, `ema()`, `rsi()`, `macd()`, `bollinger_bands()`, and `atr()`. |
 | **Options & Greeks Modeling** | [`options.py`](src/mdrap/options.py) | Black-Scholes-Merton (BSM) options pricing, implied volatility (IV) solvers, and analytic Greeks (`delta`, `gamma`, `vega`, `theta`). |
 | **Backtest Engine** | [`backtest.py`](src/mdrap/backtest.py) | Event-driven historical simulation with [`BacktestEngine`](src/mdrap/backtest.py), paper execution, equity curve sampling, and drawdown analysis. |
@@ -68,7 +68,7 @@ flowchart TD
 The following script demonstrates the complete research workflow:
 1. Loads historical raw events and validates data quality via [`Pipeline`](src/mdrap/pipeline.py).
 2. Stores canonical events into embedded DuckDB via [`ColumnarStore`](src/mdrap/columnar.py).
-3. Applies historical split factors via [`CorporateActionsEngine`](src/mdrap/corporate_actions.py).
+3. Applies historical split factors via `CorporateActionsEngine`.
 4. Calculates technical features (RSI / Moving Averages) via [`features.py`](src/mdrap/features.py).
 5. Executes an event-driven momentum strategy using [`BacktestEngine`](src/mdrap/backtest.py).
 

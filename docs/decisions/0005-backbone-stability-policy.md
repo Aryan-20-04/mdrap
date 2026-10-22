@@ -69,7 +69,7 @@ The three tiers are defined as follows:
 - **Definition**: Exploratory prototypes, cutting-edge research modules, and incubating features under active design.
 - **Breaking Changes**: No guarantees whatsoever. Classes, functions, or entire modules may be renamed, restructured, or eliminated without notice between any release.
 - **Covered Modules**:
-  - Alternative Data: [`research.py`](src/mdrap/research.py) (SEC EDGAR), [`news.py`](src/mdrap/news.py), [`vessel.py`](src/mdrap/vessel.py) (AIS tracking).
+  - Alternative Data: `research.py` (pruned) (SEC EDGAR), `news.py` (pruned), [`vessel.py`](src/mdrap/vessel.py) (AIS tracking).
   - Advanced Trading Tools: [`tca.py`](src/mdrap/tca.py), [`strategy_sdk.py`](src/mdrap/strategy_sdk.py), [`trading_cli.py`](src/mdrap/trading_cli.py).
 
 ---

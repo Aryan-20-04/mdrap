@@ -3,7 +3,7 @@
 A high-throughput, deterministic market data validation, normalization, and cryptographic audit sidecar for institutional trading and quantitative research.
 
 [![Version](https://img.shields.io/badge/version-4.0.0-blue.svg)](pyproject.toml)
-[![Tests](https://img.shields.io/badge/tests-1639%20passing-brightgreen.svg)](scripts/check.py)
+[![Tests](https://img.shields.io/badge/tests-1542%20passing-brightgreen.svg)](scripts/check.py)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 ## What It Is / What It Isn't
@@ -91,7 +91,7 @@ flowchart LR
 
 | Feature | Status | Docs | Test File |
 | :--- | :--- | :--- | :--- |
-| **Deterministic Quality Engine (15 Rules)** | **Stable** | [Quality Rules](docs/reference/rules.md) | `tests/test_adapters_and_rules.py` (1,550+ core test suite passed cleanly) |
+| **Deterministic Quality Engine (15 Rules)** | **Stable** | [Quality Rules](docs/reference/rules.md) | `tests/test_adapters_and_rules.py` (1,500+ core test suite passed cleanly) |
 | **Append-Only IngestLog WAL (CRC-32)** | **Stable** | [Event Schema](docs/reference/event-schema.md) | `tests/test_wal_format_v2.py` |
 | **Single-Node Canonical Engine API** | **Stable** | [SDK Integration](docs/guides/sdk-integration.md) | `tests/test_engine.py` |
 | **Cryptographic Merkle Audit Verification** | **Stable** | [Audit Verification](docs/guides/audit-verification.md) | `tests/test_audit_remediation.py` |

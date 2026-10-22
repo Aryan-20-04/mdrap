@@ -18,15 +18,13 @@ import time
 import pytest
 from mdrap.ingress import FeedAdapterConfig, ReplayFeedAdapter
 from mdrap.ingestlog import IngestLog
-from mdrap.metering import DurableUsageMeter, MeteringUnit
 from mdrap.models import EventType, QualityStatus
 from mdrap.quality import QualityEngine
 
 
 def test_full_pipeline_event_trace(tmp_path):
-    """Trace an event from ingress adapter through quality, WAL persistence, SBE wire framing, and metering."""
+    """Trace an event from ingress adapter through quality, WAL persistence, and SBE wire framing."""
     wal_dir = str(tmp_path / "wal")
-    meter_db = str(tmp_path / "metering.db")
     os.makedirs(wal_dir, exist_ok=True)
 
     # 1. Ingress Adapter Setup
@@ -42,7 +40,6 @@ def test_full_pipeline_event_trace(tmp_path):
     # 2. Pipeline Components
     quality_engine = QualityEngine()
     ingest_log = IngestLog(log_dir=wal_dir, max_segment_bytes=1024 * 1024)
-    usage_meter = DurableUsageMeter(meter_db)
 
     # 3. Process First Event
     raw1 = adapter.poll()
@@ -74,17 +71,6 @@ def test_full_pipeline_event_trace(tmp_path):
     )
     assert len(sbe_frame) == 64
 
-    # Durable Usage Accounting
-    recorded = usage_meter.record_usage(
-        client_id="Desk_Quant_1",
-        tenant_id="Fund_Apex",
-        source=canon1.source,
-        symbol=canon1.instrument_id,
-        count=1,
-        idempotency_key=f"trace_evt_{canon1.event_id}",
-        unit=MeteringUnit.DISTRIBUTED_EVENT,
-    )
-    assert recorded is True
 
     # 4. Process Second Event (Quote)
     raw2 = adapter.poll()
@@ -105,12 +91,5 @@ def test_full_pipeline_event_trace(tmp_path):
     assert replayed_events[0].payload["seq"] == 5001
     assert replayed_events[0].payload["px"] == 150.25
 
-    # 6. Usage Metering Summary Verification
-    summary = usage_meter.get_summary()
-    assert len(summary) == 1
-    assert summary[0]["client_id"] == "Desk_Quant_1"
-    assert summary[0]["total_count"] == 1
-
-    usage_meter.close()
     reopen_log.close()
     adapter.disconnect()
