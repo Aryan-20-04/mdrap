@@ -1,0 +1,52 @@
+================================================================================
+SHARE COPY FOR MDRAP LAUNCH / DEMO
+================================================================================
+
+--- TWITTER / X ---
+Ever had an algo buy phantom liquidity because of a bad tick or crossed quote?
+
+Introducing MDRAP — an open-source market data sidecar that validates multi-venue feeds in real time, quarantines bad data, and proves line-by-line what it rejected via SHA-256 Merkle chains.
+
+⚡ Native C hot path: 47 ns/tick (21M eps wire-to-SHM)
+🛡️ 15 deterministic quality rules (zero silent drops)
+📊 Consolidated L2 depth & OFI micro-price
+🔒 Tamper-evident SQLite audit trails
+
+Open source under MIT: https://github.com/Aryan-20-04/mdrap
+
+#QuantitativeFinance #AlgorithmicTrading #MarketData #FinTech #Python #C
+
+--------------------------------------------------------------------------------
+
+--- LINKEDIN ---
+In trading infrastructure, garbage in means execution slippage out.
+
+I built MDRAP (Market Data Reliability & Acceleration Platform) to solve a chronic problem in electronic trading: unvalidated, delayed, and crossed market data entering trading strategies.
+
+MDRAP sits directly before your trading engines as a low-latency sidecar:
+1. Normalizes multi-venue feeds into a canonical stream (Binance, Coinbase, Kraken, Polygon, ITCH).
+2. Runs 15 deterministic quality rules (Welford variance, crossed quotes, sequence gaps).
+3. Zero silent drops: corrupted events are quarantined with cryptographic reason codes.
+4. Native C acceleration publishes to zero-copy shared memory at 47.5 ns/tick.
+5. Mathematical lineage defense: a SHA-256 Merkle chain makes historical tampering provably detectable.
+
+Fully verified with 1,542 passing unit tests and reproducible benchmark harnesses.
+
+Check it out on GitHub: https://github.com/Aryan-20-04/mdrap
+
+--------------------------------------------------------------------------------
+
+--- REDDIT (r/algotrading / r/cpp / r/Python) ---
+Title: MDRAP: An open-source sidecar to catch corrupted ticks, crossed quotes, and phantom liquidity before your algos trade on them
+
+Most backtests and trading bots assume clean feeds until a crossed quote or sequence jump causes unexpected fills.
+
+MDRAP is an institutional market data sidecar written in Python with a native C hot-path kernel:
+- Enforces 15 deterministic microstructure checks (bid > ask, zero size, Welford 3-sigma price anomalies, duplicate detection).
+- Never silently discards data: quarantined ticks are logged to an audit table with bitmask reason codes.
+- Performance: Standalone C core does 44–61 ns/tick into shared memory. The Python pipeline handles in-memory events at ~8.3 µs p50.
+- Tamper detection: Has an audit chain that cryptographically breaks if any row in the SQLite ledger is modified.
+
+100% open source under MIT: https://github.com/Aryan-20-04/mdrap
+Video demo & reproducible benchmarks in the repo.
+================================================================================
