@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <!-- Background with generous whitespace -->
+  <rect width="512" height="512" fill="#FFFFFF"/>
+
+  <!-- Minimalist Geometric Owl Mark (5 Simple Shapes, Rounded Corners) -->
+  <g transform="translate(0, 0)">
+    <!-- Shape 1: Body Arch (Charcoal) -->
+    <rect x="186" y="176" width="140" height="168" rx="70" ry="70" fill="#1E232A"/>
+
+    <!-- Shape 2: Left Eye Disc (Warm Orange) -->
+    <circle cx="220" cy="242" r="32" fill="#FF6B35"/>
+
+    <!-- Shape 3: Right Eye Disc (Warm Orange) -->
+    <circle cx="292" cy="242" r="32" fill="#FF6B35"/>
+
+    <!-- Shape 4: Pupils / Gaze (Charcoal) -->
+    <circle cx="220" cy="242" r="16" fill="#1E232A"/>
+    <circle cx="292" cy="242" r="16" fill="#1E232A"/>
+
+    <!-- Shape 5: Beak (Warm Orange) -->
+    <polygon points="244,248 268,248 256,268" 
+             fill="#FF6B35" stroke="#FF6B35" stroke-width="4" stroke-linejoin="round"/>
+  </g>
+</svg>

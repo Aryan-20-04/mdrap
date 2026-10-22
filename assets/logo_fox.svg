@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <!-- Background with generous whitespace -->
+  <rect width="512" height="512" fill="#FFFFFF"/>
+
+  <!-- MDRAP Minimalist Geometric Fox Mark (4-5 Simple Shapes, Rounded Corners) -->
+  <g transform="translate(0, 0)">
+    <!-- Left Ear (Warm Orange) -->
+    <path d="M 256,236 L 176,156 C 170,150 162,156 166,164 L 214,268 Z" 
+          fill="#FF6B35" stroke="#FF6B35" stroke-width="12" stroke-linejoin="round" stroke-linecap="round"/>
+
+    <!-- Right Ear (Warm Orange) -->
+    <path d="M 256,236 L 336,156 C 342,150 350,156 346,164 L 298,268 Z" 
+          fill="#FF6B35" stroke="#FF6B35" stroke-width="12" stroke-linejoin="round" stroke-linecap="round"/>
+
+    <!-- Center Brow / Forehead Crown (Charcoal) -->
+    <path d="M 256,200 L 296,268 L 256,296 L 216,268 Z" 
+          fill="#1E232A" stroke="#1E232A" stroke-width="10" stroke-linejoin="round" stroke-linecap="round"/>
+
+    <!-- Muzzle / Snout (Warm Orange) -->
+    <path d="M 216,268 L 296,268 L 256,344 Z" 
+          fill="#FF6B35" stroke="#FF6B35" stroke-width="12" stroke-linejoin="round" stroke-linecap="round"/>
+
+    <!-- Nose Tip (Charcoal) -->
+    <circle cx="256" cy="344" r="8" fill="#1E232A"/>
+  </g>
+</svg>

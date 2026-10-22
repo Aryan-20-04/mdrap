@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <!-- MDRAP Geometric Fox/Owl Mark (Cyan-Violet & Warm Orange Concept) -->
+  <g transform="translate(0, 0)">
+    <!-- Left Ear / High-Frequency Wing (Warm Orange) -->
+    <path d="M 256,236 L 176,156 C 168,148 158,156 162,166 L 214,268 Z" 
+          fill="#FF6B35" stroke="#FF6B35" stroke-width="12" stroke-linejoin="round" stroke-linecap="round"/>
+
+    <!-- Right Ear / High-Frequency Wing (Electric Cyan) -->
+    <path d="M 256,236 L 336,156 C 344,148 354,156 350,166 L 298,268 Z" 
+          fill="#00D2FF" stroke="#00D2FF" stroke-width="12" stroke-linejoin="round" stroke-linecap="round"/>
+
+    <!-- Center Mask / Crown (Deep Charcoal) -->
+    <path d="M 256,196 L 298,268 L 256,298 L 214,268 Z" 
+          fill="#1E232A" stroke="#1E232A" stroke-width="10" stroke-linejoin="round" stroke-linecap="round"/>
+
+    <!-- Lower Muzzle / Canonical Node (Warm Orange) -->
+    <path d="M 214,268 L 298,268 L 256,346 Z" 
+          fill="#FF6B35" stroke="#FF6B35" stroke-width="12" stroke-linejoin="round" stroke-linecap="round"/>
+
+    <!-- Core Focal Point / Microsecond Pulse (Cyan) -->
+    <circle cx="256" cy="346" r="9" fill="#00D2FF"/>
+  </g>
+</svg>
