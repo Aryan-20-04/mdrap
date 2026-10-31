@@ -22,6 +22,7 @@ from enum import Enum, EnumMeta, IntEnum
 import functools
 import json
 import math
+import threading
 import time
 from typing import Any, Callable, Dict, List, Optional, Tuple
 import warnings
@@ -240,6 +241,7 @@ _CANONICAL_REASONS = (
 class ReasonRegistry:
     """Institutional dynamic reason registry for core, custom, and third-party anomaly codes."""
 
+    _LOCK: threading.Lock = threading.Lock()
     _ALL_REGISTERED_REASONS: set[str] = set(_CANONICAL_REASONS)
 
     def __init__(self) -> None:
@@ -261,11 +263,12 @@ class ReasonRegistry:
     ) -> str:
         """Register a new reason code dynamically without modifying core models."""
         clean = code.strip().upper()
-        self._reasons[clean] = clean
-        ReasonRegistry._ALL_REGISTERED_REASONS.add(clean)
-        if description:
-            self._descriptions[clean] = description
-        self._severities[clean] = severity
+        with self._LOCK:
+            self._reasons[clean] = clean
+            ReasonRegistry._ALL_REGISTERED_REASONS.add(clean)
+            if description:
+                self._descriptions[clean] = description
+            self._severities[clean] = severity
         return clean
 
     def has(self, code: str) -> bool:

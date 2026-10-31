@@ -85,6 +85,29 @@ __all__ = [
 ]
 
 
+_REDACT_KEYS = frozenset(
+    {"account", "account_id", "password", "secret", "trader_id", "1", "11", "50", "554"}
+)
+
+
+def _redact_payload_str(payload_str: str) -> str:
+    if not payload_str or os.environ.get("MDRAP_RETAIN_RAW_SENSITIVE", "0") == "1":
+        return payload_str
+    try:
+        data = json.loads(payload_str)
+        if isinstance(data, dict):
+            modified = False
+            for k in list(data.keys()):
+                if str(k).lower() in _REDACT_KEYS:
+                    data[k] = "[REDACTED]"
+                    modified = True
+            if modified:
+                return json.dumps(data)
+    except Exception:
+        pass
+    return payload_str
+
+
 class Store(StoreAuditMixin):
     """Thread-safe SQLite storage engine for MDRAP event stream and analytics."""
 
@@ -556,15 +579,21 @@ class Store(StoreAuditMixin):
         """Persist a batch of quarantined anomaly records with conflict preservation."""
         if not rows:
             return
+        redacted_rows = [
+            (r[0], r[1], r[2], r[3], r[4], _redact_payload_str(r[5]), r[6])
+            if len(r) == 7 and isinstance(r[5], str)
+            else r
+            for r in rows
+        ]
         c_before = self.conn.total_changes
         self.conn.executemany(
             "INSERT INTO quarantine VALUES (?,?,?,?,?,?,?) ON CONFLICT(event_id) DO NOTHING",
-            rows,
+            redacted_rows,
         )
         inserted = self.conn.total_changes - c_before
-        if inserted < len(rows):
-            self.conflicts += len(rows) - inserted
-        self._append_quarantine_merkle_batch_in_tx(rows)
+        if inserted < len(redacted_rows):
+            self.conflicts += len(redacted_rows) - inserted
+        self._append_quarantine_merkle_batch_in_tx(redacted_rows)
 
     @_synchronized
     def write_lineage_batch(self, rows: list[tuple]):

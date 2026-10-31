@@ -147,3 +147,19 @@ def test_zero_mutation_of_cached_canonical_events():
     assert ev1.reasons == orig_reasons_1
     assert ev2.reasons == orig_reasons_2
     assert Reason.CROSS_FEED_DISAGREEMENT.value in dec.quality_reasons
+
+
+def test_reconciliation_lead_lag_attribution():
+    """Verify reconciler identifies the lead venue and measures lead-lag delta."""
+    reconciler = Reconciler()
+    # Feed 1 arrives at exchange_ts 100.000
+    ev1 = _make_event("FEED_LEADER", 150.00, ts=100.000)
+    # Feed 2 arrives at exchange_ts 100.015 (15ms later)
+    ev2 = _make_event("FEED_FOLLOWER", 150.02, ts=100.015)
+
+    reconciler.reconcile(ev1)
+    dec = reconciler.reconcile(ev2)
+
+    assert dec is not None
+    assert dec.lead_source == "FEED_LEADER"
+    assert abs(dec.lead_latency_delta_ms - 15.0) < 1e-2

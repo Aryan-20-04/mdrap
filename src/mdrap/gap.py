@@ -93,12 +93,11 @@ class GapManager:
                     state=GapState.OPEN,
                 )
                 self._open_gaps[coord] = rec
-                self._open_order.append(coord)
                 created.append(rec)
 
                 # Enforce bounded capacity
                 if len(self._open_gaps) > self.max_open_gaps:
-                    old_coord = self._open_order.popleft()
+                    old_coord = next(iter(self._open_gaps))
                     old_rec = self._open_gaps.pop(old_coord, None)
                     if old_rec and old_rec.state == GapState.OPEN:
                         old_rec.state = GapState.UNRECOVERABLE

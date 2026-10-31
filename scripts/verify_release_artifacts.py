@@ -11,7 +11,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 DIST = ROOT / "dist"
-VERSION = "3.1.2"
+_version_ns: dict[str, str] = {}
+exec((ROOT / "src" / "mdrap" / "_version.py").read_text(encoding="utf-8"), _version_ns)
+VERSION = _version_ns["__version__"]
 
 
 def build(project: Path, distribution: str) -> tuple[Path, Path]:

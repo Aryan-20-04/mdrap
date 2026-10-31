@@ -78,6 +78,8 @@ except ImportError:
         dedup_cache_size: int = DEFAULT_DEDUP_CACHE_SIZE
         allow_negative: bool = False
         unseq_dup_status: str = "SUSPICIOUS"
+        reorder_window_s: float = 0.0
+        reorder_max_slots: int = 32
         session_policy: str = "strict"
 
         def for_instrument(self, instrument_id: str) -> QualityConfig:

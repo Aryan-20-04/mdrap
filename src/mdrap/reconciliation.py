@@ -188,6 +188,8 @@ class CanonicalDecision:
     reason: str
     competing_sources: list
     quality_reasons: list[str] = field(default_factory=list)
+    lead_source: str = ""
+    lead_latency_delta_ms: float = 0.0
 
 
 @runtime_checkable
@@ -274,6 +276,15 @@ class HighestReliabilityStrategy:
                 "sources agree within threshold; selected highest-reliability source"
             )
 
+        lead_source = ""
+        lead_latency_delta_ms = 0.0
+        if recent_sources:
+            earliest_src = min(recent_sources, key=lambda s: candidates[s][1])
+            lead_source = earliest_src
+            earliest_ts = candidates[earliest_src][1]
+            if market_now is not None:
+                lead_latency_delta_ms = max(0.0, (market_now - earliest_ts) * 1000.0)
+
         return CanonicalDecision(
             instrument_id=instrument_id,
             chosen_source=chosen_source,
@@ -282,6 +293,8 @@ class HighestReliabilityStrategy:
             reason=reason,
             competing_sources=recent_sources,
             quality_reasons=quality_reasons,
+            lead_source=lead_source,
+            lead_latency_delta_ms=round(lead_latency_delta_ms, 3),
         )
 
 
@@ -360,6 +373,15 @@ class MedianPriceStrategy:
         else:
             reason = f"sources agree within threshold; selected median-price source {chosen_source}"
 
+        lead_source = ""
+        lead_latency_delta_ms = 0.0
+        if recent_sources:
+            earliest_src = min(recent_sources, key=lambda s: candidates[s][1])
+            lead_source = earliest_src
+            earliest_ts = candidates[earliest_src][1]
+            if market_now is not None:
+                lead_latency_delta_ms = max(0.0, (market_now - earliest_ts) * 1000.0)
+
         return CanonicalDecision(
             instrument_id=instrument_id,
             chosen_source=chosen_source,
@@ -368,6 +390,8 @@ class MedianPriceStrategy:
             reason=reason,
             competing_sources=recent_sources,
             quality_reasons=quality_reasons,
+            lead_source=lead_source,
+            lead_latency_delta_ms=round(lead_latency_delta_ms, 3),
         )
 
 

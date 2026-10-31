@@ -405,3 +405,26 @@ def test_bbo_serialization_with_one_sided_book():
     wire_bytes = engine.get_wire_bbo("AAPL")
     assert wire_bytes is not None
     assert b"Infinity" not in wire_bytes
+
+
+def test_bbo_micro_price_and_imbalance():
+    """Verify BBO calculates volume-weighted micro-price and order flow imbalance."""
+    engine = BBOEngine()
+    q = _make_quote(
+        "AAPL",
+        "FEED_A",
+        bid_price=100.00,
+        bid_size=100.0,
+        ask_price=100.20,
+        ask_size=300.0,
+        ts=1000.0,
+    )
+    bbo = engine.observe(q)
+    assert bbo is not None
+    assert bbo.mid_price == 100.10
+    assert abs(bbo.micro_price - 100.05) < 1e-4
+    assert abs(bbo.imbalance - (-0.5)) < 1e-4
+
+    d = bbo.to_dict()
+    assert d["micro_price"] == 100.05
+    assert d["imbalance"] == -0.5

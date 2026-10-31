@@ -549,12 +549,17 @@ class LiveTickerDashboard:
                 if bbo.is_crossed
                 else "[bold green]NORMAL[/bold green]"
             )
-            micro_str = (
-                f"{curr}{ladder.micro_price:,.2f}"
-                if ladder
-                else f"{curr}{bbo.mid_price:,.2f}"
+            micro_val = (
+                ladder.micro_price
+                if ladder and ladder.micro_price
+                else (bbo.micro_price if bbo.micro_price is not None else bbo.mid_price)
             )
-            ofi_val = ladder.imbalance_ratio if ladder else 0.0
+            micro_str = f"{curr}{micro_val:,.2f}" if micro_val is not None else "-"
+            ofi_val = (
+                ladder.imbalance_ratio
+                if ladder
+                else (bbo.imbalance if bbo.imbalance is not None else 0.0)
+            )
             ofi_style = (
                 "green" if ofi_val > 0.1 else ("red" if ofi_val < -0.1 else "white")
             )

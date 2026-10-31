@@ -1,6 +1,6 @@
 # MDRAP Institutional Disaster Recovery Runbook
 
-**Release Target:** v3.1.2  
+**Release Target:** v4.0.0  
 **Target Audience:** Market Data Infrastructure Engineers, SREs, Risk Officers, Operations Desks  
 **Compliance Mandate:** Institutional Tier-1 Architecture Spec §26 & Disaster Recovery Standards
 
@@ -196,6 +196,20 @@ Incoming Ticks -> Gateway -> Quality Validation -> IngestLog WAL (Append + CRC32
    ```bash
    python -m mdrap.cli verify --wal-dir data/wal
    ```
+
+---
+
+### Scenario G: Off-Host Cloud Archival & Cold Backups
+
+#### Operational Scope
+* The bundled `scripts/backup.py` utility generates hot, atomic, cryptographically verified SQLite snapshots locally.
+* For off-host cloud replication (e.g., AWS S3, Cloudflare R2, Google Cloud Storage), operators configure a systemd service or cron job transferring local snapshots to remote object storage:
+  ```bash
+  # Generate atomic verified snapshot and sync off-host
+  python scripts/backup.py --source data/mdrap.db --target /backups/mdrap_backup.db.gz --compress
+  aws s3 cp /backups/mdrap_backup.db.gz s3://institutional-dr-vault/mdrap/$(date +%Y%m%d)/
+  ```
+* Enterprise cross-datacenter live streaming replication is provided via `journal_replicator.py` streaming IngestLog segments across private interconnect lines.
 
 ---
 

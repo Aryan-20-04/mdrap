@@ -931,10 +931,9 @@ class IngestLog:
                 p_bytes = json.dumps(
                     rec, separators=(",", ":"), ensure_ascii=False
                 ).encode("utf-8", errors="replace")
-                crc = zlib.crc32(p_bytes) & 0xFFFFFFFF
                 p_len = len(p_bytes)
                 total_frame_bytes += FRAME_HEADER_SIZE + p_len
-                prepared.append((p_bytes, p_len, crc))
+                prepared.append((p_bytes, p_len))
 
             start_off = self._next_offset
 
@@ -952,7 +951,7 @@ class IngestLog:
                 # Stage 2: Assemble batch buffer
                 batch_buffer = bytearray()
                 allocated_offsets: list[int] = []
-                for idx, (p_bytes, p_len, _) in enumerate(prepared):
+                for idx, (p_bytes, p_len) in enumerate(prepared):
                     off = start_off + idx
                     frame_hdr = pack_frame_header(
                         off, now, p_len, p_bytes, version=LOG_VERSION

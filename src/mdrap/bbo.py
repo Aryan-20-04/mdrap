@@ -43,6 +43,8 @@ class ConsolidatedBBO:
     is_locked: bool
     timestamp: float
     is_stale: bool = False
+    micro_price: float | None = None
+    imbalance: float | None = None
 
     def to_dict(self) -> dict:
         spread_val = (
@@ -65,6 +67,16 @@ class ConsolidatedBBO:
             if (self.best_ask is not None and math.isfinite(self.best_ask))
             else None
         )
+        micro_val = (
+            round(self.micro_price, 4)
+            if (self.micro_price is not None and math.isfinite(self.micro_price))
+            else None
+        )
+        imb_val = (
+            round(self.imbalance, 4)
+            if (self.imbalance is not None and math.isfinite(self.imbalance))
+            else None
+        )
         return {
             "instrument_id": self.instrument_id,
             "best_bid": best_bid_val,
@@ -75,6 +87,8 @@ class ConsolidatedBBO:
             "best_ask_source": self.best_ask_source,
             "spread": spread_val,
             "mid_price": mid_val,
+            "micro_price": micro_val,
+            "imbalance": imb_val,
             "is_crossed": self.is_crossed,
             "is_locked": self.is_locked,
             "timestamp": self.timestamp,
@@ -203,6 +217,17 @@ class BBOEngine:
             if (has_bid and has_ask)
             else (best_bid if has_bid else (best_ask if has_ask else None))
         )
+        micro_price = None
+        imbalance = None
+        if has_bid and has_ask:
+            tot_sz = best_bid_size + best_ask_size
+            if tot_sz > 0.0:
+                micro_price = (best_bid_size * best_ask + best_ask_size * best_bid) / tot_sz
+                imbalance = (best_bid_size - best_ask_size) / tot_sz
+            else:
+                micro_price = mid_price
+                imbalance = 0.0
+
         is_crossed = (best_bid > best_ask) if (has_bid and has_ask) else False
         is_locked = (best_bid == best_ask) if (has_bid and has_ask) else False
 
@@ -220,6 +245,8 @@ class BBOEngine:
             is_locked=is_locked,
             timestamp=market_now,
             is_stale=False,
+            micro_price=micro_price,
+            imbalance=imbalance,
         )
 
         self._current_bbos[inst] = bbo
@@ -243,6 +270,16 @@ class BBOEngine:
                 "mid": bbo.mid_price
                 if (bbo.mid_price is not None and math.isfinite(bbo.mid_price))
                 else None,
+                "micro": (
+                    round(bbo.micro_price, 4)
+                    if (bbo.micro_price is not None and math.isfinite(bbo.micro_price))
+                    else None
+                ),
+                "imbalance": (
+                    round(bbo.imbalance, 4)
+                    if (bbo.imbalance is not None and math.isfinite(bbo.imbalance))
+                    else None
+                ),
                 "crossed": bbo.is_crossed,
             },
         }

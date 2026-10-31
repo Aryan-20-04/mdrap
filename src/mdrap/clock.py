@@ -55,7 +55,7 @@ class SystemClock:
 
 
 class NanosecondClock:
-    """High-resolution monotonic time source backed by time.time_ns()."""
+    """High-resolution UTC wall-clock time source backed by time.time_ns()."""
 
     def now(self) -> float:
         return time.time_ns() / 1_000_000_000.0
@@ -65,6 +65,19 @@ class NanosecondClock:
 
     def __repr__(self) -> str:
         return "NanosecondClock()"
+
+
+class MonotonicClock:
+    """High-resolution monotonic time source backed by time.monotonic_ns()."""
+
+    def now(self) -> float:
+        return time.monotonic()
+
+    def now_ns(self) -> int:
+        return time.monotonic_ns()
+
+    def __repr__(self) -> str:
+        return "MonotonicClock()"
 
 
 class FixedClock:

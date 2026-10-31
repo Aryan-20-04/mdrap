@@ -20,8 +20,7 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     MDRAP_HOST=0.0.0.0 \
     MDRAP_PORT=8000 \
-    MDRAP_DB_PATH=/data/mdrap.db \
-    MDRAP_API_KEY_SALT=docker_default_salt_change_in_production
+    MDRAP_DB_PATH=/data/mdrap.db
 
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \

@@ -72,6 +72,9 @@ class EngineState:
     def __post_init__(self) -> None:
         if not isinstance(self.dedup_window, deque):
             self.dedup_window = deque(self.dedup_window)
+        for k, v in list(self.price_windows.items()):
+            if not isinstance(v, deque):
+                self.price_windows[k] = deque(v)
 
     @property
     def total_events(self) -> int:
@@ -88,7 +91,7 @@ class EngineState:
             sequence_state=dict(self.sequence_state),
             dedup_window=deque(self.dedup_window),
             dedup_set=set(self.dedup_set),
-            price_windows={k: list(v) for k, v in self.price_windows.items()},
+            price_windows={k: deque(v) for k, v in self.price_windows.items()},
             bbo_state={
                 k: {src: dict(q) for src, q in v.items()}
                 for k, v in self.bbo_state.items()
@@ -233,7 +236,11 @@ class Transaction:
             elif op == _OP_DICT_KEY:
                 d, k, existed, old_val = item[1], item[2], item[3], item[4]
                 if existed:
-                    d[k] = old_val
+                    d[k] = (
+                        deque(old_val)
+                        if d is self.state.price_windows and isinstance(old_val, list)
+                        else old_val
+                    )
                 else:
                     d.pop(k, None)
                 if d is self.state.price_windows:
@@ -1485,7 +1492,7 @@ class Engine:
         txn: Transaction | None,
     ) -> tuple[QualityStatus, list[str], bool]:
         is_duplicate = False
-        reasons_out = list(reasons)
+        reasons_out = reasons
         cur_status = status
 
         if seq is not None:
@@ -1494,6 +1501,8 @@ class Engine:
                 if seq == last_seq:
                     is_duplicate = True
                     cur_status = QualityStatus.merge(cur_status, QualityStatus.INVALID)
+                    if reasons_out is reasons:
+                        reasons_out = list(reasons)
                     reasons_out.append(Reason.DUPLICATE.value)
                 elif seq < last_seq:
                     filled = None
@@ -1506,16 +1515,22 @@ class Engine:
                             now_ts=recv_ts,
                         )
                     if filled is not None:
+                        if reasons_out is reasons:
+                            reasons_out = list(reasons)
                         reasons_out.append(Reason.GAP_FILLED.value)
                     else:
                         cur_status = QualityStatus.merge(
                             cur_status, QualityStatus.SUSPICIOUS
                         )
+                        if reasons_out is reasons:
+                            reasons_out = list(reasons)
                         reasons_out.append(Reason.OUT_OF_ORDER.value)
                 elif seq > last_seq + 1:
                     cur_status = QualityStatus.merge(
                         cur_status, QualityStatus.SUSPICIOUS
                     )
+                    if reasons_out is reasons:
+                        reasons_out = list(reasons)
                     reasons_out.append(Reason.SEQUENCE_GAP.value)
                     if self.gap_manager is not None:
                         self.gap_manager.record_gap(
@@ -1565,6 +1580,8 @@ class Engine:
             if dedup_fingerprint in state.dedup_set:
                 is_duplicate = True
                 cur_status = QualityStatus.merge(cur_status, QualityStatus.INVALID)
+                if reasons_out is reasons:
+                    reasons_out = list(reasons)
                 reasons_out.append(Reason.DUPLICATE.value)
             else:
                 state.dedup_set.add(dedup_fingerprint)
@@ -1588,7 +1605,7 @@ class Engine:
         status: QualityStatus,
         reasons: list[str],
     ) -> tuple[QualityStatus, list[str]]:
-        reasons_out = list(reasons)
+        reasons_out = reasons
         cur_status = status
 
         if cur_status != QualityStatus.INVALID and event_type_str not in (
@@ -1597,12 +1614,16 @@ class Engine:
         ):
             if recv_ts - exch_ts > staleness_threshold_s:
                 cur_status = QualityStatus.merge(cur_status, QualityStatus.SUSPICIOUS)
+                if reasons_out is reasons:
+                    reasons_out = list(reasons)
                 reasons_out.append(Reason.STALE.value)
 
         bid = payload.get("bid")
         ask = payload.get("ask")
         if bid is not None and ask is not None and bid > ask:
             cur_status = QualityStatus.merge(cur_status, QualityStatus.INVALID)
+            if reasons_out is reasons:
+                reasons_out = list(reasons)
             reasons_out.append(Reason.CROSSED_QUOTE.value)
 
         return cur_status, reasons_out
@@ -1617,13 +1638,13 @@ class Engine:
         reasons: list[str],
         txn: Transaction | None,
     ) -> tuple[QualityStatus, list[str]]:
-        reasons_out = list(reasons)
+        reasons_out = reasons
         cur_status = status
 
         if price is not None and cur_status != QualityStatus.INVALID:
             if txn is not None:
                 txn.record_price_window(slot_key)
-            prices = state.price_windows.setdefault(slot_key, [])
+            prices = state.price_windows.setdefault(slot_key, deque())
             n_prices = len(prices)
             price_anomaly = False
 
@@ -1665,11 +1686,12 @@ class Engine:
 
             if price_anomaly:
                 cur_status = QualityStatus.merge(cur_status, QualityStatus.SUSPICIOUS)
+                if reasons_out is reasons:
+                    reasons_out = list(reasons)
                 reasons_out.append(Reason.PRICE_ANOMALY.value)
             else:
                 if n_prices >= DEFAULT_PRICE_WINDOW:
-                    old_p = prices[0]
-                    prices.pop(0)
+                    old_p = prices.popleft() if isinstance(prices, deque) else prices.pop(0)
                     prices.append(price)
                     if stats is not None:
                         mean, m2, upd_cnt = stats
@@ -1714,7 +1736,7 @@ class Engine:
         reasons: list[str],
         txn: Transaction | None,
     ) -> tuple[QualityStatus, list[str], bool]:
-        reasons_out = list(reasons)
+        reasons_out = reasons
         cur_status = status
         disagreement = False
 
@@ -1753,6 +1775,8 @@ class Engine:
                                 disagreement = True
                                 break
                     if disagreement:
+                        if reasons_out is reasons:
+                            reasons_out = list(reasons)
                         reasons_out.append(Reason.CROSS_FEED_DISAGREEMENT.value)
                         cur_status = QualityStatus.merge(
                             cur_status, QualityStatus.SUSPICIOUS

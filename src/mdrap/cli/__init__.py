@@ -3245,5 +3245,15 @@ def main():
                     )
                 )
             sys.exit(3)
+        except Exception:
+            if os.environ.get("MDRAP_DEBUG") == "1" or "--debug" in sys.argv:
+                import traceback
+                tb = traceback.format_exc()
+                home = os.path.expanduser("~")
+                if home:
+                    tb = tb.replace(home, "~")
+                sys.stderr.write(tb)
+                sys.exit(1)
+            raise
     else:
         parser.print_help()

@@ -343,6 +343,19 @@ class DuckDBProjection:
             )
             self._conn.execute(
                 """
+                CREATE TABLE IF NOT EXISTS quarantine (
+                    event_id VARCHAR PRIMARY KEY,
+                    instrument_id VARCHAR NOT NULL,
+                    source VARCHAR NOT NULL,
+                    quality_status VARCHAR NOT NULL,
+                    reasons VARCHAR,
+                    payload_json VARCHAR,
+                    receive_timestamp DOUBLE
+                );
+                """
+            )
+            self._conn.execute(
+                """
                 CREATE INDEX IF NOT EXISTS idx_duck_inst_ts 
                 ON canonical_events(instrument_id, exchange_timestamp);
                 """
@@ -360,6 +373,7 @@ class DuckDBProjection:
         if not batch and offset < 0:
             return
         canonical_rows = []
+        quarantine_rows = []
         for item in batch:
             ev = (
                 item
@@ -372,37 +386,50 @@ class DuckDBProjection:
                     if isinstance(ev.reasons, list)
                     else str(ev.reasons or "")
                 )
-                ev_type_str = (
-                    ev.event_type.value
-                    if hasattr(ev.event_type, "value")
-                    else str(ev.event_type)
-                )
                 q_status_str = (
                     ev.quality_status.value
                     if hasattr(ev.quality_status, "value")
                     else str(ev.quality_status)
                 )
-                canonical_rows.append(
-                    (
-                        ev.event_id,
-                        ev.instrument_id,
-                        ev_type_str,
-                        float(ev.exchange_timestamp or 0.0),
-                        float(ev.receive_timestamp or 0.0),
-                        float(ev.processing_timestamp or 0.0),
-                        ev.source,
-                        ev.sequence_number,
-                        ev.price,
-                        ev.quantity,
-                        ev.bid_price,
-                        ev.ask_price,
-                        ev.bid_size,
-                        ev.ask_size,
-                        q_status_str,
-                        r_json,
-                        str(ev.raw_id) if ev.raw_id is not None else None,
+                if q_status_str == "INVALID":
+                    quarantine_rows.append(
+                        (
+                            ev.event_id,
+                            ev.instrument_id,
+                            ev.source,
+                            q_status_str,
+                            r_json,
+                            json.dumps({"raw_id": ev.raw_id}),
+                            float(ev.receive_timestamp or 0.0),
+                        )
                     )
-                )
+                else:
+                    ev_type_str = (
+                        ev.event_type.value
+                        if hasattr(ev.event_type, "value")
+                        else str(ev.event_type)
+                    )
+                    canonical_rows.append(
+                        (
+                            ev.event_id,
+                            ev.instrument_id,
+                            ev_type_str,
+                            float(ev.exchange_timestamp or 0.0),
+                            float(ev.receive_timestamp or 0.0),
+                            float(ev.processing_timestamp or 0.0),
+                            ev.source,
+                            ev.sequence_number,
+                            ev.price,
+                            ev.quantity,
+                            ev.bid_price,
+                            ev.ask_price,
+                            ev.bid_size,
+                            ev.ask_size,
+                            q_status_str,
+                            r_json,
+                            str(ev.raw_id) if ev.raw_id is not None else None,
+                        )
+                    )
         with self._lock:
             if canonical_rows:
                 self._conn.executemany(
@@ -410,6 +437,13 @@ class DuckDBProjection:
                     INSERT OR IGNORE INTO canonical_events VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
                     """,
                     canonical_rows,
+                )
+            if quarantine_rows:
+                self._conn.executemany(
+                    """
+                    INSERT OR IGNORE INTO quarantine VALUES (?, ?, ?, ?, ?, ?, ?);
+                    """,
+                    quarantine_rows,
                 )
             if offset >= 0:
                 self._conn.execute(
@@ -425,6 +459,12 @@ class DuckDBProjection:
                 self._conn.execute("SELECT COUNT(*) FROM canonical_events").fetchone()[
                     0
                 ]
+            )
+
+    def count_quarantine(self) -> int:
+        with self._lock:
+            return int(
+                self._conn.execute("SELECT COUNT(*) FROM quarantine").fetchone()[0]
             )
 
     def query(self, sql: str, params: list | None = None) -> list:
@@ -459,8 +499,10 @@ def export_journal_to_parquet(
 ) -> int:
     """Scan IngestLog segments and export canonical events to compressed Apache Parquet."""
     from .ingestlog import IngestLog
+    from .quality import QualityEngine
 
     log = IngestLog(journal_dir)
+    qe = QualityEngine()
     p_abs = os.path.abspath(parquet_path)
     os.makedirs(os.path.dirname(p_abs), exist_ok=True)
 
@@ -487,7 +529,8 @@ def export_journal_to_parquet(
             reasons=[],
             raw_id=str(offset),
         )
-        batch.append(ev)
+        evaluated = qe.evaluate(ev)
+        batch.append(evaluated if evaluated is not None else ev)
         if len(batch) >= 2000:
             proj.apply(batch, offset=offset)
             batch.clear()

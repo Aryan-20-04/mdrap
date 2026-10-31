@@ -53,3 +53,14 @@ MDRAP includes built-in compliance telemetry to assist customers with exchange a
 - **Unit of Count Tracking**: All active internal consumers and API keys are indexed with timestamped access records.
 - **Lineage Verification**: Every canonical market event contains immutable provenance linking back to the originating raw vendor sequence and timestamp.
 - **Exportable Proofs**: Cryptographically signed audit logs (`GET /v1/audit/export`) provide proof of data handling, latency, and reconciliation without disclosing underlying trading algorithms.
+
+---
+
+## 5. Scope & Privacy Guidance: Market Data Only (No PII / Account Data)
+
+> [!WARNING]
+> MDRAP's storage engine and Write-Ahead Log (`IngestLog`) are architected for append-only, tamper-evident cryptographic durability (SHA-256 Merkle chaining and CRC-32 framing).
+> 
+> Because historical WAL segments and cryptographic audit trees cannot be modified after commitment without invalidating the audit chain, **MDRAP is designed strictly for public and institutional market data** (quotes, market depth, and anonymous execution prints). 
+> 
+> **Do NOT ingest customer Personally Identifiable Information (PII), customer account numbers, or personal credentials.** Compliance with GDPR / CCPA "Right to Erasure" requirements is inherently incompatible with tamper-evident, append-only financial market audit logs. Ensure all upstream order management and FIX gateway systems strip client identifying metadata before routing feed events to MDRAP.

@@ -26,6 +26,7 @@ import itertools
 import math
 import os
 import secrets
+import threading
 import time
 
 from .models import CanonicalEvent, EventType, RawEvent
@@ -258,13 +259,17 @@ _SOURCE_ID_MAP = _DEFAULT_GATEWAY.source_id_map
 _INSTRUMENT_ID_MAP = _DEFAULT_GATEWAY.instrument_id_map
 
 
+_GATEWAY_RESET_LOCK = threading.Lock()
+
+
 def reset_gateway_ids(run_id: str | None = None) -> None:
     """Reset run_id and counter (for test reproducibility or isolation)."""
     global _RUN_ID, _DEFAULT_GATEWAY, _gateway_id_counter, _symbol_metadata_cache
-    _RUN_ID = run_id or secrets.token_hex(8)
-    _DEFAULT_GATEWAY = Gateway(run_id=_RUN_ID)
-    _gateway_id_counter = _DEFAULT_GATEWAY.id_counter
-    _symbol_metadata_cache = _DEFAULT_GATEWAY.symbol_metadata_cache
+    with _GATEWAY_RESET_LOCK:
+        _RUN_ID = run_id or secrets.token_hex(8)
+        _DEFAULT_GATEWAY = Gateway(run_id=_RUN_ID)
+        _gateway_id_counter = _DEFAULT_GATEWAY.id_counter
+        _symbol_metadata_cache = _DEFAULT_GATEWAY.symbol_metadata_cache
 
 
 def ingest(raw: RawEvent) -> RawEvent:

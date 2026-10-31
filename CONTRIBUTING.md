@@ -193,3 +193,13 @@ Custom persistence engines implement the [`StorageBackend`](src/protocols.py) pr
 ## Baseline Verification Report
 
 For the frozen system baseline data, host specifications, and full module catalog, see [`docs/development/baseline.md`](docs/development/baseline.md).
+
+
+---
+
+## Contributor Licensing & Intellectual Property
+
+By contributing to MDRAP, you agree that:
+1. All contributions submitted to core directories (`src/`, `tests/`, `benchmarks/`, `scripts/`, `docs/`) are licensed strictly under the terms of the project's **MIT License**.
+2. You retain copyright to your contributions, while granting the MDRAP project an irrevocable, perpetual, royalty-free license to distribute, compile, and maintain your code as part of the open-source platform.
+3. Open-source core contributions do not grant rights, royalties, or ownership in proprietary commercial companion packages (`packages/`), nor do commercial companion packages restrict your freedom to fork, modify, or deploy the MIT-licensed core platform.

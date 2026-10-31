@@ -32,11 +32,22 @@ class TCPGatewayServer:
         ssl_context: Any = None,
         require_auth: bool | None = None,
         require_tls: bool | None = None,
+        allow_insecure_bind: bool = False,
     ):
         self.host = host
         self.port = port
         self.security_manager = security_manager
         self.ssl_context = ssl_context
+        self.allow_insecure_bind = allow_insecure_bind or (
+            os.environ.get("MDRAP_ALLOW_INSECURE_BIND", "0").lower()
+            in ("1", "true", "yes")
+        )
+        if self.host not in ("127.0.0.1", "localhost", "::1"):
+            if self.ssl_context is None and not self.allow_insecure_bind:
+                raise ValueError(
+                    f"Non-loopback binding '{self.host}' rejected: plaintext transport over public interfaces is prohibited. "
+                    "Configure ssl_context or set allow_insecure_bind=True / MDRAP_ALLOW_INSECURE_BIND=1."
+                )
         if require_auth is not None:
             self.require_auth = require_auth
         else:

@@ -709,12 +709,23 @@ class SecurityManager:
                     token=admin_tok,
                 )
                 if not env_admin:
-                    print(
-                        f"[mdrap SECURITY] Initial bootstrap ADMIN API key generated:\n"
-                        f"  >> {admin_tok} <<\n"
-                        f"Store this key securely. It cannot be recovered from storage!",
-                        file=sys.stderr,
+                    key_file = os.environ.get("MDRAP_BOOTSTRAP_KEY_FILE") or os.path.expanduser(
+                        "~/.mdrap/bootstrap_admin.key"
                     )
+                    try:
+                        os.makedirs(os.path.dirname(key_file), exist_ok=True)
+                        fd = os.open(key_file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+                        with open(fd, "w", encoding="utf-8") as f:
+                            f.write(admin_tok + "\n")
+                        print(
+                            f"[mdrap SECURITY] Initial bootstrap ADMIN API key generated and written to {key_file} (mode 0600).",
+                            file=sys.stderr,
+                        )
+                    except Exception as exc:
+                        print(
+                            f"[mdrap SECURITY] Failed to write bootstrap key to {key_file}: {exc}",
+                            file=sys.stderr,
+                        )
 
     def sanitize_payload(self, payload: Any) -> Tuple[bool, Optional[str]]:
         """Sanitize raw payload against malicious injection, deeply nested arrays, and illegal types."""

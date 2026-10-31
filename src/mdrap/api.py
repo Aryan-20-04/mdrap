@@ -17,7 +17,7 @@ Provides self-hosted API endpoints for:
 from __future__ import annotations
 
 import asyncio
-from collections import OrderedDict
+from collections import OrderedDict, deque
 from contextlib import asynccontextmanager
 import ipaddress
 import json
@@ -589,6 +589,8 @@ def create_app(
     _MAX_TRACKED_AUTH_FAILURES = 4096
     _AUTH_LOCKOUT_MAX_ATTEMPTS = 10
     _AUTH_LOCKOUT_DURATION_S = 60.0
+    _GLOBAL_AUTH_FAILURES: deque[float] = deque()
+    _GLOBAL_AUTH_LOCKOUT_MAX = 100
 
     def require_role(required_role: Role):
         """FastAPI dependency enforcing RBAC hierarchy (VIEWER <= OPERATOR <= ADMIN) and rate limiting."""
@@ -619,6 +621,11 @@ def create_app(
                     logger.debug("[api] Audit log failed for denied auth: %s", exc)
                 now = time.monotonic()
                 with _FAILED_AUTH_LOCK:
+                    while _GLOBAL_AUTH_FAILURES and now - _GLOBAL_AUTH_FAILURES[0] >= _AUTH_LOCKOUT_DURATION_S:
+                        _GLOBAL_AUTH_FAILURES.popleft()
+                    _GLOBAL_AUTH_FAILURES.append(now)
+                    global_cnt = len(_GLOBAL_AUTH_FAILURES)
+
                     while _FAILED_AUTH_ATTEMPTS:
                         oldest_key, (_, oldest_seen) = next(
                             iter(_FAILED_AUTH_ATTEMPTS.items())
@@ -633,10 +640,10 @@ def create_app(
                     _FAILED_AUTH_ATTEMPTS.move_to_end(client_ip)
                     while len(_FAILED_AUTH_ATTEMPTS) > _MAX_TRACKED_AUTH_FAILURES:
                         _FAILED_AUTH_ATTEMPTS.popitem(last=False)
-                if cnt >= _AUTH_LOCKOUT_MAX_ATTEMPTS:
+                if cnt >= _AUTH_LOCKOUT_MAX_ATTEMPTS or global_cnt >= _GLOBAL_AUTH_LOCKOUT_MAX:
                     raise HTTPException(
                         status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                        detail="Too many failed attempts for this client IP.",
+                        detail="Too many failed authentication attempts. Please wait.",
                     )
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
