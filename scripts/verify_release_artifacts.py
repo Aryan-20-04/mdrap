@@ -66,14 +66,10 @@ def check_sdist(path: Path, required: set[str]) -> None:
             "symbology",
             "watchdog",
         }
-        expected_source_py = (
-            {f"src/mdrap/{name}.py" for name in allowed_modules}
-            | {
-                f"src/mdrap/adapters/{path.name}"
-                for path in (ROOT / "src" / "mdrap" / "adapters").glob("*.py")
-            }
-            | {"src/mdrap_build.py"}
-        )
+        expected_source_py = {
+            f"src/mdrap/{path.relative_to(ROOT / 'src' / 'mdrap').as_posix()}"
+            for path in (ROOT / "src" / "mdrap").rglob("*.py")
+        } | {"src/mdrap_build.py"}
         actual_source_py = {
             name
             for name in relative
@@ -157,40 +153,8 @@ def main() -> None:
             if name.endswith(".py") and name.startswith("mdrap/")
         }
     expected_core_modules = {
-        f"mdrap/{path.name}"
-        for path in (ROOT / "src" / "mdrap").glob("*.py")
-        if path.stem
-        in {
-            "__init__",
-            "_version",
-            "analytics",
-            "archive",
-            "audit_format",
-            "bbo",
-            "client",
-            "config",
-            "fastpath",
-            "gateway",
-            "metrics",
-            "models",
-            "pipeline",
-            "plugins",
-            "protocol",
-            "protocols",
-            "quality",
-            "quarantine",
-            "reconciliation",
-            "rules",
-            "sbe",
-            "security",
-            "shm",
-            "storage",
-            "symbology",
-            "watchdog",
-        }
-    } | {
-        f"mdrap/adapters/{path.name}"
-        for path in (ROOT / "src" / "mdrap" / "adapters").glob("*.py")
+        f"mdrap/{path.relative_to(ROOT / 'src' / 'mdrap').as_posix()}"
+        for path in (ROOT / "src" / "mdrap").rglob("*.py")
     }
     assert core_wheel_modules == expected_core_modules, (
         f"core wheel module ownership differs: unexpected={sorted(core_wheel_modules - expected_core_modules)}, missing={sorted(expected_core_modules - core_wheel_modules)}"
@@ -201,17 +165,18 @@ def main() -> None:
         {f"{name}.py" for name in compat_modules},
         {f"{name}.py" for name in compat_modules},
     )
+    expected_contrib_modules = (
+        {
+            path.relative_to(contrib_dir / "src").as_posix()
+            for path in (contrib_dir / "src" / "mdrap").rglob("*.py")
+        }
+        if (contrib_dir / "src" / "mdrap").exists()
+        else set()
+    )
     check_wheel(
         contrib_wheel,
-        {
-            "mdrap/cli/__init__.py",
-            "mdrap/cli/__main__.py",
-            "mdrap/cli/core.py",
-            "mdrap/cli/operations.py",
-            "mdrap/portfolio.py",
-            "mdrap/terminal_display.py",
-        },
-        {"mdrap"},
+        expected_contrib_modules,
+        {"mdrap"} if expected_contrib_modules else set(),
     )
     with zipfile.ZipFile(contrib_wheel) as archive:
         contrib_wheel_modules = {
@@ -219,10 +184,6 @@ def main() -> None:
             for name in archive.namelist()
             if name.endswith(".py") and name.startswith("mdrap/")
         }
-    expected_contrib_modules = {
-        path.relative_to(contrib_dir / "src").as_posix()
-        for path in (contrib_dir / "src" / "mdrap").rglob("*.py")
-    }
     assert contrib_wheel_modules == expected_contrib_modules, (
         f"contrib wheel module ownership differs: unexpected={sorted(contrib_wheel_modules - expected_contrib_modules)}, missing={sorted(expected_contrib_modules - contrib_wheel_modules)}"
     )
@@ -236,15 +197,16 @@ def main() -> None:
             "src/mdrap/rules.def",
         },
     )
-    check_sdist(
-        contrib_sdist,
-        {
-            "pyproject.toml",
-            "README.md",
+    expected_contrib_sdist = {"pyproject.toml", "README.md"}
+    if (contrib_dir / "src" / "mdrap").exists():
+        expected_contrib_sdist |= {
             "src/mdrap/cli/__init__.py",
             "src/mdrap/cli/market.py",
             "src/mdrap/portfolio.py",
-        },
+        }
+    check_sdist(
+        contrib_sdist,
+        expected_contrib_sdist,
     )
     check_sdist(
         compat_sdist,

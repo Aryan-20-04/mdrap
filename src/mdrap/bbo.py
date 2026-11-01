@@ -222,7 +222,9 @@ class BBOEngine:
         if has_bid and has_ask:
             tot_sz = best_bid_size + best_ask_size
             if tot_sz > 0.0:
-                micro_price = (best_bid_size * best_ask + best_ask_size * best_bid) / tot_sz
+                micro_price = (
+                    best_bid_size * best_ask + best_ask_size * best_bid
+                ) / tot_sz
                 imbalance = (best_bid_size - best_ask_size) / tot_sz
             else:
                 micro_price = mid_price

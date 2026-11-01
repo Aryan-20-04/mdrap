@@ -621,7 +621,10 @@ def create_app(
                     logger.debug("[api] Audit log failed for denied auth: %s", exc)
                 now = time.monotonic()
                 with _FAILED_AUTH_LOCK:
-                    while _GLOBAL_AUTH_FAILURES and now - _GLOBAL_AUTH_FAILURES[0] >= _AUTH_LOCKOUT_DURATION_S:
+                    while (
+                        _GLOBAL_AUTH_FAILURES
+                        and now - _GLOBAL_AUTH_FAILURES[0] >= _AUTH_LOCKOUT_DURATION_S
+                    ):
                         _GLOBAL_AUTH_FAILURES.popleft()
                     _GLOBAL_AUTH_FAILURES.append(now)
                     global_cnt = len(_GLOBAL_AUTH_FAILURES)
@@ -640,7 +643,10 @@ def create_app(
                     _FAILED_AUTH_ATTEMPTS.move_to_end(client_ip)
                     while len(_FAILED_AUTH_ATTEMPTS) > _MAX_TRACKED_AUTH_FAILURES:
                         _FAILED_AUTH_ATTEMPTS.popitem(last=False)
-                if cnt >= _AUTH_LOCKOUT_MAX_ATTEMPTS or global_cnt >= _GLOBAL_AUTH_LOCKOUT_MAX:
+                if (
+                    cnt >= _AUTH_LOCKOUT_MAX_ATTEMPTS
+                    or global_cnt >= _GLOBAL_AUTH_LOCKOUT_MAX
+                ):
                     raise HTTPException(
                         status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                         detail="Too many failed authentication attempts. Please wait.",

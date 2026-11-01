@@ -122,12 +122,12 @@ def test_e3_old_retransmission_classified_suspicious_not_duplicate():
     td = _safe_td()
     try:
         engine = Engine(path=td)
-        engine.submit(RawEvent(source="BINANCE", payload={"instrument": "BTC-USDT", "event_type": "TRADE", "price": 50000.0, "quantity": 1.0, "sequence": 1}))
+        engine.submit(RawEvent(source="BINANCE", payload={"instrument": "BTC-USDT", "event_type": "TRADE", "price": 50000.0, "quantity": 1.0, "exchange_ts": 1000.0}))
 
         for s in range(2, 75):
-            engine.submit(RawEvent(source="BINANCE", payload={"instrument": "BTC-USDT", "event_type": "TRADE", "price": 50000.0, "quantity": 1.0, "sequence": s}))
+            engine.submit(RawEvent(source="BINANCE", payload={"instrument": "BTC-USDT", "event_type": "TRADE", "price": 50000.0 + s, "quantity": 1.0, "exchange_ts": 1000.0 + s}))
 
-        dec = engine.submit(RawEvent(source="BINANCE", payload={"instrument": "BTC-USDT", "event_type": "TRADE", "price": 50000.0, "quantity": 1.0, "sequence": 1}))
+        dec = engine.submit(RawEvent(source="BINANCE", payload={"instrument": "BTC-USDT", "event_type": "TRADE", "price": 50000.0, "quantity": 1.0, "exchange_ts": 1000.0}))
         assert Reason.DUPLICATE.value in dec.reasons
         assert dec.quality_status == QualityStatus.INVALID
     finally:

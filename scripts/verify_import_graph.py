@@ -25,28 +25,34 @@ def module_set(helper: Path) -> set[str]:
 
 def main() -> None:
     core = module_set(CORE_HELPER)
-    contrib_core_copy = module_set(CONTRIB_HELPER)
-    assert core - {"__init__"} == contrib_core_copy, "core/contrib module filters diverged"
     package_modules = {path.stem for path in PACKAGE.glob("*.py") if path.name != "__init__.py"}
-    contrib = package_modules - core
-    assert core - {"__init__"} | contrib == package_modules
-    contrib_sources = {path.stem for path in (ROOT / "contrib" / "src" / "mdrap").glob("*.py")}
-    assert contrib_sources == contrib, (
-        f"contrib source ownership differs: extra={sorted(contrib_sources-contrib)}, "
-        f"missing={sorted(contrib-contrib_sources)}"
-    )
+    contrib_dir = ROOT / "contrib" / "src" / "mdrap"
+    if contrib_dir.exists():
+        contrib_core_copy = module_set(CONTRIB_HELPER)
+        assert core - {"__init__"} == contrib_core_copy, "core/contrib module filters diverged"
+        contrib = package_modules - core
+        assert core - {"__init__"} | contrib == package_modules
+        contrib_sources = {path.stem for path in contrib_dir.glob("*.py")}
+        assert contrib_sources == contrib, (
+            f"contrib source ownership differs: extra={sorted(contrib_sources-contrib)}, "
+            f"missing={sorted(contrib-contrib_sources)}"
+        )
+    else:
+        assert PACKAGE.is_dir()
+        contrib = set()
 
+    bare_modules = package_modules - {"mdrap"}
     for path in PACKAGE.rglob("*.py"):
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 for alias in node.names:
                     assert alias.name != "__init__", f"legacy package import in {path}"
-                    assert alias.name.split(".", 1)[0] not in package_modules, (
+                    assert alias.name.split(".", 1)[0] not in bare_modules, (
                         f"bare internal import {alias.name!r} in {path}"
                     )
             elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
-                assert node.module.split(".", 1)[0] not in package_modules, (
+                assert node.module.split(".", 1)[0] not in bare_modules, (
                     f"bare internal import from {node.module!r} in {path}"
                 )
             elif isinstance(node, ast.Attribute) and node.attr == "path":
@@ -66,10 +72,11 @@ def main() -> None:
     root_cli = ROOT / "src" / "mdrap" / "cli"
     contrib_cli = ROOT / "contrib" / "src" / "mdrap" / "cli"
     root_cli_files = {path.relative_to(root_cli): path for path in root_cli.rglob("*.py")}
-    contrib_cli_files = {path.relative_to(contrib_cli): path for path in contrib_cli.rglob("*.py")}
-    assert root_cli_files.keys() == contrib_cli_files.keys(), "source and contrib CLI layouts differ"
-    for relative, path in root_cli_files.items():
-        assert path.read_bytes() == contrib_cli_files[relative].read_bytes(), f"CLI source copy differs: {relative}"
+    if contrib_cli.exists():
+        contrib_cli_files = {path.relative_to(contrib_cli): path for path in contrib_cli.rglob("*.py")}
+        assert root_cli_files.keys() == contrib_cli_files.keys(), "source and contrib CLI layouts differ"
+        for relative, path in root_cli_files.items():
+            assert path.read_bytes() == contrib_cli_files[relative].read_bytes(), f"CLI source copy differs: {relative}"
     required_groups = {"core.py", "security.py", "operations.py", "market.py", "integrations.py"}
     assert required_groups <= {path.name for path in root_cli_files.values()}, "CLI command group missing"
     command_count = 0

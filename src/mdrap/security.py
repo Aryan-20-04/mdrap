@@ -709,12 +709,14 @@ class SecurityManager:
                     token=admin_tok,
                 )
                 if not env_admin:
-                    key_file = os.environ.get("MDRAP_BOOTSTRAP_KEY_FILE") or os.path.expanduser(
-                        "~/.mdrap/bootstrap_admin.key"
-                    )
+                    key_file = os.environ.get(
+                        "MDRAP_BOOTSTRAP_KEY_FILE"
+                    ) or os.path.expanduser("~/.mdrap/bootstrap_admin.key")
                     try:
                         os.makedirs(os.path.dirname(key_file), exist_ok=True)
-                        fd = os.open(key_file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+                        fd = os.open(
+                            key_file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600
+                        )
                         with open(fd, "w", encoding="utf-8") as f:
                             f.write(admin_tok + "\n")
                         print(

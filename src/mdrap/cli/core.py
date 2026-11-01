@@ -241,15 +241,20 @@ def cmd_benchmark(args):
                 run_all_ten_boundaries,
             )
         except ImportError:
+            import importlib.util
             from pathlib import Path
 
             root = Path(__file__).resolve().parent.parent.parent.parent
-            if str(root) not in sys.path:
-                sys.path.insert(0, str(root))
-            from benchmarks.ten_boundaries import (
-                print_manifest_summary,
-                run_all_ten_boundaries,
+            tb_path = root / "benchmarks" / "ten_boundaries.py"
+            spec = importlib.util.spec_from_file_location(
+                "benchmarks.ten_boundaries", tb_path
             )
+            if not spec or not spec.loader:
+                raise
+            tb = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(tb)
+            print_manifest_summary = tb.print_manifest_summary
+            run_all_ten_boundaries = tb.run_all_ten_boundaries
 
         events = getattr(args, "events", None) or cfg.num_events
         out_dir = getattr(args, "out_dir", None)

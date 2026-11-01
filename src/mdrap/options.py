@@ -17,17 +17,25 @@ _impl = None
 try:
     import mdrap_options as _impl
 except ImportError:
-    _pkg = os.path.join(
+    _pkg_init = os.path.join(
         os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
         "packages",
         "mdrap-options",
+        "mdrap_options",
+        "__init__.py",
     )
-    if _pkg not in sys.path and os.path.exists(_pkg):
-        sys.path.insert(0, _pkg)
-    try:
-        import mdrap_options as _impl
-    except ImportError:
-        _impl = None
+    if os.path.exists(_pkg_init):
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location("mdrap_options", _pkg_init)
+        if spec and spec.loader:
+            try:
+                _mod = importlib.util.module_from_spec(spec)
+                sys.modules["mdrap_options"] = _mod
+                spec.loader.exec_module(_mod)
+                _impl = _mod
+            except Exception:
+                _impl = None
 
 __stability__ = "experimental"
 

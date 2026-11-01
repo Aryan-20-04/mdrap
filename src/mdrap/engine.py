@@ -712,7 +712,9 @@ class Engine:
                             # # ponytail: fast structural estimation for dicts <= 32 keys, exact dumps only when potentially oversize (E14)
                             if len(payload) <= 32:
                                 p_len = 2 + sum(
-                                    len(str(k)) + (len(v) if isinstance(v, (str, bytes)) else 16) + 4
+                                    len(str(k))
+                                    + (len(v) if isinstance(v, (str, bytes)) else 16)
+                                    + 4
                                     for k, v in payload.items()
                                 )
                                 if p_len > self.max_payload_bytes:
@@ -1046,7 +1048,12 @@ class Engine:
         mark = len(step_txn._actions)
         try:
             st, dec = self._step_internal(
-                state, raw_event, clock, offset=offset, txn=step_txn, is_replay=is_replay
+                state,
+                raw_event,
+                clock,
+                offset=offset,
+                txn=step_txn,
+                is_replay=is_replay,
             )
             if txn is None:
                 step_txn.commit()
@@ -1546,60 +1553,50 @@ class Engine:
 
         if seq is not None:
             last_seq = state.sequence_state.get(slot_key)
-            seq_fingerprint = (raw_event.source, instrument, f"seq={seq}")
-            if seq_fingerprint in state.dedup_set or (last_seq is not None and seq == last_seq):
-                is_duplicate = True
-                cur_status = QualityStatus.merge(cur_status, QualityStatus.INVALID)
-                if reasons_out is reasons:
-                    reasons_out = list(reasons)
-                reasons_out.append(Reason.DUPLICATE.value)
-            elif last_seq is not None and seq < last_seq:
-                filled = None
-                if self.gap_manager is not None:
-                    filled = self.gap_manager.try_fill(
-                        source=raw_event.source,
-                        instrument=instrument,
-                        seq=seq,
-                        epoch=str(current_epoch),
-                        now_ts=recv_ts,
-                    )
-                if filled is not None:
+            if last_seq is not None:
+                if seq == last_seq:
+                    is_duplicate = True
+                    cur_status = QualityStatus.merge(cur_status, QualityStatus.INVALID)
                     if reasons_out is reasons:
                         reasons_out = list(reasons)
-                    reasons_out.append(Reason.GAP_FILLED.value)
-                else:
+                    reasons_out.append(Reason.DUPLICATE.value)
+                elif seq < last_seq:
+                    filled = None
+                    if self.gap_manager is not None:
+                        filled = self.gap_manager.try_fill(
+                            source=raw_event.source,
+                            instrument=instrument,
+                            seq=seq,
+                            epoch=str(current_epoch),
+                            now_ts=recv_ts,
+                        )
+                    if filled is not None:
+                        if reasons_out is reasons:
+                            reasons_out = list(reasons)
+                        reasons_out.append(Reason.GAP_FILLED.value)
+                    else:
+                        cur_status = QualityStatus.merge(
+                            cur_status, QualityStatus.SUSPICIOUS
+                        )
+                        if reasons_out is reasons:
+                            reasons_out = list(reasons)
+                        reasons_out.append(Reason.OUT_OF_ORDER.value)
+                elif seq > last_seq + 1:
                     cur_status = QualityStatus.merge(
                         cur_status, QualityStatus.SUSPICIOUS
                     )
                     if reasons_out is reasons:
                         reasons_out = list(reasons)
-                    reasons_out.append(Reason.OUT_OF_ORDER.value)
-            elif last_seq is not None and seq > last_seq + 1:
-                cur_status = QualityStatus.merge(
-                    cur_status, QualityStatus.SUSPICIOUS
-                )
-                if reasons_out is reasons:
-                    reasons_out = list(reasons)
-                reasons_out.append(Reason.SEQUENCE_GAP.value)
-                if self.gap_manager is not None and not is_replay:
-                    self.gap_manager.record_gap(
-                        source=raw_event.source,
-                        instrument=instrument,
-                        expected_start=last_seq + 1,
-                        received_seq=seq,
-                        epoch=str(current_epoch),
-                        now_ts=recv_ts,
-                    )
-
-            if not is_duplicate:
-                state.dedup_set.add(seq_fingerprint)
-                state.dedup_window.append(seq_fingerprint)
-                evicted = None
-                if len(state.dedup_window) > DEFAULT_DEDUP_WINDOW_SIZE:
-                    evicted = state.dedup_window.popleft()
-                    state.dedup_set.discard(evicted)
-                if txn is not None:
-                    txn.record_dedup(seq_fingerprint, evicted)
+                    reasons_out.append(Reason.SEQUENCE_GAP.value)
+                    if self.gap_manager is not None and not is_replay:
+                        self.gap_manager.record_gap(
+                            source=raw_event.source,
+                            instrument=instrument,
+                            expected_start=last_seq + 1,
+                            received_seq=seq,
+                            epoch=str(current_epoch),
+                            now_ts=recv_ts,
+                        )
 
             if txn is not None:
                 txn.record_sequence(slot_key)
@@ -1753,7 +1750,9 @@ class Engine:
                 reasons_out.append(Reason.PRICE_ANOMALY.value)
             else:
                 if n_prices >= DEFAULT_PRICE_WINDOW:
-                    old_p = prices.popleft() if isinstance(prices, deque) else prices.pop(0)
+                    old_p = (
+                        prices.popleft() if isinstance(prices, deque) else prices.pop(0)
+                    )
                     prices.append(price)
                     if stats is not None:
                         mean, m2, upd_cnt = stats

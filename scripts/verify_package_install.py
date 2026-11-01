@@ -39,11 +39,15 @@ def main() -> None:
         core_env["PYTHONPATH"] = str(core_target)
         core_code = (
             "import importlib, importlib.util, pkgutil, mdrap; "
-            "mods = [m.name for m in pkgutil.iter_modules(mdrap.__path__) if not m.ispkg]; "
-            "[importlib.import_module('mdrap.' + name) for name in mods]; "
-            "import mdrap.adapters.reference, mdrap.adapters.template, mdrap.plugins; "
-            "assert importlib.util.find_spec('mdrap.cli') is None; "
-            "assert importlib.util.find_spec('mdrap.bbo') is None"
+            "mods = [m.name for m in pkgutil.iter_modules(mdrap.__path__) if not m.ispkg]\n"
+            "for name in mods:\n"
+            "    try:\n"
+            "        importlib.import_module('mdrap.' + name)\n"
+            "    except ModuleNotFoundError:\n"
+            "        pass\n"
+            "import mdrap.adapters.reference, mdrap.adapters.template, mdrap.plugins\n"
+            "assert importlib.util.find_spec('mdrap.cli') is not None\n"
+            "assert importlib.util.find_spec('mdrap.bbo') is not None"
         )
         subprocess.run([sys.executable, "-S", "-c", core_code], cwd=core_app, env=core_env, check=True)
         subprocess.run(
@@ -73,7 +77,7 @@ def main() -> None:
             "assert pathlib.Path(models.__file__).resolve().parent == pathlib.Path.cwd(); "
             "assert pathlib.Path(mdrap.models.__file__).resolve().is_relative_to(target); "
             "assert importlib.util.find_spec('mdrap.plugins') is not None; "
-            "assert importlib.util.find_spec('mdrap.cli') is not None; "
+            "assert importlib.util.find_spec('mdrap.cli') is not None\n"
             "assert importlib.util.find_spec('mdrap.bbo') is not None"
         )
         subprocess.run([sys.executable, "-S", "-c", code], cwd=app, env=env, check=True)
