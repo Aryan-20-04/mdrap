@@ -777,6 +777,8 @@ class IngestLog:
                     "payload": raw.payload,
                     "receive_timestamp": recv_ts,
                 }
+                if getattr(raw, "session_id", None):
+                    record["session_id"] = raw.session_id
             elif isinstance(raw, dict):
                 record = dict(raw)
                 if not record.get("receive_timestamp"):
@@ -919,6 +921,8 @@ class IngestLog:
                         else now,
                         "raw_id": item.raw_id,
                     }
+                    if getattr(item, "session_id", None):
+                        rec["session_id"] = item.session_id
                 elif isinstance(item, dict):
                     rec = dict(item)
                     if not rec.get("receive_timestamp"):
@@ -965,20 +969,27 @@ class IngestLog:
                 self._current_file.write(batch_buffer)
                 self._current_file.flush()
 
-                if self.fsync_policy in (
-                    "always",
-                    "grouped_by_size",
-                    "grouped_by_time",
-                    "true_group_commit",
-                ):
+                should_fsync = False
+                now_ts = time.time()
+                self._bytes_since_fsync += len(batch_buffer)
+                if self.fsync_policy == "always":
+                    should_fsync = True
+                elif self.fsync_policy == "grouped_by_size":
+                    if self._bytes_since_fsync >= 64 * 1024:
+                        should_fsync = True
+                elif self.fsync_policy == "grouped_by_time":
+                    if now_ts - self._last_fsync_ts >= 0.05:
+                        should_fsync = True
+                elif self.fsync_policy == "true_group_commit":
+                    should_fsync = True
+
+                if should_fsync:
                     os.fsync(self._current_file.fileno())
                     self._bytes_since_fsync = 0
-                    self._last_fsync_ts = time.time()
+                    self._last_fsync_ts = now_ts
                     self._synced_offset = allocated_offsets[-1]
                     self._pending_sync_offset = allocated_offsets[-1]
                     self._group_commit_cv.notify_all()
-                else:
-                    self._bytes_since_fsync += len(batch_buffer)
 
                 self._next_offset = start_off + len(prepared)
             except Exception:
@@ -1412,6 +1423,7 @@ class IngestLog:
                                 payload=rec.get("payload", {}),
                                 receive_timestamp=rec.get("receive_timestamp") or ts,
                                 raw_id=rec.get("raw_id"),
+                                session_id=rec.get("session_id"),
                             )
                             yielded_in_seg = True
                             yield offset, raw_evt
@@ -1523,6 +1535,7 @@ class IngestLog:
                                 payload=rec.get("payload", {}),
                                 receive_timestamp=rec.get("receive_timestamp") or ts,
                                 raw_id=rec.get("raw_id"),
+                                session_id=rec.get("session_id"),
                             )
                             return (offset, raw_evt)
                         except Exception as exc:

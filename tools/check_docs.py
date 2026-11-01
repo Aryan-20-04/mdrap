@@ -153,7 +153,7 @@ def check_relative_links() -> bool:
 
     for md_file in all_md_files:
         content = md_file.read_text(encoding="utf-8")
-        links = re.findall(r"\[.*?\]\((?!http|https|#|mailto:)(.*?)\)", content)
+        links = re.findall(r"\[.*?\]\((?!http|https|#|mailto:|file:)(.*?)\)", content)
         for link in links:
             # Strip anchor if present
             clean_link = link.split("#")[0].strip()

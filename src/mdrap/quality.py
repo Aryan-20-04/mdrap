@@ -147,6 +147,7 @@ class _SlotState:
         "pending",
         "ready",
         "session_id",
+        "regress_count",
     )
 
     def __init__(self, window: int):
@@ -169,6 +170,7 @@ class _SlotState:
         ] = {}
         self.ready: list[CanonicalEvent] = []
         self.session_id: str | None = None
+        self.regress_count: int = 0
 
     def fold_price(self, x: float, window: int) -> None:
         if self.n >= window:
@@ -435,6 +437,7 @@ class QualityEngine:
                 sl.seen = 0
                 sl.cand_plus1 = 0
                 sl.pending.clear()
+                sl.regress_count = 0
                 self._mark(event, QualityStatus.VALID, Reason.EPOCH_RESET)
                 self._bump(Reason.EPOCH_RESET)
 
@@ -497,6 +500,16 @@ class QualityEngine:
                         self._mark(event, QualityStatus.SUSPICIOUS, Reason.OUT_OF_ORDER)
                         self._bump(Reason.OUT_OF_ORDER)
                 else:
+                    if d > cfg.seq_jump_limit:
+                        sl.regress_count += 1
+                        if sl.regress_count >= 2:
+                            sl.last_seq = seq
+                            sl.seen = 1
+                            sl.regress_count = 0
+                            sl.cand_plus1 = 0
+                    else:
+                        sl.regress_count = 0
+
                     self._mark(event, QualityStatus.SUSPICIOUS, Reason.OUT_OF_ORDER)
                     self._bump(Reason.OUT_OF_ORDER)
         elif ex_fin:
@@ -664,7 +677,8 @@ class QualityEngine:
                 rel = cfg.price_reseed_band_rel * abs(px)
                 if rel > band:
                     band = rel
-                if sl.anom_count > 0 and abs(px - sl.anom_last) <= band:
+                cluster_tol = max(band, 0.05 * abs(px))
+                if sl.anom_count > 0 and abs(px - sl.anom_last) <= cluster_tol:
                     sl.anom_count += 1
                 else:
                     sl.anom_count = 1

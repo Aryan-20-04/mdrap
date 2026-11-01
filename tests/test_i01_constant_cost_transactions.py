@@ -235,17 +235,23 @@ def test_i01_submit_batch_atomicity(tmp_path, monkeypatch):
     assert engine.state.event_count == 1
     baseline_state = copy.deepcopy(engine.state.to_dict())
 
-    # Enable failure for the next batch
-    proj.should_fail = True
+    # Enable failure for the batch inside the transaction
+    orig_step = engine.step
+    def flaky_step(state, raw, clock, offset, txn=None, is_replay=False):
+        if offset and offset > 10:
+            raise RuntimeError("Simulated transaction fold failure")
+        return orig_step(state, raw, clock, offset, txn=txn, is_replay=is_replay)
+
+    monkeypatch.setattr(engine, "step", flaky_step)
 
     # Create batch of 50 events
     batch = [
         _make_market_raw(i + 1, instrument="AAPL", price=150.0 + i) for i in range(50)
     ]
 
-    with pytest.raises(IOError) as exc_info:
+    with pytest.raises(RuntimeError) as exc_info:
         engine.submit(batch)
-    assert "Simulated projection database write failure" in str(exc_info.value)
+    assert "Simulated transaction fold failure" in str(exc_info.value)
 
     # Assert 100% rollback: event_count, bbo_state, price_windows, etc.
     current_state = engine.state.to_dict()

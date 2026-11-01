@@ -52,6 +52,8 @@ class EngineState:
     """Serializable, in-memory state of the deterministic engine fold."""
 
     event_count: int = 0
+    last_applied_offset: int = -1
+    observed_count: int = 0
     sequence_state: dict[str, int] = field(default_factory=dict)
     dedup_window: Any = field(default_factory=deque)
     dedup_set: set[str] = field(default_factory=set)
@@ -88,6 +90,8 @@ class EngineState:
         """Fast clone for transactional isolation and zero-allocation rollback."""
         return EngineState(
             event_count=self.event_count,
+            last_applied_offset=self.last_applied_offset,
+            observed_count=self.observed_count,
             sequence_state=dict(self.sequence_state),
             dedup_window=deque(self.dedup_window),
             dedup_set=set(self.dedup_set),
@@ -110,6 +114,8 @@ class EngineState:
     def to_dict(self) -> dict[str, Any]:
         return {
             "event_count": self.event_count,
+            "last_applied_offset": self.last_applied_offset,
+            "observed_count": self.observed_count,
             "sequence_state": dict(self.sequence_state),
             "dedup_window": list(self.dedup_window),
             "price_windows": {k: list(v) for k, v in self.price_windows.items()},
@@ -128,6 +134,8 @@ class EngineState:
         dedup_items = [tuple(x) if isinstance(x, list) else x for x in dedup_win]
         state = cls(
             event_count=data.get("event_count", 0),
+            last_applied_offset=data.get("last_applied_offset", -1),
+            observed_count=data.get("observed_count", 0),
             sequence_state=data.get("sequence_state", {}),
             dedup_window=deque(dedup_items),
             dedup_set=set(dedup_items),
@@ -151,6 +159,8 @@ _OP_DICT_KEY = 3
 _OP_DEDUP = 4
 _OP_BBO = 5
 _OP_RECON = 6
+_OP_OBSERVED_COUNT = 7
+_OP_LAST_APPLIED_OFFSET = 8
 
 
 class Transaction:
@@ -165,6 +175,8 @@ class Transaction:
 
     def record_event_count(self) -> None:
         self._actions.append((_OP_EVENT_COUNT, self.state.event_count))
+        self._actions.append((_OP_OBSERVED_COUNT, self.state.observed_count))
+        self._actions.append((_OP_LAST_APPLIED_OFFSET, self.state.last_applied_offset))
 
     def record_count(self, status_name: str) -> None:
         self._actions.append(
@@ -231,6 +243,10 @@ class Transaction:
             op = item[0]
             if op == _OP_EVENT_COUNT:
                 self.state.event_count = item[1]
+            elif op == _OP_OBSERVED_COUNT:
+                self.state.observed_count = item[1]
+            elif op == _OP_LAST_APPLIED_OFFSET:
+                self.state.last_applied_offset = item[1]
             elif op == _OP_COUNT:
                 self.state.counts[item[1]] = item[2]
             elif op == _OP_DICT_KEY:
@@ -492,7 +508,9 @@ class Engine:
 
             # Catch up state only from uncompacted log records since snapshot
             for off, raw in self.log.iter_from(replay_from):
-                self.state, dec = self.step(self.state, raw, self.clock, offset=off)
+                self.state, dec = self.step(
+                    self.state, raw, self.clock, offset=off, is_replay=True
+                )
                 self.recovery_metrics.replayed_records += 1
                 if dec.quality_status == QualityStatus.INVALID:
                     self.recovery_metrics.quarantined_records += 1
@@ -674,39 +692,37 @@ class Engine:
         with self._lock:
             batch_txn = Transaction(self.state)
             try:
-                decisions: list[EngineDecision] = []
-                offsets: list[int] = []
+                n_events = len(event_list)
+                decisions: list[EngineDecision | None] = [None] * n_events
+                offsets: list[int] = [-1] * n_events
                 valid_for_wal: list[RawEvent] = []
-                raw_to_offset: list[tuple[RawEvent, int]] = []
+                valid_indices: list[int] = []
 
-                for raw in event_list:
+                for idx, raw in enumerate(event_list):
                     # Stamp receive timestamp before append to ensure deterministic replay (C2)
                     if not raw.receive_timestamp:
                         raw.receive_timestamp = self.clock.now()
 
-                    # Determine offset before append so deterministic raw_id is stamped and persisted in WAL (N1)
-                    offset = (
-                        (self.log.next_offset + len(valid_for_wal))
-                        if self.log is not None
-                        else (self.state.event_count + len(decisions))
-                    )
-                    if not raw.raw_id:
-                        raw.raw_id = f"raw_{raw.source}_{offset}"
-
-                    # Enforce payload size limit at Engine boundary to protect WAL from stalling (N4)
+                    # Enforce payload size limit at Engine boundary to protect WAL from stalling (N4, E14)
                     if self.max_payload_bytes > 0:
                         payload = raw.payload
-                        p_len = (
-                            len(payload)
-                            if isinstance(payload, (str, bytes))
-                            else (
-                                len(json.dumps(payload, default=str))
-                                if isinstance(payload, dict)
-                                else len(str(payload))
-                            )
-                        )
+                        if isinstance(payload, (str, bytes)):
+                            p_len = len(payload)
+                        elif isinstance(payload, dict):
+                            # # ponytail: fast structural estimation for dicts <= 32 keys, exact dumps only when potentially oversize (E14)
+                            if len(payload) <= 32:
+                                p_len = 2 + sum(
+                                    len(str(k)) + (len(v) if isinstance(v, (str, bytes)) else 16) + 4
+                                    for k, v in payload.items()
+                                )
+                                if p_len > self.max_payload_bytes:
+                                    p_len = len(json.dumps(payload, default=str))
+                            else:
+                                p_len = len(json.dumps(payload, default=str))
+                        else:
+                            p_len = len(str(payload))
                         if p_len > self.max_payload_bytes:
-                            q_id = f"q_{raw.source}_{offset}"
+                            q_id = f"q_{raw.source}_{self.state.observed_count}"
                             q_row = (
                                 q_id,
                                 "OVERSIZE",
@@ -722,54 +738,81 @@ class Engine:
                                 ),
                                 raw.receive_timestamp,
                             )
-                            batch_txn.record_event_count()
                             batch_txn.record_count("INVALID")
-                            self.state.event_count += 1
+                            self.state.observed_count += 1
                             self.state.counts["INVALID"] += 1
                             dec = EngineDecision(
-                                offset=offset,
+                                offset=-1,
                                 event_id=q_id,
                                 quality_status=QualityStatus.INVALID,
                                 reasons=[Reason.SCHEMA_VIOLATION.value],
                                 quarantine_row=q_row,
                             )
-                            decisions.append(dec)
-                            offsets.append(offset)
+                            decisions[idx] = dec
+                            offsets[idx] = -1
                             continue
 
+                    batch_txn.record_event_count()
+                    self.state.observed_count += 1
+                    offset = (
+                        (self.log.next_offset + len(valid_for_wal))
+                        if self.log is not None
+                        else (self.state.event_count + len(valid_for_wal))
+                    )
+                    if not raw.raw_id:
+                        raw.raw_id = f"raw_{raw.source}_{offset}"
                     valid_for_wal.append(raw)
-                    raw_to_offset.append((raw, offset))
+                    valid_indices.append(idx)
 
                 if self.log is not None and valid_for_wal:
                     allocated = self.log.append_batch(valid_for_wal)
-                    expected_offsets = [off for _, off in raw_to_offset]
-                    if allocated != expected_offsets:
-                        raise RuntimeError(
-                            f"WAL allocated offsets diverged: expected {expected_offsets}, got {allocated}"
-                        )
+                    raw_to_offset = list(zip(valid_for_wal, allocated))
+                elif valid_for_wal:
+                    start_off = (
+                        self.state.last_applied_offset + 1
+                        if self.state.last_applied_offset >= 0
+                        else self.state.event_count
+                    )
+                    raw_to_offset = [
+                        (raw, start_off + i) for i, raw in enumerate(valid_for_wal)
+                    ]
+                else:
+                    raw_to_offset = []
+
+                for (raw, offset), orig_idx in zip(raw_to_offset, valid_indices):
+                    offsets[orig_idx] = offset
 
                 if len(raw_to_offset) > 1:
-                    for raw, offset in raw_to_offset:
-                        offsets.append(offset)
                     self.state, batch_decs = self.step_batch(
                         self.state, raw_to_offset, self.clock, txn=batch_txn
                     )
-                    decisions.extend(batch_decs)
-                else:
-                    for raw, offset in raw_to_offset:
-                        offsets.append(offset)
-                        self.state, dec = self.step(
-                            self.state, raw, self.clock, offset=offset, txn=batch_txn
-                        )
-                        decisions.append(dec)
-
-                # Dispatch to subscribed projections atomically
-                if self._projections and decisions:
-                    last_offset = offsets[-1]
-                    for proj in self._projections:
-                        proj.apply(decisions, last_offset)
+                    for orig_idx, step_dec in zip(valid_indices, batch_decs):
+                        decisions[orig_idx] = step_dec
+                elif len(raw_to_offset) == 1:
+                    raw, offset = raw_to_offset[0]
+                    orig_idx = valid_indices[0]
+                    self.state, step_dec = self.step(
+                        self.state, raw, self.clock, offset=offset, txn=batch_txn
+                    )
+                    decisions[orig_idx] = step_dec
 
                 batch_txn.commit()
+
+                final_decisions = [d for d in decisions if d is not None]
+
+                # Dispatch to subscribed projections with per-consumer error isolation (Phase 2 / E15)
+                if self._projections and final_decisions:
+                    last_offset = offsets[-1]
+                    for proj in self._projections:
+                        try:
+                            proj.apply(final_decisions, last_offset)
+                        except Exception as proj_err:
+                            logger.error(
+                                "[engine] Projection %s failed at offset %d: %s",
+                                type(proj).__name__,
+                                last_offset,
+                                proj_err,
+                            )
 
                 # Program I-4: Automatic snapshot cadence evaluation
                 if self.log is not None:
@@ -795,8 +838,8 @@ class Engine:
                             )
 
                 if is_single:
-                    return decisions[0]
-                return decisions
+                    return final_decisions[0] if final_decisions else None
+                return final_decisions
             except Exception:
                 # Durability / IO failure rollback (Task 5: Exception Safety & State Consistency)
                 batch_txn.rollback()
@@ -830,11 +873,15 @@ class Engine:
 
         for off, raw in self.log.iter_from(0):
             if off < from_offset:
-                replay_state, _ = self.step(replay_state, raw, self.clock, offset=off)
+                replay_state, _ = self.step(
+                    replay_state, raw, self.clock, offset=off, is_replay=True
+                )
                 continue
             if to_offset is not None and off > to_offset:
                 break
-            replay_state, dec = self.step(replay_state, raw, self.clock, offset=off)
+            replay_state, dec = self.step(
+                replay_state, raw, self.clock, offset=off, is_replay=True
+            )
             decisions.append(dec)
             metrics.replayed_records += 1
             if dec.quality_status == QualityStatus.INVALID:
@@ -991,6 +1038,7 @@ class Engine:
         clock: Clock,
         offset: int | None = None,
         txn: Transaction | None = None,
+        is_replay: bool = False,
     ) -> tuple[EngineState, EngineDecision]:
         """Apply a single deterministic state transition: (state, raw_event, clock) -> (state', decision)."""
         prev_event_count = state.event_count
@@ -998,7 +1046,7 @@ class Engine:
         mark = len(step_txn._actions)
         try:
             st, dec = self._step_internal(
-                state, raw_event, clock, offset=offset, txn=step_txn
+                state, raw_event, clock, offset=offset, txn=step_txn, is_replay=is_replay
             )
             if txn is None:
                 step_txn.commit()
@@ -1490,6 +1538,7 @@ class Engine:
         status: QualityStatus,
         reasons: list[str],
         txn: Transaction | None,
+        is_replay: bool = False,
     ) -> tuple[QualityStatus, list[str], bool]:
         is_duplicate = False
         reasons_out = reasons
@@ -1497,50 +1546,61 @@ class Engine:
 
         if seq is not None:
             last_seq = state.sequence_state.get(slot_key)
-            if last_seq is not None:
-                if seq == last_seq:
-                    is_duplicate = True
-                    cur_status = QualityStatus.merge(cur_status, QualityStatus.INVALID)
+            seq_fingerprint = (raw_event.source, instrument, f"seq={seq}")
+            if seq_fingerprint in state.dedup_set or (last_seq is not None and seq == last_seq):
+                is_duplicate = True
+                cur_status = QualityStatus.merge(cur_status, QualityStatus.INVALID)
+                if reasons_out is reasons:
+                    reasons_out = list(reasons)
+                reasons_out.append(Reason.DUPLICATE.value)
+            elif last_seq is not None and seq < last_seq:
+                filled = None
+                if self.gap_manager is not None:
+                    filled = self.gap_manager.try_fill(
+                        source=raw_event.source,
+                        instrument=instrument,
+                        seq=seq,
+                        epoch=str(current_epoch),
+                        now_ts=recv_ts,
+                    )
+                if filled is not None:
                     if reasons_out is reasons:
                         reasons_out = list(reasons)
-                    reasons_out.append(Reason.DUPLICATE.value)
-                elif seq < last_seq:
-                    filled = None
-                    if self.gap_manager is not None:
-                        filled = self.gap_manager.try_fill(
-                            source=raw_event.source,
-                            instrument=instrument,
-                            seq=seq,
-                            epoch=str(current_epoch),
-                            now_ts=recv_ts,
-                        )
-                    if filled is not None:
-                        if reasons_out is reasons:
-                            reasons_out = list(reasons)
-                        reasons_out.append(Reason.GAP_FILLED.value)
-                    else:
-                        cur_status = QualityStatus.merge(
-                            cur_status, QualityStatus.SUSPICIOUS
-                        )
-                        if reasons_out is reasons:
-                            reasons_out = list(reasons)
-                        reasons_out.append(Reason.OUT_OF_ORDER.value)
-                elif seq > last_seq + 1:
+                    reasons_out.append(Reason.GAP_FILLED.value)
+                else:
                     cur_status = QualityStatus.merge(
                         cur_status, QualityStatus.SUSPICIOUS
                     )
                     if reasons_out is reasons:
                         reasons_out = list(reasons)
-                    reasons_out.append(Reason.SEQUENCE_GAP.value)
-                    if self.gap_manager is not None:
-                        self.gap_manager.record_gap(
-                            source=raw_event.source,
-                            instrument=instrument,
-                            expected_start=last_seq + 1,
-                            received_seq=seq,
-                            epoch=str(current_epoch),
-                            now_ts=recv_ts,
-                        )
+                    reasons_out.append(Reason.OUT_OF_ORDER.value)
+            elif last_seq is not None and seq > last_seq + 1:
+                cur_status = QualityStatus.merge(
+                    cur_status, QualityStatus.SUSPICIOUS
+                )
+                if reasons_out is reasons:
+                    reasons_out = list(reasons)
+                reasons_out.append(Reason.SEQUENCE_GAP.value)
+                if self.gap_manager is not None and not is_replay:
+                    self.gap_manager.record_gap(
+                        source=raw_event.source,
+                        instrument=instrument,
+                        expected_start=last_seq + 1,
+                        received_seq=seq,
+                        epoch=str(current_epoch),
+                        now_ts=recv_ts,
+                    )
+
+            if not is_duplicate:
+                state.dedup_set.add(seq_fingerprint)
+                state.dedup_window.append(seq_fingerprint)
+                evicted = None
+                if len(state.dedup_window) > DEFAULT_DEDUP_WINDOW_SIZE:
+                    evicted = state.dedup_window.popleft()
+                    state.dedup_set.discard(evicted)
+                if txn is not None:
+                    txn.record_dedup(seq_fingerprint, evicted)
+
             if txn is not None:
                 txn.record_sequence(slot_key)
                 if slot_key != stream_key:
@@ -1576,6 +1636,8 @@ class Engine:
                     payload.get("quantity"),
                     payload.get("bid"),
                     payload.get("ask"),
+                    payload.get("bid_size"),
+                    payload.get("ask_size"),
                 )
             if dedup_fingerprint in state.dedup_set:
                 is_duplicate = True
@@ -1735,6 +1797,7 @@ class Engine:
         status: QualityStatus,
         reasons: list[str],
         txn: Transaction | None,
+        is_replay: bool = False,
     ) -> tuple[QualityStatus, list[str], bool]:
         reasons_out = reasons
         cur_status = status
@@ -1791,6 +1854,7 @@ class Engine:
         clock: Clock,
         offset: int | None = None,
         txn: Transaction | None = None,
+        is_replay: bool = False,
     ) -> tuple[EngineState, EngineDecision]:
         if offset is None:
             offset = state.event_count
@@ -1798,6 +1862,7 @@ class Engine:
         if txn is not None:
             txn.record_event_count()
         state.event_count += 1
+        state.last_applied_offset = offset
         now_ts = clock.now()
         recv_ts = raw_event.receive_timestamp if raw_event.receive_timestamp else now_ts
 
@@ -1879,6 +1944,7 @@ class Engine:
             status,
             reasons,
             txn,
+            is_replay=is_replay,
         )
 
         # Stage 5: Staleness & Quote Book Consistency
@@ -1983,33 +2049,44 @@ class Engine:
 
     def snapshot(self, target: Any = None) -> bytes | str:
         """Create a deterministic byte snapshot or save to path with SHA-256 checksum."""
-        st = target if isinstance(target, EngineState) else self.state
-        st_dict = st.to_dict()
+        with self._lock:
+            st = target if isinstance(target, EngineState) else self.state
+            st_dict = st.to_dict()
+            last_off = (
+                self.state.last_applied_offset
+                if self.state.last_applied_offset >= 0
+                else (
+                    self.log.next_offset - 1
+                    if self.log is not None
+                    else self.state.event_count - 1
+                )
+            )
+            ev_count = self.state.event_count
+            now_ts = self.clock.now()
+
+        # # ponytail: serialize, write and fsync OUTSIDE self._lock to eliminate submit contention (E13)
         canonical_bytes = json.dumps(
             st_dict, sort_keys=True, separators=(",", ":")
         ).encode("utf-8")
         state_sha256 = hashlib.sha256(canonical_bytes).hexdigest()
 
         if isinstance(target, (str, Path)):
-            with self._lock:
-                data = {
-                    "version": 2,
-                    "offset": self.state.event_count - 1,
-                    "timestamp": self.clock.now(),
-                    "event_count": self.state.event_count,
-                    "sha256": state_sha256,
-                    "state": st_dict,
-                }
-                tmp_target = f"{target}.tmp.{os.getpid()}_{time.time_ns()}"
-                with open(tmp_target, "w", encoding="utf-8") as f:
-                    json.dump(data, f, sort_keys=True, indent=2)
-                    f.flush()
-                    os.fsync(f.fileno())
-                os.replace(tmp_target, target)
-                return str(target)
-        return json.dumps(st_dict, sort_keys=True, separators=(",", ":")).encode(
-            "utf-8"
-        )
+            data = {
+                "version": 2,
+                "offset": last_off,
+                "timestamp": now_ts,
+                "event_count": ev_count,
+                "sha256": state_sha256,
+                "state": st_dict,
+            }
+            tmp_target = f"{target}.tmp.{os.getpid()}_{time.time_ns()}"
+            with open(tmp_target, "w", encoding="utf-8") as f:
+                json.dump(data, f, sort_keys=True, indent=2)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_target, target)
+            return str(target)
+        return canonical_bytes
 
     @classmethod
     def restore(

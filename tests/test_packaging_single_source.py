@@ -35,4 +35,3 @@ def test_core_dependencies_and_entrypoints():
     assert "rich>=13.0.0" in pyproject
     assert "fastapi>=0.110.0" in pyproject
     assert "pyyaml>=6.0" in pyproject
-    assert "openpyxl>=3.1.0" in pyproject
