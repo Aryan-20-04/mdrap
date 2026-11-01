@@ -587,6 +587,18 @@ class Pipeline:
         if self.use_engine and self.engine is not None:
             dec = self.engine.submit(raw)
             ev = dec.canonical_event if dec else None
+            if ev is None and dec and dec.quarantine_row:
+                q = dec.quarantine_row
+                ev = CanonicalEvent(
+                    event_id=q[0],
+                    instrument_id=q[1] or "",
+                    event_type=EventType.TRADE,
+                    exchange_timestamp=q[6] if len(q) > 6 else 0.0,
+                    receive_timestamp=q[6] if len(q) > 6 else 0.0,
+                    source=q[2] or raw.source,
+                    quality_status=QualityStatus.INVALID,
+                    reasons=list(dec.reasons) if dec.reasons else [],
+                )
             self.metrics.processed += 1
             st_name = dec.quality_status.name if dec else "INVALID"
             self.metrics.quality_counts[st_name] = (
@@ -842,6 +854,18 @@ class Pipeline:
                     self.metrics.quality_counts.get(st_name, 0) + 1
                 )
                 ev = dec.canonical_event
+                if ev is None and dec and dec.quarantine_row:
+                    q = dec.quarantine_row
+                    ev = CanonicalEvent(
+                        event_id=q[0],
+                        instrument_id=q[1] or "",
+                        event_type=EventType.TRADE,
+                        exchange_timestamp=q[6] if len(q) > 6 else 0.0,
+                        receive_timestamp=q[6] if len(q) > 6 else 0.0,
+                        source=q[2] or "",
+                        quality_status=QualityStatus.INVALID,
+                        reasons=list(dec.reasons) if dec.reasons else [],
+                    )
                 if ev:
                     if self.watchdog:
                         self.watchdog.observe(ev)
@@ -1116,6 +1140,8 @@ class Pipeline:
 
     def flush(self, wait: bool = True):
         self._raise_if_writer_failed()
+        if self.use_engine and self.engine is not None:
+            self.engine.flush()
         if self._async_writer_enabled:
             self._ensure_writer_alive()
         if self._canonical_batch or self._quarantine_batch or self._lineage_batch:

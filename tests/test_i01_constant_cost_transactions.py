@@ -237,6 +237,7 @@ def test_i01_submit_batch_atomicity(tmp_path, monkeypatch):
 
     # Enable failure for the batch inside the transaction
     orig_step = engine.step
+
     def flaky_step(state, raw, clock, offset, txn=None, is_replay=False):
         if offset and offset > 10:
             raise RuntimeError("Simulated transaction fold failure")

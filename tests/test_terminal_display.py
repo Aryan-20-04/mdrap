@@ -218,9 +218,9 @@ def test_live_ticker_dashboard_multi_ticker():
 def test_cli_chart_command(temp_env):
     """Verify 'chart' CLI subcommand dispatches and executes."""
     parser = build_parser()
-    args = parser.parse_args(["chart", "AAPL", "--db", temp_env["db"]])
+    args = parser.parse_args(["chart", "BTC/USD", "--db", temp_env["db"]])
     assert args.func is not None
-    assert args.symbol == "AAPL"
+    assert args.symbol == "BTC/USD"
 
     # Run command func directly
     args.func(args)

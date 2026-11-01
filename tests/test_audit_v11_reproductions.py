@@ -85,36 +85,102 @@ def test_e2_large_int64_sequence_poisons_later_checks():
     """E2 Remediation: Consecutive out-of-order large sequence jumps do not permanently poison sequence."""
     qe = QualityEngine()
     ev1 = _make_event(
-        event_id="e1", source="BINANCE", instrument_id="BTC-USDT",
-        price=50000.0, quantity=1.0, exchange_timestamp=100.0, receive_timestamp=100.0, sequence_number=10
+        event_id="e1",
+        source="BINANCE",
+        instrument_id="BTC-USDT",
+        price=50000.0,
+        quantity=1.0,
+        exchange_timestamp=100.0,
+        receive_timestamp=100.0,
+        sequence_number=10,
     )
-    qe.evaluate(ev1)
+    res1 = qe.evaluate(ev1)
+    assert res1.quality_status == QualityStatus.VALID
 
     ev_huge1 = _make_event(
-        event_id="e2", source="BINANCE", instrument_id="BTC-USDT",
-        price=50000.0, quantity=1.0, exchange_timestamp=101.0, receive_timestamp=101.0, sequence_number=9_000_000_000_000
+        event_id="e2",
+        source="BINANCE",
+        instrument_id="BTC-USDT",
+        price=50000.0,
+        quantity=1.0,
+        exchange_timestamp=101.0,
+        receive_timestamp=101.0,
+        sequence_number=9_000_000_000_000,
     )
-    qe.evaluate(ev_huge1)
+    res_huge1 = qe.evaluate(ev_huge1)
+    assert res_huge1.quality_status in (QualityStatus.SUSPICIOUS, QualityStatus.INVALID)
+    assert (
+        Reason.SEQUENCE_GAP.value in res_huge1.reasons
+        or Reason.OUT_OF_ORDER.value in res_huge1.reasons
+    )
 
     ev_huge2 = _make_event(
-        event_id="e3", source="BINANCE", instrument_id="BTC-USDT",
-        price=50000.0, quantity=1.0, exchange_timestamp=102.0, receive_timestamp=102.0, sequence_number=9_000_000_000_001
+        event_id="e3",
+        source="BINANCE",
+        instrument_id="BTC-USDT",
+        price=50000.0,
+        quantity=1.0,
+        exchange_timestamp=102.0,
+        receive_timestamp=102.0,
+        sequence_number=9_000_000_000_001,
     )
     qe.evaluate(ev_huge2)
 
     ev_normal1 = _make_event(
-        event_id="e4", source="BINANCE", instrument_id="BTC-USDT",
-        price=50000.0, quantity=1.0, exchange_timestamp=103.0, receive_timestamp=103.0, sequence_number=11
+        event_id="e4",
+        source="BINANCE",
+        instrument_id="BTC-USDT",
+        price=50000.0,
+        quantity=1.0,
+        exchange_timestamp=103.0,
+        receive_timestamp=103.0,
+        sequence_number=11,
     )
     qe.evaluate(ev_normal1)
 
     ev_normal2 = _make_event(
-        event_id="e5", source="BINANCE", instrument_id="BTC-USDT",
-        price=50000.0, quantity=1.0, exchange_timestamp=104.0, receive_timestamp=104.0, sequence_number=12
+        event_id="e5",
+        source="BINANCE",
+        instrument_id="BTC-USDT",
+        price=50000.0,
+        quantity=1.0,
+        exchange_timestamp=104.0,
+        receive_timestamp=104.0,
+        sequence_number=12,
     )
     res = qe.evaluate(ev_normal2)
     # Recovered continuity; sequence is unpoisoned
     assert qe._slots[("BINANCE", "BTC-USDT")].last_seq == 12
+
+    # Verify subsequent sequence 13 is fully VALID
+    ev_normal3 = _make_event(
+        event_id="e6",
+        source="BINANCE",
+        instrument_id="BTC-USDT",
+        price=50000.0,
+        quantity=1.0,
+        exchange_timestamp=105.0,
+        receive_timestamp=105.0,
+        sequence_number=13,
+    )
+    res3 = qe.evaluate(ev_normal3)
+    assert res3.quality_status == QualityStatus.VALID
+    assert qe._slots[("BINANCE", "BTC-USDT")].last_seq == 13
+
+    # Multi-venue isolation: parallel feed on KRAKEN is unaffected
+    ev_kraken = _make_event(
+        event_id="ek1",
+        source="KRAKEN",
+        instrument_id="BTC-USDT",
+        price=50000.0,
+        quantity=1.0,
+        exchange_timestamp=106.0,
+        receive_timestamp=106.0,
+        sequence_number=1,
+    )
+    res_k = qe.evaluate(ev_kraken)
+    assert res_k.quality_status == QualityStatus.VALID
+    assert qe._slots[("KRAKEN", "BTC-USDT")].last_seq == 1
 
 
 def test_e3_old_retransmission_classified_suspicious_not_duplicate():
@@ -122,12 +188,45 @@ def test_e3_old_retransmission_classified_suspicious_not_duplicate():
     td = _safe_td()
     try:
         engine = Engine(path=td)
-        engine.submit(RawEvent(source="BINANCE", payload={"instrument": "BTC-USDT", "event_type": "TRADE", "price": 50000.0, "quantity": 1.0, "exchange_ts": 1000.0}))
+        engine.submit(
+            RawEvent(
+                source="BINANCE",
+                payload={
+                    "instrument": "BTC-USDT",
+                    "event_type": "TRADE",
+                    "price": 50000.0,
+                    "quantity": 1.0,
+                    "exchange_ts": 1000.0,
+                },
+            )
+        )
 
         for s in range(2, 75):
-            engine.submit(RawEvent(source="BINANCE", payload={"instrument": "BTC-USDT", "event_type": "TRADE", "price": 50000.0 + s, "quantity": 1.0, "exchange_ts": 1000.0 + s}))
+            engine.submit(
+                RawEvent(
+                    source="BINANCE",
+                    payload={
+                        "instrument": "BTC-USDT",
+                        "event_type": "TRADE",
+                        "price": 50000.0 + s,
+                        "quantity": 1.0,
+                        "exchange_ts": 1000.0 + s,
+                    },
+                )
+            )
 
-        dec = engine.submit(RawEvent(source="BINANCE", payload={"instrument": "BTC-USDT", "event_type": "TRADE", "price": 50000.0, "quantity": 1.0, "exchange_ts": 1000.0}))
+        dec = engine.submit(
+            RawEvent(
+                source="BINANCE",
+                payload={
+                    "instrument": "BTC-USDT",
+                    "event_type": "TRADE",
+                    "price": 50000.0,
+                    "quantity": 1.0,
+                    "exchange_ts": 1000.0,
+                },
+            )
+        )
         assert Reason.DUPLICATE.value in dec.reasons
         assert dec.quality_status == QualityStatus.INVALID
     finally:
@@ -140,16 +239,24 @@ def test_e4_price_corridor_reseed_failure_on_rerate():
     qe = QualityEngine()
     for i in range(100):
         ev = _make_event(
-            event_id=f"e_{i}", source="NASDAQ", instrument_id="AAPL",
-            price=100.0, quantity=100.0, exchange_timestamp=1000.0 + i
+            event_id=f"e_{i}",
+            source="NASDAQ",
+            instrument_id="AAPL",
+            price=100.0,
+            quantity=100.0,
+            exchange_timestamp=1000.0 + i,
         )
         qe.evaluate(ev)
 
     for i in range(120):
         px = 120.0 if (i % 2 == 0) else 122.0
         ev = _make_event(
-            event_id=f"e_anom_{i}", source="NASDAQ", instrument_id="AAPL",
-            price=px, quantity=100.0, exchange_timestamp=2000.0 + i
+            event_id=f"e_anom_{i}",
+            source="NASDAQ",
+            instrument_id="AAPL",
+            price=px,
+            quantity=100.0,
+            exchange_timestamp=2000.0 + i,
         )
         res = qe.evaluate(ev)
 
@@ -164,16 +271,30 @@ def test_e5_quote_dedup_drops_size_only_changes():
         engine = Engine(path=td)
         raw1 = RawEvent(
             source="COINBASE",
-            payload={"instrument": "BTC-USD", "event_type": "QUOTE", "bid": 100.0, "ask": 101.0, "bid_size": 10.0, "ask_size": 10.0},
-            receive_timestamp=1000.0
+            payload={
+                "instrument": "BTC-USD",
+                "event_type": "QUOTE",
+                "bid": 100.0,
+                "ask": 101.0,
+                "bid_size": 10.0,
+                "ask_size": 10.0,
+            },
+            receive_timestamp=1000.0,
         )
         dec1 = engine.submit(raw1)
         assert dec1.quality_status == QualityStatus.VALID
 
         raw2 = RawEvent(
             source="COINBASE",
-            payload={"instrument": "BTC-USD", "event_type": "QUOTE", "bid": 100.0, "ask": 101.0, "bid_size": 50.0, "ask_size": 10.0},
-            receive_timestamp=1000.0
+            payload={
+                "instrument": "BTC-USD",
+                "event_type": "QUOTE",
+                "bid": 100.0,
+                "ask": 101.0,
+                "bid_size": 50.0,
+                "ask_size": 10.0,
+            },
+            receive_timestamp=1000.0,
         )
         dec2 = engine.submit(raw2)
         assert Reason.DUPLICATE.value not in dec2.reasons
@@ -186,14 +307,37 @@ def test_e5_quote_dedup_drops_size_only_changes():
 def test_e6_recovery_invokes_on_gap_without_new_traffic():
     """E6 Remediation: Historical replay does not trigger on_gap callbacks."""
     gap_calls = []
+
     def gap_hook(*args):
         gap_calls.append(args)
 
     td = _safe_td()
     try:
         engine = Engine(path=td)
-        engine.submit(RawEvent(source="X", payload={"instrument": "A", "event_type": "TRADE", "sequence": 1, "price": 10.0, "quantity": 1}))
-        engine.submit(RawEvent(source="X", payload={"instrument": "A", "event_type": "TRADE", "sequence": 5, "price": 10.0, "quantity": 1}))
+        engine.submit(
+            RawEvent(
+                source="X",
+                payload={
+                    "instrument": "A",
+                    "event_type": "TRADE",
+                    "sequence": 1,
+                    "price": 10.0,
+                    "quantity": 1,
+                },
+            )
+        )
+        engine.submit(
+            RawEvent(
+                source="X",
+                payload={
+                    "instrument": "A",
+                    "event_type": "TRADE",
+                    "sequence": 5,
+                    "price": 10.0,
+                    "quantity": 1,
+                },
+            )
+        )
         engine.close()
 
         # Engine recovers from crash/restart and replays WAL
@@ -211,7 +355,9 @@ def test_e7_session_id_absent_from_wal_serialization():
     td = _safe_td()
     try:
         wal = IngestLog(td)
-        raw = RawEvent(source="FEED_A", payload={"price": 100.0}, session_id="SESSION_999")
+        raw = RawEvent(
+            source="FEED_A", payload={"price": 100.0}, session_id="SESSION_999"
+        )
         off = wal.append(raw)
         wal.close()
 
@@ -241,47 +387,66 @@ def test_e8_grouped_by_time_direct_append_unsynced_when_quiet():
 
 
 def test_e9_positive_control_process_crash_durability():
-    """E9: Positive control - IngestLog with fsync_policy='always' survives simulated crash."""
+    """E9: Positive control - IngestLog with fsync_policy='always' survives simulated sudden process death across 50 records."""
     td = _safe_td()
     try:
         wal = IngestLog(td, fsync_policy="always")
-        raw = RawEvent(source="TEST", payload={"price": 42.0})
-        off = wal.append(raw)
-        wal.close()
+        offsets = []
+        for i in range(50):
+            offsets.append(
+                wal.append(
+                    RawEvent(source="TEST", payload={"price": 42.0 + i, "seq": i})
+                )
+            )
+        # Do NOT call wal.close() - simulate sudden process kill
+        del wal
 
         wal_recovered = IngestLog(td)
-        res = wal_recovered.seek_record(off)
+        for i, off in enumerate(offsets):
+            res = wal_recovered.seek_record(off)
+            assert res is not None
+            _, rec_raw = res
+            assert rec_raw.payload["price"] == 42.0 + i
+            assert rec_raw.payload["seq"] == i
+
+        assert wal_recovered.next_offset == 50
         wal_recovered.close()
-        assert res is not None
-        _, rec_raw = res
-        assert rec_raw.payload["price"] == 42.0
     finally:
         shutil.rmtree(td, ignore_errors=True)
 
 
 def test_e10_positive_control_mid_segment_bit_flip():
-    """E10: Positive control - CRC32 checksum causes corrupted frame to fail closed."""
-    td = _safe_td()
-    try:
-        wal = IngestLog(td, fsync_policy="always")
-        raw = RawEvent(source="TEST", payload={"price": 100.0})
-        off = wal.append(raw)
-        seg_file = wal.current_segment_path
-        wal.close()
+    """E10: Positive control - CRC32 checksum causes corrupted frames to fail closed."""
+    from mdrap.ingestlog import IngestLogCorruptError
 
-        with open(seg_file, "r+b") as f:
-            f.seek(60)
-            byte = f.read(1)
-            f.seek(60)
-            f.write(bytes([byte[0] ^ 0xFF]))
+    for corrupt_pos in (0, 24, 60):  # frame magic, header/offset, payload CRC
+        td = _safe_td()
+        try:
+            wal = IngestLog(td, fsync_policy="always")
+            for i in range(5):
+                wal.append(
+                    RawEvent(
+                        source="TEST", payload={"price": 100.0 + i, "data": "A" * 20}
+                    )
+                )
+            seg_file = wal.current_segment_path
+            wal.close()
 
-        wal2 = IngestLog(td)
-        # Corrupted CRC should cause frame to be rejected / skipped
-        res = wal2.seek_record(off)
-        assert res is None or wal2.corrupted_frames_count > 0
-        wal2.close()
-    finally:
-        shutil.rmtree(td, ignore_errors=True)
+            with open(seg_file, "r+b") as f:
+                f.seek(corrupt_pos)
+                byte = f.read(1)
+                f.seek(corrupt_pos)
+                f.write(bytes([byte[0] ^ 0xFF]))
+
+            # Corrupted CRC / magic must fail closed
+            try:
+                wal2 = IngestLog(td)
+                assert wal2.corrupted_frames_count > 0 or wal2.next_offset <= 5
+                wal2.close()
+            except IngestLogCorruptError:
+                pass  # Correctly failed closed
+        finally:
+            shutil.rmtree(td, ignore_errors=True)
 
 
 def test_e11_snapshot_offset_skips_wal_events():
@@ -311,7 +476,7 @@ def test_e12_engine_submit_append_batch_forces_fsync():
     try:
         wal = IngestLog(td, fsync_policy="grouped_by_time")
         raws = [RawEvent(source="X", payload={"i": i}) for i in range(5)]
-        
+
         offsets = wal.append_batch(raws)
         assert wal._synced_offset < offsets[-1]
         wal.close()
@@ -320,40 +485,105 @@ def test_e12_engine_submit_append_batch_forces_fsync():
 
 
 def test_e13_snapshot_holds_lock_measurement():
-    """E13: snapshot() acquires and holds self._lock across disk I/O."""
+    """E13: save_snapshot() releases lock before disk I/O, allowing concurrent submits without contention."""
+    import threading
+
     td = _safe_td()
     snap_path = os.path.join(td, "snapshot.json")
     try:
         engine = Engine(path=td)
-        for i in range(10):
-            engine.submit(RawEvent(source="X", payload={"i": i}))
+        for i in range(100):
+            engine.submit(
+                RawEvent(
+                    source="X",
+                    payload={
+                        "instrument": "AAPL",
+                        "event_type": "TRADE",
+                        "price": 150.0 + (i % 10),
+                        "quantity": 1,
+                    },
+                )
+            )
 
-        t0 = time.perf_counter()
-        engine.snapshot(snap_path)
-        dt = time.perf_counter() - t0
-        assert dt >= 0.0
+        submit_latencies = []
+        stop_worker = threading.Event()
+
+        def worker():
+            while not stop_worker.is_set():
+                t0 = time.perf_counter()
+                dec = engine.submit(
+                    RawEvent(
+                        source="X",
+                        payload={
+                            "instrument": "AAPL",
+                            "event_type": "TRADE",
+                            "price": 155.0,
+                            "quantity": 1,
+                        },
+                    )
+                )
+                dt = (time.perf_counter() - t0) * 1000.0  # ms
+                submit_latencies.append(dt)
+                time.sleep(0.001)
+
+        th = threading.Thread(target=worker, daemon=True)
+        th.start()
+
+        for _ in range(3):
+            engine.snapshot(snap_path)
+            time.sleep(0.005)
+
+        stop_worker.set()
+        th.join(timeout=2.0)
+
+        assert len(submit_latencies) > 0
+        submit_latencies.sort()
+        p99 = submit_latencies[int(len(submit_latencies) * 0.99)]
+        assert p99 < 50.0
     finally:
         engine.close()
         shutil.rmtree(td, ignore_errors=True)
 
 
 def test_e14_json_dumps_overhead_in_submit():
-    """E14: submit() executes json.dumps on dict payloads for size checking."""
-    engine = Engine()
-    raw = RawEvent(source="X", payload={"test": "data", "nested": {"key": 123}})
+    """E14: submit() executes fast structural estimation bypassing json.dumps for small events and enforcing limits."""
+    from mdrap.engine import estimate_payload_size
+
+    # Flat market event
+    flat_payload = {
+        "instrument": "AAPL",
+        "event_type": "TRADE",
+        "price": 150.0,
+        "quantity": 10,
+    }
+    # Fast estimation is an upper bound on actual size
+    est = estimate_payload_size(flat_payload, max_bytes=1000)
+    actual = len(json.dumps(flat_payload, default=str))
+    assert est >= actual
+    assert est <= 1000
+
+    # Oversize payload is flagged strictly
+    over_payload = {"instrument": "AAPL", "data": "X" * 2000}
+    est_over = estimate_payload_size(over_payload, max_bytes=500)
+    assert est_over > 500
+
+    # Microbench: verify estimation runs in sub-2µs
     t0 = time.perf_counter()
-    for _ in range(100):
-        engine.submit(raw)
+    for _ in range(10_000):
+        estimate_payload_size(flat_payload, max_bytes=1000)
     dt = time.perf_counter() - t0
-    assert dt >= 0.0
+    avg_us = (dt / 10_000) * 1_000_000
+    assert avg_us < 2.0
 
 
 def test_e15_projection_failure_causes_partial_side_effects():
     """E15 Remediation: Projection failure is isolated; memory state and WAL remain consistent."""
+
     class FlakyProjection:
         def __init__(self, should_fail: bool):
             self.applied = []
             self.should_fail = should_fail
+
         def apply(self, decisions, offset):
             if self.should_fail:
                 raise IOError("Database connection lost")

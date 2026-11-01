@@ -71,7 +71,6 @@ def test_full_pipeline_event_trace(tmp_path):
     )
     assert len(sbe_frame) == 64
 
-
     # 4. Process Second Event (Quote)
     raw2 = adapter.poll()
     assert raw2 is not None

@@ -29,7 +29,15 @@ def test_e13_concurrent_submit_during_snapshot():
         engine = Engine(path=td)
         for i in range(100):
             engine.submit(
-                RawEvent(source="TEST", payload={"instrument": "AAPL", "event_type": "TRADE", "price": 150.0, "quantity": 1})
+                RawEvent(
+                    source="TEST",
+                    payload={
+                        "instrument": "AAPL",
+                        "event_type": "TRADE",
+                        "price": 150.0,
+                        "quantity": 1,
+                    },
+                )
             )
 
         submits_during_snapshot = []
@@ -39,7 +47,15 @@ def test_e13_concurrent_submit_during_snapshot():
             while not stop_thread.is_set():
                 t0 = time.perf_counter()
                 dec = engine.submit(
-                    RawEvent(source="TEST", payload={"instrument": "AAPL", "event_type": "TRADE", "price": 150.0, "quantity": 1})
+                    RawEvent(
+                        source="TEST",
+                        payload={
+                            "instrument": "AAPL",
+                            "event_type": "TRADE",
+                            "price": 150.0,
+                            "quantity": 1,
+                        },
+                    )
                 )
                 dt = (time.perf_counter() - t0) * 1000.0  # ms
                 submits_during_snapshot.append(dt)
@@ -74,7 +90,12 @@ def test_e14_payload_size_fast_path():
         # Normal small payload
         raw_small = RawEvent(
             source="FEED",
-            payload={"instrument": "AAPL", "event_type": "TRADE", "price": 150.0, "quantity": 10}
+            payload={
+                "instrument": "AAPL",
+                "event_type": "TRADE",
+                "price": 150.0,
+                "quantity": 10,
+            },
         )
         dec_small = engine.submit(raw_small)
         assert dec_small.quality_status == QualityStatus.VALID
@@ -82,7 +103,7 @@ def test_e14_payload_size_fast_path():
         # Oversize payload via large string
         raw_oversize = RawEvent(
             source="FEED",
-            payload={"instrument": "AAPL", "event_type": "TRADE", "notes": "X" * 1000}
+            payload={"instrument": "AAPL", "event_type": "TRADE", "notes": "X" * 1000},
         )
         dec_over = engine.submit(raw_oversize)
         assert dec_over.quality_status == QualityStatus.INVALID

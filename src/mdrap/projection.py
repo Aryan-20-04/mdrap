@@ -129,136 +129,160 @@ class SQLiteProjection:
             row = cur.fetchone()
             return row[0] if row else -1
 
-    def apply(self, batch: list[Any], offset: int) -> None:
-        """Atomically persist rows and advance checkpoint in a single SQLite transaction."""
+    def apply(
+        self,
+        batch: list[Any],
+        offset: int,
+        max_retries: int = 5,
+        retry_delay: float = 0.01,
+    ) -> None:
+        """Atomically persist rows and advance checkpoint in a single SQLite transaction with retry on lock/busy."""
         if not batch and offset < 0:
             return
 
         with self._lock:
-            cur = self._conn.cursor()
-            try:
-                cur.execute("BEGIN IMMEDIATE;")
+            for attempt in range(max_retries):
+                cur = self._conn.cursor()
+                try:
+                    cur.execute("BEGIN IMMEDIATE;")
 
-                canonical_rows: list[tuple] = []
-                quarantine_rows: list[tuple] = []
+                    canonical_rows: list[tuple] = []
+                    quarantine_rows: list[tuple] = []
 
-                for item in batch:
-                    if isinstance(item, EngineDecision):
-                        if (
-                            item.canonical_event
-                            and item.quality_status != QualityStatus.INVALID
-                        ):
-                            ev = item.canonical_event
-                            canonical_rows.append(
-                                (
-                                    ev.event_id,
-                                    ev.instrument_id,
-                                    ev.event_type.value
-                                    if hasattr(ev.event_type, "value")
-                                    else str(ev.event_type),
-                                    ev.exchange_timestamp,
-                                    ev.receive_timestamp,
-                                    ev.processing_timestamp,
-                                    ev.source,
-                                    ev.sequence_number,
-                                    ev.price,
-                                    ev.quantity,
-                                    ev.bid_price,
-                                    ev.ask_price,
-                                    ev.bid_size,
-                                    ev.ask_size,
-                                    ev.quality_status.value
-                                    if hasattr(ev.quality_status, "value")
-                                    else str(ev.quality_status),
-                                    json.dumps(ev.reasons),
-                                    str(ev.raw_id) if ev.raw_id is not None else None,
+                    for item in batch:
+                        if isinstance(item, EngineDecision):
+                            if (
+                                item.canonical_event
+                                and item.quality_status != QualityStatus.INVALID
+                            ):
+                                ev = item.canonical_event
+                                canonical_rows.append(
+                                    (
+                                        ev.event_id,
+                                        ev.instrument_id,
+                                        ev.event_type.value
+                                        if hasattr(ev.event_type, "value")
+                                        else str(ev.event_type),
+                                        ev.exchange_timestamp,
+                                        ev.receive_timestamp,
+                                        ev.processing_timestamp,
+                                        ev.source,
+                                        ev.sequence_number,
+                                        ev.price,
+                                        ev.quantity,
+                                        ev.bid_price,
+                                        ev.ask_price,
+                                        ev.bid_size,
+                                        ev.ask_size,
+                                        ev.quality_status.value
+                                        if hasattr(ev.quality_status, "value")
+                                        else str(ev.quality_status),
+                                        json.dumps(ev.reasons),
+                                        str(ev.raw_id)
+                                        if ev.raw_id is not None
+                                        else None,
+                                    )
                                 )
-                            )
-                        if item.quarantine_row:
-                            quarantine_rows.append(item.quarantine_row)
-                    elif isinstance(item, CanonicalEvent):
-                        if item.quality_status != QualityStatus.INVALID:
-                            canonical_rows.append(
-                                (
+                            if item.quarantine_row:
+                                quarantine_rows.append(item.quarantine_row)
+                        elif isinstance(item, CanonicalEvent):
+                            if item.quality_status != QualityStatus.INVALID:
+                                canonical_rows.append(
+                                    (
+                                        item.event_id,
+                                        item.instrument_id,
+                                        item.event_type.value
+                                        if hasattr(item.event_type, "value")
+                                        else str(item.event_type),
+                                        item.exchange_timestamp,
+                                        item.receive_timestamp,
+                                        item.processing_timestamp,
+                                        item.source,
+                                        item.sequence_number,
+                                        item.price,
+                                        item.quantity,
+                                        item.bid_price,
+                                        item.ask_price,
+                                        item.bid_size,
+                                        item.ask_size,
+                                        item.quality_status.value
+                                        if hasattr(item.quality_status, "value")
+                                        else str(item.quality_status),
+                                        json.dumps(item.reasons),
+                                        str(item.raw_id)
+                                        if item.raw_id is not None
+                                        else None,
+                                    )
+                                )
+                            else:
+                                q_row = (
                                     item.event_id,
                                     item.instrument_id,
-                                    item.event_type.value
-                                    if hasattr(item.event_type, "value")
-                                    else str(item.event_type),
-                                    item.exchange_timestamp,
-                                    item.receive_timestamp,
-                                    item.processing_timestamp,
                                     item.source,
-                                    item.sequence_number,
-                                    item.price,
-                                    item.quantity,
-                                    item.bid_price,
-                                    item.ask_price,
-                                    item.bid_size,
-                                    item.ask_size,
-                                    item.quality_status.value
-                                    if hasattr(item.quality_status, "value")
-                                    else str(item.quality_status),
+                                    QualityStatus.INVALID.value,
                                     json.dumps(item.reasons),
-                                    str(item.raw_id)
-                                    if item.raw_id is not None
-                                    else None,
+                                    json.dumps({"raw_id": item.raw_id}),
+                                    item.receive_timestamp,
                                 )
-                            )
-                        else:
-                            q_row = (
-                                item.event_id,
-                                item.instrument_id,
-                                item.source,
-                                QualityStatus.INVALID.value,
-                                json.dumps(item.reasons),
-                                json.dumps({"raw_id": item.raw_id}),
-                                item.receive_timestamp,
-                            )
-                            quarantine_rows.append(q_row)
-                    elif isinstance(item, tuple):
-                        # Assume quarantine or canonical row based on length
-                        if len(item) == 7:
-                            quarantine_rows.append(item)
+                                quarantine_rows.append(q_row)
+                        elif isinstance(item, tuple):
+                            # Assume quarantine or canonical row based on length
+                            if len(item) == 7:
+                                quarantine_rows.append(item)
 
-                if canonical_rows:
-                    cur.executemany(
-                        """
-                        INSERT OR IGNORE INTO canonical_events (
-                            event_id, instrument_id, event_type,
-                            exchange_timestamp, receive_timestamp, processing_timestamp,
-                            source, sequence_number, price, quantity,
-                            bid_price, ask_price, bid_size, ask_size,
-                            quality_status, reasons, raw_id
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
-                        """,
-                        canonical_rows,
-                    )
+                    if canonical_rows:
+                        cur.executemany(
+                            """
+                            INSERT OR IGNORE INTO canonical_events (
+                                event_id, instrument_id, event_type,
+                                exchange_timestamp, receive_timestamp, processing_timestamp,
+                                source, sequence_number, price, quantity,
+                                bid_price, ask_price, bid_size, ask_size,
+                                quality_status, reasons, raw_id
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                            """,
+                            canonical_rows,
+                        )
 
-                if quarantine_rows:
-                    cur.executemany(
-                        """
-                        INSERT OR IGNORE INTO quarantine (
-                            event_id, instrument_id, source,
-                            quality_status, reasons, payload_json, receive_timestamp
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?);
-                        """,
-                        quarantine_rows,
-                    )
+                    if quarantine_rows:
+                        cur.executemany(
+                            """
+                            INSERT OR IGNORE INTO quarantine (
+                                event_id, instrument_id, source,
+                                quality_status, reasons, payload_json, receive_timestamp
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?);
+                            """,
+                            quarantine_rows,
+                        )
 
-                # Atomically update checkpoint in the SAME transaction!
-                cur.execute(
-                    """
-                    INSERT OR REPLACE INTO projection_checkpoints (name, last_offset, updated_at)
-                    VALUES (?, ?, ?);
-                    """,
-                    (self.name, offset, time.time()),
-                )
+                    # Atomically update checkpoint in the SAME transaction!
+                    if offset >= 0:
+                        cur.execute(
+                            """
+                            INSERT OR REPLACE INTO projection_checkpoints (name, last_offset, updated_at)
+                            VALUES (?, ?, ?);
+                            """,
+                            (self.name, offset, time.time()),
+                        )
 
-                cur.execute("COMMIT;")
-            except Exception:
-                cur.execute("ROLLBACK;")
-                raise
+                    cur.execute("COMMIT;")
+                    return
+                except sqlite3.OperationalError as exc:
+                    try:
+                        cur.execute("ROLLBACK;")
+                    except Exception:
+                        pass
+                    msg = str(exc).lower()
+                    if attempt < max_retries - 1 and ("locked" in msg or "busy" in msg):
+                        time.sleep(retry_delay * (2**attempt))
+                        continue
+                    raise
+                except Exception:
+                    try:
+                        cur.execute("ROLLBACK;")
+                    except Exception:
+                        pass
+                    raise
 
     def count_canonical(self) -> int:
         with self._lock:
@@ -559,11 +583,15 @@ class AsyncProjectionWorker:
         max_queue_size: int = 20_000,
         batch_size: int = 500,
         flush_interval_sec: float = 0.05,
+        max_retries: int = 3,
+        retry_backoff_sec: float = 0.02,
     ) -> None:
         self.projection = projection
         self.max_queue_size = max_queue_size
         self.batch_size = batch_size
         self.flush_interval_sec = flush_interval_sec
+        self.max_retries = max_retries
+        self.retry_backoff_sec = retry_backoff_sec
 
         self._queue: queue.Queue = queue.Queue(maxsize=max_queue_size)
         self._stop_event = threading.Event()
@@ -626,21 +654,32 @@ class AsyncProjectionWorker:
             flush_triggered = self._flush_trigger.is_set()
 
             if batch and (time_to_flush or batch_full or stopping or flush_triggered):
-                try:
-                    self.projection.apply(batch, offset=highest_offset)
-                    self._items_committed += len(batch)
-                    self._batches_committed += 1
-                    self._last_committed_offset = highest_offset
-                except Exception as exc:
-                    self._error_count += 1
-                    logger.error(
-                        "[AsyncProjection] Failed to apply projection batch: %s",
-                        exc,
-                    )
-                finally:
-                    batch.clear()
-                    last_flush = time.time()
-                    self._flush_trigger.clear()
+                for attempt in range(self.max_retries):
+                    try:
+                        self.projection.apply(batch, offset=highest_offset)
+                        self._items_committed += len(batch)
+                        self._batches_committed += 1
+                        self._last_committed_offset = highest_offset
+                        break
+                    except Exception as exc:
+                        if attempt < self.max_retries - 1:
+                            time.sleep(self.retry_backoff_sec * (2**attempt))
+                        else:
+                            self._error_count += 1
+                            logger.error(
+                                "[AsyncProjection] Failed to apply projection batch after %d attempts: %s",
+                                self.max_retries,
+                                exc,
+                            )
+                batch.clear()
+                last_flush = time.time()
+                self._flush_trigger.clear()
+
+    def checkpoint(self) -> int:
+        """Return the latest committed log offset from the projection or worker."""
+        if hasattr(self.projection, "checkpoint"):
+            return self.projection.checkpoint()
+        return self._last_committed_offset
 
     def stats(self) -> dict[str, Any]:
         """Return operational telemetry metrics including projection lag."""

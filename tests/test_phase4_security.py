@@ -90,13 +90,27 @@ def test_fail_closed_entitlement_enforcement(tmp_path):
         allowed_symbols=["AAPL", "MSFT"],
     )
     # Allowed
-    sec.authorize(scoped_ent, Role.VIEWER, action_name="stream", source="NASDAQ", symbol="AAPL")
+    sec.authorize(
+        scoped_ent, Role.VIEWER, action_name="stream", source="NASDAQ", symbol="AAPL"
+    )
     # Disallowed source
     with pytest.raises(AccessDenied):
-        sec.authorize(scoped_ent, Role.VIEWER, action_name="stream", source="BINANCE", symbol="AAPL")
+        sec.authorize(
+            scoped_ent,
+            Role.VIEWER,
+            action_name="stream",
+            source="BINANCE",
+            symbol="AAPL",
+        )
     # Disallowed symbol
     with pytest.raises(AccessDenied):
-        sec.authorize(scoped_ent, Role.VIEWER, action_name="stream", source="NASDAQ", symbol="GOOG")
+        sec.authorize(
+            scoped_ent,
+            Role.VIEWER,
+            action_name="stream",
+            source="NASDAQ",
+            symbol="GOOG",
+        )
 
 
 def test_sbe_wire_bounds_and_null_terminator_safety():

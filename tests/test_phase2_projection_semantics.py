@@ -48,7 +48,12 @@ def test_e15_fixed_projection_isolation_and_authoritative_commit():
 
         raw = RawEvent(
             source="X",
-            payload={"instrument": "AAPL", "event_type": "TRADE", "price": 150.0, "quantity": 10}
+            payload={
+                "instrument": "AAPL",
+                "event_type": "TRADE",
+                "price": 150.0,
+                "quantity": 10,
+            },
         )
         dec = engine.submit(raw)
         assert dec is not None
@@ -64,7 +69,12 @@ def test_e15_fixed_projection_isolation_and_authoritative_commit():
         # Submitting second event also succeeds authoritatively
         raw2 = RawEvent(
             source="X",
-            payload={"instrument": "AAPL", "event_type": "TRADE", "price": 151.0, "quantity": 5}
+            payload={
+                "instrument": "AAPL",
+                "event_type": "TRADE",
+                "price": 151.0,
+                "quantity": 5,
+            },
         )
         dec2 = engine.submit(raw2)
         assert dec2 is not None
@@ -85,7 +95,12 @@ def test_sqlite_projection_idempotency_on_rebuild():
             engine.submit(
                 RawEvent(
                     source="NASDAQ",
-                    payload={"instrument": "AAPL", "event_type": "TRADE", "price": 150.0 + i, "quantity": 10}
+                    payload={
+                        "instrument": "AAPL",
+                        "event_type": "TRADE",
+                        "price": 150.0 + i,
+                        "quantity": 10,
+                    },
                 )
             )
         assert engine.state.event_count == 5

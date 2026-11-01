@@ -27,9 +27,25 @@ def test_e1_fixed_oversize_payload_accounting():
     td = _td()
     try:
         engine = Engine(path=td, max_payload_bytes=80)
-        raw_valid1 = RawEvent(source="feed1", payload={"instrument": "A", "event_type": "TRADE", "price": 10.0, "quantity": 1})
+        raw_valid1 = RawEvent(
+            source="feed1",
+            payload={
+                "instrument": "A",
+                "event_type": "TRADE",
+                "price": 10.0,
+                "quantity": 1,
+            },
+        )
         raw_over = RawEvent(source="feed1", payload={"msg": "x" * 150})
-        raw_valid2 = RawEvent(source="feed1", payload={"instrument": "A", "event_type": "TRADE", "price": 10.5, "quantity": 1})
+        raw_valid2 = RawEvent(
+            source="feed1",
+            payload={
+                "instrument": "A",
+                "event_type": "TRADE",
+                "price": 10.5,
+                "quantity": 1,
+            },
+        )
 
         # Submit mixed batch
         decs = engine.submit([raw_valid1, raw_over, raw_valid2])
@@ -61,13 +77,36 @@ def test_e1_fixed_oversize_payload_accounting():
 def test_e6_fixed_replay_purity_no_gap_side_effects():
     td = _td()
     calls = []
+
     def on_gap_hook(*args):
         calls.append(args)
 
     try:
         engine = Engine(path=td, on_gap=on_gap_hook)
-        engine.submit(RawEvent(source="S", payload={"instrument": "A", "event_type": "TRADE", "sequence": 1, "price": 10.0, "quantity": 1}))
-        engine.submit(RawEvent(source="S", payload={"instrument": "A", "event_type": "TRADE", "sequence": 5, "price": 10.0, "quantity": 1}))
+        engine.submit(
+            RawEvent(
+                source="S",
+                payload={
+                    "instrument": "A",
+                    "event_type": "TRADE",
+                    "sequence": 1,
+                    "price": 10.0,
+                    "quantity": 1,
+                },
+            )
+        )
+        engine.submit(
+            RawEvent(
+                source="S",
+                payload={
+                    "instrument": "A",
+                    "event_type": "TRADE",
+                    "sequence": 5,
+                    "price": 10.0,
+                    "quantity": 1,
+                },
+            )
+        )
         assert len(calls) == 1
         engine.close()
 
@@ -123,7 +162,9 @@ def test_e11_fixed_snapshot_offset_tied_to_applied_offset():
     try:
         engine = Engine(path=td, max_payload_bytes=50)
         engine.submit(RawEvent(source="S", payload={"msg": "ok"}))  # offset 0
-        engine.submit(RawEvent(source="S", payload={"msg": "x" * 100}))  # oversize, offset -1
+        engine.submit(
+            RawEvent(source="S", payload={"msg": "x" * 100})
+        )  # oversize, offset -1
         engine.submit(RawEvent(source="S", payload={"msg": "ok2"}))  # offset 1
 
         engine.snapshot(snap_path)

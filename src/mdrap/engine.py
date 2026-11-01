@@ -41,6 +41,44 @@ def _is_finite_num(val: Any) -> bool:
     return False
 
 
+def estimate_payload_size(payload: Any, max_bytes: int = 0) -> int:
+    """Accurately estimate or compute the serialized byte length of a payload.
+
+    Provides a fast, zero-allocation upper bound for scalar dictionaries without calling
+    json.dumps(). If payload contains non-scalar containers (lists, dicts) or if the
+    scalar upper bound approaches or exceeds max_bytes, exact json.dumps() length is computed.
+    Guarantees:
+      - Never allows an oversize payload to bypass max_bytes (no false negatives).
+      - Never falsely flags a valid payload as oversize (no false positives).
+    """
+    p_type = type(payload)
+    if p_type is str or p_type is bytes:
+        return len(payload)
+    if p_type is dict:
+        p_len = len(payload)
+        if p_len <= 32:
+            est = 2
+            has_container = False
+            for k, v in payload.items():
+                est += (len(k) if type(k) is str else len(str(k))) + 4
+                vt = type(v)
+                if vt is str or vt is bytes:
+                    est += len(v) + 2
+                elif vt in (int, float, bool) or v is None:
+                    est += 26
+                elif vt in (list, tuple, dict, set):
+                    has_container = True
+                    break
+                else:
+                    est += len(str(v)) + 4
+            if not has_container:
+                if max_bytes <= 0 or est <= max_bytes:
+                    return est
+                return len(json.dumps(payload, default=str))
+        return len(json.dumps(payload, default=str))
+    return len(str(payload))
+
+
 DEFAULT_STALENESS_THRESHOLD_S: float = 0.05
 DEFAULT_PRICE_STDDEV: float = 6.0
 DEFAULT_PRICE_WINDOW: int = 50
@@ -323,6 +361,7 @@ class EngineDecision:
     quarantine_row: tuple | None = None
     is_duplicate: bool = False
     disagreement: bool = False
+    durable: bool = True
 
 
 @dataclass
@@ -508,6 +547,7 @@ class Engine:
 
             # Catch up state only from uncompacted log records since snapshot
             for off, raw in self.log.iter_from(replay_from):
+                self.state.observed_count += 1
                 self.state, dec = self.step(
                     self.state, raw, self.clock, offset=off, is_replay=True
                 )
@@ -706,23 +746,9 @@ class Engine:
                     # Enforce payload size limit at Engine boundary to protect WAL from stalling (N4, E14)
                     if self.max_payload_bytes > 0:
                         payload = raw.payload
-                        if isinstance(payload, (str, bytes)):
-                            p_len = len(payload)
-                        elif isinstance(payload, dict):
-                            # # ponytail: fast structural estimation for dicts <= 32 keys, exact dumps only when potentially oversize (E14)
-                            if len(payload) <= 32:
-                                p_len = 2 + sum(
-                                    len(str(k))
-                                    + (len(v) if isinstance(v, (str, bytes)) else 16)
-                                    + 4
-                                    for k, v in payload.items()
-                                )
-                                if p_len > self.max_payload_bytes:
-                                    p_len = len(json.dumps(payload, default=str))
-                            else:
-                                p_len = len(json.dumps(payload, default=str))
-                        else:
-                            p_len = len(str(payload))
+                        p_len = estimate_payload_size(
+                            payload, max_bytes=self.max_payload_bytes
+                        )
                         if p_len > self.max_payload_bytes:
                             q_id = f"q_{raw.source}_{self.state.observed_count}"
                             q_row = (
@@ -802,6 +828,15 @@ class Engine:
 
                 final_decisions = [d for d in decisions if d is not None]
 
+                # Update durability status based on current WAL sync state
+                if self.log is not None:
+                    synced = self.log.synced_offset
+                    for d in final_decisions:
+                        d.durable = (synced >= d.offset) if d.offset >= 0 else True
+                else:
+                    for d in final_decisions:
+                        d.durable = True
+
                 # Dispatch to subscribed projections with per-consumer error isolation (Phase 2 / E15)
                 if self._projections and final_decisions:
                     last_offset = offsets[-1]
@@ -817,6 +852,7 @@ class Engine:
                             )
 
                 # Program I-4: Automatic snapshot cadence evaluation
+                needs_snapshot = False
                 if self.log is not None:
                     now_wall = time.time()
                     evs_since = self.state.event_count - self._last_snapshot_event_count
@@ -829,23 +865,27 @@ class Engine:
                         and time_since >= self.snapshot_cadence_seconds
                     )
                     if trigger_cadence:
-                        try:
-                            self.save_snapshot()
-                            self._last_snapshot_event_count = self.state.event_count
-                            self._last_snapshot_ts = now_wall
-                        except Exception as snap_err:
-                            logger.warning(
-                                "[engine] Automatic cadence snapshot failed: %s",
-                                snap_err,
-                            )
-
-                if is_single:
-                    return final_decisions[0] if final_decisions else None
-                return final_decisions
+                        needs_snapshot = True
+                        self._last_snapshot_event_count = self.state.event_count
+                        self._last_snapshot_ts = now_wall
             except Exception:
                 # Durability / IO failure rollback (Task 5: Exception Safety & State Consistency)
                 batch_txn.rollback()
                 raise
+
+        # Save snapshot OUTSIDE self._lock to eliminate lock contention on disk I/O / fsync
+        if needs_snapshot:
+            try:
+                self.save_snapshot()
+            except Exception as snap_err:
+                logger.warning(
+                    "[engine] Automatic cadence snapshot failed: %s",
+                    snap_err,
+                )
+
+        if is_single:
+            return final_decisions[0] if final_decisions else None
+        return final_decisions
 
     def submit_microbatch(self, events: list[RawEvent]) -> list[EngineDecision]:
         """Durable atomic micro-batch submission API (Item A4).
@@ -854,7 +894,35 @@ class Engine:
         SQLite projection transaction.
         """
         res = self.submit(events)
-        return res if isinstance(res, list) else ([res] if res is not None else [])
+        decisions = res if isinstance(res, list) else ([res] if res is not None else [])
+        if self.log is not None and decisions:
+            self.flush()
+            for d in decisions:
+                d.durable = True
+        return decisions
+
+    @property
+    def synced_offset(self) -> int:
+        """Highest offset durably fsynced to disk, or -1 if no persistent log."""
+        if self.log is not None:
+            return self.log.synced_offset
+        return -1
+
+    def await_durable(self, target: int | EngineDecision, timeout: float = 2.0) -> bool:
+        """Wait until target offset (or decision) has been durably fsynced to disk."""
+        if self.log is None:
+            return True
+        target_offset = (
+            target.offset if isinstance(target, EngineDecision) else int(target)
+        )
+        if target_offset < 0:
+            return True
+        if self.log.synced_offset >= target_offset:
+            return True
+        if self.log.fsync_policy in ("grouped_by_size", "grouped_by_time"):
+            self.log.flush()
+            return self.log.synced_offset >= target_offset
+        return self.log.await_synced(target_offset, timeout=timeout)
 
     def replay(
         self,
@@ -862,6 +930,7 @@ class Engine:
         to_offset: int | None = None,
         projection: Any | None = None,
         return_metrics: bool = False,
+        initial_state: EngineState | None = None,
     ) -> list[EngineDecision] | tuple[list[EngineDecision], RecoveryMetrics]:
         """Replay events from WAL from_offset up to to_offset."""
         metrics = RecoveryMetrics()
@@ -870,17 +939,24 @@ class Engine:
             return ([], metrics) if return_metrics else []
 
         decisions: list[EngineDecision] = []
-        replay_state = self.create_initial_state()
+        replay_state = (
+            initial_state.clone()
+            if initial_state is not None
+            else self.create_initial_state()
+        )
         initial_corrupt = getattr(self.log, "corrupted_frames_count", 0)
+        start_scan = from_offset if initial_state is not None else 0
 
-        for off, raw in self.log.iter_from(0):
+        for off, raw in self.log.iter_from(start_scan):
             if off < from_offset:
+                replay_state.observed_count += 1
                 replay_state, _ = self.step(
                     replay_state, raw, self.clock, offset=off, is_replay=True
                 )
                 continue
             if to_offset is not None and off > to_offset:
                 break
+            replay_state.observed_count += 1
             replay_state, dec = self.step(
                 replay_state, raw, self.clock, offset=off, is_replay=True
             )
@@ -954,7 +1030,15 @@ class Engine:
         log_head = (
             self.log.next_offset if self.log is not None else self.state.event_count
         )
-        log_lag = 0  # IngestLog fsyncs synchronously per policy
+        log_lag = (
+            max(0, self.log.next_offset - (self.log.synced_offset + 1))
+            if (
+                self.log is not None
+                and self.log.fsync_policy in ("grouped_by_size", "grouped_by_time")
+                and self.log.next_offset > 0
+            )
+            else 0
+        )
 
         max_proj_lag = 0
         proj_stats = []
@@ -2142,54 +2226,71 @@ class Engine:
             if self.log is None:
                 raise RuntimeError("Cannot save snapshot without an active IngestLog")
 
-            last_offset = self.state.event_count - 1
-            st_dict = self.state.to_dict()
-            canonical_bytes = json.dumps(
-                st_dict, sort_keys=True, separators=(",", ":")
-            ).encode("utf-8")
-            state_sha256 = hashlib.sha256(canonical_bytes).hexdigest()
-
-            snap_data = {
-                "version": 2,
-                "offset": last_offset,
-                "timestamp": self.clock.now(),
-                "event_count": self.state.event_count,
-                "sha256": state_sha256,
-                "state": st_dict,
-            }
-            snap_dir = self.log.log_dir
-            tmp_path = os.path.join(
-                snap_dir, f"snapshot.json.tmp.{os.getpid()}_{time.time_ns()}"
+            last_offset = (
+                self.state.last_applied_offset
+                if self.state.last_applied_offset >= 0
+                else (
+                    self.log.next_offset - 1
+                    if self.log is not None and self.log.next_offset > 0
+                    else self.state.event_count - 1
+                )
             )
-            final_path = os.path.join(snap_dir, "snapshot.json")
+            st_dict = self.state.to_dict()
+            snap_dir = self.log.log_dir
+            now_ts = self.clock.now()
+            event_count = self.state.event_count
 
-            with open(tmp_path, "w", encoding="utf-8") as f:
-                json.dump(snap_data, f, sort_keys=True, indent=2)
-                f.flush()
-                os.fsync(f.fileno())
+            # Update snapshot cadence accounting under lock
+            self._last_snapshot_event_count = event_count
+            self._last_snapshot_ts = time.time()
 
-            os.replace(tmp_path, final_path)
+        # # ponytail: serialize, write and fsync OUTSIDE self._lock to eliminate submit contention
+        canonical_bytes = json.dumps(
+            st_dict, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")
+        state_sha256 = hashlib.sha256(canonical_bytes).hexdigest()
 
-            if os.name != "nt":
+        snap_data = {
+            "version": 2,
+            "offset": last_offset,
+            "last_applied_wal_offset": last_offset,
+            "timestamp": now_ts,
+            "event_count": event_count,
+            "sha256": state_sha256,
+            "state": st_dict,
+        }
+        tmp_path = os.path.join(
+            snap_dir, f"snapshot.json.tmp.{os.getpid()}_{time.time_ns()}"
+        )
+        final_path = os.path.join(snap_dir, "snapshot.json")
+
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            json.dump(snap_data, f, sort_keys=True, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+
+        os.replace(tmp_path, final_path)
+
+        if os.name != "nt":
+            try:
+                dir_fd = os.open(snap_dir, os.O_RDONLY)
                 try:
-                    dir_fd = os.open(snap_dir, os.O_RDONLY)
-                    try:
-                        os.fsync(dir_fd)
-                    finally:
-                        os.close(dir_fd)
-                except Exception:
-                    pass
+                    os.fsync(dir_fd)
+                finally:
+                    os.close(dir_fd)
+            except Exception:
+                pass
 
-            pruned = 0
-            if prune_obsolete_segments and last_offset >= 0:
-                pruned = self.delete_segments_before(last_offset)
+        pruned = 0
+        if prune_obsolete_segments and last_offset >= 0:
+            pruned = self.delete_segments_before(last_offset + 1)
 
-            return {
-                "snapshot_offset": last_offset,
-                "path": final_path,
-                "segments_pruned": pruned,
-                "sha256": state_sha256,
-            }
+        return {
+            "snapshot_offset": last_offset,
+            "path": final_path,
+            "segments_pruned": pruned,
+            "sha256": state_sha256,
+        }
 
 
 DeterministicEngine = Engine

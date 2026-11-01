@@ -599,6 +599,7 @@ class IngestLog:
                         filepath,
                         pos,
                     )
+                    self.corrupted_frames_count += 1
                     f.seek(valid_pos)
                     f.truncate(valid_pos)
                     f.flush()
@@ -642,6 +643,7 @@ class IngestLog:
                         pos,
                         filepath,
                     )
+                    self.corrupted_frames_count += 1
                     f.seek(valid_pos)
                     f.truncate(valid_pos)
                     f.flush()
@@ -661,6 +663,7 @@ class IngestLog:
                             "CRC mismatch on final frame in %s; removing torn frame",
                             filepath,
                         )
+                        self.corrupted_frames_count += 1
                         f.seek(valid_pos)
                         f.truncate(valid_pos)
                         f.flush()
@@ -1022,6 +1025,25 @@ class IngestLog:
                 self._pending_sync_offset = self._next_offset - 1
                 self._group_commit_cv.notify_all()
 
+    @property
+    def synced_offset(self) -> int:
+        """Highest offset durably fsynced to disk."""
+        with self._lock:
+            return self._synced_offset
+
+    def await_synced(self, target_offset: int, timeout: float = 2.0) -> bool:
+        """Wait until target_offset has been durably fsynced to disk."""
+        with self._lock:
+            if self._synced_offset >= target_offset:
+                return True
+            end_time = time.time() + timeout
+            while self._synced_offset < target_offset:
+                remaining = end_time - time.time()
+                if remaining <= 0:
+                    return self._synced_offset >= target_offset
+                self._group_commit_cv.wait(remaining)
+            return self._synced_offset >= target_offset
+
     def close(self) -> None:
         """Close current active segment and release process lock."""
         with self._lock:
@@ -1069,8 +1091,10 @@ class IngestLog:
     @staticmethod
     def _compute_file_sha256(filepath: str) -> str:
         """Compute SHA-256 hex digest of a file in 64KB chunks."""
+        import builtins
+
         h = hashlib.sha256()
-        with open(filepath, "rb") as f:
+        with builtins.open(filepath, "rb") as f:
             while True:
                 chunk = f.read(65536)
                 if not chunk:
