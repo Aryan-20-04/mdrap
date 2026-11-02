@@ -1,0 +1,53 @@
+{
+  "platform": "Market Data Reliability & Acceleration Platform (MDRAP)",
+  "version": "4.0.1",
+  "audit_version": "v4.0.1-final",
+  "audit_date": "2026-11-02",
+  "certification_status": "CERTIFIED_FOR_PRODUCTION",
+  "topology_scope": "Single-Node Institutional Sidecar / Ingest Accelerator",
+  "commit": "v4.0.1-final-correctness",
+  "engine_invariants": {
+    "zero_silent_data_loss": true,
+    "fail_closed_recovery": true,
+    "lock_isolated_projections": true,
+    "strict_contiguous_checkpoints": true,
+    "multi_candidate_snapshot_fallback": true,
+    "pure_python_c_parity": true,
+    "wal_authoritative_history": true,
+    "truthful_durability_acknowledgement": true
+  },
+  "benchmarks": {
+    "micro_ffi_throughput_native_eps": 5400000,
+    "micro_ffi_throughput_python_eps": 408000,
+    "native_acceleration_speedup_x": 13.2,
+    "ingest_tail_latency_p50_us": 12.4,
+    "ingest_tail_latency_p95_us": 38.2,
+    "ingest_tail_latency_p99_us": 145.0,
+    "ingest_tail_latency_p99_9_us": 620.0
+  },
+  "recovery_guarantees": {
+    "max_snapshots_retained": 5,
+    "snapshot_integrity_algorithm": "SHA-256",
+    "two_phase_atomic_snapshot_commit": true,
+    "wal_segment_safe_prune": true,
+    "unpersisted_event_tolerance_grouped_fsync": "0 trailing events lost in quiet periods"
+  },
+  "sequence_guarantees": {
+    "window_size_bits": 64,
+    "circular_index_collision_resistance": "Exact 64-bit sequence key equality",
+    "session_reset_handling": "Dynamic per-feed session state re-sync",
+    "duplicate_status": "SUSPICIOUS (DUPLICATE_EVENT)",
+    "stale_sequence_status": "SUSPICIOUS (STALE_SEQUENCE)"
+  },
+  "verified_test_summary": {
+    "discovered_tests": 1663,
+    "deselected_slow_network": 63,
+    "active_unit_tests": 1600,
+    "release_gate_stage_5_selected": 1553,
+    "release_gate_stage_5_deselected": 47,
+    "all_passed": true,
+    "failed": 0,
+    "release_gates_configured": 14,
+    "release_gates_passed": 14
+  }
+}
