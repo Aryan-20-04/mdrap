@@ -1052,6 +1052,18 @@ class IngestLog:
             return self._synced_offset
 
     @property
+    def durability_guarantee(self) -> str:
+        """Explicit durability contract specification string."""
+        mapping = {
+            "always": "PHYSICAL_FSYNC_DURABLE",
+            "grouped_by_time": "GROUPED_TIME_FSYNC_DURABLE",
+            "grouped_by_size": "GROUPED_SIZE_FSYNC_DURABLE",
+            "true_group_commit": "GROUP_COMMIT_FSYNC_DURABLE",
+            "never": "OS_BUFFERED_NO_POWER_LOSS_PROTECTION",
+        }
+        return mapping.get(self.fsync_policy, "UNKNOWN")
+
+    @property
     def earliest_offset(self) -> int:
         """Earliest offset present in on-disk segment files, or 0 if no segments exist."""
         with self._lock:
@@ -1092,7 +1104,7 @@ class IngestLog:
                         needs_fsync = True
                 elif self.fsync_policy == "grouped_by_size":
                     if self._synced_offset < target_offset and (
-                        now_ts - self._last_fsync_ts >= 0.2
+                        now_ts - self._last_fsync_ts >= 0.045
                     ):
                         needs_fsync = True
 
