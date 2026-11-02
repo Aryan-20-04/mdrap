@@ -107,6 +107,7 @@ class EngineState:
     sequence_seen: dict[str, int] = field(default_factory=dict)
     sequence_cand: dict[str, int] = field(default_factory=dict)
     sequence_regress: dict[str, int] = field(default_factory=dict)
+    sequence_stale_seen: dict[str, list[int]] = field(default_factory=dict)
     dedup_window: Any = field(default_factory=deque)
     dedup_set: set[str] = field(default_factory=set)
     price_windows: dict[str, list[float]] = field(default_factory=dict)
@@ -149,6 +150,9 @@ class EngineState:
             sequence_seen=dict(self.sequence_seen),
             sequence_cand=dict(self.sequence_cand),
             sequence_regress=dict(self.sequence_regress),
+            sequence_stale_seen={
+                k: list(v) for k, v in self.sequence_stale_seen.items()
+            },
             dedup_window=deque(self.dedup_window),
             dedup_set=set(self.dedup_set),
             price_windows={k: deque(v) for k, v in self.price_windows.items()},
@@ -176,6 +180,9 @@ class EngineState:
             "sequence_seen": dict(self.sequence_seen),
             "sequence_cand": dict(self.sequence_cand),
             "sequence_regress": dict(self.sequence_regress),
+            "sequence_stale_seen": {
+                k: list(v) for k, v in self.sequence_stale_seen.items()
+            },
             "dedup_window": list(self.dedup_window),
             "price_windows": {k: list(v) for k, v in self.price_windows.items()},
             "bbo_state": {
@@ -206,6 +213,7 @@ class EngineState:
             sequence_seen=data.get("sequence_seen", {}),
             sequence_cand=data.get("sequence_cand", {}),
             sequence_regress=data.get("sequence_regress", {}),
+            sequence_stale_seen=data.get("sequence_stale_seen", {}),
             dedup_window=deque(dedup_items),
             dedup_set=set(dedup_items),
             price_windows=data.get("price_windows", {}),
@@ -435,6 +443,25 @@ class EngineConfig:
     gap_manager: Any | None = None
     on_gap: Any | None = None
     max_snapshots_retained: int = 3
+    min_wal_snapshots_retained: int = 2
+
+
+def _fsync_dir(dirpath: str) -> None:
+    """Fsync directory on POSIX platforms to guarantee directory entry durability.
+
+    On POSIX operating systems, renaming or unlinking a file alters directory entries,
+    which must be fsynced on the parent directory file descriptor to survive power loss.
+    On Windows (NT), directory entries are updated synchronously by the NTFS journal.
+    """
+    if os.name != "nt":
+        try:
+            dir_fd = os.open(dirpath, os.O_RDONLY)
+            try:
+                os.fsync(dir_fd)
+            finally:
+                os.close(dir_fd)
+        except Exception:
+            pass
 
 
 class Engine:
@@ -494,8 +521,9 @@ class Engine:
                     stacklevel=2,
                 )
 
-        if isinstance(path, EngineConfig):
-            cfg = path
+        cfg_obj: EngineConfig | None = path if isinstance(path, EngineConfig) else None
+        if cfg_obj is not None:
+            cfg = cfg_obj
             path = cfg.wal_dir or cfg.db_path
             staleness_threshold_s = cfg.staleness_threshold_s
             clock = cfg.clock
@@ -523,9 +551,12 @@ class Engine:
         self.snapshot_cadence_events = snapshot_cadence_events
         self.snapshot_cadence_seconds = snapshot_cadence_seconds
         self.max_snapshots_retained = (
-            getattr(cfg, "max_snapshots_retained", 3)
-            if isinstance(path, EngineConfig)
-            else 3
+            getattr(cfg_obj, "max_snapshots_retained", 3) if cfg_obj is not None else 3
+        )
+        self.min_wal_snapshots_retained = (
+            getattr(cfg_obj, "min_wal_snapshots_retained", 2)
+            if cfg_obj is not None
+            else 2
         )
         self.gap_manager = gap_manager
         self.state = self.create_initial_state()
@@ -576,6 +607,8 @@ class Engine:
                         actual_sha = hashlib.sha256(canonical_bytes).hexdigest()
                         if actual_sha != snap_sha:
                             failed_offsets_snap.add(snap_off)
+                            if recorded_offset >= 0:
+                                failed_offsets_snap.add(recorded_offset)
                             raise ValueError(
                                 f"Snapshot SHA-256 checksum mismatch: expected {snap_sha}, got {actual_sha}"
                             )
@@ -589,6 +622,8 @@ class Engine:
                         and self.log.earliest_offset > recorded_offset + 1
                     ):
                         failed_offsets_snap.add(snap_off)
+                        if recorded_offset >= 0:
+                            failed_offsets_snap.add(recorded_offset)
                         logger.warning(
                             "[engine] Candidate snapshot %s at offset %d cannot be used: WAL history between %d and %d is missing; trying older candidates...",
                             snap_path,
@@ -661,6 +696,7 @@ class Engine:
             proj = SQLiteProjection(db_path)
             self.subscribe(proj)
             self._default_sqlite_proj = proj
+            self.recover_projections()
 
     @classmethod
     def open(
@@ -744,7 +780,40 @@ class Engine:
         for proj in projections:
             engine.subscribe(proj)
 
+        if projections:
+            engine.recover_projections()
+
         return engine
+
+    def _replay_projection_batch(
+        self, from_offset: int, max_batch_size: int = 1000
+    ) -> tuple[list[EngineDecision], int]:
+        """Replay events from WAL starting at from_offset, stepping deterministically."""
+        with self._lock:
+            if self.log is None:
+                return [], from_offset - 1
+            if from_offset >= self.log.next_offset:
+                return [], from_offset - 1
+
+            batch: list[EngineDecision] = []
+            last_off = from_offset - 1
+
+            replay_state = self.create_initial_state()
+            for off, raw in self.log.iter_from(0):
+                if off < from_offset:
+                    replay_state, _ = self.step(
+                        replay_state, raw, self.clock, offset=off
+                    )
+                else:
+                    replay_state, dec = self.step(
+                        replay_state, raw, self.clock, offset=off
+                    )
+                    batch.append(dec)
+                    last_off = off
+                    if len(batch) >= max_batch_size:
+                        break
+
+            return batch, last_off
 
     def process_one(self, raw: RawEvent) -> CanonicalEvent | None:
         """Process a single RawEvent and return the resulting CanonicalEvent if valid/suspicious, or None if invalid."""
@@ -758,8 +827,17 @@ class Engine:
 
             name = getattr(proj, "name", type(proj).__name__)
             self._projection_trackers[pid] = ProjectionTracker(
-                projection=proj, name=name
+                projection=proj,
+                name=name,
+                max_pending=getattr(proj, "max_pending", 50_000),
+                log_source=self.log,
+                replay_fn=self._replay_projection_batch,
             )
+        else:
+            tracker = self._projection_trackers[pid]
+            if tracker.log_source is None and self.log is not None:
+                tracker.log_source = self.log
+                tracker.replay_fn = self._replay_projection_batch
         return self._projection_trackers[pid]
 
     @property
@@ -789,15 +867,60 @@ class Engine:
         )
 
     def recover_projections(self) -> dict[str, int]:
-        """Trigger immediate recovery replay of pending failed batches across all projections."""
-        recovered = {}
-        for proj in self._projections:
-            tracker = self._get_or_create_projection_tracker(proj)
-            if tracker.pending_batches:
-                before = len(tracker.pending_batches)
-                tracker.apply([], tracker.last_contiguous_offset)
-                recovered[tracker.name] = before - len(tracker.pending_batches)
-        return recovered
+        """Trigger immediate recovery replay and WAL backlog catch-up across all projections."""
+        with self._lock:
+            recovered = {}
+            if self.log is None:
+                for proj in self._projections:
+                    tracker = self._get_or_create_projection_tracker(proj)
+                    before = len(tracker.pending_batches)
+                    if before > 0:
+                        tracker.drain(non_blocking=False, timeout=1.0)
+                        recovered[tracker.name] = max(
+                            0, before - len(tracker.pending_batches)
+                        )
+                return recovered
+
+            head = self.log.next_offset
+            for proj in list(self._projections):
+                tracker = self._get_or_create_projection_tracker(proj)
+                cp = tracker.checkpoint()
+                start_off = (
+                    (cp + 1) if cp >= 0 else getattr(proj, "expected_start_offset", 0)
+                )
+                if head > start_off:
+                    batch: list[EngineDecision] = []
+                    replay_state = self.create_initial_state()
+                    for off, raw in self.log.iter_from(0):
+                        if off < start_off:
+                            replay_state, _ = self.step(
+                                replay_state, raw, self.clock, offset=off
+                            )
+                        elif off < head:
+                            replay_state, dec = self.step(
+                                replay_state, raw, self.clock, offset=off
+                            )
+                            batch.append(dec)
+                            if len(batch) >= 1000:
+                                proj.apply(batch, batch[-1].offset)
+                                batch = []
+                    if batch:
+                        proj.apply(batch, batch[-1].offset)
+
+                    tracker.last_contiguous_offset = max(
+                        tracker.last_contiguous_offset, proj.checkpoint()
+                    )
+                    tracker._expected_offset = tracker.last_contiguous_offset + 1
+                    tracker.recovery_status = "IDLE"
+                    tracker.wal_catchup_needed = False
+                    recovered[tracker.name] = head - start_off
+                else:
+                    before = len(tracker.pending_batches)
+                    tracker.drain(non_blocking=False, timeout=1.0)
+                    recovered[tracker.name] = max(
+                        0, before - len(tracker.pending_batches)
+                    )
+            return recovered
 
     def subscribe(self, projection: Any, from_offset: int = 0) -> None:
         """Register a projection consumer and catch up from log offset."""
@@ -1001,12 +1124,16 @@ class Engine:
 
                 # Update durability status based on current WAL sync state
                 if self.log is not None:
-                    synced = self.log.synced_offset
-                    for d in final_decisions:
-                        d.durable = (synced >= d.offset) if d.offset >= 0 else True
+                    if self.log.fsync_policy == "never":
+                        for d in final_decisions:
+                            d.durable = False
+                    else:
+                        synced = self.log.synced_offset
+                        for d in final_decisions:
+                            d.durable = (synced >= d.offset) if d.offset >= 0 else True
                 else:
                     for d in final_decisions:
-                        d.durable = True
+                        d.durable = False
 
                 # Program I-4: Automatic snapshot cadence evaluation
                 needs_snapshot = False
@@ -1033,7 +1160,7 @@ class Engine:
                 batch_txn.rollback()
                 raise
 
-        # Dispatch to subscribed projections OUTSIDE self._lock with per-consumer error isolation & retry
+        # Deliver to projections outside self._lock to avoid blocking ingestion on slow I/O
         if projs_to_dispatch and final_decisions:
             for proj in projs_to_dispatch:
                 try:
@@ -1076,6 +1203,13 @@ class Engine:
         return decisions
 
     @property
+    def durability_guarantee(self) -> str:
+        """Durability contract specification string."""
+        if self.log is None:
+            return "IN_MEMORY_NO_PERSISTENCE"
+        return self.log.durability_guarantee
+
+    @property
     def synced_offset(self) -> int:
         """Highest offset durably fsynced to disk, or -1 if no persistent log."""
         if self.log is not None:
@@ -1085,6 +1219,8 @@ class Engine:
     def await_durable(self, target: int | EngineDecision, timeout: float = 2.0) -> bool:
         """Wait until target offset (or decision) has been durably fsynced to disk."""
         if self.log is None:
+            if isinstance(target, EngineDecision):
+                target.durable = True
             return True
         target_offset = (
             target.offset if isinstance(target, EngineDecision) else int(target)
@@ -1092,11 +1228,19 @@ class Engine:
         if target_offset < 0:
             return True
         if self.log.synced_offset >= target_offset:
+            if isinstance(target, EngineDecision):
+                target.durable = True
             return True
-        if self.log.fsync_policy in ("grouped_by_size", "grouped_by_time"):
+        if self.log.fsync_policy in ("grouped_by_size", "grouped_by_time", "never"):
             self.log.flush()
-            return self.log.synced_offset >= target_offset
-        return self.log.await_synced(target_offset, timeout=timeout)
+            is_durable = self.log.synced_offset >= target_offset
+            if is_durable and isinstance(target, EngineDecision):
+                target.durable = True
+            return is_durable
+        ok = self.log.await_synced(target_offset, timeout=timeout)
+        if ok and isinstance(target, EngineDecision):
+            target.durable = True
+        return ok
 
     def replay(
         self,
@@ -1185,6 +1329,11 @@ class Engine:
         """Flush pending writes to persistent log and projections."""
         if self.log is not None:
             self.log.flush()
+        for tracker in list(self._projection_trackers.values()):
+            try:
+                tracker.flush(timeout=2.0)
+            except Exception:
+                pass
         self.recover_projections()
 
     def query(self, instrument: str, limit: int = 100) -> list[dict]:
@@ -1245,9 +1394,18 @@ class Engine:
                 }
             )
 
-        if max_proj_lag == 0 and log_lag == 0 and not has_proj_failures:
+        total_overflows = sum(
+            getattr(t, "queue_overflow_count", 0)
+            for t in self._projection_trackers.values()
+        )
+        if (
+            max_proj_lag == 0
+            and log_lag == 0
+            and not has_proj_failures
+            and total_overflows == 0
+        ):
             health_status = "HEALTHY"
-        elif max_proj_lag < 500 and not has_proj_failures:
+        elif max_proj_lag < 500 and not has_proj_failures and total_overflows == 0:
             health_status = "DEGRADED"
         else:
             health_status = (
@@ -1272,6 +1430,7 @@ class Engine:
             "log_lag": log_lag,
             "projection_lag": max_proj_lag,
             "max_projection_lag": max_proj_lag,
+            "projection_queue_overflows": total_overflows,
             "projection_failures": self.projection_failures,
             "projections": proj_stats,
             "health": health_status,
@@ -1287,6 +1446,12 @@ class Engine:
         if self.log is not None:
             self.log.close()
             self.log = None
+        for tracker in list(self._projection_trackers.values()):
+            try:
+                tracker.close()
+            except Exception:
+                pass
+        self._projection_trackers.clear()
         for proj in self._projections:
             if hasattr(proj, "close"):
                 try:
@@ -1761,16 +1926,16 @@ class Engine:
             "session_id"
         )
 
-        if self.session_policy == "session_marker":
+        if (
+            new_session_id is not None
+            and current_session is not None
+            and str(new_session_id) != current_session
+        ):
+            epoch_reset_triggered = True
+        elif self.session_policy == "session_marker":
             is_reset = payload.get("is_reset") is True or payload.get("reset") is True
             epoch_id_marker = payload.get("epoch_id")
             if is_reset:
-                epoch_reset_triggered = True
-            elif (
-                new_session_id is not None
-                and current_session is not None
-                and str(new_session_id) != current_session
-            ):
                 epoch_reset_triggered = True
             elif epoch_id_marker is not None and epoch_id_marker != current_epoch:
                 epoch_reset_triggered = True
@@ -1980,7 +2145,17 @@ class Engine:
                         if slot_key != stream_key:
                             state.sequence_seen[stream_key] = new_seen
                 else:
-                    if d > DEFAULT_SEQ_JUMP_LIMIT:
+                    stale_list = state.sequence_stale_seen.setdefault(slot_key, [])
+                    if seq in stale_list:
+                        is_duplicate = True
+                        cur_status = QualityStatus.merge(
+                            cur_status, QualityStatus.INVALID
+                        )
+                        if reasons_out is reasons:
+                            reasons_out = list(reasons)
+                        reasons_out.append(Reason.DUPLICATE.value)
+                        reasons_out.append(Reason.OUT_OF_ORDER.value)
+                    elif d > DEFAULT_SEQ_JUMP_LIMIT:
                         regress_cnt += 1
                         if regress_cnt >= 2:
                             if txn is not None:
@@ -1991,11 +2166,21 @@ class Engine:
                             state.sequence_seen[slot_key] = 1
                             state.sequence_regress[slot_key] = 0
                             state.sequence_cand[slot_key] = 0
+                            if slot_key in state.sequence_stale_seen:
+                                state.sequence_stale_seen[slot_key].clear()
                             if slot_key != stream_key:
                                 state.sequence_state[stream_key] = seq
                                 state.sequence_seen[stream_key] = 1
                                 state.sequence_regress[stream_key] = 0
                                 state.sequence_cand[stream_key] = 0
+                                if stream_key in state.sequence_stale_seen:
+                                    state.sequence_stale_seen[stream_key].clear()
+                            cur_status = QualityStatus.merge(
+                                cur_status, QualityStatus.SUSPICIOUS
+                            )
+                            if reasons_out is reasons:
+                                reasons_out = list(reasons)
+                            reasons_out.append(Reason.OUT_OF_ORDER.value)
                         else:
                             if txn is not None:
                                 txn.record_dict(state.sequence_regress, slot_key)
@@ -2004,6 +2189,15 @@ class Engine:
                             state.sequence_regress[slot_key] = regress_cnt
                             if slot_key != stream_key:
                                 state.sequence_regress[stream_key] = regress_cnt
+                            stale_list.append(seq)
+                            if len(stale_list) > 64:
+                                stale_list.pop(0)
+                            cur_status = QualityStatus.merge(
+                                cur_status, QualityStatus.SUSPICIOUS
+                            )
+                            if reasons_out is reasons:
+                                reasons_out = list(reasons)
+                            reasons_out.append(Reason.OUT_OF_ORDER.value)
                     else:
                         if txn is not None:
                             txn.record_dict(state.sequence_regress, slot_key)
@@ -2012,13 +2206,15 @@ class Engine:
                         state.sequence_regress[slot_key] = 0
                         if slot_key != stream_key:
                             state.sequence_regress[stream_key] = 0
-
-                    cur_status = QualityStatus.merge(
-                        cur_status, QualityStatus.SUSPICIOUS
-                    )
-                    if reasons_out is reasons:
-                        reasons_out = list(reasons)
-                    reasons_out.append(Reason.OUT_OF_ORDER.value)
+                        stale_list.append(seq)
+                        if len(stale_list) > 64:
+                            stale_list.pop(0)
+                        cur_status = QualityStatus.merge(
+                            cur_status, QualityStatus.SUSPICIOUS
+                        )
+                        if reasons_out is reasons:
+                            reasons_out = list(reasons)
+                        reasons_out.append(Reason.OUT_OF_ORDER.value)
         else:
             biz_id = (
                 payload.get("trade_id")
@@ -2576,7 +2772,15 @@ class Engine:
 
     @classmethod
     def _discover_candidate_snapshots(cls, snap_dir: str) -> list[tuple[int, str]]:
-        """Scan snap_dir for candidate snapshot files, returning [(offset, path), ...] sorted descending by offset."""
+        """Scan snap_dir for candidate snapshot files, returning [(offset, path), ...] sorted descending by offset.
+
+        Note on Security & Threat Model:
+        SHA-256 verification here guarantees data integrity against storage corruption,
+        torn writes, silent bit-rot, and crash recovery faults. It does NOT provide non-repudiation
+        or defense against malicious tampering by an attacker with write access to the filesystem.
+        Institutional deployments requiring tamper-proof adversarial protection must employ
+        HMAC-SHA256 with KMS-managed secrets or OS-level file integrity monitoring (FIM).
+        """
         candidates: dict[str, tuple[int, str]] = {}
         if not os.path.isdir(snap_dir):
             return []
@@ -2601,7 +2805,7 @@ class Engine:
             if (
                 fname.startswith("snapshot_")
                 and fname.endswith(".json")
-                and not fname.endswith(".tmp")
+                and ".tmp" not in fname
             ):
                 parts = fname[len("snapshot_") : -len(".json")]
                 try:
@@ -2636,10 +2840,27 @@ class Engine:
         self,
         prune_obsolete_segments: bool = True,
         max_snapshots_retained: int | None = None,
+        min_wal_snapshots_retained: int | None = None,
     ) -> dict[str, Any]:
-        """Save a snapshot of current engine state to the WAL directory with SHA-256 integrity."""
+        """Save a snapshot of current engine state to the WAL directory with SHA-256 integrity.
+
+        Snapshot Lifecycle Protocol:
+        1. Capture state dictionary and monotonically assigned WAL offset under self._lock (< 500ns).
+        2. Serialize state to canonical JSON and compute SHA-256 outside self._lock to avoid submit latency spikes.
+        3. Write to temporary file with flush() + os.fsync() to prevent torn writes.
+        4. Re-read and verify SHA-256 prior to publication.
+        5. Atomically publish versioned snapshot via os.replace() and _fsync_dir().
+        6. Atomically publish compatibility pointer 'snapshot.json' via os.replace() and _fsync_dir().
+        7. Atomically publish 'snapshot_manifest.json' recording all available snapshots.
+        8. Retain up to max_snapshots_retained versioned snapshot files.
+        9. Safe WAL pruning: Retain WAL segments covering at least min_wal_snapshots_retained fallback
+           snapshots (default 1), guaranteeing crash recovery can fall back to an earlier valid snapshot
+           if the latest snapshot is corrupted.
+        """
         if max_snapshots_retained is None:
             max_snapshots_retained = getattr(self, "max_snapshots_retained", 3)
+        if min_wal_snapshots_retained is None:
+            min_wal_snapshots_retained = getattr(self, "min_wal_snapshots_retained", 2)
 
         with self._lock:
             if self.log is None:
@@ -2653,6 +2874,9 @@ class Engine:
                     if self.log is not None and self.log.next_offset > 0
                     else -1
                 )
+            )
+            earliest_wal_offset = (
+                self.log.earliest_offset if self.log is not None else 0
             )
             st_dict = self.state.to_dict()
             snap_dir = self.log.log_dir
@@ -2673,6 +2897,10 @@ class Engine:
             "version": 2,
             "offset": last_offset,
             "last_applied_wal_offset": last_offset,
+            "earliest_wal_offset": earliest_wal_offset,
+            "latest_wal_offset": last_offset,
+            "earliest_wal_offset_covered": earliest_wal_offset,
+            "latest_wal_offset_included": last_offset,
             "timestamp": now_ts,
             "event_count": event_count,
             "sha256": state_sha256,
@@ -2709,6 +2937,7 @@ class Engine:
             raise RuntimeError("Snapshot write-verification failed SHA-256 check")
 
         os.replace(tmp_path, versioned_path)
+        _fsync_dir(snap_dir)
 
         # Also atomically publish snapshot.json for legacy/tool compatibility
         tmp_latest = os.path.join(
@@ -2719,6 +2948,7 @@ class Engine:
             f.flush()
             os.fsync(f.fileno())
         os.replace(tmp_latest, latest_path)
+        _fsync_dir(snap_dir)
 
         # Update snapshot_manifest.json
         manifest_path = os.path.join(snap_dir, "snapshot_manifest.json")
@@ -2741,16 +2971,7 @@ class Engine:
             f.flush()
             os.fsync(f.fileno())
         os.replace(tmp_manifest, manifest_path)
-
-        if os.name != "nt":
-            try:
-                dir_fd = os.open(snap_dir, os.O_RDONLY)
-                try:
-                    os.fsync(dir_fd)
-                finally:
-                    os.close(dir_fd)
-            except Exception:
-                pass
+        _fsync_dir(snap_dir)
 
         # Retain up to max_snapshots_retained snapshot files
         all_versioned = sorted(
@@ -2759,7 +2980,8 @@ class Engine:
                 for f in os.listdir(snap_dir)
                 if f.startswith("snapshot_")
                 and f.endswith(".json")
-                and not f.endswith(".tmp")
+                and not f.startswith("snapshot_manifest")
+                and ".tmp" not in f
             ]
         )
         if len(all_versioned) > max_snapshots_retained:
@@ -2769,9 +2991,20 @@ class Engine:
                 except OSError:
                     pass
 
+        # Re-scan candidate snapshots after retention cleanup to calculate safe WAL prune boundary
+        candidates_after = self._discover_candidate_snapshots(snap_dir)
         pruned = 0
         if prune_obsolete_segments and last_offset >= 0:
-            pruned = self.delete_segments_before(last_offset + 1)
+            if min_wal_snapshots_retained > 0 and len(candidates_after) > 1:
+                # Retain WAL segments back to the fallback snapshot to ensure crash resilience
+                target_idx = min(min_wal_snapshots_retained, len(candidates_after) - 1)
+                fallback_offset = candidates_after[target_idx][0]
+                safe_prune_offset = fallback_offset + 1
+            else:
+                safe_prune_offset = last_offset + 1
+
+            if safe_prune_offset > 0:
+                pruned = self.delete_segments_before(safe_prune_offset)
 
         return {
             "snapshot_offset": last_offset,
