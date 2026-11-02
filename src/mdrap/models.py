@@ -30,6 +30,12 @@ import warnings
 __stability__ = "stable"
 
 
+class RecoveryError(RuntimeError):
+    """Raised when engine recovery fails due to corrupted snapshots, missing WAL history, or unrecoverable state."""
+
+    pass
+
+
 def _safe_float(val: Any, default: float = 0.0) -> float:
     """Safely convert value to finite float without raising or accepting NaN/inf/bool."""
     if val is None or isinstance(val, bool):

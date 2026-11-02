@@ -13,6 +13,7 @@ Architectural Invariant:
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 import json
 import logging
 import os
@@ -43,12 +44,125 @@ class Projection(Protocol):
         ...
 
 
+@dataclass
+class ProjectionTracker:
+    """Coordinates delivery, bounded retries, and contiguous checkpoint tracking for a projection."""
+
+    projection: Any
+    name: str = "projection"
+    last_contiguous_offset: int = -1
+    failed_offsets: list[int] = field(default_factory=list)
+    pending_batches: list[tuple[int, list[Any]]] = field(default_factory=list)
+    consecutive_failures: int = 0
+    total_retries: int = 0
+    last_success_ts: float = 0.0
+    last_failure_ts: float = 0.0
+    recovery_status: str = "IDLE"  # "IDLE", "RECOVERING", "DEGRADED", "STALLED"
+    max_pending: int = 50_000
+    _lock: threading.Lock = field(default_factory=threading.Lock)
+    _queue_lock: threading.Lock = field(default_factory=threading.Lock)
+
+    def __post_init__(self) -> None:
+        if hasattr(self.projection, "checkpoint"):
+            try:
+                cp = self.projection.checkpoint()
+                if cp >= 0:
+                    self.last_contiguous_offset = cp
+            except Exception:
+                pass
+
+    def apply(self, batch: list[Any], offset: int) -> bool:
+        """Deliver batch with automatic retry of pending failed offsets and strict contiguous ordering.
+
+        Does not block incoming caller indefinitely if projection is locked/busy;
+        safely queues batch for contiguous replay.
+        """
+        now = time.time()
+
+        # Non-blocking lock acquisition with short timeout to prevent feed-blocking
+        acquired = self._lock.acquire(timeout=0.05)
+        if not acquired:
+            # Another thread is actively delivering to this projection (e.g. waiting on DB lock).
+            # Queue this batch under queue_lock so caller thread does not block.
+            with self._queue_lock:
+                if len(self.pending_batches) < self.max_pending:
+                    self.pending_batches.append((offset, batch))
+                    if offset not in self.failed_offsets and offset >= 0:
+                        self.failed_offsets.append(offset)
+            self.consecutive_failures += 1
+            self.total_retries += 1
+            self.last_failure_ts = now
+            self.recovery_status = (
+                "STALLED" if self.consecutive_failures >= 10 else "DEGRADED"
+            )
+            return False
+
+        try:
+            # Queue the incoming batch under queue_lock first
+            with self._queue_lock:
+                if batch or offset >= 0:
+                    self.pending_batches.append((offset, batch))
+                    if offset not in self.failed_offsets and offset >= 0:
+                        self.failed_offsets.append(offset)
+
+            # Drain pending batches in strict contiguous order
+            while True:
+                with self._queue_lock:
+                    if not self.pending_batches:
+                        break
+                    p_off, p_batch = self.pending_batches[0]
+
+                try:
+                    self.projection.apply(p_batch, p_off)
+                    with self._queue_lock:
+                        if self.pending_batches and self.pending_batches[0][0] == p_off:
+                            self.pending_batches.pop(0)
+                        if p_off in self.failed_offsets:
+                            self.failed_offsets.remove(p_off)
+                    if p_off >= 0:
+                        self.last_contiguous_offset = max(
+                            self.last_contiguous_offset, p_off
+                        )
+                    self.last_success_ts = time.time()
+                except Exception:
+                    self.consecutive_failures += 1
+                    self.total_retries += 1
+                    self.last_failure_ts = time.time()
+                    self.recovery_status = (
+                        "STALLED" if self.consecutive_failures >= 10 else "DEGRADED"
+                    )
+                    # Cannot advance further: maintain contiguous order and return
+                    return False
+
+            self.consecutive_failures = 0
+            self.recovery_status = "IDLE"
+            return True
+        finally:
+            self._lock.release()
+
+    def checkpoint(self) -> int:
+        """Return the verified highest contiguous committed offset."""
+        if hasattr(self.projection, "checkpoint"):
+            try:
+                db_cp = self.projection.checkpoint()
+                if db_cp >= 0:
+                    return (
+                        min(self.last_contiguous_offset, db_cp)
+                        if self.last_contiguous_offset >= 0
+                        else db_cp
+                    )
+            except Exception:
+                pass
+        return self.last_contiguous_offset
+
+
 class SQLiteProjection:
     """Production SQLite projection with atomic row + checkpoint transaction commit."""
 
     def __init__(self, db_path: str, name: str = "sqlite_canonical") -> None:
         self.db_path = db_path
         self.name = name
+        self._highest_contiguous_offset: int = -1
         self._lock = threading.Lock()
         self._conn = sqlite3.connect(
             db_path,
@@ -117,6 +231,13 @@ class SQLiteProjection:
                 ON canonical_events(instrument_id, exchange_timestamp);
                 """
             )
+            cur.execute(
+                "SELECT last_offset FROM projection_checkpoints WHERE name = ?;",
+                (self.name,),
+            )
+            row = cur.fetchone()
+            if row and row[0] is not None:
+                self._highest_contiguous_offset = row[0]
 
     def checkpoint(self) -> int:
         """Return the latest committed offset, or -1 if no checkpoint exists."""
@@ -256,14 +377,28 @@ class SQLiteProjection:
                         )
 
                     # Atomically update checkpoint in the SAME transaction!
+                    # Critical checkpoint invariant: never advance beyond highest contiguous committed offset!
                     if offset >= 0:
-                        cur.execute(
-                            """
-                            INSERT OR REPLACE INTO projection_checkpoints (name, last_offset, updated_at)
-                            VALUES (?, ?, ?);
-                            """,
-                            (self.name, offset, time.time()),
-                        )
+                        cur_cp = self._highest_contiguous_offset
+                        batch_len = len(batch) if batch else 1
+                        batch_start = offset - batch_len + 1
+                        if cur_cp < 0 or (
+                            offset >= cur_cp and batch_start <= cur_cp + 1
+                        ):
+                            self._highest_contiguous_offset = max(
+                                self._highest_contiguous_offset, offset
+                            )
+                            cur.execute(
+                                """
+                                INSERT OR REPLACE INTO projection_checkpoints (name, last_offset, updated_at)
+                                VALUES (?, ?, ?);
+                                """,
+                                (
+                                    self.name,
+                                    self._highest_contiguous_offset,
+                                    time.time(),
+                                ),
+                            )
 
                     cur.execute("COMMIT;")
                     return
@@ -325,6 +460,7 @@ class DuckDBProjection:
             )
         self.db_path = db_path
         self.name = name
+        self._highest_contiguous_offset: int = -1
         self._lock = threading.Lock()
         if db_path != ":memory:":
             os.makedirs(os.path.dirname(os.path.abspath(db_path)), exist_ok=True)

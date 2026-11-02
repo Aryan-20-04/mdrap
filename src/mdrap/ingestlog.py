@@ -20,9 +20,15 @@ import zlib
 from enum import IntEnum
 from typing import Any, Iterator
 
-from .models import AckStatus, OperationalMode, RawEvent
+from .models import AckStatus, OperationalMode, RawEvent, RecoveryError
 
 __stability__ = "stable"
+
+
+def _json_default(obj: Any) -> Any:
+    if isinstance(obj, (bytes, bytearray)):
+        return obj.hex()
+    raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
 
 
 logger = logging.getLogger(__name__)
@@ -404,6 +410,17 @@ class IngestLog:
             self._recover_and_open()
             self._synced_offset = self._next_offset - 1
             self._pending_sync_offset = self._next_offset - 1
+            if self.fsync_policy in ("grouped_by_time", "grouped_by_size"):
+                self._flusher_stop = threading.Event()
+                self._flusher_thread = threading.Thread(
+                    target=self._flusher_loop,
+                    name=f"IngestLog-Flusher-{os.path.basename(self.log_dir)}",
+                    daemon=True,
+                )
+                self._flusher_thread.start()
+            else:
+                self._flusher_stop = None
+                self._flusher_thread = None
         except Exception:
             if lock:
                 self._release_process_lock()
@@ -793,7 +810,7 @@ class IngestLog:
             # (U+D800..U+DFFF). Using errors="replace" substitutes the Unicode Replacement Character
             # (U+FFFD), preventing serialization crashes and ensuring log append durability.
             payload_bytes = json.dumps(
-                record, separators=(",", ":"), ensure_ascii=False
+                record, separators=(",", ":"), ensure_ascii=False, default=_json_default
             ).encode("utf-8", errors="replace")
             payload_len = len(payload_bytes)
             offset = self._next_offset
@@ -936,7 +953,10 @@ class IngestLog:
                     )
 
                 p_bytes = json.dumps(
-                    rec, separators=(",", ":"), ensure_ascii=False
+                    rec,
+                    separators=(",", ":"),
+                    ensure_ascii=False,
+                    default=_json_default,
                 ).encode("utf-8", errors="replace")
                 p_len = len(p_bytes)
                 total_frame_bytes += FRAME_HEADER_SIZE + p_len
@@ -1031,6 +1051,15 @@ class IngestLog:
         with self._lock:
             return self._synced_offset
 
+    @property
+    def earliest_offset(self) -> int:
+        """Earliest offset present in on-disk segment files, or 0 if no segments exist."""
+        with self._lock:
+            segments = self._list_segment_files()
+            if not segments:
+                return 0
+            return segments[0][0]
+
     def await_synced(self, target_offset: int, timeout: float = 2.0) -> bool:
         """Wait until target_offset has been durably fsynced to disk."""
         with self._lock:
@@ -1044,8 +1073,54 @@ class IngestLog:
                 self._group_commit_cv.wait(remaining)
             return self._synced_offset >= target_offset
 
+    def _flusher_loop(self) -> None:
+        """Periodic background coordinator for quiet-period fsync in grouped durability modes."""
+        while self._flusher_stop and not self._flusher_stop.is_set():
+            time.sleep(0.015)
+            if self._flusher_stop and self._flusher_stop.is_set():
+                break
+            with self._lock:
+                if self._current_file is None:
+                    break
+                now_ts = time.time()
+                needs_fsync = False
+                target_offset = self._next_offset - 1
+                if self.fsync_policy == "grouped_by_time":
+                    if self._synced_offset < target_offset and (
+                        now_ts - self._last_fsync_ts >= 0.045
+                    ):
+                        needs_fsync = True
+                elif self.fsync_policy == "grouped_by_size":
+                    if self._synced_offset < target_offset and (
+                        now_ts - self._last_fsync_ts >= 0.2
+                    ):
+                        needs_fsync = True
+
+                if (
+                    needs_fsync
+                    and self._current_file is not None
+                    and not self._current_file.closed
+                ):
+                    fileno = self._current_file.fileno()
+                    try:
+                        self._current_file.flush()
+                        os.fsync(fileno)
+                        self._last_fsync_ts = now_ts
+                        self._bytes_since_fsync = 0
+                        self._synced_offset = target_offset
+                        self._pending_sync_offset = target_offset
+                        self._group_commit_cv.notify_all()
+                    except Exception:
+                        pass
+
     def close(self) -> None:
         """Close current active segment and release process lock."""
+        if hasattr(self, "_flusher_stop") and self._flusher_stop is not None:
+            self._flusher_stop.set()
+        if hasattr(self, "_flusher_thread") and self._flusher_thread is not None:
+            self._flusher_thread.join(timeout=0.5)
+            self._flusher_thread = None
+
         with self._lock:
             if self._current_file and not self._current_file.closed:
                 try:
@@ -1339,9 +1414,18 @@ class IngestLog:
 
     def iter_from(self, start_offset: int = 0) -> Iterator[tuple[int, RawEvent]]:
         """Iterate all events from start_offset across all segment files in order."""
+        if start_offset < 0:
+            start_offset = 0
         with self._lock:
             self.flush()
             segments = self._list_segment_files()
+
+        if self.next_offset > 0 and segments and start_offset < segments[0][0]:
+            raise RecoveryError(
+                f"WAL history incomplete: requested start_offset {start_offset}, "
+                f"but earliest available segment starts at {segments[0][0]} "
+                f"(offsets {start_offset}..{segments[0][0] - 1} are missing)"
+            )
 
         for idx, (seg_start, path) in enumerate(segments):
             if not os.path.isfile(path) or os.path.getsize(path) < SEGMENT_HEADER_SIZE:

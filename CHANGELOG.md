@@ -3,6 +3,33 @@
 All notable changes to MDRAP are documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.0.1] - 2026-11-02
+
+### Recovery, Projection & Processing Correctness Remediation
+- **P0-A: Crash-Safe Snapshot Lifecycle & Multi-Candidate Recovery**:
+  - Implemented multi-candidate snapshot discovery (`_discover_candidate_snapshots`) loading candidates ordered descending by offset.
+  - Added cryptographic SHA-256 state digest verification over canonical sorted state keys, preventing corrupted snapshots from poisoning state.
+  - Added automatic fallback to older valid snapshots when the newest snapshot fails verification.
+  - Enforced fail-closed recovery invariant: raises explicit `RecoveryError` if history prior to WAL `earliest_offset` is missing, preventing silent data loss.
+  - Retained historical snapshots in a durable manifest (`snapshot_manifest.json`) with safe WAL segment pruning.
+- **P0-B: Offset Consistency & State Replay Invariance**:
+  - Eliminated `event_count - 1` offsets, binding state checkpoints directly to contiguous WAL offsets.
+  - Separated operational telemetry (`observed_raw_count`, `rejected_count`) from authoritative state, guaranteeing 0/300 divergences in stateful property tests.
+- **P0-C: Projection Reliability, Isolation & Contiguous Checkpoints**:
+  - Decoupled `Engine._lock` from projection execution, reducing cross-feed head-of-line blocking under SQLite lock contention from 3.04s to 0.06s.
+  - Added `ProjectionTracker` enforcing strict contiguous checkpoint advancement: a checkpoint never advances over a gap of failed offsets.
+  - Added bounded retry queues, exponential backoff, and degraded health telemetry exposing exact failed offsets and projection lag.
+- **P0-D: Sequence Tracking & Multi-Tier Semantic Alignment**:
+  - Implemented 64-bit sliding window seen bitmask (`sequence_seen`) and candidate tracking (`sequence_cand`) for forward jumps > 1000, preventing permanent sequence poisoning.
+  - Flagged old retransmissions within window as `INVALID` (`DUPLICATE` and `OUT_OF_ORDER`), matching institutional MoldUDP64/ITCH line arbitration.
+  - Added dynamic price corridor adaptation (`DEFAULT_PRICE_RESEED_AFTER = 8`) to gracefully absorb genuine market regime shifts.
+  - Verified 100% semantic agreement across Engine inline, pure Python `QualityEngine`, and native C `FastQualityEngine`.
+- **P0-E: Grouped WAL Durability Semantics**:
+  - Implemented background flusher coordinator (`_flusher_loop`) in `IngestLog` ensuring trailing events during quiet periods are durably fsynced within `group_commit_interval_ms`.
+  - Added `await_durable()` barrier for regulatory and transactional commit verification.
+- **Snapshot Lock Contention Elimination**:
+  - Replaced deep copy during snapshot creation with efficient dictionary comprehension, enabling concurrent submits during snapshots of 10,000 instruments.
+
 ## [4.0.0] - 2026-10-22
 
 ### Infrastructure, Streaming Replication & Low-Latency Extensions

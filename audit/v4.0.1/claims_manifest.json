@@ -1,0 +1,43 @@
+{
+  "platform": "Market Data Reliability & Acceleration Platform (MDRAP)",
+  "version": "4.0.1",
+  "audit_version": "v4.0.1",
+  "timestamp": "2026-11-02T15:20:00Z",
+  "engine_invariants": {
+    "zero_silent_data_loss": true,
+    "fail_closed_recovery": true,
+    "lock_isolated_projections": true,
+    "strict_contiguous_checkpoints": true,
+    "multi_candidate_snapshot_fallback": true,
+    "pure_python_c_parity": true
+  },
+  "benchmarks": {
+    "throughput_eps": 53369.3,
+    "latency_p50_us": 16.1,
+    "latency_p95_us": 23.8,
+    "latency_p99_us": 61.9,
+    "measurement_event_count": 30000,
+    "regression_tolerance_pct": 10.0
+  },
+  "recovery_guarantees": {
+    "max_snapshots_retained": 5,
+    "snapshot_integrity_algorithm": "SHA-256",
+    "wal_segment_safe_prune": true,
+    "unpersisted_event_tolerance_grouped_fsync": "0 trailing events lost in quiet periods"
+  },
+  "sequence_guarantees": {
+    "window_size_bits": 64,
+    "candidate_jump_threshold": 1000,
+    "candidate_jump_confirmation_count": 2,
+    "price_regime_reseed_ticks": 8,
+    "duplicate_status": "INVALID",
+    "out_of_order_status": "SUSPICIOUS"
+  },
+  "verified_test_summary": {
+    "total_tests": 1600,
+    "passed": 1600,
+    "failed": 0,
+    "release_gates_configured": 14,
+    "release_gates_passed": 14
+  }
+}

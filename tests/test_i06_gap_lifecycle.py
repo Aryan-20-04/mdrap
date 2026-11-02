@@ -191,8 +191,9 @@ def test_engine_gap_integration() -> None:
             },
         )
         d4 = engine.submit(ev4)
-        # No longer in open gaps, so treated as OUT_OF_ORDER
-        assert d4.quality_status == QualityStatus.SUSPICIOUS
+        # No longer in open gaps and already observed, so rejected as DUPLICATE (INVALID) and OUT_OF_ORDER
+        assert d4.quality_status == QualityStatus.INVALID
+        assert Reason.DUPLICATE.value in d4.reasons
         assert Reason.OUT_OF_ORDER.value in d4.reasons
 
         # Stats check

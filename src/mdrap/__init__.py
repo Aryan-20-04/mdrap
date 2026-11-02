@@ -24,6 +24,7 @@ from .models import (
     ReasonRegistry,
     reason_registry,
     deprecated,
+    RecoveryError,
 )
 from .clock import Clock, FixedClock, SystemClock
 from .engine import Engine, EngineConfig, EngineDecision, EngineState
@@ -80,6 +81,7 @@ __all__ = [
     "ReasonRegistry",
     "reason_registry",
     "deprecated",
+    "RecoveryError",
     "Clock",
     "FixedClock",
     "SystemClock",

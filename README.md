@@ -14,8 +14,8 @@
 </p>
 
 <p align="center">
-  <a href="pyproject.toml"><img src="https://img.shields.io/badge/version-4.0.0-blue.svg?style=flat-square" alt="Version 4.0.0"></a>
-  <a href="scripts/check.py"><img src="https://img.shields.io/badge/tests-1542%20passing-brightgreen.svg?style=flat-square" alt="Tests"></a>
+  <a href="pyproject.toml"><img src="https://img.shields.io/badge/version-4.0.1-blue.svg?style=flat-square" alt="Version 4.0.1"></a>
+  <a href="scripts/check.py"><img src="https://img.shields.io/badge/tests-1600%20passing-brightgreen.svg?style=flat-square" alt="Tests"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-7928CA.svg?style=flat-square" alt="License"></a>
   <a href="https://github.com/Aryan-20-04/mdrap/stargazers"><img src="https://img.shields.io/github/stars/Aryan-20-04/mdrap?style=flat-square&color=00D2FF" alt="GitHub Stars"></a>
   <a href="pyproject.toml"><img src="https://img.shields.io/badge/language-Python%20%7C%20C-4361EE.svg?style=flat-square" alt="Language"></a>

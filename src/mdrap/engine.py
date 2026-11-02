@@ -24,7 +24,14 @@ import warnings
 from typing import Any
 
 from .clock import Clock, SystemClock
-from .models import CanonicalEvent, EventType, QualityStatus, RawEvent, Reason
+from .models import (
+    CanonicalEvent,
+    EventType,
+    QualityStatus,
+    RawEvent,
+    Reason,
+    RecoveryError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +90,10 @@ DEFAULT_STALENESS_THRESHOLD_S: float = 0.05
 DEFAULT_PRICE_STDDEV: float = 6.0
 DEFAULT_PRICE_WINDOW: int = 50
 DEFAULT_DEDUP_WINDOW_SIZE: int = 10_000
+SEQUENCE_BITMAP_BITS: int = 64
+SEQUENCE_BITMAP_MASK: int = 0xFFFFFFFFFFFFFFFF
+DEFAULT_SEQ_JUMP_LIMIT: int = 1000
+DEFAULT_PRICE_RESEED_AFTER: int = 8
 
 
 @dataclass
@@ -93,6 +104,9 @@ class EngineState:
     last_applied_offset: int = -1
     observed_count: int = 0
     sequence_state: dict[str, int] = field(default_factory=dict)
+    sequence_seen: dict[str, int] = field(default_factory=dict)
+    sequence_cand: dict[str, int] = field(default_factory=dict)
+    sequence_regress: dict[str, int] = field(default_factory=dict)
     dedup_window: Any = field(default_factory=deque)
     dedup_set: set[str] = field(default_factory=set)
     price_windows: dict[str, list[float]] = field(default_factory=dict)
@@ -108,6 +122,7 @@ class EngineState:
     _price_stats: dict[str, tuple[float, float, int]] = field(
         default_factory=dict, repr=False
     )
+    _price_anom: dict[str, tuple[int, float]] = field(default_factory=dict, repr=False)
 
     def __post_init__(self) -> None:
         if not isinstance(self.dedup_window, deque):
@@ -131,6 +146,9 @@ class EngineState:
             last_applied_offset=self.last_applied_offset,
             observed_count=self.observed_count,
             sequence_state=dict(self.sequence_state),
+            sequence_seen=dict(self.sequence_seen),
+            sequence_cand=dict(self.sequence_cand),
+            sequence_regress=dict(self.sequence_regress),
             dedup_window=deque(self.dedup_window),
             dedup_set=set(self.dedup_set),
             price_windows={k: deque(v) for k, v in self.price_windows.items()},
@@ -147,23 +165,33 @@ class EngineState:
             epoch_ts=dict(self.epoch_ts),
             session_state=dict(self.session_state),
             _price_stats={k: v for k, v in self._price_stats.items()},
+            _price_anom={k: v for k, v in self._price_anom.items()},
         )
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "event_count": self.event_count,
             "last_applied_offset": self.last_applied_offset,
-            "observed_count": self.observed_count,
             "sequence_state": dict(self.sequence_state),
+            "sequence_seen": dict(self.sequence_seen),
+            "sequence_cand": dict(self.sequence_cand),
+            "sequence_regress": dict(self.sequence_regress),
             "dedup_window": list(self.dedup_window),
             "price_windows": {k: list(v) for k, v in self.price_windows.items()},
-            "bbo_state": copy.deepcopy(self.bbo_state),
-            "reconciliation_state": copy.deepcopy(self.reconciliation_state),
+            "bbo_state": {
+                k: {src: dict(q) for src, q in v.items()}
+                for k, v in self.bbo_state.items()
+            },
+            "reconciliation_state": {
+                k: dict(v) for k, v in self.reconciliation_state.items()
+            },
             "counts": dict(self.counts),
             "staleness_threshold_s": self.staleness_threshold_s,
             "epoch_state": dict(self.epoch_state),
             "epoch_ts": dict(self.epoch_ts),
             "session_state": dict(self.session_state),
+            "_price_stats": {k: list(v) for k, v in self._price_stats.items()},
+            "_price_anom": {k: list(v) for k, v in self._price_anom.items()},
         }
 
     @classmethod
@@ -173,8 +201,11 @@ class EngineState:
         state = cls(
             event_count=data.get("event_count", 0),
             last_applied_offset=data.get("last_applied_offset", -1),
-            observed_count=data.get("observed_count", 0),
+            observed_count=data.get("observed_count", data.get("event_count", 0)),
             sequence_state=data.get("sequence_state", {}),
+            sequence_seen=data.get("sequence_seen", {}),
+            sequence_cand=data.get("sequence_cand", {}),
+            sequence_regress=data.get("sequence_regress", {}),
             dedup_window=deque(dedup_items),
             dedup_set=set(dedup_items),
             price_windows=data.get("price_windows", {}),
@@ -187,6 +218,8 @@ class EngineState:
             epoch_state=data.get("epoch_state", {}),
             epoch_ts=data.get("epoch_ts", {}),
             session_state=data.get("session_state", {}),
+            _price_stats={k: tuple(v) for k, v in data.get("_price_stats", {}).items()},
+            _price_anom={k: tuple(v) for k, v in data.get("_price_anom", {}).items()},
         )
         return state
 
@@ -221,18 +254,24 @@ class Transaction:
             (_OP_COUNT, status_name, self.state.counts.get(status_name, 0))
         )
 
+    def record_dict(self, dict_obj: dict, key: Any) -> None:
+        existed = key in dict_obj
+        old_val = dict_obj.get(key)
+        self._actions.append((_OP_DICT_KEY, dict_obj, key, existed, old_val))
+
     def record_sequence(self, slot_key: str) -> None:
-        existed = slot_key in self.state.sequence_state
-        old_val = self.state.sequence_state.get(slot_key)
-        self._actions.append(
-            (_OP_DICT_KEY, self.state.sequence_state, slot_key, existed, old_val)
-        )
+        self.record_dict(self.state.sequence_state, slot_key)
+        self.record_dict(self.state.sequence_seen, slot_key)
+        self.record_dict(self.state.sequence_cand, slot_key)
+        self.record_dict(self.state.sequence_regress, slot_key)
 
     def record_price_window(self, slot_key: str) -> None:
         pw = self.state.price_windows
         had = slot_key in pw
         old_val = list(pw[slot_key]) if had else None
         self._actions.append((_OP_DICT_KEY, pw, slot_key, had, old_val))
+        self.record_dict(self.state._price_anom, slot_key)
+        self.record_dict(self.state._price_stats, slot_key)
 
     def record_bbo(self, instrument: str, source: str) -> None:
         bbo = self.state.bbo_state
@@ -297,8 +336,6 @@ class Transaction:
                     )
                 else:
                     d.pop(k, None)
-                if d is self.state.price_windows:
-                    self.state._price_stats.pop(k, None)
             elif op == _OP_BBO:
                 inst, src, had_inst, had_src, old_quote = (
                     item[1],
@@ -397,6 +434,7 @@ class EngineConfig:
     snapshot_cadence_seconds: float = 300.0
     gap_manager: Any | None = None
     on_gap: Any | None = None
+    max_snapshots_retained: int = 3
 
 
 class Engine:
@@ -484,11 +522,19 @@ class Engine:
         self.session_policy = session_policy
         self.snapshot_cadence_events = snapshot_cadence_events
         self.snapshot_cadence_seconds = snapshot_cadence_seconds
+        self.max_snapshots_retained = (
+            getattr(cfg, "max_snapshots_retained", 3)
+            if isinstance(path, EngineConfig)
+            else 3
+        )
         self.gap_manager = gap_manager
         self.state = self.create_initial_state()
+        self.observed_raw_count: int = 0
+        self.rejected_count: int = 0
         self._last_snapshot_event_count: int = self.state.event_count
         self._last_snapshot_ts: float = time.time()
         self._projections: list[Any] = []
+        self._projection_trackers: dict[int, Any] = {}
         self._default_sqlite_proj: Any = None
         self.log: Any = None
         self._lock = threading.RLock()
@@ -503,47 +549,95 @@ class Engine:
                 fsync_policy=fsync_policy,
                 max_segment_bytes=max_segment_bytes,
             )
-            # Bounded startup (Phase 3 & Program I-4): check for snapshot with SHA-256 verification
+            # Bounded startup (Phase 3, P0-A, P0-B): discover verified snapshots with multi-candidate fallback
             replay_from = 0
-            snapshot_file = os.path.join(self.log.log_dir, "snapshot.json")
-            if os.path.exists(snapshot_file):
+            snap_dir = self.log.log_dir
+            candidates = self._discover_candidate_snapshots(snap_dir)
+            snapshot_restored = False
+
+            failed_offsets_snap: set[int] = set()
+            for snap_off, snap_path in candidates:
+                if snap_off in failed_offsets_snap:
+                    continue
+                if not os.path.isfile(snap_path):
+                    continue
                 try:
-                    with open(snapshot_file, "r", encoding="utf-8") as f_snap:
+                    with open(snap_path, "r", encoding="utf-8") as f_snap:
                         snap_obj = json.load(f_snap)
                     snap_state_dict = snap_obj.get("state")
-                    snap_offset = snap_obj.get("offset", -1)
+                    recorded_offset = snap_obj.get("offset", -1)
                     snap_sha = snap_obj.get("sha256")
-                    if snap_state_dict and snap_offset >= 0:
-                        if snap_sha:
-                            canonical_bytes = json.dumps(
-                                snap_state_dict, sort_keys=True, separators=(",", ":")
-                            ).encode("utf-8")
-                            actual_sha = hashlib.sha256(canonical_bytes).hexdigest()
-                            if actual_sha != snap_sha:
-                                raise ValueError(
-                                    f"Snapshot SHA-256 checksum mismatch: expected {snap_sha}, got {actual_sha}"
-                                )
-                        self.state = EngineState.from_dict(snap_state_dict)
-                        self._last_snapshot_event_count = self.state.event_count
-                        self._last_snapshot_ts = time.time()
-                        replay_from = snap_offset + 1
-                        self.recovery_metrics.snapshot_offset = snap_offset
-                        self.recovery_metrics.snapshot_used = True
-                        logger.info(
-                            "[engine] Restored snapshot at offset %d (event_count=%d)",
-                            snap_offset,
-                            self.state.event_count,
+                    if not snap_state_dict or recorded_offset < 0:
+                        continue
+                    if snap_sha:
+                        canonical_bytes = json.dumps(
+                            snap_state_dict, sort_keys=True, separators=(",", ":")
+                        ).encode("utf-8")
+                        actual_sha = hashlib.sha256(canonical_bytes).hexdigest()
+                        if actual_sha != snap_sha:
+                            failed_offsets_snap.add(snap_off)
+                            raise ValueError(
+                                f"Snapshot SHA-256 checksum mismatch: expected {snap_sha}, got {actual_sha}"
+                            )
+
+                    # Snapshot cryptographically verified!
+                    # Verify if the WAL has history from recorded_offset + 1
+                    if (
+                        self.log is not None
+                        and self.log.next_offset > 0
+                        and recorded_offset + 1 < self.log.next_offset
+                        and self.log.earliest_offset > recorded_offset + 1
+                    ):
+                        failed_offsets_snap.add(snap_off)
+                        logger.warning(
+                            "[engine] Candidate snapshot %s at offset %d cannot be used: WAL history between %d and %d is missing; trying older candidates...",
+                            snap_path,
+                            recorded_offset,
+                            recorded_offset + 1,
+                            self.log.earliest_offset,
                         )
+                        continue
+
+                    # Usable snapshot found!
+                    self.state = EngineState.from_dict(snap_state_dict)
+                    self._last_snapshot_event_count = self.state.event_count
+                    self._last_snapshot_ts = time.time()
+                    replay_from = recorded_offset + 1
+                    self.recovery_metrics.snapshot_offset = recorded_offset
+                    self.recovery_metrics.snapshot_used = True
+                    snapshot_restored = True
+                    logger.info(
+                        "[engine] Restored verified snapshot %s at offset %d (event_count=%d)",
+                        os.path.basename(snap_path),
+                        recorded_offset,
+                        self.state.event_count,
+                    )
+                    break
                 except Exception as snap_exc:
+                    failed_offsets_snap.add(snap_off)
                     logger.warning(
-                        "[engine] Failed to load snapshot %s: %s; replaying from start",
-                        snapshot_file,
+                        "[engine] Failed to load candidate snapshot %s: %s; trying older candidates...",
+                        snap_path,
                         snap_exc,
                     )
-                    self.state = self.create_initial_state()
-                    replay_from = 0
-                    self.recovery_metrics.snapshot_offset = -1
-                    self.recovery_metrics.snapshot_used = False
+
+            if not snapshot_restored:
+                # No valid snapshot could be loaded
+                if (
+                    self.log is not None
+                    and self.log.next_offset > 0
+                    and self.log.earliest_offset > 0
+                ):
+                    # Invariant: Fail closed if WAL history is incomplete!
+                    raise RecoveryError(
+                        f"Engine recovery failed: No valid snapshot could be loaded and WAL history before offset "
+                        f"{self.log.earliest_offset} is missing (required offset 0). "
+                        "Cannot reconstruct authoritative state without complete history."
+                    )
+                self.state = self.create_initial_state()
+                replay_from = 0
+                self.recovery_metrics.snapshot_offset = -1
+                self.recovery_metrics.snapshot_used = False
 
             # Catch up state only from uncompacted log records since snapshot
             for off, raw in self.log.iter_from(replay_from):
@@ -657,6 +751,54 @@ class Engine:
         dec = self.submit(raw)
         return dec.canonical_event if dec else None
 
+    def _get_or_create_projection_tracker(self, proj: Any) -> Any:
+        pid = id(proj)
+        if pid not in self._projection_trackers:
+            from .projection import ProjectionTracker
+
+            name = getattr(proj, "name", type(proj).__name__)
+            self._projection_trackers[pid] = ProjectionTracker(
+                projection=proj, name=name
+            )
+        return self._projection_trackers[pid]
+
+    @property
+    def projection_errors(self) -> list[dict[str, Any]]:
+        """List active projection failures and uncommitted/failed offsets."""
+        errors = []
+        for proj in self._projections:
+            tracker = self._get_or_create_projection_tracker(proj)
+            if tracker.failed_offsets or tracker.consecutive_failures > 0:
+                errors.append(
+                    {
+                        "name": tracker.name,
+                        "failed_offsets": list(tracker.failed_offsets),
+                        "consecutive_failures": tracker.consecutive_failures,
+                        "last_failure_time": tracker.last_failure_ts,
+                        "recovery_status": tracker.recovery_status,
+                    }
+                )
+        return errors
+
+    @property
+    def projection_failures(self) -> int:
+        """Total count of failed projection batch deliveries."""
+        return sum(
+            tracker.consecutive_failures
+            for tracker in self._projection_trackers.values()
+        )
+
+    def recover_projections(self) -> dict[str, int]:
+        """Trigger immediate recovery replay of pending failed batches across all projections."""
+        recovered = {}
+        for proj in self._projections:
+            tracker = self._get_or_create_projection_tracker(proj)
+            if tracker.pending_batches:
+                before = len(tracker.pending_batches)
+                tracker.apply([], tracker.last_contiguous_offset)
+                recovered[tracker.name] = before - len(tracker.pending_batches)
+        return recovered
+
     def subscribe(self, projection: Any, from_offset: int = 0) -> None:
         """Register a projection consumer and catch up from log offset."""
         with self._lock:
@@ -739,49 +881,78 @@ class Engine:
                 valid_indices: list[int] = []
 
                 for idx, raw in enumerate(event_list):
+                    # Record observed event count for all presented raw events
+                    batch_txn.record_event_count()
+                    self.state.observed_count += 1
+
                     # Stamp receive timestamp before append to ensure deterministic replay (C2)
                     if not raw.receive_timestamp:
                         raw.receive_timestamp = self.clock.now()
 
-                    # Enforce payload size limit at Engine boundary to protect WAL from stalling (N4, E14)
-                    if self.max_payload_bytes > 0:
-                        payload = raw.payload
-                        p_len = estimate_payload_size(
-                            payload, max_bytes=self.max_payload_bytes
+                    # Enforce payload serialization safety and size limit at Engine boundary
+                    try:
+                        p_len = (
+                            estimate_payload_size(
+                                raw.payload, max_bytes=self.max_payload_bytes
+                            )
+                            if self.max_payload_bytes > 0
+                            else 0
                         )
-                        if p_len > self.max_payload_bytes:
-                            q_id = f"q_{raw.source}_{self.state.observed_count}"
-                            q_row = (
-                                q_id,
-                                "OVERSIZE",
-                                raw.source,
-                                QualityStatus.INVALID.value,
-                                json.dumps(
-                                    [
-                                        f"Payload size {p_len} bytes exceeds limit {self.max_payload_bytes} bytes"
-                                    ]
-                                ),
-                                json.dumps(
-                                    {"size": p_len, "truncated": str(payload)[:256]}
-                                ),
-                                raw.receive_timestamp,
-                            )
-                            batch_txn.record_count("INVALID")
-                            self.state.observed_count += 1
-                            self.state.counts["INVALID"] += 1
-                            dec = EngineDecision(
-                                offset=-1,
-                                event_id=q_id,
-                                quality_status=QualityStatus.INVALID,
-                                reasons=[Reason.SCHEMA_VIOLATION.value],
-                                quarantine_row=q_row,
-                            )
-                            decisions[idx] = dec
-                            offsets[idx] = -1
-                            continue
+                    except (TypeError, ValueError) as ser_err:
+                        self.observed_raw_count += 1
+                        self.rejected_count += 1
+                        q_id = f"q_{raw.source}_{self.observed_raw_count}"
+                        q_row = (
+                            q_id,
+                            "CORRUPT_PAYLOAD",
+                            raw.source,
+                            QualityStatus.INVALID.value,
+                            json.dumps([f"Payload serialization failed: {ser_err}"]),
+                            json.dumps({"error": str(ser_err)}),
+                            raw.receive_timestamp,
+                        )
+                        dec = EngineDecision(
+                            offset=-1,
+                            event_id=q_id,
+                            quality_status=QualityStatus.INVALID,
+                            reasons=[Reason.SCHEMA_VIOLATION.value],
+                            quarantine_row=q_row,
+                        )
+                        decisions[idx] = dec
+                        offsets[idx] = -1
+                        continue
 
-                    batch_txn.record_event_count()
-                    self.state.observed_count += 1
+                    if self.max_payload_bytes > 0 and p_len > self.max_payload_bytes:
+                        self.observed_raw_count += 1
+                        self.rejected_count += 1
+                        q_id = f"q_{raw.source}_{self.observed_raw_count}"
+                        q_row = (
+                            q_id,
+                            "OVERSIZE",
+                            raw.source,
+                            QualityStatus.INVALID.value,
+                            json.dumps(
+                                [
+                                    f"Payload size {p_len} bytes exceeds limit {self.max_payload_bytes} bytes"
+                                ]
+                            ),
+                            json.dumps(
+                                {"size": p_len, "truncated": str(raw.payload)[:256]}
+                            ),
+                            raw.receive_timestamp,
+                        )
+                        dec = EngineDecision(
+                            offset=-1,
+                            event_id=q_id,
+                            quality_status=QualityStatus.INVALID,
+                            reasons=[Reason.SCHEMA_VIOLATION.value],
+                            quarantine_row=q_row,
+                        )
+                        decisions[idx] = dec
+                        offsets[idx] = -1
+                        continue
+
+                    self.observed_raw_count += 1
                     offset = (
                         (self.log.next_offset + len(valid_for_wal))
                         if self.log is not None
@@ -837,20 +1008,6 @@ class Engine:
                     for d in final_decisions:
                         d.durable = True
 
-                # Dispatch to subscribed projections with per-consumer error isolation (Phase 2 / E15)
-                if self._projections and final_decisions:
-                    last_offset = offsets[-1]
-                    for proj in self._projections:
-                        try:
-                            proj.apply(final_decisions, last_offset)
-                        except Exception as proj_err:
-                            logger.error(
-                                "[engine] Projection %s failed at offset %d: %s",
-                                type(proj).__name__,
-                                last_offset,
-                                proj_err,
-                            )
-
                 # Program I-4: Automatic snapshot cadence evaluation
                 needs_snapshot = False
                 if self.log is not None:
@@ -868,10 +1025,27 @@ class Engine:
                         needs_snapshot = True
                         self._last_snapshot_event_count = self.state.event_count
                         self._last_snapshot_ts = now_wall
+
+                projs_to_dispatch = list(self._projections)
+                dispatch_offset = offsets[-1] if offsets else -1
             except Exception:
                 # Durability / IO failure rollback (Task 5: Exception Safety & State Consistency)
                 batch_txn.rollback()
                 raise
+
+        # Dispatch to subscribed projections OUTSIDE self._lock with per-consumer error isolation & retry
+        if projs_to_dispatch and final_decisions:
+            for proj in projs_to_dispatch:
+                try:
+                    tracker = self._get_or_create_projection_tracker(proj)
+                    tracker.apply(final_decisions, dispatch_offset)
+                except Exception as proj_err:
+                    logger.error(
+                        "[engine] Projection %s failed at offset %d: %s",
+                        getattr(proj, "name", type(proj).__name__),
+                        dispatch_offset,
+                        proj_err,
+                    )
 
         # Save snapshot OUTSIDE self._lock to eliminate lock contention on disk I/O / fsync
         if needs_snapshot:
@@ -1011,6 +1185,7 @@ class Engine:
         """Flush pending writes to persistent log and projections."""
         if self.log is not None:
             self.log.flush()
+        self.recover_projections()
 
     def query(self, instrument: str, limit: int = 100) -> list[dict]:
         """Query recent canonical ticks for an instrument from attached SQLite projection."""
@@ -1041,21 +1216,51 @@ class Engine:
         )
 
         max_proj_lag = 0
+        has_proj_failures = False
         proj_stats = []
         for proj in self._projections:
-            name = getattr(proj, "name", "projection")
-            cp = proj.checkpoint() if hasattr(proj, "checkpoint") else -1
+            tracker = self._get_or_create_projection_tracker(proj)
+            cp = tracker.checkpoint()
             lag = max(0, log_head - (cp + 1)) if cp >= 0 else log_head
             if lag > max_proj_lag:
                 max_proj_lag = lag
-            proj_stats.append({"name": name, "checkpoint": cp, "lag": lag})
+            if (
+                tracker.failed_offsets
+                or tracker.consecutive_failures > 0
+                or tracker.recovery_status in ("DEGRADED", "STALLED")
+            ):
+                has_proj_failures = True
+            proj_stats.append(
+                {
+                    "name": tracker.name,
+                    "checkpoint": cp,
+                    "latest_wal_offset": log_head - 1 if log_head > 0 else -1,
+                    "lag": lag,
+                    "failed_offsets": list(tracker.failed_offsets),
+                    "consecutive_failures": tracker.consecutive_failures,
+                    "retry_count": tracker.total_retries,
+                    "last_success_time": tracker.last_success_ts,
+                    "last_failure_time": tracker.last_failure_ts,
+                    "recovery_status": tracker.recovery_status,
+                }
+            )
 
-        if max_proj_lag == 0 and log_lag == 0:
+        if max_proj_lag == 0 and log_lag == 0 and not has_proj_failures:
             health_status = "HEALTHY"
-        elif max_proj_lag < 500:
+        elif max_proj_lag < 500 and not has_proj_failures:
             health_status = "DEGRADED"
         else:
-            health_status = "UNHEALTHY"
+            health_status = (
+                "UNHEALTHY"
+                if (
+                    max_proj_lag >= 500
+                    or any(
+                        t.recovery_status == "STALLED"
+                        for t in self._projection_trackers.values()
+                    )
+                )
+                else "DEGRADED"
+            )
 
         return {
             "processed": self.state.event_count,
@@ -1066,7 +1271,10 @@ class Engine:
             "log_head_offset": log_head,
             "log_lag": log_lag,
             "projection_lag": max_proj_lag,
+            "max_projection_lag": max_proj_lag,
+            "projection_failures": self.projection_failures,
             "projections": proj_stats,
+            "health": health_status,
             "health_status": health_status,
         }
 
@@ -1637,60 +1845,180 @@ class Engine:
 
         if seq is not None:
             last_seq = state.sequence_state.get(slot_key)
-            if last_seq is not None:
-                if seq == last_seq:
-                    is_duplicate = True
-                    cur_status = QualityStatus.merge(cur_status, QualityStatus.INVALID)
-                    if reasons_out is reasons:
-                        reasons_out = list(reasons)
-                    reasons_out.append(Reason.DUPLICATE.value)
-                elif seq < last_seq:
-                    filled = None
-                    if self.gap_manager is not None:
-                        filled = self.gap_manager.try_fill(
-                            source=raw_event.source,
-                            instrument=instrument,
-                            seq=seq,
-                            epoch=str(current_epoch),
-                            now_ts=recv_ts,
-                        )
-                    if filled is not None:
-                        if reasons_out is reasons:
-                            reasons_out = list(reasons)
-                        reasons_out.append(Reason.GAP_FILLED.value)
-                    else:
-                        cur_status = QualityStatus.merge(
-                            cur_status, QualityStatus.SUSPICIOUS
-                        )
-                        if reasons_out is reasons:
-                            reasons_out = list(reasons)
-                        reasons_out.append(Reason.OUT_OF_ORDER.value)
-                elif seq > last_seq + 1:
+            seen_mask = state.sequence_seen.get(slot_key, 0)
+            cand_plus1 = state.sequence_cand.get(slot_key, 0)
+            regress_cnt = state.sequence_regress.get(slot_key, 0)
+
+            if last_seq is None:
+                if txn is not None:
+                    txn.record_sequence(slot_key)
+                    if slot_key != stream_key:
+                        txn.record_sequence(stream_key)
+                state.sequence_state[slot_key] = seq
+                state.sequence_seen[slot_key] = 1
+                state.sequence_cand[slot_key] = 0
+                state.sequence_regress[slot_key] = 0
+                if slot_key != stream_key:
+                    state.sequence_state[stream_key] = seq
+                    state.sequence_seen[stream_key] = 1
+                    state.sequence_cand[stream_key] = 0
+                    state.sequence_regress[stream_key] = 0
+            elif seq > last_seq:
+                jump = seq - last_seq
+                if jump > DEFAULT_SEQ_JUMP_LIMIT:
+                    # Forward gap / sequence jump beyond threshold: flag SUSPICIOUS / SEQUENCE_GAP
                     cur_status = QualityStatus.merge(
                         cur_status, QualityStatus.SUSPICIOUS
                     )
                     if reasons_out is reasons:
                         reasons_out = list(reasons)
                     reasons_out.append(Reason.SEQUENCE_GAP.value)
-                    if self.gap_manager is not None and not is_replay:
-                        self.gap_manager.record_gap(
-                            source=raw_event.source,
-                            instrument=instrument,
-                            expected_start=last_seq + 1,
-                            received_seq=seq,
-                            epoch=str(current_epoch),
-                            now_ts=recv_ts,
-                        )
 
-            if txn is not None:
-                txn.record_sequence(slot_key)
-                if slot_key != stream_key:
-                    txn.record_sequence(stream_key)
-            state.sequence_state[slot_key] = max(
-                last_seq if last_seq is not None else -1, seq
-            )
-            if slot_key != stream_key:
-                state.sequence_state[stream_key] = seq
+                    cand = cand_plus1 - 1
+                    if (
+                        cand_plus1 != 0
+                        and seq > cand
+                        and (seq - cand) <= DEFAULT_SEQ_JUMP_LIMIT
+                    ):
+                        # Consecutive jump confirms new epoch / stream progression
+                        if txn is not None:
+                            txn.record_sequence(slot_key)
+                            if slot_key != stream_key:
+                                txn.record_sequence(stream_key)
+                        state.sequence_state[slot_key] = seq
+                        state.sequence_seen[slot_key] = 1
+                        state.sequence_cand[slot_key] = 0
+                        if slot_key != stream_key:
+                            state.sequence_state[stream_key] = seq
+                            state.sequence_seen[stream_key] = 1
+                            state.sequence_cand[stream_key] = 0
+                    else:
+                        if txn is not None:
+                            txn.record_dict(state.sequence_cand, slot_key)
+                            if slot_key != stream_key:
+                                txn.record_dict(state.sequence_cand, stream_key)
+                        state.sequence_cand[slot_key] = seq + 1
+                        if slot_key != stream_key:
+                            state.sequence_cand[stream_key] = seq + 1
+                else:
+                    if jump > 1:
+                        cur_status = QualityStatus.merge(
+                            cur_status, QualityStatus.SUSPICIOUS
+                        )
+                        if reasons_out is reasons:
+                            reasons_out = list(reasons)
+                        reasons_out.append(Reason.SEQUENCE_GAP.value)
+                        if self.gap_manager is not None and not is_replay:
+                            self.gap_manager.record_gap(
+                                source=raw_event.source,
+                                instrument=instrument,
+                                expected_start=last_seq + 1,
+                                received_seq=seq,
+                                epoch=str(current_epoch),
+                                now_ts=recv_ts,
+                            )
+
+                    new_seen = (
+                        ((seen_mask << jump) | 1) & SEQUENCE_BITMAP_MASK
+                        if jump < SEQUENCE_BITMAP_BITS
+                        else 1
+                    )
+                    if txn is not None:
+                        txn.record_sequence(slot_key)
+                        if slot_key != stream_key:
+                            txn.record_sequence(stream_key)
+                    state.sequence_state[slot_key] = seq
+                    state.sequence_seen[slot_key] = new_seen
+                    state.sequence_cand[slot_key] = 0
+                    if slot_key != stream_key:
+                        state.sequence_state[stream_key] = seq
+                        state.sequence_seen[stream_key] = new_seen
+                        state.sequence_cand[stream_key] = 0
+            else:
+                # seq <= last_seq
+                d = last_seq - seq
+                if d < SEQUENCE_BITMAP_BITS:
+                    if (seen_mask >> d) & 1:
+                        # Already seen in sliding window: DUPLICATE (QualityStatus.INVALID)
+                        is_duplicate = True
+                        cur_status = QualityStatus.merge(
+                            cur_status, QualityStatus.INVALID
+                        )
+                        if reasons_out is reasons:
+                            reasons_out = list(reasons)
+                        reasons_out.append(Reason.DUPLICATE.value)
+                        if d > 0:
+                            reasons_out.append(Reason.OUT_OF_ORDER.value)
+                    else:
+                        filled = None
+                        if self.gap_manager is not None:
+                            filled = self.gap_manager.try_fill(
+                                source=raw_event.source,
+                                instrument=instrument,
+                                seq=seq,
+                                epoch=str(current_epoch),
+                                now_ts=recv_ts,
+                            )
+                        if filled is not None:
+                            if reasons_out is reasons:
+                                reasons_out = list(reasons)
+                            reasons_out.append(Reason.GAP_FILLED.value)
+                        else:
+                            cur_status = QualityStatus.merge(
+                                cur_status, QualityStatus.SUSPICIOUS
+                            )
+                            if reasons_out is reasons:
+                                reasons_out = list(reasons)
+                            reasons_out.append(Reason.OUT_OF_ORDER.value)
+
+                        new_seen = seen_mask | (1 << d)
+                        if txn is not None:
+                            txn.record_dict(state.sequence_seen, slot_key)
+                            if slot_key != stream_key:
+                                txn.record_dict(state.sequence_seen, stream_key)
+                        state.sequence_seen[slot_key] = new_seen
+                        if slot_key != stream_key:
+                            state.sequence_seen[stream_key] = new_seen
+                else:
+                    if d > DEFAULT_SEQ_JUMP_LIMIT:
+                        regress_cnt += 1
+                        if regress_cnt >= 2:
+                            if txn is not None:
+                                txn.record_sequence(slot_key)
+                                if slot_key != stream_key:
+                                    txn.record_sequence(stream_key)
+                            state.sequence_state[slot_key] = seq
+                            state.sequence_seen[slot_key] = 1
+                            state.sequence_regress[slot_key] = 0
+                            state.sequence_cand[slot_key] = 0
+                            if slot_key != stream_key:
+                                state.sequence_state[stream_key] = seq
+                                state.sequence_seen[stream_key] = 1
+                                state.sequence_regress[stream_key] = 0
+                                state.sequence_cand[stream_key] = 0
+                        else:
+                            if txn is not None:
+                                txn.record_dict(state.sequence_regress, slot_key)
+                                if slot_key != stream_key:
+                                    txn.record_dict(state.sequence_regress, stream_key)
+                            state.sequence_regress[slot_key] = regress_cnt
+                            if slot_key != stream_key:
+                                state.sequence_regress[stream_key] = regress_cnt
+                    else:
+                        if txn is not None:
+                            txn.record_dict(state.sequence_regress, slot_key)
+                            if slot_key != stream_key:
+                                txn.record_dict(state.sequence_regress, stream_key)
+                        state.sequence_regress[slot_key] = 0
+                        if slot_key != stream_key:
+                            state.sequence_regress[stream_key] = 0
+
+                    cur_status = QualityStatus.merge(
+                        cur_status, QualityStatus.SUSPICIOUS
+                    )
+                    if reasons_out is reasons:
+                        reasons_out = list(reasons)
+                    reasons_out.append(Reason.OUT_OF_ORDER.value)
         else:
             biz_id = (
                 payload.get("trade_id")
@@ -1832,7 +2160,33 @@ class Engine:
                 if reasons_out is reasons:
                     reasons_out = list(reasons)
                 reasons_out.append(Reason.PRICE_ANOMALY.value)
+
+                # Track consecutive consistent price outliers for regime shift re-seeding
+                anom_cnt, anom_last = state._price_anom.get(slot_key, (0, 0.0))
+                eff_std = (
+                    effective_std
+                    if "effective_std" in locals() and effective_std > 0
+                    else 0.05 * abs(price)
+                )
+                band = DEFAULT_PRICE_STDDEV * eff_std
+                cluster_tol = max(band, 0.05 * abs(price))
+
+                if anom_cnt > 0 and abs(price - anom_last) <= cluster_tol:
+                    anom_cnt += 1
+                else:
+                    anom_cnt = 1
+                anom_last = price
+
+                if anom_cnt >= DEFAULT_PRICE_RESEED_AFTER:
+                    # Consecutive consistent outliers confirm genuine market regime shift
+                    prices.clear()
+                    prices.append(price)
+                    state._price_stats[slot_key] = (price, 0.0, 0)
+                    state._price_anom[slot_key] = (0, 0.0)
+                else:
+                    state._price_anom[slot_key] = (anom_cnt, anom_last)
             else:
+                state._price_anom[slot_key] = (0, 0.0)
                 if n_prices >= DEFAULT_PRICE_WINDOW:
                     old_p = (
                         prices.popleft() if isinstance(prices, deque) else prices.pop(0)
@@ -2140,8 +2494,8 @@ class Engine:
                 if self.state.last_applied_offset >= 0
                 else (
                     self.log.next_offset - 1
-                    if self.log is not None
-                    else self.state.event_count - 1
+                    if self.log is not None and self.log.next_offset > 0
+                    else -1
                 )
             )
             ev_count = self.state.event_count
@@ -2220,8 +2574,73 @@ class Engine:
                 return self.log.delete_segments_before(offset)
             return 0
 
-    def save_snapshot(self, prune_obsolete_segments: bool = True) -> dict[str, Any]:
+    @classmethod
+    def _discover_candidate_snapshots(cls, snap_dir: str) -> list[tuple[int, str]]:
+        """Scan snap_dir for candidate snapshot files, returning [(offset, path), ...] sorted descending by offset."""
+        candidates: dict[str, tuple[int, str]] = {}
+        if not os.path.isdir(snap_dir):
+            return []
+
+        manifest_path = os.path.join(snap_dir, "snapshot_manifest.json")
+        if os.path.isfile(manifest_path):
+            try:
+                with open(manifest_path, "r", encoding="utf-8") as f:
+                    man = json.load(f)
+                for entry in man.get("snapshots", []):
+                    fn = entry.get("path")
+                    off = entry.get("offset", -1)
+                    if fn and off >= 0:
+                        p = os.path.join(snap_dir, fn)
+                        if os.path.isfile(p):
+                            candidates[os.path.abspath(p)] = (off, p)
+            except Exception:
+                pass  # Self-healing on corrupted manifest: fall back to directory scan
+
+        # Scan directory for versioned snapshot files: snapshot_0000000000002999.json
+        for fname in os.listdir(snap_dir):
+            if (
+                fname.startswith("snapshot_")
+                and fname.endswith(".json")
+                and not fname.endswith(".tmp")
+            ):
+                parts = fname[len("snapshot_") : -len(".json")]
+                try:
+                    off = int(parts)
+                    p = os.path.join(snap_dir, fname)
+                    candidates[os.path.abspath(p)] = (off, p)
+                except ValueError:
+                    pass
+
+        # Also include snapshot.json if it exists and hasn't been added
+        legacy_snap = os.path.join(snap_dir, "snapshot.json")
+        if (
+            os.path.isfile(legacy_snap)
+            and os.path.abspath(legacy_snap) not in candidates
+        ):
+            try:
+                with open(legacy_snap, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                off = data.get("offset", -1)
+                if off >= 0:
+                    candidates[os.path.abspath(legacy_snap)] = (off, legacy_snap)
+                else:
+                    candidates[os.path.abspath(legacy_snap)] = (-1, legacy_snap)
+            except Exception:
+                candidates[os.path.abspath(legacy_snap)] = (-1, legacy_snap)
+
+        result = list(candidates.values())
+        result.sort(key=lambda x: x[0], reverse=True)
+        return result
+
+    def save_snapshot(
+        self,
+        prune_obsolete_segments: bool = True,
+        max_snapshots_retained: int | None = None,
+    ) -> dict[str, Any]:
         """Save a snapshot of current engine state to the WAL directory with SHA-256 integrity."""
+        if max_snapshots_retained is None:
+            max_snapshots_retained = getattr(self, "max_snapshots_retained", 3)
+
         with self._lock:
             if self.log is None:
                 raise RuntimeError("Cannot save snapshot without an active IngestLog")
@@ -2232,7 +2651,7 @@ class Engine:
                 else (
                     self.log.next_offset - 1
                     if self.log is not None and self.log.next_offset > 0
-                    else self.state.event_count - 1
+                    else -1
                 )
             )
             st_dict = self.state.to_dict()
@@ -2259,17 +2678,69 @@ class Engine:
             "sha256": state_sha256,
             "state": st_dict,
         }
-        tmp_path = os.path.join(
-            snap_dir, f"snapshot.json.tmp.{os.getpid()}_{time.time_ns()}"
+
+        versioned_filename = (
+            f"snapshot_{last_offset:016d}.json"
+            if last_offset >= 0
+            else "snapshot_initial.json"
         )
-        final_path = os.path.join(snap_dir, "snapshot.json")
+        versioned_path = os.path.join(snap_dir, versioned_filename)
+        tmp_path = os.path.join(
+            snap_dir, f"{versioned_filename}.tmp.{os.getpid()}_{time.time_ns()}"
+        )
+        latest_path = os.path.join(snap_dir, "snapshot.json")
 
         with open(tmp_path, "w", encoding="utf-8") as f:
             json.dump(snap_data, f, sort_keys=True, indent=2)
             f.flush()
             os.fsync(f.fileno())
 
-        os.replace(tmp_path, final_path)
+        # Verification before publishing
+        with open(tmp_path, "r", encoding="utf-8") as f_check:
+            verify_data = json.load(f_check)
+        verify_bytes = json.dumps(
+            verify_data.get("state", {}), sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")
+        if hashlib.sha256(verify_bytes).hexdigest() != state_sha256:
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
+            raise RuntimeError("Snapshot write-verification failed SHA-256 check")
+
+        os.replace(tmp_path, versioned_path)
+
+        # Also atomically publish snapshot.json for legacy/tool compatibility
+        tmp_latest = os.path.join(
+            snap_dir, f"snapshot.json.tmp.{os.getpid()}_{time.time_ns()}"
+        )
+        with open(tmp_latest, "w", encoding="utf-8") as f:
+            json.dump(snap_data, f, sort_keys=True, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_latest, latest_path)
+
+        # Update snapshot_manifest.json
+        manifest_path = os.path.join(snap_dir, "snapshot_manifest.json")
+        tmp_manifest = os.path.join(
+            snap_dir, f"snapshot_manifest.tmp.{os.getpid()}_{time.time_ns()}"
+        )
+        candidates = self._discover_candidate_snapshots(snap_dir)
+        manifest_data = {
+            "version": 1,
+            "latest_offset": last_offset,
+            "latest_snapshot": versioned_filename,
+            "snapshots": [
+                {"offset": off, "path": os.path.basename(p)}
+                for off, p in candidates
+                if off >= 0
+            ],
+        }
+        with open(tmp_manifest, "w", encoding="utf-8") as f:
+            json.dump(manifest_data, f, sort_keys=True, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_manifest, manifest_path)
 
         if os.name != "nt":
             try:
@@ -2281,13 +2752,31 @@ class Engine:
             except Exception:
                 pass
 
+        # Retain up to max_snapshots_retained snapshot files
+        all_versioned = sorted(
+            [
+                os.path.join(snap_dir, f)
+                for f in os.listdir(snap_dir)
+                if f.startswith("snapshot_")
+                and f.endswith(".json")
+                and not f.endswith(".tmp")
+            ]
+        )
+        if len(all_versioned) > max_snapshots_retained:
+            for old_snap in all_versioned[:-max_snapshots_retained]:
+                try:
+                    os.remove(old_snap)
+                except OSError:
+                    pass
+
         pruned = 0
         if prune_obsolete_segments and last_offset >= 0:
             pruned = self.delete_segments_before(last_offset + 1)
 
         return {
             "snapshot_offset": last_offset,
-            "path": final_path,
+            "path": versioned_path,
+            "latest_path": latest_path,
             "segments_pruned": pruned,
             "sha256": state_sha256,
         }
@@ -2303,4 +2792,5 @@ __all__ = [
     "EngineDecision",
     "RecoveryMetrics",
     "Transaction",
+    "RecoveryError",
 ]
