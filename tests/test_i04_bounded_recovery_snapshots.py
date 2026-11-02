@@ -178,6 +178,7 @@ def test_i04_automatic_cadence_time() -> None:
         assert not snap_file.exists()
 
         # Initial submit
+        engine._last_snapshot_ts = time.time()
         ev1 = RawEvent(
             source="CME",
             payload={

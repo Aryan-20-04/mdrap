@@ -122,7 +122,9 @@ def test_slow_consumer_queue_isolation():
 
         # Slow client session should have dropped ticks due to full queue
         with daemon._sub_lock:
-            dropped = sum(s.dropped_ticks for s in daemon._sessions.values())
+            dropped = sum(
+                s.dropped_ticks for s in daemon._sessions.values()
+            ) + getattr(daemon, "_total_dropped", 0)
             assert dropped > 0, f"Expected dropped ticks > 0, got {dropped}"
 
         client_fast.close()

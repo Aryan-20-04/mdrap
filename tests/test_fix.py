@@ -2,7 +2,8 @@
 Unit tests for FIX 4.2/4.4 Protocol Engine (Gap 10).
 """
 
-import sys, os
+import sys
+import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 

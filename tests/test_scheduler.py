@@ -2,7 +2,8 @@
 Unit tests for Scheduled Reports & Task Scheduler (Gap 12).
 """
 
-import sys, os
+import sys
+import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 

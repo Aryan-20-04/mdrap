@@ -846,7 +846,6 @@ def test_phase3_engine_snapshot_bounded_startup(tmp_path):
 
 def test_phase4_from_dict_bad_input_and_nan_safety():
     """Phase 4: from_dict never raises on bad input and rejects NaN/inf without corrupting models."""
-    import math
     from mdrap.models import CanonicalEvent, QualityStatus
     from mdrap.client import MarketEvent as ClientMarketEvent
 
@@ -992,7 +991,7 @@ def test_phase4_version_discipline_metadata():
     """Phase 4: Version metadata exposes commit hash, segment version, and stability policy."""
     import mdrap._version as v
 
-    assert v.__version__ == "4.0.0"
+    assert v.__version__ in ("4.0.0", "4.0.1")
     assert v.__segment_version__ == 1
     assert v.__journal_version__ == 1
     assert hasattr(v, "__commit__")
@@ -1365,7 +1364,6 @@ def test_ingestlog_legacy_header_backward_compatibility(tmp_path):
     """Verify legacy segment headers with zeroed reserved bytes remain 100% compatible."""
     from mdrap.ingestlog import (
         IngestLog,
-        LOG_MAGIC,
         LOG_VERSION,
         SEGMENT_HEADER_FORMAT,
         FRAME_MAGIC,

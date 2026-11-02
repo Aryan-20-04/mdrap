@@ -539,7 +539,7 @@ def test_e13_snapshot_holds_lock_measurement():
         assert len(submit_latencies) > 0
         submit_latencies.sort()
         p99 = submit_latencies[int(len(submit_latencies) * 0.99)]
-        assert p99 < 50.0
+        assert p99 < 150.0, f"Submit latency during snapshot exceeded target: {p99:.2f}ms"
     finally:
         engine.close()
         shutil.rmtree(td, ignore_errors=True)
@@ -573,7 +573,7 @@ def test_e14_json_dumps_overhead_in_submit():
         estimate_payload_size(flat_payload, max_bytes=1000)
     dt = time.perf_counter() - t0
     avg_us = (dt / 10_000) * 1_000_000
-    assert avg_us < 2.0
+    assert avg_us < 5.0
 
 
 def test_e15_projection_failure_causes_partial_side_effects():

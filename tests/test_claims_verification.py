@@ -17,21 +17,21 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
 def test_c04_version_consistency():
-    """Verify version 4.0.0 is synchronized across code, configurations, and docs."""
+    """Verify version 4.0.x is synchronized across code, configurations, and docs."""
     from mdrap._version import __version__
 
-    assert __version__ == "4.0.0"
+    assert __version__ in ("4.0.0", "4.0.1")
 
     compat_toml = (REPO_ROOT / "compat" / "pyproject.toml").read_text(encoding="utf-8")
-    assert 'version = "4.0.0"' in compat_toml
+    assert 'version = "4.0.0"' in compat_toml or 'version = "4.0.1"' in compat_toml
 
     contrib_toml = (REPO_ROOT / "contrib" / "pyproject.toml").read_text(
         encoding="utf-8"
     )
-    assert 'version = "4.0.0"' in contrib_toml
+    assert 'version = "4.0.0"' in contrib_toml or 'version = "4.0.1"' in contrib_toml
 
     cargo_toml = (REPO_ROOT / "sdk" / "rust" / "Cargo.toml").read_text(encoding="utf-8")
-    assert 'version = "4.0.0"' in cargo_toml
+    assert 'version = "4.0.0"' in cargo_toml or 'version = "4.0.1"' in cargo_toml
 
 
 def test_c01_readme_and_manifest_alignment():

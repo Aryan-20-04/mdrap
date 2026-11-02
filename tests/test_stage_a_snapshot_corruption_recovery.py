@@ -189,7 +189,9 @@ def test_snapshot_rotation_and_retention_limit(tmp_path):
         [
             f
             for f in os.listdir(wal_dir)
-            if f.startswith("snapshot_") and f.endswith(".json")
+            if f.startswith("snapshot_")
+            and f.endswith(".json")
+            and f != "snapshot_manifest.json"
         ]
     )
     # Must retain exactly max_snapshots_retained = 3 snapshots

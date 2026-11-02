@@ -162,7 +162,7 @@ def execute_single_kill_run(run_id: int, base_tmp: str) -> dict:
 
         proj.close()
         log.close()
-    except Exception as exc:
+    except Exception:
         conflict_errors += 1
 
     # Cleanup run dir

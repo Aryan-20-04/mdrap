@@ -5,10 +5,17 @@ pytest.importorskip(
     reason="Companion package mdrap-options is optional/commercial and not installed",
 )
 
-import math, os, sys, pytest
+import math
+import os
+import sys
+import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
-import fastpath, options, features, risk, fix_engine
+import fastpath
+import options
+import features
+import risk
+import fix_engine
 
 if fastpath._NATIVE_LIB is None:
     pytest.skip(

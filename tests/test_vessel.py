@@ -7,7 +7,8 @@ pytest.importorskip(
     reason="Companion package mdrap-contrib-vessel is optional/commercial and not installed",
 )
 
-import sys, os
+import sys
+import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 

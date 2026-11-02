@@ -2,7 +2,8 @@
 Unit tests for ML/AI Feature Store and Technical Indicators (Gap 9).
 """
 
-import sys, os
+import sys
+import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 

@@ -358,6 +358,9 @@ def test_fault_process_kill_and_recovery_zero_loss(temp_dir):
 
     # Simulate abrupt process kill: DO NOT call engine.close(), simply discard reference
     del engine
+    import gc
+
+    gc.collect()
 
     # Reopen fresh Engine on the existing WAL and DB
     rebooted = Engine.open(wal_dir, config=EngineConfig(db_path=db_path))
