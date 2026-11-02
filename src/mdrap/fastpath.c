@@ -201,9 +201,11 @@ typedef struct {
     int32_t  head;
     int32_t  anom_count;
     uint32_t fold_count;
-    uint64_t _pad;
+    uint32_t regress_count;
+    uint32_t stale_head;
+    int64_t  stale_seen[4];  /* bounded circular buffer for out-of-window stale dedup   */
 } FastSlot;
-_Static_assert(sizeof(FastSlot) == 96, "FastSlot layout");
+_Static_assert(sizeof(FastSlot) == 128, "FastSlot layout");
 
 // ============================================================================
 // Phase F: High-Performance Native C Circular Replay Buffer (Spec §18)
@@ -427,6 +429,7 @@ static inline FastSlot *slot_touch(FastEngine *e, uint32_t s_id, uint32_t i_id) 
         sl->ring = ring;
         sl->epoch = ep;
         sl->flags = SLOT_INIT;
+        for (int k = 0; k < 4; ++k) sl->stale_seen[k] = -1;
     }
     return sl;
 }
@@ -475,7 +478,12 @@ static inline void fold_price(const FastEngine *e, FastSlot *sl, double *ring, d
  * ==========================================================================*/
 static inline void seq_check(const FastEngine *e, FastSlot *sl, int64_t seq, FastResult *res) {
     if (!(sl->flags & SLOT_HAS_SEQ)) {
-        sl->last_seq = seq; sl->seen = 1ULL; sl->flags |= SLOT_HAS_SEQ;
+        sl->last_seq = seq;
+        sl->seen = 1ULL;
+        sl->flags |= SLOT_HAS_SEQ;
+        sl->regress_count = 0;
+        sl->stale_head = 0;
+        for (int k = 0; k < 4; ++k) sl->stale_seen[k] = -1;
         return;
     }
     if (seq > sl->last_seq) {
@@ -486,7 +494,10 @@ static inline void seq_check(const FastEngine *e, FastSlot *sl, int64_t seq, Fas
             mark(res, STATUS_SUSPICIOUS, REASON_SEQUENCE_GAP);
             const int64_t cand = (int64_t)(sl->cand_plus1 - 1u);
             if (sl->cand_plus1 != 0u && seq > cand && (seq - cand) <= e->seq_jump_limit) {
-                sl->last_seq = seq; sl->seen = 1ULL; sl->cand_plus1 = 0u;
+                sl->last_seq = seq;
+                sl->seen = 1ULL;
+                sl->cand_plus1 = 0u;
+                sl->regress_count = 0;
             } else {
                 sl->cand_plus1 = (uint64_t)seq + 1u;
             }
@@ -496,18 +507,53 @@ static inline void seq_check(const FastEngine *e, FastSlot *sl, int64_t seq, Fas
         sl->seen = (jump < 64) ? ((sl->seen << jump) | 1ULL) : 1ULL;
         sl->last_seq = seq;
         sl->cand_plus1 = 0u;
+        sl->regress_count = 0;
         return;
     }
     const uint64_t d = (uint64_t)(sl->last_seq - seq);
     if (d < 64u) {
         if ((sl->seen >> d) & 1ULL) {
             mark(res, STATUS_INVALID, REASON_DUPLICATE);            /* exact duplicate */
+            if (d > 0) mark(res, STATUS_INVALID, REASON_OUT_OF_ORDER);
         } else {
             sl->seen |= (1ULL << d);                                /* late but new */
             mark(res, STATUS_SUSPICIOUS, REASON_OUT_OF_ORDER);
         }
     } else {
-        mark(res, STATUS_SUSPICIOUS, REASON_OUT_OF_ORDER);          /* older than window: cannot tell dup from new session */
+        /* d >= 64: beyond sliding window */
+        /* Check bounded stale_seen ring for repeated duplicates FIRST */
+        int is_stale_dup = 0;
+        for (int k = 0; k < 4; ++k) {
+            if (sl->stale_seen[k] == seq) {
+                is_stale_dup = 1;
+                break;
+            }
+        }
+        if (is_stale_dup) {
+            mark(res, STATUS_INVALID, REASON_DUPLICATE);
+            mark(res, STATUS_INVALID, REASON_OUT_OF_ORDER);
+            return;
+        }
+
+        if (d > (uint64_t)e->seq_jump_limit) {
+            sl->regress_count++;
+            if (sl->regress_count >= 2) {
+                sl->last_seq = seq;
+                sl->seen = 1ULL;
+                sl->cand_plus1 = 0u;
+                sl->regress_count = 0;
+                sl->stale_head = 0;
+                for (int k = 0; k < 4; ++k) sl->stale_seen[k] = -1;
+                mark(res, STATUS_SUSPICIOUS, REASON_OUT_OF_ORDER);
+                return;
+            }
+        } else {
+            sl->regress_count = 0;
+        }
+
+        sl->stale_seen[sl->stale_head % 4] = seq;
+        sl->stale_head++;
+        mark(res, STATUS_SUSPICIOUS, REASON_OUT_OF_ORDER);
     }
 }
 

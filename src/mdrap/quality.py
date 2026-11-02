@@ -148,6 +148,7 @@ class _SlotState:
         "ready",
         "session_id",
         "regress_count",
+        "stale_seen",
     )
 
     def __init__(self, window: int):
@@ -171,6 +172,7 @@ class _SlotState:
         self.ready: list[CanonicalEvent] = []
         self.session_id: str | None = None
         self.regress_count: int = 0
+        self.stale_seen: list[int] = []
 
     def fold_price(self, x: float, window: int) -> None:
         if self.n >= window:
@@ -495,11 +497,23 @@ class QualityEngine:
                     if (sl.seen >> d) & 1:
                         self._mark(event, QualityStatus.INVALID, Reason.DUPLICATE)
                         self._bump(Reason.DUPLICATE)
+                        if d > 0:
+                            self._mark(
+                                event, QualityStatus.INVALID, Reason.OUT_OF_ORDER
+                            )
+                            self._bump(Reason.OUT_OF_ORDER)
                     else:
                         sl.seen |= 1 << d
                         self._mark(event, QualityStatus.SUSPICIOUS, Reason.OUT_OF_ORDER)
                         self._bump(Reason.OUT_OF_ORDER)
                 else:
+                    if seq in sl.stale_seen:
+                        self._mark(event, QualityStatus.INVALID, Reason.DUPLICATE)
+                        self._bump(Reason.DUPLICATE)
+                        self._mark(event, QualityStatus.INVALID, Reason.OUT_OF_ORDER)
+                        self._bump(Reason.OUT_OF_ORDER)
+                        return event
+
                     if d > cfg.seq_jump_limit:
                         sl.regress_count += 1
                         if sl.regress_count >= 2:
@@ -507,9 +521,18 @@ class QualityEngine:
                             sl.seen = 1
                             sl.regress_count = 0
                             sl.cand_plus1 = 0
+                            sl.stale_seen.clear()
+                            self._mark(
+                                event, QualityStatus.SUSPICIOUS, Reason.OUT_OF_ORDER
+                            )
+                            self._bump(Reason.OUT_OF_ORDER)
+                            return event
                     else:
                         sl.regress_count = 0
 
+                    sl.stale_seen.append(seq)
+                    if len(sl.stale_seen) > 64:
+                        sl.stale_seen.pop(0)
                     self._mark(event, QualityStatus.SUSPICIOUS, Reason.OUT_OF_ORDER)
                     self._bump(Reason.OUT_OF_ORDER)
         elif ex_fin:
