@@ -735,6 +735,8 @@ class MarketDataDaemon:
                     )
                 self._last_ingest_ts = time.time()
         else:
+            if self.sim_speed_eps <= 0.0:
+                return
             num_events = self.sim_events if self.sim_events > 0 else 10_000_000
             sim = FeedSimulator(SimulatorConfig(seed=42, num_events=num_events))
             sleep_s = (
