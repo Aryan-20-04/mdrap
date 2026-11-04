@@ -4,7 +4,7 @@
 **Role:** Principal Systems Engineer, Low-Latency Market-Data Architect, Distributed-Systems Reliability Engineer, and Independent Release Auditor  
 **Branch:** `v4.0.1-final-correctness`  
 **Base Commit:** `0e8eef3` (`feat(v4.0.1): recovery, projection, sequence and durability correctness`)  
-**Audit Target Commit:** `76374c4` (`docs: publish final correctness audit evidence`)  
+**Audit Target Commit:** `3ab9566` (`fix(correctness): expand sequence history to 32, add real subprocess crash test, reconcile test gate`)  
 **Release Verdict:** **CONDITIONAL GO**
 
 ---

@@ -4,7 +4,7 @@
 **Auditor:** Principal Systems Engineer & Independent Release Auditor  
 **Branch:** `v4.0.1-final-correctness`  
 **Base Commit:** `0e8eef3` (`feat(v4.0.1): recovery, projection, sequence and durability correctness`)  
-**Audit Target Commit:** `76374c4` (`docs: publish final correctness audit evidence`)
+**Audit Target Commit:** `3ab9566` (`fix(correctness): expand sequence history to 32, add real subprocess crash test, reconcile test gate`)
 
 ---
 
@@ -31,7 +31,9 @@ The table below summarizes the six reported commits above `0e8eef3`:
 | `79bb21b` | Aryan-20-04 | 2026-11-02 | `fix: harden stale sequence tracking and session resets` | 2 files (`fastpath.c`, `quality.py`) | +74 / -5 | **VERIFIED WITH FINDING:** Adds 64-bit window bitmask and circular `stale_seen` buffer. *Audit Finding:* C allocated 4 slots whereas Python allocated 64, creating a semantic divergence under adversarial loads. |
 | `dc9d72f` | Aryan-20-04 | 2026-11-02 | `fix: make snapshot retention crash-safe` | 1 file (`engine.py`) | +288 / -55 | **VERIFIED:** Implements N-generational snapshot retention (`min_wal_snapshots_retained=2`), fallback discovery, and atomic tempfile replacement. |
 | `14b84ea` | Aryan-20-04 | 2026-11-02 | `test: reconcile suite and add adversarial coverage` | 26 files (`tests/final/*`, configs) | +2341 / -23 | **VERIFIED:** Adds 62 adversarial tests across durability, multi-corruption, queue recovery, and sequence matrices. |
-| `76374c4` | Aryan-20-04 | 2026-11-02 | `docs: publish final correctness audit evidence` | 19 files (`audit/v4.0.1-final/*`) | +1083 / 0 | **VERIFIED WITH FINDING:** Publishes 15 audit reports and 4 raw test logs. *Audit Finding:* `claims_manifest.json` recorded 1553 selected / 47 deselected from a previous intermediate test run rather than the final 1578 selected / 145 deselected. |
+| `76374c4` | Aryan-20-04 | 2026-11-02 | `docs: publish final correctness audit evidence` | 19 files (`audit/v4.0.1-final/*`) | +1083 / 0 | **VERIFIED WITH FINDING:** Publishes initial audit reports. *Audit Finding:* `claims_manifest.json` drifted from gate output. |
+| `89a8bac` | Antigravity | 2026-11-04 | `fix(audit): resolve parity capacity divergence, policy aliases, and publish independent release audit` | 19 files (`audit/v4.0.1-final-independent/*`, `src/*`) | +1283 / -15 | **VERIFIED:** Resolved `CorruptedSnapshotError`, added `POLICY_ALIASES`, authored 15 deliverables. |
+| `3ab9566` | Antigravity | 2026-11-04 | `fix(correctness): expand sequence history to 32, add real subprocess crash test, reconcile test gate` | 15 files (`src/*`, `audit/*`, `tests/*`) | +2370 / -1872 | **VERIFIED:** Expanded `stale_seen` to 32 entries (384-byte cache-line aligned in C and Python), created true OS subprocess crash test (`proc.kill`), eliminated fragile `-k` gate filters, and produced authoritative 1,726-row reconciliation CSV. |
 
 ---
 
