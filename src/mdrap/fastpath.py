@@ -33,6 +33,12 @@ try:
 except ImportError:
     _C_EXT = None
 
+# Pre-imported user rule evaluation hook to eliminate per-tick import overhead
+try:
+    from .rules import _USER_RULES, evaluate_user_rules
+except ImportError:
+    _USER_RULES, evaluate_user_rules = None, None
+
 # ---------------------------------------------------------------------------
 # Native C Kernel ABI Geometry Constants (Matching fastpath.c)
 # ---------------------------------------------------------------------------
@@ -1103,13 +1109,8 @@ class FastQualityEngine:
         else:
             res = self._evaluate_unlocked(event)
 
-        try:
-            from .rules import _USER_RULES, evaluate_user_rules
-
-            if _USER_RULES:
-                res = evaluate_user_rules(res)
-        except ImportError:
-            pass
+        if _USER_RULES and evaluate_user_rules is not None:
+            res = evaluate_user_rules(res)
 
         return res
 
