@@ -97,6 +97,9 @@ SEQUENCE_BITMAP_MASK: int = 0xFFFFFFFFFFFFFFFF
 DEFAULT_SEQ_JUMP_LIMIT: int = 1000
 DEFAULT_PRICE_RESEED_AFTER: int = 8
 
+# Bounded hotpath string cache to eliminate per-tick string formatting allocations
+_STREAM_KEY_CACHE: dict[tuple[str, str], str] = {}
+
 
 @dataclass
 class EngineState:
@@ -1925,7 +1928,12 @@ class Engine:
         exch_ts: float,
         txn: Transaction | None,
     ) -> tuple[int, str, str, str | None, bool]:
-        stream_key = f"{raw_event.source}:{instrument}"
+        stream_pair = (raw_event.source, instrument)
+        stream_key = _STREAM_KEY_CACHE.get(stream_pair)
+        if stream_key is None:
+            stream_key = f"{raw_event.source}:{instrument}"
+            if len(_STREAM_KEY_CACHE) < 4096:
+                _STREAM_KEY_CACHE[stream_pair] = stream_key
         current_epoch = state.epoch_state.get(stream_key, 0)
         current_session = state.session_state.get(stream_key)
         last_epoch_ts = state.epoch_ts.get(stream_key)
