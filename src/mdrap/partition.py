@@ -16,6 +16,8 @@ import time
 import zlib
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
+from .models import QualityStatus, Reason
+
 
 @dataclasses.dataclass(frozen=True)
 class ShardConfig:
@@ -28,6 +30,169 @@ class ShardConfig:
     sbe_port: int = 9002
     data_dir: str = "/var/data/mdrap"
     max_queue_depth: int = 50000
+
+
+class SpscRingQueue:
+    """Bounded, lock-free Single-Producer Single-Consumer (SPSC) circular ring buffer.
+
+    Enforces ADR-004: Eliminates mutex / Condition variable contention on the single-producer
+    to single-consumer event pipeline.
+    """
+
+    def __init__(self, capacity: int = 65536) -> None:
+        cap = 1
+        while cap < capacity:
+            cap <<= 1
+        self.capacity = cap
+        self.mask = cap - 1
+        self._buffer: List[Any] = [None] * cap
+        self._head: int = 0
+        self._tail: int = 0
+
+    def offer(self, item: Any) -> bool:
+        """Enqueue item without blocking. Returns False if buffer is full."""
+        head = self._head
+        tail = self._tail
+        if (head - tail) >= self.capacity:
+            return False
+        self._buffer[head & self.mask] = item
+        self._head = head + 1
+        return True
+
+    def poll(self) -> Any | None:
+        """Dequeue next item without blocking. Returns None if buffer is empty."""
+        tail = self._tail
+        head = self._head
+        if tail == head:
+            return None
+        idx = tail & self.mask
+        item = self._buffer[idx]
+        self._buffer[idx] = None
+        self._tail = tail + 1
+        return item
+
+    def qsize(self) -> int:
+        return max(0, self._head - self._tail)
+
+    def empty(self) -> bool:
+        return self._tail == self._head
+
+    def full(self) -> bool:
+        return (self._head - self._tail) >= self.capacity
+
+
+class ChannelIngressSequencer:
+    """Enforces ADR-003: Single-Threaded Exchange Channel Sequencing.
+
+    Tracks feed-level sequence numbers per channel before routing or symbol demuxing.
+    Detects true sequence gaps, duplicate packets, out-of-order deliveries, and session resets.
+    Guarantees that interleaved multi-instrument streams on a single feed do not cause false gap alarms.
+    """
+
+    def __init__(
+        self,
+        channel_id: str,
+        gap_manager: Optional[Any] = None,
+        max_jump_limit: int = 1_000_000,
+    ) -> None:
+        self.channel_id = str(channel_id)
+        self.gap_manager = gap_manager
+        self.max_jump_limit = max_jump_limit
+
+        self.last_sequence: Optional[int] = None
+        self.expected_sequence: Optional[int] = None
+        self.current_session_id: Optional[str] = None
+
+        self.total_received: int = 0
+        self.in_order_count: int = 0
+        self.gaps_detected: int = 0
+        self.missing_events_count: int = 0
+        self.duplicates_detected: int = 0
+        self.out_of_order_count: int = 0
+        self.resets_detected: int = 0
+
+    def verify_sequence(self, event: Any) -> Tuple[QualityStatus, Optional[str]]:
+        """Verify the channel sequence number of an incoming raw or canonical event.
+
+        Returns (quality_status, reason_string_or_None).
+        """
+        self.total_received += 1
+
+        seq = getattr(event, "sequence_number", None)
+        sess = getattr(event, "session_id", None)
+        src = getattr(event, "source", "UNKNOWN")
+        inst = getattr(event, "instrument_id", None) or getattr(event, "instrument", "")
+
+        payload = getattr(event, "payload", None)
+        if isinstance(payload, dict):
+            if seq is None:
+                seq = payload.get("sequence")
+            if sess is None:
+                sess = payload.get("session_id")
+            if not inst:
+                inst = payload.get("instrument") or payload.get("symbol") or ""
+
+        if seq is None:
+            return QualityStatus.VALID, None
+
+        sess_str = str(sess) if sess is not None else "SESSION_0"
+
+        # Check for upstream session reset
+        if self.current_session_id is not None and sess_str != self.current_session_id:
+            self.resets_detected += 1
+            self.current_session_id = sess_str
+            self.last_sequence = seq
+            self.expected_sequence = seq + 1
+            self.in_order_count += 1
+            return QualityStatus.VALID, None
+
+        if self.current_session_id is None:
+            self.current_session_id = sess_str
+
+        # Initial sequence anchor
+        if self.expected_sequence is None:
+            self.last_sequence = seq
+            self.expected_sequence = seq + 1
+            self.in_order_count += 1
+            return QualityStatus.VALID, None
+
+        # Case 1: In-order progression
+        if seq == self.expected_sequence:
+            self.last_sequence = seq
+            self.expected_sequence = seq + 1
+            self.in_order_count += 1
+            return QualityStatus.VALID, None
+
+        # Case 2: Duplicate sequence
+        if seq == self.last_sequence:
+            self.duplicates_detected += 1
+            return QualityStatus.SUSPICIOUS, Reason.DUPLICATE.value
+
+        # Case 3: Out-of-order sequence (older than expected)
+        if seq < self.expected_sequence:
+            self.out_of_order_count += 1
+            if self.last_sequence is not None and (self.last_sequence - seq) < 100:
+                self.duplicates_detected += 1
+                return QualityStatus.SUSPICIOUS, Reason.DUPLICATE.value
+            return QualityStatus.SUSPICIOUS, Reason.OUT_OF_ORDER.value
+
+        # Case 4: Sequence gap (seq > expected_sequence)
+        gap_size = seq - self.expected_sequence
+        self.gaps_detected += 1
+        self.missing_events_count += gap_size
+
+        if self.gap_manager is not None:
+            self.gap_manager.record_gap(
+                source=src,
+                instrument=str(inst),
+                expected_start=self.expected_sequence,
+                received_seq=seq,
+                epoch=self.current_session_id,
+            )
+
+        self.last_sequence = seq
+        self.expected_sequence = seq + 1
+        return QualityStatus.SUSPICIOUS, Reason.SEQUENCE_GAP.value
 
 
 class SymbolPartitioner:
@@ -272,9 +437,13 @@ class TenantQuotaManager:
 class ShardInstance:
     """Represents an active, isolated MDRAP shard processing its assigned symbol universe."""
 
-    def __init__(self, config: ShardConfig) -> None:
+    def __init__(self, config: ShardConfig, use_spsc: bool = False) -> None:
         self.config = config
-        self.in_queue: queue.Queue = queue.Queue(maxsize=config.max_queue_depth)
+        self.use_spsc = use_spsc
+        if use_spsc:
+            self.in_queue = SpscRingQueue(capacity=config.max_queue_depth)
+        else:
+            self.in_queue = queue.Queue(maxsize=config.max_queue_depth)
         self.fanout = ConsumerFanoutManager()
         self.sequence_number: int = 0
         self.total_processed: int = 0
@@ -295,6 +464,8 @@ class ShardInstance:
 
     def enqueue_event(self, symbol: str, payload: bytes) -> bool:
         """Push an incoming event to the shard queue. Returns False if queue full."""
+        if self.use_spsc:
+            return self.in_queue.offer((symbol, payload))
         try:
             self.in_queue.put_nowait((symbol, payload))
             return True
@@ -304,17 +475,25 @@ class ShardInstance:
     def _worker_loop(self) -> None:
         """Hot processing loop for the shard."""
         while self.is_running:
-            try:
-                symbol, payload = self.in_queue.get(timeout=0.01)
-            except queue.Empty:
-                continue
+            if self.use_spsc:
+                item = self.in_queue.poll()
+                if item is None:
+                    time.sleep(0.0005)
+                    continue
+                symbol, payload = item
+            else:
+                try:
+                    symbol, payload = self.in_queue.get(timeout=0.01)
+                except queue.Empty:
+                    continue
 
             self.sequence_number += 1
             self.total_processed += 1
 
             # Dispatch to downstream consumers
             self.fanout.broadcast_event(symbol, payload)
-            self.in_queue.task_done()
+            if not self.use_spsc:
+                self.in_queue.task_done()
 
 
 class FleetCoordinator:
@@ -324,11 +503,15 @@ class FleetCoordinator:
     """
 
     def __init__(
-        self, partitioner: SymbolPartitioner, shard_configs: List[ShardConfig]
+        self,
+        partitioner: SymbolPartitioner,
+        shard_configs: List[ShardConfig],
+        use_spsc: bool = False,
     ) -> None:
         self.partitioner = partitioner
+        self.use_spsc = use_spsc
         self.shards: Dict[int, ShardInstance] = {
-            cfg.shard_id: ShardInstance(cfg) for cfg in shard_configs
+            cfg.shard_id: ShardInstance(cfg, use_spsc=use_spsc) for cfg in shard_configs
         }
         self.quota_manager = TenantQuotaManager()
 
