@@ -165,6 +165,7 @@ class GoldenOracle:
                 "has_seq": False,
                 "cand_plus1": 0,
                 "last_ts": None,
+                "stale_seen": [],
             },
         )
 
@@ -211,11 +212,22 @@ class GoldenOracle:
                     if d < 64:
                         if (slot["seen"] >> d) & 1:
                             _mark(Reason.DUPLICATE.value, QualityStatus.INVALID)
+                            if d > 0:
+                                _mark(Reason.OUT_OF_ORDER.value, QualityStatus.INVALID)
                         else:
                             slot["seen"] |= 1 << d
                             _mark(Reason.OUT_OF_ORDER.value, QualityStatus.SUSPICIOUS)
                     else:
-                        _mark(Reason.OUT_OF_ORDER.value, QualityStatus.SUSPICIOUS)
+                        stale_seen = slot.setdefault("stale_seen", [])
+                        if seq in stale_seen:
+                            _mark(Reason.DUPLICATE.value, QualityStatus.INVALID)
+                            _mark(Reason.OUT_OF_ORDER.value, QualityStatus.INVALID)
+                            return status, sorted(reasons), reason_mask
+                        else:
+                            stale_seen.append(seq)
+                            if len(stale_seen) > 32:
+                                stale_seen.pop(0)
+                            _mark(Reason.OUT_OF_ORDER.value, QualityStatus.SUSPICIOUS)
         elif ex_fin:
             # Unsequenced content-based deduplication
             ev_type_str = (

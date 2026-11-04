@@ -58,11 +58,18 @@ An adversarial test ([`test_p0_projection_concurrency.py`](file:///c:/Users/KIIT
 
 **Result:** Checkpoint advanced contiguously to offset 2,108. The projection database recorded exactly 2,109 rows (`count_canonical() == 2109`). Zero events skipped; zero events duplicated.
 
-### B. Crash Consistency During Catch-up
-A simulated crash script ([`test_p0_projection_crash_during_catchup.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/audit/v4.0.1-final-independent/reproduction_scripts/test_p0_projection_crash_during_catchup.py)) interrupted catch-up at offset 599 (out of 1,500 events), simulated an immediate process kill, and restarted `Engine` on the existing storage directory.
-- On restart, `proj.checkpoint()` remained uncorrupted at 599.
-- Automatic catch-up replayed offsets 600 through 1,499.
-- Final checkpoint reached 1,499. A raw SQLite sequence query (`SELECT sequence_number FROM canonical_events ORDER BY sequence_number ASC`) proved that sequence numbers 1 through 1,500 were 100% contiguously populated without a single duplicate or omission.
+### B. Crash Consistency During Catch-up & Real OS Subprocess Termination
+1. **In-Process Teardown Baseline:** A simulated crash script ([`test_p0_projection_crash_during_catchup.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/audit/v4.0.1-final-independent/reproduction_scripts/test_p0_projection_crash_during_catchup.py)) interrupted catch-up at offset 599 (out of 1,500 events), simulated an immediate process kill, and restarted `Engine` on the existing storage directory.
+   - On restart, `proj.checkpoint()` remained uncorrupted at 599.
+   - Automatic catch-up replayed offsets 600 through 1,499.
+   - Final checkpoint reached 1,499 with 1,500 rows verified contiguously.
+2. **Authoritative Real OS Subprocess Crash (`proc.kill()` / `TerminateProcess`):**
+   To test true uncatchable process termination and abandoned buffer handling, an adversarial OS-level crash test ([`test_p0_projection_real_subprocess_crash.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/audit/v4.0.1-final-independent/reproduction_scripts/test_p0_projection_real_subprocess_crash.py)) was authored and executed:
+   - Spawns independent child process actively ingesting and projecting 2,500 events.
+   - Parent invokes `proc.kill()` mid-stream (Win32 `TerminateProcess` / POSIX `SIGKILL`); child exits abruptly with exit code 1 without any Python `__del__` or graceful teardown.
+   - Raw SQLite inspection immediately post-crash verified `PRAGMA integrity_check == [('ok',)]` with durable checkpoint at offset 534 (535 committed rows).
+   - Fresh `Engine` instance opened on the abandoned WAL: recovered the remaining WAL events forward to offset 535, reaching exactly 536 events.
+   - Raw SQL query verified sequences 1 through 536 are 100% contiguous with zero gaps and zero duplicates ([`raw_evidence/p0_projection_real_subprocess_crash.log`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/audit/v4.0.1-final-independent/raw_evidence/p0_projection_real_subprocess_crash.log)).
 
 ### C. Projection Invariant
 The invariant:
@@ -75,13 +82,13 @@ is enforced at the SQLite transaction boundary. Any attempt to apply a batch sta
 
 ### A. Durability Policy Matrix & Guarantees
 
-| Policy | Durability Guarantee Receipt | Immediate `durable` Flag | Kernel / Hardware Barrier |
+| Policy | Durability Guarantee Receipt | Immediate `durable` Flag | Kernel / Storage Flush Boundary |
 |---|---|:---:|---|
-| `"always"` / `"every_event"` | `"PHYSICAL_FSYNC_DURABLE"` | **`True`** | Immediate synchronous `os.fsync()` per event |
-| `"grouped_by_time"` / `"batch"` | `"GROUPED_TIME_FSYNC_DURABLE"` | **`False`** (Until barrier) | Background thread fsyncs every 50ms or quiet period (45ms) |
-| `"grouped_by_size"` | `"GROUPED_SIZE_FSYNC_DURABLE"` | **`False`** (Until barrier) | Flushes immediately at 64 KB boundary or quiet period (45ms) |
-| `"true_group_commit"` / `"adaptive"` | `"GROUP_COMMIT_FSYNC_DURABLE"` | **`True`** (On barrier sync) | Concurrent threads wait on condition variable for shared `fsync()` |
-| `"never"` | `"OS_BUFFERED_NO_POWER_LOSS_PROTECTION"` | **`False`** (Always) | Written to OS page cache (`write()`), zero `fsync()` |
+| `"always"` / `"every_event"` | `"PHYSICAL_FSYNC_DURABLE"` | **`True`** | Flushed to storage controller via immediate `os.fsync()` (hardware durability requires enterprise power-loss protection capacitors or battery-backed write cache) |
+| `"grouped_by_time"` / `"batch"` | `"GROUPED_TIME_FSYNC_DURABLE"` | **`False`** (Until barrier) | Background thread flushes to storage controller every 50ms or quiet period (45ms) |
+| `"grouped_by_size"` | `"GROUPED_SIZE_FSYNC_DURABLE"` | **`False`** (Until barrier) | Flushes to storage controller at 64 KB boundary or quiet period (45ms) |
+| `"true_group_commit"` / `"adaptive"` | `"GROUP_COMMIT_FSYNC_DURABLE"` | **`True`** (On barrier sync) | Concurrent threads wait on condition variable for shared `fsync()` barrier. *Note:* `'adaptive'` is currently an alias mapping directly to `'true_group_commit'` (condition variable grouping), not a dynamic load-adaptive algorithm. |
+| `"never"` | `"OS_BUFFERED_NO_POWER_LOSS_PROTECTION"` | **`False`** (Always) | Written to OS page cache (`write()`), zero `fsync()` (lost on OS kernel panic or power severance) |
 
 ### B. Finding D-01: Durability Policy Aliases Fixed
 Prior to this audit, passing documented names `"every_event"`, `"batch"`, or `"adaptive"` raised `ValueError: Invalid fsync_policy`. An alias normalization mapping was added to [`src/mdrap/ingestlog.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/mdrap/ingestlog.py#L380), restoring 100% backward compatibility and resolving the issue.
@@ -95,10 +102,16 @@ Prior to this audit, passing documented names `"every_event"`, `"batch"`, or `"a
 - **Window 2 (Out-of-Window Stale Ring):** Bounded circular buffer `stale_seen` tracking recently received stale sequence numbers.
 - **Session Reset Threshold (>1,000 jump):** Two consecutive regressions > 1,000 trigger clean channel re-anchoring.
 
-### B. Finding SQ-01: C vs Python Buffer Capacity Divergence (Discovered & Fixed)
-- **Defect:** In `fastpath.c`, `stale_seen` was allocated as `int64_t stale_seen[4]` (capacity 4). In `quality.py`, `stale_seen` was a list capped at 64 entries.
-- **Failure:** Under 5 distinct stale sequence packets, Native C evicted slot 0, failing to recognize its retransmission as a duplicate (`SUSPICIOUS`), while Python flagged it as `INVALID (DUPLICATE)`.
-- **Remediation:** Aligned `src/mdrap/quality.py` to match the exact 4-slot ring buffer capacity of native C. Parity is now 100% verified across both implementations.
+### B. Finding SQ-01: Circular History Depth Expansion to 32 Entries with 100% Parity
+- **Defect:** Prior builds had divergent buffer sizes (Native C capped at 4 entries to fit two 64-byte cache lines; Python capped at 64 entries).
+- **Adequacy Review:** A 4-slot ring is inadequate for institutional market-data feeds during network burst retransmissions (MoldUDP64 request packets).
+- **Remediation & Cache-Line Alignment:**
+  Both Native C (`fastpath.c`) and Pure Python (`quality.py`) were upgraded to a robust **32-entry circular buffer**:
+  - In `fastpath.c`, `stale_seen` is `int64_t stale_seen[32]` with 32 bytes of alignment padding, keeping `FastSlot` strictly cache-line aligned at 384 bytes ($6 \times 64$-byte cache lines):
+    `_Static_assert(sizeof(FastSlot) == 384, "FastSlot layout 6 cachelines");`
+  - Array indexing uses single-cycle bitwise masking: `sl->stale_seen[sl->stale_head & 31] = seq;`.
+  - In `quality.py` and `golden_oracle.py`, `DEFAULT_STALE_SEEN_CAPACITY = 32`.
+- **Verification:** Verified by `test_stale_history_capacity_32_deep_burst` (30 distinct stale packets retained; retransmissions flagged `INVALID/DUPLICATE`) and tri-engine differential fuzzing. Parity is 100% verified.
 
 ---
 
@@ -117,21 +130,25 @@ At every point during snapshot creation and WAL pruning, WAL segments covering a
 
 ## 6. P1 — Complete Test-Suite Reconciliation
 
-Exact test count reconciliation across all categories (produced via [`reconcile_test_suite.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/audit/v4.0.1-final-independent/reproduction_scripts/reconcile_test_suite.py)):
+Authoritative test reconciliation across all categories (produced via [`reconcile_test_suite.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/audit/v4.0.1-final-independent/reproduction_scripts/reconcile_test_suite.py)):
 
-| Category | Collected | Executed (Gate 5) | Passed | Failed | Skipped | Deselected (Gate 5) | Dedicated Gate |
+| Category | Repository Total | Deselected (Marker: slow/network) | Active Scope | Gate 5 Executed | Gate 5 Passed | Failed | Secondary Assurance Gates |
 |---|---:|---:|---:|---:|---:|---:|---|
-| Unit tests | 1,236 | 1,236 | 1,236 | 0 | 0 | 0 | Gate 5 |
-| Integration tests | 19 | 0 | 19 | 0 | 0 | 19 | Gate 6 |
-| Recovery tests | 80 | 80 | 80 | 0 | 0 | 0 | Gate 5 / Targeted |
-| Projection tests | 50 | 50 | 50 | 0 | 0 | 0 | Gate 5 / Targeted |
-| Native parity tests | 92 | 92 | 92 | 0 | 0 | 0 | Gate 5 / Gate 12 |
-| Chaos tests | 46 | 0 | 46 | 0 | 0 | 46 | Gate 8 |
-| Security tests | 114 | 94 | 114 | 0 | 0 | 20 | Gate 7 |
-| E2E tests | 25 | 0 | 25 | 0 | 0 | 25 | Gate 9 |
-| **Total Pipeline** | **1,662** | **1,578** | **1,662** | **0** | **0** | **145** | **Gates 5–9** |
+| Unit tests | 1,236 | 0 | 1,236 | 1,236 | 1,236 | 0 | Gate 5 |
+| Integration tests | 19 | 0 | 19 | 19 | 19 | 0 | Gate 6 (Integration & Guarantees) |
+| Recovery tests | 80 | 0 | 80 | 80 | 80 | 0 | Gate 5 / Stage Verification |
+| Projection tests | 50 | 0 | 50 | 50 | 50 | 0 | Gate 5 / Stage Verification |
+| Native parity tests | 93 | 0 | 93 | 93 | 93 | 0 | Gate 5 / Gate 12 (Parity) |
+| Chaos & Fuzz tests | 46 | 0 | 46 | 46 | 46 | 0 | Gate 8 (Fuzzing & Chaos) |
+| Security tests | 114 | 0 | 114 | 114 | 114 | 0 | Gate 7 (Security Hardening) |
+| E2E & Pipeline tests | 25 | 0 | 25 | 25 | 25 | 0 | Gate 9 (Full Architecture Pipeline) |
+| Stress / Longevity tests | 63 | 63 | 0 | 0 | N/A | 0 | Manual / Dedicated Stress Harness |
+| **Total Pipeline** | **1,726** | **63** | **1,663** | **1,663** | **1,663** | **0** | **100% Executed & Verified (374.81s)** |
 
-*Note on Total Repository Tests:* 1,662 collected + 63 deselected by `pytest.ini` (`-m "not slow and not network"`) = **1,725 total test cases**. All 145 deselected tests in Gate 5 are fully executed in Gates 6, 7, 8, and 9. Zero tests are omitted.
+*Reconciliation Invariants Proven:*
+1. **Zero Deselection via Keyword Filters:** The previous fragile `-k "not integration and not..."` gate filter was eliminated. Gate 5 executes 100% of the 1,663 active tests with zero keyword exclusions.
+2. **Deterministic Marker Isolation:** Exactly 63 longevity and network stress tests are deselected strictly via `pytest.ini` (`-m "not slow and not network"`).
+3. **Comprehensive Traceability:** Every test node is mapped in [`TEST_SUITE_RECONCILIATION.csv`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/audit/v4.0.1-final-independent/TEST_SUITE_RECONCILIATION.csv), detailing its node ID, category, executing gate(s), and verified status.
 
 ---
 
@@ -141,6 +158,7 @@ Exact test count reconciliation across all categories (produced via [`reconcile_
 - **Static Secret Scan:** 0 hardcoded credentials, API keys, or private key headers in production source code.
 - **Deserialization Safety:** Canonical JSON and fixed binary C structs only; `pickle` is completely absent from all ingest, WAL, and snapshot paths.
 - **CVE Boundaries:** Bounded pins on optional dependencies (`pyarrow >= 20.0.0`, `duckdb >= 0.10.0`).
+- **Explicit Scope & Boundary Bounding:** This security audit represents an internal architectural review, static secret scan, deserialization safety inspection, and static dependency version boundary verification against known high-severity CVEs (e.g. PyArrow CVE-2023-47248). It does NOT constitute an active network-connected third-party CVE database scan or external penetration test.
 
 ---
 
@@ -172,8 +190,8 @@ Marketing and documentation claims of ~49k EPS reflect the **in-memory transitio
 
 During this independent audit, three concrete defects were discovered, reproduced with regression scripts, and remediated in source code:
 
-1. **Defect SQ-01 (P0):** C vs Python Stale Seen Buffer Capacity Mismatch (4 vs 64).  
-   *Remediation:* Changed `if len(sl.stale_seen) > 64:` to `if len(sl.stale_seen) > 4:` in [`src/mdrap/quality.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/mdrap/quality.py#L533). Parity restored to 100%.
+1. **Defect SQ-01 (P0):** Out-of-Window Stale Sequence History Depth & Institutional Feed Burst Adequacy.  
+   *Remediation:* Re-engineered `stale_seen` circular history buffer in both Native C (`fastpath.c`) and Pure Python (`quality.py`) to a unified **32-entry capacity** ($6 \times 64$-byte cache-line aligned at 384 bytes, with single-cycle bitwise masking `sl->stale_head & 31`). Retransmissions within a burst of up to 32 out-of-window packets are 100% detected as `INVALID (DUPLICATE)`. Semantic parity restored to 100%.
 2. **Defect D-01 (P1):** `IngestLog` Rejected Documented Policy Names (`every_event`, `batch`, `adaptive`).  
    *Remediation:* Added `POLICY_ALIASES` dictionary in [`src/mdrap/ingestlog.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/mdrap/ingestlog.py#L380).
 3. **Defect SN-01 (P1):** Missing `CorruptedSnapshotError` Exception Class.  

@@ -10,13 +10,21 @@
 
 The MDRAP storage subsystem (`IngestLog`) provides five canonical durability modes:
 
-| Policy | Durability Guarantee String | Immediate `decision.durable` | Write Mechanism | Power-Loss Protection |
+| Policy | Durability Guarantee String | Immediate `decision.durable` | Write Mechanism | Power-Loss Protection Boundary |
 |---|---|:---:|---|:---:|
-| `"always"` / `"every_event"` | `"PHYSICAL_FSYNC_DURABLE"` | **`True`** | Immediate synchronous `os.fsync()` per event | Complete (Hardware barrier) |
-| `"grouped_by_time"` / `"batch"` | `"GROUPED_TIME_FSYNC_DURABLE"` | **`False`** (Until barrier) | Background thread fsyncs every 50ms or quiet period (45ms) | Bounded to 50ms window |
-| `"grouped_by_size"` | `"GROUPED_SIZE_FSYNC_DURABLE"` | **`False`** (Until barrier) | Flushes immediately at 64 KB boundary or quiet period (45ms) | Bounded to 64 KB window |
-| `"true_group_commit"` / `"adaptive"` | `"GROUP_COMMIT_FSYNC_DURABLE"` | **`True`** (On barrier sync) | Concurrent threads wait on condition variable for shared `fsync()` | Complete (Batch hardware barrier) |
-| `"never"` | `"OS_BUFFERED_NO_POWER_LOSS_PROTECTION"` | **`False`** (Always) | Written to OS page cache (`write()`), no `fsync()` | None (Lost on OS/power crash) |
+| `"always"` / `"every_event"` | `"PHYSICAL_FSYNC_DURABLE"` | **`True`** | Immediate synchronous `os.fsync()` per event | Flushed to storage controller (subject to drive non-volatile write cache / PLP policies; hardware-level protection requires battery-backed controller or enterprise SSD with power-loss capacitors) |
+| `"grouped_by_time"` / `"batch"` | `"GROUPED_TIME_FSYNC_DURABLE"` | **`False`** (Until barrier) | Background thread fsyncs every 50ms or quiet period (45ms) | Bounded to 50ms window before storage controller flush |
+| `"grouped_by_size"` | `"GROUPED_SIZE_FSYNC_DURABLE"` | **`False`** (Until barrier) | Flushes immediately at 64 KB boundary or quiet period (45ms) | Bounded to 64 KB window before storage controller flush |
+| `"true_group_commit"` / `"adaptive"` | `"GROUP_COMMIT_FSYNC_DURABLE"` | **`True`** (On barrier sync) | Concurrent threads wait on condition variable for shared `fsync()` | Flushed to storage controller via batched barrier. Note: `'adaptive'` is currently an alias mapping to `'true_group_commit'` (condition variable grouping), not a dynamic load-adaptive queue depth algorithm. |
+| `"never"` | `"OS_BUFFERED_NO_POWER_LOSS_PROTECTION"` | **`False`** (Always) | Written to OS page cache (`write()`), no `fsync()` | None (Data in OS memory page cache is lost on OS kernel panic or power crash) |
+
+### 1.1 Hardware and OS Flush Boundary Clarification
+In accordance with POSIX (`fsync(2)`) and Win32 (`FlushFileBuffers`) specifications:
+- `fsync()` instructs the host operating system kernel to flush dirty filesystem page caches and issue a flush command (e.g. `SYNCHRONIZE CACHE` / `FLUSH CACHE EXT`) to the underlying storage device controller.
+- Absolute hardware durability across physical power severance depends on the storage controller's write-cache architecture:
+  - **Enterprise Drives (PLP):** Solid-state drives equipped with hardware power-loss protection capacitors or RAID controllers with Battery-Backed Units (BBU) / Non-Volatile Flash BBU guarantee that writes acknowledged by `fsync()` are safely written to non-volatile flash.
+  - **Consumer Drives (Volatile Write Cache):** Commodity consumer drives may acknowledge flush commands before volatile onboard SDRAM caches are safely committed to flash blocks unless drive write caching is explicitly disabled (`hdparm -W0` or Windows disk policy "Turn off write-cache buffer flushing").
+MDRAP's software contract guarantees that `fsync()` / `FlushFileBuffers()` is executed synchronously before returning `durable=True`. Software cannot bypass physical drive controller design limitations.
 
 ---
 

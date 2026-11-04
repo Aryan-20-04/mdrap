@@ -42,6 +42,9 @@ DEFAULT_DEDUP_CACHE_SIZE: int = (
 )
 SEQUENCE_BITMAP_BITS: int = 64  # Sliding bitmap width in bits
 SEQUENCE_BITMAP_MASK: int = 0xFFFFFFFFFFFFFFFF  # 64-bit mask for sequence window
+DEFAULT_STALE_SEEN_CAPACITY: int = (
+    32  # Bounded circular buffer for out-of-window stale dedup
+)
 MIN_SAMPLES_FOR_VARIANCE: int = 3  # Minimum ticks required to evaluate running variance
 WARMUP_PRICE_DEV_RATIO: float = (
     0.10  # 10% deviation allowed during rolling window warm-up
@@ -531,7 +534,7 @@ class QualityEngine:
                         sl.regress_count = 0
 
                     sl.stale_seen.append(seq)
-                    if len(sl.stale_seen) > 4:
+                    if len(sl.stale_seen) > DEFAULT_STALE_SEEN_CAPACITY:
                         sl.stale_seen.pop(0)
                     self._mark(event, QualityStatus.SUSPICIOUS, Reason.OUT_OF_ORDER)
                     self._bump(Reason.OUT_OF_ORDER)

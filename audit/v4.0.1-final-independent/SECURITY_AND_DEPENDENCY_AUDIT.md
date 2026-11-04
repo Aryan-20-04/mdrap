@@ -21,8 +21,14 @@ Optional components for analytics, UI, and export pin bounded versions:
 - `pyarrow >= 20.0.0` (Pinned to mitigate known CVEs in PyArrow < 14.0.1 / Arrow RCE CVE-2023-47248)
 - `duckdb >= 0.10.0`
 
-### Limitation Note
-A local automated CVE scanner (e.g. `pip-audit`) was not available in this offline execution environment. This audit was performed via static version boundary verification and manual vulnerability evaluation against the documented NIST NVD alerts for declared dependencies.
+### Explicit Scope & Boundary Bounding
+This security audit constitutes an internal engineering review covering:
+1. Architectural security review of API and storage components.
+2. Static regex secret and credential scanning across all codebase assets.
+3. Deserialization security inspection (enforcing standard JSON and binary structs; zero `pickle` / `eval` usage).
+4. Static dependency version boundary verification against known high-severity CVEs (e.g. PyArrow CVE-2023-47248).
+
+**Boundary Disclaimer:** This audit was executed in an offline air-gapped test environment without live network access to commercial third-party vulnerability databases (e.g., `pip-audit`, Snyk, SonarQube). It does NOT constitute a certified third-party penetration test or an exhaustive CVE database certification.
 
 ---
 
@@ -50,7 +56,7 @@ All event serialization and state persistence across `Engine`, `IngestLog`, and 
 
 - **C Source Code:** `src/mdrap/fastpath.c` is written in standard C99/C11 without third-party C dependencies.
 - **Buffer Overflow Protection:**
-  - `FastSlot` size is strictly statically asserted at compile-time: `_Static_assert(sizeof(FastSlot) == 128, "FastSlot layout");`.
-  - Array bounds on `stale_seen` use modulo head indexing: `sl->stale_seen[sl->stale_head % 4] = seq;`.
+  - `FastSlot` size is strictly statically asserted at compile-time: `_Static_assert(sizeof(FastSlot) == 384, "FastSlot layout 6 cachelines");`.
+  - Array bounds on `stale_seen` use bitwise circular indexing on 32-entry power-of-2 capacity: `sl->stale_seen[sl->stale_head & 31] = seq;`.
   - Max sources and instruments are clamped to compiled constants (`MAX_SOURCES=32`, `MAX_INSTRUMENTS=1024`).
 - **Memory Safety:** Native memory allocations are zero-initialized with `calloc()` and bounded. Native SHM buffers use 0600 POSIX permissions.

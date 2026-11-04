@@ -9,7 +9,7 @@
 
 | Finding ID | Title | Severity | Confidence | Status | Release Blocking |
 |---|---|:---:|:---:|:---:|:---:|
-| **SQ-01** | C vs Python Stale Seen Buffer Capacity Mismatch (4 vs 64) | **P0** | Confirmed | **RESOLVED** | Yes (Was Blocking) |
+| **SQ-01** | Out-of-Window Stale History Depth & Parity (Capacity 32) | **P0** | Confirmed | **RESOLVED** | Yes (Was Blocking) |
 | **D-01** | `IngestLog` Rejection of Documented Policy Names (`every_event`, `batch`, `adaptive`) | **P1** | Confirmed | **RESOLVED** | No |
 | **SN-01** | Missing `CorruptedSnapshotError` Exception Class | **P1** | Confirmed | **RESOLVED** | No |
 | **BM-01** | In-Memory Microbenchmark vs End-to-End Pipeline Latency Conflation | **P2** | Confirmed | **DOCUMENTED** | No |
@@ -19,10 +19,14 @@
 
 ## 2. Detailed Finding Analysis
 
-### Finding SQ-01: C vs Python Stale Seen Buffer Capacity Mismatch
-- **Severity:** P0 (Core Parity Violation)
-- **Impact:** Under an adversarial stream of 5 distinct stale sequence packets, Native C evicted slot 0 on the 5th packet, failing to flag its subsequent retransmission as a duplicate (`SUSPICIOUS (OUT_OF_ORDER)`), while Python flagged it as `INVALID (DUPLICATE, OUT_OF_ORDER)`.
-- **Resolution:** Modified [`src/mdrap/quality.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/mdrap/quality.py#L533) to align Python's `_SlotState.stale_seen` capacity to 4 entries, matching `FastSlot.stale_seen[4]`. Verified with `test_p0_parity_stale_capacity.py`.
+### Finding SQ-01: Out-of-Window Stale History Depth & Parity
+- **Severity:** P0 (Core Parity Violation & Institutional Feed Burst Protection)
+- **Impact:** In prior builds, a 4-slot ring buffer in Native C was inadequate for burst packet retransmissions in high-frequency exchange feeds, while Python used 64 entries, causing semantic divergence.
+- **Resolution:** Upgraded `stale_seen` to a robust **32-entry circular history buffer** across all implementations:
+  1. Native C (`fastpath.c`): `int64_t stale_seen[32]` with 32 bytes of cacheline padding, maintaining `sizeof(FastSlot) == 384` (6 cachelines) and single-cycle bitwise masking `sl->stale_head & 31`.
+  2. Pure Python (`quality.py`): `DEFAULT_STALE_SEEN_CAPACITY = 32`.
+  3. Reference Oracle (`golden_oracle.py`): 32 entries with early return on stale duplicates.
+  Verified with `test_stale_history_capacity_32_deep_burst` and tri-engine differential fuzzing. Parity is 100%.
 
 ---
 

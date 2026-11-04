@@ -47,29 +47,40 @@ The remediation claimed:
 
 ---
 
-### Experiment P0-B: Crash During Catch-up and Restart Recovery
+### Experiment P0-B: In-Process Simulated Teardown
 - **Scenario:**
   1. Ingest 300 events (checkpoint = 299).
   2. Ingest up to offset 1,500 with lagging projection.
   3. Partially catch up to offset 599.
-  4. Inject immediate process crash (close DB connection, unbind engine instance, trigger Python GC).
+  4. Inject in-process teardown (close DB connection, unbind engine instance, trigger Python GC).
   5. Restart `Engine` on existing WAL directory and DB file.
   6. Verify post-restart checkpoint and complete catch-up.
 - **Execution Log:** [`raw_evidence/p0_projection_crash_during_catchup.log`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/audit/v4.0.1-final-independent/raw_evidence/p0_projection_crash_during_catchup.log)
-- **Results:**
-  ```text
-  [*] Ingesting initial 300 events...
-  [+] Initial checkpoint: 299
-  [*] Ingesting up to offset 1500 with lagging projection...
-  [+] WAL head at offset 1500
-  [+] Mid-catchup checkpoint before crash: 599
-  [*] Simulated crash complete. Now restarting Engine on existing storage...
-  [+] Post-restart projection checkpoint before subscribe: 599
-  [+] Post-recovery final checkpoint: 1499, Total rows: 1500
-  [SUCCESS] Zero skips, zero duplicates, strictly contiguous recovery verified.
-  ```
-- **Contiguity Proof:** Direct SQLite inspection of `canonical_events` verified sequence numbers 1 through 1,500 without a single gap or duplicate.
+- **Results:** 1,500 rows recovered contiguously. Checkpoint advanced to 1,499.
 - **Verdict:** **PASS.**
+
+---
+
+### Experiment P0-C: Authoritative Real OS Subprocess Crash (`proc.kill` / `TerminateProcess`)
+- **Motivation:** In-process cleanup (`gc.collect`, `connection.close()`) does not simulate uncatchable process termination, kernel buffer abandonment, or operating-system handle cleanup. An adversarial test requires an abrupt OS-level kill while the process is actively writing to both WAL and SQLite.
+- **Reproduction Script:** [`reproduction_scripts/test_p0_projection_real_subprocess_crash.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/audit/v4.0.1-final-independent/reproduction_scripts/test_p0_projection_real_subprocess_crash.py)
+- **Raw Execution Log:** [`raw_evidence/p0_projection_real_subprocess_crash.log`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/audit/v4.0.1-final-independent/raw_evidence/p0_projection_real_subprocess_crash.log)
+- **Scenario & Protocol:**
+  1. Parent spawns child process with separate process ID executing active ingestion of 2,500 events to WAL and SQLite projection.
+  2. Child signals active writing state via stdout (`PROJECTION_ACTIVE_AND_WRITING`).
+  3. While child is actively executing transactions mid-stream, parent invokes `proc.kill()` (Win32 `TerminateProcess` / POSIX `SIGKILL`).
+  4. Child terminates abruptly with non-zero exit code (`exit_code = 1`), with ZERO Python cleanup, zero `__del__` invocations, and abandoned in-memory buffers.
+  5. Parent inspects storage directly before recovery:
+     - Direct SQLite query: `PRAGMA integrity_check;` -> returns `[('ok',)]` (SQLite WAL journaling survived uncorrupted).
+     - Mid-stream durable checkpoint on disk: offset 534 (535 committed rows).
+  6. Parent initializes a fresh `Engine` instance on the abandoned storage and triggers `engine.recover_projections()`.
+  7. Replay scans remaining WAL frames (offset 535 through 535) and commits them to SQLite.
+  8. Post-recovery verification:
+     - `PRAGMA integrity_check;` -> `[('ok',)]`.
+     - Final checkpoint: 535 (matches `next_offset - 1`).
+     - Total canonical events in SQLite: 536.
+     - Contiguity verification: Sequences 1 through 536 verified strictly contiguous with ZERO gaps and ZERO duplicates.
+- **Verdict:** **VERIFIED (CRASH-RESILIENT).** All committed WAL records survived abrupt process severance, SQLite restored cleanly without database corruption, and projection caught up to 100% parity.
 
 ---
 

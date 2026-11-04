@@ -181,11 +181,13 @@ _Static_assert(offsetof(FastEvent, exchange_ts) == 16, "FastEvent ABI offset cha
 _Static_assert(offsetof(FastEvent, ask_size) == 80, "FastEvent ABI offset changed");
 _Static_assert(sizeof(FastResult) == 16, "FastResult ABI size changed");
 
-/* --- C-2: one 96-byte slot per (source, instrument); zero-filled == "untouched" --- */
+/* --- C-2: one 384-byte slot per (source, instrument); zero-filled == "untouched" --- */
 #define SLOT_INIT    0x1u
 #define SLOT_HAS_SEQ 0x2u
 #define SLOT_HAS_TS  0x4u
 #define SLOT_NO_RING 0x8u
+#define STALE_SEEN_CAPACITY 32
+#define STALE_SEEN_MASK (STALE_SEEN_CAPACITY - 1)
 typedef struct {
     int64_t  last_seq;       /* valid iff SLOT_HAS_SEQ                                  */
     uint64_t cand_plus1;     /* C-5: pending resync candidate (+1; 0 = none)            */
@@ -203,9 +205,10 @@ typedef struct {
     uint32_t fold_count;
     uint32_t regress_count;
     uint32_t stale_head;
-    int64_t  stale_seen[4];  /* bounded circular buffer for out-of-window stale dedup   */
+    int64_t  stale_seen[STALE_SEEN_CAPACITY];  /* 32-entry circular buffer for out-of-window stale dedup */
+    uint64_t _pad[4];        /* cacheline alignment padding to exactly 384 bytes (6 cachelines) */
 } FastSlot;
-_Static_assert(sizeof(FastSlot) == 128, "FastSlot layout");
+_Static_assert(sizeof(FastSlot) == 384, "FastSlot layout 6 cachelines");
 
 // ============================================================================
 // Phase F: High-Performance Native C Circular Replay Buffer (Spec §18)
@@ -429,7 +432,7 @@ static inline FastSlot *slot_touch(FastEngine *e, uint32_t s_id, uint32_t i_id) 
         sl->ring = ring;
         sl->epoch = ep;
         sl->flags = SLOT_INIT;
-        for (int k = 0; k < 4; ++k) sl->stale_seen[k] = -1;
+        for (int k = 0; k < STALE_SEEN_CAPACITY; ++k) sl->stale_seen[k] = -1;
     }
     return sl;
 }
@@ -483,7 +486,7 @@ static inline void seq_check(const FastEngine *e, FastSlot *sl, int64_t seq, Fas
         sl->flags |= SLOT_HAS_SEQ;
         sl->regress_count = 0;
         sl->stale_head = 0;
-        for (int k = 0; k < 4; ++k) sl->stale_seen[k] = -1;
+        for (int k = 0; k < STALE_SEEN_CAPACITY; ++k) sl->stale_seen[k] = -1;
         return;
     }
     if (seq > sl->last_seq) {
@@ -523,7 +526,7 @@ static inline void seq_check(const FastEngine *e, FastSlot *sl, int64_t seq, Fas
         /* d >= 64: beyond sliding window */
         /* Check bounded stale_seen ring for repeated duplicates FIRST */
         int is_stale_dup = 0;
-        for (int k = 0; k < 4; ++k) {
+        for (int k = 0; k < STALE_SEEN_CAPACITY; ++k) {
             if (sl->stale_seen[k] == seq) {
                 is_stale_dup = 1;
                 break;
@@ -543,7 +546,7 @@ static inline void seq_check(const FastEngine *e, FastSlot *sl, int64_t seq, Fas
                 sl->cand_plus1 = 0u;
                 sl->regress_count = 0;
                 sl->stale_head = 0;
-                for (int k = 0; k < 4; ++k) sl->stale_seen[k] = -1;
+                for (int k = 0; k < STALE_SEEN_CAPACITY; ++k) sl->stale_seen[k] = -1;
                 mark(res, STATUS_SUSPICIOUS, REASON_OUT_OF_ORDER);
                 return;
             }
@@ -551,7 +554,7 @@ static inline void seq_check(const FastEngine *e, FastSlot *sl, int64_t seq, Fas
             sl->regress_count = 0;
         }
 
-        sl->stale_seen[sl->stale_head % 4] = seq;
+        sl->stale_seen[sl->stale_head & STALE_SEEN_MASK] = seq;
         sl->stale_head++;
         mark(res, STATUS_SUSPICIOUS, REASON_OUT_OF_ORDER);
     }

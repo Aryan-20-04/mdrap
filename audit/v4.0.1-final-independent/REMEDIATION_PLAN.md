@@ -19,17 +19,15 @@ All remediation actions adhered to the engineering directive:
 
 ## 2. Implemented Source Corrections
 
-### Task 1: Semantic Parity Synchronization in Stale Seen Capacity
-- **Target File:** [`src/mdrap/quality.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/mdrap/quality.py#L533)
-- **Function:** `QualityEngine.evaluate()`
+### Task 1: Stale Sequence History Depth Expansion & Tri-Engine Parity (32 Entries)
+- **Target Files:** [`src/mdrap/fastpath.c`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/mdrap/fastpath.c#L185), [`src/mdrap/quality.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/src/mdrap/quality.py#L43), [`tests/golden_oracle.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/tests/golden_oracle.py#L160)
+- **Functions:** `seq_check()`, `QualityEngine.evaluate()`, `GoldenOracle.evaluate()`
 - **Correction:**
-  ```python
-  sl.stale_seen.append(seq)
-  if len(sl.stale_seen) > 4:
-      sl.stale_seen.pop(0)
-  ```
-- **Regression Test:** [`audit/v4.0.1-final-independent/reproduction_scripts/test_p0_parity_stale_capacity.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/audit/v4.0.1-final-independent/reproduction_scripts/test_p0_parity_stale_capacity.py)
-- **Status:** **VERIFIED (Parity 100%)**
+  - In `fastpath.c`: Expanded `stale_seen` to `int64_t stale_seen[32];` with padding to ensure 384-byte (6 cacheline) alignment. Replaced modulo with bitwise masking `sl->stale_head & 31`.
+  - In `quality.py`: Set `DEFAULT_STALE_SEEN_CAPACITY = 32`.
+  - In `golden_oracle.py`: Added 32-entry `stale_seen` tracking with immediate duplicate return.
+- **Regression Tests:** [`tests/final/test_sequence_stale_and_session.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/tests/final/test_sequence_stale_and_session.py) (`test_stale_history_capacity_32_deep_burst`), [`tests/test_differential_fuzz.py`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/tests/test_differential_fuzz.py)
+- **Status:** **VERIFIED (100% Tri-Engine Parity across Native C, Pure Python, and Oracle)**
 
 ---
 

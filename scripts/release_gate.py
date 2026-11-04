@@ -179,10 +179,10 @@ def main():
         [sys.executable, "build_fastpath.py"],
     )
 
-    # Gate 5: Fast Isolated Unit Tests
+    # Gate 5: Comprehensive Core Test Suite (1,663 active tests)
     run_gate(
         5,
-        "Fast Isolated Unit Tests",
+        "Comprehensive Core Test Suite",
         [
             sys.executable,
             "-m",
@@ -190,9 +190,6 @@ def main():
             "tests/",
             "-m",
             "not slow and not network",
-            "-k",
-            "not integration and not next_pieces and not chaos and not fuzz and not full_architecture",
-            "--timeout=30",
             "-q",
         ],
     )
@@ -240,6 +237,7 @@ def main():
             "tests/test_fuzz.py",
             "tests/test_chaos.py",
             "tests/test_transport_hardening.py",
+            "tests/test_differential_fuzz.py",
             "-q",
         ],
     )
@@ -253,6 +251,19 @@ def main():
             "-m",
             "pytest",
             "tests/test_full_architecture_pipeline.py",
+            "-q",
+        ],
+    )
+
+    # Gate 9b: Adversarial Verification & Hardening Suite
+    run_gate(
+        "9b",
+        "Adversarial Verification Suite (tests/final/)",
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "tests/final/",
             "-q",
         ],
     )

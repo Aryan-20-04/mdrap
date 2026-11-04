@@ -94,31 +94,31 @@ def test_distinct_stale_packets_with_same_circular_index():
         )
 
     for eng_name, eng in engines:
-        # 1. Establish high baseline sequence = 100
-        ev100 = _make_canonical(100, ts=100.0)
-        res100 = eng.evaluate(ev100)
-        assert res100.quality_status == QualityStatus.VALID, f"Failed on {eng_name}"
+        # 1. Establish high baseline sequence = 200
+        ev200 = _make_canonical(200, ts=100.0)
+        res200 = eng.evaluate(ev200)
+        assert res200.quality_status == QualityStatus.VALID, f"Failed on {eng_name}"
 
-        # 2. Packet with seq=10 arrives (stale by 90 packets, beyond 64-packet window)
-        # Circular index 10 % 4 == 2
+        # 2. Packet with seq=10 arrives (stale by 190 packets, beyond 64-packet window)
+        # Circular index 10 & 31 == 10
         ev10 = _make_canonical(10, ts=101.0)
         res10 = eng.evaluate(ev10)
         assert res10.quality_status == QualityStatus.SUSPICIOUS, f"Failed on {eng_name}"
         assert Reason.OUT_OF_ORDER.value in res10.reasons, f"Failed on {eng_name}"
 
-        # 3. Packet with seq=14 arrives (stale by 86 packets, beyond 64-packet window)
-        # Circular index 14 % 4 == 2 (COLLIDES on circular index with seq=10!)
-        ev14 = _make_canonical(14, ts=102.0)
-        res14 = eng.evaluate(ev14)
+        # 3. Packet with seq=42 arrives (stale by 158 packets, beyond 64-packet window)
+        # Circular index 42 & 31 == 10 (COLLIDES on 32-entry circular index with seq=10!)
+        ev42 = _make_canonical(42, ts=102.0)
+        res42 = eng.evaluate(ev42)
 
-        # Invariant: seq=14 MUST NOT be classified as DUPLICATE merely due to slot collision!
-        assert res14.quality_status == QualityStatus.SUSPICIOUS, (
+        # Invariant: seq=42 MUST NOT be classified as DUPLICATE merely due to slot collision!
+        assert res42.quality_status == QualityStatus.SUSPICIOUS, (
             f"Failed on {eng_name}: false duplicate from collision"
         )
-        assert Reason.DUPLICATE.value not in res14.reasons, (
+        assert Reason.DUPLICATE.value not in res42.reasons, (
             f"Failed on {eng_name}: false duplicate reason"
         )
-        assert Reason.OUT_OF_ORDER.value in res14.reasons, f"Failed on {eng_name}"
+        assert Reason.OUT_OF_ORDER.value in res42.reasons, f"Failed on {eng_name}"
 
 
 def test_repeated_stale_packet_is_classified_duplicate():
@@ -155,7 +155,7 @@ def test_repeated_stale_packet_is_classified_duplicate():
 
 
 def test_circular_collision_followed_by_retransmission():
-    """Slot collision followed by retransmission of both colliding sequences."""
+    """Slot collision followed by retransmission of colliding sequences."""
     engines = [
         (
             "PurePython",
@@ -173,18 +173,51 @@ def test_circular_collision_followed_by_retransmission():
         )
 
     for eng_name, eng in engines:
-        eng.evaluate(_make_canonical(100, ts=100.0))
+        eng.evaluate(_make_canonical(200, ts=100.0))
 
-        # Seq 10 arrives (slot 2)
+        # Seq 10 arrives (slot 10)
         eng.evaluate(_make_canonical(10, ts=101.0))
-        # Seq 14 arrives (slot 2 collision) -> overwrites slot 2
-        r14 = eng.evaluate(_make_canonical(14, ts=102.0))
-        assert r14.quality_status == QualityStatus.SUSPICIOUS
+        # Seq 42 arrives (slot 10 collision in 32-entry circular buffer) -> overwrites slot 10
+        r42 = eng.evaluate(_make_canonical(42, ts=102.0))
+        assert r42.quality_status == QualityStatus.SUSPICIOUS
 
-        # Seq 14 retransmitted -> must be flagged DUPLICATE
-        r14_dup = eng.evaluate(_make_canonical(14, ts=103.0))
-        assert r14_dup.quality_status == QualityStatus.INVALID
-        assert Reason.DUPLICATE.value in r14_dup.reasons
+        # Seq 42 retransmitted -> must be flagged DUPLICATE
+        r42_dup = eng.evaluate(_make_canonical(42, ts=103.0))
+        assert r42_dup.quality_status == QualityStatus.INVALID
+        assert Reason.DUPLICATE.value in r42_dup.reasons
+
+
+def test_stale_history_capacity_32_deep_burst():
+    """Verify that a burst of 30 distinct stale packets are all remembered and flagged DUPLICATE."""
+    engines = [
+        (
+            "PurePython",
+            QualityEngine(QualityConfig(price_window=10, staleness_threshold_s=60.0)),
+        ),
+    ]
+    if has_fastpath():
+        engines.append(
+            (
+                "NativeC",
+                FastQualityEngine(
+                    staleness_threshold_s=60.0, stddev_threshold=3.0, price_window=10
+                ),
+            )
+        )
+
+    for eng_name, eng in engines:
+        eng.evaluate(_make_canonical(500, ts=100.0))
+
+        # Send 30 distinct stale packets (seq 101 to 130, all d >= 64)
+        for s in range(101, 131):
+            r = eng.evaluate(_make_canonical(s, ts=101.0))
+            assert r.quality_status == QualityStatus.SUSPICIOUS, f"Failed on {eng_name} at seq {s}"
+            assert Reason.OUT_OF_ORDER.value in r.reasons
+
+        # Retransmit seq 105 -> must be recognized as DUPLICATE because capacity is 32 (not 4!)
+        r_dup = eng.evaluate(_make_canonical(105, ts=102.0))
+        assert r_dup.quality_status == QualityStatus.INVALID, f"Failed on {eng_name}: burst retention failed"
+        assert Reason.DUPLICATE.value in r_dup.reasons
 
 
 def test_session_change_with_same_sequence_number():
