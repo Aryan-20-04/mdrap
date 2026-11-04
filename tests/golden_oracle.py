@@ -170,7 +170,7 @@ class GoldenOracle:
         )
 
         # 2. Sequence validation & deduplication
-        if event.sequence_number is not None:
+        if event.sequence_number is not None and event.sequence_number >= 0:
             seq = event.sequence_number
             if not isinstance(seq, int) or isinstance(seq, bool):
                 _mark(Reason.SCHEMA_VIOLATION.value, QualityStatus.INVALID)

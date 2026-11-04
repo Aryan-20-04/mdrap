@@ -1,0 +1,483 @@
+================================================================================
+MDRAP v4.0.1 AUTHORITATIVE ALL-RELEASE-GATES EXECUTION & RECONCILIATION
+================================================================================
+Repository Root: C:\Users\KIIT0001\Desktop\Projects\mdrap
+Python Executable: C:\Python313\python.exe
+Python Version: 3.13.1 (tags/v3.13.1:0671451, Dec  3 2024, 19:06:28) [MSC v.1942 64 bit (AMD64)]
+
+================================================================================
+STAGE 1: COLLECTING ALL TESTS ACROSS REPOSITORY AND GATES
+================================================================================
+[+] Total repository test nodes discovered: 1726
+[+] Active production test scope: 1663
+[+] Deselected by pytest.ini marker (-m 'not slow and not network'): 63
+    [Gate 6] Integration & Guarantees Test Suite: 23 tests collected
+    [Gate 7] Security Hardening & Key Storage Tests: 30 tests collected
+    [Gate 8] Fuzzing & Chaos Resilience Tests: 15 tests collected
+    [Gate 9] Full System End-to-End Pipeline: 1 tests collected
+    [Gate 9b] Adversarial Verification Suite (tests/final/): 29 tests collected
+    [Gate 5] 1663 tests collected
+
+================================================================================
+STAGE 2: INDIVIDUAL GATE EXECUTION & VERIFICATION
+================================================================================
+
+--- Running Gate 1: Code Formatting (ruff format --check src/) ---
+Command: C:\Python313\python.exe -m ruff format --check src/
+Exit code: 0
+STDOUT:
+219 files already formatted
+[SUCCESS] Gate 1 PASSED cleanly.
+
+--- Running Gate 2: Static Analysis (ruff check src/) ---
+Command: C:\Python313\python.exe -m ruff check src/
+Exit code: 0
+STDOUT:
+All checks passed!
+[SUCCESS] Gate 2 PASSED cleanly.
+
+--- Running Gate 4: Native C Fastpath Compilation ---
+Command: C:\Python313\python.exe build_fastpath.py
+Exit code: 0
+STDOUT:
+[build] Compiling fastpath.c -> C:\Users\KIIT0001\Desktop\Projects\mdrap\src\mdrap\_fastpath_native.dll using gcc
+[build] SUCCESS! Compiled C:\Users\KIIT0001\Desktop\Projects\mdrap\src\mdrap\_fastpath_native.dll (200,419 bytes)
+[build] Compiling mdrap_core.c -> C:\Users\KIIT0001\Desktop\Projects\mdrap\src\mdrap\mdrap-core.exe using gcc
+[build] SUCCESS! Compiled C:\Users\KIIT0001\Desktop\Projects\mdrap\src\mdrap\mdrap-core.exe (379,924 bytes)
+[build] Compiling _fastpath_c.c -> C:\Users\KIIT0001\Desktop\Projects\mdrap\src\mdrap\_fastpath_c.cp313-win_amd64.pyd using gcc
+[build] SUCCESS! Compiled C:\Users\KIIT0001\Desktop\Projects\mdrap\src\mdrap\_fastpath_c.cp313-win_amd64.pyd (216,725 bytes)
+[SUCCESS] Gate 4 PASSED cleanly.
+
+--- Running Gate 5: Comprehensive Core Test Suite ---
+Command: C:\Python313\python.exe -m pytest tests/ -m not slow and not network -q
+Exit code: 0
+STDOUT:
+........................................................................ [  4%]
+........................................................................ [  8%]
+........................................................................ [ 12%]
+........................................................................ [ 17%]
+........................................................................ [ 21%]
+........................................................................ [ 25%]
+........................................................................ [ 30%]
+........................................................................ [ 34%]
+........................................................................ [ 38%]
+........................................................................ [ 43%]
+........................................................................ [ 47%]
+........................................................................ [ 51%]
+........................................................................ [ 56%]
+........................................................................ [ 60%]
+........................................................................ [ 64%]
+........................................................................ [ 69%]
+........................................................................ [ 73%]
+........................................................................ [ 77%]
+........................................................................ [ 82%]
+........................................................................ [ 86%]
+........................................................................ [ 90%]
+........................................................................ [ 95%]
+........................................................................ [ 99%]
+.......                                                                  [100%]
+============================== warnings summary ===============================
+tests/test_backtest.py::TestBacktestEngine::test_annualized_return_on_complete_capital_loss
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_backtest.py:323: DeprecationWarning: BacktestEngine in mdrap.backtest is deprecated and non-core to the market data engine.
+    engine = BacktestEngine(initial_capital=100_000.0)
+
+tests/test_backtest.py::TestBacktestEngine::test_backtest_basic_buy_and_hold
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_backtest.py:103: DeprecationWarning: BacktestEngine in mdrap.backtest is deprecated and non-core to the market data engine.
+    engine = BacktestEngine(initial_capital=100_000.0)
+
+tests/test_backtest.py::TestBacktestEngine::test_backtest_benchmark_comparison
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_backtest.py:217: DeprecationWarning: BacktestEngine in mdrap.backtest is deprecated and non-core to the market data engine.
+    engine = BacktestEngine(initial_capital=100_000.0, benchmark_symbol="AAPL")
+
+tests/test_backtest.py::TestBacktestEngine::test_backtest_equity_curve
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_backtest.py:181: DeprecationWarning: BacktestEngine in mdrap.backtest is deprecated and non-core to the market data engine.
+    engine = BacktestEngine(initial_capital=100_000.0)
+
+tests/test_backtest.py::TestBacktestEngine::test_backtest_max_drawdown
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_backtest.py:155: DeprecationWarning: BacktestEngine in mdrap.backtest is deprecated and non-core to the market data engine.
+    engine = BacktestEngine(initial_capital=100_000.0)
+
+tests/test_backtest.py::TestBacktestEngine::test_backtest_metrics_correctness
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_backtest.py:114: DeprecationWarning: BacktestEngine in mdrap.backtest is deprecated and non-core to the market data engine.
+    engine = BacktestEngine(initial_capital=100_000.0)
+
+tests/test_backtest.py::TestBacktestEngine::test_backtest_no_trades
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_backtest.py:206: DeprecationWarning: BacktestEngine in mdrap.backtest is deprecated and non-core to the market data engine.
+    engine = BacktestEngine(initial_capital=100_000.0)
+
+tests/test_backtest.py::TestBacktestEngine::test_backtest_sharpe_ratio
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_backtest.py:196: DeprecationWarning: BacktestEngine in mdrap.backtest is deprecated and non-core to the market data engine.
+    engine = BacktestEngine(initial_capital=100_000.0)
+
+tests/test_backtest.py::TestBacktestEngine::test_backtest_short_selling
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_backtest.py:244: DeprecationWarning: BacktestEngine in mdrap.backtest is deprecated and non-core to the market data engine.
+    engine = BacktestEngine(initial_capital=100_000.0)
+
+tests/test_backtest.py::TestBacktestEngine::test_order_book_depth_during_quote_stream
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_backtest.py:293: DeprecationWarning: BacktestEngine in mdrap.backtest is deprecated and non-core to the market data engine.
+    engine = BacktestEngine(initial_capital=100_000.0)
+
+tests/test_backtest.py::TestBacktestEngine::test_walkforward_splits
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_backtest.py:228: DeprecationWarning: BacktestEngine in mdrap.backtest is deprecated and non-core to the market data engine.
+    engine = BacktestEngine(initial_capital=100_000.0)
+
+tests/test_options.py::test_options_chain_generation
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_options.py:127: DeprecationWarning: OptionsChain in mdrap.options is deprecated and non-core to the market data engine.
+    chain_obj = OptionsChain(underlying="AAPL", spot=150.0, risk_free_rate=0.05)
+
+tests/test_options.py: 20 warnings
+tests/test_options_coverage.py: 10 warnings
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\packages\mdrap-options\mdrap_options\__init__.py:517: DeprecationWarning: Derivatives pricing in mdrap.options is deprecated and non-core to the market data engine.
+    price_info = price_option(contract, self.spot, self.risk_free_rate, vol)
+
+tests/test_options.py::test_options_chain_find_atm
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_options.py:136: DeprecationWarning: OptionsChain in mdrap.options is deprecated and non-core to the market data engine.
+    chain_obj = OptionsChain(underlying="AAPL", spot=150.0, risk_free_rate=0.05)
+
+tests/test_options_coverage.py::test_options_contract_pricing
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_options_coverage.py:67: DeprecationWarning: Derivatives pricing in mdrap.options is deprecated and non-core to the market data engine.
+    p_euro = price_option(c_euro, spot=155.0, risk_free_rate=0.05, volatility=0.25)
+
+tests/test_options_coverage.py::test_options_contract_pricing
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_options_coverage.py:81: DeprecationWarning: Derivatives pricing in mdrap.options is deprecated and non-core to the market data engine.
+    p_amer = price_option(c_amer, spot=140.0, risk_free_rate=0.05, volatility=0.25)
+
+tests/test_options_coverage.py::test_options_chain_and_max_pain
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_options_coverage.py:160: DeprecationWarning: OptionsChain in mdrap.options is deprecated and non-core to the market data engine.
+    chain = OptionsChain("AAPL", spot=150.0, risk_free_rate=0.05)
+
+tests/test_quarantine_subsystem.py::test_quarantine_isolation_and_inspection
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_quarantine_subsystem.py:44: DeprecationWarning: QuarantineManager in mdrap.quarantine is deprecated; use SQLite quarantine storage and engine quarantine events directly.
+    qm = QuarantineManager()
+
+tests/test_quarantine_subsystem.py::test_quarantine_deterministic_replay
+tests/test_quarantine_subsystem.py::test_quarantine_deterministic_replay
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_quarantine_subsystem.py:89: DeprecationWarning: QuarantineManager in mdrap.quarantine is deprecated; use SQLite quarantine storage and engine quarantine events directly.
+    qm = QuarantineManager()
+
+tests/test_quarantine_subsystem.py::test_quarantine_does_not_mutate_accepted_data
+  C:\Users\KIIT0001\Desktop\Projects\mdrap\tests\test_quarantine_subsystem.py:130: DeprecationWarning: QuarantineManager in mdrap.quarantine is deprecated; use SQLite quarantine storage and engine quarantine events directly.
+    qm = QuarantineManager()
+
+tests/test_sdk_commercial.py::test_sdk_health_and_feeds
+  C:\Users\KIIT0001\AppData\Roaming\Python\Python313\site-packages\websockets\legacy\__init__.py:6: DeprecationWarning: websockets.legacy is deprecated; see https://websockets.readthedocs.io/en/stable/howto/upgrade.html for upgrade instructions
+    warnings.warn(  # deprecated in 14.0 - 2024-11-09
+
+tests/test_sdk_commercial.py::test_sdk_health_and_feeds
+  C:\Users\KIIT0001\AppData\Roaming\Python\Python313\site-packages\uvicorn\protocols\websockets\websockets_impl.py:16: DeprecationWarning: websockets.server.WebSocketServerProtocol is deprecated
+    from websockets.server import WebSocketServerProtocol
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+1663 passed, 63 deselected, 52 warnings in 270.56s (0:04:30)
+[SUCCESS] Gate 5 PASSED cleanly.
+
+--- Running Gate 6: Integration & Guarantees Test Suite ---
+Command: C:\Python313\python.exe -m pytest tests/test_next_pieces_guarantees.py tests/test_pipeline_integration.py tests/test_service.py --timeout=45 -q
+Exit code: 0
+STDOUT:
+.......................                                                  [100%]
+23 passed in 9.53s
+[SUCCESS] Gate 6 PASSED cleanly.
+
+--- Running Gate 7: Security Hardening & Key Storage Tests ---
+Command: C:\Python313\python.exe -m pytest tests/test_security.py tests/test_security_hardening_review.py tests/test_key_storage_hardening.py tests/test_api_security_hardening.py -q
+Exit code: 0
+STDOUT:
+..............................                                           [100%]
+30 passed in 4.12s
+[SUCCESS] Gate 7 PASSED cleanly.
+
+--- Running Gate 8: Fuzzing & Chaos Resilience Tests ---
+Command: C:\Python313\python.exe -m pytest tests/test_fuzz.py tests/test_chaos.py tests/test_transport_hardening.py tests/test_differential_fuzz.py -q
+Exit code: 0
+STDOUT:
+...............                                                          [100%]
+15 passed in 7.11s
+[SUCCESS] Gate 8 PASSED cleanly.
+
+--- Running Gate 9: Full System End-to-End Pipeline ---
+Command: C:\Python313\python.exe -m pytest tests/test_full_architecture_pipeline.py -q
+Exit code: 0
+STDOUT:
+.                                                                        [100%]
+1 passed in 2.02s
+[SUCCESS] Gate 9 PASSED cleanly.
+
+--- Running Gate 9b: Adversarial Verification Suite (tests/final/) ---
+Command: C:\Python313\python.exe -m pytest tests/final/ -q
+Exit code: 0
+STDOUT:
+.............................                                            [100%]
+29 passed in 11.69s
+[SUCCESS] Gate 9b PASSED cleanly.
+
+--- Running Gate 10: Dependency CVE Hygiene ---
+Command: C:\Python313\python.exe -c from scripts.release_gate import gate_dependency_hygiene; gate_dependency_hygiene()
+Exit code: 0
+STDOUT:
+Installed pyarrow runtime verified: 23.0.1
+Dependency constraints in requirements.txt & pyproject.toml meet CVE safety thresholds.
+[SUCCESS] Gate 10 PASSED cleanly.
+
+--- Running Gate 11: Platform Diagnostics & Doctor ---
+Command: C:\Python313\python.exe -m mdrap.cli doctor --json
+Exit code: 0
+STDOUT:
+{
+  "status": "HEALTHY",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "python_version": "3.13.1",
+  "cpu_cores": 12,
+  "total_ram_gb": 15.72,
+  "profile_mode": "STANDARD",
+  "ring_buffer_mb": 16.0,
+  "wal_flush_interval_ms": 10,
+  "native_c_accelerator": "COMPILED (AVX2/Native)",
+  "disk_sync_speed_mbps": 196.3,
+  "companion_packages": {
+    "mdrap-options": true,
+    "mdrap-analytics": true,
+    "mdrap-strategies": false,
+    "mdrap-contrib-vessel": true
+  },
+  "environment": {
+    "os": "Windows-11-10.0.26200-SP0",
+    "machine_arch": "AMD64",
+    "cpu_model": "Intel64 Family 6 Model 154 Stepping 4, GenuineIntel",
+    "cpu_cores_logical": 12,
+    "total_ram_gb": 15.72,
+    "python_version": "3.13.1",
+    "python_compiler": "MSC v.1942 64 bit (AMD64)",
+    "cpu_features": [
+      "AVX2",
+      "SSE4_2"
+    ]
+  },
+  "hardware_profile": {
+    "active_mode": "STANDARD",
+    "recommended_mode": "STANDARD",
+    "description": "Standard Mode: Balanced profile for multi-core workstations and quantitative research.",
+    "ring_buffer_mb": 16.0,
+    "wal_flush_interval_ms": 10,
+    "wal_batch_size": 2000
+  },
+  "acceleration": {
+    "has_native_fastpath": true,
+    "fastpath_status": "COMPILED (Vectorized C)",
+    "has_shm_support": true,
+    "c_compilers": [
+      "gcc"
+    ]
+  },
+  "storage_io": {
+    "disk_sync_speed_mbps": 196.3,
+    "fsync_latency_ms": 5.09
+  },
+  "config": {
+    "config_path": "C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\mdrap.toml",
+    "config_hash": "4863f46099811a70"
+  }
+}
+[SUCCESS] Gate 11 PASSED cleanly.
+
+--- Running Gate 12: Native Accelerator Smoke Check ---
+Command: C:\Python313\python.exe benchmarks/micro_ffi.py --iterations 10000 --runs 1
+Exit code: 0
+STDOUT:
+[*] Running micro_ffi deconstruction (10,000 iterations x 1 runs)...
+======================================================================
+MDRAP ctypes FFI Deconstruction Results (Phase 9R.2)
+======================================================================
+Loop baseline (Python overhead):             19.50 ns
+(i)   Bare CDLL (no argtypes, 12 args):    1175.03 ns
+(ii)  Pinned CDLL (12 scalar args):        2573.22 ns
+(iii) CFUNCTYPE prototype (12 args):       2947.89 ns
+(iv)  Struct-by-pointer (1 arg):            556.00 ns
+(v)   Single scalar arg (1 int):            496.48 ns
+----------------------------------------------------------------------
+Full fastpath_eval_fast (FFI + C logic):   3038.05 ns
+Pure C quality logic (net of pinned FFI):   464.83 ns
+======================================================================
+
+[Audit Analysis]
+  Dynamic arg inspection delta (i vs ii): -1398.19 ns
+  Per-scalar-arg marshaling cost: ~188.79 ns/arg
+  Speedup switching to struct-by-ref: 4.63x faster FFI boundary
+[SUCCESS] Gate 12 PASSED cleanly.
+
+--- Running Gate 13: Documentation and Release Artifact Integrity ---
+Command: C:\Python313\python.exe -m pytest tests/test_docs_verification.py -q
+Exit code: 0
+STDOUT:
+........                                                                 [100%]
+8 passed in 1.24s
+[SUCCESS] Gate 13 PASSED cleanly.
+
+--- Running Gate 13b: Release Artifact Verification ---
+Command: C:\Python313\python.exe scripts/verify_release_artifacts.py
+Exit code: 0
+STDOUT:
+Import graph verified: 25 core modules, 0 contrib modules, 90 opt-in shims; 60 handlers in five CLI groups; internal imports are package-relative.
+Processing .\dist\mdrap_core-4.0.1-py3-none-any.whl
+Installing collected packages: mdrap-core
+Successfully installed mdrap-core-4.0.1
+Processing .\dist\mdrap_core-4.0.1-py3-none-any.whl
+Processing .\dist\mdrap_contrib-4.0.1-py3-none-any.whl
+Processing .\dist\mdrap_compat-4.0.1-py3-none-any.whl
+Installing collected packages: mdrap-core, mdrap-contrib, mdrap-compat
+
+Successfully installed mdrap-compat-4.0.1 mdrap-contrib-4.0.1 mdrap-core-4.0.1
+Processing .\dist\mdrap_core-4.0.1-py3-none-any.whl
+Processing .\dist\mdrap_contrib-4.0.1-py3-none-any.whl
+Processing .\dist\mdrap_compat-4.0.1-py3-none-any.whl
+Installing collected packages: mdrap-core, mdrap-contrib, mdrap-compat
+
+Successfully installed mdrap-compat-4.0.1 mdrap-contrib-4.0.1 mdrap-core-4.0.1
+Core-only isolation, paired core+contrib imports/CLI/plugins/collision, and opt-in compatibility checks passed.
+mdrap_core-4.0.1-py3-none-any.whl: inspected 136 entries; package contents verified
+mdrap_compat-4.0.1-py3-none-any.whl: inspected 94 entries; package contents verified
+mdrap_contrib-4.0.1-py3-none-any.whl: inspected 5 entries; package contents verified
+mdrap_core-4.0.1.tar.gz: inspected 149 entries; required sources present
+mdrap_contrib-4.0.1.tar.gz: inspected 15 entries; required sources present
+mdrap_compat-4.0.1.tar.gz: inspected 103 entries; required sources present
+Core and contrib release artifact gates passed.
+STDERR:
+* Getting build dependencies for sdist...
+warning: no files found matching '*.h' under directory 'src\mdrap'
+no previously-included directories found matching 'docs'
+no previously-included directories found matching 'examples'
+no previously-included directories found matching 'personas'
+no previously-included directories found matching 'fuzz'
+no previously-included directories found matching 'Microsoft'
+no previously-included directories found matching 'dist'
+no previously-included directories found matching 'build'
+no previously-included directories found matching 'scratch'
+no previously-included directories found matching '.pytest_cache'
+warning: no previously-included files matching '__pycache__' found anywhere in distribution
+warning: no previously-included files matching '*.o' found anywhere in distribution
+warning: no previously-included files matching '*.obj' found anywhere in distribution
+warning: no previously-included files matching '*.prof' found anywhere in distribution
+warning: no previously-included files matching '*.pstats' found anywhere in distribution
+warning: no previously-included files matching '*.coverage' found anywhere in distribution
+warning: no previously-included files matching '*.tmp' found anywhere in distribution
+warning: no previously-included files matching '*.db' found anywhere in distribution
+warning: no previously-included files matching '*.duckdb' found anywhere in distribution
+warning: no previously-included files matching '*.parquet' found anywhere in distribution
+* Building sdist...
+warning: no files found matching '*.h' under directory 'src\mdrap'
+no previously-included directories found matching 'docs'
+no previously-included directories found matching 'examples'
+no previously-included directories found matching 'personas'
+no previously-included directories found matching 'fuzz'
+no previously-included directories found matching 'Microsoft'
+no previously-included directories found matching 'dist'
+no previously-included directories found matching 'build'
+no previously-included directories found matching 'scratch'
+no previously-included directories found matching '.pytest_cache'
+warning: no previously-included files matching '__pycache__' found anywhere in distribution
+warning: no previously-included files matching '*.o' found anywhere in distribution
+warning: no previously-included files matching '*.obj' found anywhere in distribution
+warning: no previously-included files matching '*.prof' found anywhere in distribution
+warning: no previously-included files matching '*.pstats' found anywhere in distribution
+warning: no previously-included files matching '*.coverage' found anywhere in distribution
+warning: no previously-included files matching '*.tmp' found anywhere in distribution
+warning: no previously-included files matching '*.db' found anywhere in distribution
+warning: no previously-included files matching '*.duckdb' found anywhere in distribution
+warning: no previously-included files matching '*.parquet' found anywhere in distribution
+* Building wheel from sdist
+* Getting build dependencies for wheel...
+warning: no files found matching '*.h' under directory 'src\mdrap'
+no previously-included directories found matching 'docs'
+no previously-included directories found matching 'tests'
+no previously-included directories found matching 'examples'
+no previously-included directories found matching 'personas'
+no previously-included directories found matching 'fuzz'
+no previously-included directories found matching 'Microsoft'
+no previously-included directories found matching 'dist'
+no previously-included directories found matching 'build'
+no previously-included directories found matching 'scratch'
+no previously-included directories found matching '.pytest_cache'
+warning: no previously-included files matching '*.py[cod]' found anywhere in distribution
+warning: no previously-included files matching '__pycache__' found anywhere in distribution
+warning: no previously-included files matching '*.o' found anywhere in distribution
+warning: no previously-included files matching '*.obj' found anywhere in distribution
+warning: no previously-included files matching '*.prof' found anywhere in distribution
+warning: no previously-included files matching '*.pstats' found anywhere in distribution
+warning: no previously-included files matching '*.coverage' found anywhere in distribution
+warning: no previously-included files matching '*.tmp' found anywhere in distribution
+warning: no previously-included files matching '*.db' found anywhere in distribution
+warning: no previously-included files matching '*.duckdb' found anywhere in distribution
+warning: no previously-included files matching '*.parquet' found anywhere in distribution
+* Building wheel...
+warning: no files found matching '*.h' under directory 'src\mdrap'
+no previously-included directories found matching 'docs'
+no previously-included directories found matching 'tests'
+no previously-included directories found matching 'examples'
+no previously-included directories found matching 'personas'
+no previously-included directories found matching 'fuzz'
+no previously-included directories found matching 'Microsoft'
+no previously-included directories found matching 'dist'
+no previously-included directories found matching 'build'
+no previously-included directories found matching 'scratch'
+no previously-included directories found matching '.pytest_cache'
+warning: no previously-included files matching '*.py[cod]' found anywhere in distribution
+warning: no previously-included files matching '__pycache__' found anywhere in distribution
+warning: no previously-included files matching '*.o' found anywhere in distribution
+warning: no previously-included files matching '*.obj' found anywhere in distribution
+warning: no previously-included files matching '*.prof' found anywhere in distribution
+warning: no previously-included files matching '*.pstats' found anywhere in distribution
+warning: no previously-included files matching '*.coverage' found anywhere in distribution
+warning: no previously-included files matching '*.tmp' found anywhere in distribution
+warning: no previously-included files matching '*.db' found anywhere in distribution
+warning: no previously-included files matching '*.duckdb' found anywhere in distribution
+warning: no previously-included files matching '*.parquet' found anywhere in distribution
+* Getting build dependencies for sdist...
+* Building sdist...
+* Building wheel from sdist
+* Getting build dependencies for wheel...
+* Building wheel...
+* Getting build dependencies for sdist...
+* Building sdist...
+* Building wheel from sdist
+* Getting build dependencies for wheel...
+* Building wheel...
+
+[notice] A new release of pip is available: 26.2.1 -> 26.3
+[notice] To update, run: python.exe -m pip install --upgrade pip
+
+[notice] A new release of pip is available: 26.2.1 -> 26.3
+[notice] To update, run: python.exe -m pip install --upgrade pip
+
+[notice] A new release of pip is available: 26.2.1 -> 26.3
+[notice] To update, run: python.exe -m pip install --upgrade pip
+[SUCCESS] Gate 13b PASSED cleanly.
+
+================================================================================
+STAGE 3: RECONCILING EXECUTION COUNTS & DUPLICATES
+================================================================================
+Gate 5 Executions: 1663
+Gate 6 Executions: 23
+Gate 7 Executions: 30
+Gate 8 Executions: 15
+Gate 9 Executions: 1
+Gate 9b Executions: 29
+
+Sum of specialized gate executions (6 + 7 + 8 + 9 + 9b): 98
+Unique test IDs in specialized gates: 98
+Duplicate executions among specialized gates: 0
+
+TOTAL PIPELINE TEST EXECUTIONS (including repeated tests): 1761
+TOTAL UNIQUE TEST IDs EXECUTED: 1663
+Total Repeated Executions: 98
+
+[INVARIANT VERIFIED] 100% of the active production scope tests were executed.
+
+================================================================================
+STAGE 4: GENERATING TEST_EXECUTION_RECONCILIATION.CSV
+================================================================================
+[+] Wrote 1726 rows to C:\Users\KIIT0001\Desktop\Projects\mdrap\audit\v4.0.1-final-certification\TEST_EXECUTION_RECONCILIATION.csv
+
+================================================================================
+STAGE 5: GENERATING TEST_EXECUTION_RECONCILIATION.MD
+================================================================================
+[+] Wrote markdown report to C:\Users\KIIT0001\Desktop\Projects\mdrap\audit\v4.0.1-final-certification\TEST_EXECUTION_RECONCILIATION.md

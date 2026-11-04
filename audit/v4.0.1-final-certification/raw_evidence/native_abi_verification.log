@@ -1,0 +1,23 @@
+================================================================================
+MDRAP v4.0.1 P1: NATIVE C ABI & FASTSLOT MEMORY LAYOUT VERIFICATION
+================================================================================
+[1] Inspecting FastSlot Definition in src/mdrap/fastpath.c...
+    STALE_SEEN_CAPACITY = 32
+    Static assertion verified: _Static_assert(sizeof(FastSlot) == 384, ...)
+    Cacheline alignment verified: 384 bytes == 6 * 64 bytes (exact cacheline multiple).
+    Bitwise mask safety verified: STALE_SEEN_MASK = (STALE_SEEN_CAPACITY - 1).
+    Array indexing verified: sl->stale_seen[sl->stale_head & STALE_SEEN_MASK] = seq.
+[2] Verifying FastSlot encapsulation...
+    FastSlot is strictly internal/private to fastpath.c (zero header leakage).
+[3] Verifying Native ABI Version at runtime...
+    fastpath_engine_abi_version() returned: 5
+[4] Checking Runtime FastQualityEngine slot allocation alignment...
+    FastQualityEngine instantiated successfully.
+[5] Verifying Shared Memory packet structure stability...
+    SLOT_SIZE = 128 bytes (cacheline multiple: True)
+    HEADER_SIZE = 128 bytes (cacheline multiple: True)
+    SLOT_STRUCT.size = 128 bytes
+
+================================================================================
+ALL NATIVE C ABI & FASTSLOT MEMORY CHECKS PASSED CLEANLY.
+================================================================================
