@@ -297,7 +297,9 @@ def test_fastpath_evaluate_batch_scratch_reuse():
 
     # Batch 1: Small batch (N = 10)
     batch1 = [
-        _make_event(source="FEEDX", instrument_id="AAPL", sequence_number=i + 1, price=150.0 + i)
+        _make_event(
+            source="FEEDX", instrument_id="AAPL", sequence_number=i + 1, price=150.0 + i
+        )
         for i in range(10)
     ]
     res1 = eng.evaluate_batch(batch1)
@@ -309,7 +311,12 @@ def test_fastpath_evaluate_batch_scratch_reuse():
 
     # Batch 2: Same or smaller batch (N = 50) -> must reuse exact same buffer
     batch2 = [
-        _make_event(source="FEEDX", instrument_id="AAPL", sequence_number=10 + i + 1, price=160.0 + i)
+        _make_event(
+            source="FEEDX",
+            instrument_id="AAPL",
+            sequence_number=10 + i + 1,
+            price=160.0 + i,
+        )
         for i in range(50)
     ]
     res2 = eng.evaluate_batch(batch2)
@@ -320,7 +327,12 @@ def test_fastpath_evaluate_batch_scratch_reuse():
 
     # Batch 3: Large batch exceeding capacity (N = 1500) -> grows capacity cleanly
     batch3 = [
-        _make_event(source="FEEDY", instrument_id="MSFT", sequence_number=i + 1, price=300.0 + (i % 20))
+        _make_event(
+            source="FEEDY",
+            instrument_id="MSFT",
+            sequence_number=i + 1,
+            price=300.0 + (i % 20),
+        )
         for i in range(1500)
     ]
     res3 = eng.evaluate_batch(batch3)
@@ -332,7 +344,12 @@ def test_fastpath_evaluate_batch_scratch_reuse():
 
     # Batch 4: Subsequent batch (N = 20) -> reuses enlarged buffer
     batch4 = [
-        _make_event(source="FEEDY", instrument_id="MSFT", sequence_number=1500 + i + 1, price=310.0)
+        _make_event(
+            source="FEEDY",
+            instrument_id="MSFT",
+            sequence_number=1500 + i + 1,
+            price=310.0,
+        )
         for i in range(20)
     ]
     res4 = eng.evaluate_batch(batch4)
@@ -340,3 +357,32 @@ def test_fastpath_evaluate_batch_scratch_reuse():
     assert eng._batch_c_events is grown_events_buf
     assert eng._batch_c_results is grown_results_buf
 
+
+def test_fastpath_crc32c_hardware_and_fallback_parity():
+    """Verify hardware-accelerated CRC32C against RFC 3720 test vector and pure-Python parity (ADR-009)."""
+    from mdrap.fastpath import fast_crc32c
+
+    # RFC 3720 standard test vector: "123456789" -> 0xE3069283
+    data = b"123456789"
+    crc = fast_crc32c(data)
+    assert crc == 0xE3069283
+
+    # Differential test against Castagnoli algorithm
+    samples = [
+        b"",
+        b"a",
+        b"MDRAP v5 High-Frequency IngestLog WAL Frame",
+        b"\x00" * 128,
+        bytes(range(256)),
+    ]
+    poly = 0x82F63B78
+    for s in samples:
+        c_nat = fast_crc32c(s)
+        # Reference calculation
+        c_ref = ~0 & 0xFFFFFFFF
+        for b in s:
+            c_ref ^= b
+            for _ in range(8):
+                c_ref = (c_ref >> 1) ^ (poly if (c_ref & 1) else 0)
+        c_ref = ~c_ref & 0xFFFFFFFF
+        assert c_nat == c_ref, f"Mismatch on {s!r}: {c_nat} != {c_ref}"

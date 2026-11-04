@@ -449,6 +449,7 @@ class EngineConfig:
     on_gap: Any | None = None
     max_snapshots_retained: int = 3
     min_wal_snapshots_retained: int = 2
+    async_projections: bool = False
 
 
 def _fsync_dir(dirpath: str) -> None:
@@ -496,6 +497,7 @@ class Engine:
         snapshot_cadence_seconds: float = 300.0,
         gap_manager: Any | None = None,
         on_gap: Any | None = None,
+        async_projections: bool | None = None,
         **kwargs: Any,
     ) -> None:
         if "MDRAP_ASYNC_WRITER" in os.environ:
@@ -542,6 +544,15 @@ class Engine:
             snapshot_cadence_seconds = cfg.snapshot_cadence_seconds
             gap_manager = cfg.gap_manager
             on_gap = cfg.on_gap
+            if async_projections is None:
+                async_projections = getattr(cfg, "async_projections", None)
+
+        if async_projections is not None:
+            self.async_projections = bool(async_projections)
+        else:
+            self.async_projections = os.environ.get(
+                "MDRAP_ASYNC_PROJECTIONS", "0"
+            ).lower() in ("1", "true", "yes")
 
         if gap_manager is None and on_gap is not None:
             from .gap import GapManager
@@ -730,6 +741,7 @@ class Engine:
         snapshot_cadence_seconds = 300.0
         gap_manager = None
         on_gap = None
+        async_projections = None
 
         if config is not None:
             if isinstance(config, dict):
@@ -750,6 +762,7 @@ class Engine:
                 )
                 gap_manager = config.get("gap_manager", gap_manager)
                 on_gap = config.get("on_gap", on_gap)
+                async_projections = config.get("async_projections", async_projections)
             else:
                 staleness = getattr(config, "staleness_threshold_s", staleness)
                 clock = getattr(config, "clock", clock)
@@ -772,6 +785,9 @@ class Engine:
                 )
                 gap_manager = getattr(config, "gap_manager", gap_manager)
                 on_gap = getattr(config, "on_gap", on_gap)
+                async_projections = getattr(
+                    config, "async_projections", async_projections
+                )
 
         engine = cls(
             path=path,
@@ -787,6 +803,7 @@ class Engine:
             snapshot_cadence_seconds=snapshot_cadence_seconds,
             gap_manager=gap_manager,
             on_gap=on_gap,
+            async_projections=async_projections,
         )
 
         for proj in projections:
@@ -838,13 +855,20 @@ class Engine:
             from .projection import ProjectionTracker
 
             name = getattr(proj, "name", type(proj).__name__)
-            self._projection_trackers[pid] = ProjectionTracker(
+            use_async = self.async_projections and getattr(
+                proj, "supports_coalescing", False
+            )
+            tracker = ProjectionTracker(
                 projection=proj,
                 name=name,
                 max_pending=getattr(proj, "max_pending", 50_000),
                 log_source=self.log,
                 replay_fn=self._replay_projection_batch,
+                async_drain=use_async,
             )
+            if use_async:
+                tracker.start_worker()
+            self._projection_trackers[pid] = tracker
         else:
             tracker = self._projection_trackers[pid]
             if tracker.log_source is None and self.log is not None:

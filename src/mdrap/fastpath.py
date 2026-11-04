@@ -846,6 +846,14 @@ def _load_native_lib():
                 ]
                 lib.fastpath_fix_checksum.restype = ctypes.c_uint32
 
+            if hasattr(lib, "fastpath_crc32c"):
+                lib.fastpath_crc32c.argtypes = [
+                    ctypes.c_uint32,
+                    ctypes.POINTER(ctypes.c_uint8),
+                    ctypes.c_size_t,
+                ]
+                lib.fastpath_crc32c.restype = ctypes.c_uint32
+
             return lib
         except Exception as e:
             print(
@@ -2354,6 +2362,24 @@ def fast_fix_checksum(data: bytes | str) -> int | None:
         c_buf = (ctypes.c_uint8 * n).from_buffer_copy(buf)
         return int(_NATIVE_LIB.fastpath_fix_checksum(c_buf, n))
     return None
+
+
+def fast_crc32c(data: bytes | bytearray, crc: int = 0) -> int:
+    """Compute hardware-accelerated CRC32C (Castagnoli) checksum with pure-Python fallback (ADR-009)."""
+    n = len(data)
+    if n == 0:
+        return crc
+    if _NATIVE_LIB and hasattr(_NATIVE_LIB, "fastpath_crc32c"):
+        c_buf = (ctypes.c_uint8 * n).from_buffer_copy(data)
+        return int(_NATIVE_LIB.fastpath_crc32c(crc, c_buf, n))
+    # Pure-Python Castagnoli fallback
+    c = ~crc & 0xFFFFFFFF
+    poly = 0x82F63B78
+    for b in data:
+        c ^= b
+        for _ in range(8):
+            c = (c >> 1) ^ (poly if (c & 1) else 0)
+    return ~c & 0xFFFFFFFF
 
 
 # ---------------------------------------------------------------------------

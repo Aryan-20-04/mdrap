@@ -2355,3 +2355,49 @@ EXPORT uint32_t fastpath_fix_checksum(const uint8_t *buf, int32_t len) {
     }
     return sum % 256;
 }
+
+// ---------------------------------------------------------------------------
+// Hardware-Accelerated CRC32C (Castagnoli) Engine (ADR-009)
+// ---------------------------------------------------------------------------
+
+#define CRC32C_POLY 0x82F63B78u
+
+EXPORT uint32_t fastpath_crc32c(uint32_t crc, const uint8_t *data, size_t len) {
+    if (!data || len == 0) return crc;
+    uint32_t c = ~crc;
+
+#if defined(__x86_64__) || defined(_M_X64)
+#if defined(__SSE4_2__) || defined(_MSC_VER)
+    uint64_t c64 = (uint64_t)c;
+    while (len >= 8) {
+#if defined(_MSC_VER)
+        c64 = _mm_crc32_u64(c64, *(const uint64_t *)data);
+#else
+        c64 = __builtin_ia32_crc32di(c64, *(const uint64_t *)data);
+#endif
+        data += 8;
+        len -= 8;
+    }
+    c = (uint32_t)c64;
+    while (len > 0) {
+#if defined(_MSC_VER)
+        c = _mm_crc32_u8(c, *data);
+#else
+        c = __builtin_ia32_crc32qi(c, *data);
+#endif
+        data++;
+        len--;
+    }
+    return ~c;
+#endif
+#endif
+
+    // Portable Castagnoli fallback
+    for (size_t i = 0; i < len; ++i) {
+        c ^= data[i];
+        for (int j = 0; j < 8; ++j) {
+            c = (c >> 1) ^ ((c & 1) ? CRC32C_POLY : 0);
+        }
+    }
+    return ~c;
+}

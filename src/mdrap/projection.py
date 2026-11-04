@@ -64,8 +64,14 @@ class ProjectionTracker:
     max_enqueued_wal_offset: int = -1
     log_source: Any | None = None
     replay_fn: Any | None = None
+    async_drain: bool = False
+    batch_size: int = 1000
+    flush_interval_sec: float = 0.010
     _lock: threading.Lock = field(default_factory=threading.Lock)
     _queue_lock: threading.Lock = field(default_factory=threading.Lock)
+    _wake_event: threading.Event = field(default_factory=threading.Event)
+    _stop_event: threading.Event = field(default_factory=threading.Event)
+    _worker_thread: threading.Thread | None = None
 
     def __post_init__(self) -> None:
         if hasattr(self.projection, "checkpoint"):
@@ -75,6 +81,33 @@ class ProjectionTracker:
                     self.last_contiguous_offset = cp
             except Exception:
                 pass
+        if self.async_drain:
+            self.start_worker()
+
+    def start_worker(self) -> None:
+        """Start background projection drainage worker thread."""
+        if self._worker_thread is None or not self._worker_thread.is_alive():
+            self._stop_event.clear()
+            self._worker_thread = threading.Thread(
+                target=self._worker_loop,
+                daemon=True,
+                name=f"mdrap-proj-{self.name}",
+            )
+            self._worker_thread.start()
+            self.async_drain = True
+
+    def _worker_loop(self) -> None:
+        while not self._stop_event.is_set():
+            self._wake_event.wait(timeout=self.flush_interval_sec)
+            self._wake_event.clear()
+            if self._stop_event.is_set():
+                break
+            with self._queue_lock:
+                has_work = bool(self.pending_batches or self.wal_catchup_needed)
+            if has_work:
+                self._drain_batches(timeout=0.005)
+        # Final drain on worker termination
+        self._drain_batches(timeout=0.5)
 
     def enqueue(
         self,
@@ -95,46 +128,79 @@ class ProjectionTracker:
                 self.wal_catchup_needed = True
                 return
 
-            self.pending_batches.append((offset, batch))
-            self.pending_batches.sort(key=lambda x: x[0])
+            if not self.pending_batches or offset >= self.pending_batches[-1][0]:
+                self.pending_batches.append((offset, batch))
+            else:
+                self.pending_batches.append((offset, batch))
+                self.pending_batches.sort(key=lambda x: x[0])
+            qlen = len(self.pending_batches)
+
+        if self.async_drain and qlen >= self.batch_size:
+            self._wake_event.set()
 
     def drain(self, non_blocking: bool = True, timeout: float = 0.0) -> bool:
         """Drain pending batches with contiguous checkpoint tracking and WAL replay catch-up."""
-        return self.apply([], self.last_contiguous_offset)
+        if non_blocking:
+            self._wake_event.set()
+            return self._drain_batches(timeout=0.005)
+
+        deadline = time.time() + max(0.05, timeout)
+        while time.time() < deadline:
+            self._wake_event.set()
+            self._drain_batches(timeout=0.05)
+            with self._queue_lock:
+                if not self.pending_batches and not self.wal_catchup_needed:
+                    return True
+            time.sleep(0.002)
+        with self._queue_lock:
+            return len(self.pending_batches) == 0 and not self.wal_catchup_needed
 
     def apply(
         self, batch: list[Any], offset: int, batch_start: int | None = None
     ) -> bool:
         """Deliver batch with automatic retry of pending failed offsets and strict contiguous ordering.
 
-        Does not block incoming caller indefinitely if projection is locked/busy;
-        safely queues batch for contiguous replay.
+        When async_drain is True, queues batch and returns immediately without disk I/O.
+        When async_drain is False, executes synchronous contiguous drain.
         """
-        now = time.time()
         if offset >= 0:
             self.max_enqueued_wal_offset = max(self.max_enqueued_wal_offset, offset)
 
         with self._queue_lock:
             if batch:
                 if len(self.pending_batches) < self.max_pending:
-                    self.pending_batches.append((offset, batch))
-                    self.pending_batches.sort(key=lambda x: x[0])
+                    if (
+                        not self.pending_batches
+                        or offset >= self.pending_batches[-1][0]
+                    ):
+                        self.pending_batches.append((offset, batch))
+                    else:
+                        self.pending_batches.append((offset, batch))
+                        self.pending_batches.sort(key=lambda x: x[0])
                 else:
                     self.queue_overflow_count += 1
                     self.wal_catchup_needed = True
+                    self.recovery_status = "DEGRADED"
+            qlen = len(self.pending_batches)
 
-        # Fast path: if SQLite projection has recently failed (e.g. database locked),
-        # back off briefly (0.2s) to avoid stalling high-throughput ingest on repeated lock waits.
+        if self.async_drain:
+            if qlen >= self.batch_size:
+                self._wake_event.set()
+            return True
+
+        return self._drain_batches(timeout=0.005)
+
+    def _drain_batches(self, timeout: float = 0.005) -> bool:
+        now = time.time()
         if (
             self.consecutive_failures > 0
             and isinstance(getattr(self, "projection", None), SQLiteProjection)
             and (now - self.last_failure_ts) < 0.2
-            and batch
         ):
             return False
 
-        # Non-blocking lock acquisition with short timeout (0.005s) to prevent feed-blocking
-        acquired = self._lock.acquire(timeout=0.005)
+        # Non-blocking lock acquisition with short timeout to prevent feed-blocking
+        acquired = self._lock.acquire(timeout=timeout)
         if not acquired:
             self.consecutive_failures += 1
             self.total_retries += 1
@@ -186,49 +252,104 @@ class ProjectionTracker:
                         )
                         return False
 
+            can_coalesce = getattr(
+                self.projection, "supports_coalescing", False
+            ) or isinstance(self.projection, (SQLiteProjection, DuckDBProjection))
+
             # Drain pending batches in strict contiguous order
             while True:
                 with self._queue_lock:
                     if not self.pending_batches:
                         break
+
+                    # Check contiguous order before applying to projection
+                    cur_cp = self.last_contiguous_offset
+                    if cur_cp < 0:
+                        cur_cp = self.checkpoint()
+                    expected_start = getattr(
+                        self.projection, "expected_start_offset", 0
+                    )
+                    expected_next = (cur_cp + 1) if cur_cp >= 0 else expected_start
+
                     p_off, p_batch = self.pending_batches[0]
-
-                # Check contiguous order before applying to projection
-                cur_cp = self.last_contiguous_offset
-                if cur_cp < 0:
-                    cur_cp = self.checkpoint()
-                expected_start = getattr(self.projection, "expected_start_offset", 0)
-                expected_next = (cur_cp + 1) if cur_cp >= 0 else expected_start
-
-                if p_batch:
-                    wal_offsets = [
-                        item.offset
-                        for item in p_batch
-                        if hasattr(item, "offset")
-                        and item.offset is not None
-                        and item.offset >= 0
-                    ]
-                    if wal_offsets:
-                        b_start = min(wal_offsets)
+                    if p_batch:
+                        wal_offsets = [
+                            item.offset
+                            for item in p_batch
+                            if hasattr(item, "offset")
+                            and item.offset is not None
+                            and item.offset >= 0
+                        ]
+                        b_start = (
+                            min(wal_offsets)
+                            if wal_offsets
+                            else (p_off - len(p_batch) + 1 if p_off >= 0 else p_off)
+                        )
                     else:
-                        b_start = p_off - len(p_batch) + 1 if p_off >= 0 else p_off
-                else:
-                    b_start = p_off
+                        b_start = p_off
 
-                # If batch begins after expected_next, we have a gap; wait for missing preceding offset
-                if expected_next is not None and b_start > expected_next:
-                    break
+                    # If batch begins after expected_next, gap detected; halt contiguous drainage
+                    if expected_next is not None and b_start > expected_next:
+                        break
+
+                    if can_coalesce:
+                        to_apply: list[Any] = []
+                        consumed_count = 0
+                        last_off = -1
+                        curr_expected = expected_next
+
+                        for cand_off, cand_batch in self.pending_batches:
+                            if cand_batch:
+                                c_wal_offs = [
+                                    item.offset
+                                    for item in cand_batch
+                                    if hasattr(item, "offset")
+                                    and item.offset is not None
+                                    and item.offset >= 0
+                                ]
+                                c_start = (
+                                    min(c_wal_offs)
+                                    if c_wal_offs
+                                    else (
+                                        cand_off - len(cand_batch) + 1
+                                        if cand_off >= 0
+                                        else cand_off
+                                    )
+                                )
+                                c_end = max(c_wal_offs) if c_wal_offs else cand_off
+                            else:
+                                c_start = cand_off
+                                c_end = cand_off
+
+                            if curr_expected is not None and c_start > curr_expected:
+                                break
+
+                            to_apply.extend(cand_batch)
+                            consumed_count += 1
+                            last_off = cand_off
+                            if c_end >= 0:
+                                curr_expected = c_end + 1
+
+                            if len(to_apply) >= self.batch_size:
+                                break
+
+                        if consumed_count == 0:
+                            break
+                    else:
+                        to_apply = p_batch
+                        consumed_count = 1
+                        last_off = p_off
 
                 try:
-                    self.projection.apply(p_batch, p_off)
+                    self.projection.apply(to_apply, last_off)
                     with self._queue_lock:
-                        if self.pending_batches and self.pending_batches[0][0] == p_off:
-                            self.pending_batches.pop(0)
-                        if p_off in self.failed_offsets:
-                            self.failed_offsets.remove(p_off)
-                    if p_off >= 0:
+                        del self.pending_batches[:consumed_count]
+                        for off in list(self.failed_offsets):
+                            if off <= last_off:
+                                self.failed_offsets.remove(off)
+                    if last_off >= 0:
                         self.last_contiguous_offset = max(
-                            self.last_contiguous_offset, p_off
+                            self.last_contiguous_offset, last_off
                         )
                     self.last_success_ts = time.time()
                 except Exception:
@@ -239,8 +360,8 @@ class ProjectionTracker:
                         "STALLED" if self.consecutive_failures >= 10 else "DEGRADED"
                     )
                     with self._queue_lock:
-                        if p_off not in self.failed_offsets and p_off >= 0:
-                            self.failed_offsets.append(p_off)
+                        if last_off not in self.failed_offsets and last_off >= 0:
+                            self.failed_offsets.append(last_off)
                     return False
 
             if not self.wal_catchup_needed and not self.failed_offsets:
@@ -252,15 +373,7 @@ class ProjectionTracker:
 
     def flush(self, timeout: float = 5.0) -> bool:
         """Wait until all pending batches are committed to projection."""
-        deadline = time.time() + timeout
-        while time.time() < deadline:
-            with self._queue_lock:
-                if not self.pending_batches and not self.wal_catchup_needed:
-                    return True
-            self.apply([], self.last_contiguous_offset)
-            time.sleep(0.005)
-        with self._queue_lock:
-            return len(self.pending_batches) == 0 and not self.wal_catchup_needed
+        return self.drain(non_blocking=False, timeout=timeout)
 
     def checkpoint(self) -> int:
         if hasattr(self.projection, "checkpoint"):
@@ -274,12 +387,23 @@ class ProjectionTracker:
         return self.last_contiguous_offset
 
     def close(self, timeout: float = 5.0) -> None:
-        """Flush and release tracker resources."""
+        """Stop worker, flush pending batches, and release tracker resources."""
+        self._stop_event.set()
+        self._wake_event.set()
+        if self._worker_thread is not None and self._worker_thread.is_alive():
+            self._worker_thread.join(timeout=timeout)
         self.flush(timeout=timeout)
+        if hasattr(self.projection, "close"):
+            try:
+                self.projection.close()
+            except Exception:
+                pass
 
 
 class SQLiteProjection:
     """Production SQLite projection with atomic row + checkpoint transaction commit."""
+
+    supports_coalescing: bool = True
 
     def __init__(
         self,
@@ -303,6 +427,10 @@ class SQLiteProjection:
         self._conn.execute("PRAGMA journal_mode = WAL;")
         self._conn.execute("PRAGMA synchronous = NORMAL;")
         self._conn.execute(f"PRAGMA busy_timeout = {busy_timeout_ms};")
+        self._conn.execute("PRAGMA cache_size = -65536;")  # 64 MB in-memory cache
+        self._conn.execute("PRAGMA temp_store = MEMORY;")
+        self._conn.execute("PRAGMA mmap_size = 268435456;")  # 256 MB memory-mapped I/O
+        self._conn.execute("PRAGMA wal_autocheckpoint = 10000;")
         self._init_schema()
 
     def _init_schema(self) -> None:
@@ -642,6 +770,8 @@ class SQLiteProjection:
 
 class DuckDBProjection:
     """Production DuckDB columnar projection for ultra-fast time-series analytical scans."""
+
+    supports_coalescing: bool = True
 
     def __init__(
         self,
