@@ -70,7 +70,7 @@ def run_gate(
             print(f"\n[FAILED] Release Gate {gate_num} ({name}) threw exception: {exc}")
             sys.exit(1)
     dt = time.perf_counter() - t0
-    print(f"[PASSED] Release Gate {gate_num:02d}: {name} ({dt:.2f}s)")
+    print(f"[PASSED] Release Gate {gate_str}: {name} ({dt:.2f}s)")
 
 
 def gate_rules_sync():
