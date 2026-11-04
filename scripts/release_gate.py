@@ -50,8 +50,11 @@ def _get_env() -> dict[str, str]:
     return env
 
 
-def run_gate(gate_num: int, name: str, cmd: list[str] | None = None, func=None) -> None:
-    print(f"\n[RELEASE GATE {gate_num:02d}/14] {name}...")
+def run_gate(
+    gate_num: int | str, name: str, cmd: list[str] | None = None, func=None
+) -> None:
+    gate_str = f"{gate_num:02d}" if isinstance(gate_num, int) else f"{gate_num:>2}"
+    print(f"\n[RELEASE GATE {gate_str}/14] {name}...")
     t0 = time.perf_counter()
     if cmd:
         res = subprocess.run(cmd, cwd=_REPO_ROOT, env=_get_env())
