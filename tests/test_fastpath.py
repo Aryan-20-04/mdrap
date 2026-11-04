@@ -287,3 +287,56 @@ def test_multithreaded_fastpath_safety():
         t.join()
 
     assert not errors, f"Encountered concurrency errors in FastQualityEngine: {errors}"
+
+
+def test_fastpath_evaluate_batch_scratch_reuse():
+    """Verify FastQualityEngine.evaluate_batch reuses scratch buffers across multiple sizes."""
+    eng = FastQualityEngine(thread_safe=True)
+    assert eng._batch_capacity == 0
+    assert eng._batch_c_events is None
+
+    # Batch 1: Small batch (N = 10)
+    batch1 = [
+        _make_event(source="FEEDX", instrument_id="AAPL", sequence_number=i + 1, price=150.0 + i)
+        for i in range(10)
+    ]
+    res1 = eng.evaluate_batch(batch1)
+    assert len(res1) == 10
+    assert all(r.quality_status == QualityStatus.VALID for r in res1)
+    assert eng._batch_capacity >= 1024  # Initial minimum capacity allocation
+    initial_events_buf = eng._batch_c_events
+    initial_results_buf = eng._batch_c_results
+
+    # Batch 2: Same or smaller batch (N = 50) -> must reuse exact same buffer
+    batch2 = [
+        _make_event(source="FEEDX", instrument_id="AAPL", sequence_number=10 + i + 1, price=160.0 + i)
+        for i in range(50)
+    ]
+    res2 = eng.evaluate_batch(batch2)
+    assert len(res2) == 50
+    assert all(r.quality_status == QualityStatus.VALID for r in res2)
+    assert eng._batch_c_events is initial_events_buf
+    assert eng._batch_c_results is initial_results_buf
+
+    # Batch 3: Large batch exceeding capacity (N = 1500) -> grows capacity cleanly
+    batch3 = [
+        _make_event(source="FEEDY", instrument_id="MSFT", sequence_number=i + 1, price=300.0 + (i % 20))
+        for i in range(1500)
+    ]
+    res3 = eng.evaluate_batch(batch3)
+    assert len(res3) == 1500
+    assert eng._batch_capacity >= 1500
+    grown_events_buf = eng._batch_c_events
+    grown_results_buf = eng._batch_c_results
+    assert grown_events_buf is not initial_events_buf
+
+    # Batch 4: Subsequent batch (N = 20) -> reuses enlarged buffer
+    batch4 = [
+        _make_event(source="FEEDY", instrument_id="MSFT", sequence_number=1500 + i + 1, price=310.0)
+        for i in range(20)
+    ]
+    res4 = eng.evaluate_batch(batch4)
+    assert len(res4) == 20
+    assert eng._batch_c_events is grown_events_buf
+    assert eng._batch_c_results is grown_results_buf
+

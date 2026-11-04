@@ -958,6 +958,9 @@ class FastQualityEngine:
         self.is_native = bool(_C_EXT is not None or _NATIVE_LIB is not None)
         self.thread_safe = thread_safe
         self._eval_lock = threading.Lock()
+        self._batch_capacity: int = 0
+        self._batch_c_events: Any = None
+        self._batch_c_results: Any = None
 
         self._engine_ptr = None
         self._engine_ptr_c = None
@@ -1323,6 +1326,15 @@ class FastQualityEngine:
                 return self._evaluate_batch_unlocked(events)
         return self._evaluate_batch_unlocked(events)
 
+    def _ensure_batch_scratch(self, n: int) -> tuple[Any, Any]:
+        """Ensure reusable ctypes scratch arrays have capacity >= n (Phase 1 allocation reduction)."""
+        if self._batch_capacity < n:
+            new_cap = max(n, 1024, self._batch_capacity * 2)
+            self._batch_c_events = (_CFastEvent * new_cap)()
+            self._batch_c_results = (_CFastResult * new_cap)()
+            self._batch_capacity = new_cap
+        return self._batch_c_events, self._batch_c_results
+
     def _evaluate_batch_unlocked(
         self, events: list[CanonicalEvent]
     ) -> list[CanonicalEvent]:
@@ -1345,8 +1357,7 @@ class FastQualityEngine:
             return events
 
         n = len(events)
-        c_events = (_CFastEvent * n)()
-        c_results = (_CFastResult * n)()
+        c_events, c_results = self._ensure_batch_scratch(n)
         needs_fallback: list[int] = []
 
         for idx, ev in enumerate(events):
