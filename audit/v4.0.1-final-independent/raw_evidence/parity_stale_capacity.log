@@ -1,0 +1,4 @@
+﻿[*] Testing C vs Python stale seen behavior...
+[+] Python evaluation for 5th stale sequence resend: is_dup=True, status=QualityStatus.INVALID, reasons=['DUPLICATE', 'OUT_OF_ORDER']
+[+] Native C evaluation for 5th stale sequence resend: is_dup=False, status=QualityStatus.SUSPICIOUS, reasons=['OUT_OF_ORDER']
+[BUG CONFIRMED] Semantic Parity Divergence: Python detected duplicate=True, Native C detected duplicate=False!

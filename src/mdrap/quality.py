@@ -531,10 +531,11 @@ class QualityEngine:
                         sl.regress_count = 0
 
                     sl.stale_seen.append(seq)
-                    if len(sl.stale_seen) > 64:
+                    if len(sl.stale_seen) > 4:
                         sl.stale_seen.pop(0)
                     self._mark(event, QualityStatus.SUSPICIOUS, Reason.OUT_OF_ORDER)
                     self._bump(Reason.OUT_OF_ORDER)
+
         elif ex_fin:
             # Unsequenced events: 2-gen sliding window
             ev_type_str = (

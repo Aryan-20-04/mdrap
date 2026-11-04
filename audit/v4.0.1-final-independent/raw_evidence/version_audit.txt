@@ -1,0 +1,5 @@
+﻿pyproject.toml dynamic version attr: mdrap._version.__version__
+compat/pyproject.toml version: 4.0.1
+contrib/pyproject.toml version: 4.0.1
+Cargo.toml version: 4.0.1
+src/mdrap/_version.py __version__: 4.0.1

@@ -1,0 +1,37 @@
+﻿============================= test session starts =============================
+platform win32 -- Python 3.13.1, pytest-8.4.2, pluggy-1.6.0 -- C:\Python313\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\KIIT0001\Desktop\Projects\mdrap
+configfile: pytest.ini
+plugins: anyio-4.13.0, Faker-33.1.0, langsmith-0.7.20, asyncio-0.24.0, cov-6.0.0, mock-3.14.0, timeout-2.3.1
+asyncio: mode=Mode.STRICT, default_loop_scope=function
+collecting ... collected 26 items
+
+tests/final/test_projection_overflow_recovery.py::test_queue_capacity_of_one_recovers_without_buffer_error PASSED [  3%]
+tests/final/test_projection_overflow_recovery.py::test_queue_capacity_of_two_with_burst_ingestion PASSED [  7%]
+tests/final/test_projection_overflow_recovery.py::test_overflow_during_simultaneous_multi_feed_submissions PASSED [ 11%]
+tests/final/test_projection_overflow_recovery.py::test_restart_with_non_empty_wal_backlog_automatically_recovers PASSED [ 15%]
+tests/final/test_projection_overflow_recovery.py::test_sqlite_lock_lasting_several_seconds_does_not_block_ingest PASSED [ 19%]
+tests/final/test_projection_overflow_recovery.py::test_duplicate_batch_replay_is_idempotent PASSED [ 23%]
+tests/final/test_projection_overflow_recovery.py::test_multiple_independent_projections_with_different_failure_modes PASSED [ 26%]
+tests/final/test_projection_overflow_recovery.py::test_ingestion_latency_under_queue_saturation PASSED [ 30%]
+tests/test_final_p0a_projection_checkpoint.py::test_first_batch_starts_at_zero PASSED [ 34%]
+tests/test_final_p0a_projection_checkpoint.py::test_first_batch_starts_at_one_rejected PASSED [ 38%]
+tests/test_final_p0a_projection_checkpoint.py::test_first_batch_starts_at_100_rejected PASSED [ 42%]
+tests/test_final_p0a_projection_checkpoint.py::test_missing_first_offset PASSED [ 46%]
+tests/test_final_p0a_projection_checkpoint.py::test_missing_middle_offset PASSED [ 50%]
+tests/test_final_p0a_projection_checkpoint.py::test_overlapping_batches PASSED [ 53%]
+tests/test_final_p0a_projection_checkpoint.py::test_duplicate_batch_delivery PASSED [ 57%]
+tests/test_final_p0a_projection_checkpoint.py::test_failed_transaction_followed_by_retry PASSED [ 61%]
+tests/test_final_p0a_projection_checkpoint.py::test_process_restart_with_incomplete_projection PASSED [ 65%]
+tests/test_final_p0a_projection_checkpoint.py::test_projection_checkpoint_corruption_handled_safely PASSED [ 69%]
+tests/test_final_p0b_projection_concurrency.py::test_p0b_two_threads_concurrent_submission PASSED [ 73%]
+tests/test_final_p0b_projection_concurrency.py::test_p0b_multiple_feeds_concurrent_submission PASSED [ 76%]
+tests/test_final_p0b_projection_concurrency.py::test_p0b_force_later_offset_reordering PASSED [ 80%]
+tests/test_final_p0b_projection_concurrency.py::test_p0b_earlier_batch_failure_blocks_bypass PASSED [ 84%]
+tests/test_final_p0b_projection_concurrency.py::test_p0b_restart_with_pending_projection_backlog PASSED [ 88%]
+tests/test_final_p0b_projection_concurrency.py::test_p0b_saturate_projection_queue_raises PASSED [ 92%]
+tests/test_final_p0b_projection_concurrency.py::test_p0b_external_sqlite_lock_does_not_block_engine_submit PASSED [ 96%]
+tests/test_final_p0b_projection_concurrency.py::test_p0b_stop_engine_while_projection_pending PASSED [100%]
+
+============================= 26 passed in 9.74s ==============================

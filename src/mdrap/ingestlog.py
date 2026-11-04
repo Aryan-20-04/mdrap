@@ -376,7 +376,13 @@ class IngestLog:
             except OSError:
                 pass
 
-        self.fsync_policy = fsync_policy.lower()
+        raw_policy = fsync_policy.lower()
+        POLICY_ALIASES = {
+            "every_event": "always",
+            "batch": "grouped_by_time",
+            "adaptive": "true_group_commit",
+        }
+        self.fsync_policy = POLICY_ALIASES.get(raw_policy, raw_policy)
         if self.fsync_policy not in (
             "always",
             "grouped_by_time",
@@ -384,7 +390,7 @@ class IngestLog:
             "never",
             "true_group_commit",
         ):
-            raise ValueError(f"Invalid fsync_policy: {self.fsync_policy}")
+            raise ValueError(f"Invalid fsync_policy: {fsync_policy}")
 
         self.max_segment_bytes = max_segment_bytes
         self.sparse_index_interval = max(1, sparse_index_interval)

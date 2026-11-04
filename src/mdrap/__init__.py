@@ -16,6 +16,7 @@ from .client import Client, MDRAPClient, AsyncClient, MarketEvent as ClientMarke
 
 from .models import (
     CanonicalEvent,
+    CorruptedSnapshotError,
     EventType,
     MarketEvent,
     QualityStatus,
@@ -26,6 +27,7 @@ from .models import (
     deprecated,
     RecoveryError,
 )
+
 from .clock import Clock, FixedClock, SystemClock
 from .engine import Engine, EngineConfig, EngineDecision, EngineState
 from .gap import GapManager, GapRecord, GapState
@@ -82,6 +84,7 @@ __all__ = [
     "reason_registry",
     "deprecated",
     "RecoveryError",
+    "CorruptedSnapshotError",
     "Clock",
     "FixedClock",
     "SystemClock",

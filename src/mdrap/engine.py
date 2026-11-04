@@ -26,12 +26,14 @@ from typing import Any
 from .clock import Clock, SystemClock
 from .models import (
     CanonicalEvent,
+    CorruptedSnapshotError,
     EventType,
     QualityStatus,
     RawEvent,
     Reason,
     RecoveryError,
 )
+
 
 logger = logging.getLogger(__name__)
 
@@ -664,11 +666,18 @@ class Engine:
                     and self.log.earliest_offset > 0
                 ):
                     # Invariant: Fail closed if WAL history is incomplete!
+                    if failed_offsets_snap:
+                        raise CorruptedSnapshotError(
+                            f"Engine recovery failed: All candidate snapshots failed integrity checks and WAL history before offset "
+                            f"{self.log.earliest_offset} is missing (required offset 0). "
+                            "Cannot reconstruct authoritative state without complete history."
+                        )
                     raise RecoveryError(
                         f"Engine recovery failed: No valid snapshot could be loaded and WAL history before offset "
                         f"{self.log.earliest_offset} is missing (required offset 0). "
                         "Cannot reconstruct authoritative state without complete history."
                     )
+
                 self.state = self.create_initial_state()
                 replay_from = 0
                 self.recovery_metrics.snapshot_offset = -1

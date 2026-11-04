@@ -1,0 +1,9 @@
+﻿[*] Ingesting initial 300 events...
+[+] Initial checkpoint: 299
+[*] Ingesting up to offset 1500 with lagging projection...
+[+] WAL head at offset 1500
+[+] Mid-catchup checkpoint before crash: 599
+[*] Simulated crash complete. Now restarting Engine on existing storage...
+[+] Post-restart projection checkpoint before subscribe: 599
+[+] Post-recovery final checkpoint: 1499, Total rows: 1500
+[SUCCESS] Zero skips, zero duplicates, strictly contiguous recovery verified.

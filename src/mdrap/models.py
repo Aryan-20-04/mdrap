@@ -36,6 +36,12 @@ class RecoveryError(RuntimeError):
     pass
 
 
+class CorruptedSnapshotError(RecoveryError):
+    """Raised when snapshot verification fails SHA-256 integrity, checksum validation, or file structure checks."""
+
+    pass
+
+
 def _safe_float(val: Any, default: float = 0.0) -> float:
     """Safely convert value to finite float without raising or accepting NaN/inf/bool."""
     if val is None or isinstance(val, bool):

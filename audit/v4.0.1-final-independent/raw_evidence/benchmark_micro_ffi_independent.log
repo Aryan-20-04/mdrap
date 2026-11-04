@@ -1,0 +1,19 @@
+﻿[*] Running micro_ffi deconstruction (100,000 iterations x 3 runs)...
+======================================================================
+MDRAP ctypes FFI Deconstruction Results (Phase 9R.2)
+======================================================================
+Loop baseline (Python overhead):             15.18 ns
+(i)   Bare CDLL (no argtypes, 12 args):     955.65 ns
+(ii)  Pinned CDLL (12 scalar args):        2209.00 ns
+(iii) CFUNCTYPE prototype (12 args):       2144.83 ns
+(iv)  Struct-by-pointer (1 arg):            475.14 ns
+(v)   Single scalar arg (1 int):            407.46 ns
+----------------------------------------------------------------------
+Full fastpath_eval_fast (FFI + C logic):   2221.34 ns
+Pure C quality logic (net of pinned FFI):    12.34 ns
+======================================================================
+
+[Audit Analysis]
+  Dynamic arg inspection delta (i vs ii): -1253.35 ns
+  Per-scalar-arg marshaling cost: ~163.78 ns/arg
+  Speedup switching to struct-by-ref: 4.65x faster FFI boundary
