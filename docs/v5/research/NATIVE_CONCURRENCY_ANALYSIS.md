@@ -27,7 +27,7 @@ Modern multi-core processors aggressively reorder instructions and buffer stores
 |  memory_order_relaxed | memory_order_acquire / release  |  memory_order_seq_cst            |
 |  - Atomic value read/write | - Release: stores prior to write | - Total global store order   |
 |  - No fence / ordering  |   are visible to Acquire load   | - Heavy hardware bus lock    |
-|  - Monotonic counters   | - Zero overhead on x86 TSO      | - High latency penalty       |
+|  - Monotonic counters   | - Plain MOV on x86 TSO (no fence) | - High latency penalty       |
 +-----------------------------------------------------------------------------------------+
 ```
 
