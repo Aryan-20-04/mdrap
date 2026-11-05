@@ -8,8 +8,10 @@ from __future__ import annotations
 
 __stability__ = "stable"
 
+import abc
 import collections
 import dataclasses
+import os
 import queue
 import threading
 import time
@@ -32,12 +34,8 @@ class ShardConfig:
     max_queue_depth: int = 50000
 
 
-class SpscRingQueue:
-    """Bounded, lock-free Single-Producer Single-Consumer (SPSC) circular ring buffer.
-
-    Enforces ADR-004: Eliminates mutex / Condition variable contention on the single-producer
-    to single-consumer event pipeline.
-    """
+class PySpscRingQueue:
+    """Pure-Python bounded, lock-free SPSC circular ring buffer fallback."""
 
     def __init__(self, capacity: int = 65536) -> None:
         cap = 1
@@ -79,6 +77,44 @@ class SpscRingQueue:
 
     def full(self) -> bool:
         return (self._head - self._tail) >= self.capacity
+
+
+# ---------------------------------------------------------------------------
+# C11 Native SPSC Queue Fastpath Integration (ADR-005)
+# ---------------------------------------------------------------------------
+_NATIVE_SPSC = None
+if os.environ.get("MDRAP_DISABLE_FASTPATH") != "1":
+    try:
+        from ._fastpath_c import NativeSpscQueue as _NativeSpscQueue
+
+        _NATIVE_SPSC = _NativeSpscQueue
+    except (ImportError, AttributeError):
+        _NATIVE_SPSC = None
+
+
+class SpscRingQueueMeta(abc.ABCMeta):
+    """Metaclass ensuring virtual inheritance works for both C11 Native & Pure-Python queues."""
+
+    pass
+
+
+class SpscRingQueue(metaclass=SpscRingQueueMeta):
+    """Bounded, lock-free Single-Producer Single-Consumer (SPSC) circular ring buffer.
+
+    Enforces ADR-004 & ADR-005: Eliminates mutex contention on the event pipeline.
+    Automatically instantiates high-performance C11 atomic ring buffer with cache-line
+    padding when available, or transparently falls back to pure Python.
+    """
+
+    def __new__(cls, capacity: int = 65536) -> Any:
+        if _NATIVE_SPSC is not None and os.environ.get("MDRAP_DISABLE_FASTPATH") != "1":
+            return _NATIVE_SPSC(capacity=capacity)
+        return PySpscRingQueue(capacity=capacity)
+
+
+SpscRingQueue.register(PySpscRingQueue)
+if _NATIVE_SPSC is not None:
+    SpscRingQueue.register(_NATIVE_SPSC)
 
 
 class ChannelIngressSequencer:

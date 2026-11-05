@@ -387,6 +387,233 @@ static PyObject *py_shm_epoch_v3(PyObject *self, PyObject *buf_obj) {
 }
 
 /* ---------------------------------------------------------------------------
+ * Native C11 Atomic Lock-Free SPSC Ring Queue Type
+ * ---------------------------------------------------------------------------*/
+
+#ifdef _MSC_VER
+#define SPSC_ALIGNED_64 __declspec(align(64))
+#else
+#define SPSC_ALIGNED_64 __attribute__((aligned(64)))
+#endif
+
+typedef struct {
+    /* Producer cache line (64 bytes) */
+    SPSC_ALIGNED_64 uint64_t head;
+    uint64_t cached_tail;
+    uint8_t _pad_prod[48];
+
+    /* Consumer cache line (64 bytes) */
+    SPSC_ALIGNED_64 uint64_t tail;
+    uint64_t cached_head;
+    uint8_t _pad_cons[48];
+
+    /* Shared read-only configuration cache line (64 bytes) */
+    SPSC_ALIGNED_64 uint32_t capacity;
+    uint32_t mask;
+    PyObject **items;
+    uint8_t _pad_shared[48];
+} NativeRing;
+
+typedef struct {
+    PyObject_HEAD
+    NativeRing *ring;
+} NativeSpscQueueObject;
+
+static void NativeSpscQueue_dealloc(NativeSpscQueueObject *self) {
+    NativeRing *r = self->ring;
+    if (r) {
+        if (r->items) {
+            uint64_t tail = r->tail;
+            uint64_t head = r->head;
+            while (tail != head) {
+                uint32_t idx = (uint32_t)(tail & r->mask);
+                Py_XDECREF(r->items[idx]);
+                r->items[idx] = NULL;
+                tail++;
+            }
+            free(r->items);
+            r->items = NULL;
+        }
+#if defined(_WIN32) || defined(_WIN64)
+        _aligned_free(r);
+#else
+        free(r);
+#endif
+        self->ring = NULL;
+    }
+    Py_TYPE(self)->tp_free((PyObject *)self);
+}
+
+static PyObject *NativeSpscQueue_new(PyTypeObject *type, PyObject *args, PyObject *kwds) {
+    (void)args;
+    (void)kwds;
+    NativeSpscQueueObject *self = (NativeSpscQueueObject *)type->tp_alloc(type, 0);
+    if (self) {
+        self->ring = NULL;
+    }
+    return (PyObject *)self;
+}
+
+static int NativeSpscQueue_init(NativeSpscQueueObject *self, PyObject *args, PyObject *kwds) {
+    int req_cap = 65536;
+    static char *kwlist[] = {"capacity", NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "|i", kwlist, &req_cap)) {
+        return -1;
+    }
+    if (req_cap <= 0) req_cap = 16;
+    uint32_t cap = 1;
+    while (cap < (uint32_t)req_cap && cap < 0x40000000) {
+        cap <<= 1;
+    }
+
+#if defined(_WIN32) || defined(_WIN64)
+    NativeRing *r = (NativeRing *)_aligned_malloc(sizeof(NativeRing), 64);
+#else
+    NativeRing *r = NULL;
+    if (posix_memalign((void **)&r, 64, sizeof(NativeRing)) != 0) {
+        r = NULL;
+    }
+#endif
+    if (!r) {
+        PyErr_NoMemory();
+        return -1;
+    }
+    memset(r, 0, sizeof(NativeRing));
+    r->capacity = cap;
+    r->mask = cap - 1;
+    r->items = (PyObject **)calloc(cap, sizeof(PyObject *));
+    if (!r->items) {
+#if defined(_WIN32) || defined(_WIN64)
+        _aligned_free(r);
+#else
+        free(r);
+#endif
+        PyErr_NoMemory();
+        return -1;
+    }
+    self->ring = r;
+    return 0;
+}
+
+static PyObject *NativeSpscQueue_offer(NativeSpscQueueObject *self, PyObject *item) {
+    NativeRing *r = self->ring;
+    if (!r) {
+        PyErr_SetString(PyExc_RuntimeError, "Queue not initialized");
+        return NULL;
+    }
+    uint64_t head = r->head;
+    uint64_t tail = r->cached_tail;
+    if (head - tail >= r->capacity) {
+        tail = __atomic_load_n(&r->tail, __ATOMIC_ACQUIRE);
+        r->cached_tail = tail;
+        if (head - tail >= r->capacity) {
+            Py_RETURN_FALSE;
+        }
+    }
+    Py_INCREF(item);
+    r->items[head & r->mask] = item;
+    __atomic_store_n(&r->head, head + 1, __ATOMIC_RELEASE);
+    Py_RETURN_TRUE;
+}
+
+static PyObject *NativeSpscQueue_poll(NativeSpscQueueObject *self, PyObject *Py_UNUSED(ignored)) {
+    NativeRing *r = self->ring;
+    if (!r) {
+        PyErr_SetString(PyExc_RuntimeError, "Queue not initialized");
+        return NULL;
+    }
+    uint64_t tail = r->tail;
+    uint64_t head = r->cached_head;
+    if (tail == head) {
+        head = __atomic_load_n(&r->head, __ATOMIC_ACQUIRE);
+        r->cached_head = head;
+        if (tail == head) {
+            Py_RETURN_NONE;
+        }
+    }
+    uint32_t idx = (uint32_t)(tail & r->mask);
+    PyObject *item = r->items[idx];
+    r->items[idx] = NULL;
+    __atomic_store_n(&r->tail, tail + 1, __ATOMIC_RELEASE);
+    return item;
+}
+
+static PyObject *NativeSpscQueue_qsize(NativeSpscQueueObject *self, PyObject *Py_UNUSED(ignored)) {
+    NativeRing *r = self->ring;
+    if (!r) return PyLong_FromLong(0);
+    uint64_t head = __atomic_load_n(&r->head, __ATOMIC_ACQUIRE);
+    uint64_t tail = __atomic_load_n(&r->tail, __ATOMIC_ACQUIRE);
+    int64_t diff = (int64_t)head - (int64_t)tail;
+    return PyLong_FromLongLong(diff > 0 ? diff : 0);
+}
+
+static PyObject *NativeSpscQueue_empty(NativeSpscQueueObject *self, PyObject *Py_UNUSED(ignored)) {
+    NativeRing *r = self->ring;
+    if (!r) Py_RETURN_TRUE;
+    uint64_t head = __atomic_load_n(&r->head, __ATOMIC_ACQUIRE);
+    uint64_t tail = __atomic_load_n(&r->tail, __ATOMIC_ACQUIRE);
+    if (head == tail) {
+        Py_RETURN_TRUE;
+    } else {
+        Py_RETURN_FALSE;
+    }
+}
+
+static PyObject *NativeSpscQueue_full(NativeSpscQueueObject *self, PyObject *Py_UNUSED(ignored)) {
+    NativeRing *r = self->ring;
+    if (!r) Py_RETURN_FALSE;
+    uint64_t head = __atomic_load_n(&r->head, __ATOMIC_ACQUIRE);
+    uint64_t tail = __atomic_load_n(&r->tail, __ATOMIC_ACQUIRE);
+    int64_t diff = (int64_t)head - (int64_t)tail;
+    if (diff >= (int64_t)r->capacity) {
+        Py_RETURN_TRUE;
+    } else {
+        Py_RETURN_FALSE;
+    }
+}
+
+static PyObject *NativeSpscQueue_get_capacity(NativeSpscQueueObject *self, void *closure) {
+    (void)closure;
+    if (!self->ring) return PyLong_FromLong(0);
+    return PyLong_FromUnsignedLong(self->ring->capacity);
+}
+
+static PyObject *NativeSpscQueue_get_mask(NativeSpscQueueObject *self, void *closure) {
+    (void)closure;
+    if (!self->ring) return PyLong_FromLong(0);
+    return PyLong_FromUnsignedLong(self->ring->mask);
+}
+
+static PyGetSetDef NativeSpscQueue_getseters[] = {
+    {"capacity", (getter)NativeSpscQueue_get_capacity, NULL, "Queue capacity", NULL},
+    {"mask", (getter)NativeSpscQueue_get_mask, NULL, "Queue bitmask", NULL},
+    {NULL, NULL, NULL, NULL, NULL}
+};
+
+static PyMethodDef NativeSpscQueue_methods[] = {
+    {"offer", (PyCFunction)NativeSpscQueue_offer, METH_O, "Enqueue item without blocking. Returns False if full."},
+    {"poll", (PyCFunction)NativeSpscQueue_poll, METH_NOARGS, "Dequeue item without blocking. Returns None if empty."},
+    {"qsize", (PyCFunction)NativeSpscQueue_qsize, METH_NOARGS, "Current queue depth."},
+    {"empty", (PyCFunction)NativeSpscQueue_empty, METH_NOARGS, "True if queue is empty."},
+    {"full", (PyCFunction)NativeSpscQueue_full, METH_NOARGS, "True if queue is full."},
+    {NULL, NULL, 0, NULL}
+};
+
+static PyTypeObject NativeSpscQueueType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    .tp_name = "_fastpath_c.NativeSpscQueue",
+    .tp_doc = PyDoc_STR("High-performance lock-free C11 atomic SPSC circular ring buffer"),
+    .tp_basicsize = sizeof(NativeSpscQueueObject),
+    .tp_itemsize = 0,
+    .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
+    .tp_new = NativeSpscQueue_new,
+    .tp_init = (initproc)NativeSpscQueue_init,
+    .tp_dealloc = (destructor)NativeSpscQueue_dealloc,
+    .tp_methods = NativeSpscQueue_methods,
+    .tp_getset = NativeSpscQueue_getseters,
+};
+
+/* ---------------------------------------------------------------------------
  * Method Table & Module Definition
  * ---------------------------------------------------------------------------*/
 
@@ -446,6 +673,21 @@ PyMODINIT_FUNC PyInit__fastpath_c(void) {
     val_suspicious = PyUnicode_InternFromString("SUSPICIOUS");
     val_invalid = PyUnicode_InternFromString("INVALID");
     val_unknown = PyUnicode_InternFromString("UNKNOWN");
+
+    if (PyType_Ready(&NativeSpscQueueType) < 0) {
+        Py_DECREF(m);
+        return NULL;
+    }
+    Py_INCREF(&NativeSpscQueueType);
+    if (PyModule_AddObject(m, "NativeSpscQueue", (PyObject *)&NativeSpscQueueType) < 0) {
+        Py_DECREF(&NativeSpscQueueType);
+        Py_DECREF(m);
+        return NULL;
+    }
+
+#if defined(Py_GIL_DISABLED)
+    PyUnstable_Module_SetGIL(m, Py_MOD_GIL_NOT_USED);
+#endif
 
     return m;
 }
