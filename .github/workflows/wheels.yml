@@ -22,7 +22,7 @@ jobs:
           CIBW_BEFORE_BUILD: "python -m mdrap.build_fastpath"
           CIBW_TEST_COMMAND: "python -c \"import mdrap; from mdrap.engine import Engine; from mdrap.ingestlog import IngestLog; from mdrap.fastpath import HAS_FASTPATH; print('Wheel test passed; fastpath active:', HAS_FASTPATH)\""
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: cibw-wheels-${{ matrix.os }}
           path: ./wheelhouse/*.whl
