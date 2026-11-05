@@ -403,6 +403,8 @@ class IngestLog:
         self._current_file = None
         self._current_filename: str | None = None
         self._current_segment_start_offset = 0
+        self._current_segment_bytes: int = 0
+        self._bytes_since_flush: int = 0
         self._bytes_since_fsync = 0
         self._last_fsync_ts = time.time()
         self._is_poisoned: bool = False
@@ -560,6 +562,8 @@ class IngestLog:
             self._current_filename = last_filepath
             self._current_file = open(last_filepath, "a+b")
             self._current_file.seek(0, os.SEEK_END)
+            self._current_segment_bytes = self._current_file.tell()
+            self._bytes_since_flush = 0
 
     def _verify_and_repair_segment(self, filepath: str) -> int:
         """Verify framing & CRC of a segment. Repair/truncate torn tail if present.
@@ -777,6 +781,8 @@ class IngestLog:
             self._current_segment_start_offset = start_offset
             self._current_file = open(filename, "a+b")
             self._current_file.seek(0, os.SEEK_END)
+            self._current_segment_bytes = self._current_file.tell()
+            self._bytes_since_flush = 0
             self._bytes_since_fsync = 0
         except Exception:
             self._is_poisoned = True
@@ -829,19 +835,22 @@ class IngestLog:
             if self._current_file is None:
                 self._rotate_to_new_segment(offset)
             else:
-                curr_size = self._current_file.tell()
+                curr_size = self._current_segment_bytes
                 if curr_size + FRAME_HEADER_SIZE + payload_len > self.max_segment_bytes:
                     self._rotate_to_new_segment(offset)
 
             # Record write position for rollback on IO failure (e.g. disk full)
-            write_pos = self._current_file.tell()
+            write_pos = self._current_segment_bytes
             try:
                 # Write frame
                 self._current_file.write(frame_hdr)
                 self._current_file.write(payload_bytes)
-                # Flush userspace stdio buffers to OS kernel on every append before ACK!
-                self._current_file.flush()
                 frame_total_len = FRAME_HEADER_SIZE + payload_len
+                self._current_segment_bytes += frame_total_len
+                self._bytes_since_flush += frame_total_len
+                if self.fsync_policy != "never" or self._bytes_since_flush >= 65536:
+                    self._current_file.flush()
+                    self._bytes_since_flush = 0
                 self._bytes_since_fsync += frame_total_len
 
                 # Advance offset and pending sync
@@ -905,6 +914,8 @@ class IngestLog:
                     self._current_file.seek(write_pos)
                     self._current_file.truncate(write_pos)
                     self._current_file.flush()
+                    self._current_segment_bytes = write_pos
+                    self._bytes_since_flush = 0
                 except Exception:
                     self._is_poisoned = True
                 raise
@@ -977,7 +988,7 @@ class IngestLog:
                 if self._current_file is None:
                     self._rotate_to_new_segment(start_off)
                 else:
-                    curr_size = self._current_file.tell()
+                    curr_size = self._current_segment_bytes
                     if curr_size + total_frame_bytes > self.max_segment_bytes:
                         self._rotate_to_new_segment(start_off)
 
@@ -994,9 +1005,14 @@ class IngestLog:
                     allocated_offsets.append(off)
 
                 # Stage 3: Atomic write and commit
-                write_pos = self._current_file.tell()
+                write_pos = self._current_segment_bytes
                 self._current_file.write(batch_buffer)
-                self._current_file.flush()
+                batch_len = len(batch_buffer)
+                self._current_segment_bytes += batch_len
+                self._bytes_since_flush += batch_len
+                if self.fsync_policy != "never" or self._bytes_since_flush >= 65536:
+                    self._current_file.flush()
+                    self._bytes_since_flush = 0
 
                 should_fsync = False
                 now_ts = time.time()
@@ -1031,6 +1047,8 @@ class IngestLog:
                         self._current_file.seek(write_pos)
                         self._current_file.truncate(write_pos)
                         self._current_file.flush()
+                        self._current_segment_bytes = write_pos
+                        self._bytes_since_flush = 0
                     except Exception:
                         self._is_poisoned = True
                 else:
@@ -1044,6 +1062,7 @@ class IngestLog:
         with self._lock:
             if self._current_file and not self._current_file.closed:
                 self._current_file.flush()
+                self._bytes_since_flush = 0
                 os.fsync(self._current_file.fileno())
                 self._bytes_since_fsync = 0
                 self._last_fsync_ts = time.time()
@@ -1143,6 +1162,7 @@ class IngestLog:
             if self._current_file and not self._current_file.closed:
                 try:
                     self._current_file.flush()
+                    self._bytes_since_flush = 0
                     os.fsync(self._current_file.fileno())
                     self._synced_offset = self._next_offset - 1
                     self._pending_sync_offset = self._next_offset - 1
