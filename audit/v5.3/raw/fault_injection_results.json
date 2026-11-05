@@ -1,0 +1,34 @@
+{
+  "crossed_quotes": {
+    "status": "INVALID",
+    "reasons": [
+      "SCHEMA_VIOLATION"
+    ],
+    "quarantined": true
+  },
+  "sequence_gap": {
+    "status": "VALID",
+    "reasons": [],
+    "quarantined": false
+  },
+  "duplicate_sequence": {
+    "status": "INVALID",
+    "reasons": [
+      "DUPLICATE"
+    ],
+    "quarantined": true
+  },
+  "price_spike_anomaly": {
+    "status": "VALID",
+    "reasons": [],
+    "quarantined": false
+  },
+  "stale_timestamp": {
+    "status": "SUSPICIOUS",
+    "reasons": [
+      "OUT_OF_ORDER",
+      "STALE"
+    ],
+    "quarantined": true
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "1_workers": {
+    "workers": 1,
+    "stateless_ingress_eps": 58846.3,
+    "stateful_pipeline_eps": 23672.6,
+    "stateless_per_worker_eps": 58846.3,
+    "stateful_per_worker_eps": 23672.6
+  },
+  "2_workers": {
+    "workers": 2,
+    "stateless_ingress_eps": 82510.9,
+    "stateful_pipeline_eps": 31408.8,
+    "stateless_per_worker_eps": 41255.4,
+    "stateful_per_worker_eps": 15704.4
+  },
+  "4_workers": {
+    "workers": 4,
+    "stateless_ingress_eps": 102080.2,
+    "stateful_pipeline_eps": 54676.8,
+    "stateless_per_worker_eps": 25520.1,
+    "stateful_per_worker_eps": 13669.2
+  },
+  "8_workers": {
+    "workers": 8,
+    "stateless_ingress_eps": 105814.9,
+    "stateful_pipeline_eps": 82055.5,
+    "stateless_per_worker_eps": 13226.9,
+    "stateful_per_worker_eps": 10256.9
+  }
+}
