@@ -24,6 +24,7 @@
 <p align="center">
   <a href="#-quickstart--demo">Demo</a> •
   <a href="docs/">Docs</a> •
+  <a href="EDITIONS.md">Editions</a> •
   <a href="#-installation">Install</a> •
   <a href="docs/development/baseline.md">Contributing</a>
 </p>
@@ -207,6 +208,7 @@ All figures are measured on committed benchmark hardware (Intel Core i7-12700H, 
 <summary><b>Scope & Known Limitations</b></summary>
 
 - **Scope Boundary**: MDRAP is a single-node middleware sidecar. It does not provide proprietary feed licenses (bring your own API keys) and does not execute broker orders.
+- **Edition Boundaries**: MDRAP is structured under an uncompromising Open-Core model. The core platform (`mdrap-core`) is 100% MIT-licensed with zero mandatory external dependencies. Specialized institutional packages (Options Pricing, TCA, Portfolio Risk, Algorithmic Strategies) are isolated as downstream companion packages documented in [EDITIONS.md](EDITIONS.md).
 - **Feed Runtime**: Registration exposes metadata only. There is no supervisor that owns adapter lifecycle or background process spawning.
 - **Failover**: Local active-passive replication via TCP journal streaming (`journal_replicator.py`); multi-datacenter distributed Raft consensus is on the roadmap.
 - **Backpressure**: When downstream consumers cannot keep up with high-frequency streams, oldest frames are evicted to prioritize real-time low latency while updating drop counters.
@@ -246,7 +248,7 @@ mdrap/
 - **Getting Started**: [Quickstart Guide](docs/quickstart.md) · [Concepts & Data Model](docs/concepts.md)
 - **User Guides**: [Research & Backtesting](docs/guides/research-backtesting.md) · [Live Monitoring](docs/guides/live-monitoring.md) · [SDK Integration](docs/guides/sdk-integration.md) · [Operations Guide](docs/guides/operations.md) · [Audit Verification](docs/guides/audit-verification.md)
 - **Technical Reference**: [CLI Reference](docs/reference/cli.md) · [REST & WebSocket API](docs/reference/api.md) · [Configuration Options](docs/reference/config.md) · [Quality Rules Catalog](docs/reference/rules.md) · [Event Schema](docs/reference/event-schema.md)
-- **Platform Specs**: [Security Architecture](docs/security.md) · [Benchmark Methodology](docs/benchmarks.md) · [Operational Runbooks](docs/operations.md) · [Architecture Roadmap](docs/roadmap.md)
+- **Platform Specs**: [Platform Editions & Maintenance Guide](EDITIONS.md) · [Security Architecture](docs/security.md) · [Benchmark Methodology](docs/benchmarks.md) · [Operational Runbooks](docs/operations.md) · [Architecture Roadmap](docs/roadmap.md)
 
 ---
 
