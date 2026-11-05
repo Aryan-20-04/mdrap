@@ -1,9 +1,9 @@
 {
-  "mdrap_version": "3.1.0",
-  "git_commit": "1794cfc47008295f5c45e4124e87678e1549d9b3",
-  "git_branch": "main",
+  "mdrap_version": "4.0.1",
+  "git_commit": "db37a3e4af410daee5157ff00487a2a89dd7717b",
+  "git_branch": "v5.1-development",
   "git_dirty": true,
-  "timestamp_utc": "2026-10-16T14:50:37.213459Z",
+  "timestamp_utc": "2026-11-05T10:27:45.002663Z",
   "environment": {
     "os": "Windows-11-10.0.26200-SP0",
     "machine_arch": "AMD64",
@@ -24,117 +24,117 @@
   "boundaries": {
     "b1_decode": {
       "sbe_decode": {
-        "rate_eps": 633978.7,
-        "wall_s": 0.0079,
+        "rate_eps": 423459.7,
+        "wall_s": 0.0118,
         "latency_ns": {
-          "p50": 1500.0,
-          "p90": 1600.0,
-          "p95": 1600.0,
-          "p99": 1800.0,
-          "p999": 5200.2,
-          "max": 16800.0
+          "p50": 2000.0,
+          "p90": 2100.0,
+          "p95": 2200.0,
+          "p99": 3700.0,
+          "p999": 13007.8,
+          "max": 666400.0
         }
       },
       "json_decode": {
-        "rate_eps": 414614.3,
-        "wall_s": 0.0121,
+        "rate_eps": 269550.5,
+        "wall_s": 0.0185,
         "latency_ns": {
-          "p50": 2300.0,
-          "p90": 2500.0,
-          "p95": 2600.0,
-          "p99": 2800.0,
-          "p999": 13710.7,
-          "max": 46100.0
+          "p50": 3500.0,
+          "p90": 4000.0,
+          "p95": 4100.0,
+          "p99": 4400.0,
+          "p999": 10500.3,
+          "max": 185300.0
         }
       }
     },
     "b2_validation": {
-      "rate_eps": 472853.5,
-      "wall_s": 0.0106,
+      "rate_eps": 238606.5,
+      "wall_s": 0.021,
       "latency_ns": {
-        "p50": 2000.0,
-        "p90": 2600.0,
-        "p95": 2700.0,
-        "p99": 3200.0,
-        "p999": 7900.3,
-        "max": 132700.0
+        "p50": 3700.0,
+        "p90": 5100.0,
+        "p95": 5400.0,
+        "p99": 9400.0,
+        "p999": 68913.4,
+        "max": 351100.0
       }
     },
     "b3_wal_append": {
-      "rate_eps": 84226.1,
-      "wall_s": 0.0594,
+      "rate_eps": 111645.0,
+      "wall_s": 0.0448,
       "latency_ns": {
-        "p50": 10900.0,
-        "p90": 12200.0,
-        "p95": 12805.0,
-        "p99": 30402.0,
-        "p999": 126812.6,
-        "max": 384400.0
+        "p50": 7600.0,
+        "p90": 8400.0,
+        "p95": 10200.0,
+        "p99": 19301.0,
+        "p999": 152096.8,
+        "max": 811300.0
       }
     },
     "b4_durable_flush": {
-      "rate_eps": 355.1,
-      "wall_s": 1.4082,
+      "rate_eps": 320.6,
+      "wall_s": 1.5595,
       "latency_us": {
-        "p50": 2719.3,
-        "p90": 2944.05,
-        "p95": 3110.58,
-        "p99": 5321.93,
-        "p999": 7727.14,
-        "max": 7822.3
+        "p50": 2981.8,
+        "p90": 3653.7,
+        "p95": 4016.69,
+        "p99": 5064.41,
+        "p999": 6290.06,
+        "max": 6492.2
       }
     },
     "b5_ipc_publish": {
       "supported": true,
-      "rate_eps": 741169.0,
-      "wall_s": 0.0067,
+      "rate_eps": 549492.8,
+      "wall_s": 0.0091,
       "latency_ns": {
-        "p50": 1200.0,
-        "p90": 1300.0,
-        "p95": 1300.0,
-        "p99": 1400.0,
-        "p999": 4803.8,
-        "max": 32300.0
+        "p50": 1400.0,
+        "p90": 2200.0,
+        "p95": 2400.0,
+        "p99": 3200.0,
+        "p999": 36309.6,
+        "max": 59700.0
       }
     },
     "b6_end_to_end": {
-      "rate_eps": 2720.0,
-      "wall_s": 1.832,
+      "rate_eps": 37622.4,
+      "wall_s": 0.1324,
       "latency_us": {
-        "p50": 348.7,
-        "p90": 516.38,
-        "p95": 551.89,
-        "p99": 791.72,
-        "p999": 1819.49,
-        "max": 4469.4
+        "p50": 24.4,
+        "p90": 31.7,
+        "p95": 35.49,
+        "p99": 77.72,
+        "p999": 175.9,
+        "max": 322.0
       }
     },
     "b7_historical_replay": {
       "events_replayed": 5000,
-      "wall_s": 2.1083,
-      "rate_eps": 2371.6
+      "wall_s": 0.1464,
+      "rate_eps": 34158.2
     },
     "b8_crash_recovery": {
       "recovered_events": 5000,
-      "recovery_ms": 63.53
+      "recovery_ms": 106.54
     },
     "b9_consumer_backpressure": {
       "events_pushed": 5000,
-      "wall_s": 0.0049,
-      "producer_rate_eps": 1012617.2,
-      "consumed_events": 643,
-      "dropped_events": 3976,
-      "drop_pct": 79.52
+      "wall_s": 0.006,
+      "producer_rate_eps": 832140.6,
+      "consumed_events": 829,
+      "dropped_events": 3975,
+      "drop_pct": 79.5
     },
     "b10_resource_utilization": {
       "num_events": 5000,
-      "wall_s": 2.4116,
-      "throughput_eps": 2073.3,
-      "rss_start_mb": 48.95,
-      "rss_end_mb": 48.95,
+      "wall_s": 0.1957,
+      "throughput_eps": 25545.0,
+      "rss_start_mb": 51.32,
+      "rss_end_mb": 51.32,
       "rss_growth_mb": 0.0,
       "mb_per_million_events": 0.0,
-      "cpu_utilization_pct": 99.1
+      "cpu_utilization_pct": 103.8
     }
   }
 }

@@ -686,6 +686,7 @@ class WebSocketFeedManager:
                     ping_interval=20,
                     ping_timeout=10,
                     close_timeout=5,
+                    max_size=10 * 1024 * 1024,
                 ) as ws:
                     self._stats[venue]["connected"] = True
                     backoff = 1.0
@@ -760,12 +761,17 @@ class WebSocketFeedManager:
             return {
                 "type": "subscribe",
                 "product_ids": [venue_sym],
-                "channels": ["ticker", "level2_batch"],
+                "channels": ["ticker"],
             }
         elif venue == "KRAKEN":
+            k_sym = (
+                venue_sym
+                if "/" in venue_sym
+                else (f"{venue_sym[:-3]}/{venue_sym[-3:]}" if len(venue_sym) >= 6 else venue_sym)
+            )
             return {
                 "event": "subscribe",
-                "pair": [venue_sym],
+                "pair": [k_sym],
                 "subscription": {"name": "book", "depth": 10},
             }
         elif venue == "OKX":
@@ -774,7 +780,7 @@ class WebSocketFeedManager:
                 "args": [{"channel": "books5", "instId": venue_sym}],
             }
         elif venue == "BYBIT":
-            return {"op": "subscribe", "args": [f"orderbook.5.{venue_sym}"]}
+            return {"op": "subscribe", "args": [f"orderbook.1.{venue_sym}"]}
         return None
 
     def stream_events(
@@ -797,3 +803,190 @@ class WebSocketFeedManager:
             except queue.Empty:
                 if not self.is_running():
                     return
+
+
+# ---------------------------------------------------------------------------
+# Feed Parsing & Sequence Tracking Upgrades (§25)
+# ---------------------------------------------------------------------------
+from dataclasses import dataclass
+
+
+@dataclass
+class ParsedBookFrame:
+    venue: str
+    instrument: str
+    bid_price: float | None = None
+    ask_price: float | None = None
+    bid_quantity: float | None = None
+    ask_quantity: float | None = None
+    sequence_number: int | None = None
+    timestamp_ns: int | None = None
+    is_snapshot: bool = False
+
+
+def parse_binance_depth_payload(raw: str | bytes) -> ParsedBookFrame | None:
+    try:
+        data = json.loads(raw)
+        if not isinstance(data, dict):
+            return None
+        bids = data.get("b", data.get("bids", []))
+        asks = data.get("a", data.get("asks", []))
+        if not bids or not asks:
+            return None
+        b_p, b_q = float(bids[0][0]), float(bids[0][1])
+        a_p, a_q = float(asks[0][0]), float(asks[0][1])
+        seq = int(data.get("u", data.get("lastUpdateId", 0)))
+        sym = data.get("s", "BTC-USDT")
+        ts_ms = data.get("E", int(time.time() * 1000))
+        return ParsedBookFrame(
+            venue="BINANCE",
+            instrument=sym,
+            bid_price=b_p,
+            ask_price=a_p,
+            bid_quantity=b_q,
+            ask_quantity=a_q,
+            sequence_number=seq,
+            timestamp_ns=int(ts_ms * 1_000_000),
+        )
+    except Exception:
+        return None
+
+
+def parse_coinbase_ticker_payload(raw: str | bytes) -> ParsedBookFrame | None:
+    try:
+        data = json.loads(raw)
+        if not isinstance(data, dict) or data.get("type") != "ticker":
+            return None
+        b_p = float(data.get("best_bid"))
+        a_p = float(data.get("best_ask"))
+        b_q = float(data.get("best_bid_size", 0.0))
+        a_q = float(data.get("best_ask_size", 0.0))
+        seq = int(data.get("sequence", 0))
+        sym = data.get("product_id", "BTC-USD")
+        return ParsedBookFrame(
+            venue="COINBASE",
+            instrument=sym,
+            bid_price=b_p,
+            ask_price=a_p,
+            bid_quantity=b_q,
+            ask_quantity=a_q,
+            sequence_number=seq,
+            timestamp_ns=int(time.time() * 1_000_000_000),
+        )
+    except Exception:
+        return None
+
+
+def parse_kraken_ticker_payload(raw: str | bytes) -> ParsedBookFrame | None:
+    try:
+        data = json.loads(raw)
+        if not isinstance(data, list) or len(data) < 4:
+            return None
+        payload = data[1]
+        pair = str(data[3])
+        b_info = payload.get("b", [])
+        a_info = payload.get("a", [])
+        if not b_info or not a_info:
+            return None
+        b_p = float(b_info[0])
+        b_q = float(b_info[2]) if len(b_info) > 2 else float(b_info[1])
+        a_p = float(a_info[0])
+        a_q = float(a_info[2]) if len(a_info) > 2 else float(a_info[1])
+        return ParsedBookFrame(
+            venue="KRAKEN",
+            instrument=pair,
+            bid_price=b_p,
+            ask_price=a_p,
+            bid_quantity=b_q,
+            ask_quantity=a_q,
+            sequence_number=None,
+            timestamp_ns=int(time.time() * 1_000_000_000),
+        )
+    except Exception:
+        return None
+
+
+def parse_okx_bbo_payload(raw: str | bytes) -> ParsedBookFrame | None:
+    try:
+        data = json.loads(raw)
+        if not isinstance(data, dict):
+            return None
+        d_list = data.get("data", [])
+        if not d_list:
+            return None
+        item = d_list[0]
+        bids = item.get("bids", [])
+        asks = item.get("asks", [])
+        if not bids or not asks:
+            return None
+        b_p = float(bids[0][0])
+        b_q = float(bids[0][1])
+        a_p = float(asks[0][0])
+        a_q = float(asks[0][1])
+        seq = int(item.get("seqId", 0))
+        inst = data.get("arg", {}).get("instId", "BTC-USDT")
+        ts_ms = int(item.get("ts", int(time.time() * 1000)))
+        return ParsedBookFrame(
+            venue="OKX",
+            instrument=inst,
+            bid_price=b_p,
+            ask_price=a_p,
+            bid_quantity=b_q,
+            ask_quantity=a_q,
+            sequence_number=seq,
+            timestamp_ns=int(ts_ms * 1_000_000),
+        )
+    except Exception:
+        return None
+
+
+def parse_bybit_bbo_payload(raw: str | bytes) -> ParsedBookFrame | None:
+    try:
+        data = json.loads(raw)
+        if not isinstance(data, dict):
+            return None
+        inner = data.get("data", {})
+        bids = inner.get("b", [])
+        asks = inner.get("a", [])
+        if not bids or not asks:
+            return None
+        b_p = float(bids[0][0])
+        b_q = float(bids[0][1])
+        a_p = float(asks[0][0])
+        a_q = float(asks[0][1])
+        seq = int(inner.get("seq", inner.get("u", 0)))
+        sym = inner.get("s", "BTCUSDT")
+        ts_ms = int(data.get("ts", int(time.time() * 1000)))
+        return ParsedBookFrame(
+            venue="BYBIT",
+            instrument=sym,
+            bid_price=b_p,
+            ask_price=a_p,
+            bid_quantity=b_q,
+            ask_quantity=a_q,
+            sequence_number=seq,
+            timestamp_ns=int(ts_ms * 1_000_000),
+        )
+    except Exception:
+        return None
+
+
+class LiveCryptoFeed:
+    """High-performance multi-venue sequence and gap tracking feed wrapper."""
+
+    def __init__(self):
+        self.last_seq: dict[str, int] = {}
+        self.gap_counts: dict[str, int] = collections.defaultdict(int)
+        self.missing_events_count: dict[str, int] = collections.defaultdict(int)
+
+    def check_sequence_gap(self, venue: str, seq: int) -> bool:
+        prev = self.last_seq.get(venue)
+        self.last_seq[venue] = seq
+        if prev is None:
+            return False
+        if seq > prev + 1:
+            missing = seq - prev - 1
+            self.gap_counts[venue] += 1
+            self.missing_events_count[venue] += missing
+            return True
+        return False

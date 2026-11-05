@@ -4,49 +4,49 @@
     "processor": "Intel64 Family 6 Model 154 Stepping 4, GenuineIntel",
     "cpu_count": 12,
     "python_version": "3.13.1",
-    "git_commit": "6efed30473991b5499de0b8807e3449bc433f28a",
-    "timestamp": 1791492395.8583834
+    "git_commit": "db37a3e4af410daee5157ff00487a2a89dd7717b",
+    "timestamp": 1793873441.5532227
   },
   "python_pipeline": {
-    "num_events": 10000,
-    "elapsed_s": 9.5016,
-    "events_per_second": 1052.5,
-    "rss_mb_growth": 0.51,
+    "num_events": 5000,
+    "elapsed_s": 0.171,
+    "events_per_second": 29233.3,
+    "rss_mb_growth": 0.0,
     "latencies_us": {
-      "p50": 888.7,
-      "p95": 1331.8,
-      "p99": 4646.1,
-      "p999": 6959.4,
-      "max": 15673.7
+      "p50": 20.5,
+      "p95": 33.4,
+      "p99": 79.3,
+      "p999": 195.4,
+      "max": 376.7
     }
   },
   "native_pipeline": {
     "native_accelerated": false,
-    "num_events": 10000,
-    "elapsed_s": 11.4905,
-    "events_per_second": 870.3
+    "num_events": 5000,
+    "elapsed_s": 0.0935,
+    "events_per_second": 53456.0
   },
   "ingest_log": {
-    "num_events": 10000,
-    "append_elapsed_s": 0.7145,
-    "append_rate_eps": 13996.0,
-    "recovery_elapsed_s": 0.2811,
-    "recovery_rate_eps": 35569.7
+    "num_events": 5000,
+    "append_elapsed_s": 0.1311,
+    "append_rate_eps": 38136.5,
+    "recovery_elapsed_s": 0.0546,
+    "recovery_rate_eps": 91603.9
   },
   "sqlite_projection": {
-    "num_events": 10000,
+    "num_events": 5000,
     "batch_size": 500,
-    "elapsed_s": 0.2379,
-    "events_per_second": 42038.8
+    "elapsed_s": 0.0485,
+    "events_per_second": 102994.0
   },
   "end_to_end_engine": {
-    "num_events": 10000,
+    "num_events": 5000,
     "batch_size": 500,
-    "elapsed_s": 10.5669,
-    "events_per_second": 946.4,
-    "rss_mb_growth": 0.0,
-    "persisted_canonical_ticks": 1289,
-    "log_head_offset": 10000,
+    "elapsed_s": 0.2901,
+    "events_per_second": 17233.2,
+    "rss_mb_growth": 0.73,
+    "persisted_canonical_ticks": 669,
+    "log_head_offset": 5000,
     "projection_lag": 0,
     "health_status": "HEALTHY"
   }
