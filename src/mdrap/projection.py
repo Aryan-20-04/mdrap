@@ -430,7 +430,7 @@ class SQLiteProjection:
         self._conn.execute("PRAGMA cache_size = -65536;")  # 64 MB in-memory cache
         self._conn.execute("PRAGMA temp_store = MEMORY;")
         self._conn.execute("PRAGMA mmap_size = 268435456;")  # 256 MB memory-mapped I/O
-        self._conn.execute("PRAGMA wal_autocheckpoint = 10000;")
+        self._conn.execute("PRAGMA wal_autocheckpoint = 25000;")
         self._init_schema()
 
     def _init_schema(self) -> None:
