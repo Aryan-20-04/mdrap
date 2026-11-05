@@ -16,28 +16,28 @@ A deterministic, high-throughput market data validation, normalization, and cryp
 [![Tests](https://img.shields.io/badge/tests-1700%2B%20passing-10b981?style=flat-square)](tests/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-8b5cf6?style=flat-square)](LICENSE)
 [![Language](https://img.shields.io/badge/language-Python%20%7C%20C%20(AVX2)-6366f1?style=flat-square)](src/mdrap/fastpath.c)
-[![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Windows-334155?style=flat-square)](#-installation)
+[![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Windows-334155?style=flat-square)](#installation)
 
-[**Quickstart**](#-quickstart--demo) &nbsp;•&nbsp; [**Architecture**](docs/architecture.md) &nbsp;•&nbsp; [**Editions & Boundaries**](EDITIONS.md) &nbsp;•&nbsp; [**Benchmarks**](#-performance-benchmarks-v53) &nbsp;•&nbsp; [**Audit Certification**](audit/v5.3/RELEASE_CERTIFICATION.md) &nbsp;•&nbsp; [**Documentation**](docs/)
+[**Quickstart**](#quickstart--demo) &nbsp;•&nbsp; [**Architecture**](docs/architecture.md) &nbsp;•&nbsp; [**Editions & Boundaries**](EDITIONS.md) &nbsp;•&nbsp; [**Benchmarks**](#performance-benchmarks-v53) &nbsp;•&nbsp; [**Audit Certification**](audit/v5.3/RELEASE_CERTIFICATION.md) &nbsp;•&nbsp; [**Documentation**](docs/)
 
 </div>
 
 ---
 
-## 💡 Why MDRAP?
+## Why MDRAP?
 
 | Core Capability | Architectural & Quantitative Advantage |
 | :--- | :--- |
-| 🛡️ **Crossed Quote & Anomaly Defense** | Eliminates phantom arbitrage losses by intercepting crossed books (`bid > ask`), sequence jumps, negative prices, and rolling Welford price corridor anomalies before downstream strategy execution. |
-| ⚡ **Microsecond-to-Nanosecond Tiers** | Standalone native C kernel evaluates ticks at **45 ns/tick** (22.2M EPS); native C fastpath FFI processes at **510.8k EPS** (1.6 µs p50); pure Python fallback runs at **170.1k EPS** with zero mandatory dependencies. |
-| 📈 **Institutional Microstructure & EMS** | Discrete-event matching engine with price-time priority, queue tracking, partial fills, cancellation races, Avellaneda–Stoikov HFT MM, and 14 pre-trade risk gates. |
-| 💱 **Denomination-Aware Basis Valuation** | Rejects unexecutable cross-venue arbitrage claims by normalizing quotes across USD/USDT basis differences and accounting for bilateral fee hurdles. |
-| 📦 **Zero Silent Drops** | Corrupted, malformed, or delayed frames are safely quarantined in a queryable SQLite ledger with explicit bitmask reason codes and complete upstream provenance. |
-| 🔒 **Tamper-Evident Merkle Proofs** | SHA-256 Merkle chain guarantees mathematical auditability: modifying any historical database record immediately invalidates the cryptographic integrity proof. |
+| **Crossed Quote & Anomaly Defense** | Eliminates phantom arbitrage losses by intercepting crossed books (`bid > ask`), sequence jumps, negative prices, and rolling Welford price corridor anomalies before downstream strategy execution. |
+| **Microsecond-to-Nanosecond Tiers** | Standalone native C kernel evaluates ticks at **45 ns/tick** (22.2M EPS); native C fastpath FFI processes at **510.8k EPS** (1.6 µs p50); pure Python fallback runs at **170.1k EPS** with zero mandatory dependencies. |
+| **Institutional Microstructure & EMS** | Discrete-event matching engine with price-time priority, queue tracking, partial fills, cancellation races, Avellaneda–Stoikov HFT MM, and 14 pre-trade risk gates. |
+| **Denomination-Aware Basis Valuation** | Rejects unexecutable cross-venue arbitrage claims by normalizing quotes across USD/USDT basis differences and accounting for bilateral fee hurdles. |
+| **Zero Silent Drops** | Corrupted, malformed, or delayed frames are safely quarantined in a queryable SQLite ledger with explicit bitmask reason codes and complete upstream provenance. |
+| **Tamper-Evident Merkle Proofs** | SHA-256 Merkle chain guarantees mathematical auditability: modifying any historical database record immediately invalidates the cryptographic integrity proof. |
 
 ---
 
-## 🏛️ Architecture Pipeline
+## Architecture Pipeline
 
 ```mermaid
 flowchart LR
@@ -58,7 +58,7 @@ flowchart LR
 
 ---
 
-## 🎬 Quickstart & Demo
+## Quickstart & Demo
 
 <p align="center">
   <img src="tools/demo/mdrap_demo.gif" alt="MDRAP Real-Time Market Data Anomaly Detection & Audit Demo" width="92%">
@@ -108,7 +108,7 @@ Queried ticks: 1
 
 ---
 
-## 🚀 Installation
+## Installation
 
 <details open>
 <summary><b>Linux / macOS (pip)</b></summary>
@@ -147,7 +147,7 @@ docker run --rm -it -p 8000:8000 mdrap:latest mdrap doctor
 
 ---
 
-## ⚡ Performance Benchmarks (v5.3)
+## Performance Benchmarks (v5.3)
 
 All figures are measured on committed benchmark hardware (Intel Core i7-12700H, 12 cores, Windows 11 Enterprise AMD64 / Linux parity) and trace directly to committed JSON outputs in [`audit/v5.3/raw/`](audit/v5.3/raw/).
 
@@ -169,7 +169,7 @@ All figures are measured on committed benchmark hardware (Intel Core i7-12700H, 
 
 ---
 
-## 🔍 Deep Dive & Documentation
+## Deep Dive & Documentation
 
 <details>
 <summary><b>Feature Status Matrix</b></summary>
@@ -247,7 +247,7 @@ mdrap/
 
 ---
 
-## 📚 Documentation Index
+## Documentation Index
 
 - **Getting Started**: [Quickstart Guide](docs/quickstart.md) · [Concepts & Data Model](docs/concepts.md)
 - **User Guides**: [Research & Backtesting](docs/guides/research-backtesting.md) · [Live Monitoring](docs/guides/live-monitoring.md) · [SDK Integration](docs/guides/sdk-integration.md) · [Operations Guide](docs/guides/operations.md) · [Audit Verification](docs/guides/audit-verification.md)
@@ -256,12 +256,12 @@ mdrap/
 
 ---
 
-## 🤝 Contributing, Security & License
+## Contributing, Security & License
 
 - **Contributing**: Issues and pull requests are welcomed! See [DEVELOPMENT.md](docs/development/baseline.md) for code styling and test verification gates.
 - **Security**: Report vulnerabilities according to our [Security Policy](SECURITY.md).
 - **License**: Released under the [MIT License](LICENSE). Copyright (c) 2026 MDRAP Authors.
 
 <p align="center">
-  Made with ❤️ by the MDRAP Authors
+  Developed and maintained by the MDRAP Authors.
 </p>
