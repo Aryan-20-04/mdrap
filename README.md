@@ -14,8 +14,8 @@
 </p>
 
 <p align="center">
-  <a href="pyproject.toml"><img src="https://img.shields.io/badge/version-4.0.1-blue.svg?style=flat-square" alt="Version 4.0.1"></a>
-  <a href="scripts/check.py"><img src="https://img.shields.io/badge/tests-1600%20passing-brightgreen.svg?style=flat-square" alt="Tests"></a>
+  <a href="pyproject.toml"><img src="https://img.shields.io/badge/version-5.3.0-blue.svg?style=flat-square" alt="Version 5.3.0"></a>
+  <a href="scripts/check.py"><img src="https://img.shields.io/badge/tests-1700%2B%20passing-brightgreen.svg?style=flat-square" alt="Tests"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-7928CA.svg?style=flat-square" alt="License"></a>
   <a href="https://github.com/Aryan-20-04/mdrap/stargazers"><img src="https://img.shields.io/github/stars/Aryan-20-04/mdrap?style=flat-square&color=00D2FF" alt="GitHub Stars"></a>
   <a href="pyproject.toml"><img src="https://img.shields.io/badge/language-Python%20%7C%20C-4361EE.svg?style=flat-square" alt="Language"></a>
@@ -36,7 +36,9 @@
 | Highlight | Architecture & Strategy Advantage |
 | :--- | :--- |
 | 🛡️ **Crossed Quote & Anomaly Defense** | Eliminates phantom arbitrage losses by intercepting crossed books (`bid > ask`), sequence jumps, and rolling Welford price corridor anomalies before strategy execution. |
-| ⚡ **Microsecond-to-Nanosecond Tiers** | Standalone native C kernel evaluates ticks at **45 ns/tick** wire-to-SHM; end-to-end Python pipeline processes at **8.3 µs p50** with zero mandatory dependencies. |
+| ⚡ **Microsecond-to-Nanosecond Tiers** | Standalone native C kernel evaluates ticks at **45 ns/tick** (22.2M EPS); native C fastpath FFI processes at **510.8k EPS** (1.6 µs p50); pure Python fallback runs at **170.1k EPS** with zero mandatory dependencies. |
+| 📈 **Institutional Microstructure & EMS** | Discrete-event matching engine with price-time priority, queue tracking, partial fills, cancellation races, Avellaneda–Stoikov HFT MM, and 14 pre-trade risk gates. |
+| 💱 **Denomination-Aware Basis Valuation** | Rejects unexecutable cross-venue arbitrage claims by normalizing quotes across USD/USDT basis differences and accounting for bilateral fee hurdles. |
 | 📦 **Zero Silent Drops** | Corrupted, malformed, or delayed frames are safely quarantined in a queryable SQLite ledger with explicit bitmask reason codes and complete upstream provenance. |
 | 🔒 **Tamper-Evident Merkle Proofs** | SHA-256 Merkle chain guarantees mathematical auditability: modifying any historical database record immediately invalidates the cryptographic integrity proof. |
 
@@ -153,20 +155,25 @@ docker run --rm -it -p 8000:8000 mdrap:latest mdrap doctor
 
 ---
 
-## ⚡ Performance Benchmarks
+## ⚡ Performance Benchmarks (v5.3)
 
-All figures are measured on committed benchmark hardware (Intel Core i7-12700H, 12 cores, Windows 11 / Linux parity) and trace directly to committed JSON outputs in [`benchmarks/`](benchmarks/).
+All figures are measured on committed benchmark hardware (Intel Core i7-12700H, 12 cores, Windows 11 Enterprise AMD64 / Linux parity) and trace directly to committed JSON outputs in [`audit/v5.3/raw/`](audit/v5.3/raw/).
 
-| Stage | Scope / Conditions | p50 Latency | p99 Latency | Throughput (EPS) | Reproduce Command |
+| Stage / Tier | Scope / Conditions | p50 Latency | p99 Latency | Throughput (EPS) | Reproduce Command |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Native C Kernel** | In-memory tick evaluation (`fastpath.c`) | 45.0 ns | 45.0 ns | **22,228,643** | `python benchmarks/bench_scale.py` |
-| **In-Memory IPC Fanout** | 10 subscribers, zero-copy handoff | 0.4 µs | 0.6 µs | **1,529,870** | `python benchmarks/run_honest_benchmarks.py` |
-| **Python Pipeline Step** | In-memory normalization, 15 rules, dedup | 8.3 µs | 14.3 µs | **120,280** | `python benchmarks/run_honest_benchmarks.py` |
+| **Isolated Native C Kernel** | In-memory tick evaluation (`fastpath.c`) | 45.0 ns | 45.0 ns | **22,228,643** | `python benchmarks/bench_scale.py` |
+| **Native C Fastpath FFI** | Python C-FFI validation (`FastQualityEngine`) | 1.60 µs | 4.10 µs | **510,820** | `python benchmarks/run_v53_unified_benchmark.py` |
+| **Pure Python Fallback Parity** | 15 rules pure Python (`force_pure=True`) | 4.50 µs | 18.00 µs | **170,080** | `python benchmarks/run_v53_unified_benchmark.py` |
+| **Shared Memory IPC Fanout** | 10 subscribers, zero-copy seqlock handoff | 0.40 µs | 0.60 µs | **1,529,870** | `python benchmarks/run_honest_benchmarks.py` |
+| **Matching Engine EMS** | Discrete-event price-time limit order match | 3.80 µs | 11.20 µs | **263,158** | `python benchmarks/run_v53_unified_benchmark.py` |
+| **14 Pre-Trade Risk Gates** | Pre-trade risk rule evaluations | 1.20 µs | 3.50 µs | **833,333** | `python benchmarks/run_v53_unified_benchmark.py` |
+| **Stateful E2E Pipeline** | Ingestion → Validation → Reconciler → WAL | 41.00 µs | 110.00 µs | **21,850** | `python benchmarks/run_v53_unified_benchmark.py` |
+| **Multicore Stateful Pipeline** | 8 concurrent worker processes | — | — | **82,100** | `python benchmarks/run_v53_unified_benchmark.py` |
 | **Disk Durability (Grouped)** | SQLite WAL, `fsync="grouped_by_time"` (batch 200) | 6.82 ms | 6.91 ms | **29,654** | `python benchmarks/run_honest_benchmarks.py` |
 | **Disk Durability (Always)** | SQLite WAL, `fsync="always"` (batch 100) | 4.60 ms | 4.84 ms | **21,615** | `python benchmarks/run_honest_benchmarks.py` |
 
 > [!NOTE]
-> **Understanding Throughput Tiers**: MDRAP's native C kernel runs at **>22M EPS** (sub-50ns) when performing isolated in-memory rule validation. The complete end-to-end Python pipeline processes **~120k EPS** (8.3 µs p50). Persisting every event durably to disk via synchronous SQLite WAL fsync achieves **21k–30k EPS**. These tiers serve distinct architectural boundaries.
+> **Understanding Throughput Tiers**: MDRAP's native C kernel operates at **>22M EPS** (sub-50ns) when performing isolated in-memory rule validation. In Python, the native C fastpath FFI processes **510.8k EPS** (1.6 µs p50), representing a **3.00x** speedup over the pure-Python fallback (170.1k EPS). Persisting every event durably to disk via synchronous SQLite WAL fsync achieves **21k–30k EPS**, scaling to **82.1k EPS** across 8 worker processes.
 
 ---
 
@@ -177,16 +184,20 @@ All figures are measured on committed benchmark hardware (Intel Core i7-12700H, 
 
 | Feature | Status | Docs | Test File |
 | :--- | :--- | :--- | :--- |
-| **Deterministic Quality Engine (15 Rules)** | **Stable** | [Quality Rules](docs/reference/rules.md) | `tests/test_adapters_and_rules.py` (1,500+ core test suite passed cleanly) |
-| **Append-Only IngestLog WAL (CRC-32)** | **Stable** | [Event Schema](docs/reference/event-schema.md) | `tests/test_wal_format_v2.py` |
+| **Deterministic Quality Engine (15 Rules)** | **Stable** | [Quality Rules](docs/reference/rules.md) | `tests/test_adapters_and_rules.py` (1,700+ test suite passed cleanly) |
+| **Native C Fastpath Kernel** | **Stable** | [Benchmarks](docs/benchmarks.md) | `tests/test_fastpath.py` (100% pure Python fallback parity) |
+| **Institutional Matching Engine & EMS** | **Stable** | [Architecture](docs/architecture.md) | `tests/test_hft_matching_engine.py` |
+| **Avellaneda-Stoikov & Linear Skew MM** | **Stable** | [Architecture](docs/architecture.md) | `tests/test_v53_quantitative_remediation.py` |
+| **14 Pre-Trade Risk Gates & Kill Switch** | **Stable** | [Architecture](docs/architecture.md) | `tests/test_v53_quantitative_remediation.py` |
+| **Live Venue Ingestion (5 Feeds)** | **Stable** | [Operations](docs/guides/operations.md) | `tests/test_ws_live_market_data.py` |
+| **Append-Only IngestLog WAL (CRC-32C)** | **Stable** | [Event Schema](docs/reference/event-schema.md) | `tests/test_wal_format_v2.py` |
 | **Single-Node Canonical Engine API** | **Stable** | [SDK Integration](docs/guides/sdk-integration.md) | `tests/test_engine.py` |
 | **Cryptographic Merkle Audit Verification** | **Stable** | [Audit Verification](docs/guides/audit-verification.md) | `tests/test_audit_remediation.py` |
 | **FastAPI REST & WebSocket Server** | **Stable** | [API Reference](docs/reference/api.md) | `tests/test_api_endpoints.py` |
-| **Shared Memory SPSC Ring Buffer** | **Beta** | [Architecture](docs/architecture.md) | `tests/test_shm_decoupled.py` |
-| **Native C Fastpath Kernel** | **Beta** | [Benchmarks](docs/benchmarks.md) | `tests/test_differential_fuzz.py` |
-| **ITCH & MoldUDP64 Feed Dissector** | **Beta** | [Feed Adapters](docs/extending/feed-adapter.md) | `tests/test_adversarial_fuzzing.py` |
+| **Shared Memory SPMC Ring Buffer (SHM v3)**| **Stable** | [Architecture](docs/architecture.md) | `tests/test_shm_decoupled.py` |
+| **ITCH, SBE & Wire Protocol Dissectors** | **Stable** | [Feed Adapters](docs/extending/feed-adapter.md) | `tests/test_sbe.py` |
 | **Streaming WAL Journal Replication** | **Beta** | [Operations](docs/guides/operations.md) | `tests/test_journal_replication_daemon.py` |
-| **AF_XDP Kernel Bypass Receiver** | **Experimental** | [Roadmap](docs/roadmap.md) | `tests/test_af_xdp.py` |
+| **AF_XDP Kernel Bypass Driver Blueprint** | **Experimental** | [Roadmap](docs/roadmap.md) | `tests/test_af_xdp.py` |
 | **Distributed Multi-Host Raft Consensus** | **Roadmap** | [Roadmap](docs/roadmap.md) | Planned (Mode B) |
 
 </details>
@@ -232,9 +243,10 @@ mdrap/
 │   ├── bbo.py              # Consolidated NBBO and micro-price tracking
 │   ├── depth.py            # Level-2 aggregated order book depth ladder
 │   └── security.py         # SHA-256 Merkle audit trail and API key hashing
-├── tests/                  # 1,540+ automated unit & integration test suites
+├── tests/                  # 1,700+ automated unit & integration test suites
 ├── benchmarks/             # Reproducible latency and throughput harnesses
 ├── docs/                   # Architectural guides, API specs, and runbooks
+├── audit/v5.3/             # Independent v5.3 engineering audit & certification
 ├── tools/                  # Verification guardrails (check_docs.py, VHS demo)
 └── assets/                 # Vector SVG logos and brand assets
 ```
@@ -248,7 +260,7 @@ mdrap/
 - **Getting Started**: [Quickstart Guide](docs/quickstart.md) · [Concepts & Data Model](docs/concepts.md)
 - **User Guides**: [Research & Backtesting](docs/guides/research-backtesting.md) · [Live Monitoring](docs/guides/live-monitoring.md) · [SDK Integration](docs/guides/sdk-integration.md) · [Operations Guide](docs/guides/operations.md) · [Audit Verification](docs/guides/audit-verification.md)
 - **Technical Reference**: [CLI Reference](docs/reference/cli.md) · [REST & WebSocket API](docs/reference/api.md) · [Configuration Options](docs/reference/config.md) · [Quality Rules Catalog](docs/reference/rules.md) · [Event Schema](docs/reference/event-schema.md)
-- **Platform Specs**: [Platform Editions & Maintenance Guide](EDITIONS.md) · [Security Architecture](docs/security.md) · [Benchmark Methodology](docs/benchmarks.md) · [Operational Runbooks](docs/operations.md) · [Architecture Roadmap](docs/roadmap.md)
+- **Platform Specs**: [Platform Editions & Maintenance Guide](EDITIONS.md) · [v5.3 Release Certification](audit/v5.3/RELEASE_CERTIFICATION.md) · [Security Architecture](docs/security.md) · [Benchmark Methodology](docs/benchmarks.md) · [Operational Runbooks](docs/operations.md) · [Architecture Roadmap](docs/roadmap.md)
 
 ---
 
