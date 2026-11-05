@@ -48,6 +48,12 @@ from .storage import Store
 from .profile import HardwareProfile, ProfileMode, current_profile
 from .exceptions import CompanionPackageMissing, require_companion
 from .facade import stream, connect, doctor
+from .supervisor import (
+    ChannelWorker,
+    ChannelWorkerConfig,
+    MultiChannelSupervisor,
+    set_core_affinity,
+)
 
 # Backward-compatible alias for deterministic engine
 CoreEngine = Engine
@@ -113,6 +119,10 @@ __all__ = [
     "stream",
     "connect",
     "doctor",
+    "MultiChannelSupervisor",
+    "ChannelWorker",
+    "ChannelWorkerConfig",
+    "set_core_affinity",
     "CompanionPackageMissing",
     "require_companion",
 ]
