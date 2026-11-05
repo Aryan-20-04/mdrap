@@ -55,7 +55,7 @@ class TestWelfordAndPersistence:
             cur = store.conn.cursor()
             cur.execute("PRAGMA wal_autocheckpoint;")
             val = cur.fetchone()[0]
-            assert val == 25000
+            assert val == 1000
         finally:
             store.close()
 

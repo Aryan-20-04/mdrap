@@ -1592,14 +1592,20 @@ class IngestLog:
                         try:
                             rec = json.loads(payload_bytes.decode("utf-8"))
                             wire_val = rec.get("wire", "")
-                            if isinstance(wire_val, str) and wire_val and not rec.get("payload"):
+                            if (
+                                isinstance(wire_val, str)
+                                and wire_val
+                                and not rec.get("payload")
+                            ):
                                 try:
                                     wire_val = bytes.fromhex(wire_val)
                                 except ValueError:
                                     pass
                             raw_evt = RawEvent(
                                 source=rec.get("source", ""),
-                                payload=rec.get("payload") if isinstance(rec.get("payload"), dict) else {},
+                                payload=rec.get("payload")
+                                if isinstance(rec.get("payload"), dict)
+                                else {},
                                 receive_timestamp=rec.get("receive_timestamp") or ts,
                                 raw_id=rec.get("raw_id"),
                                 session_id=rec.get("session_id"),
@@ -1711,14 +1717,20 @@ class IngestLog:
                         try:
                             rec = json.loads(payload_bytes.decode("utf-8"))
                             wire_val = rec.get("wire", "")
-                            if isinstance(wire_val, str) and wire_val and not rec.get("payload"):
+                            if (
+                                isinstance(wire_val, str)
+                                and wire_val
+                                and not rec.get("payload")
+                            ):
                                 try:
                                     wire_val = bytes.fromhex(wire_val)
                                 except ValueError:
                                     pass
                             raw_evt = RawEvent(
                                 source=rec.get("source", ""),
-                                payload=rec.get("payload") if isinstance(rec.get("payload"), dict) else {},
+                                payload=rec.get("payload")
+                                if isinstance(rec.get("payload"), dict)
+                                else {},
                                 receive_timestamp=rec.get("receive_timestamp") or ts,
                                 raw_id=rec.get("raw_id"),
                                 session_id=rec.get("session_id"),

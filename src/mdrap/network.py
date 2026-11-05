@@ -28,10 +28,10 @@ class NetworkBackendType(str, Enum):
     """Network ingress backend architecture types."""
 
     STANDARD_SOCKET = "STANDARD_SOCKET"  # Portable POSIX / Windows BSD sockets
-    LINUX_AF_XDP = "LINUX_AF_XDP"        # Linux 5.4+ eXpress Data Path zero-copy
-    LINUX_DPDK = "LINUX_DPDK"            # Data Plane Development Kit PMD
-    WINDOWS_IOCP = "WINDOWS_IOCP"        # Windows I/O Completion Ports
-    WINDOWS_RIO = "WINDOWS_RIO"          # Windows Registered I/O
+    LINUX_AF_XDP = "LINUX_AF_XDP"  # Linux 5.4+ eXpress Data Path zero-copy
+    LINUX_DPDK = "LINUX_DPDK"  # Data Plane Development Kit PMD
+    WINDOWS_IOCP = "WINDOWS_IOCP"  # Windows I/O Completion Ports
+    WINDOWS_RIO = "WINDOWS_RIO"  # Windows Registered I/O
 
 
 @dataclasses.dataclass(frozen=True)
@@ -186,7 +186,9 @@ class HighSpeedSocketReceiver:
                 pass
             self.sock = None
 
-    def recv_packet(self, max_bytes: int = 65536) -> Optional[Tuple[bytes, Tuple[str, int], float]]:
+    def recv_packet(
+        self, max_bytes: int = 65536
+    ) -> Optional[Tuple[bytes, Tuple[str, int], float]]:
         """Non-blocking single packet receive.
 
         Returns (payload_bytes, (host, port), receive_ts) or None if no packet available.

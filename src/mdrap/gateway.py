@@ -128,9 +128,7 @@ class Gateway:
                         event_type=ev_type,
                         exchange_timestamp=float(sbe_tick.exchange_ts),
                         receive_timestamp=float(
-                            raw.receive_timestamp
-                            or sbe_tick.ingest_ts
-                            or time.time()
+                            raw.receive_timestamp or sbe_tick.ingest_ts or time.time()
                         ),
                         processing_timestamp=0.0,
                         source=raw.source or sbe_tick.source or "CME",
@@ -174,9 +172,7 @@ class Gateway:
                         exchange_timestamp=float(
                             itch_msg.timestamp_ns / 1_000_000_000.0
                         ),
-                        receive_timestamp=float(
-                            raw.receive_timestamp or time.time()
-                        ),
+                        receive_timestamp=float(raw.receive_timestamp or time.time()),
                         processing_timestamp=0.0,
                         source=raw.source or "NASDAQ",
                         sequence_number=itch_msg.tracking or 0,

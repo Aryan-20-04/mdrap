@@ -176,7 +176,10 @@ class Store(StoreAuditMixin):
             else:
                 self.conn.execute("PRAGMA synchronous=NORMAL;")
             try:
-                self.conn.execute("PRAGMA wal_autocheckpoint=25000;")
+                autocheckpoint = int(
+                    os.environ.get("MDRAP_SQLITE_AUTOCHECKPOINT", "1000")
+                )
+                self.conn.execute(f"PRAGMA wal_autocheckpoint={autocheckpoint};")
             except sqlite3.OperationalError:
                 pass
 
