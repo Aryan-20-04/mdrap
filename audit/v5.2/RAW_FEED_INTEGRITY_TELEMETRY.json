@@ -1,0 +1,76 @@
+{
+  "timestamp": 1793882717.04074,
+  "cross_venue_basis": {
+    "buy_venue": "COINBASE",
+    "sell_venue": "BINANCE",
+    "buy_price_usd": 64211.5,
+    "sell_price_usdt": 64285.0,
+    "apparent_gross_spread_usd": 73.5,
+    "apparent_gross_spread_bps": 11.45,
+    "taker_fees_paid_usd": 70.67,
+    "usdt_usd_exchange_rate": 0.999,
+    "real_currency_adjusted_spread_usd": 9.21,
+    "net_executable_pnl_usd": -61.45,
+    "net_executable_pnl_bps": -9.57,
+    "is_executable_arbitrage": false,
+    "audit_finding": "The reported $76 cross-venue arbitrage was an illusion created by ignoring taker fees and the USDT/USD currency basis."
+  },
+  "fault_injection_drill": {
+    "total_test_cases": 6,
+    "passed_test_cases": 3,
+    "pass_rate_pct": 50.0,
+    "drill_details": [
+      {
+        "test_case": "CLEAN_TICK",
+        "expected_status": "QualityStatus.VALID",
+        "actual_status": "QualityStatus.VALID",
+        "reasons": [],
+        "passed": true
+      },
+      {
+        "test_case": "SEQUENCE_GAP",
+        "expected_status": "QualityStatus.SUSPICIOUS",
+        "actual_status": "QualityStatus.SUSPICIOUS",
+        "reasons": [
+          "SEQUENCE_GAP"
+        ],
+        "passed": true
+      },
+      {
+        "test_case": "CROSSED_QUOTE",
+        "expected_status": "QualityStatus.INVALID",
+        "actual_status": "QualityStatus.INVALID",
+        "reasons": [
+          "CROSSED_QUOTE"
+        ],
+        "passed": true
+      },
+      {
+        "test_case": "PRICE_ANOMALY",
+        "expected_status": "QualityStatus.SUSPICIOUS",
+        "actual_status": "QualityStatus.VALID",
+        "reasons": [],
+        "passed": false
+      },
+      {
+        "test_case": "STALE_TIMESTAMP",
+        "expected_status": "QualityStatus.INVALID",
+        "actual_status": "QualityStatus.SUSPICIOUS",
+        "reasons": [
+          "OUT_OF_ORDER",
+          "STALE"
+        ],
+        "passed": false
+      },
+      {
+        "test_case": "SESSION_RESET",
+        "expected_status": "QualityStatus.INVALID",
+        "actual_status": "QualityStatus.SUSPICIOUS",
+        "reasons": [
+          "OUT_OF_ORDER"
+        ],
+        "passed": false
+      }
+    ]
+  }
+}

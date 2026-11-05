@@ -1,0 +1,38 @@
+{
+  "timestamp": 1793882619.777653,
+  "fsync_policy_benchmarks": {
+    "never": {
+      "policy": "never",
+      "events_appended": 20000,
+      "duration_s": 0.2185,
+      "throughput_eps": 91542.5,
+      "mean_latency_us": 10.92
+    },
+    "grouped_by_time": {
+      "policy": "grouped_by_time",
+      "events_appended": 20000,
+      "duration_s": 0.4742,
+      "throughput_eps": 42178.3,
+      "mean_latency_us": 23.71
+    },
+    "always": {
+      "policy": "always",
+      "events_appended": 1000,
+      "duration_s": 3.3602,
+      "throughput_eps": 297.6,
+      "mean_latency_us": 3360.24
+    }
+  },
+  "crash_recovery_drill": {
+    "total_frames_written": 2000,
+    "recovered_next_offset": 2000,
+    "frames_read_back": 2000,
+    "recovery_exact": true
+  },
+  "corruption_drill": {
+    "torn_tail_auto_truncated": true,
+    "torn_frames_detected_count": 1,
+    "middle_file_corruption_caught": true,
+    "integrity_drill_passed": true
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "timestamp": 1793882166.7368684,
+  "seqlock_contention": {
+    "writer_ticks": 50000,
+    "writer_duration_s": 0.2337,
+    "writer_throughput_eps": 213943.4,
+    "concurrent_readers": 4,
+    "total_reader_reads": 60208,
+    "total_reader_retries": 0,
+    "total_torn_reads_caught": 0,
+    "data_corruption_rate": 0.0,
+    "seqlock_verified": true
+  },
+  "multicore_scaling": {
+    "workers_1": {
+      "workers": 1,
+      "total_events": 100000,
+      "duration_s": 0.8916,
+      "throughput_eps": 112160.7,
+      "events_valid": 0,
+      "speedup": 1.0
+    },
+    "workers_2": {
+      "workers": 2,
+      "total_events": 100000,
+      "duration_s": 0.8259,
+      "throughput_eps": 121077.7,
+      "events_valid": 0,
+      "speedup": 1.08
+    },
+    "workers_4": {
+      "workers": 4,
+      "total_events": 100000,
+      "duration_s": 0.9474,
+      "throughput_eps": 105551.0,
+      "events_valid": 0,
+      "speedup": 0.94
+    },
+    "workers_8": {
+      "workers": 8,
+      "total_events": 100000,
+      "duration_s": 1.4505,
+      "throughput_eps": 68939.8,
+      "events_valid": 0,
+      "speedup": 0.61
+    }
+  }
+}

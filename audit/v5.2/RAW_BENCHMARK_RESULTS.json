@@ -1,0 +1,130 @@
+{
+  "timestamp": 1793880008.5323622,
+  "environment": {
+    "os": "Windows 11 AMD64",
+    "python": "3.13.1",
+    "cpu": "Intel Core i5-1135G7",
+    "cores": 4,
+    "threads": 8
+  },
+  "benchmarks": {
+    "native_c_vs_python": {
+      "num_events": 49979,
+      "native_c": {
+        "throughput_eps": 619744.7,
+        "elapsed_s": 0.081,
+        "latencies_us": {
+          "mean": 1.51,
+          "p50": 1.4,
+          "p90": 1.6,
+          "p95": 1.7,
+          "p99": 2.4,
+          "p99_9": 22.1,
+          "max": 215.0
+        }
+      },
+      "pure_python": {
+        "throughput_eps": 625851.5,
+        "elapsed_s": 0.08,
+        "latencies_us": {
+          "mean": 1.49,
+          "p50": 1.4,
+          "p90": 1.6,
+          "p95": 1.7,
+          "p99": 2.3,
+          "p99_9": 23.6,
+          "max": 146.8
+        }
+      },
+      "native_speedup": 0.99
+    },
+    "shm_v3": {
+      "num_events": 50000,
+      "throughput_eps": 300293.4,
+      "elapsed_s": 0.167,
+      "latencies_us": {
+        "mean": 3.21,
+        "p50": 3.0,
+        "p90": 3.4,
+        "p95": 3.5,
+        "p99": 4.8,
+        "p99_9": 37.7,
+        "max": 300.2
+      }
+    },
+    "wal_persistence": {
+      "buffered": {
+        "num_events": 25000,
+        "throughput_eps": 93726.0,
+        "elapsed_s": 0.267,
+        "latencies_us": {
+          "mean": 9.39,
+          "p50": 8.3,
+          "p90": 9.6,
+          "p95": 13.3,
+          "p99": 29.8,
+          "p99_9": 105.8,
+          "max": 505.2
+        }
+      },
+      "durable_fsync": {
+        "num_events": 1000,
+        "throughput_eps": 336.6,
+        "elapsed_s": 2.971,
+        "latencies_us": {
+          "mean": 2942.63,
+          "p50": 2802.3,
+          "p90": 3251.8,
+          "p95": 3627.2,
+          "p99": 5980.3,
+          "p99_9": 11616.6,
+          "max": 11616.6
+        }
+      }
+    },
+    "full_e2e_pipeline": {
+      "num_events": 25000,
+      "throughput_eps": 26424.8,
+      "elapsed_s": 0.946,
+      "latencies_us": {
+        "mean": 37.45,
+        "p50": 35.7,
+        "p90": 48.7,
+        "p95": 53.5,
+        "p99": 75.0,
+        "p99_9": 216.3,
+        "max": 793.0
+      }
+    },
+    "multiprocess_scaling": {
+      "1": {
+        "workers": 1,
+        "total_events": 14992,
+        "elapsed_s": 0.293,
+        "throughput_eps": 51158.0,
+        "speedup": 1.0
+      },
+      "2": {
+        "workers": 2,
+        "total_events": 29980,
+        "elapsed_s": 0.989,
+        "throughput_eps": 30324.8,
+        "speedup": 0.59
+      },
+      "4": {
+        "workers": 4,
+        "total_events": 59958,
+        "elapsed_s": 1.462,
+        "throughput_eps": 41016.5,
+        "speedup": 0.8
+      },
+      "8": {
+        "workers": 8,
+        "total_events": 119928,
+        "elapsed_s": 2.698,
+        "throughput_eps": 44453.7,
+        "speedup": 0.87
+      }
+    }
+  }
+}
