@@ -50,19 +50,15 @@ from mdrap_strategies.tear_sheet import generate_tear_sheet
 
 def calc_stats(latencies_us: list[float]) -> dict[str, float]:
     if not latencies_us:
-        return {"p50": 0.0, "p90": 0.0, "p95": 0.0, "p99": 0.0, "p99_9": 0.0, "mean": 0.0, "max": 0.0}
-    s = sorted(latencies_us)
-    n = len(s)
-    def p(pct: float) -> float:
-        idx = int(n * (pct / 100.0))
-        return s[min(idx, n - 1)]
+        return {k: 0.0 for k in ("mean", "p50", "p90", "p95", "p99", "p99_9", "max")}
+    s, n = sorted(latencies_us), len(latencies_us)
     return {
         "mean": round(sum(s) / n, 2),
-        "p50": round(p(50.0), 2),
-        "p90": round(p(90.0), 2),
-        "p95": round(p(95.0), 2),
-        "p99": round(p(99.0), 2),
-        "p99_9": round(p(99.9), 2),
+        "p50": round(s[int(n * 0.50)], 2),
+        "p90": round(s[int(n * 0.90)], 2),
+        "p95": round(s[int(n * 0.95)], 2),
+        "p99": round(s[int(n * 0.99)], 2),
+        "p99_9": round(s[min(int(n * 0.999), n - 1)], 2),
         "max": round(s[-1], 2),
     }
 
@@ -239,38 +235,31 @@ def run_pipeline_boundaries(num_events: int = 40_000) -> dict[str, Any]:
     }
 
 
-def _worker_stateless_workload(num_events: int) -> float:
+def _worker_workload(args: tuple[int, bool]) -> float:
+    num_events, stateful = args
     sim = FeedSimulator(SimulatorConfig(seed=42, num_events=num_events))
-    fqe = FastQualityEngine(force_pure=False)
     t0 = time.perf_counter()
-    count = 0
+    if stateful:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            eng = Engine(path=tmpdir, fsync_policy="never")
+            clock, st, count = SystemClock(), eng.state, 0
+            for idx, (raw, _) in enumerate(sim.generate()):
+                st, _ = eng.step(st, raw, clock, offset=idx)
+                count += 1
+                if count >= num_events:
+                    break
+            eng.close()
+            dur = time.perf_counter() - t0
+            return count / dur if dur > 0 else 0.0
+    fqe, count = FastQualityEngine(force_pure=False), 0
     for raw, _ in sim.generate():
         try:
-            ev = normalize(raw)
-            _ = fqe.evaluate(ev)
+            _ = fqe.evaluate(normalize(raw))
             count += 1
         except SchemaError:
             pass
     dur = time.perf_counter() - t0
     return count / dur if dur > 0 else 0.0
-
-
-def _worker_stateful_workload(num_events: int) -> float:
-    sim = FeedSimulator(SimulatorConfig(seed=42, num_events=num_events))
-    with tempfile.TemporaryDirectory() as tmpdir:
-        eng = Engine(path=tmpdir, fsync_policy="never")
-        clock = SystemClock()
-        st = eng.state
-        t0 = time.perf_counter()
-        count = 0
-        for idx, (raw, _) in enumerate(sim.generate()):
-            st, _ = eng.step(st, raw, clock, offset=idx)
-            count += 1
-            if count >= num_events:
-                break
-        dur = time.perf_counter() - t0
-        eng.close()
-        return count / dur if dur > 0 else 0.0
 
 
 def run_multicore_scaling() -> dict[str, Any]:
@@ -279,15 +268,11 @@ def run_multicore_scaling() -> dict[str, Any]:
     events_per_worker = 15_000
 
     for w in (1, 2, 4, 8):
-        # 1. Stateless Ingress Scaling
         with multiprocessing.Pool(processes=w) as pool:
-            res_list = pool.map(_worker_stateless_workload, [events_per_worker] * w)
-            total_stateless_eps = sum(res_list)
-
-        # 2. Stateful Pipeline Scaling
-        with multiprocessing.Pool(processes=w) as pool:
-            res_list_stateful = pool.map(_worker_stateful_workload, [events_per_worker // 2] * w)
-            total_stateful_eps = sum(res_list_stateful)
+            res_stateless = pool.map(_worker_workload, [(events_per_worker, False)] * w)
+            res_stateful = pool.map(_worker_workload, [(events_per_worker // 2, True)] * w)
+            total_stateless_eps = sum(res_stateless)
+            total_stateful_eps = sum(res_stateful)
 
         results[f"{w}_workers"] = {
             "workers": w,

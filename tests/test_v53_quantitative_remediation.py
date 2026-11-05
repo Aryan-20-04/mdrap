@@ -11,6 +11,7 @@ Tests for:
 
 import math
 import os
+import statistics
 import sys
 import pytest
 
@@ -157,10 +158,9 @@ def test_denomination_aware_arbitrage_valuation():
 def test_tear_sheet_institutional_risk_metrics():
     """Verify Probabilistic Sharpe, Deflated Sharpe, Calmar, and CI calculations."""
     returns = [0.001, 0.002, -0.0005, 0.0015, 0.0008, 0.0012, -0.0003, 0.0025, 0.0011, 0.0009]
-    mean_ret = sum(returns) / len(returns)
-    std_ret = math.sqrt(sum((r - mean_ret) ** 2 for r in returns) / len(returns))
-    unann_sr = mean_ret / std_ret
-    ann_sr = unann_sr * math.sqrt(252.0)
+    mean_ret = statistics.mean(returns)
+    std_ret = statistics.pstdev(returns)
+    ann_sr = (mean_ret / std_ret) * math.sqrt(252.0)
 
     psr = ms.compute_probabilistic_sharpe_ratio(ann_sr, 0.0, len(returns), 0.0, 3.0)
     assert 0.0 <= psr <= 1.0
