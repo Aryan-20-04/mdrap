@@ -13,12 +13,22 @@ by setup.py and fastpath.py JIT loader.
 from __future__ import annotations
 
 import os
+import platform
 import shutil
 import subprocess
 import sys
 from typing import Optional
 
 __stability__ = "experimental"
+
+
+def _get_arch_flags() -> list[str]:
+    """Return compiler architecture-specific vectorization flags."""
+    mach = platform.machine().lower()
+    # AVX2 is strictly an x86/x86_64 SIMD feature. Apple Silicon (arm64) and aarch64 do not support -mavx2.
+    if mach in ("x86_64", "amd64", "x86", "i386", "i686"):
+        return ["-mavx2"]
+    return []
 
 
 def get_lib_name(extension: Optional[str] = None) -> str:
@@ -140,7 +150,7 @@ def build(
             compiler,
             "-O3",
             "-march=native",
-            "-mavx2",
+            *_get_arch_flags(),
             "-ffp-contract=off",
             "-flto",
             "-shared",
@@ -289,7 +299,7 @@ def build_core(
             compiler,
             "-O3",
             "-march=native",
-            "-mavx2",
+            *_get_arch_flags(),
             "-ffp-contract=off",
             "-flto",
             "-D_GNU_SOURCE",
@@ -412,7 +422,7 @@ def build_extension(
             compiler,
             "-O3",
             "-march=native",
-            "-mavx2",
+            *_get_arch_flags(),
             "-ffp-contract=off",
             "-flto",
             "-shared",

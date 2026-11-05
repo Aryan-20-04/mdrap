@@ -978,7 +978,9 @@ class FastQualityEngine:
         self._source_map = dict(_SOURCE_ID_MAP)
         self._inst_map = dict(_INSTRUMENT_ID_MAP)
         self._fallback_engine: QualityEngine | None = None
-        self.is_native = bool((_C_EXT is not None or _NATIVE_LIB is not None) and not force_pure_mode)
+        self.is_native = bool(
+            (_C_EXT is not None or _NATIVE_LIB is not None) and not force_pure_mode
+        )
         self.thread_safe = thread_safe
         self._eval_lock = threading.Lock()
         self._batch_capacity: int = 0

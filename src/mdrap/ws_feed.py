@@ -19,6 +19,7 @@ from __future__ import annotations
 import asyncio
 import collections
 from collections.abc import Generator
+from dataclasses import dataclass
 from datetime import datetime
 import itertools
 import json
@@ -767,7 +768,11 @@ class WebSocketFeedManager:
             k_sym = (
                 venue_sym
                 if "/" in venue_sym
-                else (f"{venue_sym[:-3]}/{venue_sym[-3:]}" if len(venue_sym) >= 6 else venue_sym)
+                else (
+                    f"{venue_sym[:-3]}/{venue_sym[-3:]}"
+                    if len(venue_sym) >= 6
+                    else venue_sym
+                )
             )
             return {
                 "event": "subscribe",
@@ -808,7 +813,6 @@ class WebSocketFeedManager:
 # ---------------------------------------------------------------------------
 # Feed Parsing & Sequence Tracking Upgrades (§25)
 # ---------------------------------------------------------------------------
-from dataclasses import dataclass
 
 
 @dataclass
