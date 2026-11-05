@@ -1,41 +1,34 @@
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/logo_dark.svg">
-    <source media="(prefers-color-scheme: light)" srcset="assets/logo_light.svg">
-    <img src="assets/logo.svg" alt="MDRAP Logo" width="120">
-  </picture>
-</p>
+<div align="center">
 
-<h1 align="center">MDRAP</h1>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/logo_dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="assets/logo_light.svg">
+  <img src="assets/logo.svg" alt="MDRAP Logo" width="130">
+</picture>
 
-<p align="center">
-  <strong>Market Data Reliability & Acceleration Platform</strong><br>
-  A deterministic, low-latency market data validation, normalization, and cryptographic audit sidecar.
-</p>
+# MDRAP
 
-<p align="center">
-  <a href="pyproject.toml"><img src="https://img.shields.io/badge/version-5.3.0-blue.svg?style=flat-square" alt="Version 5.3.0"></a>
-  <a href="scripts/check.py"><img src="https://img.shields.io/badge/tests-1700%2B%20passing-brightgreen.svg?style=flat-square" alt="Tests"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-7928CA.svg?style=flat-square" alt="License"></a>
-  <a href="https://github.com/Aryan-20-04/mdrap/stargazers"><img src="https://img.shields.io/github/stars/Aryan-20-04/mdrap?style=flat-square&color=00D2FF" alt="GitHub Stars"></a>
-  <a href="pyproject.toml"><img src="https://img.shields.io/badge/language-Python%20%7C%20C-4361EE.svg?style=flat-square" alt="Language"></a>
-</p>
+### Market Data Reliability & Acceleration Platform
 
-<p align="center">
-  <a href="#-quickstart--demo">Demo</a> •
-  <a href="docs/">Docs</a> •
-  <a href="EDITIONS.md">Editions</a> •
-  <a href="#-installation">Install</a> •
-  <a href="docs/development/baseline.md">Contributing</a>
-</p>
+A deterministic, high-throughput market data validation, normalization, and cryptographic audit sidecar for quantitative trading systems.
+
+[![Version](https://img.shields.io/badge/version-5.3.0-0ea5e9?style=flat-square)](pyproject.toml)
+[![Tests](https://img.shields.io/badge/tests-1700%2B%20passing-10b981?style=flat-square)](tests/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-8b5cf6?style=flat-square)](LICENSE)
+[![Language](https://img.shields.io/badge/language-Python%20%7C%20C%20(AVX2)-6366f1?style=flat-square)](src/mdrap/fastpath.c)
+[![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Windows-334155?style=flat-square)](#-installation)
+
+[**Quickstart**](#-quickstart--demo) &nbsp;•&nbsp; [**Architecture**](docs/architecture.md) &nbsp;•&nbsp; [**Editions & Boundaries**](EDITIONS.md) &nbsp;•&nbsp; [**Benchmarks**](#-performance-benchmarks-v53) &nbsp;•&nbsp; [**Audit Certification**](audit/v5.3/RELEASE_CERTIFICATION.md) &nbsp;•&nbsp; [**Documentation**](docs/)
+
+</div>
 
 ---
 
-## 💡 Why This Project?
+## 💡 Why MDRAP?
 
-| Highlight | Architecture & Strategy Advantage |
+| Core Capability | Architectural & Quantitative Advantage |
 | :--- | :--- |
-| 🛡️ **Crossed Quote & Anomaly Defense** | Eliminates phantom arbitrage losses by intercepting crossed books (`bid > ask`), sequence jumps, and rolling Welford price corridor anomalies before strategy execution. |
+| 🛡️ **Crossed Quote & Anomaly Defense** | Eliminates phantom arbitrage losses by intercepting crossed books (`bid > ask`), sequence jumps, negative prices, and rolling Welford price corridor anomalies before downstream strategy execution. |
 | ⚡ **Microsecond-to-Nanosecond Tiers** | Standalone native C kernel evaluates ticks at **45 ns/tick** (22.2M EPS); native C fastpath FFI processes at **510.8k EPS** (1.6 µs p50); pure Python fallback runs at **170.1k EPS** with zero mandatory dependencies. |
 | 📈 **Institutional Microstructure & EMS** | Discrete-event matching engine with price-time priority, queue tracking, partial fills, cancellation races, Avellaneda–Stoikov HFT MM, and 14 pre-trade risk gates. |
 | 💱 **Denomination-Aware Basis Valuation** | Rejects unexecutable cross-venue arbitrage claims by normalizing quotes across USD/USDT basis differences and accounting for bilateral fee hurdles. |
@@ -44,12 +37,12 @@
 
 ---
 
-## 🏛️ How It Works
+## 🏛️ Architecture Pipeline
 
 ```mermaid
 flowchart LR
     subgraph Ingress ["1. Ingress & Normalize"]
-        A["Raw Feeds\n(Binance, ITCH, Polygon)"] --> B["Gateway Normalization\n(RawEvent)"]
+        A["Raw Feeds\n(Binance, ITCH, SBE, CME)"] --> B["Gateway Normalization\n(RawEvent)"]
     end
     subgraph Core ["2. Reliability & Fastpath"]
         B --> C{"Quality Engine\n(15 Rules)"}
@@ -57,8 +50,8 @@ flowchart LR
         C -->|Invalid| Q["Quarantine Ledger\n(Reason Bitmask)"]
     end
     subgraph Handoff ["3. Handoff & Durability"]
-        D --> E["IngestLog WAL\n(CRC-32 Crash Durability)"]
-        D --> F["SPSC Ring Buffer\n(Zero-Copy SHM <1µs)"]
+        D --> E["IngestLog WAL\n(CRC-32C Crash Durability)"]
+        D --> F["SPMC Ring Buffer\n(Zero-Copy SHM v3 <1µs)"]
         E --> G["SQLite / DuckDB\n(Projections & Audit)"]
     end
 ```
@@ -68,7 +61,6 @@ flowchart LR
 ## 🎬 Quickstart & Demo
 
 <p align="center">
-  <!-- TODO: To regenerate or customize this terminal demo GIF, run: bash tools/demo/record.sh or vhs tools/demo/demo.tape -->
   <img src="tools/demo/mdrap_demo.gif" alt="MDRAP Real-Time Market Data Anomaly Detection & Audit Demo" width="92%">
 </p>
 
