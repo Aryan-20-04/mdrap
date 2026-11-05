@@ -827,7 +827,10 @@ class IngestLog:
                 ).encode("utf-8")
             except (TypeError, UnicodeEncodeError):
                 payload_bytes = json.dumps(
-                    record, separators=(",", ":"), ensure_ascii=False, default=_json_default
+                    record,
+                    separators=(",", ":"),
+                    ensure_ascii=False,
+                    default=_json_default,
                 ).encode("utf-8", errors="replace")
             payload_len = len(payload_bytes)
             offset = self._next_offset
