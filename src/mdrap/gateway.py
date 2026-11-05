@@ -102,8 +102,103 @@ class Gateway:
             raw.receive_timestamp = time.time()
         return raw
 
+    def _try_normalize_wire(self, raw: RawEvent) -> CanonicalEvent | None:
+        """Direct wire-byte parser bypassing intermediate JSON dictionaries (ADR-007)."""
+        wire = raw.wire
+        if isinstance(wire, str):
+            wire = wire.encode("utf-8")
+        if not isinstance(wire, (bytes, bytearray, memoryview)):
+            return None
+
+        # 1. CME SBE Wire Frame (min 8-byte header)
+        if len(wire) >= 8:
+            try:
+                from .sbe import unpack_sbe_tick
+
+                sbe_tick = unpack_sbe_tick(wire)
+                if sbe_tick is not None:
+                    ev_type = (
+                        EventType.TRADE
+                        if sbe_tick.price is not None
+                        else EventType.QUOTE
+                    )
+                    event = CanonicalEvent(
+                        event_id=self.next_event_id(),
+                        instrument_id=sbe_tick.symbol or "UNKNOWN",
+                        event_type=ev_type,
+                        exchange_timestamp=float(sbe_tick.exchange_ts),
+                        receive_timestamp=float(
+                            raw.receive_timestamp
+                            or sbe_tick.ingest_ts
+                            or time.time()
+                        ),
+                        processing_timestamp=0.0,
+                        source=raw.source or sbe_tick.source or "CME",
+                        sequence_number=sbe_tick.seq,
+                        raw_id=raw.raw_id or self.next_raw_id(),
+                        session_id=raw.session_id,
+                    )
+                    event.price = sbe_tick.price
+                    event.quantity = sbe_tick.size
+                    event.bid_price = sbe_tick.bid
+                    event.bid_size = sbe_tick.bid_size
+                    event.ask_price = sbe_tick.ask
+                    event.ask_size = sbe_tick.ask_size
+                    return event
+            except Exception:
+                pass
+
+        # 2. NASDAQ TotalView-ITCH 5.0 Frame
+        if len(wire) >= 3:
+            try:
+                from .itch import ITCHParser
+
+                wire_bytes = bytes(wire)
+                if len(wire_bytes) > 2 and wire_bytes[0:2] != b"\x00\x00":
+                    msg_type = wire_bytes[2:3]
+                    body = wire_bytes[3:]
+                else:
+                    msg_type = wire_bytes[0:1]
+                    body = wire_bytes[1:]
+                itch_msg = ITCHParser.parse_payload(msg_type, body)
+                if itch_msg is not None:
+                    ev_type = (
+                        EventType.TRADE
+                        if itch_msg.msg_type in ("P", "Q", "E", "C")
+                        else EventType.QUOTE
+                    )
+                    event = CanonicalEvent(
+                        event_id=self.next_event_id(),
+                        instrument_id=itch_msg.stock or "UNKNOWN",
+                        event_type=ev_type,
+                        exchange_timestamp=float(
+                            itch_msg.timestamp_ns / 1_000_000_000.0
+                        ),
+                        receive_timestamp=float(
+                            raw.receive_timestamp or time.time()
+                        ),
+                        processing_timestamp=0.0,
+                        source=raw.source or "NASDAQ",
+                        sequence_number=itch_msg.tracking or 0,
+                        raw_id=raw.raw_id or self.next_raw_id(),
+                        session_id=raw.session_id,
+                    )
+                    event.price = itch_msg.price
+                    event.quantity = float(itch_msg.shares or 0)
+                    return event
+            except Exception:
+                pass
+
+        return None
+
     def normalize(self, raw: RawEvent) -> CanonicalEvent:
         """Map and parse a vendor RawEvent payload into a standardized CanonicalEvent."""
+        # ADR-007: Direct Wire-Byte Ingestion Fastpath
+        if raw.wire and (not raw.payload or not isinstance(raw.payload, dict)):
+            wire_event = self._try_normalize_wire(raw)
+            if wire_event is not None:
+                return wire_event
+
         p = raw.payload
         if not isinstance(p, dict):
             raise SchemaError(f"payload must be a dict, got {type(p).__name__}")

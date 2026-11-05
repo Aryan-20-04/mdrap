@@ -811,6 +811,12 @@ class IngestLog:
                 }
                 if getattr(raw, "session_id", None):
                     record["session_id"] = raw.session_id
+                if getattr(raw, "wire", None):
+                    wire_val = raw.wire
+                    if isinstance(wire_val, (bytes, bytearray, memoryview)):
+                        record["wire"] = bytes(wire_val).hex()
+                    elif isinstance(wire_val, str):
+                        record["wire"] = wire_val
             elif isinstance(raw, dict):
                 record = dict(raw)
                 if not record.get("receive_timestamp"):
@@ -968,6 +974,12 @@ class IngestLog:
                     }
                     if getattr(item, "session_id", None):
                         rec["session_id"] = item.session_id
+                    if getattr(item, "wire", None):
+                        wire_val = item.wire
+                        if isinstance(wire_val, (bytes, bytearray, memoryview)):
+                            rec["wire"] = bytes(wire_val).hex()
+                        elif isinstance(wire_val, str):
+                            rec["wire"] = wire_val
                 elif isinstance(item, dict):
                     rec = dict(item)
                     if not rec.get("receive_timestamp"):
@@ -1579,12 +1591,19 @@ class IngestLog:
                     if offset >= start_offset:
                         try:
                             rec = json.loads(payload_bytes.decode("utf-8"))
+                            wire_val = rec.get("wire", "")
+                            if isinstance(wire_val, str) and wire_val and not rec.get("payload"):
+                                try:
+                                    wire_val = bytes.fromhex(wire_val)
+                                except ValueError:
+                                    pass
                             raw_evt = RawEvent(
                                 source=rec.get("source", ""),
-                                payload=rec.get("payload", {}),
+                                payload=rec.get("payload") if isinstance(rec.get("payload"), dict) else {},
                                 receive_timestamp=rec.get("receive_timestamp") or ts,
                                 raw_id=rec.get("raw_id"),
                                 session_id=rec.get("session_id"),
+                                wire=wire_val or "",
                             )
                             yielded_in_seg = True
                             yield offset, raw_evt
@@ -1691,12 +1710,19 @@ class IngestLog:
                             return None
                         try:
                             rec = json.loads(payload_bytes.decode("utf-8"))
+                            wire_val = rec.get("wire", "")
+                            if isinstance(wire_val, str) and wire_val and not rec.get("payload"):
+                                try:
+                                    wire_val = bytes.fromhex(wire_val)
+                                except ValueError:
+                                    pass
                             raw_evt = RawEvent(
                                 source=rec.get("source", ""),
-                                payload=rec.get("payload", {}),
+                                payload=rec.get("payload") if isinstance(rec.get("payload"), dict) else {},
                                 receive_timestamp=rec.get("receive_timestamp") or ts,
                                 raw_id=rec.get("raw_id"),
                                 session_id=rec.get("session_id"),
+                                wire=wire_val or "",
                             )
                             return (offset, raw_evt)
                         except Exception as exc:
