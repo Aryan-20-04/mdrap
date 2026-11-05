@@ -907,8 +907,17 @@ class FastQualityEngine:
         config: QualityConfig | None = None,
         thread_safe: bool = False,
         staleness_threshold_s: float | None = None,
+        force_pure: bool = False,
+        force_pure_python: bool = False,
         **kwargs: Any,
     ):
+        force_pure_mode = (
+            force_pure
+            or force_pure_python
+            or (os.environ.get("MDRAP_DISABLE_FASTPATH") == "1")
+            or bool(kwargs.pop("force_pure", False))
+            or bool(kwargs.pop("force_pure_python", False))
+        )
         if config is None:
             try:
                 from .config_loader import (
@@ -969,7 +978,7 @@ class FastQualityEngine:
         self._source_map = dict(_SOURCE_ID_MAP)
         self._inst_map = dict(_INSTRUMENT_ID_MAP)
         self._fallback_engine: QualityEngine | None = None
-        self.is_native = bool(_C_EXT is not None or _NATIVE_LIB is not None)
+        self.is_native = bool((_C_EXT is not None or _NATIVE_LIB is not None) and not force_pure_mode)
         self.thread_safe = thread_safe
         self._eval_lock = threading.Lock()
         self._batch_capacity: int = 0
@@ -978,7 +987,9 @@ class FastQualityEngine:
 
         self._engine_ptr = None
         self._engine_ptr_c = None
-        if _C_EXT:
+        if force_pure_mode:
+            self._fallback_engine = QualityEngine(self.cfg)
+        elif _C_EXT:
             try:
                 self._engine_ptr_c = _C_EXT.engine_create(
                     self.cfg.staleness_threshold_s,
@@ -1004,7 +1015,7 @@ class FastQualityEngine:
             except Exception:
                 self._engine_ptr_c = None
 
-        if not self._engine_ptr_c and _NATIVE_LIB:
+        if not force_pure_mode and not self._engine_ptr_c and _NATIVE_LIB:
             if hasattr(_NATIVE_LIB, "fastpath_engine_create"):
                 self._engine_ptr = _NATIVE_LIB.fastpath_engine_create(
                     self.cfg.staleness_threshold_s,
@@ -1123,7 +1134,7 @@ class FastQualityEngine:
         return res
 
     def _evaluate_unlocked(self, event: CanonicalEvent) -> CanonicalEvent:
-        if not self._engine_ptr_c and not _FAST_EVAL:
+        if not self.is_native or (not self._engine_ptr_c and not _FAST_EVAL):
             if not self._fallback_engine:
                 self._fallback_engine = QualityEngine(self.cfg)
             res = self._fallback_engine.evaluate(event)
