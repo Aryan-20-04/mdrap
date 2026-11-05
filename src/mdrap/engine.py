@@ -53,8 +53,8 @@ def _is_finite_num(val: Any) -> bool:
 def estimate_payload_size(payload: Any, max_bytes: int = 0) -> int:
     """Accurately estimate or compute the serialized byte length of a payload.
 
-    Provides a fast, zero-allocation upper bound for scalar dictionaries without calling
-    json.dumps(). If payload contains non-scalar containers (lists, dicts) or if the
+    Provides a fast, zero-allocation upper bound for scalar and bounded containers without calling
+    json.dumps(). If payload contains deep/large non-scalar containers or if the
     scalar upper bound approaches or exceeds max_bytes, exact json.dumps() length is computed.
     Guarantees:
       - Never allows an oversize payload to bypass max_bytes (no false negatives).
@@ -67,7 +67,7 @@ def estimate_payload_size(payload: Any, max_bytes: int = 0) -> int:
         p_len = len(payload)
         if p_len <= 32:
             est = 2
-            has_container = False
+            has_deep_container = False
             for k, v in payload.items():
                 est += (len(k) if type(k) is str else len(str(k))) + 4
                 vt = type(v)
@@ -75,12 +75,23 @@ def estimate_payload_size(payload: Any, max_bytes: int = 0) -> int:
                     est += len(v) + 2
                 elif vt in (int, float, bool) or v is None:
                     est += 26
-                elif vt in (list, tuple, dict, set):
-                    has_container = True
-                    break
+                elif vt in (list, tuple, set):
+                    v_len = len(v)
+                    if v_len <= 50:
+                        est += 2 + v_len * 32
+                    else:
+                        has_deep_container = True
+                        break
+                elif vt is dict:
+                    v_len = len(v)
+                    if v_len <= 20:
+                        est += 2 + v_len * 48
+                    else:
+                        has_deep_container = True
+                        break
                 else:
                     est += len(str(v)) + 4
-            if not has_container:
+            if not has_deep_container:
                 if max_bytes <= 0 or est <= max_bytes:
                     return est
                 return len(json.dumps(payload, default=str))
@@ -2521,6 +2532,12 @@ class Engine:
 
         return cur_status, reasons_out, disagreement
 
+    @staticmethod
+    def _bump_invalid_count(state: EngineState, txn: Transaction | None = None) -> None:
+        if txn is not None:
+            txn.record_count("INVALID")
+        state.counts["INVALID"] += 1
+
     def _step_internal(
         self,
         state: EngineState,
@@ -2540,11 +2557,6 @@ class Engine:
         now_ts = clock.now()
         recv_ts = raw_event.receive_timestamp if raw_event.receive_timestamp else now_ts
 
-        def _bump_invalid() -> None:
-            if txn is not None:
-                txn.record_count("INVALID")
-            state.counts["INVALID"] += 1
-
         payload = raw_event.payload
         if not isinstance(payload, dict):
             event_id = f"q_{raw_event.source}_{offset}"
@@ -2557,7 +2569,7 @@ class Engine:
                 json.dumps(str(payload)),
                 recv_ts,
             )
-            _bump_invalid()
+            self._bump_invalid_count(state, txn)
             return state, EngineDecision(
                 offset=offset,
                 event_id=event_id,
@@ -2571,7 +2583,7 @@ class Engine:
             payload, raw_event, offset, recv_ts
         )
         if not is_sec_valid and sec_dec is not None:
-            _bump_invalid()
+            self._bump_invalid_count(state, txn)
             return state, sec_dec
 
         # Stage 2: Schema Field & Structural Validation
@@ -2579,7 +2591,7 @@ class Engine:
             self._stage_schema_validation(payload, raw_event, offset, recv_ts)
         )
         if not is_schema_valid and schema_dec is not None:
-            _bump_invalid()
+            self._bump_invalid_count(state, txn)
             return state, schema_dec
 
         # Derive event_id

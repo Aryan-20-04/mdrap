@@ -821,9 +821,14 @@ class IngestLog:
             # Architectural Decision (N5): RFC 3629 forbids UTF-8 encoding of lone surrogates
             # (U+D800..U+DFFF). Using errors="replace" substitutes the Unicode Replacement Character
             # (U+FFFD), preventing serialization crashes and ensuring log append durability.
-            payload_bytes = json.dumps(
-                record, separators=(",", ":"), ensure_ascii=False, default=_json_default
-            ).encode("utf-8", errors="replace")
+            try:
+                payload_bytes = json.dumps(
+                    record, separators=(",", ":"), ensure_ascii=False
+                ).encode("utf-8")
+            except (TypeError, UnicodeEncodeError):
+                payload_bytes = json.dumps(
+                    record, separators=(",", ":"), ensure_ascii=False, default=_json_default
+                ).encode("utf-8", errors="replace")
             payload_len = len(payload_bytes)
             offset = self._next_offset
             now = time.time()
@@ -969,12 +974,19 @@ class IngestLog:
                         f"Expected RawEvent or dict, got {type(item).__name__}"
                     )
 
-                p_bytes = json.dumps(
-                    rec,
-                    separators=(",", ":"),
-                    ensure_ascii=False,
-                    default=_json_default,
-                ).encode("utf-8", errors="replace")
+                try:
+                    p_bytes = json.dumps(
+                        rec,
+                        separators=(",", ":"),
+                        ensure_ascii=False,
+                    ).encode("utf-8")
+                except (TypeError, UnicodeEncodeError):
+                    p_bytes = json.dumps(
+                        rec,
+                        separators=(",", ":"),
+                        ensure_ascii=False,
+                        default=_json_default,
+                    ).encode("utf-8", errors="replace")
                 p_len = len(p_bytes)
                 total_frame_bytes += FRAME_HEADER_SIZE + p_len
                 prepared.append((p_bytes, p_len))
