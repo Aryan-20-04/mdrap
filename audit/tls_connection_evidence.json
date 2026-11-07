@@ -1,0 +1,62 @@
+{
+  "COINBASE": {
+    "host": "ws-feed.exchange.coinbase.com",
+    "port": 443,
+    "resolved_ip": "2606:4700:4400::ac40:974e",
+    "tls_version": "TLSv1.3",
+    "cipher_suite": "TLS_AES_256_GCM_SHA384",
+    "cipher_bits": 256,
+    "subject_common_name": "exchange.coinbase.com",
+    "issuer_org": "Google Trust Services",
+    "cert_not_before": "Sep 12 03:29:00 2026 GMT",
+    "cert_not_after": "Dec 11 04:28:57 2026 GMT"
+  },
+  "BINANCE": {
+    "host": "stream.binance.com",
+    "port": 9443,
+    "resolved_ip": "35.75.81.128",
+    "tls_version": "TLSv1.3",
+    "cipher_suite": "TLS_AES_128_GCM_SHA256",
+    "cipher_bits": 128,
+    "subject_common_name": "*.binance.com",
+    "issuer_org": "DigiCert Inc",
+    "cert_not_before": "Dec  9 00:00:00 2025 GMT",
+    "cert_not_after": "Jan  9 23:59:59 2027 GMT"
+  },
+  "KRAKEN": {
+    "host": "ws.kraken.com",
+    "port": 443,
+    "resolved_ip": "104.16.14.28",
+    "tls_version": "TLSv1.3",
+    "cipher_suite": "TLS_AES_256_GCM_SHA384",
+    "cipher_bits": 256,
+    "subject_common_name": "ws.kraken.com",
+    "issuer_org": "Google Trust Services",
+    "cert_not_before": "Oct 25 11:57:18 2026 GMT",
+    "cert_not_after": "Jan 23 12:57:16 2027 GMT"
+  },
+  "OKX": {
+    "host": "ws.okx.com",
+    "port": 8443,
+    "resolved_ip": "2a06:98c1:3103::ac40:9052",
+    "tls_version": "TLSv1.3",
+    "cipher_suite": "TLS_AES_256_GCM_SHA384",
+    "cipher_bits": 256,
+    "subject_common_name": "ws.okx.com",
+    "issuer_org": "Google Trust Services",
+    "cert_not_before": "Oct  8 15:53:41 2026 GMT",
+    "cert_not_after": "Jan  6 16:53:37 2027 GMT"
+  },
+  "BYBIT": {
+    "host": "stream.bybit.com",
+    "port": 443,
+    "resolved_ip": "2600:9000:257b:4200:17:57ca:2ec0:93a1",
+    "tls_version": "TLSv1.3",
+    "cipher_suite": "TLS_AES_128_GCM_SHA256",
+    "cipher_bits": 128,
+    "subject_common_name": "*.bybit.com",
+    "issuer_org": "Amazon",
+    "cert_not_before": "Jul 12 00:00:00 2026 GMT",
+    "cert_not_after": "Jan 25 23:59:59 2027 GMT"
+  }
+}
