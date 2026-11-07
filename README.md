@@ -12,13 +12,13 @@
 
 A deterministic, high-throughput market data validation, normalization, and cryptographic audit sidecar for quantitative trading systems.
 
-[![Version](https://img.shields.io/badge/version-4.0.1-blue.svg?style=flat-square)](pyproject.toml)
+[![Version](https://img.shields.io/badge/version-5.3.0-blue.svg?style=flat-square)](pyproject.toml)
 [![Tests](https://img.shields.io/badge/tests-1700%2B%20passing-10b981?style=flat-square)](tests/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-8b5cf6?style=flat-square)](LICENSE)
 [![Language](https://img.shields.io/badge/language-Python%20%7C%20C%20(AVX2)-6366f1?style=flat-square)](src/mdrap/fastpath.c)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Windows-334155?style=flat-square)](#installation)
 
-[**Quickstart**](#quickstart--demo) &nbsp;•&nbsp; [**Architecture**](docs/architecture.md) &nbsp;•&nbsp; [**Editions & Boundaries**](EDITIONS.md) &nbsp;•&nbsp; [**Benchmarks**](#performance-benchmarks-v53) &nbsp;•&nbsp; [**Audit Certification**](audit/v5.3/RELEASE_CERTIFICATION.md) &nbsp;•&nbsp; [**Documentation**](docs/)
+[**Quickstart**](#quickstart--demo) &nbsp;•&nbsp; [**Architecture**](docs/architecture.md) &nbsp;•&nbsp; [**Editions & Boundaries**](docs/editions.md) &nbsp;•&nbsp; [**Benchmarks**](#performance-benchmarks-v53) &nbsp;•&nbsp; [**Audit Certification**](FINAL_V5_PRODUCTION_CERTIFICATION.md) &nbsp;•&nbsp; [**Documentation**](docs/)
 
 </div>
 
@@ -211,7 +211,7 @@ All figures are measured on committed benchmark hardware (Intel Core i7-12700H, 
 <summary><b>Scope & Known Limitations</b></summary>
 
 - **Scope Boundary**: MDRAP is a single-node middleware sidecar. It does not provide proprietary feed licenses (bring your own API keys) and does not execute broker orders.
-- **Edition Boundaries**: MDRAP is structured under an uncompromising Open-Core model. The core platform (`mdrap-core`) is 100% MIT-licensed with zero mandatory external dependencies. Specialized institutional packages (Options Pricing, TCA, Portfolio Risk, Algorithmic Strategies) are isolated as downstream companion packages documented in [EDITIONS.md](EDITIONS.md).
+- **Edition Boundaries**: MDRAP is structured under an uncompromising Open-Core model. The core platform (`mdrap-core`) is 100% MIT-licensed with zero mandatory external dependencies. Specialized institutional packages (Options Pricing, TCA, Portfolio Risk, Algorithmic Strategies) are isolated as downstream companion packages documented in [docs/editions.md](docs/editions.md).
 - **Feed Runtime**: Registration exposes metadata only. There is no supervisor that owns adapter lifecycle or background process spawning.
 - **Failover**: Local active-passive replication via TCP journal streaming (`journal_replicator.py`); multi-datacenter distributed Raft consensus is on the roadmap.
 - **Backpressure**: When downstream consumers cannot keep up with high-frequency streams, oldest frames are evicted to prioritize real-time low latency while updating drop counters.
@@ -252,7 +252,7 @@ mdrap/
 - **Getting Started**: [Quickstart Guide](docs/quickstart.md) · [Concepts & Data Model](docs/concepts.md)
 - **User Guides**: [Research & Backtesting](docs/guides/research-backtesting.md) · [Live Monitoring](docs/guides/live-monitoring.md) · [SDK Integration](docs/guides/sdk-integration.md) · [Operations Guide](docs/guides/operations.md) · [Audit Verification](docs/guides/audit-verification.md)
 - **Technical Reference**: [CLI Reference](docs/reference/cli.md) · [REST & WebSocket API](docs/reference/api.md) · [Configuration Options](docs/reference/config.md) · [Quality Rules Catalog](docs/reference/rules.md) · [Event Schema](docs/reference/event-schema.md)
-- **Platform Specs**: [Platform Editions & Maintenance Guide](EDITIONS.md) · [v5.3 Release Certification](audit/v5.3/RELEASE_CERTIFICATION.md) · [Security Architecture](docs/security.md) · [Benchmark Methodology](docs/benchmarks.md) · [Operational Runbooks](docs/operations.md) · [Architecture Roadmap](docs/roadmap.md)
+- **Platform Specs**: [Platform Editions & Maintenance Guide](docs/editions.md) · [v5.3 Production Certification](FINAL_V5_PRODUCTION_CERTIFICATION.md) · [Pre-Flight Checklist](FINAL_RELEASE_CHECKLIST.md) · [Security Architecture](docs/security.md) · [Benchmark Methodology](docs/benchmarks.md) · [Operational Runbooks](docs/operations.md) · [Architecture Roadmap](docs/roadmap.md)
 
 ---
 
