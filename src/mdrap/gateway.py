@@ -76,6 +76,27 @@ _EVENT_TYPE_HALT = EventType.HALT
 _EVENT_TYPE_STATUS = EventType.STATUS
 
 
+def normalize_timestamp_seconds(ts: float | int) -> float:
+    """Normalize epoch timestamp in s, ms, us, or ns to seconds float.
+
+    Plausible epoch range is ~year 2000 (9.46e8) to ~year 2100 (4.10e9).
+    Values at >= 1e17 are nanoseconds (1e-9).
+    Values at 1e14..1e17 are microseconds (1e-6).
+    Values at 1e11..1e14 are milliseconds (1e-3).
+    Values < 1e11 remain seconds (or relative synthetic offsets).
+    """
+    ts_f = float(ts)
+    if not math.isfinite(ts_f) or ts_f <= 0.0:
+        return ts_f
+    if ts_f >= 1e17:
+        return ts_f / 1e9
+    elif ts_f >= 1e14:
+        return ts_f / 1e6
+    elif ts_f >= 1e11:
+        return ts_f / 1e3
+    return ts_f
+
+
 class Gateway:
     """Instance-scoped gateway for ingesting and normalizing vendor market data payloads."""
 
@@ -262,7 +283,7 @@ class Gateway:
             event_id=self.next_event_id(),
             instrument_id=instrument,
             event_type=ev_type,
-            exchange_timestamp=float(exchange_ts),
+            exchange_timestamp=normalize_timestamp_seconds(exchange_ts),
             receive_timestamp=raw.receive_timestamp,
             processing_timestamp=0.0,  # Populated after quality evaluation
             source=raw.source,

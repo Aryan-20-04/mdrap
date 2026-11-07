@@ -439,7 +439,12 @@ class PolygonFeedManager:
         self.symbols = [s.upper() for s in symbols]
         self.api_key = api_key or os.environ.get("POLYGON_API_KEY", "")
         self.asset_class = asset_class.lower()
-        self.mock_mode = mock_mode or not self.api_key
+        if not mock_mode and not self.api_key:
+            raise ValueError(
+                "POLYGON_API_KEY is required when mock_mode is False. "
+                "To stream synthetic market data for testing, explicitly specify mock_mode=True."
+            )
+        self.mock_mode = bool(mock_mode)
         self.max_queue_size = max_queue_size
 
         self._queue: queue.Queue[RawEvent] = queue.Queue(maxsize=max_queue_size)

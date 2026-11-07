@@ -41,7 +41,14 @@ API_KEY_SALT: str = os.environ.get("MDRAP_API_KEY_SALT", "").strip()
 def hash_api_key(token: str, salt: str | None = None) -> str:
     """Cryptographically hash an API key using HMAC-SHA256 with key derivation salt."""
     salt = salt or os.environ.get("MDRAP_API_KEY_SALT", "").strip() or API_KEY_SALT
+    is_prod = (
+        os.environ.get("MDRAP_ENV", "").lower() in ("prod", "production")
+        or os.environ.get("ENVIRONMENT", "").lower() in ("prod", "production")
+        or os.environ.get("MDRAP_PRODUCTION", "").lower() in ("1", "true", "yes")
+    )
     if not salt and os.environ.get("MDRAP_DEMO", "").lower() in ("1", "true", "yes"):
+        if is_prod:
+            raise ValueError("MDRAP_API_KEY_SALT is required in production environments; demo salt prohibited")
         salt = "mdrap_demo_salt_v1"
     if not salt:
         raise ValueError("MDRAP_API_KEY_SALT is required to hash API keys")
@@ -579,6 +586,15 @@ class SecurityManager:
             in ("1", "true", "yes")
         )
         is_demo = os.environ.get("MDRAP_DEMO", "").lower() in ("1", "true", "yes")
+        is_prod = (
+            os.environ.get("MDRAP_ENV", "").lower() in ("prod", "production")
+            or os.environ.get("ENVIRONMENT", "").lower() in ("prod", "production")
+            or os.environ.get("MDRAP_PRODUCTION", "").lower() in ("1", "true", "yes")
+        )
+        if is_demo and is_prod:
+            raise AccessDenied(
+                "MDRAP_DEMO=1 is strictly prohibited in production environments (MDRAP_ENV=production)"
+            )
         configured_salt = os.environ.get("MDRAP_API_KEY_SALT", "").strip()
         if not is_demo and not configured_salt:
             if mandate_env:

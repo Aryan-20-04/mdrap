@@ -541,19 +541,21 @@ class SQLiteProjection:
                     cur.execute("BEGIN IMMEDIATE;")
                     in_transaction = True
 
-                    # Query authoritative checkpoint under transaction lock
+                    # Query authoritative checkpoint under transaction lock (cached in memory)
                     cur_cp = self._highest_contiguous_offset
-                    try:
-                        cur.execute(
-                            "SELECT last_offset FROM projection_checkpoints WHERE name = ?;",
-                            (self.name,),
-                        )
-                        row = cur.fetchone()
-                        if row and row[0] is not None:
-                            db_cp = int(row[0])
-                            cur_cp = max(cur_cp, db_cp)
-                    except (ValueError, TypeError, sqlite3.OperationalError):
-                        pass
+                    if cur_cp < 0:
+                        try:
+                            cur.execute(
+                                "SELECT last_offset FROM projection_checkpoints WHERE name = ?;",
+                                (self.name,),
+                            )
+                            row = cur.fetchone()
+                            if row and row[0] is not None:
+                                db_cp = int(row[0])
+                                cur_cp = max(cur_cp, db_cp)
+                                self._highest_contiguous_offset = cur_cp
+                        except (ValueError, TypeError, sqlite3.OperationalError):
+                            pass
 
                     expected_next = (
                         (cur_cp + 1) if cur_cp >= 0 else self.expected_start_offset
@@ -717,6 +719,7 @@ class SQLiteProjection:
                     if in_transaction:
                         try:
                             cur.execute("ROLLBACK;")
+                            self._highest_contiguous_offset = -1
                         except Exception:
                             pass
                     raise
@@ -724,6 +727,7 @@ class SQLiteProjection:
                     if in_transaction:
                         try:
                             cur.execute("ROLLBACK;")
+                            self._highest_contiguous_offset = -1
                         except Exception:
                             pass
                     msg = str(exc).lower()
@@ -735,6 +739,7 @@ class SQLiteProjection:
                     if in_transaction:
                         try:
                             cur.execute("ROLLBACK;")
+                            self._highest_contiguous_offset = -1
                         except Exception:
                             pass
                     raise

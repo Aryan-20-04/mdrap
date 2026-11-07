@@ -190,3 +190,10 @@ def test_databento_file_replay():
     finally:
         if os.path.exists(temp_path):
             os.remove(temp_path)
+
+
+def test_databento_feed_manager_missing_credentials_fails_explicitly(monkeypatch):
+    """Verify missing credentials raise ValueError rather than silently mocking."""
+    monkeypatch.delenv("DATABENTO_API_KEY", raising=False)
+    with pytest.raises(ValueError, match="DATABENTO_API_KEY or file_path is required"):
+        DatabentoFeedManager(symbols=["AAPL"], mock_mode=False)

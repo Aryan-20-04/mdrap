@@ -5,7 +5,7 @@ import pytest
 
 from mdrap.clock import FixedClock
 from mdrap.engine import Engine, EngineState
-from mdrap.models import QualityStatus, RawEvent
+from mdrap.models import QualityStatus, RawEvent, Reason
 
 
 def test_engine_deterministic_step_and_replay():
@@ -145,3 +145,26 @@ def test_engine_poison_and_invalid_payloads_quarantined():
     state, dec_healthy = engine.step(state, healthy_ev, clock)
     assert dec_healthy.quality_status == QualityStatus.VALID
     assert dec_healthy.canonical_event is not None
+
+
+def test_engine_future_timestamp_detected_and_flagged_ts_implausible():
+    """Verify future-dated timestamps exceeding tolerance are flagged TS_IMPLAUSIBLE."""
+    engine = Engine()
+    clock = FixedClock(1700000000.0)
+    state = engine.create_initial_state()
+
+    future_ev = RawEvent(
+        source="FEEDX",
+        payload={
+            "instrument": "AAPL",
+            "event_type": "QUOTE",
+            "bid": 150.0,
+            "ask": 150.5,
+            "sequence": 1,
+            "exchange_ts": 1700000005.0,  # 5s in future > 1.0s tolerance
+        },
+        receive_timestamp=1700000000.0,
+    )
+    state, dec = engine.step(state, future_ev, clock)
+    assert dec.quality_status == QualityStatus.SUSPICIOUS
+    assert Reason.TS_IMPLAUSIBLE.value in dec.reasons

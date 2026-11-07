@@ -154,7 +154,7 @@ def run_pipeline_boundaries(num_events: int = 40_000) -> dict[str, Any]:
                 bid=ev.bid_price,
                 ask=ev.ask_price,
             )
-            _ = reader.read_tick(i % 16384)
+            _ = reader.read_slot(i)
         dur_f = time.perf_counter() - t0
         eps_f = count_f / dur_f
         writer.close()

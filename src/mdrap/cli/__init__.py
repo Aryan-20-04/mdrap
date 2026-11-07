@@ -620,8 +620,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_serve.add_argument(
         "--host",
-        default=os.getenv("MDRAP_HOST", "0.0.0.0"),
-        help="Bind host (default: 0.0.0.0)",
+        default=os.getenv("MDRAP_HOST", "127.0.0.1"),
+        help="Bind host (default: 127.0.0.1)",
     )
     p_serve.add_argument(
         "--port",

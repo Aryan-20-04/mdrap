@@ -68,6 +68,10 @@ static PyObject *py_eval_fast2(PyObject *self, PyObject *const *args, Py_ssize_t
     if (PyErr_Occurred()) return NULL;
 
     FastEngine *eng = (FastEngine *)(uintptr_t)engine_ptr;
+    if (!eng) {
+        PyErr_SetString(PyExc_ValueError, "FastEngine pointer is NULL or destroyed");
+        return NULL;
+    }
     uint64_t packed = fastpath_engine_eval_fast2(
         eng, s_id, i_id, ev_type, ex_ts, rc_ts, seq, price, qty, bid, ask, bid_sz, ask_sz, pm
     );
@@ -286,13 +290,17 @@ static PyObject *py_shm_read_slot_v3(PyObject *self, PyObject *const *args, Py_s
         SET_NEW_ITEM(str_ofi, PyFloat_FromDouble(slot.size));
 
         PyObject *bid_item = Py_BuildValue("[dds]", slot.bid, slot.bid_sz, "AGG");
+        if (!bid_item) { Py_DECREF(dict); return NULL; }
         PyObject *bids_list = PyList_New(1);
+        if (!bids_list) { Py_DECREF(bid_item); Py_DECREF(dict); return NULL; }
         PyList_SET_ITEM(bids_list, 0, bid_item);
         PyDict_SetItem(dict, str_bids, bids_list);
         Py_DECREF(bids_list);
 
         PyObject *ask_item = Py_BuildValue("[dds]", slot.ask, slot.ask_sz, "AGG");
+        if (!ask_item) { Py_DECREF(dict); return NULL; }
         PyObject *asks_list = PyList_New(1);
+        if (!asks_list) { Py_DECREF(ask_item); Py_DECREF(dict); return NULL; }
         PyList_SET_ITEM(asks_list, 0, ask_item);
         PyDict_SetItem(dict, str_asks, asks_list);
         Py_DECREF(asks_list);

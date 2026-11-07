@@ -197,3 +197,10 @@ def test_polygon_feed_manager_queue_eviction():
     # Oldest events 0-4 should have been evicted; newest 5-9 remain
     ev = mgr._queue.get()
     assert ev.raw_id == "test-5"
+
+
+def test_polygon_feed_manager_missing_credentials_fails_explicitly(monkeypatch):
+    """Verify missing credentials raise ValueError rather than silently mocking."""
+    monkeypatch.delenv("POLYGON_API_KEY", raising=False)
+    with pytest.raises(ValueError, match="POLYGON_API_KEY is required"):
+        PolygonFeedManager(symbols=["AAPL"], mock_mode=False)

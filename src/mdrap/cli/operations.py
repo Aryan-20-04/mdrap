@@ -18,7 +18,7 @@ def cmd_serve(args):
     if db_path:
         os.environ["MDRAP_DB_PATH"] = db_path
 
-    host = getattr(args, "host", "0.0.0.0")
+    host = getattr(args, "host", "127.0.0.1")
     port = getattr(args, "port", 8000)
     reload = getattr(args, "reload", False)
 

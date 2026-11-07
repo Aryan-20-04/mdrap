@@ -100,6 +100,7 @@ def estimate_payload_size(payload: Any, max_bytes: int = 0) -> int:
 
 
 DEFAULT_STALENESS_THRESHOLD_S: float = 0.05
+DEFAULT_MAX_FUTURE_SKEW_S: float = 1.0
 DEFAULT_PRICE_STDDEV: float = 6.0
 DEFAULT_PRICE_WINDOW: int = 50
 DEFAULT_DEDUP_WINDOW_SIZE: int = 10_000
@@ -2336,6 +2337,11 @@ class Engine:
                 if reasons_out is reasons:
                     reasons_out = list(reasons)
                 reasons_out.append(Reason.STALE.value)
+            elif exch_ts > recv_ts + getattr(getattr(self, "config", None), "max_future_skew_s", DEFAULT_MAX_FUTURE_SKEW_S):
+                cur_status = QualityStatus.merge(cur_status, QualityStatus.SUSPICIOUS)
+                if reasons_out is reasons:
+                    reasons_out = list(reasons)
+                reasons_out.append(Reason.TS_IMPLAUSIBLE.value)
 
         bid = payload.get("bid")
         ask = payload.get("ask")

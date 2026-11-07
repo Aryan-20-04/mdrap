@@ -442,7 +442,12 @@ class DatabentoFeedManager:
         self.dataset = dataset
         self.schema = schema
         self.file_path = file_path
-        self.mock_mode = mock_mode or (not self.api_key and not file_path)
+        if not mock_mode and not self.api_key and not file_path:
+            raise ValueError(
+                "DATABENTO_API_KEY or file_path is required when mock_mode is False. "
+                "To stream synthetic market data for testing, explicitly specify mock_mode=True."
+            )
+        self.mock_mode = bool(mock_mode)
         self.max_queue_size = max_queue_size
 
         self.resolver = SymbolResolver(DEFAULT_SYMBOL_MAP)

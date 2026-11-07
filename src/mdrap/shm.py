@@ -987,6 +987,8 @@ class SHMReader:
             results.append(item)
         return results
 
+    read_tick = read_slot  # Backward-compatible and protocol-consistent alias
+
     def close(self) -> None:
         """Close shared memory handle."""
         self.state = ReaderState.DETACHED

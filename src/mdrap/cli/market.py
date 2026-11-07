@@ -543,11 +543,16 @@ def cmd_live(args):
     if feed_type in ("polygon", "poly"):
         from ..polygon_feed import PolygonFeedManager
 
-        poly_key = getattr(args, "polygon_key", None)
+        poly_key = getattr(args, "polygon_key", None) or os.environ.get("POLYGON_API_KEY", "")
+        if not poly_key and not mock_feed:
+            raise ValueError(
+                "Polygon feed requires --polygon-key or POLYGON_API_KEY environment variable. "
+                "To run with synthetic test data, pass --mock-feed explicitly."
+            )
         active_feed_manager = PolygonFeedManager(
             symbols=symbols,
             api_key=poly_key,
-            mock_mode=mock_feed or not poly_key,
+            mock_mode=mock_feed,
         )
         active_feed_manager.start()
         stream_iter = active_feed_manager.stream_events(
@@ -556,13 +561,18 @@ def cmd_live(args):
     elif feed_type in ("databento", "dbn"):
         from ..databento_feed import DatabentoFeedManager
 
-        dbn_key = getattr(args, "databento_key", None)
+        dbn_key = getattr(args, "databento_key", None) or os.environ.get("DATABENTO_API_KEY", "")
         dbn_file = getattr(args, "dbn_file", None)
+        if not dbn_key and not dbn_file and not mock_feed:
+            raise ValueError(
+                "Databento feed requires --databento-key, DATABENTO_API_KEY, or --dbn-file. "
+                "To run with synthetic test data, pass --mock-feed explicitly."
+            )
         active_feed_manager = DatabentoFeedManager(
             symbols=symbols,
             api_key=dbn_key,
             file_path=dbn_file,
-            mock_mode=mock_feed or (not dbn_key and not dbn_file),
+            mock_mode=mock_feed,
         )
         active_feed_manager.start()
         stream_iter = active_feed_manager.stream_events(
