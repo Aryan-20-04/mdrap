@@ -543,7 +543,9 @@ def cmd_live(args):
     if feed_type in ("polygon", "poly"):
         from ..polygon_feed import PolygonFeedManager
 
-        poly_key = getattr(args, "polygon_key", None) or os.environ.get("POLYGON_API_KEY", "")
+        poly_key = getattr(args, "polygon_key", None) or os.environ.get(
+            "POLYGON_API_KEY", ""
+        )
         if not poly_key and not mock_feed:
             raise ValueError(
                 "Polygon feed requires --polygon-key or POLYGON_API_KEY environment variable. "
@@ -561,7 +563,9 @@ def cmd_live(args):
     elif feed_type in ("databento", "dbn"):
         from ..databento_feed import DatabentoFeedManager
 
-        dbn_key = getattr(args, "databento_key", None) or os.environ.get("DATABENTO_API_KEY", "")
+        dbn_key = getattr(args, "databento_key", None) or os.environ.get(
+            "DATABENTO_API_KEY", ""
+        )
         dbn_file = getattr(args, "dbn_file", None)
         if not dbn_key and not dbn_file and not mock_feed:
             raise ValueError(

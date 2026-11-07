@@ -12,7 +12,7 @@
 
 A deterministic, high-throughput market data validation, normalization, and cryptographic audit sidecar for quantitative trading systems.
 
-[![Version](https://img.shields.io/badge/version-5.3.0-blue.svg?style=flat-square)](pyproject.toml)
+[![Version](https://img.shields.io/badge/version-4.0.1-blue.svg?style=flat-square)](pyproject.toml)
 [![Tests](https://img.shields.io/badge/tests-1700%2B%20passing-10b981?style=flat-square)](tests/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-8b5cf6?style=flat-square)](LICENSE)
 [![Language](https://img.shields.io/badge/language-Python%20%7C%20C%20(AVX2)-6366f1?style=flat-square)](src/mdrap/fastpath.c)
@@ -176,7 +176,7 @@ All figures are measured on committed benchmark hardware (Intel Core i7-12700H, 
 
 | Feature | Status | Docs | Test File |
 | :--- | :--- | :--- | :--- |
-| **Deterministic Quality Engine (15 Rules)** | **Stable** | [Quality Rules](docs/reference/rules.md) | `tests/test_adapters_and_rules.py` (1,500+ core test suite passed cleanly) |
+| **Deterministic Quality Engine (15 Rules)** | **Stable** | [Quality Rules](docs/reference/rules.md) | `tests/test_adapters_and_rules.py` (1,700+ core test suite passed cleanly) |
 | **Native C Fastpath Kernel** | **Stable** | [Benchmarks](docs/benchmarks.md) | `tests/test_fastpath.py` (100% pure Python fallback parity) |
 | **Institutional Matching Engine & EMS** | **Stable** | [Architecture](docs/architecture.md) | `tests/test_hft_matching_engine.py` |
 | **Avellaneda-Stoikov & Linear Skew MM** | **Stable** | [Architecture](docs/architecture.md) | `tests/test_v53_quantitative_remediation.py` |

@@ -2337,7 +2337,11 @@ class Engine:
                 if reasons_out is reasons:
                     reasons_out = list(reasons)
                 reasons_out.append(Reason.STALE.value)
-            elif exch_ts > recv_ts + getattr(getattr(self, "config", None), "max_future_skew_s", DEFAULT_MAX_FUTURE_SKEW_S):
+            elif exch_ts > recv_ts + getattr(
+                getattr(self, "config", None),
+                "max_future_skew_s",
+                DEFAULT_MAX_FUTURE_SKEW_S,
+            ):
                 cur_status = QualityStatus.merge(cur_status, QualityStatus.SUSPICIOUS)
                 if reasons_out is reasons:
                     reasons_out = list(reasons)
