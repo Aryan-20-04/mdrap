@@ -46,6 +46,8 @@ def hash_api_key(token: str, salt: str | None = None) -> str:
         or os.environ.get("ENVIRONMENT", "").lower() in ("prod", "production")
         or os.environ.get("MDRAP_PRODUCTION", "").lower() in ("1", "true", "yes")
     )
+    if is_prod and salt == "mdrap_demo_salt_v1":
+        raise ValueError("MDRAP_API_KEY_SALT is required in production environments; demo salt prohibited")
     if not salt and os.environ.get("MDRAP_DEMO", "").lower() in ("1", "true", "yes"):
         if is_prod:
             raise ValueError("MDRAP_API_KEY_SALT is required in production environments; demo salt prohibited")
