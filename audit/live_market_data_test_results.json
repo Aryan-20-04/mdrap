@@ -1,0 +1,130 @@
+{
+  "timestamp": 1794049852.1072154,
+  "venues_tested": [
+    "COINBASE",
+    "KRAKEN"
+  ],
+  "events_processed": 30,
+  "wal_next_offset": 30,
+  "sqlite_records": 30,
+  "bbo": {
+    "best_bid": 75898.93,
+    "best_bid_source": "COINBASE",
+    "best_ask": 75898.94,
+    "best_ask_source": "COINBASE",
+    "spread": 0.010000000009313226,
+    "mid_price": 75898.935
+  },
+  "samples": [
+    {
+      "venue": "KRAKEN",
+      "instrument": "BTC/USD",
+      "bid": 75911.3,
+      "ask": 75911.4,
+      "exchange_ts": 1794049824.378284,
+      "receive_ts": 1794049835.7475572,
+      "quality_status": "SUSPICIOUS",
+      "wal_offset": 0,
+      "wire_sample": "[119930880,{\"as\":[[\"75911.40000\",\"0.14495792\",\"1794049800.598326\"],[\"75912.30000\",\"0.00006120\",\"1794049760.643346\"],[\"75"
+    },
+    {
+      "venue": "COINBASE",
+      "instrument": "BTC/USD",
+      "bid": 75908.16,
+      "ask": 75908.17,
+      "exchange_ts": 1794049836.552901,
+      "receive_ts": 1794049836.348229,
+      "quality_status": "VALID",
+      "wal_offset": 1,
+      "wire_sample": "{\"type\":\"ticker\",\"sequence\":138962412578,\"product_id\":\"BTC-USD\",\"price\":\"75908.17\",\"open_24h\":\"76019.19\",\"volume_24h\":\"6"
+    },
+    {
+      "venue": "COINBASE",
+      "instrument": "BTC/USD",
+      "bid": 75908.16,
+      "ask": 75908.17,
+      "exchange_ts": 1794049843.259292,
+      "receive_ts": 1794049836.7798994,
+      "quality_status": "SUSPICIOUS",
+      "wal_offset": 2,
+      "wire_sample": "{\"type\":\"ticker\",\"sequence\":138962413896,\"product_id\":\"BTC-USD\",\"price\":\"75908.17\",\"open_24h\":\"76019.19\",\"volume_24h\":\"6"
+    },
+    {
+      "venue": "COINBASE",
+      "instrument": "BTC/USD",
+      "bid": 75908.16,
+      "ask": 75908.17,
+      "exchange_ts": 1794049845.663232,
+      "receive_ts": 1794049839.1828957,
+      "quality_status": "SUSPICIOUS",
+      "wal_offset": 3,
+      "wire_sample": "{\"type\":\"ticker\",\"sequence\":138962414412,\"product_id\":\"BTC-USD\",\"price\":\"75908.16\",\"open_24h\":\"76019.19\",\"volume_24h\":\"6"
+    },
+    {
+      "venue": "COINBASE",
+      "instrument": "BTC/USD",
+      "bid": 75908.16,
+      "ask": 75908.17,
+      "exchange_ts": 1794049846.306802,
+      "receive_ts": 1794049839.847949,
+      "quality_status": "SUSPICIOUS",
+      "wal_offset": 4,
+      "wire_sample": "{\"type\":\"ticker\",\"sequence\":138962414527,\"product_id\":\"BTC-USD\",\"price\":\"75908.16\",\"open_24h\":\"76019.19\",\"volume_24h\":\"6"
+    },
+    {
+      "venue": "COINBASE",
+      "instrument": "BTC/USD",
+      "bid": 75908.16,
+      "ask": 75908.17,
+      "exchange_ts": 1794049846.306802,
+      "receive_ts": 1794049839.8480115,
+      "quality_status": "SUSPICIOUS",
+      "wal_offset": 5,
+      "wire_sample": "{\"type\":\"ticker\",\"sequence\":138962414529,\"product_id\":\"BTC-USD\",\"price\":\"75908.16\",\"open_24h\":\"76019.19\",\"volume_24h\":\"6"
+    },
+    {
+      "venue": "COINBASE",
+      "instrument": "BTC/USD",
+      "bid": 75908.16,
+      "ask": 75908.17,
+      "exchange_ts": 1794049846.306802,
+      "receive_ts": 1794049839.8480294,
+      "quality_status": "SUSPICIOUS",
+      "wal_offset": 6,
+      "wire_sample": "{\"type\":\"ticker\",\"sequence\":138962414531,\"product_id\":\"BTC-USD\",\"price\":\"75908.16\",\"open_24h\":\"76019.19\",\"volume_24h\":\"6"
+    },
+    {
+      "venue": "COINBASE",
+      "instrument": "BTC/USD",
+      "bid": 75908.16,
+      "ask": 75908.17,
+      "exchange_ts": 1794049846.306802,
+      "receive_ts": 1794049839.8480425,
+      "quality_status": "SUSPICIOUS",
+      "wal_offset": 7,
+      "wire_sample": "{\"type\":\"ticker\",\"sequence\":138962414533,\"product_id\":\"BTC-USD\",\"price\":\"75908.16\",\"open_24h\":\"76019.19\",\"volume_24h\":\"6"
+    },
+    {
+      "venue": "COINBASE",
+      "instrument": "BTC/USD",
+      "bid": 75908.16,
+      "ask": 75908.17,
+      "exchange_ts": 1794049846.306802,
+      "receive_ts": 1794049839.8480544,
+      "quality_status": "SUSPICIOUS",
+      "wal_offset": 8,
+      "wire_sample": "{\"type\":\"ticker\",\"sequence\":138962414535,\"product_id\":\"BTC-USD\",\"price\":\"75908.16\",\"open_24h\":\"76019.19\",\"volume_24h\":\"6"
+    },
+    {
+      "venue": "COINBASE",
+      "instrument": "BTC/USD",
+      "bid": 75908.16,
+      "ask": 75908.17,
+      "exchange_ts": 1794049846.306802,
+      "receive_ts": 1794049839.8480654,
+      "quality_status": "SUSPICIOUS",
+      "wal_offset": 9,
+      "wire_sample": "{\"type\":\"ticker\",\"sequence\":138962414537,\"product_id\":\"BTC-USD\",\"price\":\"75908.16\",\"open_24h\":\"76019.19\",\"volume_24h\":\"6"
+    }
+  ]
+}
