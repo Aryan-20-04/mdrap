@@ -1,0 +1,62 @@
+[
+  {
+    "injection": "Exchange WebSocket Silence / Outage",
+    "detected": true,
+    "data_lost": false,
+    "data_duplicated": false,
+    "automatic_recovery": true,
+    "manual_intervention": false,
+    "false_healthy_reported": false,
+    "details": "Watchdog detected silence: before=True, after=False, alert=SILENCE"
+  },
+  {
+    "injection": "SQLite Lock Contention",
+    "detected": true,
+    "data_lost": false,
+    "data_duplicated": false,
+    "automatic_recovery": true,
+    "manual_intervention": false,
+    "false_healthy_reported": false,
+    "details": "Exclusive lock caused timeout/busy exception; rolled back and resumed successfully"
+  },
+  {
+    "injection": "WAL Segment CRC32 Corruption",
+    "detected": true,
+    "data_lost": true,
+    "data_duplicated": false,
+    "automatic_recovery": false,
+    "manual_intervention": true,
+    "false_healthy_reported": false,
+    "details": "CRC32 mismatch raised IngestLogCorruptError preventing silent poison"
+  },
+  {
+    "injection": "Shared Memory Consumer Abrupt Close",
+    "detected": true,
+    "data_lost": false,
+    "data_duplicated": false,
+    "automatic_recovery": true,
+    "manual_intervention": false,
+    "false_healthy_reported": false,
+    "details": "SPMC ring buffer seqlock allows independent consumer crash without stalling producer"
+  },
+  {
+    "injection": "Native Extension Adversarial Floats (NaN / Inf)",
+    "detected": true,
+    "data_lost": false,
+    "data_duplicated": false,
+    "automatic_recovery": true,
+    "manual_intervention": false,
+    "false_healthy_reported": false,
+    "details": "Evaluated NaN price: status=INVALID, reasons=['SCHEMA_VIOLATION']"
+  },
+  {
+    "injection": "Disk Exhaustion / IngestLog Poisoning",
+    "detected": true,
+    "data_lost": false,
+    "data_duplicated": false,
+    "automatic_recovery": false,
+    "manual_intervention": true,
+    "false_healthy_reported": false,
+    "details": "Poisoned state rejects writes immediately without corrupting on-disk frames"
+  }
+]

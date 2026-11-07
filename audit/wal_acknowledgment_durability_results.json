@@ -1,0 +1,66 @@
+{
+  "policies_ack_semantics": {
+    "always": {
+      "first_append_ack_lat_us": 5640.5,
+      "synced_at_append_return": true,
+      "synced_offset_after_append": 0,
+      "returned_offset": 0,
+      "durability_guarantee": "PHYSICAL_FSYNC_DURABLE"
+    },
+    "true_group_commit": {
+      "first_append_ack_lat_us": 6457.6,
+      "synced_at_append_return": true,
+      "synced_offset_after_append": 0,
+      "returned_offset": 0,
+      "durability_guarantee": "GROUP_COMMIT_FSYNC_DURABLE"
+    },
+    "grouped_by_time": {
+      "first_append_ack_lat_us": 143.5,
+      "synced_at_append_return": false,
+      "synced_offset_after_append": -1,
+      "returned_offset": 0,
+      "durability_guarantee": "GROUPED_TIME_FSYNC_DURABLE"
+    },
+    "grouped_by_size": {
+      "first_append_ack_lat_us": 155.9,
+      "synced_at_append_return": false,
+      "synced_offset_after_append": -1,
+      "returned_offset": 0,
+      "durability_guarantee": "GROUPED_SIZE_FSYNC_DURABLE"
+    },
+    "never": {
+      "first_append_ack_lat_us": 47.9,
+      "synced_at_append_return": false,
+      "synced_offset_after_append": -1,
+      "returned_offset": 0,
+      "durability_guarantee": "OS_BUFFERED_NO_POWER_LOSS_PROTECTION"
+    }
+  },
+  "grouped_by_time_metrics": {
+    "total_events": 200,
+    "total_time_s": 0.0075,
+    "throughput_eps": 26567.5,
+    "append_lat_p50_us": 32.0,
+    "append_lat_p95_us": 85.7,
+    "append_lat_p99_us": 239.1,
+    "synced_at_return_count": 0,
+    "un_synced_at_return_count": 200,
+    "final_offset": 199,
+    "final_synced_offset": 199,
+    "await_synced_duration_ms": 27.38,
+    "await_synced_success": true
+  },
+  "torn_write_recovery": {
+    "original_records": 50,
+    "recovered_records": 50,
+    "recovery_duration_ms": 22.97,
+    "first_recovered_offset": 0,
+    "last_recovered_offset": 49,
+    "exact_match": true
+  },
+  "crc32_corruption_detection": {
+    "caught_corruption": true,
+    "exception": "IngestLogCorruptError",
+    "message": "Invalid frame magic 0xaaaa in C:\\Users\\KIIT0001\\Desktop\\Projects\\mdrap\\test_wal_crc_corrupt\\segment_000000000000.log at "
+  }
+}
