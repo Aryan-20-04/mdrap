@@ -53,7 +53,18 @@ class ConfigValidationError(ValueError):
     pass
 
 
-ALLOWED_TOP_SECTIONS = {"defaults", "venue", "system", "storage", "network", "security"}
+ALLOWED_TOP_SECTIONS = {
+    "defaults",
+    "venue",
+    "system",
+    "storage",
+    "network",
+    "security",
+    "bbo",
+    "feeds",
+    "columnar",
+    "watchdog",
+}
 ALLOWED_QUALITY_KEYS = {
     "staleness_threshold_s",
     "price_anomaly_stddev",

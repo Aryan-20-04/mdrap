@@ -221,6 +221,11 @@ class JournalReplicationServer:
                     self.stats.bytes_received += REPL_HEADER_SIZE + length
                     self.stats.last_seq = seq
 
+                    if msg_type == MSG_HEARTBEAT:
+                        ack_frame = pack_replication_frame(MSG_ACK, seq, epoch)
+                        sock.sendall(ack_frame)
+                        continue
+
                     if msg_type == MSG_FRAME_DATA:
                         if self.target_log:
                             try:
@@ -330,13 +335,19 @@ class JournalReplicationClient:
                 break
         return drained
 
-    def _send_wire(self, sequence: int, payload: bytes, wait_ack: bool = True) -> bool:
+    def _send_wire(
+        self,
+        sequence: int,
+        payload: bytes,
+        wait_ack: bool = True,
+        msg_type: int = MSG_FRAME_DATA,
+    ) -> bool:
         """Internal low-level wire transmission helper."""
         if not self._sock:
             return False
 
         frame_bytes = pack_replication_frame(
-            MSG_FRAME_DATA, sequence, self.epoch, payload
+            msg_type, sequence, self.epoch, payload
         )
         try:
             self._sock.sendall(frame_bytes)
@@ -350,13 +361,13 @@ class JournalReplicationClient:
                     self.stats.errors += 1
                     self.close()
                     return False
-                ver, msg_type, ack_seq, ack_epoch, length, crc = (
+                ver, msg_type_resp, ack_seq, ack_epoch, length, crc = (
                     unpack_replication_header(ack_hdr)
                 )
-                if msg_type == MSG_ACK and ack_seq == sequence:
+                if msg_type_resp == MSG_ACK and ack_seq == sequence:
                     self.stats.acks_received += 1
                     return True
-                elif msg_type == MSG_ERROR:
+                elif msg_type_resp == MSG_ERROR:
                     self.stats.errors += 1
                     self.close()
                     return False
@@ -366,6 +377,12 @@ class JournalReplicationClient:
             logger.debug("Wire send failed: %s", exc)
             self.close()
             return False
+
+    def send_heartbeat(self, wait_ack: bool = True) -> bool:
+        """Transmit keepalive heartbeat frame across the replication link."""
+        if not self._sock and not self.connect():
+            return False
+        return self._send_wire(0, b"", wait_ack=wait_ack, msg_type=MSG_HEARTBEAT)
 
     def send_frame(self, sequence: int, payload: bytes, wait_ack: bool = True) -> bool:
         """Transmit an IngestLog frame with automatic spooling during disconnects."""

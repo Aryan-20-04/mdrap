@@ -373,12 +373,15 @@ class BacktestEngine:
                 continue
 
             train_size = int(len(window_events) * train_pct)
+            train_events = window_events[:train_size]
             test_events = window_events[train_size:]
 
             if not test_events:
                 continue
 
             strategy = strategy_factory()
+            if hasattr(strategy, "fit") and callable(strategy.fit) and train_events:
+                strategy.fit(train_events)
             res = self.run(strategy, test_events)
             results.append(res)
 

@@ -1108,6 +1108,7 @@ class AsyncProjectionWorker:
         self._error_count: int = 0
         self._last_committed_offset: int = -1
         self._highest_enqueued_offset: int = -1
+        self._wal_catchup_needed: bool = False
         self._flush_trigger = threading.Event()
         self._worker_thread = threading.Thread(
             target=self._run_loop, daemon=True, name="mdrap-async-projection"
@@ -1128,8 +1129,9 @@ class AsyncProjectionWorker:
             return True
         except queue.Full:
             self._drop_count += 1
+            self._wal_catchup_needed = True
             logger.warning(
-                "[AsyncProjection] Queue full (%d items); dropping analytical projection event #%d",
+                "[AsyncProjection] Queue full (%d items); dropping analytical projection event #%d; WAL catch-up flagged",
                 self.max_queue_size,
                 self._drop_count,
             )
@@ -1204,6 +1206,7 @@ class AsyncProjectionWorker:
             "last_committed_offset": self._last_committed_offset,
             "highest_enqueued_offset": self._highest_enqueued_offset,
             "lag_offsets": lag,
+            "wal_catchup_needed": self._wal_catchup_needed,
             "is_lagging": lag > 1000
             or self._queue.qsize() > (self.max_queue_size // 2),
             "is_alive": self._worker_thread.is_alive(),

@@ -87,6 +87,10 @@ except ImportError:
             self.renderable = renderable
             self.title = title
 
+        @classmethod
+        def fit(cls, renderable: Any, *args: Any, **kwargs: Any) -> "_StdlibPanelFallback":
+            return cls(renderable, *args, **kwargs)
+
         def __str__(self) -> str:
             content = strip_tags(str(self.renderable))
             lines = content.splitlines()

@@ -366,14 +366,14 @@ class AppState:
 
         # Deliver to subscriber queues without blocking ingestion pipeline
         for ws, sub_syms in list(self.subscribers.items()):
-            # Revocation check during stream broadcast
+            # Revocation check during stream broadcast (fail-closed)
             tok = self.subscriber_tokens.get(ws)
             ent = (
                 self.security_manager.get_entitlement(tok, active_only=True)
                 if tok
                 else None
             )
-            if tok and not ent:
+            if not ent:
                 dead_sockets.append(ws)
                 continue
 
@@ -1673,9 +1673,16 @@ def create_app(
             or os.environ.get("MDRAP_ENV") == "test"
         ):
             loopback_hosts.add("testclient")
-        is_loopback = client_host in loopback_hosts
 
-        if metrics_auth_required and not is_loopback:
+        direct_peer = request.client.host if request.client else "unknown"
+        # Anti-spoofing: loopback bypass requires direct TCP connection without proxy headers
+        is_direct_loopback = (
+            direct_peer in loopback_hosts and not request.headers.get("X-Forwarded-For")
+        )
+        if direct_peer == "testclient":
+            is_direct_loopback = True
+
+        if metrics_auth_required and not is_direct_loopback:
             token = get_token_from_request(
                 request,
                 x_api_key=request.headers.get("X-API-Key"),

@@ -1025,6 +1025,12 @@ EXPORT void fastpath_engine_replay_record(
     if (!eng) return;
     uint32_t slot = (uint32_t)(seq & REPLAY_RING_MASK);
     FastReplayRecord *rec = &eng->replay_ring[slot];
+    rec->is_valid = 0;
+#if defined(_MSC_VER)
+    _ReadWriteBarrier();
+#else
+    __asm__ __volatile__("" ::: "memory");
+#endif
     rec->seq = seq;
     strncpy(rec->symbol, symbol ? symbol : "", sizeof(rec->symbol) - 1);
     rec->symbol[sizeof(rec->symbol) - 1] = '\0';
@@ -1037,6 +1043,11 @@ EXPORT void fastpath_engine_replay_record(
     rec->status = status; rec->is_crossed = is_crossed;
     rec->exchange_ts = exchange_ts; rec->ingest_ts = ingest_ts; rec->broadcast_ts = broadcast_ts;
     rec->engine_us = engine_us;
+#if defined(_MSC_VER)
+    _ReadWriteBarrier();
+#else
+    __asm__ __volatile__("" ::: "memory");
+#endif
     rec->is_valid = 1;
 
     /* window bookkeeping: derive min from max so an out-of-order older seq can never widen it */
@@ -1070,9 +1081,12 @@ EXPORT int32_t fastpath_engine_replay_slice(
         uint32_t slot = (uint32_t)(s & REPLAY_RING_MASK);
         FastReplayRecord *rec = &eng->replay_ring[slot];
         if (rec->is_valid && rec->seq == s) {
-            if (!filter_sym || strcmp(rec->symbol, symbol) == 0) {
-                out_records[count] = *rec;
-                count++;
+            FastReplayRecord snap = *rec;
+            if (snap.is_valid && snap.seq == s) {
+                if (!filter_sym || strcmp(snap.symbol, symbol) == 0) {
+                    out_records[count] = snap;
+                    count++;
+                }
             }
         }
         if (s == to_seq) break;                      /* terminates even when to_seq == UINT64_MAX */

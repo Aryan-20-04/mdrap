@@ -501,10 +501,8 @@ int main(int argc, char **argv) {
 #endif
         slot->commit_seq = seq;
 
-        /* Amortized publishing of head sequence (every 32 ticks) */
-        if ((seq & 0x1F) == 0) {
-            MD_STORE_REL_U64((uint8_t *)shm.base_ptr + 24, seq + 1);
-        }
+        /* Publish head sequence to consumers immediately to prevent subscriber tail latency stalls */
+        MD_STORE_REL_U64((uint8_t *)shm.base_ptr + 24, seq + 1);
 
         events_done++;
 

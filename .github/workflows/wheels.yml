@@ -52,8 +52,25 @@ jobs:
           python -c "import mdrap; from mdrap.engine import Engine; from mdrap.ingestlog import IngestLog; from mdrap.projection import SQLiteProjection; from mdrap.fastpath import HAS_FASTPATH; print('Smoke test verified on', '${{ matrix.os }}', 'fastpath:', HAS_FASTPATH)"
           mdrap --help
 
+  build_sdist:
+    name: Build source distribution
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build sdist
+        run: |
+          pip install build
+          python -m build --sdist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cibw-sdist
+          path: dist/*.tar.gz
+
   publish:
-    needs: [build_wheels, smoke_tests]
+    needs: [build_wheels, build_sdist, smoke_tests]
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
