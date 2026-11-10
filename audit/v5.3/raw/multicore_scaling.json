@@ -1,30 +1,30 @@
 {
   "1_workers": {
     "workers": 1,
-    "stateless_ingress_eps": 66513.2,
-    "stateful_pipeline_eps": 26472.7,
-    "stateless_per_worker_eps": 66513.2,
-    "stateful_per_worker_eps": 26472.7
+    "stateless_ingress_eps": 73927.6,
+    "stateful_pipeline_eps": 30787.7,
+    "stateless_per_worker_eps": 73927.6,
+    "stateful_per_worker_eps": 30787.7
   },
   "2_workers": {
     "workers": 2,
-    "stateless_ingress_eps": 73979.7,
-    "stateful_pipeline_eps": 37063.1,
-    "stateless_per_worker_eps": 36989.9,
-    "stateful_per_worker_eps": 18531.5
+    "stateless_ingress_eps": 101852.3,
+    "stateful_pipeline_eps": 33481.9,
+    "stateless_per_worker_eps": 50926.1,
+    "stateful_per_worker_eps": 16740.9
   },
   "4_workers": {
     "workers": 4,
-    "stateless_ingress_eps": 122584.3,
-    "stateful_pipeline_eps": 37770.9,
-    "stateless_per_worker_eps": 30646.1,
-    "stateful_per_worker_eps": 9442.7
+    "stateless_ingress_eps": 133839.4,
+    "stateful_pipeline_eps": 67028.9,
+    "stateless_per_worker_eps": 33459.9,
+    "stateful_per_worker_eps": 16757.2
   },
   "8_workers": {
     "workers": 8,
-    "stateless_ingress_eps": 168715.6,
-    "stateful_pipeline_eps": 86633.5,
-    "stateless_per_worker_eps": 21089.4,
-    "stateful_per_worker_eps": 10829.2
+    "stateless_ingress_eps": 166693.4,
+    "stateful_pipeline_eps": 89596.0,
+    "stateless_per_worker_eps": 20836.7,
+    "stateful_per_worker_eps": 11199.5
   }
 }

@@ -340,7 +340,7 @@ def cmd_watchdog(args):
 
 
 def cmd_bbo(args):
-    """Query Synthetic Consolidated BBO (Best Bid & Offer / NBBO)."""
+    """Query Consolidated BBO (Best Bid & Offer / NBBO)."""
     _ensure_db_dir(args.db)
     store = Store(args.db)
     console = Console()
@@ -416,9 +416,7 @@ def cmd_bbo(args):
                 state,
             ]
         )
-    console.print(
-        _t("Synthetic Consolidated Best Bid & Offer (NBBO)", bbo_cols, bbo_rows)
-    )
+    console.print(_t("Consolidated Best Bid & Offer (NBBO)", bbo_cols, bbo_rows))
 
 
 def cmd_live(args):

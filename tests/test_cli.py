@@ -143,7 +143,8 @@ def test_cmd_bbo_dispatch(populated_db, capsys):
     cmd_bbo(args)
     captured = capsys.readouterr()
     assert (
-        "Synthetic Consolidated Best Bid & Offer" in captured.out
+        "Consolidated Best Bid & Offer" in captured.out
+        or "Synthetic Consolidated Best Bid & Offer" in captured.out
         or "AAPL" in captured.out
     )
 
@@ -151,7 +152,10 @@ def test_cmd_bbo_dispatch(populated_db, capsys):
     args = parser.parse_args(["bbo", "all", "--db", populated_db])
     cmd_bbo(args)
     captured = capsys.readouterr()
-    assert "Synthetic Consolidated Best Bid & Offer" in captured.out
+    assert (
+        "Consolidated Best Bid & Offer" in captured.out
+        or "Synthetic Consolidated Best Bid & Offer" in captured.out
+    )
 
 
 def test_cmd_live_dispatch(populated_db, capsys):

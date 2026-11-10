@@ -1,56 +1,56 @@
 {
-  "boundary_a_ingress_eps": 16179484.4,
-  "boundary_b_normalization_eps": 148326.3,
-  "boundary_c_native_c_eps": 416331.2,
+  "boundary_a_ingress_eps": 31413612.7,
+  "boundary_b_normalization_eps": 178318.9,
+  "boundary_c_native_c_eps": 506037.8,
   "boundary_c_native_c_stats": {
-    "mean": 2.26,
-    "p50": 1.7,
-    "p90": 3.0,
-    "p95": 3.3,
-    "p99": 5.5,
-    "p99_9": 30.0,
-    "max": 264.8
+    "mean": 1.86,
+    "p50": 1.5,
+    "p90": 2.7,
+    "p95": 2.9,
+    "p99": 4.2,
+    "p99_9": 34.3,
+    "max": 247.9
   },
-  "boundary_c_pure_python_eps": 149885.7,
+  "boundary_c_pure_python_eps": 186789.0,
   "boundary_c_pure_python_stats": {
-    "mean": 6.5,
+    "mean": 5.21,
     "p50": 4.4,
-    "p90": 11.7,
-    "p95": 12.4,
-    "p99": 16.9,
-    "p99_9": 103.9,
-    "max": 1083.1
+    "p90": 5.6,
+    "p95": 10.6,
+    "p99": 16.6,
+    "p99_9": 97.3,
+    "max": 244.5
   },
-  "c_speedup_factor": 2.78,
-  "boundary_d_as_mm_eps": 260340.1,
-  "boundary_d_linear_skew_mm_eps": 434497.2,
-  "boundary_e_state_transitions_eps": 49050.8,
-  "boundary_f_shm_roundtrip_eps": 288715.3,
+  "c_speedup_factor": 2.71,
+  "boundary_d_as_mm_eps": 411768.1,
+  "boundary_d_linear_skew_mm_eps": 542788.9,
+  "boundary_e_state_transitions_eps": 52012.9,
+  "boundary_f_shm_roundtrip_eps": 254108.9,
   "boundary_g_persistence": {
     "never": {
       "events": 15000,
-      "duration_s": 0.3789,
-      "throughput_eps": 39586.2
+      "duration_s": 0.2643,
+      "throughput_eps": 56744.6
     },
     "grouped_by_time": {
       "events": 15000,
-      "duration_s": 0.5456,
-      "throughput_eps": 27495.2
+      "duration_s": 0.2694,
+      "throughput_eps": 55677.0
     },
     "always": {
       "events": 5000,
-      "duration_s": 0.1835,
-      "throughput_eps": 27248.2
+      "duration_s": 0.1225,
+      "throughput_eps": 40819.7
     }
   },
-  "boundary_h_full_stateful_e2e_eps": 23287.6,
+  "boundary_h_full_stateful_e2e_eps": 33667.4,
   "boundary_h_latency_stats": {
-    "mean": 42.38,
-    "p50": 38.6,
-    "p90": 46.8,
-    "p95": 53.4,
-    "p99": 110.1,
-    "p99_9": 1235.7,
-    "max": 2940.5
+    "mean": 29.34,
+    "p50": 25.8,
+    "p90": 40.0,
+    "p95": 45.5,
+    "p99": 94.1,
+    "p99_9": 407.2,
+    "max": 2445.7
   }
 }
