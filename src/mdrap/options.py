@@ -46,6 +46,7 @@ else:
 
     class CompanionPackageMissing(ImportError):
         """Raised when an optional companion package is required but not installed."""
+
         pass
 
     class OptionType(str, enum.Enum):

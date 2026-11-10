@@ -1095,11 +1095,17 @@ class FastQualityEngine:
 
     def _get_source_id(self, source: str) -> int:
         if source not in self._source_map:
+            if len(self._source_map) >= self.effective_max_sources:
+                oldest_key = next(iter(self._source_map))
+                del self._source_map[oldest_key]
             self._source_map[source] = len(self._source_map)
         return self._source_map[source]
 
     def _get_instrument_id(self, inst: str) -> int:
         if inst not in self._inst_map:
+            if len(self._inst_map) >= self.effective_max_instruments:
+                oldest_key = next(iter(self._inst_map))
+                del self._inst_map[oldest_key]
             self._inst_map[inst] = len(self._inst_map)
         return self._inst_map[inst]
 

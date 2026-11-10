@@ -346,9 +346,7 @@ class JournalReplicationClient:
         if not self._sock:
             return False
 
-        frame_bytes = pack_replication_frame(
-            msg_type, sequence, self.epoch, payload
-        )
+        frame_bytes = pack_replication_frame(msg_type, sequence, self.epoch, payload)
         try:
             self._sock.sendall(frame_bytes)
             self.stats.frames_sent += 1

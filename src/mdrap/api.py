@@ -1665,8 +1665,6 @@ def create_app(
             "yes",
         )
 
-        client_host = _resolve_client_ip(request)
-
         loopback_hosts = {"127.0.0.1", "::1", "localhost"}
         if (
             os.environ.get("PYTEST_CURRENT_TEST")
@@ -1676,8 +1674,8 @@ def create_app(
 
         direct_peer = request.client.host if request.client else "unknown"
         # Anti-spoofing: loopback bypass requires direct TCP connection without proxy headers
-        is_direct_loopback = (
-            direct_peer in loopback_hosts and not request.headers.get("X-Forwarded-For")
+        is_direct_loopback = direct_peer in loopback_hosts and not request.headers.get(
+            "X-Forwarded-For"
         )
         if direct_peer == "testclient":
             is_direct_loopback = True

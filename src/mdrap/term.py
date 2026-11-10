@@ -88,7 +88,9 @@ except ImportError:
             self.title = title
 
         @classmethod
-        def fit(cls, renderable: Any, *args: Any, **kwargs: Any) -> "_StdlibPanelFallback":
+        def fit(
+            cls, renderable: Any, *args: Any, **kwargs: Any
+        ) -> "_StdlibPanelFallback":
             return cls(renderable, *args, **kwargs)
 
         def __str__(self) -> str:

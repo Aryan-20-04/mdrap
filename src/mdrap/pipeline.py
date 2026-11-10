@@ -1154,7 +1154,9 @@ class Pipeline:
             self._ensure_writer_alive()
 
         with self._batch_lock:
-            if not (self._canonical_batch or self._quarantine_batch or self._lineage_batch):
+            if not (
+                self._canonical_batch or self._quarantine_batch or self._lineage_batch
+            ):
                 return
             self._last_flush_ts = time.time()
             canon, quar, lin = (
@@ -1180,9 +1182,7 @@ class Pipeline:
                         canon, quar, lin, queue.Full(), spill_exc
                     )
                     raise failure from spill_exc
-                logger.warning(
-                    "Async storage queue full: spilled batch to dead letter"
-                )
+                logger.warning("Async storage queue full: spilled batch to dead letter")
         else:
             self._sync_flush(canon, quar, lin, health_rows)
 
