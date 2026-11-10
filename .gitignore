@@ -164,5 +164,4 @@ plan.md
 *.zip
 benchmarks/phase0/
 tools/phase0/
-# Commercial / Companion Packages (Kept Local / Private Only)
-packages/
+

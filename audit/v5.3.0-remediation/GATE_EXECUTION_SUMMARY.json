@@ -1,0 +1,56 @@
+{
+  "1": {
+    "name": "Code Formatting (ruff format --check src/)",
+    "status": "PASSED",
+    "duration_sec": 0.33,
+    "error": ""
+  },
+  "2": {
+    "name": "Static Analysis (ruff check src/)",
+    "status": "PASSED",
+    "duration_sec": 0.296,
+    "error": ""
+  },
+  "3": {
+    "name": "Single-Source Rules Parity & Claims Governance",
+    "status": "PASSED",
+    "duration_sec": 1.643,
+    "error": ""
+  },
+  "4": {
+    "name": "Native C Accelerator Compilation",
+    "status": "PASSED",
+    "duration_sec": 12.463,
+    "error": ""
+  },
+  "5": {
+    "name": "Core Unit Tests",
+    "status": "PASSED",
+    "duration_sec": 1346.161,
+    "error": ""
+  },
+  "6": {
+    "name": "Integration & Durability Test Suite",
+    "status": "PASSED",
+    "duration_sec": 17.006,
+    "error": ""
+  },
+  "7": {
+    "name": "Security & Cryptographic Audit Verification",
+    "status": "PASSED",
+    "duration_sec": 13.161,
+    "error": ""
+  },
+  "8": {
+    "name": "Supply Chain Dependency CVE Audit (pip-audit)",
+    "status": "PASSED",
+    "duration_sec": 50.917,
+    "error": ""
+  },
+  "9": {
+    "name": "Native Accelerator Smoke Check & Differential Parity",
+    "status": "PASSED",
+    "duration_sec": 3.239,
+    "error": ""
+  }
+}

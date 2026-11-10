@@ -1,0 +1,22 @@
+{
+  "timestamp": "2026-11-10T15:01:37.353792+00:00",
+  "status": "SUCCESS",
+  "targets": {
+    "dll": {
+      "path": "src\\mdrap\\_fastpath_native.dll",
+      "exists": true,
+      "size_bytes": 200965
+    },
+    "core_exe": {
+      "path": "src\\mdrap\\mdrap-core.exe",
+      "exists": true,
+      "size_bytes": 380470
+    },
+    "pyd_extension": {
+      "files": [
+        "_fastpath_c.cp313-win_amd64.pyd"
+      ],
+      "count": 1
+    }
+  }
+}

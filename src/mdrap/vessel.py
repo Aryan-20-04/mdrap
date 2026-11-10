@@ -45,6 +45,8 @@ __stability__ = "experimental"
 if _impl is not None:
     sys.modules[__name__] = _impl
 else:
+    _HAS_FASTPATH = False
+    _C_CHOKEPOINTS = None
 
     class VesselTracker:
         def __init__(self, *args, **kwargs):

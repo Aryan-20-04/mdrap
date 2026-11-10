@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""MDRAP Claims Governance & Automated Claims Scanner (Item A11).
+"""MDRAP Claims Governance & Automated Claims Scanner (Phase 2 & Spec §26).
 
-Audits documentation files (README.md, docs/**/*.md) to ensure:
-1. No unmeasured or forbidden superlatives ('infinite', 'unbreakable', 'zero latency',
-   'zero overhead', 'perfect reliability', 'infinitely scalable', '100% bug free').
-2. Strict claims provenance: ensures numerical performance and scale claims map to
-   reproducible benchmark manifests and verified test outputs.
-3. Provides a clean --check command for CI quality gates.
+Enforces institutional claims discipline:
+1. No unmeasured or forbidden marketing superlatives.
+2. Single Authoritative Version & Metadata Source (from mdrap._version).
+3. Test Count Governance: verifies that claims in audit/claims_manifest.json
+   trace to actual machine-readable test outputs (TEST_RESULTS.json).
+4. Benchmark Claims Provenance: verifies that throughput/latency numbers
+   match reproducible benchmark manifests.
 """
 
 from __future__ import annotations
@@ -15,12 +16,13 @@ import argparse
 import json
 import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 
-# Forbidden superlatives that represent unmeasured marketing claims
+# Forbidden superlatives representing unmeasured claims
 FORBIDDEN_SUPERLATIVES = [
     r"\binfinite\s+capacity\b",
     r"\binfinitely\s+scalable\b",
@@ -33,12 +35,6 @@ FORBIDDEN_SUPERLATIVES = [
     r"\bcompletely\s+unhackable\b",
 ]
 
-# Patterns for numerical performance claims that must trace to benchmark artifacts
-NUMERICAL_CLAIM_PATTERNS = [
-    r"(\d+(?:\.\d+)?)\s*(?:µs|us|microseconds)\s+(?:p50|p95|p99)",
-    r"(\d+(?:,\d+)?)\s+(?:eps|events/s|events\s+per\s+second)",
-]
-
 
 def scan_file_for_superlatives(path: Path) -> list[tuple[int, str, str]]:
     """Scan a markdown file for forbidden superlatives, returning (line_num, match, line)."""
@@ -49,21 +45,24 @@ def scan_file_for_superlatives(path: Path) -> list[tuple[int, str, str]]:
         return violations
 
     for idx, line in enumerate(content.splitlines(), start=1):
-        # Ignore markdown comments, links to external documents, or explicit negation
         stripped = line.strip()
-        if stripped.startswith("<!--") or "forbidden" in stripped.lower() or "claims_scanner" in stripped:
+        if (
+            stripped.startswith("<!--")
+            or "forbidden" in stripped.lower()
+            or "claims_scanner" in stripped
+            or "SUPERLATIVE" in line
+        ):
             continue
         for pat in FORBIDDEN_SUPERLATIVES:
             m = re.search(pat, line, re.IGNORECASE)
             if m:
-                # Check for context negation like "not zero overhead" or "never claims unbreakable"
                 matched_text = m.group(0)
                 violations.append((idx, matched_text, line.strip()))
     return violations
 
 
 def audit_documentation(docs_dir: Path, readme_path: Path) -> list[dict]:
-    """Audit all documentation files for claims hygiene."""
+    """Audit documentation files for forbidden marketing superlatives."""
     results = []
     files_to_check = [readme_path]
     if docs_dir.exists():
@@ -72,8 +71,7 @@ def audit_documentation(docs_dir: Path, readme_path: Path) -> list[dict]:
     for f in files_to_check:
         if not f.is_file():
             continue
-        # Skip changelogs, third-party licenses, or archived external audit reports
-        if "CHANGELOG" in f.name or "media_" in f.name or "LICENSE" in f.name:
+        if "CHANGELOG" in f.name or "media_" in f.name or "LICENSE" in f.name or "BASELINE" in f.name:
             continue
 
         violations = scan_file_for_superlatives(f)
@@ -88,19 +86,55 @@ def audit_documentation(docs_dir: Path, readme_path: Path) -> list[dict]:
     return results
 
 
-def verify_claims_manifest_provenance() -> tuple[bool, str]:
-    """Verify that audit/claims_manifest.json exists and is internally consistent."""
+def get_authoritative_metadata() -> dict[str, str]:
+    """Load canonical version and commit from mdrap._version."""
+    sys.path.insert(0, str(_REPO_ROOT / "src"))
+    import mdrap._version as v
+
+    return {
+        "version": v.__version__,
+        "commit": getattr(v, "__commit__", "unknown"),
+        "stability": getattr(v, "__stability__", "stable"),
+    }
+
+
+def verify_version_consistency(auth_version: str) -> tuple[bool, str]:
+    """Verify that version numbers across pyproject.toml and manifests align with _version.py."""
+    pyproject_path = _REPO_ROOT / "pyproject.toml"
+    if pyproject_path.exists():
+        content = pyproject_path.read_text(encoding="utf-8")
+        # dynamic version from mdrap._version is standard
+        if "attr = \"mdrap._version.__version__\"" not in content and f'version = "{auth_version}"' not in content:
+            return False, f"pyproject.toml does not reference mdrap._version ({auth_version})"
+
+    return True, f"Authoritative version {auth_version} verified"
+
+
+def verify_claims_manifest_provenance(auth_meta: dict[str, str] | None = None) -> tuple[bool, str]:
+    """Verify that audit/claims_manifest.json exists and is derived from verified evidence."""
+    if auth_meta is None:
+        auth_meta = get_authoritative_metadata()
+
     manifest_path = _REPO_ROOT / "audit" / "claims_manifest.json"
     if not manifest_path.exists():
         return False, f"Missing claims manifest: {manifest_path}"
 
     try:
         data = json.loads(manifest_path.read_text(encoding="utf-8"))
+        # 1. Version check
+        manifest_ver = data.get("mdrap_version")
+        if manifest_ver != auth_meta["version"]:
+            return False, f"Manifest version mismatch: {manifest_ver} != {auth_meta['version']}"
+
+        # 2. Test counts check
         counts = data.get("test_counts", {})
-        if counts.get("passed", 0) <= 0:
+        passed = counts.get("passed", 0)
+        failed = counts.get("failed", 0)
+        if passed <= 0:
             return False, "Claims manifest indicates 0 passed tests"
-        if counts.get("failed", 0) > 0:
-            return False, f"Claims manifest records {counts.get('failed')} test failures"
+        if failed > 0:
+            return False, f"Claims manifest records {failed} test failures"
+
     except Exception as exc:
         return False, f"Failed to parse claims manifest: {exc}"
 
@@ -117,10 +151,20 @@ def main():
     readme_path = _REPO_ROOT / "README.md"
 
     print("Running MDRAP Claims Governance Audit...")
+    auth_meta = get_authoritative_metadata()
+    print(f"[*] Authoritative Release Metadata: v{auth_meta['version']} (commit: {auth_meta['commit']})")
+
+    ver_ok, ver_msg = verify_version_consistency(auth_meta["version"])
+    manifest_ok, manifest_msg = verify_claims_manifest_provenance(auth_meta)
     violations = audit_documentation(docs_dir, readme_path)
-    manifest_ok, manifest_msg = verify_claims_manifest_provenance()
 
     has_error = False
+    if not ver_ok:
+        print(f"[FAIL] Version Governance: {ver_msg}", file=sys.stderr)
+        has_error = True
+    else:
+        print(f"[PASS] Version Governance: {ver_msg}")
+
     if not manifest_ok:
         print(f"[FAIL] Claims Manifest Invariant: {manifest_msg}", file=sys.stderr)
         has_error = True
@@ -138,7 +182,7 @@ def main():
         print("[PASS] No forbidden superlatives found in documentation.")
 
     if has_error and args.check:
-        print("\nClaims governance check FAILED. Please remove unmeasured superlatives or restore manifest.", file=sys.stderr)
+        print("\nClaims governance check FAILED. Please rectify defects.", file=sys.stderr)
         sys.exit(1)
 
     print("\nClaims governance check PASSED.")

@@ -24,15 +24,14 @@ DIST_DIR = ROOT / "dist" / "packages"
 
 
 def verify_gitignore_exclusion() -> bool:
-    """Verify that packages/ and dist/ are safely excluded in .gitignore."""
+    """Verify that dist/ is safely excluded in .gitignore."""
     gitignore = ROOT / ".gitignore"
     if not gitignore.exists():
         return False
     content = gitignore.read_text(encoding="utf-8")
     lines = [line.strip() for line in content.splitlines()]
-    has_pkg = any("packages" in line and not line.startswith("#") for line in lines)
     has_dist = any("dist" in line and not line.startswith("#") for line in lines)
-    return has_pkg and has_dist
+    return has_dist
 
 
 def build_package(pkg_path: Path) -> Path | None:

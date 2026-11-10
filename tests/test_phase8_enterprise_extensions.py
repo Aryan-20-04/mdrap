@@ -211,13 +211,12 @@ class TestDualDistributionPackagingIsolation:
 
     def test_git_check_ignore_packages_and_dist(self):
         res = subprocess.run(
-            ["git", "check-ignore", "packages/", "dist/"],
+            ["git", "check-ignore", "dist/"],
             capture_output=True,
             text=True,
             check=True,
         )
         output = res.stdout.strip().splitlines()
-        assert any("packages" in line for line in output)
         assert any("dist" in line for line in output)
 
     @pytest.mark.slow

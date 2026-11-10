@@ -1,0 +1,41 @@
+{
+  "timestamp": "2026-11-10T15:25:27.851437+00:00",
+  "summary": {
+    "total_executed": 1778,
+    "passed": 1777,
+    "failed": 0,
+    "skipped": 1,
+    "errors": 0,
+    "pass_rate_pct": 100.0
+  },
+  "breakdown": {
+    "core": {
+      "tests": 1699,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 1,
+      "passed": 1698
+    },
+    "integration": {
+      "tests": 36,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 36
+    },
+    "security": {
+      "tests": 39,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 39
+    },
+    "differential": {
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 4
+    }
+  }
+}
