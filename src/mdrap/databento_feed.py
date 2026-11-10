@@ -14,6 +14,8 @@ Implements the official Databento Binary Encoding (DBN) specification:
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import io
 import itertools
 import logging
@@ -21,6 +23,7 @@ import os
 import queue
 import random
 import socket
+import ssl
 import struct
 import threading
 import time
@@ -459,6 +462,7 @@ class DatabentoFeedManager:
                     self.resolver.register(new_id, s_up)
 
         self._queue: queue.Queue[RawEvent] = queue.Queue(maxsize=max_queue_size)
+        self._residual_buffer = bytearray()
         self._stop_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
         self._stats = {
@@ -518,7 +522,13 @@ class DatabentoFeedManager:
             self._stats["events_emitted"] += 1
 
     def _decode_stream_bytes(self, chunk: bytes) -> None:
-        """Parse raw DBN bytes into RawEvents."""
+        """Parse raw DBN bytes into RawEvents with residual fragment buffering."""
+        if not chunk:
+            return
+        if self._residual_buffer:
+            chunk = bytes(self._residual_buffer) + chunk
+            self._residual_buffer.clear()
+
         offset = 0
         total_len = len(chunk)
         self._stats["bytes_read"] += total_len
@@ -526,6 +536,7 @@ class DatabentoFeedManager:
         while offset < total_len and not self._stop_event.is_set():
             ev, consumed = decode_dbn_record(chunk, offset, self.resolver)
             if consumed <= 0:
+                self._residual_buffer.extend(chunk[offset:])
                 break
             offset += consumed
             self._stats["records_decoded"] += 1
@@ -557,27 +568,44 @@ class DatabentoFeedManager:
             self._stats["connected"] = False
 
     def _run_tcp_loop(self) -> None:
-        """Live TCP streaming client for Databento Live Gateway."""
+        """Live TCP streaming client for Databento Live Gateway with TLS & CRAM authentication."""
         host = "live.databento.com"
         port = 13000
         backoff = 1.0
 
         while not self._stop_event.is_set():
+            raw_s = None
             s = None
             try:
-                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                s.settimeout(10.0)
+                raw_s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                raw_s.settimeout(10.0)
+                # Wrap with TLS context for encrypted transport
+                ctx = ssl.create_default_context()
+                s = ctx.wrap_socket(raw_s, server_hostname=host)
                 s.connect((host, port))
                 self._stats["connected"] = True
                 backoff = 1.0
 
                 # Databento Live Handshake
                 # 1. Read greeting / challenge
-                _greeting = s.recv(1024).decode("utf-8", errors="replace")
+                greeting = s.recv(1024).decode("utf-8", errors="replace")
+
+                # Parse CRAM challenge if provided by gateway
+                auth_token = self.api_key
+                for line in greeting.splitlines():
+                    if "cram=" in line:
+                        challenge = line.split("cram=", 1)[1].strip()
+                        if challenge and self.api_key:
+                            auth_token = hmac.new(
+                                self.api_key.encode("utf-8"),
+                                challenge.encode("utf-8"),
+                                hashlib.sha256,
+                            ).hexdigest()
+                        break
 
                 # 2. Send auth & subscription request
                 auth_payload = (
-                    f"auth={self.api_key}|dataset={self.dataset}|schema={self.schema}\n"
+                    f"auth={auth_token}|dataset={self.dataset}|schema={self.schema}\n"
                 )
                 s.sendall(auth_payload.encode("utf-8"))
 
@@ -588,7 +616,8 @@ class DatabentoFeedManager:
                     if not data:
                         break
                     self._decode_stream_bytes(data)
-            except Exception:
+            except Exception as e:
+                logger.debug(f"[databento_feed] TCP connection error: {e}")
                 self._stats["connected"] = False
                 if self._stop_event.is_set():
                     break
@@ -598,6 +627,11 @@ class DatabentoFeedManager:
                 if s:
                     try:
                         s.close()
+                    except Exception:
+                        pass
+                elif raw_s:
+                    try:
+                        raw_s.close()
                     except Exception:
                         pass
 

@@ -162,3 +162,21 @@ def test_replication_spool_capacity_drop():
     assert client.stats.spool_dropped == 1
     assert client._spool_queue[0][1] == b"P2"
     assert client._spool_queue[1][1] == b"P3"
+
+
+def test_replication_heartbeat_keepalive():
+    """Verify MSG_HEARTBEAT frames are acknowledged by server without corrupting log offset."""
+    port = 19992
+    server = JournalReplicationServer(port=port)
+    server.start()
+    time.sleep(0.05)
+
+    try:
+        client = JournalReplicationClient(target_port=port, epoch=1)
+        assert client.connect() is True
+        assert client.send_heartbeat(wait_ack=True) is True
+        assert client.stats.acks_received == 1
+        assert server.stats.frames_received == 1
+    finally:
+        client.close()
+        server.stop()

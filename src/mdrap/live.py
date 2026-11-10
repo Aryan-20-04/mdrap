@@ -254,6 +254,7 @@ class LiveConnector:
         self._online_symbol_cache: dict[str, tuple[str, dict[str, Any]] | None] = {}
         self._equity_venues_cache: dict[str, list[tuple[str, str, dict[str, Any]]]] = {}
         self._http_conns: dict[str, http.client.HTTPSConnection] = {}
+        self._rate_limit_backoffs: dict[str, float] = {}
 
     def _get_json(self, url: str) -> dict[str, Any] | None:
         """
@@ -261,6 +262,13 @@ class LiveConnector:
         Reuses SSL/TLS handshakes for sub-100ms round trips across ticks.
         Falls back to urllib.request on socket drop or redirect.
         """
+        parsed = urllib.parse.urlparse(url)
+        host = parsed.netloc
+        if host in self._rate_limit_backoffs:
+            if time.time() < self._rate_limit_backoffs[host]:
+                return None
+            del self._rate_limit_backoffs[host]
+
         # If urlopen is mocked in unit tests, dispatch directly to urlopen
         if getattr(
             urllib.request.urlopen, "_mock_return_value", None
@@ -278,8 +286,6 @@ class LiveConnector:
                 return None
 
         try:
-            parsed = urllib.parse.urlparse(url)
-            host = parsed.netloc
             path = parsed.path + ("?" + parsed.query if parsed.query else "")
 
             conn = self._http_conns.get(host)
@@ -295,6 +301,16 @@ class LiveConnector:
                 if resp.status == 200:
                     data = resp.read()
                     return json.loads(data.decode("utf-8"))
+                elif resp.status in (429, 418):
+                    retry_after = resp.getheader("Retry-After")
+                    backoff_s = (
+                        float(retry_after)
+                        if retry_after and retry_after.isdigit()
+                        else 5.0
+                    )
+                    self._rate_limit_backoffs[host] = time.time() + backoff_s
+                    resp.read()
+                    return None
                 else:
                     resp.read()
                     return None
@@ -312,6 +328,16 @@ class LiveConnector:
                 if resp.status == 200:
                     data = resp.read()
                     return json.loads(data.decode("utf-8"))
+                elif resp.status in (429, 418):
+                    retry_after = resp.getheader("Retry-After")
+                    backoff_s = (
+                        float(retry_after)
+                        if retry_after and retry_after.isdigit()
+                        else 5.0
+                    )
+                    self._rate_limit_backoffs[host] = time.time() + backoff_s
+                    resp.read()
+                    return None
                 else:
                     resp.read()
                     return None
@@ -852,15 +878,12 @@ class LiveConnector:
                 float(raw_ask if raw_ask is not None else price + spread_offset), 2
             )
 
-            bids_l2 = [
-                [round(bid_p - i * spread_offset, 2), float(100 * (i + 1))]
-                for i in range(5)
-                if round(bid_p - i * spread_offset, 2) > 0
-            ]
-            asks_l2 = [
-                [round(ask_p + i * spread_offset, 2), float(100 * (i + 1))]
-                for i in range(5)
-            ]
+            bid_sz = float(live_meta.get("bidSize", 100.0) or 100.0)
+            ask_sz = float(live_meta.get("askSize", 100.0) or 100.0)
+
+            # Do NOT manufacture fake multi-level L2 depth. Only report genuine top-of-book levels.
+            bids_l2 = [[bid_p, bid_sz]] if bid_p > 0 else []
+            asks_l2 = [[ask_p, ask_sz]] if ask_p > 0 else []
 
             q_payload = {
                 "instrument": canon_sym,

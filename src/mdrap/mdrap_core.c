@@ -99,7 +99,11 @@ static void handle_sigint(int sig) {
     g_running = 0;
 }
 
-#if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
+#if defined(_MSC_VER)
+  #include <intrin.h>
+  #include <immintrin.h>
+  #define HAS_X86_INTRINSICS 1
+#elif defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
   #include <x86intrin.h>
   #include <immintrin.h>
   #include <cpuid.h>
@@ -118,6 +122,16 @@ static TscClock g_clock = {0};
 
 static bool cpu_has_invariant_tsc(void) {
 #ifdef HAS_X86_INTRINSICS
+  #if defined(_MSC_VER)
+    int cpuInfo[4];
+    __cpuid(cpuInfo, (int)0x80000000);
+    if ((unsigned int)cpuInfo[0] >= 0x80000007) {
+        __cpuid(cpuInfo, (int)0x80000007);
+        if (cpuInfo[3] & (1 << 8)) {
+            return true;
+        }
+    }
+  #else
     unsigned int eax, ebx, ecx, edx;
     if (__get_cpuid(0x80000000, &eax, &ebx, &ecx, &edx)) {
         if (eax >= 0x80000007) {
@@ -127,6 +141,7 @@ static bool cpu_has_invariant_tsc(void) {
             }
         }
     }
+  #endif
 #endif
     return false;
 }
@@ -486,10 +501,8 @@ int main(int argc, char **argv) {
 #endif
         slot->commit_seq = seq;
 
-        /* Amortized publishing of head sequence (every 32 ticks) */
-        if ((seq & 0x1F) == 0) {
-            MD_STORE_REL_U64((uint8_t *)shm.base_ptr + 24, seq + 1);
-        }
+        /* Publish head sequence to consumers immediately to prevent subscriber tail latency stalls */
+        MD_STORE_REL_U64((uint8_t *)shm.base_ptr + 24, seq + 1);
 
         events_done++;
 

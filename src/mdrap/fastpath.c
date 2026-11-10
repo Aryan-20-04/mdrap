@@ -674,7 +674,7 @@ static void evaluate_nolock(FastEngine *eng, const FastEvent *ev, FastResult *re
         mark(res, STATUS_INVALID, REASON_SCHEMA_VIOLATION);
         return;
     }
-    if (ev->event_type != 0 && ev->event_type != 1) {          /* C-4: event_type was never validated */
+    if (ev->event_type != 0 && ev->event_type != 1 && ev->event_type != 2 && ev->event_type != 3) {          /* C-4: event_type was never validated */
         mark(res, STATUS_INVALID, REASON_SCHEMA_VIOLATION);
         return;
     }
@@ -694,7 +694,8 @@ static void evaluate_nolock(FastEngine *eng, const FastEvent *ev, FastResult *re
     /* --- C-4: structural validation ------------------------------------------------ */
     int bad = 0;
     if (ev->event_type == 0) { if (!has_price) bad = 1; }              /* TRADE needs a price   */
-    else                     { if (!has_bid && !has_ask) bad = 1; }    /* QUOTE needs a side    */
+    else if (ev->event_type == 1) { if (!has_bid && !has_ask) bad = 1; }    /* QUOTE needs a side    */
+    /* HALT (2) and STATUS (3) events require no prices or quotes */
     if ((has_price && num_bad(ev->price,     allow_neg)) ||
         (has_bid   && num_bad(ev->bid_price, allow_neg)) ||
         (has_ask   && num_bad(ev->ask_price, allow_neg)) ||
@@ -1024,6 +1025,12 @@ EXPORT void fastpath_engine_replay_record(
     if (!eng) return;
     uint32_t slot = (uint32_t)(seq & REPLAY_RING_MASK);
     FastReplayRecord *rec = &eng->replay_ring[slot];
+    rec->is_valid = 0;
+#if defined(_MSC_VER)
+    _ReadWriteBarrier();
+#else
+    __asm__ __volatile__("" ::: "memory");
+#endif
     rec->seq = seq;
     strncpy(rec->symbol, symbol ? symbol : "", sizeof(rec->symbol) - 1);
     rec->symbol[sizeof(rec->symbol) - 1] = '\0';
@@ -1036,6 +1043,11 @@ EXPORT void fastpath_engine_replay_record(
     rec->status = status; rec->is_crossed = is_crossed;
     rec->exchange_ts = exchange_ts; rec->ingest_ts = ingest_ts; rec->broadcast_ts = broadcast_ts;
     rec->engine_us = engine_us;
+#if defined(_MSC_VER)
+    _ReadWriteBarrier();
+#else
+    __asm__ __volatile__("" ::: "memory");
+#endif
     rec->is_valid = 1;
 
     /* window bookkeeping: derive min from max so an out-of-order older seq can never widen it */
@@ -1069,9 +1081,12 @@ EXPORT int32_t fastpath_engine_replay_slice(
         uint32_t slot = (uint32_t)(s & REPLAY_RING_MASK);
         FastReplayRecord *rec = &eng->replay_ring[slot];
         if (rec->is_valid && rec->seq == s) {
-            if (!filter_sym || strcmp(rec->symbol, symbol) == 0) {
-                out_records[count] = *rec;
-                count++;
+            FastReplayRecord snap = *rec;
+            if (snap.is_valid && snap.seq == s) {
+                if (!filter_sym || strcmp(snap.symbol, symbol) == 0) {
+                    out_records[count] = snap;
+                    count++;
+                }
             }
         }
         if (s == to_seq) break;                      /* terminates even when to_seq == UINT64_MAX */

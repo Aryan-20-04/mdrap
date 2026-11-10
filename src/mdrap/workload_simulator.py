@@ -46,7 +46,9 @@ class DeviceConfig:
     prom_port: int = 19110
     duckdb_path: str = "data/mdrap.duckdb"
     duration_s: float = 5.0
-    auth_token: str = "mdrap_demo_pro_key"
+    auth_token: str = field(
+        default_factory=lambda: os.environ.get("MDRAP_API_KEY", "mdrap_demo_pro_key")
+    )
     symbols: List[str] = field(
         default_factory=lambda: ["BTC/USD", "AAPL", "MSFT", "NVDA"]
     )

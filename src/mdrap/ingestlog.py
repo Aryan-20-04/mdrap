@@ -1084,6 +1084,112 @@ class IngestLog:
 
             return allocated_offsets
 
+    def append_raw(self, frame_bytes: bytes) -> int:
+        """Directly append raw wire or pre-framed bytes to the active log segment.
+
+        Used by journal replication receivers and low-level streamers to persist
+        frames without redundant deserialization and reserialization.
+        """
+        if not frame_bytes:
+            raise ValueError("frame_bytes must not be empty")
+
+        with self._lock:
+            if self._is_poisoned:
+                raise IngestLogPoisonedError(
+                    "IngestLog is in a poisoned state due to unrecoverable I/O rollback failure; reopen required"
+                )
+
+            offset = self._next_offset
+            now = time.time()
+            if (
+                len(frame_bytes) >= FRAME_HEADER_SIZE
+                and struct.unpack_from(">H", frame_bytes, 0)[0] == FRAME_MAGIC
+            ):
+                f_magic, f_ver, f_off, f_ts, f_len, f_crc = struct.unpack(
+                    FRAME_HEADER_FORMAT, frame_bytes[:FRAME_HEADER_SIZE]
+                )
+                if len(frame_bytes) == FRAME_HEADER_SIZE + f_len:
+                    exp_crc = compute_frame_crc(
+                        frame_bytes[:24], frame_bytes[FRAME_HEADER_SIZE:], version=f_ver
+                    )
+                    if exp_crc != f_crc:
+                        raise ValueError(
+                            f"Corrupted frame CRC in append_raw: expected {f_crc}, got {exp_crc}"
+                        )
+                    payload_bytes = frame_bytes[FRAME_HEADER_SIZE:]
+                    frame_hdr = pack_frame_header(
+                        offset,
+                        f_ts if f_ts > 0 else now,
+                        f_len,
+                        payload_bytes,
+                        version=f_ver,
+                    )
+                else:
+                    payload_bytes = frame_bytes
+                    frame_hdr = pack_frame_header(
+                        offset,
+                        now,
+                        len(payload_bytes),
+                        payload_bytes,
+                        version=LOG_VERSION,
+                    )
+            else:
+                payload_bytes = frame_bytes
+                frame_hdr = pack_frame_header(
+                    offset, now, len(payload_bytes), payload_bytes, version=LOG_VERSION
+                )
+
+            payload_len = len(payload_bytes)
+            if self._current_file is None:
+                self._rotate_to_new_segment(offset)
+            else:
+                curr_size = self._current_segment_bytes
+                if curr_size + FRAME_HEADER_SIZE + payload_len > self.max_segment_bytes:
+                    self._rotate_to_new_segment(offset)
+
+            write_pos = self._current_segment_bytes
+            try:
+                self._current_file.write(frame_hdr)
+                self._current_file.write(payload_bytes)
+                frame_total_len = FRAME_HEADER_SIZE + payload_len
+                self._current_segment_bytes += frame_total_len
+                self._bytes_since_flush += frame_total_len
+                if self.fsync_policy != "never" or self._bytes_since_flush >= 65536:
+                    self._current_file.flush()
+                    self._bytes_since_flush = 0
+                self._bytes_since_fsync += frame_total_len
+
+                self._next_offset += 1
+                self._pending_sync_offset = offset
+
+                if self.fsync_policy == "always":
+                    os.fsync(self._current_file.fileno())
+                    self._bytes_since_fsync = 0
+                    self._synced_offset = offset
+                elif self.fsync_policy in (
+                    "grouped_by_size",
+                    "grouped_by_time",
+                    "true_group_commit",
+                ):
+                    if self._bytes_since_fsync >= 64 * 1024:
+                        os.fsync(self._current_file.fileno())
+                        self._bytes_since_fsync = 0
+                        self._synced_offset = offset
+            except Exception:
+                if self._next_offset == offset + 1:
+                    self._next_offset = offset
+                try:
+                    self._current_file.seek(write_pos)
+                    self._current_file.truncate(write_pos)
+                    self._current_file.flush()
+                    self._current_segment_bytes = write_pos
+                    self._bytes_since_flush = 0
+                except Exception:
+                    self._is_poisoned = True
+                raise
+
+            return offset
+
     def flush(self) -> None:
         """Force flush and fsync of the current active segment."""
         with self._lock:

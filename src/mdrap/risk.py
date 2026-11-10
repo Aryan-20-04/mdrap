@@ -416,3 +416,36 @@ class DrawdownCircuitBreaker:
     @property
     def level(self) -> str:
         return self._level
+
+
+# Pre-Trade Institutional Risk Integration Bridge (§19, §26)
+try:
+    from mdrap_strategies.risk_engine import InstitutionalRiskEngine, StrictRiskLimits
+except ImportError:
+    import importlib.util
+    import os
+    import sys
+
+    _strat_pkg_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+        "packages",
+        "mdrap-strategies",
+        "mdrap_strategies",
+        "risk_engine.py",
+    )
+    if os.path.isfile(_strat_pkg_path):
+        _spec = importlib.util.spec_from_file_location(
+            "mdrap_strategies.risk_engine", _strat_pkg_path
+        )
+        if _spec and _spec.loader:
+            _mod = importlib.util.module_from_spec(_spec)
+            sys.modules["mdrap_strategies.risk_engine"] = _mod
+            _spec.loader.exec_module(_mod)
+            InstitutionalRiskEngine = getattr(_mod, "InstitutionalRiskEngine", None)
+            StrictRiskLimits = getattr(_mod, "StrictRiskLimits", None)
+        else:
+            InstitutionalRiskEngine = None  # type: ignore
+            StrictRiskLimits = None  # type: ignore
+    else:
+        InstitutionalRiskEngine = None  # type: ignore
+        StrictRiskLimits = None  # type: ignore

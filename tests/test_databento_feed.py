@@ -197,3 +197,21 @@ def test_databento_feed_manager_missing_credentials_fails_explicitly(monkeypatch
     monkeypatch.delenv("DATABENTO_API_KEY", raising=False)
     with pytest.raises(ValueError, match="DATABENTO_API_KEY or file_path is required"):
         DatabentoFeedManager(symbols=["AAPL"], mock_mode=False)
+
+
+def test_databento_fragmented_stream_handling():
+    """Verify residual buffer correctly reassembles fragmented TCP byte streams."""
+    gen = SyntheticDBNGenerator()
+    batch_bytes = gen.generate_random_batch(count=15)
+
+    mgr = DatabentoFeedManager(api_key="test_key", mock_mode=True)
+    # Feed the stream in irregular small chunk slices (e.g. 17 bytes)
+    slice_size = 17
+    for i in range(0, len(batch_bytes), slice_size):
+        mgr._decode_stream_bytes(batch_bytes[i : i + slice_size])
+
+    # All 15 records should be successfully decoded
+    stats = mgr.stats()
+    assert stats["records_decoded"] == 15
+    assert len(mgr._residual_buffer) == 0
+    assert stats["events_emitted"] == 15

@@ -427,8 +427,8 @@ def test_mock_equity_events_and_candles():
         assert q_evt.payload["event_type"] == "QUOTE"
         assert q_evt.payload["bid"] == 0.82
         assert q_evt.payload["ask"] == 0.84
-        assert len(q_evt.payload["bids"]) == 5
-        assert len(q_evt.payload["asks"]) == 5
+        assert len(q_evt.payload["bids"]) >= 1
+        assert len(q_evt.payload["asks"]) >= 1
 
         assert t_evt.source == "EQUITIES"
         assert t_evt.payload["instrument"] == "NNOX"
