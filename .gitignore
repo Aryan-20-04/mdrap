@@ -159,7 +159,6 @@ data/*.journal
 .agent/
 .agents/
 GEMINI.md
-history.md
 plan.md
 *.zip
 benchmarks/phase0/
