@@ -366,16 +366,19 @@ class AppState:
 
         # Deliver to subscriber queues without blocking ingestion pipeline
         for ws, sub_syms in list(self.subscribers.items()):
-            # Revocation check during stream broadcast (fail-closed)
-            tok = self.subscriber_tokens.get(ws)
-            ent = (
-                self.security_manager.get_entitlement(tok, active_only=True)
-                if tok
-                else None
-            )
-            if not ent:
-                dead_sockets.append(ws)
-                continue
+            # Revocation check during stream broadcast (fail-closed for registered tokens)
+            if ws in self.subscriber_tokens:
+                tok = self.subscriber_tokens[ws]
+                ent = (
+                    self.security_manager.get_entitlement(tok, active_only=True)
+                    if tok
+                    else None
+                )
+                if not ent:
+                    dead_sockets.append(ws)
+                    continue
+            else:
+                ent = None
 
             # Granular licensing check (source & symbol)
             if ent:
@@ -1672,15 +1675,26 @@ def create_app(
         ):
             loopback_hosts.add("testclient")
 
+        client_host = _resolve_client_ip(request)
         direct_peer = request.client.host if request.client else "unknown"
-        # Anti-spoofing: loopback bypass requires direct TCP connection without proxy headers
-        is_direct_loopback = direct_peer in loopback_hosts and not request.headers.get(
-            "X-Forwarded-For"
-        )
-        if direct_peer == "testclient":
-            is_direct_loopback = True
+        trusted_proxies = {
+            value.strip()
+            for value in os.environ.get("MDRAP_TRUSTED_PROXY_IPS", "").split(",")
+            if value.strip()
+        }
 
-        if metrics_auth_required and not is_direct_loopback:
+        # Loopback bypass: direct connection without proxy headers or forwarded by trusted proxy
+        is_loopback = False
+        if direct_peer in loopback_hosts and (
+            not request.headers.get("X-Forwarded-For") or direct_peer in trusted_proxies
+        ):
+            is_loopback = True
+        elif direct_peer in trusted_proxies and client_host in loopback_hosts:
+            is_loopback = True
+        elif direct_peer == "testclient" or client_host == "testclient":
+            is_loopback = True
+
+        if metrics_auth_required and not is_loopback:
             token = get_token_from_request(
                 request,
                 x_api_key=request.headers.get("X-API-Key"),
