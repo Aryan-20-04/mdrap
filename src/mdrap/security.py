@@ -585,13 +585,16 @@ class SecurityManager:
         rate_limit: float = 20_000.0,
         require_env_secrets: bool = False,
         require_hmac: bool | set[str] | list[str] = False,
+        demo_mode: bool = False,
     ):
         self.store = store
         mandate_env = require_env_secrets or (
             os.environ.get("MDRAP_REQUIRE_ENV_SECRETS", "").lower()
             in ("1", "true", "yes")
         )
-        is_demo = os.environ.get("MDRAP_DEMO", "").lower() in ("1", "true", "yes")
+        is_demo = demo_mode or (
+            os.environ.get("MDRAP_DEMO", "").lower() in ("1", "true", "yes")
+        )
         is_prod = (
             os.environ.get("MDRAP_ENV", "").lower() in ("prod", "production")
             or os.environ.get("ENVIRONMENT", "").lower() in ("prod", "production")

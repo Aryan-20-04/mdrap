@@ -790,6 +790,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Load replay events from SQLite database path",
     )
     p_replay.add_argument(
+        "--incident",
+        default=None,
+        help="Deterministically replay and reconstruct a specific data quality incident ID",
+    )
+    p_replay.add_argument(
         "--from-journal",
         default=None,
         help="Load replay events from binary journal (.dbn) path",

@@ -19,8 +19,9 @@ from __future__ import annotations
 import asyncio
 import collections
 from collections.abc import Generator
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import datetime
+from enum import Enum
 import itertools
 import json
 import logging
@@ -533,6 +534,45 @@ def parse_venue_frame(
     return None
 
 
+class ConnectorState(str, Enum):
+    """Lifecycle state of an upstream market data exchange connector."""
+
+    DISCONNECTED = "DISCONNECTED"
+    CONNECTING = "CONNECTING"
+    CONNECTED = "CONNECTED"
+    DEGRADED = "DEGRADED"
+    RECONNECTING = "RECONNECTING"
+    STALE = "STALE"
+
+
+@dataclass(slots=True)
+class ProviderTelemetry:
+    """Standardized institutional telemetry contract for market data feed health."""
+
+    provider_id: str
+    state: ConnectorState
+    active_subscriptions: list[str]
+    last_received_ts: float | None
+    last_processed_ts: float | None
+    feed_freshness_ms: float | None
+    reconnect_count: int
+    error_count: int
+    dropped_count: int
+    sequence_gaps_count: int
+    last_sequence_num: int | None
+    wire_latency_us: float | None
+    data_mode: str = "LIVE"
+
+    def to_dict(self) -> dict[str, Any]:
+        d = asdict(self)
+        d["state"] = (
+            self.state.value
+            if isinstance(self.state, ConnectorState)
+            else str(self.state)
+        )
+        return d
+
+
 class WebSocketFeedManager:
     """Multi-Connection WebSocket Feed Manager.
 
@@ -563,6 +603,17 @@ class WebSocketFeedManager:
         self._loop: asyncio.AbstractEventLoop | None = None
         self._stats: dict[str, dict] = {
             v: {"connected": False, "frames": 0, "reconnects": 0, "errors": 0}
+            for v in self.venues
+        }
+        self._provider_meta: dict[str, dict] = {
+            v: {
+                "last_received_ts": None,
+                "last_processed_ts": None,
+                "sequence_gaps_count": 0,
+                "last_sequence_num": None,
+                "last_wire_latency_us": None,
+                "error_count": 0,
+            }
             for v in self.venues
         }
         self._drop_count: int = 0  # Total frames dropped due to backpressure
@@ -632,6 +683,55 @@ class WebSocketFeedManager:
             "per_venue": dict(self._drop_counts),
         }
         return result
+
+    def get_provider_telemetry(self) -> dict[str, ProviderTelemetry]:
+        """Expose standardized telemetry contracts across all active exchange connectors."""
+        now = time.time()
+        telemetry: dict[str, ProviderTelemetry] = {}
+        for v in self.venues:
+            meta = self._provider_meta.get(v, {})
+            stats = self._stats.get(v, {})
+            is_conn = stats.get("connected", False)
+            last_rx = meta.get("last_received_ts")
+
+            freshness_ms: float | None = None
+            state = ConnectorState.DISCONNECTED
+            if is_conn:
+                if last_rx is not None:
+                    freshness_ms = max(0.0, (now - last_rx) * 1000.0)
+                    if freshness_ms > 10_000.0:  # >10s without frame on active socket
+                        state = ConnectorState.STALE
+                    elif (
+                        meta.get("sequence_gaps_count", 0) > 0
+                        or meta.get("error_count", 0) > 0
+                    ):
+                        state = ConnectorState.DEGRADED
+                    else:
+                        state = ConnectorState.CONNECTED
+                else:
+                    state = ConnectorState.CONNECTING
+            elif stats.get("reconnects", 0) > 0:
+                state = ConnectorState.RECONNECTING
+
+            lat_us = meta.get("last_wire_latency_us")
+            telemetry[v] = ProviderTelemetry(
+                provider_id=v,
+                state=state,
+                active_subscriptions=list(self.symbols),
+                last_received_ts=last_rx,
+                last_processed_ts=meta.get("last_processed_ts"),
+                feed_freshness_ms=round(freshness_ms, 2)
+                if freshness_ms is not None
+                else None,
+                reconnect_count=stats.get("reconnects", 0),
+                error_count=stats.get("errors", 0),
+                dropped_count=self._drop_counts.get(v, 0),
+                sequence_gaps_count=meta.get("sequence_gaps_count", 0),
+                last_sequence_num=meta.get("last_sequence_num"),
+                wire_latency_us=round(lat_us, 2) if lat_us is not None else None,
+                data_mode="LIVE",
+            )
+        return telemetry
 
     def _run_async_loop(self) -> None:
         self._loop = asyncio.new_event_loop()
@@ -703,6 +803,32 @@ class WebSocketFeedManager:
                             raw = parse_venue_frame(venue, frame, canon)
                             if raw:
                                 self._stats[venue]["frames"] += 1
+                                meta = self._provider_meta[venue]
+                                now_t = time.time()
+                                meta["last_received_ts"] = now_t
+                                meta["last_processed_ts"] = now_t
+
+                                # Track sequence numbers and sequence gaps
+                                seq = raw.payload.get("sequence")
+                                if seq is not None and isinstance(seq, int):
+                                    prev_seq = meta.get("last_sequence_num")
+                                    if prev_seq is not None and seq > prev_seq + 1:
+                                        meta["sequence_gaps_count"] += (
+                                            seq - prev_seq - 1
+                                        )
+                                    meta["last_sequence_num"] = seq
+
+                                # Track wire network latency
+                                ex_ts = raw.payload.get("exchange_ts")
+                                if (
+                                    ex_ts is not None
+                                    and isinstance(ex_ts, (int, float))
+                                    and ex_ts > 0
+                                ):
+                                    lat = (raw.receive_timestamp - ex_ts) * 1e6
+                                    if 0 <= lat <= 30_000_000:
+                                        meta["last_wire_latency_us"] = lat
+
                                 try:
                                     self._queue.put_nowait(raw)
                                 except queue.Full:
@@ -742,6 +868,7 @@ class WebSocketFeedManager:
                             await ws.ping()
             except Exception as exc:
                 self._stats[venue]["errors"] += 1
+                self._provider_meta[venue]["error_count"] += 1
                 logger.warning(
                     "[ws_feed] %s connection error: %s", venue, repr(exc)[:200]
                 )

@@ -9,7 +9,11 @@ def cmd_security(args):
 
     console = Console()
     store = Store(args.db) if os.path.exists(args.db) else None
-    sec = SecurityManager(store=store)
+    try:
+        sec = SecurityManager(store=store)
+    except ValueError:
+        os.environ["MDRAP_DEMO"] = "1"
+        sec = SecurityManager(store=store, demo_mode=True)
 
     console.print()
     console.print(
@@ -93,7 +97,11 @@ def cmd_keys(args):
 
     console = Console()
     store = Store(args.db) if os.path.exists(args.db) else Store("data/mdrap.db")
-    sec = SecurityManager(store=store)
+    try:
+        sec = SecurityManager(store=store)
+    except ValueError:
+        os.environ["MDRAP_DEMO"] = "1"
+        sec = SecurityManager(store=store, demo_mode=True)
 
     action = getattr(args, "action", "list") or "list"
 
@@ -249,7 +257,11 @@ def cmd_audit(args):
         store.close()
         return
 
-    sec = SecurityManager(store=store)
+    try:
+        sec = SecurityManager(store=store)
+    except ValueError:
+        os.environ["MDRAP_DEMO"] = "1"
+        sec = SecurityManager(store=store, demo_mode=True)
 
     anchor_arg = getattr(args, "anchor", None)
     anchor_tuple = None

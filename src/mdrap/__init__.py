@@ -45,6 +45,12 @@ from .projection import (
     rebuild_projection_from_wal,
 )
 from .storage import Store
+from .provenance import (
+    EventProvenance,
+    create_provenance,
+    compute_payload_hash,
+    ProvenanceTracker,
+)
 from .profile import HardwareProfile, ProfileMode, current_profile
 from .exceptions import CompanionPackageMissing, require_companion
 from .facade import stream, connect, doctor
