@@ -42,18 +42,63 @@ __stability__ = "experimental"
 if _impl is not None:
     sys.modules[__name__] = _impl
 else:
+    import enum
+
+    class CompanionPackageMissing(ImportError):
+        """Raised when an optional companion package is required but not installed."""
+        pass
+
+    class OptionType(str, enum.Enum):
+        CALL = "CALL"
+        PUT = "PUT"
+
+    class ExerciseStyle(str, enum.Enum):
+        EUROPEAN = "EUROPEAN"
+        AMERICAN = "AMERICAN"
+
+    class OptionContract:
+        def __init__(self, *args, **kwargs):
+            raise CompanionPackageMissing(
+                "OptionContract requires the 'mdrap_options' companion package. "
+                "Install packages/mdrap-options to use options and derivatives pricing features."
+            )
 
     class OptionsChain:
         def __init__(self, *args, **kwargs):
-            raise NotImplementedError(
+            raise CompanionPackageMissing(
                 "OptionsChain requires the 'mdrap_options' companion package. "
                 "Install packages/mdrap-options to use options and derivatives pricing features."
             )
 
     class BlackScholes:
-        pass
+        def __init__(self, *args, **kwargs):
+            raise CompanionPackageMissing("BlackScholes requires 'mdrap_options'.")
 
     class BinomialTree:
+        def __init__(self, *args, **kwargs):
+            raise CompanionPackageMissing("BinomialTree requires 'mdrap_options'.")
+
+    class Greeks:
         pass
 
-    __all__ = ["OptionsChain", "BlackScholes", "BinomialTree"]
+    class OptionPrice:
+        pass
+
+    def price_option(*args, **kwargs):
+        raise CompanionPackageMissing(
+            "price_option requires the 'mdrap_options' companion package. "
+            "Install packages/mdrap-options to use options and derivatives pricing features."
+        )
+
+    __all__ = [
+        "CompanionPackageMissing",
+        "OptionType",
+        "ExerciseStyle",
+        "OptionContract",
+        "OptionsChain",
+        "BlackScholes",
+        "BinomialTree",
+        "Greeks",
+        "OptionPrice",
+        "price_option",
+    ]

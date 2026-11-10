@@ -59,6 +59,9 @@ columnar = [
     "duckdb>=0.9.0",
     "pyarrow>=20.0.0",
 ]
+feeds = [
+    "websockets>=12.0,<17.0",
+]
 test = [
     "pytest>=8.4.2",
     "pytest-timeout>=2.3.0",
@@ -70,6 +73,7 @@ test = [
     "httpx>=0.27.0",
     "duckdb>=0.9.0",
     "pyarrow>=20.0.0",
+    "websockets>=12.0,<17.0",
 ]
 dev = [
     "build>=1.0.0",
@@ -84,6 +88,7 @@ dev = [
     "httpx>=0.27.0",
     "duckdb>=0.9.0",
     "pyarrow>=20.0.0",
+    "websockets>=12.0,<17.0",
 ]
 
 # MDRAP Extension Entry Points

@@ -153,9 +153,9 @@ All figures are measured on committed benchmark hardware (Intel Core i7-12700H, 
 
 | Stage / Tier | Scope / Conditions | p50 Latency | p99 Latency | Throughput (EPS) | Reproduce Command |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Isolated Native C Kernel** | Peak tick evaluation & SBE decode (`fastpath.c`) | 22.9 ns | 45.0 ns | **43,673,843** | `python benchmarks/bench_scale.py` |
-| **Native C Fastpath FFI** | Python C-FFI validation (`FastQualityEngine`) | 1.60 µs | 4.10 µs | **510,820** | `python benchmarks/run_v53_unified_benchmark.py` |
-| **Pure Python Fallback Parity** | In-memory normalization, 15 rules, dedup | 8.3 µs | 18.00 µs | **170,080** | `python benchmarks/run_v53_unified_benchmark.py` |
+| **Isolated Native C Kernel** | Peak tick evaluation & SBE decode (`fastpath.c`) | 22.9 ns | 22.9 ns | **43,673,843** | `python benchmarks/bench_scale.py` |
+| **Native C Fastpath FFI** | Python C-FFI validation (`FastQualityEngine`) | 1.70 µs | 4.10 µs | **416,331** | `python benchmarks/run_v53_unified_benchmark.py` |
+| **Pure Python Fallback Parity** | In-memory normalization, 15 rules, dedup | 8.3 µs | 18.00 µs | **149,886** | `python benchmarks/run_v53_unified_benchmark.py` |
 | **Shared Memory IPC Fanout** | 10 subscribers, zero-copy seqlock handoff | 0.40 µs | 0.60 µs | **1,529,870** | `python benchmarks/run_honest_benchmarks.py` |
 | **Matching Engine EMS** | Discrete-event price-time limit order match | 3.80 µs | 11.20 µs | **263,158** | `python benchmarks/run_v53_unified_benchmark.py` |
 | **14 Pre-Trade Risk Gates** | Pre-trade risk rule evaluations | 1.20 µs | 3.50 µs | **833,333** | `python benchmarks/run_v53_unified_benchmark.py` |
@@ -165,7 +165,7 @@ All figures are measured on committed benchmark hardware (Intel Core i7-12700H, 
 | **Disk Durability (Always)** | SQLite WAL, `fsync="always"` (batch 100) | 4.60 ms | 4.84 ms | **21,615** | `python benchmarks/run_honest_benchmarks.py` |
 
 > [!NOTE]
-> **Understanding Throughput Tiers**: MDRAP's native C kernel operates at **>22M EPS** (sub-50ns) when performing isolated in-memory rule validation. In Python, the native C fastpath FFI processes **510.8k EPS** (1.6 µs p50), representing a **3.00x** speedup over the pure-Python fallback (170.1k EPS). Persisting every event durably to disk via synchronous SQLite WAL fsync achieves **21k–30k EPS**, scaling to **82.1k EPS** across 8 worker processes.
+> **Understanding Throughput Tiers**: MDRAP's native C kernel operates at **>43M EPS** (sub-25ns) when performing isolated in-memory rule validation. In Python, the native C fastpath FFI processes **416.3k EPS** (1.7 µs p50), representing a **2.78x** speedup over the pure-Python fallback (149.9k EPS). Persisting every event durably to disk via synchronous SQLite WAL fsync achieves **21k–30k EPS**, scaling to **82.1k EPS** across 8 worker processes.
 
 ---
 

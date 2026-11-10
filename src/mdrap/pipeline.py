@@ -249,6 +249,7 @@ class Pipeline:
         self._quarantine_batch: list[tuple] = []
         self._lineage_batch: list[tuple] = []
         self._pending_raw_payloads: dict[str, Any] = {}
+        self._batch_lock = threading.Lock()
 
         # Timing sampling: skip perf_counter_ns on most events when mask > 0
         if timing_sample_mask is not None:
@@ -430,13 +431,16 @@ class Pipeline:
                 )
 
     def _enqueue_canonical(self, event: CanonicalEvent) -> None:
-        self._canonical_batch.append(event)
+        with self._batch_lock:
+            self._canonical_batch.append(event)
 
     def _enqueue_quarantine(self, row: tuple) -> None:
-        self._quarantine_batch.append(row)
+        with self._batch_lock:
+            self._quarantine_batch.append(row)
 
     def _enqueue_lineage(self, row: tuple) -> None:
-        self._lineage_batch.append(row)
+        with self._batch_lock:
+            self._lineage_batch.append(row)
 
     @property
     def degraded(self) -> bool:
@@ -1090,16 +1094,20 @@ class Pipeline:
         return health_rows
 
     def _maybe_flush(self):
-        batch_full = (
-            len(self._canonical_batch) >= BATCH_SIZE
-            or len(self._quarantine_batch) >= BATCH_SIZE
-            or len(self._lineage_batch) >= BATCH_SIZE
-        )
+        with self._batch_lock:
+            batch_full = (
+                len(self._canonical_batch) >= BATCH_SIZE
+                or len(self._quarantine_batch) >= BATCH_SIZE
+                or len(self._lineage_batch) >= BATCH_SIZE
+            )
+            has_pending = bool(
+                self._canonical_batch or self._quarantine_batch or self._lineage_batch
+            )
         if batch_full:
             self.flush(wait=False)
             return
 
-        if self._canonical_batch or self._quarantine_batch or self._lineage_batch:
+        if has_pending:
             now = time.time()
             if now - self._last_flush_ts >= self.flush_interval_s:
                 self.flush(wait=False)
@@ -1144,7 +1152,10 @@ class Pipeline:
             self.engine.flush()
         if self._async_writer_enabled:
             self._ensure_writer_alive()
-        if self._canonical_batch or self._quarantine_batch or self._lineage_batch:
+
+        with self._batch_lock:
+            if not (self._canonical_batch or self._quarantine_batch or self._lineage_batch):
+                return
             self._last_flush_ts = time.time()
             canon, quar, lin = (
                 self._canonical_batch,
@@ -1156,24 +1167,24 @@ class Pipeline:
                 [],
                 [],
             )
-            health_rows = self._collect_health_rows()
+        health_rows = self._collect_health_rows()
 
-            if self._async_writer_enabled:
+        if self._async_writer_enabled:
+            try:
+                self._write_queue.put((canon, quar, lin, health_rows), timeout=1.0)
+            except queue.Full:
                 try:
-                    self._write_queue.put((canon, quar, lin, health_rows), timeout=1.0)
-                except queue.Full:
-                    try:
-                        self._spill_dead_letter(canon, quar, lin)
-                    except Exception as spill_exc:
-                        failure = self._mark_writer_failure(
-                            canon, quar, lin, queue.Full(), spill_exc
-                        )
-                        raise failure from spill_exc
-                    logger.warning(
-                        "Async storage queue full: spilled batch to dead letter"
+                    self._spill_dead_letter(canon, quar, lin)
+                except Exception as spill_exc:
+                    failure = self._mark_writer_failure(
+                        canon, quar, lin, queue.Full(), spill_exc
                     )
-            else:
-                self._sync_flush(canon, quar, lin, health_rows)
+                    raise failure from spill_exc
+                logger.warning(
+                    "Async storage queue full: spilled batch to dead letter"
+                )
+        else:
+            self._sync_flush(canon, quar, lin, health_rows)
 
         if self._journal_file is not None:
             try:

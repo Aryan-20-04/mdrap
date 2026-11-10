@@ -47,3 +47,12 @@ def test_convert_currency_global():
     assert usd_val == 100.0
     inr_val = convert_currency(100.0, "USD", "INR")
     assert inr_val > 0.0
+
+
+def test_unmapped_currency_raises_keyerror():
+    """Verify unmapped currency raises KeyError rather than silently assuming 1.0 parity."""
+    matrix = FXMatrix()
+    with pytest.raises(KeyError, match="Unmapped currency: 'BRL'"):
+        matrix.convert(100.0, "USD", "BRL")
+    with pytest.raises(KeyError, match="Unmapped currency: 'HUF'"):
+        matrix.get_rate("HUF", "USD")

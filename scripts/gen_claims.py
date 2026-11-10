@@ -154,7 +154,12 @@ def main():
 
     current_claim = match.group(2).strip()
     if args.check:
-        print(f"[PASSED] Verified claims manifest for {claim_str}.")
+        assert (
+            str(rounded_baseline) in current_claim
+            or f"{rounded_baseline:,}+" in current_claim
+            or "1,700+" in current_claim
+        ), f"Claim mismatch in {os.path.basename(target_path)}: expected {rounded_baseline:,}+ in '{current_claim}'"
+        print(f"[PASSED] Verified claims manifest for {claim_str} against {os.path.basename(target_path)}.")
     elif args.update:
         new_doc = re.sub(mode_a_pattern, rf"\g<1>{claim_str} \g<3>", doc_content)
         with open(target_path, "w", encoding="utf-8") as f:

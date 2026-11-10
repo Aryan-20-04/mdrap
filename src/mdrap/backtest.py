@@ -98,7 +98,12 @@ class BacktestEngine:
         )
 
         runner = StrategyRunner(strategy)
-        runner.strategy.on_start()
+        if hasattr(runner.strategy, "on_start") and callable(runner.strategy.on_start):
+            runner.strategy.on_start()
+        if not hasattr(runner.strategy, "_current_mid"):
+            runner.strategy._current_mid = {}
+        if not hasattr(runner.strategy, "_current_bbo"):
+            runner.strategy._current_bbo = {}
 
         real_start_time = time.time()
         latest_prices: dict[str, float] = {}

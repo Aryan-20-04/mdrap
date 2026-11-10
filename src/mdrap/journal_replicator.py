@@ -222,8 +222,20 @@ class JournalReplicationServer:
                     self.stats.last_seq = seq
 
                     if msg_type == MSG_FRAME_DATA:
-                        if self.target_log and hasattr(self.target_log, "append_raw"):
-                            self.target_log.append_raw(payload)
+                        if self.target_log:
+                            try:
+                                if hasattr(self.target_log, "append_raw"):
+                                    self.target_log.append_raw(payload)
+                                elif hasattr(self.target_log, "append"):
+                                    self.target_log.append(payload)
+                            except Exception as e:
+                                self.stats.errors += 1
+                                logger.error("Replication persistence failure: %s", e)
+                                err_frame = pack_replication_frame(
+                                    MSG_ERROR, seq, epoch, b"PERSIST_FAILURE"
+                                )
+                                sock.sendall(err_frame)
+                                continue
 
                         # Return ACK
                         ack_frame = pack_replication_frame(MSG_ACK, seq, epoch)

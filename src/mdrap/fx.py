@@ -84,8 +84,11 @@ class FXMatrix:
         usd_per_to = self._usd_rates.get(tc)
 
         if usd_per_from is None or usd_per_to is None:
-            # Unknown currency, assume 1.0 parity
-            return 1.0
+            missing = fc if usd_per_from is None else tc
+            raise KeyError(
+                f"Unmapped currency: '{missing}'. Supported currencies: {list(self._usd_rates.keys())}. "
+                "Register live rate via update_rate() before conversion."
+            )
 
         # Since usd_rates stores: 1 USD = X Currency
         # Value in USD = amount / usd_per_from

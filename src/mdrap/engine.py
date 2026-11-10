@@ -840,7 +840,13 @@ class Engine:
             last_off = from_offset - 1
 
             replay_state = self.create_initial_state()
-            for off, raw in self.log.iter_from(0):
+            earliest = getattr(self.log, "earliest_offset", 0)
+            iter_start = max(from_offset, earliest)
+            if from_offset < earliest:
+                raise RecoveryError(
+                    f"Requested replay from offset {from_offset}, but earliest retained WAL offset is {earliest}"
+                )
+            for off, raw in self.log.iter_from(iter_start):
                 if off < from_offset:
                     replay_state, _ = self.step(
                         replay_state, raw, self.clock, offset=off
@@ -939,7 +945,9 @@ class Engine:
                 if head > start_off:
                     batch: list[EngineDecision] = []
                     replay_state = self.create_initial_state()
-                    for off, raw in self.log.iter_from(0):
+                    earliest = getattr(self.log, "earliest_offset", 0)
+                    iter_start = max(start_off, earliest)
+                    for off, raw in self.log.iter_from(iter_start):
                         if off < start_off:
                             replay_state, _ = self.step(
                                 replay_state, raw, self.clock, offset=off
@@ -989,7 +997,9 @@ class Engine:
             if self.log is not None and self.log.next_offset > start_off:
                 batch = []
                 replay_state = self.create_initial_state()
-                for off, raw in self.log.iter_from(0):
+                earliest = getattr(self.log, "earliest_offset", 0)
+                iter_start = max(start_off, earliest)
+                for off, raw in self.log.iter_from(iter_start):
                     if off < start_off:
                         replay_state, _ = self.step(
                             replay_state, raw, self.clock, offset=off
@@ -1006,7 +1016,7 @@ class Engine:
                     projection.apply(batch, batch[-1].offset)
 
     def rebuild_projection(self, projection: Any) -> int:
-        """Reconstruct projection from offset 0 using IngestLog WAL as single source of truth."""
+        """Reconstruct projection from earliest retained offset using IngestLog WAL as single source of truth."""
         with self._lock:
             if self.log is None:
                 return 0
@@ -1014,7 +1024,8 @@ class Engine:
                 self._projections.append(projection)
             batch = []
             replay_state = self.create_initial_state()
-            for off, raw in self.log.iter_from(0):
+            earliest = getattr(self.log, "earliest_offset", 0)
+            for off, raw in self.log.iter_from(earliest):
                 replay_state, dec = self.step(replay_state, raw, self.clock, offset=off)
                 batch.append(dec)
                 if len(batch) >= 2000:
