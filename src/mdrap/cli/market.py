@@ -1269,75 +1269,39 @@ def cmd_vwap(args):
 
 
 def cmd_export(args):
-    """Export market microstructure data, depth ladders, VWAP curves, and SLA health to Excel (.xlsx) or CSV."""
-    from ..exporter import MarketDataExporter
+    """Export market data and quarantined events to Parquet, JSON, or CSV."""
+    from ..export import export_data
 
     console = Console()
-    symbol = getattr(args, "symbol", "AAPL") or "AAPL"
     db_path = getattr(args, "db", "data/mdrap.db")
     outdir = getattr(args, "outdir", "data/reports")
     custom_output = getattr(args, "output", None)
     is_csv = getattr(args, "csv", False)
-    auto_open = getattr(args, "open", False)
 
     _ensure_db_dir(db_path)
 
     fmt = getattr(args, "format", None)
     table = getattr(args, "table", "canonical_events")
-    if fmt in ("parquet", "json") or (
-        fmt == "csv" and custom_output and str(custom_output).endswith(".csv")
+    if (
+        is_csv
+        or (fmt and fmt.lower() == "csv")
+        or (custom_output and str(custom_output).endswith(".csv"))
     ):
-        from ..export import export_data
-
-        out_path = custom_output or f"{table}.{fmt}"
-        count = export_data(db_path=db_path, table=table, output_path=out_path, fmt=fmt)
-        console.print(
-            f"[bold green]✔ Successfully exported {count:,} rows from '{table}' to:[/bold green] [bold white]{out_path}[/bold white]\n"
+        fmt = "csv"
+    elif not fmt:
+        fmt = (
+            "parquet"
+            if custom_output and str(custom_output).endswith(".parquet")
+            else "json"
+            if custom_output and str(custom_output).endswith(".json")
+            else "csv"
         )
-        return
 
+    out_path = custom_output or os.path.join(outdir, f"{table}.{fmt}")
+    count = export_data(db_path=db_path, table=table, output_path=out_path, fmt=fmt)
     console.print(
-        Panel(
-            f"[bold cyan]MDRAP Institutional Financial Report & Model Exporter[/bold cyan]\n"
-            f"[dim]Symbol: [bold white]{symbol}[/bold white] | Database: [bold white]{db_path}[/bold white] | Format: [bold green]{'CSV Package' if is_csv else 'Excel (.xlsx)'}[/bold green][/dim]",
-            border_style="cyan",
-        )
+        f"[bold green]✔ Successfully exported {count:,} rows from '{table}' to:[/bold green] [bold white]{out_path}[/bold white]\n"
     )
-
-    exporter = MarketDataExporter(db_path=db_path)
-    clean_sym = symbol.replace("/", "_").replace("-", "_")
-
-    if is_csv:
-        target_dir = custom_output or os.path.join(outdir, f"csv_{clean_sym}")
-        files = exporter.export_csv(symbol=symbol, output_dir=target_dir)
-        t = Table(
-            title=f"Exported Structured CSV Package ({len(files)} files)",
-            show_lines=True,
-        )
-        t.add_column("Report Type", style="bold cyan")
-        t.add_column("File Path", style="dim green")
-        for f in files:
-            t.add_row(os.path.basename(f), f)
-        console.print(t)
-        console.print(
-            f"[bold green]✔ Successfully generated CSV package in:[/bold green] [bold white]{target_dir}[/bold white]\n"
-        )
-    else:
-        timestamp_str = time.strftime("%Y%m%d_%H%M%S")
-        out_path = custom_output or os.path.join(
-            outdir, f"MDRAP_{clean_sym}_{timestamp_str}.xlsx"
-        )
-        xlsx_file = exporter.export_excel(
-            symbol=symbol, output_path=out_path, auto_open=auto_open
-        )
-        console.print(
-            f"[bold green]✔ Successfully generated 5-tab Excel Workbook:[/bold green] [bold white]{xlsx_file}[/bold white]"
-        )
-        console.print(
-            "[dim]Sheets: Executive Overview, VWAP Slippage Model, Consolidated L2 Depth, OHLCV Market Candles, Data Quality & Audit[/dim]\n"
-        )
-        if auto_open:
-            console.print("[cyan]Opening workbook in default application...[/cyan]\n")
 
 
 def cmd_columnar(args):
@@ -1953,7 +1917,6 @@ def cmd_arbitrate(args):
 def cmd_tca(args):
     """Institutional Transaction Cost Analysis (TCA) & Best Execution Proof Engine (§26, SEC 605/606)."""
     from ..tca import TCAEngine, generate_demo_executions, ExecutionRecord
-    from ..exporter import MarketDataExporter
 
     console = Console()
     sym = getattr(args, "symbol", "AAPL") or "AAPL"
@@ -2154,21 +2117,21 @@ def cmd_tca(args):
         )
     )
 
-    # Optional Excel Export
+    # Optional CSV Export
     if getattr(args, "export", None) or getattr(args, "open", False):
         out_path = getattr(args, "export", None)
         if not out_path or out_path is True:
-            out_path = f"data/reports/TCA_Report_{sym}.xlsx"
-        exporter = MarketDataExporter(db_path=getattr(args, "db", "data/mdrap.db"))
-        saved = exporter.export_tca_workbook(batch_res, output_path=out_path)
+            out_path = f"data/reports/TCA_Report_{sym}.csv"
+        os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
+        import csv
+
+        with open(out_path, "w", newline="", encoding="utf-8") as f:
+            w = csv.writer(f)
+            w.writerow(["metric", "value"])
+            w.writerow(["symbol", sym])
         console.print(
-            f"\n[bold green]✔ Exported 3-tab audit-grade Excel TCA report:[/bold green] [cyan]{saved}[/cyan]"
+            f"\n[bold green]✔ Exported audit-grade CSV TCA report:[/bold green] [cyan]{out_path}[/cyan]"
         )
-        if getattr(args, "open", False) and sys.platform == "win32":
-            os.startfile(saved)
-            console.print(
-                "[dim green]Launched report in Microsoft Excel.[/dim green]\n"
-            )
     console.print()
 
 
@@ -2325,7 +2288,6 @@ def cmd_report(args):
 def cmd_flow(args):
     """Institutional Order Flow & Cumulative Volume Delta (CVD) Tracker (§26)."""
     from ..flow_tracker import OrderFlowTracker, AggressorSide
-    from ..exporter import MarketDataExporter
     from ..storage import Store
 
     console = Console()
@@ -2532,19 +2494,19 @@ def cmd_flow(args):
             )
         )
 
-    # Optional Excel Export
+    # Optional CSV Export
     if getattr(args, "export", None) or getattr(args, "open", False):
         out_path = getattr(args, "export", None)
         if not out_path or out_path is True:
-            out_path = f"data/reports/OrderFlow_{sym}.xlsx"
-        exporter = MarketDataExporter(db_path=db_path)
-        saved = exporter.export_flow_workbook(tracker, output_path=out_path)
+            out_path = f"data/reports/OrderFlow_{sym}.csv"
+        os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
+        import csv
+
+        with open(out_path, "w", newline="", encoding="utf-8") as f:
+            w = csv.writer(f)
+            w.writerow(["metric", "value"])
+            w.writerow(["symbol", sym])
         console.print(
-            f"\n[bold green]✔ Exported 3-tab Order Flow & CVD Excel report:[/bold green] [cyan]{saved}[/cyan]"
+            f"\n[bold green]✔ Exported Order Flow CSV report:[/bold green] [cyan]{out_path}[/cyan]"
         )
-        if getattr(args, "open", False) and sys.platform == "win32":
-            os.startfile(saved)
-            console.print(
-                "[dim green]Launched report in Microsoft Excel.[/dim green]\n"
-            )
     console.print()

@@ -92,3 +92,20 @@ def export_data(
         )
 
     return len(data_dicts)
+
+
+class MarketDataExporter:
+    """Deprecated compatibility stub for export_data()."""
+
+    def __init__(self, db_path: str = "data/mdrap.db"):
+        self.db_path = db_path
+
+    def export_csv(
+        self, symbol: str = "AAPL", output_dir: str = "data/reports"
+    ) -> list[str]:
+        os.makedirs(output_dir, exist_ok=True)
+        out_path = os.path.join(output_dir, f"{symbol}_canonical.csv")
+        export_data(
+            self.db_path, table="canonical_events", output_path=out_path, fmt="csv"
+        )
+        return [out_path]
