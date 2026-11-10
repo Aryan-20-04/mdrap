@@ -1228,16 +1228,17 @@ class FastQualityEngine:
                 self.reason_counts[r] = self.reason_counts.get(r, 0) + 1
             return res
 
-        # F-10: Map event type cleanly for C hotpath (1=QUOTE, 0=TRADE, -1=other/unknown)
-        c_ev_type = (
-            1
-            if (event.event_type == EventType.QUOTE or event.event_type == "QUOTE")
-            else (
-                0
-                if (event.event_type == EventType.TRADE or event.event_type == "TRADE")
-                else -1
-            )
-        )
+        # F-10: Map event type cleanly for C hotpath (1=QUOTE, 0=TRADE, 2=HALT, 3=STATUS, -1=other/unknown)
+        if event.event_type == EventType.QUOTE or event.event_type == "QUOTE":
+            c_ev_type = 1
+        elif event.event_type == EventType.TRADE or event.event_type == "TRADE":
+            c_ev_type = 0
+        elif event.event_type == EventType.HALT or event.event_type == "HALT":
+            c_ev_type = 2
+        elif event.event_type == EventType.STATUS or event.event_type == "STATUS":
+            c_ev_type = 3
+        else:
+            c_ev_type = -1
 
         try:
             # Phase 3: Ultra-fast C-API extension (< 250 ns, zero ctypes boxing)

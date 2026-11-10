@@ -674,7 +674,7 @@ static void evaluate_nolock(FastEngine *eng, const FastEvent *ev, FastResult *re
         mark(res, STATUS_INVALID, REASON_SCHEMA_VIOLATION);
         return;
     }
-    if (ev->event_type != 0 && ev->event_type != 1) {          /* C-4: event_type was never validated */
+    if (ev->event_type != 0 && ev->event_type != 1 && ev->event_type != 2 && ev->event_type != 3) {          /* C-4: event_type was never validated */
         mark(res, STATUS_INVALID, REASON_SCHEMA_VIOLATION);
         return;
     }
@@ -694,7 +694,8 @@ static void evaluate_nolock(FastEngine *eng, const FastEvent *ev, FastResult *re
     /* --- C-4: structural validation ------------------------------------------------ */
     int bad = 0;
     if (ev->event_type == 0) { if (!has_price) bad = 1; }              /* TRADE needs a price   */
-    else                     { if (!has_bid && !has_ask) bad = 1; }    /* QUOTE needs a side    */
+    else if (ev->event_type == 1) { if (!has_bid && !has_ask) bad = 1; }    /* QUOTE needs a side    */
+    /* HALT (2) and STATUS (3) events require no prices or quotes */
     if ((has_price && num_bad(ev->price,     allow_neg)) ||
         (has_bid   && num_bad(ev->bid_price, allow_neg)) ||
         (has_ask   && num_bad(ev->ask_price, allow_neg)) ||

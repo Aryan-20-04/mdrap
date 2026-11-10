@@ -1,5 +1,5 @@
 {
-  "mdrap_version": "4.0.1",
+  "mdrap_version": "5.3.0",
   "commit": "e3e39c04d0d72280d5b879aaa4b747a512d0aa8c",
   "generated_at": "2026-11-07T18:48:36.690554+00:00",
   "install_command": "pip install -e .",

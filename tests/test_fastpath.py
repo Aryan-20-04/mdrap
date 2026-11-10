@@ -75,14 +75,15 @@ def test_fastpath_parity_with_python_engine():
                     raw_id=raw.raw_id,
                 )
             )
-            res_py = py_eng.evaluate(ev_py)
-            res_c = c_eng.evaluate(ev_c)
-
-            assert res_py.quality_status == res_c.quality_status, (
-                f"Status mismatch: py={res_py.quality_status}, c={res_c.quality_status}"
-            )
         except Exception:
-            pass
+            continue
+
+        res_py = py_eng.evaluate(ev_py)
+        res_c = c_eng.evaluate(ev_c)
+
+        assert res_py.quality_status == res_c.quality_status, (
+            f"Status mismatch: py={res_py.quality_status}, c={res_c.quality_status}"
+        )
 
     # Compare summary counts
     assert py_eng.counts["VALID"] == c_eng.counts["VALID"]
@@ -385,4 +386,46 @@ def test_fastpath_crc32c_hardware_and_fallback_parity():
             for _ in range(8):
                 c_ref = (c_ref >> 1) ^ (poly if (c_ref & 1) else 0)
         c_ref = ~c_ref & 0xFFFFFFFF
-        assert c_nat == c_ref, f"Mismatch on {s!r}: {c_nat} != {c_ref}"
+        assert c_nat == c_ref
+
+
+def test_fastpath_halt_and_status_event_parity():
+    """Verify HALT and STATUS events evaluate as VALID across both Python and C fastpath engines (P0-01)."""
+    import time
+    from mdrap.models import CanonicalEvent, EventType, QualityStatus
+    from mdrap.quality import QualityEngine
+    from mdrap.fastpath import FastQualityEngine
+
+    py_eng = QualityEngine()
+    c_eng = FastQualityEngine()
+
+    now = time.time()
+    ev_halt = CanonicalEvent(
+        event_id="evt-halt-1",
+        source="BINANCE",
+        instrument_id="BTC-USDT",
+        event_type=EventType.HALT,
+        exchange_timestamp=now,
+        receive_timestamp=now,
+        sequence_number=1,
+    )
+
+    ev_status = CanonicalEvent(
+        event_id="evt-status-1",
+        source="BINANCE",
+        instrument_id="BTC-USDT",
+        event_type=EventType.STATUS,
+        exchange_timestamp=now,
+        receive_timestamp=now,
+        sequence_number=2,
+    )
+
+    res_py_halt = py_eng.evaluate(ev_halt)
+    res_c_halt = c_eng.evaluate(ev_halt)
+    assert res_py_halt.quality_status == QualityStatus.VALID
+    assert res_c_halt.quality_status == QualityStatus.VALID
+
+    res_py_status = py_eng.evaluate(ev_status)
+    res_c_status = c_eng.evaluate(ev_status)
+    assert res_py_status.quality_status == QualityStatus.VALID
+    assert res_c_status.quality_status == QualityStatus.VALID

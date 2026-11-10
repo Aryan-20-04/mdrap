@@ -9,6 +9,20 @@
 #include <Python.h>
 #include "fastpath.c"
 
+#if defined(_MSC_VER)
+  #include <intrin.h>
+  static inline uint64_t md_spsc_load_acq(volatile const uint64_t *p) {
+      uint64_t v = *p;
+      _ReadWriteBarrier();
+      return v;
+  }
+  #define SPSC_LOAD_ACQ(p)       md_spsc_load_acq((volatile const uint64_t *)(p))
+  #define SPSC_STORE_REL(p, v)   do { _ReadWriteBarrier(); *(volatile uint64_t *)(p) = (uint64_t)(v); } while (0)
+#else
+  #define SPSC_LOAD_ACQ(p)       __atomic_load_n((p), __ATOMIC_ACQUIRE)
+  #define SPSC_STORE_REL(p, v)   __atomic_store_n((p), (v), __ATOMIC_RELEASE)
+#endif
+
 /* Pre-interned string keys for fast dict construction */
 static PyObject *str_type = NULL;
 static PyObject *str_seq = NULL;
@@ -512,7 +526,7 @@ static PyObject *NativeSpscQueue_offer(NativeSpscQueueObject *self, PyObject *it
     uint64_t head = r->head;
     uint64_t tail = r->cached_tail;
     if (head - tail >= r->capacity) {
-        tail = __atomic_load_n(&r->tail, __ATOMIC_ACQUIRE);
+        tail = SPSC_LOAD_ACQ(&r->tail);
         r->cached_tail = tail;
         if (head - tail >= r->capacity) {
             Py_RETURN_FALSE;
@@ -520,7 +534,7 @@ static PyObject *NativeSpscQueue_offer(NativeSpscQueueObject *self, PyObject *it
     }
     Py_INCREF(item);
     r->items[head & r->mask] = item;
-    __atomic_store_n(&r->head, head + 1, __ATOMIC_RELEASE);
+    SPSC_STORE_REL(&r->head, head + 1);
     Py_RETURN_TRUE;
 }
 
@@ -533,7 +547,7 @@ static PyObject *NativeSpscQueue_poll(NativeSpscQueueObject *self, PyObject *Py_
     uint64_t tail = r->tail;
     uint64_t head = r->cached_head;
     if (tail == head) {
-        head = __atomic_load_n(&r->head, __ATOMIC_ACQUIRE);
+        head = SPSC_LOAD_ACQ(&r->head);
         r->cached_head = head;
         if (tail == head) {
             Py_RETURN_NONE;
@@ -542,15 +556,15 @@ static PyObject *NativeSpscQueue_poll(NativeSpscQueueObject *self, PyObject *Py_
     uint32_t idx = (uint32_t)(tail & r->mask);
     PyObject *item = r->items[idx];
     r->items[idx] = NULL;
-    __atomic_store_n(&r->tail, tail + 1, __ATOMIC_RELEASE);
+    SPSC_STORE_REL(&r->tail, tail + 1);
     return item;
 }
 
 static PyObject *NativeSpscQueue_qsize(NativeSpscQueueObject *self, PyObject *Py_UNUSED(ignored)) {
     NativeRing *r = self->ring;
     if (!r) return PyLong_FromLong(0);
-    uint64_t head = __atomic_load_n(&r->head, __ATOMIC_ACQUIRE);
-    uint64_t tail = __atomic_load_n(&r->tail, __ATOMIC_ACQUIRE);
+    uint64_t head = SPSC_LOAD_ACQ(&r->head);
+    uint64_t tail = SPSC_LOAD_ACQ(&r->tail);
     int64_t diff = (int64_t)head - (int64_t)tail;
     return PyLong_FromLongLong(diff > 0 ? diff : 0);
 }
@@ -558,8 +572,8 @@ static PyObject *NativeSpscQueue_qsize(NativeSpscQueueObject *self, PyObject *Py
 static PyObject *NativeSpscQueue_empty(NativeSpscQueueObject *self, PyObject *Py_UNUSED(ignored)) {
     NativeRing *r = self->ring;
     if (!r) Py_RETURN_TRUE;
-    uint64_t head = __atomic_load_n(&r->head, __ATOMIC_ACQUIRE);
-    uint64_t tail = __atomic_load_n(&r->tail, __ATOMIC_ACQUIRE);
+    uint64_t head = SPSC_LOAD_ACQ(&r->head);
+    uint64_t tail = SPSC_LOAD_ACQ(&r->tail);
     if (head == tail) {
         Py_RETURN_TRUE;
     } else {
@@ -570,8 +584,8 @@ static PyObject *NativeSpscQueue_empty(NativeSpscQueueObject *self, PyObject *Py
 static PyObject *NativeSpscQueue_full(NativeSpscQueueObject *self, PyObject *Py_UNUSED(ignored)) {
     NativeRing *r = self->ring;
     if (!r) Py_RETURN_FALSE;
-    uint64_t head = __atomic_load_n(&r->head, __ATOMIC_ACQUIRE);
-    uint64_t tail = __atomic_load_n(&r->tail, __ATOMIC_ACQUIRE);
+    uint64_t head = SPSC_LOAD_ACQ(&r->head);
+    uint64_t tail = SPSC_LOAD_ACQ(&r->tail);
     int64_t diff = (int64_t)head - (int64_t)tail;
     if (diff >= (int64_t)r->capacity) {
         Py_RETURN_TRUE;

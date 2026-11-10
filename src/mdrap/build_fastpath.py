@@ -24,11 +24,15 @@ __stability__ = "experimental"
 
 def _get_arch_flags() -> list[str]:
     """Return compiler architecture-specific vectorization flags."""
+    flags: list[str] = []
+    # If explicitly portable or building distribution wheels, avoid -march=native
+    if not (os.environ.get("MDRAP_PORTABLE_BUILD") == "1" or os.environ.get("CIBUILDWHEEL") == "1"):
+        flags.append("-march=native")
     mach = platform.machine().lower()
     # AVX2 is strictly an x86/x86_64 SIMD feature. Apple Silicon (arm64) and aarch64 do not support -mavx2.
     if mach in ("x86_64", "amd64", "x86", "i386", "i686"):
-        return ["-mavx2"]
-    return []
+        flags.append("-mavx2")
+    return flags
 
 
 def get_lib_name(extension: Optional[str] = None) -> str:
@@ -149,7 +153,6 @@ def build(
         cmd = [
             compiler,
             "-O3",
-            "-march=native",
             *_get_arch_flags(),
             "-ffp-contract=off",
             "-flto",
@@ -298,7 +301,6 @@ def build_core(
         cmd = [
             compiler,
             "-O3",
-            "-march=native",
             *_get_arch_flags(),
             "-ffp-contract=off",
             "-flto",
@@ -421,7 +423,6 @@ def build_extension(
         cmd = [
             compiler,
             "-O3",
-            "-march=native",
             *_get_arch_flags(),
             "-ffp-contract=off",
             "-flto",
