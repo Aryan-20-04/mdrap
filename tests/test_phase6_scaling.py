@@ -2,7 +2,7 @@
 
 import time
 import pytest
-from src.partition import (
+from mdrap.partition import (
     ShardConfig,
     SymbolPartitioner,
     ConsumerFanoutManager,

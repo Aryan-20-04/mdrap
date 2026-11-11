@@ -11,9 +11,55 @@ import sys
 import time
 from typing import Any, Dict, List, Optional
 
-from .term import Console, Table, Panel
+from .term import Console, Table, Panel, poll_keypress
 
 __stability__ = "stable"
+
+CURRENCY_SYMBOLS: Dict[str, str] = {
+    "USD": "$",
+    "INR": "₹",
+    "EUR": "€",
+    "GBP": "£",
+    "JPY": "¥",
+    "CAD": "C$",
+    "AUD": "A$",
+    "HKD": "HK$",
+    "CHF": "CHF ",
+    "SGD": "S$",
+    "BTC": "₿",
+    "ETH": "Ξ",
+    "SOL": "◎",
+}
+
+
+def get_currency_symbol(
+    currency_code: Optional[str] = None, instrument: str = ""
+) -> str:
+    """Resolve active fiat/asset currency symbol for terminal tables and charts."""
+    if currency_code and currency_code.upper() in CURRENCY_SYMBOLS:
+        return CURRENCY_SYMBOLS[currency_code.upper()]
+    inst = (instrument or "").upper()
+    if (
+        inst.endswith(".NS")
+        or inst.endswith(".BO")
+        or inst
+        in ("TMPV", "TATAMOTORS", "RELIANCE", "TCS", "INFY", "HDFCBANK", "SBIN", "ITC")
+    ):
+        return "₹"
+    if any(inst.endswith(sfx) for sfx in (".DE", ".PA", ".AS", ".MI", ".MC", ".BR")):
+        return "€"
+    if inst.endswith(".L"):
+        return "£"
+    if inst.endswith(".TO") or inst.endswith(".V"):
+        return "C$"
+    if inst.endswith(".AX"):
+        return "A$"
+    if inst.endswith(".HK"):
+        return "HK$"
+    if inst.endswith(".T"):
+        return "¥"
+    return "$"
+
 
 SPARKLINE_BARS = [" ", " ", "▂", "▃", "▄", "▅", "▆", "▇", "█"]
 VOLUME_BARS = [" ", " ", "▂", "▃", "▄", "▅", "▆", "▇", "█"]
@@ -195,6 +241,34 @@ class LiveTickerDashboard:
         self.analytics = _DummyAnalytics()
         self.event_count = 0
         self.console = Console()
+        self.venue_quotes: Dict[str, Dict[str, dict]] = {}
+        self.instrument_currencies: Dict[str, str] = {}
+        self.session_stats: Dict[str, dict] = {}
+
+    def update_with_event(
+        self, raw: Any, ev: Optional[Any] = None, engine_ns: int = 0
+    ) -> None:
+        """Feed a processed market event into the live dashboard state."""
+        self.event_count += 1
+        p = getattr(raw, "payload", {}) or {}
+        sym = (getattr(ev, "instrument_id", None) or p.get("instrument", "UNKNOWN")).upper()
+        venue = (getattr(raw, "source", None) or p.get("exchange") or "UNKNOWN").upper()
+
+        if sym not in self.venue_quotes:
+            self.venue_quotes[sym] = {}
+        if venue not in self.venue_quotes[sym]:
+            self.venue_quotes[sym][venue] = {"bid": 0.0, "ask": 0.0, "spread": 0.0}
+
+        bid = p.get("bid")
+        ask = p.get("ask")
+        if bid is not None and float(bid) > 0:
+            self.venue_quotes[sym][venue]["bid"] = float(bid)
+        if ask is not None and float(ask) > 0:
+            self.venue_quotes[sym][venue]["ask"] = float(ask)
+        cur_bid = self.venue_quotes[sym][venue]["bid"]
+        cur_ask = self.venue_quotes[sym][venue]["ask"]
+        if cur_bid > 0 and cur_ask > 0:
+            self.venue_quotes[sym][venue]["spread"] = cur_ask - cur_bid
 
     def run_live_stream(
         self,
@@ -221,6 +295,35 @@ class LiveTickerDashboard:
                 )
             if limit and self.event_count >= limit:
                 break
+
+    def render_single_ticker(
+        self,
+        symbol: str,
+        paused: bool = False,
+        show_chart: bool = True,
+        show_depth: bool = True,
+    ) -> Panel:
+        """Render a single-ticker summary panel."""
+        return Panel(
+            f"[bold cyan]MDRAP Single Ticker Focus: {symbol}[/bold cyan]\n"
+            f"[dim]Status:[/dim] {'PAUSED' if paused else 'ACTIVE'}",
+            border_style="cyan",
+        )
+
+    def render_multi_ticker_table(
+        self, symbols: List[str], paused: bool = False
+    ) -> Table:
+        """Render a multi-ticker overview table."""
+        t = Table(title="MDRAP Consolidated Multi-Ticker Cockpit", border_style="cyan")
+        t.add_column("Symbol", style="bold cyan")
+        t.add_column("Status", style="green")
+        for s in symbols:
+            t.add_row(s, "PAUSED" if paused else "ACTIVE")
+        return t
+
+
+# Convenience alias for legacy callers
+TerminalDisplay = LiveTickerDashboard
 
 
 async def run_dashboard(port: int = 9000) -> None:

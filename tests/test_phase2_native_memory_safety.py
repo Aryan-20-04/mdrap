@@ -7,10 +7,10 @@ heap buffer overflows, memory corruptions, or cross-instrument corruption.
 from __future__ import annotations
 
 import pytest
-from src import fastpath
-from src.config import QualityConfig
-from src.fastpath import FastQualityEngine
-from src.models import CanonicalEvent, EventType, QualityStatus
+from mdrap import fastpath
+from mdrap.config import QualityConfig
+from mdrap.fastpath import FastQualityEngine
+from mdrap.models import CanonicalEvent, EventType, QualityStatus
 
 
 def _make_event(instrument_id: str, price: float, seq: int) -> CanonicalEvent:

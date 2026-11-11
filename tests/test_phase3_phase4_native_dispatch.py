@@ -12,8 +12,8 @@ import gc
 import mmap
 import sys
 import pytest
-from src import fastpath
-from src.shm import SHMWriter, DEFAULT_SLOT_COUNT, SLOT_SIZE, HEADER_SIZE
+from mdrap import fastpath
+from mdrap.shm import SHMWriter, DEFAULT_SLOT_COUNT, SLOT_SIZE, HEADER_SIZE
 
 
 def test_native_shm_write_tick_18_args():
