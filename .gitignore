@@ -97,6 +97,9 @@ data/parquet/*
 # Generated Reports & Financial Exports
 data/reports/*
 !data/reports/.gitkeep
+demo/output/*
+!demo/output/evidence_inc-1794378613-0001.json
+!demo/output/report_inc-1794378613-0001.md
 *.xlsx
 *.csv
 !docs/audits/*.csv
