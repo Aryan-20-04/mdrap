@@ -380,10 +380,10 @@ class HighestReliabilityStrategy:
                     break
 
         individual_crossed = any(
-            (ev.bid_price is not None and ev.ask_price is not None and ev.bid_price >= ev.ask_price)
+            (ev.bid_price is not None and ev.ask_price is not None and ev.bid_price > ev.ask_price)
             for ev in active_quotes.values()
         )
-        cross_venue_crossed = (max(bids.values()) >= min(asks.values())) if bids and asks else False
+        cross_venue_crossed = (max(bids.values()) > min(asks.values())) if bids and asks else False
         is_crossed_book = individual_crossed or cross_venue_crossed
 
         disagreement = bid_disagreement or ask_disagreement or is_crossed_book
@@ -626,10 +626,10 @@ class MedianPriceStrategy:
                     break
 
         individual_crossed = any(
-            (ev.bid_price is not None and ev.ask_price is not None and ev.bid_price >= ev.ask_price)
+            (ev.bid_price is not None and ev.ask_price is not None and ev.bid_price > ev.ask_price)
             for ev in active_quotes.values()
         )
-        cross_venue_crossed = (max(bids.values()) >= min(asks.values())) if bids and asks else False
+        cross_venue_crossed = (max(bids.values()) > min(asks.values())) if bids and asks else False
         is_crossed_book = individual_crossed or cross_venue_crossed
 
         disagreement = bid_disagreement or ask_disagreement or is_crossed_book

@@ -27,6 +27,7 @@ def test_c04_version_consistency():
         'version = "4.0.0"' in compat_toml
         or 'version = "4.0.1"' in compat_toml
         or 'version = "5.3.0"' in compat_toml
+        or 'version = "6.0.0"' in compat_toml
     )
 
     contrib_toml = (REPO_ROOT / "contrib" / "pyproject.toml").read_text(
@@ -36,6 +37,7 @@ def test_c04_version_consistency():
         'version = "4.0.0"' in contrib_toml
         or 'version = "4.0.1"' in contrib_toml
         or 'version = "5.3.0"' in contrib_toml
+        or 'version = "6.0.0"' in contrib_toml
     )
 
     cargo_toml = (REPO_ROOT / "sdk" / "rust" / "Cargo.toml").read_text(encoding="utf-8")

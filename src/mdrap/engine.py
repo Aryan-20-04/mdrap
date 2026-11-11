@@ -2531,8 +2531,8 @@ class Engine:
                 if len(active_quotes) >= 2:
                     bids = [q["bid"] for q in active_quotes.values()]
                     asks = [q["ask"] for q in active_quotes.values()]
-                    ind_crossed = any(q["bid"] >= q["ask"] for q in active_quotes.values())
-                    cross_crossed = max(bids) >= min(asks)
+                    ind_crossed = any(q["bid"] > q["ask"] for q in active_quotes.values())
+                    cross_crossed = max(bids) > min(asks)
                     if ind_crossed or cross_crossed:
                         if reasons_out is reasons:
                             reasons_out = list(reasons)

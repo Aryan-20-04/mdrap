@@ -377,6 +377,7 @@ def test_e8_grouped_by_time_direct_append_unsynced_when_quiet():
     td = _safe_td()
     try:
         wal = IngestLog(td, fsync_policy="grouped_by_time")
+        wal._last_fsync_ts = time.time()
         raw = RawEvent(source="TEST", payload={"price": 1.0})
         off = wal.append(raw)
 
