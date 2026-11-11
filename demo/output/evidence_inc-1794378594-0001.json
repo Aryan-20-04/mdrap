@@ -1,0 +1,32 @@
+{
+  "evidence_type": "INCIDENT_FORENSIC_RECORD",
+  "incident_id": "inc-1794378594-0001",
+  "event_id": "evt-5954539c18bc3be6-16",
+  "provider": "COINBASE",
+  "instrument": "BTC-USD",
+  "data_mode": "SIMULATION",
+  "timestamps": {
+    "exchange_ts": 1794378594.3968992,
+    "receive_ts": 1794378594.3969002,
+    "processing_ts": 1794378594.3973498
+  },
+  "quality": {
+    "status": "SUSPICIOUS",
+    "reasons": [
+      "SEQUENCE_GAP"
+    ]
+  },
+  "integrity": {
+    "raw_id": "demo-raw-gap-1250",
+    "payload_sha256": "2ca58ea527cd5f02bd11c90d18cd01b2cbd7e15940ff2c0a31f4cf23a2410891",
+    "lineage_hash": "3c0d2029947d141085e9a306d3022b517273f63cfc68400f45f2b8a05e12deca",
+    "merkle_root": "49a95d59edcb6d37e3f43504f9c0ea373367b259db37325073a30624c9a5b1d0",
+    "merkle_proof": [
+      [
+        "88b616c1798f75888b66cfc62e764be4ea427aa14935f7feb0002441dc7cbb5f",
+        "R"
+      ]
+    ]
+  },
+  "raw_wire": "gap-payload"
+}
