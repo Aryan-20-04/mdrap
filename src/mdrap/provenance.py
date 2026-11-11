@@ -394,3 +394,108 @@ class ProvenanceTracker:
             "verification_status": "VERIFIED_TAMPER_EVIDENT",
             "exported_at": time.time(),
         }
+
+
+def compute_lineage_hash(
+    event_id: str,
+    raw_id: str,
+    provider: str,
+    instrument: str,
+    data_mode: str,
+    payload_sha256: str,
+    quality_status: str,
+    processing_timestamp: float,
+) -> str:
+    """Compute deterministic lineage hash binding raw frame and canonical outcome."""
+    manifest = f"{event_id}:{raw_id}:{provider}:{instrument}:{data_mode}:{payload_sha256}:{quality_status}:{processing_timestamp}"
+    return hashlib.sha256(manifest.encode("utf-8")).hexdigest()
+
+
+def verify_evidence_package(evidence: dict[str, Any]) -> tuple[bool, list[str]]:
+    """Perform rigorous cryptographic verification of an exported evidence manifest."""
+    import hmac
+
+    errors: list[str] = []
+
+    # 1. Schema check
+    req_fields = [
+        "evidence_type",
+        "event_id",
+        "provider",
+        "instrument",
+        "timestamps",
+        "quality",
+        "integrity",
+    ]
+    for f in req_fields:
+        if f not in evidence:
+            errors.append(f"Missing required manifest field: '{f}'")
+    if errors:
+        return False, errors
+
+    event_id = evidence["event_id"]
+    provider = evidence["provider"]
+    instrument = evidence["instrument"]
+    data_mode = evidence.get("data_mode", "LIVE")
+    processing_ts = evidence["timestamps"].get("processing_ts", 0.0)
+    quality_status = evidence["quality"].get("status", "VALID")
+    claimed_payload_sha256 = evidence["integrity"].get("payload_sha256", "")
+    claimed_lineage_hash = evidence["integrity"].get("lineage_hash", "")
+    raw_id = evidence["integrity"].get("raw_id", "") or evidence.get("raw_id", "")
+
+    # 2. Wire payload check if raw wire is provided
+    raw_wire = evidence.get("raw_wire")
+    if raw_wire is not None:
+        recalc_wire_hash = compute_payload_hash(raw_wire)
+        if not hmac.compare_digest(recalc_wire_hash, claimed_payload_sha256):
+            errors.append(
+                f"PAYLOAD TAMPER DETECTED: Computed wire SHA-256 '{recalc_wire_hash}' "
+                f"does not match claimed payload digest '{claimed_payload_sha256}'"
+            )
+
+    # 3. Lineage hash check
+    recalc_lineage = compute_lineage_hash(
+        event_id=event_id,
+        raw_id=raw_id,
+        provider=provider,
+        instrument=instrument,
+        data_mode=data_mode,
+        payload_sha256=claimed_payload_sha256,
+        quality_status=quality_status,
+        processing_timestamp=processing_ts,
+    )
+    if not hmac.compare_digest(recalc_lineage, claimed_lineage_hash):
+        errors.append(
+            f"LINEAGE TAMPER DETECTED: Recomputed lineage digest '{recalc_lineage}' "
+            f"does not match sealed manifest hash '{claimed_lineage_hash}'"
+        )
+
+    # 4. Merkle proof check if present
+    merkle_proof = evidence.get("merkle_proof") or evidence.get("integrity", {}).get(
+        "merkle_proof"
+    )
+    expected_root = evidence.get("merkle_root") or evidence.get(
+        "integrity", {}
+    ).get("merkle_root")
+    if expected_root is not None:
+        leaf_input = (
+            evidence["integrity"].get("entry_hash") or claimed_lineage_hash
+        )
+        curr = hashlib.sha256(b"\x00" + leaf_input.encode("utf-8")).hexdigest()
+        if merkle_proof:
+            for sibling_hex, pos in merkle_proof:
+                if pos.upper() == "R":
+                    curr = hashlib.sha256(
+                        b"\x01" + bytes.fromhex(curr) + bytes.fromhex(sibling_hex)
+                    ).hexdigest()
+                else:
+                    curr = hashlib.sha256(
+                        b"\x01" + bytes.fromhex(sibling_hex) + bytes.fromhex(curr)
+                    ).hexdigest()
+        if not hmac.compare_digest(curr, expected_root):
+            errors.append(
+                f"MERKLE PROOF REJECTED: Inclusion proof failed to reconstruct root '{expected_root}'"
+            )
+
+    return len(errors) == 0, errors
+

@@ -19,9 +19,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   - Automated pre-flight environment validator (`deploy/validate_environment.py`) and non-intrusive container health probe (`deploy/healthcheck.py`).
 - **Comprehensive Developer Documentation (`docs/developer/`)**:
   - Published 18 comprehensive technical guides covering getting started, installation, configuration, architecture, connectors, provenance, quality engine, incidents, replay, evidence verification, CLI reference, API reference, deployment, troubleshooting, security, limitations, and demo walkthrough.
-- **Institutional Product Website (`website/`)**:
-  - Developed restrained, dark-themed institutional website with zero external CDN dependencies.
-  - Built interactive browser terminal simulator (`website/js/main.js`) and structured design partner inquiry flow.
+- **Headless CLI & Terminal Operator Experience**:
+  - Streamlined CLI command suite with Rich and plain-text fallbacks, non-TTY pipe support, structured exit codes, and automated pre-flight diagnostics.
+  - Zero browser frontend, zero web dashboard, zero external UI dependencies.
 - **Design Partner Onboarding Package (`business/phase4/`)**:
   - Authored 5-stage onboarding workflow, technical discovery questionnaire, 30-day pilot agreement, deployment checklist, weekly review template, and clean decommissioning protocol.
   - Published technical marketing whitepapers on why sequence gaps matter, deterministic replay value, and read-only security.

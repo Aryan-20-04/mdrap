@@ -620,6 +620,66 @@ def test_trimmed_aliases_and_mnemonic_backward_compatibility():
         "book",
         "whales",
         "duckdb",
+        "check",
+        "chk",
     ]
     for k in legacy_keys:
         assert k in MNEMONIC_MAP
+
+
+def test_incident_show_export_and_standalone_verify(tmp_path):
+    import json
+    from mdrap.cli import build_parser, cmd_incident, cmd_verify
+    from mdrap.incidents import IncidentManager
+
+    db_file = str(tmp_path / "test_inc.db")
+    mgr = IncidentManager(db_file)
+    inc = mgr.record_anomaly(
+        event={
+            "source": "TEST_EXCHANGE",
+            "instrument_id": "ETH/USD",
+            "event_id": "evt-1",
+            "timestamp_exchange": 1700000000.0,
+            "timestamp_received": 1700000000.0,
+        },
+        anomaly_type="PRICE_OUTLIER",
+        impact_summary="Price deviation of 12.5%",
+        severity="HIGH",
+    )
+    inc_id = inc.incident_id
+
+    parser = build_parser()
+
+    # 1. Incident list
+    args_list = parser.parse_args(["incident", "list", "--db", db_file])
+    assert cmd_incident(args_list) == 0
+
+    # 2. Incident show
+    args_show = parser.parse_args(["incident", "show", inc_id, "--db", db_file])
+    assert cmd_incident(args_show) == 0
+
+    # 3. Incident direct shorthand
+    args_short = parser.parse_args(["incident", inc_id, "--db", db_file])
+    assert cmd_incident(args_short) == 0
+
+    # 4. Incident export
+    evidence_file = str(tmp_path / "evidence.json")
+    args_export = parser.parse_args(["incident", "export", inc_id, "-o", evidence_file, "--db", db_file])
+    assert cmd_incident(args_export) == 0
+    assert os.path.exists(evidence_file)
+
+    # 5. Standalone evidence verification (clean)
+    args_verify = parser.parse_args(["verify", evidence_file])
+    assert cmd_verify(args_verify) == 0
+
+    # 6. Tampered evidence verification (fail / exit code 1)
+    tampered_file = str(tmp_path / "tampered.json")
+    with open(evidence_file, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    data["quality"]["status"] = "INVALID"  # Tamper with quality status
+    with open(tampered_file, "w", encoding="utf-8") as f:
+        json.dump(data, f)
+
+    args_verify_tampered = parser.parse_args(["verify", tampered_file])
+    assert cmd_verify(args_verify_tampered) == 1
+

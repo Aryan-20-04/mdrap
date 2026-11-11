@@ -18,7 +18,7 @@ A deterministic, high-throughput market data validation, normalization, and cryp
 [![Language](https://img.shields.io/badge/language-Python%20%7C%20C%20(AVX2)-6366f1?style=flat-square)](src/mdrap/fastpath.c)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Windows-334155?style=flat-square)](#installation)
 
-[**Quickstart**](#quickstart--demo) &nbsp;•&nbsp; [**Developer Docs**](docs/developer/getting-started.md) &nbsp;•&nbsp; [**Architecture**](docs/developer/architecture.md) &nbsp;•&nbsp; [**Demo Guide**](docs/developer/demo.md) &nbsp;•&nbsp; [**Benchmarks**](website/benchmarks.html) &nbsp;•&nbsp; [**Security Model**](docs/developer/security.md) &nbsp;•&nbsp; [**Self-Hosted Deploy**](docs/developer/self-hosted-deployment.md)
+[**Quickstart**](#quickstart--demo) &nbsp;•&nbsp; [**Developer Docs**](docs/developer/getting-started.md) &nbsp;•&nbsp; [**Architecture**](docs/developer/architecture.md) &nbsp;•&nbsp; [**Demo Guide**](docs/developer/demo.md) &nbsp;•&nbsp; [**Benchmarks**](docs/benchmarks.md) &nbsp;•&nbsp; [**Security Model**](docs/developer/security.md) &nbsp;•&nbsp; [**Self-Hosted Deploy**](docs/developer/self-hosted-deployment.md)
 
 </div>
 
