@@ -18,7 +18,8 @@ def test_concurrent_fastpath_cleanup_and_init():
     if not lib or not hasattr(lib, "fastpath_cleanup"):
         # If pure Python fallback or library not loaded, verify Python wrapper lifecycle
         for _ in range(50):
-            fastpath.reset_engine()
+            eng = fastpath.get_quality_engine(prefer_native=False)
+            eng.reset()
         return
 
     errors = []
