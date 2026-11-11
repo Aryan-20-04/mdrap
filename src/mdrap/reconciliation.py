@@ -27,7 +27,7 @@ from collections import OrderedDict
 from dataclasses import dataclass, field
 from typing import Protocol, runtime_checkable
 
-from .models import CanonicalEvent, QualityStatus, Reason
+from .models import CanonicalEvent, EventType, QualityStatus, Reason
 
 __stability__ = "stable"
 
@@ -190,6 +190,11 @@ class CanonicalDecision:
     quality_reasons: list[str] = field(default_factory=list)
     lead_source: str = ""
     lead_latency_delta_ms: float = 0.0
+    reconciliation_type: str = "TRADE"  # "TRADE" or "QUOTE"
+    bid_disagreement: bool = False
+    ask_disagreement: bool = False
+    spread_disagreement: bool = False
+    is_crossed_book: bool = False
 
 
 @runtime_checkable
@@ -226,6 +231,23 @@ class HighestReliabilityStrategy:
         blocked_sources: set[str] | None = None,
         market_now: float | None = None,
     ) -> CanonicalDecision | None:
+        # Check if candidates are quote events; delegate to select_quote if so
+        is_quote = any(
+            ev.event_type == EventType.QUOTE
+            or (ev.price is None and ev.bid_price is not None and ev.ask_price is not None)
+            for ev, _ in candidates.values()
+        )
+        if is_quote:
+            return self.select_quote(
+                instrument_id=instrument_id,
+                candidates=candidates,
+                scores=scores,
+                agreement_window_s=agreement_window_s,
+                disagreement_pct_threshold=disagreement_pct_threshold,
+                blocked_sources=blocked_sources,
+                market_now=market_now,
+            )
+
         blocked = blocked_sources or set()
         recent_sources: list[str] = []
         recent_prices: dict[str, float] = {}
@@ -295,6 +317,133 @@ class HighestReliabilityStrategy:
             quality_reasons=quality_reasons,
             lead_source=lead_source,
             lead_latency_delta_ms=round(lead_latency_delta_ms, 3),
+            reconciliation_type="TRADE",
+        )
+
+    def select_quote(
+        self,
+        instrument_id: str,
+        candidates: dict[str, tuple[CanonicalEvent, float]],
+        scores: dict[str, float],
+        agreement_window_s: float,
+        disagreement_pct_threshold: float,
+        blocked_sources: set[str] | None = None,
+        market_now: float | None = None,
+    ) -> CanonicalDecision | None:
+        blocked = blocked_sources or set()
+        active_quotes: dict[str, CanonicalEvent] = {}
+
+        for src in sorted(candidates.keys()):
+            ev, ts = candidates[src]
+            if market_now is not None and abs(market_now - ts) > agreement_window_s:
+                continue
+            if src in blocked or ev.bid_price is None or ev.ask_price is None:
+                continue
+            active_quotes[src] = ev
+
+        n_recent = len(active_quotes)
+        if n_recent < 2:
+            return None
+
+        recent_sources = sorted(active_quotes.keys())
+        bids = {src: ev.bid_price for src, ev in active_quotes.items() if ev.bid_price is not None}
+        asks = {src: ev.ask_price for src, ev in active_quotes.items() if ev.ask_price is not None}
+        spreads = {
+            src: (ev.ask_price - ev.bid_price)
+            for src, ev in active_quotes.items()
+            if ev.ask_price is not None and ev.bid_price is not None
+        }
+
+        mean_bid = sum(bids.values()) / len(bids) if bids else 0.0
+        mean_ask = sum(asks.values()) / len(asks) if asks else 0.0
+        mean_spread = sum(spreads.values()) / len(spreads) if spreads else 0.0
+
+        bid_disagreement = False
+        if mean_bid > 0:
+            for b in bids.values():
+                if abs(b - mean_bid) / mean_bid > disagreement_pct_threshold:
+                    bid_disagreement = True
+                    break
+
+        ask_disagreement = False
+        if mean_ask > 0:
+            for a in asks.values():
+                if abs(a - mean_ask) / mean_ask > disagreement_pct_threshold:
+                    ask_disagreement = True
+                    break
+
+        spread_disagreement = False
+        if mean_spread > 0:
+            for s in spreads.values():
+                if abs(s - mean_spread) / mean_spread > disagreement_pct_threshold:
+                    spread_disagreement = True
+                    break
+
+        individual_crossed = any(
+            (ev.bid_price is not None and ev.ask_price is not None and ev.bid_price >= ev.ask_price)
+            for ev in active_quotes.values()
+        )
+        cross_venue_crossed = (max(bids.values()) >= min(asks.values())) if bids and asks else False
+        is_crossed_book = individual_crossed or cross_venue_crossed
+
+        disagreement = bid_disagreement or ask_disagreement or spread_disagreement or is_crossed_book
+
+        quality_reasons: list[str] = []
+        if is_crossed_book:
+            quality_reasons.append(Reason.CROSSED_QUOTE.value)
+        if bid_disagreement or ask_disagreement or spread_disagreement:
+            quality_reasons.append(Reason.CROSS_FEED_DISAGREEMENT.value)
+
+        # Primary: highest score
+        # Tie-breaker 1: tighter spread (lower ask - bid)
+        # Tie-breaker 2: deeper size (bid_size + ask_size)
+        # Tie-breaker 3: deterministic source name ascending
+        def quote_key(src: str):
+            ev = active_quotes[src]
+            score = scores.get(src, 0.0)
+            spread = (
+                (ev.ask_price - ev.bid_price)
+                if (ev.ask_price is not None and ev.bid_price is not None)
+                else float("inf")
+            )
+            total_size = (ev.bid_size or 0.0) + (ev.ask_size or 0.0)
+            return (-score, spread, -total_size, src)
+
+        chosen_source = min(recent_sources, key=quote_key)
+        chosen_event = active_quotes[chosen_source]
+
+        if disagreement:
+            reason = (
+                f"quote disagreement across {recent_sources} "
+                f"(bids={bids}, asks={asks}, crossed={is_crossed_book}); selected highest-reliability quote"
+            )
+        else:
+            reason = "quote sources agree within threshold; selected highest-reliability quote"
+
+        lead_source = ""
+        lead_latency_delta_ms = 0.0
+        if recent_sources:
+            earliest_src = min(recent_sources, key=lambda s: candidates[s][1])
+            lead_source = earliest_src
+            earliest_ts = candidates[earliest_src][1]
+            if market_now is not None:
+                lead_latency_delta_ms = max(0.0, (market_now - earliest_ts) * 1000.0)
+
+        return CanonicalDecision(
+            instrument_id=instrument_id,
+            chosen_source=chosen_source,
+            chosen_event_id=chosen_event.event_id,
+            disagreement=disagreement,
+            reason=reason,
+            competing_sources=recent_sources,
+            quality_reasons=quality_reasons,
+            lead_source=lead_source,
+            lead_latency_delta_ms=round(lead_latency_delta_ms, 3),
+            reconciliation_type="QUOTE",
+            bid_disagreement=bid_disagreement,
+            ask_disagreement=ask_disagreement,
+            spread_disagreement=spread_disagreement,
+            is_crossed_book=is_crossed_book,
         )
 
 
@@ -316,6 +465,23 @@ class MedianPriceStrategy:
         blocked_sources: set[str] | None = None,
         market_now: float | None = None,
     ) -> CanonicalDecision | None:
+        # Check if candidates are quote events; delegate to select_quote if so
+        is_quote = any(
+            ev.event_type == EventType.QUOTE
+            or (ev.price is None and ev.bid_price is not None and ev.ask_price is not None)
+            for ev, _ in candidates.values()
+        )
+        if is_quote:
+            return self.select_quote(
+                instrument_id=instrument_id,
+                candidates=candidates,
+                scores=scores,
+                agreement_window_s=agreement_window_s,
+                disagreement_pct_threshold=disagreement_pct_threshold,
+                blocked_sources=blocked_sources,
+                market_now=market_now,
+            )
+
         blocked = blocked_sources or set()
         active_items: list[tuple[str, CanonicalEvent, float]] = []
 
@@ -392,13 +558,150 @@ class MedianPriceStrategy:
             quality_reasons=quality_reasons,
             lead_source=lead_source,
             lead_latency_delta_ms=round(lead_latency_delta_ms, 3),
+            reconciliation_type="TRADE",
+        )
+
+    def select_quote(
+        self,
+        instrument_id: str,
+        candidates: dict[str, tuple[CanonicalEvent, float]],
+        scores: dict[str, float],
+        agreement_window_s: float,
+        disagreement_pct_threshold: float,
+        blocked_sources: set[str] | None = None,
+        market_now: float | None = None,
+    ) -> CanonicalDecision | None:
+        blocked = blocked_sources or set()
+        active_quotes: dict[str, CanonicalEvent] = {}
+
+        for src in sorted(candidates.keys()):
+            ev, ts = candidates[src]
+            if market_now is not None and abs(market_now - ts) > agreement_window_s:
+                continue
+            if src in blocked or ev.bid_price is None or ev.ask_price is None:
+                continue
+            active_quotes[src] = ev
+
+        n_recent = len(active_quotes)
+        if n_recent < 2:
+            return None
+
+        recent_sources = sorted(active_quotes.keys())
+        bids = {src: ev.bid_price for src, ev in active_quotes.items() if ev.bid_price is not None}
+        asks = {src: ev.ask_price for src, ev in active_quotes.items() if ev.ask_price is not None}
+        spreads = {
+            src: (ev.ask_price - ev.bid_price)
+            for src, ev in active_quotes.items()
+            if ev.ask_price is not None and ev.bid_price is not None
+        }
+        midpoints = {
+            src: (ev.bid_price + ev.ask_price) / 2.0
+            for src, ev in active_quotes.items()
+            if ev.ask_price is not None and ev.bid_price is not None
+        }
+
+        mean_bid = sum(bids.values()) / len(bids) if bids else 0.0
+        mean_ask = sum(asks.values()) / len(asks) if asks else 0.0
+        mean_spread = sum(spreads.values()) / len(spreads) if spreads else 0.0
+
+        bid_disagreement = False
+        if mean_bid > 0:
+            for b in bids.values():
+                if abs(b - mean_bid) / mean_bid > disagreement_pct_threshold:
+                    bid_disagreement = True
+                    break
+
+        ask_disagreement = False
+        if mean_ask > 0:
+            for a in asks.values():
+                if abs(a - mean_ask) / mean_ask > disagreement_pct_threshold:
+                    ask_disagreement = True
+                    break
+
+        spread_disagreement = False
+        if mean_spread > 0:
+            for s in spreads.values():
+                if abs(s - mean_spread) / mean_spread > disagreement_pct_threshold:
+                    spread_disagreement = True
+                    break
+
+        individual_crossed = any(
+            (ev.bid_price is not None and ev.ask_price is not None and ev.bid_price >= ev.ask_price)
+            for ev in active_quotes.values()
+        )
+        cross_venue_crossed = (max(bids.values()) >= min(asks.values())) if bids and asks else False
+        is_crossed_book = individual_crossed or cross_venue_crossed
+
+        disagreement = bid_disagreement or ask_disagreement or spread_disagreement or is_crossed_book
+
+        quality_reasons: list[str] = []
+        if is_crossed_book:
+            quality_reasons.append(Reason.CROSSED_QUOTE.value)
+        if bid_disagreement or ask_disagreement or spread_disagreement:
+            quality_reasons.append(Reason.CROSS_FEED_DISAGREEMENT.value)
+
+        # Median selection based on quote midpoint
+        sorted_by_mid = sorted(active_quotes.items(), key=lambda it: (midpoints[it[0]], it[0]))
+        mid_idx = len(sorted_by_mid) // 2
+        if len(sorted_by_mid) % 2 == 1:
+            chosen_source = sorted_by_mid[mid_idx][0]
+        else:
+            m1 = midpoints[sorted_by_mid[mid_idx - 1][0]]
+            m2 = midpoints[sorted_by_mid[mid_idx][0]]
+            med_val = (m1 + m2) / 2.0
+            dist1 = abs(m1 - med_val)
+            dist2 = abs(m2 - med_val)
+            if dist1 < dist2:
+                chosen_source = sorted_by_mid[mid_idx - 1][0]
+            elif dist2 < dist1:
+                chosen_source = sorted_by_mid[mid_idx][0]
+            else:
+                score1 = scores.get(sorted_by_mid[mid_idx - 1][0], 0.0)
+                score2 = scores.get(sorted_by_mid[mid_idx][0], 0.0)
+                chosen_source = sorted_by_mid[mid_idx - 1][0] if score1 >= score2 else sorted_by_mid[mid_idx][0]
+
+        chosen_event = active_quotes[chosen_source]
+
+        if disagreement:
+            reason = (
+                f"quote disagreement across {recent_sources} "
+                f"(bids={bids}, asks={asks}, crossed={is_crossed_book}); selected median quote {chosen_source}"
+            )
+        else:
+            reason = f"quote sources agree within threshold; selected median quote {chosen_source}"
+
+        lead_source = ""
+        lead_latency_delta_ms = 0.0
+        if recent_sources:
+            earliest_src = min(recent_sources, key=lambda s: candidates[s][1])
+            lead_source = earliest_src
+            earliest_ts = candidates[earliest_src][1]
+            if market_now is not None:
+                lead_latency_delta_ms = max(0.0, (market_now - earliest_ts) * 1000.0)
+
+        return CanonicalDecision(
+            instrument_id=instrument_id,
+            chosen_source=chosen_source,
+            chosen_event_id=chosen_event.event_id,
+            disagreement=disagreement,
+            reason=reason,
+            competing_sources=recent_sources,
+            quality_reasons=quality_reasons,
+            lead_source=lead_source,
+            lead_latency_delta_ms=round(lead_latency_delta_ms, 3),
+            reconciliation_type="QUOTE",
+            bid_disagreement=bid_disagreement,
+            ask_disagreement=ask_disagreement,
+            spread_disagreement=spread_disagreement,
+            is_crossed_book=is_crossed_book,
         )
 
 
 class Reconciler:
     """Arbitrates concurrent multi-source quotes and trades to establish canonical reality.
 
-    Maintains the most recent non-invalid observation for each (instrument, source) pair.
+    Maintains the most recent non-invalid observation for each (instrument, source) pair,
+    separating trade observations from quote observations.
     When a new event arrives, recent observations from competing sources within the
     configured agreement window are compared.
     """
@@ -423,9 +726,13 @@ class Reconciler:
             strategy if strategy is not None else HighestReliabilityStrategy()
         )
         # instrument_id -> source -> (event, exchange_timestamp)
-        self._latest: OrderedDict[str, dict[str, tuple[CanonicalEvent, float]]] = (
+        self._latest_trades: OrderedDict[str, dict[str, tuple[CanonicalEvent, float]]] = (
             OrderedDict()
         )
+        self._latest_quotes: OrderedDict[str, dict[str, tuple[CanonicalEvent, float]]] = (
+            OrderedDict()
+        )
+        self._latest = self._latest_trades  # Backward compatibility alias
         self._blocked_sources: set[str] = set()
 
     def block_source(self, source: str) -> None:
@@ -445,22 +752,48 @@ class Reconciler:
           burst processing, tens of thousands of ticks are processed per real wall-clock second;
           using wall-clock timestamps would erroneously compare trades executed hours apart.
         """
-        if event.quality_status == QualityStatus.INVALID or event.price is None:
-            return None  # Only trade events with usable prices undergo pricing reconciliation
+        if event.quality_status == QualityStatus.INVALID:
+            return None
+
+        is_quote = (
+            event.event_type == EventType.QUOTE
+            or (event.bid_price is not None and event.ask_price is not None and event.price is None)
+        )
 
         market_now = event.exchange_timestamp
-        per_instrument = self._latest.get(event.instrument_id)
-        if per_instrument is None:
-            if len(self._latest) >= self.max_instruments:
-                self._latest.popitem(last=False)
-            per_instrument = self._latest[event.instrument_id] = {}
+
+        if is_quote:
+            if event.bid_price is None or event.ask_price is None:
+                return None  # Incomplete quotes cannot be reconciled
+            store = self._latest_quotes
         else:
-            self._latest.move_to_end(event.instrument_id)
+            if event.price is None:
+                return None  # Only trade events with usable prices undergo pricing reconciliation
+            store = self._latest_trades
+
+        per_instrument = store.get(event.instrument_id)
+        if per_instrument is None:
+            if len(store) >= self.max_instruments:
+                store.popitem(last=False)
+            per_instrument = store[event.instrument_id] = {}
+        else:
+            store.move_to_end(event.instrument_id)
         per_instrument[event.source] = (event, market_now)
 
         # Fast path: multi-feed quorum cannot be established with < 2 feeds
         if len(per_instrument) < 2:
             return None
+
+        if is_quote and hasattr(self.strategy, "select_quote"):
+            return self.strategy.select_quote(
+                instrument_id=event.instrument_id,
+                candidates=per_instrument,
+                scores=self.reliability._cached_scores,
+                agreement_window_s=self.cfg.agreement_window_s,
+                disagreement_pct_threshold=self.cfg.disagreement_pct_threshold,
+                blocked_sources=self._blocked_sources,
+                market_now=market_now,
+            )
 
         return self.strategy.select(
             instrument_id=event.instrument_id,

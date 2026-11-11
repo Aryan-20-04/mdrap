@@ -618,6 +618,7 @@ class WebSocketFeedManager:
             }
             for v in self.venues
         }
+        self._stream_seq: dict[str, int] = {}  # Scoped sequence tracking per venue:symbol
         self._drop_count: int = 0  # Total frames dropped due to backpressure
         self._drop_counts: dict[str, int] = {v: 0 for v in self.venues}
         self._ssl_ctx = ssl.create_default_context()
@@ -810,14 +811,16 @@ class WebSocketFeedManager:
                                 meta["last_received_ts"] = now_t
                                 meta["last_processed_ts"] = now_t
 
-                                # Track sequence numbers and sequence gaps
+                                # Track sequence numbers and sequence gaps per (venue, symbol) stream
                                 seq = raw.payload.get("sequence")
                                 if seq is not None and isinstance(seq, int):
-                                    prev_seq = meta.get("last_sequence_num")
+                                    stream_key = f"{venue}:{symbol}"
+                                    prev_seq = self._stream_seq.get(stream_key)
                                     if prev_seq is not None and seq > prev_seq + 1:
                                         meta["sequence_gaps_count"] += (
                                             seq - prev_seq - 1
                                         )
+                                    self._stream_seq[stream_key] = seq
                                     meta["last_sequence_num"] = seq
 
                                 # Track wire network latency
@@ -1104,22 +1107,139 @@ def parse_bybit_bbo_payload(raw: str | bytes) -> ParsedBookFrame | None:
         return None
 
 
+@dataclass(slots=True)
+class SequenceScope:
+    """Explicit multi-dimensional scope identifying a sequence stream."""
+
+    venue: str
+    instrument: str = ""
+    channel: str = ""
+    epoch: int = 0
+
+    def key(self) -> str:
+        parts = [self.venue.upper()]
+        if self.instrument:
+            parts.append(self.instrument.upper())
+        if self.channel:
+            parts.append(self.channel.upper())
+        if self.epoch:
+            parts.append(f"ep{self.epoch}")
+        return ":".join(parts)
+
+
 class LiveCryptoFeed:
     """High-performance multi-venue sequence and gap tracking feed wrapper."""
+
+    MAX_PLAUSIBLE_GAP: int = (
+        1_000_000  # Gaps larger than this are treated as resets / update ID jumps
+    )
 
     def __init__(self):
         self.last_seq: dict[str, int] = {}
         self.gap_counts: dict[str, int] = collections.defaultdict(int)
         self.missing_events_count: dict[str, int] = collections.defaultdict(int)
+        self.resets_count: dict[str, int] = collections.defaultdict(int)
+        self.duplicate_count: dict[str, int] = collections.defaultdict(int)
 
-    def check_sequence_gap(self, venue: str, seq: int) -> bool:
-        prev = self.last_seq.get(venue)
-        self.last_seq[venue] = seq
-        if prev is None:
+    def _resolve_key(
+        self,
+        scope_or_venue: str | SequenceScope,
+        instrument: str = "",
+        channel: str = "",
+        epoch: int = 0,
+    ) -> str:
+        if isinstance(scope_or_venue, SequenceScope):
+            return scope_or_venue.key()
+        parts = [str(scope_or_venue).upper()]
+        if instrument:
+            parts.append(str(instrument).upper())
+        if channel:
+            parts.append(str(channel).upper())
+        if epoch:
+            parts.append(f"ep{epoch}")
+        return ":".join(parts)
+
+    def check_sequence_gap(
+        self,
+        scope_or_venue: str | SequenceScope,
+        seq: int,
+        instrument: str = "",
+        channel: str = "",
+        epoch: int = 0,
+        is_reset: bool = False,
+        is_snapshot: bool = False,
+    ) -> bool:
+        """Check for sequence gap within an adapter-defined sequence scope."""
+        key = self._resolve_key(scope_or_venue, instrument, channel, epoch)
+        prev = self.last_seq.get(key)
+        self.last_seq[key] = seq
+
+        if prev is None or is_reset or is_snapshot:
             return False
+
+        if seq == prev:
+            self.duplicate_count[key] += 1
+            return False
+
+        if seq < prev:
+            # Sequence wrapped / reconnected / reset
+            self.resets_count[key] += 1
+            return False
+
         if seq > prev + 1:
             missing = seq - prev - 1
-            self.gap_counts[venue] += 1
-            self.missing_events_count[venue] += missing
+            if missing > self.MAX_PLAUSIBLE_GAP:
+                # Discontinuous epoch jump or update ID jump (e.g. Binance update ID vs packet seq)
+                self.resets_count[key] += 1
+                return False
+            self.gap_counts[key] += 1
+            self.missing_events_count[key] += missing
             return True
+
         return False
+
+    def check_sequence_range(
+        self,
+        scope_or_venue: str | SequenceScope,
+        first_seq: int,
+        final_seq: int,
+        instrument: str = "",
+        channel: str = "",
+        epoch: int = 0,
+        is_reset: bool = False,
+        is_snapshot: bool = False,
+    ) -> bool:
+        """Check for sequence gap across a range-based update (e.g., Binance U..u depth packets)."""
+        key = self._resolve_key(scope_or_venue, instrument, channel, epoch)
+        prev = self.last_seq.get(key)
+        self.last_seq[key] = final_seq
+
+        if prev is None or is_reset or is_snapshot:
+            return False
+
+        if first_seq <= prev + 1 and final_seq >= prev:
+            # Contiguous or overlapping range
+            return False
+
+        if first_seq > prev + 1:
+            missing = first_seq - prev - 1
+            if missing > self.MAX_PLAUSIBLE_GAP:
+                self.resets_count[key] += 1
+                return False
+            self.gap_counts[key] += 1
+            self.missing_events_count[key] += missing
+            return True
+
+        return False
+
+    def reset_scope(
+        self,
+        scope_or_venue: str | SequenceScope,
+        instrument: str = "",
+        channel: str = "",
+        epoch: int = 0,
+    ) -> None:
+        """Explicitly reset sequence state for a reconnected stream."""
+        key = self._resolve_key(scope_or_venue, instrument, channel, epoch)
+        self.last_seq.pop(key, None)
+        self.resets_count[key] += 1
