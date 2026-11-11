@@ -55,12 +55,28 @@ export = [
 config = [
     "pyyaml>=6.0",
 ]
+yaml = [
+    "pyyaml>=6.0",
+]
 columnar = [
     "duckdb>=0.9.0",
     "pyarrow>=20.0.0",
 ]
 feeds = [
     "websockets>=12.0,<17.0",
+]
+kafka = [
+    "confluent-kafka>=2.3.0",
+]
+all = [
+    "rich>=13.0.0",
+    "websockets>=12.0,<17.0",
+    "fastapi>=0.110.0",
+    "uvicorn>=0.28.0",
+    "httpx>=0.27.0",
+    "duckdb>=0.9.0",
+    "pyarrow>=20.0.0",
+    "pyyaml>=6.0",
 ]
 test = [
     "pytest>=9.0.3",

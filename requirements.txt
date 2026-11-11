@@ -1,32 +1,31 @@
 # ==============================================================================
-# MDRAP (Market Data Reliability & Acceleration Platform)
+# MDRAP (Market Data Reliability & Assurance Platform)
 #
 # Core Design Principle (Spec §26): Zero Mandatory Runtime Dependencies.
 # MDRAP's core engine, normalization gateway, 7-rule quality validator,
 # cross-reconciler, and WAL storage are 100% runnable on pure Python stdlib.
 # ==============================================================================
 
-# --- UI & Terminal Visualization (Optional) ---
-rich>=13.0.0,<14.0.0            # High-performance terminal cockpit, live ticker, & ANSI charts (graceful fallback if absent)
+# --- UI & Terminal Visualization (Optional, install with [ui]) ---
+rich>=13.0.0,<14.0.0            # Terminal cockpit and telemetry tables (graceful stdlib fallback if absent)
 
-# --- Live Streaming Ingestion (Optional) ---
-websockets>=12.0,<15.0        # Real-time WebSocket streaming feed handlers for Binance/Coinbase public feeds
+# --- Live Streaming Ingestion (Optional, install with [feeds]) ---
+websockets>=12.0,<17.0          # Real-time WebSocket feed handlers for Coinbase/Binance public feeds
 
-# --- Configuration Management (Optional) ---
-pyyaml>=6.0,<7.0             # Parses external config.yaml (graceful stdlib fallback parser included)
+# --- REST / WebSocket API Distribution (Optional, install with [api]) ---
+fastapi>=0.110.0,<1.0.0         # Institutional REST and WebSocket real-time sidecar server
+uvicorn>=0.28.0,<1.0.0          # High-throughput ASGI server implementation
+httpx>=0.27.0,<1.0.0            # HTTP and ASGI client for testing and distribution webhooks
 
-# --- Columnar Time-Series Storage & Analytics (Phase 3, Optional) ---
-duckdb>=1.0.0,<2.0.0           # Vectorized columnar embedded OLAP database for billion-tick time-series queries
-pyarrow>=20.0.0                # Apache Parquet columnar file serialization (CVE PYSEC-2026-113 mitigated)
+# --- Columnar Time-Series Analytics (Optional, install with [columnar]) ---
+duckdb>=1.0.0,<2.0.0            # Embedded OLAP database for large historical tick queries
+pyarrow>=20.0.0                 # Apache Parquet columnar serialization
 
-# --- REST / WebSocket API & Distribution (Optional) ---
-fastapi>=0.110.0,<1.0.0        # Institutional REST and WebSocket real-time distribution server
-uvicorn>=0.28.0,<1.0.0         # High-throughput ASGI server implementation
-httpx>=0.27.0,<1.0.0           # HTTP and ASGI client for testing and distribution webhooks
+# --- Configuration Management (Optional, install with [yaml]) ---
+pyyaml>=6.0,<7.0                # Legacy YAML support (Native config.toml uses stdlib tomllib)
 
 # --- Automated Testing & Quality Assurance (Dev) ---
-pytest>=9.0.3                  # Production test suite runner (CVE PYSEC-2026-1845 mitigated in 9.0.3+)
-pytest-timeout>=2.3.0,<3.0.0  # Enforces execution deadlines on streaming, chaos, and IPC tests
-pytest-asyncio>=1.0.0,<2.0.0  # Async test fixture runner for streaming & API endpoints
-pytest-cov>=5.0.0,<7.0.0      # Automated code coverage and branch evaluation
-
+pytest>=9.0.3                   # Production test suite runner
+pytest-timeout>=2.3.0,<3.0.0    # Execution deadlines on streaming, chaos, and IPC tests
+pytest-asyncio>=1.0.0,<2.0.0    # Async test fixture runner for streaming & API endpoints
+pytest-cov>=5.0.0,<7.0.0        # Automated code coverage and branch evaluation
