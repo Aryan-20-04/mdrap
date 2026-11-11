@@ -15,8 +15,8 @@ src_path = os.path.join(repo_root, "src")
 if src_path not in sys.path:
     sys.path.insert(0, src_path)
 
-from sbe import pack_sbe_tick, unpack_sbe_tick, TICK_TOTAL_FRAME_SIZE
-from fastpath import _NATIVE_LIB, HAS_FASTPATH
+from mdrap.sbe import pack_sbe_tick, unpack_sbe_tick, TICK_TOTAL_FRAME_SIZE
+from mdrap.fastpath import _NATIVE_LIB, HAS_FASTPATH
 
 
 class _CSbeTickPayload(ctypes.Structure):

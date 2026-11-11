@@ -19,7 +19,7 @@ except ImportError:
     print("Please install duckdb: pip install duckdb")
     sys.exit(1)
 
-from gateway_tcp import TCPGatewayServer
+from mdrap.gateway_tcp import TCPGatewayServer
 
 DB_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'data', 'mdrap.db'))
 DUCKDB_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'data', 'mdrap.duckdb'))

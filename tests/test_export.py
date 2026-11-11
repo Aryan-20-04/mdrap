@@ -122,7 +122,7 @@ def test_export_data_parquet_or_skip(temp_env):
 
 def test_cli_export_command(temp_env):
     """Verify CLI parser dispatches 'export' subcommand correctly to CSV."""
-    from cli import build_parser
+    from mdrap.cli import build_parser
 
     parser = build_parser()
     out_file = os.path.join(temp_env["dir"], "cli_out.csv")

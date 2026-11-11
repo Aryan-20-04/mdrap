@@ -18,9 +18,9 @@ from typing import Any
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from pipeline import Pipeline
-from simulator import FeedSimulator, SimulatorConfig
-from storage import Store
+from mdrap.pipeline import Pipeline
+from mdrap.simulator import FeedSimulator, SimulatorConfig
+from mdrap.storage import Store
 
 
 def sweep_scale(

@@ -43,11 +43,11 @@ _SRC = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src"))
 if _SRC not in sys.path:
     sys.path.insert(0, _SRC)
 
-from models import CanonicalEvent, EventType, QualityStatus
-from gateway import ingest, normalize
-from simulator import FeedSimulator, SimulatorConfig
-from strategy_sdk import AvellanedaStoikovStrategy, RiskLimits
-from fastpath import FastQualityEngine, is_available
+from mdrap.models import CanonicalEvent, EventType, QualityStatus
+from mdrap.gateway import ingest, normalize
+from mdrap.simulator import FeedSimulator, SimulatorConfig
+from mdrap.strategy_sdk import AvellanedaStoikovStrategy, RiskLimits
+from mdrap.fastpath import FastQualityEngine, is_available
 
 
 def run_avellaneda_stoikov_simulation(

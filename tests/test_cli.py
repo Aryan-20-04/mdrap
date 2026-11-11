@@ -8,7 +8,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 import unittest.mock as mock
 
-from cli import (
+from mdrap.cli import (
     build_parser,
     cmd_status,
     cmd_query,
@@ -162,7 +162,7 @@ def test_cmd_live_dispatch(populated_db, capsys):
     parser = build_parser()
     args = parser.parse_args(["live", "BTC/USD", "-l", "2", "--db", populated_db])
 
-    with mock.patch("live.LiveConnector.stream_ticks") as mock_stream:
+    with mock.patch("mdrap.live.LiveConnector.stream_ticks") as mock_stream:
         from mdrap.models import RawEvent
 
         mock_raw = RawEvent(
@@ -320,7 +320,7 @@ def test_cmd_service_parser_dispatch():
 
 
 def test_ticker_first_and_mnemonic_dispatch():
-    from cli import KNOWN_SYMBOLS, MNEMONIC_MAP, QUICK_ACTIONS, render_command_palette
+    from mdrap.cli import KNOWN_SYMBOLS, MNEMONIC_MAP, QUICK_ACTIONS, render_command_palette
     from mdrap.term import Console
 
     # Verify symbol mappings
@@ -403,7 +403,7 @@ def test_cmd_strategy_dispatch(capsys):
 
 def test_edgar_routing(monkeypatch):
     import sys
-    from cli import main, build_parser
+    from mdrap.cli import main, build_parser
 
     # 1. Direct parser parse tests
     parser = build_parser()
@@ -414,7 +414,7 @@ def test_edgar_routing(monkeypatch):
     # 2. Main argv smart rewrite tests: 'company AAPL' -> profile AAPL
     called_args = []
     monkeypatch.setattr(sys, "argv", ["cli.py", "company", "AAPL"])
-    monkeypatch.setattr("cli.cmd_edgar", lambda a: called_args.append(a))
+    monkeypatch.setattr("mdrap.cli.cmd_edgar", lambda a: called_args.append(a))
     main()
     assert len(called_args) == 1
     assert called_args[0].action == "profile"
@@ -430,7 +430,7 @@ def test_edgar_routing(monkeypatch):
 
 
 def test_edgar_open_argument():
-    from cli import build_parser
+    from mdrap.cli import build_parser
 
     parser = build_parser()
     args = parser.parse_args(["edgar", "filings", "NVDA", "-o"])
@@ -443,7 +443,7 @@ def test_edgar_open_argument():
 
 
 def test_cmd_run_duckdb_sync_error_handling(tmp_path, capsys, monkeypatch):
-    from cli import build_parser, cmd_run
+    from mdrap.cli import build_parser, cmd_run
 
     parser = build_parser()
     db_file = str(tmp_path / "test.db")
@@ -456,7 +456,7 @@ def test_cmd_run_duckdb_sync_error_handling(tmp_path, capsys, monkeypatch):
     mock_store_inst = mock.MagicMock()
     mock_store_inst.sync_from_sqlite.side_effect = RuntimeError("Disk I/O lock error")
     mock_store_cls.return_value.__enter__.return_value = mock_store_inst
-    monkeypatch.setattr("columnar.ColumnarStore", mock_store_cls)
+    monkeypatch.setattr("mdrap.columnar.ColumnarStore", mock_store_cls)
 
     # 1. Non-strict (default): warns to stderr, records divergence in JSON, exits 0
     args_default = parser.parse_args(["run", "-e", "10", "--db", db_file])
@@ -486,7 +486,7 @@ def test_cmd_run_duckdb_sync_error_handling(tmp_path, capsys, monkeypatch):
 
 def test_no_color_flag_and_environment(monkeypatch):
     from mdrap.term import is_no_color_active, Console
-    from cli import build_parser
+    from mdrap.cli import build_parser
 
     # 1. Environment variable test
     monkeypatch.setenv("NO_COLOR", "1")
@@ -546,7 +546,7 @@ def test_colorblind_safe_formatters():
 
 
 def test_error_path_palette_fallback(capsys):
-    from cli import build_parser
+    from mdrap.cli import build_parser
 
     parser = build_parser()
     with pytest.raises(SystemExit) as exc_info:
@@ -567,7 +567,7 @@ def test_error_path_palette_fallback(capsys):
 
 
 def test_completion_command_generation(capsys):
-    from cli import build_parser, cmd_completion
+    from mdrap.cli import build_parser, cmd_completion
 
     parser = build_parser()
 
@@ -599,7 +599,7 @@ def test_completion_command_generation(capsys):
 
 
 def test_trimmed_aliases_and_mnemonic_backward_compatibility():
-    from cli import build_parser, MNEMONIC_MAP
+    from mdrap.cli import build_parser, MNEMONIC_MAP
 
     parser = build_parser()
 

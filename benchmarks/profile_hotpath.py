@@ -30,11 +30,11 @@ from typing import Any
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 sys.path.insert(0, os.path.dirname(__file__))
 
-from fastpath import FastQualityEngine, _NATIVE_LIB, is_available
+from mdrap.fastpath import FastQualityEngine, _NATIVE_LIB, is_available
 from micro_ffi import run_micro_ffi
-from pipeline import Pipeline
-from simulator import FeedSimulator, SimulatorConfig
-from storage import Store
+from mdrap.pipeline import Pipeline
+from mdrap.simulator import FeedSimulator, SimulatorConfig
+from mdrap.storage import Store
 
 
 def profile_pipeline(

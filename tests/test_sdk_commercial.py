@@ -34,7 +34,7 @@ from mdrap.client import MDRAPClient
 from mdrap.models import CanonicalEvent, EventType, QualityStatus
 from mdrap.security import SecurityManager
 from mdrap.storage import Store
-from _version import __version__
+from mdrap._version import __version__
 
 
 @pytest.fixture(scope="module")

@@ -28,9 +28,9 @@ import sys
 
 # Ensure src/ is importable
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
-from config import QualityConfig
-from models import CanonicalEvent, EventType, QualityStatus, Reason
-from quality import QualityEngine
+from mdrap.config import QualityConfig
+from mdrap.models import CanonicalEvent, EventType, QualityStatus, Reason
+from mdrap.quality import QualityEngine
 
 # CanonicalRecordV1 64-byte struct layout matching docs/spec/canonical-record-v1.md
 # <Q (uint64 seq), q (int64 ex_ts_ns), q (int64 wire_ts_ns),

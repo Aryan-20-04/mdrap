@@ -17,17 +17,17 @@ from typing import List, Dict, Any
 # Ensure src/ is on path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from models import CanonicalEvent, EventType, QualityStatus, RawEvent, Reason
-from simulator import FeedSimulator, SimulatorConfig
-from sbe import pack_sbe_tick, TICK_PAYLOAD_STRUCT, HEADER_STRUCT
-from fastpath import (
+from mdrap.models import CanonicalEvent, EventType, QualityStatus, RawEvent, Reason
+from mdrap.simulator import FeedSimulator, SimulatorConfig
+from mdrap.sbe import pack_sbe_tick, TICK_PAYLOAD_STRUCT, HEADER_STRUCT
+from mdrap.fastpath import (
     _NATIVE_LIB,
     _CFastEvent,
     _CFastResult,
     FastQualityEngine,
 )
-from quality import QualityEngine, QualityConfig
-from shm import SHMWriter
+from mdrap.quality import QualityEngine, QualityConfig
+from mdrap.shm import SHMWriter
 
 
 def percentile(values: List[float], p: float) -> float:

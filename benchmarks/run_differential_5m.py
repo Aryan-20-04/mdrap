@@ -19,11 +19,11 @@ import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from gateway import normalize
-from models import CanonicalEvent, EventType, QualityStatus
-from quality import QualityConfig, QualityEngine
-from fastpath import FastQualityEngine, HAS_FASTPATH, _CFastEvent, _CFastResult
-from simulator import FeedSimulator, SimulatorConfig
+from mdrap.gateway import normalize
+from mdrap.models import CanonicalEvent, EventType, QualityStatus
+from mdrap.quality import QualityConfig, QualityEngine
+from mdrap.fastpath import FastQualityEngine, HAS_FASTPATH, _CFastEvent, _CFastResult
+from mdrap.simulator import FeedSimulator, SimulatorConfig
 
 
 def _format_hex_dump(c_struct) -> str:

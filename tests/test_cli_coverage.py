@@ -18,7 +18,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 pytestmark = pytest.mark.slow  # ponytail: full CLI benchmark skip by default
 
-import cli
+import mdrap.cli as cli
 import mdrap.trading_cli as trading_cli
 
 

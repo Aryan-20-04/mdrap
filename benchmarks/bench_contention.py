@@ -18,7 +18,7 @@ from typing import Any
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from term import Console, Table, Panel
+from mdrap.term import Console, Table, Panel
 
 
 def percentile(vals: list[float], p: float) -> float:

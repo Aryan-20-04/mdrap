@@ -11,11 +11,7 @@ import sys
 import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
-import fastpath
-import options
-import features
-import risk
-import fix_engine
+from mdrap import fastpath, options, features, risk, fix_engine
 
 if fastpath._NATIVE_LIB is None:
     pytest.skip(

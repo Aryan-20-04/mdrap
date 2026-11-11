@@ -7,7 +7,7 @@ import asyncio
 import sys
 
 # Import directly from the installed MDRAP package!
-from strategy_sdk import Strategy, LiveStrategyRunner
+from mdrap.strategy_sdk import Strategy, LiveStrategyRunner
 from models import CanonicalEvent
 
 class HelloWorldStrategy(Strategy):

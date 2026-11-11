@@ -6,7 +6,7 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from cli import (
+from mdrap.cli import (
     KNOWN_SYMBOLS,
     MNEMONIC_MAP,
     QUICK_ACTIONS,
@@ -75,7 +75,7 @@ def test_multi_ticker_render_hotkey_states():
 
 
 def test_cli_ticker_first_and_shortcuts():
-    from cli import main
+    from mdrap.cli import main
 
     test_cases = [
         (["cli.py", "AAPL"], ["cli.py", "bbo", "AAPL"]),

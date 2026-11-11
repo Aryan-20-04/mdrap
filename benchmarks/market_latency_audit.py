@@ -8,15 +8,15 @@ from typing import Any, Dict, List
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from backtest import BacktestEngine
-from fastpath import _CFastEvent, _CFastResult, _NATIVE_LIB, FastQualityEngine
-from models import CanonicalEvent, EventType, QualityStatus, RawEvent
-from pipeline import Pipeline
-from quality import QualityConfig, QualityEngine
-from sbe import HEADER_STRUCT, TICK_PAYLOAD_STRUCT, pack_sbe_tick
-from simulator import FeedSimulator, SimulatorConfig
-from storage import Store
-from strategy_sdk import SpreadCaptureMarketMaker
+from mdrap.backtest import BacktestEngine
+from mdrap.fastpath import _CFastEvent, _CFastResult, _NATIVE_LIB, FastQualityEngine
+from mdrap.models import CanonicalEvent, EventType, QualityStatus, RawEvent
+from mdrap.pipeline import Pipeline
+from mdrap.quality import QualityConfig, QualityEngine
+from mdrap.sbe import HEADER_STRUCT, TICK_PAYLOAD_STRUCT, pack_sbe_tick
+from mdrap.simulator import FeedSimulator, SimulatorConfig
+from mdrap.storage import Store
+from mdrap.strategy_sdk import SpreadCaptureMarketMaker
 
 
 def safe_int(v: Any, default: int = 0) -> int:

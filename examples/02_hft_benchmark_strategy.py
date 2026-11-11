@@ -8,7 +8,7 @@ import asyncio
 import time
 import sys
 
-from strategy_sdk import Strategy, LiveStrategyRunner
+from mdrap.strategy_sdk import Strategy, LiveStrategyRunner
 from models import CanonicalEvent
 
 class HFTBenchmarkStrategy(Strategy):

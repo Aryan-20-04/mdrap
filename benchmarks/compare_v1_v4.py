@@ -17,11 +17,11 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 sys.path.insert(0, os.path.dirname(__file__))
 
 from harness import measure
-from simulator import FeedSimulator, SimulatorConfig
-from storage import Store
-from pipeline import Pipeline
-from quality import QualityEngine
-from fastpath import FastQualityEngine
+from mdrap.simulator import FeedSimulator, SimulatorConfig
+from mdrap.storage import Store
+from mdrap.pipeline import Pipeline
+from mdrap.quality import QualityEngine
+from mdrap.fastpath import FastQualityEngine
 
 
 def benchmark_tier(tier: str, events: int = 100_000, seed: int = 42) -> dict:

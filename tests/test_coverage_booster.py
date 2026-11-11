@@ -17,7 +17,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-import cli
+from mdrap import cli
 import mdrap.itch as itch
 import mdrap.service as service
 from mdrap.storage import Store

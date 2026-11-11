@@ -454,7 +454,7 @@ def test_native_only_datasets_not_misrepresented_as_trades(tmp_path):
 
 
 def test_cli_plan_alias_json_and_validation(capsys):
-    from cli import build_parser
+    from mdrap.cli import build_parser
 
     p = build_parser()
     args = p.parse_args(
@@ -481,7 +481,7 @@ def test_cli_plan_alias_json_and_validation(capsys):
 
 
 def test_cli_download_partial_json_exit_two(tmp_path, network, capsys):
-    from cli import build_parser
+    from mdrap.cli import build_parser
 
     network[1].append(http_error(404))
     args = build_parser().parse_args(

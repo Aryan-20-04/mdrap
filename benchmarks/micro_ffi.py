@@ -19,7 +19,7 @@ import sys
 import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
-from fastpath import _NATIVE_LIB, _CFastEvent, is_available
+from mdrap.fastpath import _NATIVE_LIB, _CFastEvent, is_available
 
 
 def run_micro_ffi(iterations: int = 2_000_000, runs: int = 5, warmup: int = 1) -> dict:

@@ -30,12 +30,12 @@ from typing import Any
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(_REPO_ROOT, "src"))
 
-from fastpath import FastQualityEngine, is_available
-from models import CanonicalEvent, EventType
-from simulator import FeedSimulator, SimulatorConfig
-from shm import SHMWriter, SHMReader, HAS_SHM
-from shm_drainer import SHMDrainWorker
-from journal import BinaryJournal, BinaryJournalReader
+from mdrap.fastpath import FastQualityEngine, is_available
+from mdrap.models import CanonicalEvent, EventType
+from mdrap.simulator import FeedSimulator, SimulatorConfig
+from mdrap.shm import SHMWriter, SHMReader, HAS_SHM
+from mdrap.shm_drainer import SHMDrainWorker
+from mdrap.journal import BinaryJournal, BinaryJournalReader
 
 
 def pin_to_core(core_id: int = 2) -> bool:

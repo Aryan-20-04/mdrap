@@ -21,13 +21,13 @@ sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src"))
 )
 
-from models import RawEvent, QualityStatus, Reason
-from pipeline import Pipeline
-from quality import QualityEngine, QualityConfig
-from reconciliation import Reconciler, ReliabilityTracker
-from simulator import FeedSimulator, SimulatorConfig
-from storage import Store
-from watchdog import SourceWatchdog, SourceState
+from mdrap.models import RawEvent, QualityStatus, Reason
+from mdrap.pipeline import Pipeline
+from mdrap.quality import QualityEngine, QualityConfig
+from mdrap.reconciliation import Reconciler, ReliabilityTracker
+from mdrap.simulator import FeedSimulator, SimulatorConfig
+from mdrap.storage import Store
+from mdrap.watchdog import SourceWatchdog, SourceState
 
 
 def pct(vals: List[float], q: float) -> float:

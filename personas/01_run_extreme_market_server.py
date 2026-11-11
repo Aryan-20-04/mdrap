@@ -10,7 +10,7 @@ import time
 import random
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
-from gateway_tcp import TCPGatewayServer
+from mdrap.gateway_tcp import TCPGatewayServer
 
 async def main():
     server = TCPGatewayServer(host='127.0.0.1', port=9000)

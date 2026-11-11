@@ -15,7 +15,7 @@ if src_path not in sys.path:
 
 from models import RawEvent, CanonicalEvent, EventType, QualityStatus
 from adapters.template import TemplateCustomVenueAdapter
-from rules import register_rule, clear_user_rules
+from mdrap.rules import register_rule, clear_user_rules
 from quality import QualityEngine
 from fastpath import FastQualityEngine, HAS_FASTPATH
 

@@ -29,11 +29,11 @@ from typing import Any
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(_REPO_ROOT, "src"))
 
-from fastpath import FastQualityEngine, is_available
-from models import CanonicalEvent, EventType
-from pipeline import Pipeline
-from simulator import FeedSimulator, SimulatorConfig
-from storage import Store
+from mdrap.fastpath import FastQualityEngine, is_available
+from mdrap.models import CanonicalEvent, EventType
+from mdrap.pipeline import Pipeline
+from mdrap.simulator import FeedSimulator, SimulatorConfig
+from mdrap.storage import Store
 
 
 def pin_to_core(core_id: int = 2) -> bool:

@@ -17,9 +17,9 @@ from typing import Any
 # Ensure src/ is on sys.path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from pipeline import Pipeline
-from simulator import FeedSimulator, SimulatorConfig
-from storage import Store
+from mdrap.pipeline import Pipeline
+from mdrap.simulator import FeedSimulator, SimulatorConfig
+from mdrap.storage import Store
 
 
 def run_benchmark(num_events: int = 50_000, seed: int = 42) -> dict[str, Any]:

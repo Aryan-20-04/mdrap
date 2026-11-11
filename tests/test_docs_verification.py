@@ -62,7 +62,7 @@ def test_public_sdk_imports_match_documentation():
     assert QualityStatus is not None
     assert Reason is not None
     assert hasattr(mdrap, "__version__")
-    from _version import __version__
+    from mdrap._version import __version__
 
     assert mdrap.__version__ == __version__
 
@@ -109,7 +109,7 @@ def test_ci_and_test_configuration_do_not_force_demo_mode():
 
 def test_cli_version_matches_package_version_source():
     """The CLI and package must report the one version stored in _version.py."""
-    from _version import __version__
+    from mdrap._version import __version__
 
     completed = subprocess.run(
         [sys.executable, "-m", "mdrap.cli", "version"],

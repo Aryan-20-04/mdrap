@@ -29,9 +29,9 @@ from typing import Any
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(_REPO_ROOT, "src"))
 
-from shm import SHMWriter, SHMReader, HAS_SHM
-from shm_drainer import SHMDrainWorker
-from journal import BinaryJournalReader
+from mdrap.shm import SHMWriter, SHMReader, HAS_SHM
+from mdrap.shm_drainer import SHMDrainWorker
+from mdrap.journal import BinaryJournalReader
 
 
 def get_process_memory_mb() -> float:
