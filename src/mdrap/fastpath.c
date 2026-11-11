@@ -1165,6 +1165,11 @@ EXPORT void fastpath_engine_replay_clear(FastEngine *eng) {
 // Deprecated Global Singleton Compatibility Shim  (C-8: race-free lazy creation)
 // ---------------------------------------------------------------------------
 static FastEngine *g_default_engine = NULL;
+#if defined(_MSC_VER) && !defined(__clang__)
+static volatile long g_lifecycle_lock = 0;
+#else
+static volatile int g_lifecycle_lock = 0;
+#endif
 
 static inline FastEngine *md_load_default(void) {
 #if defined(_MSC_VER) && !defined(__clang__)
@@ -1192,13 +1197,19 @@ static inline FastEngine *get_default_engine(void) {
 }
 
 EXPORT void fastpath_cleanup(void) {
-    if (g_default_engine) {
-        fastpath_engine_destroy(g_default_engine);
-        g_default_engine = NULL;
+    MD_LOCK(&g_lifecycle_lock);
+    FastEngine *old = g_default_engine;
+    g_default_engine = NULL;
+    if (old) {
+        MD_LOCK(&old->lock);
+        MD_UNLOCK(&old->lock);
+        fastpath_engine_destroy(old);
     }
+    MD_UNLOCK(&g_lifecycle_lock);
 }
 
 EXPORT void fastpath_init(double staleness_threshold_s, double anomaly_stddev, int32_t price_window) {
+    MD_LOCK(&g_lifecycle_lock);
     FastEngine *e = get_default_engine();
     if (e) {
         MD_LOCK(&e->lock);
@@ -1209,6 +1220,7 @@ EXPORT void fastpath_init(double staleness_threshold_s, double anomaly_stddev, i
         if (e->price_window < 2) e->price_window = 2;
         MD_UNLOCK(&e->lock);
     }
+    MD_UNLOCK(&g_lifecycle_lock);
 }
 
 EXPORT int32_t fastpath_get_compiled_max_sources(void) {
@@ -1220,11 +1232,13 @@ EXPORT int32_t fastpath_get_compiled_max_instruments(void) {
 }
 
 EXPORT void fastpath_reset(void) {
+    MD_LOCK(&g_lifecycle_lock);
     if (g_default_engine) {
         fastpath_engine_reset(g_default_engine);
     } else {
         g_default_engine = fastpath_engine_create(0.05, 6.0, 50);
     }
+    MD_UNLOCK(&g_lifecycle_lock);
 }
 
 EXPORT void fastpath_evaluate(const FastEvent *ev, FastResult *res) {

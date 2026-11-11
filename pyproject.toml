@@ -156,13 +156,6 @@ version = {attr = "mdrap._version.__version__"}
     "rules.def",
     "py.typed",
     "*.pyi",
-    "*.pyd",
-    "_fastpath_native.dll",
-    "_fastpath_native.so",
-    "_fastpath_native.dylib",
-    "_fastpath_native.pyd",
-    "fastpath.dll",
-    "fastpath.dylib",
 ]
 
 [tool.setuptools.packages.find]
