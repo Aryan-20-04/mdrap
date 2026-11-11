@@ -25,6 +25,7 @@ from .operations import cmd_chaos
 from .operations import cmd_status
 from .operations import cmd_query
 from .operations import cmd_replay
+from .operations import cmd_incident
 from .operations import cmd_failover
 from .operations import cmd_archive
 from .operations import cmd_retention
@@ -754,6 +755,41 @@ def build_parser() -> argparse.ArgumentParser:
     from ..chd import add_historical_parser
 
     add_historical_parser(sub)
+
+    p_incident = _sub(
+        "incident",
+        cmd_incident,
+        "Query and inspect data quality incidents and forensic evidence",
+        ["incidents", "inc"],
+        db=True,
+        default_db="data/mdrap.db",
+    )
+    p_incident.add_argument(
+        "action",
+        nargs="?",
+        default="list",
+        choices=["list"],
+        help="Action: list incidents (default: list)",
+    )
+    p_incident.add_argument(
+        "--status",
+        choices=["OPEN", "ACTIVE", "CLOSED", "RESOLVED"],
+        help="Filter by incident status",
+    )
+    p_incident.add_argument(
+        "--provider",
+        help="Filter by provider/venue",
+    )
+    p_incident.add_argument(
+        "--symbol",
+        help="Filter by instrument symbol",
+    )
+    p_incident.add_argument(
+        "--limit",
+        type=int,
+        default=20,
+        help="Maximum incidents to return (default: 20)",
+    )
 
     p_replay = _sub(
         "replay",
@@ -2079,6 +2115,9 @@ MNEMONIC_MAP = {
     "explain": "explain",
     "expl": "explain",
     "why": "explain",
+    "incident": "incident",
+    "incidents": "incident",
+    "inc": "incident",
     # Market Desk
     "bbo": "bbo",
     "nbbo": "bbo",
@@ -2338,6 +2377,8 @@ QUICK_ACTIONS = {
 
 ALL_CANONICAL_COMMANDS = [
     "wal",
+    "incident",
+    "incidents",
     "failover",
     "lake",
     "historical",

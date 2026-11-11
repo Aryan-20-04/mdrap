@@ -636,6 +636,75 @@ def cmd_replay(args):
     store.close()
 
 
+def cmd_incident(args):
+    """Manage data quality incidents and forensic evidence."""
+    from ..incidents import IncidentManager
+
+    console = Console()
+    db_path = getattr(args, "db", None) or "data/mdrap.db"
+    if not os.path.exists(db_path):
+        if db_path == "data/mdrap.db" and os.path.exists("data/mdrap_replay.db"):
+            db_path = "data/mdrap_replay.db"
+        elif not os.path.exists(db_path):
+            console.print(
+                f"[bold red]✖ Error: Database '{db_path}' does not exist.[/bold red]"
+            )
+            sys.exit(1)
+
+    inc_mgr = IncidentManager(db_path)
+    limit = getattr(args, "limit", 20) or 20
+    provider = getattr(args, "provider", None)
+    instrument = getattr(args, "symbol", None) or getattr(args, "instrument", None)
+    status_filter = getattr(args, "status", None)
+
+    incidents = inc_mgr.query_incidents(limit=limit, provider=provider, instrument=instrument)
+    if status_filter:
+        want_active = status_filter.upper() in ("OPEN", "ACTIVE")
+        incidents = [i for i in incidents if i.is_active == want_active]
+
+    if getattr(args, "json", False):
+        print(json.dumps([inc.to_dict() for inc in incidents], indent=2))
+        return
+
+    render_brand_header(
+        console,
+        title="Data Quality Incidents",
+        subtitle=f"Tracking & Forensic State Reconstruction ({db_path})",
+        badge=f"{len(incidents)} INCIDENTS",
+        meta=f"Filter: {status_filter or 'ALL'} | Limit: {limit}",
+    )
+    if not incidents:
+        console.print("[dim]No data quality incidents recorded in database.[/dim]")
+        return
+
+    rows = []
+    for inc in incidents:
+        status_str = "[bold yellow]ACTIVE[/bold yellow]" if inc.is_active else "[bold green]RESOLVED[/bold green]"
+        repro_str = "[bold green]VERIFIED[/bold green]" if inc.reproduced else "[dim]PENDING[/dim]"
+        rows.append((
+            inc.incident_id,
+            inc.provider,
+            inc.instrument,
+            inc.anomaly_type,
+            status_str,
+            repro_str,
+            inc.impact_summary[:38] + "..." if len(inc.impact_summary) > 38 else inc.impact_summary,
+        ))
+    cols = [
+        ("Incident ID", "left", "cyan"),
+        ("Provider", "left", "white"),
+        ("Instrument", "left", "white"),
+        ("Anomaly Type", "left", "yellow"),
+        ("Status", "center"),
+        ("Replay Proof", "center"),
+        ("Impact Summary", "left"),
+    ]
+    console.print(_t("Data Quality Incident Register", cols, rows))
+    console.print(
+        f"\n[dim]Replay an incident with:[/dim] [bold cyan]python cli.py replay --incident <INCIDENT_ID> --db {db_path}[/bold cyan]"
+    )
+
+
 def cmd_failover(args):
     """Active-Passive cluster failover coordinator."""
     from ..failover import FailoverNode
