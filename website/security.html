@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MDRAP — Security Model & Assurance Architecture</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <header>
+    <div class="container nav-bar">
+      <a href="index.html" class="brand">
+        <span>MDRAP</span>
+        <span class="brand-badge">v6.0.0 STABLE</span>
+      </a>
+      <nav>
+        <ul>
+          <li><a href="index.html">Overview</a></li>
+          <li><a href="product.html">Product</a></li>
+          <li><a href="architecture.html">Architecture</a></li>
+          <li><a href="benchmarks.html">Benchmarks</a></li>
+          <li><a href="security.html" class="active">Security</a></li>
+          <li><a href="pricing.html">Pilot Program</a></li>
+          <li><a href="contact.html" class="btn btn-primary">Join Pilot</a></li>
+        </ul>
+      </nav>
+    </div>
+  </header>
+
+  <section class="hero">
+    <div class="container">
+      <div class="hero-pill">
+        <span>● ZERO-TRUST READ-ONLY ASSURANCE BOUNDARY</span>
+      </div>
+      <h1>Zero Execution Risk by Design</h1>
+      <p>
+        MDRAP eliminates the primary risk vector of financial software: private trading keys. By design, MDRAP cannot place orders, modify positions, or access brokerage funds.
+      </p>
+    </div>
+  </section>
+
+  <!-- Security Pillars -->
+  <section class="section">
+    <div class="container">
+      <div class="section-header">
+        <div class="section-tag">CORE DEFENSES</div>
+        <h2 class="section-title">Institutional Infosec Guarantees</h2>
+      </div>
+
+      <div class="grid-3">
+        <div class="card">
+          <h3 class="card-title">Zero Private Secrets</h3>
+          <p>
+            MDRAP connects strictly to public WebSocket feeds and multicast streams. It does not accept, store, or transmit API secrets, passphrases, or private signing keys.
+          </p>
+        </div>
+        <div class="card">
+          <h3 class="card-title">Loopback Isolation</h3>
+          <p>
+            The internal REST and WebSocket APIs bind strictly to <code>127.0.0.1</code>. The sidecar cannot be reached from external networks without explicit proxying.
+          </p>
+        </div>
+        <div class="card">
+          <h3 class="card-title">Cryptographic Salt</h3>
+          <p>
+            API tokens and hash operations enforce a 32-byte cryptographic salt (<code>MDRAP_API_KEY_SALT</code>). The daemon refuses to start if default salts are detected.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Threat Matrix Table -->
+  <section class="section" style="background-color: var(--bg-secondary);">
+    <div class="container">
+      <div class="section-header">
+        <div class="section-tag">THREAT MODELING</div>
+        <h2 class="section-title">Defensive Matrix Against Attack Vectors</h2>
+      </div>
+
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>THREAT VECTOR</th>
+              <th>POTENTIAL SEVERITY</th>
+              <th>MDRAP ARCHITECTURAL DEFENSE</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Trading Key Theft / Drain</strong></td>
+              <td><span class="badge badge-invalid">CATASTROPHIC</span></td>
+              <td><strong>Architecturally Impossible</strong>: Zero execution code or secret storage in the entire codebase.</td>
+            </tr>
+            <tr>
+              <td><strong>Feed Manipulation / Spoofing</strong></td>
+              <td><span class="badge badge-invalid">HIGH</span></td>
+              <td><strong>15-Rule Quality Engine</strong>: Detects inverted spreads, price jumps, and sequence drops, quarantining bad frames.</td>
+            </tr>
+            <tr>
+              <td><strong>Audit Log Alteration</strong></td>
+              <td><span class="badge badge-suspicious">HIGH</span></td>
+              <td><strong>RFC 6962 Merkle Trees</strong>: Any modification to past records breaks cryptographic inclusion proofs.</td>
+            </tr>
+            <tr>
+              <td><strong>Container Privilege Escalation</strong></td>
+              <td><span class="badge badge-suspicious">MEDIUM</span></td>
+              <td><strong>Hardened Container</strong>: Drops all Linux capabilities (<code>cap_drop: ALL</code>), runs as unprivileged user <code>10001</code>.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="container">
+      <div class="footer-bottom" style="border:none; padding-top:0;">
+        <div>&copy; 2026 MDRAP Platform Engineering. Security & Assurance Reference.</div>
+        <div><a href="index.html">Back to Home</a></div>
+      </div>
+    </div>
+  </footer>
+
+  <script src="js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,44 @@
+[Unit]
+Description=MDRAP Market Data Reliability & Assurance Platform Sidecar
+Documentation=https://github.com/mdrap-assurance/mdrap
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=mdrap
+Group=mdrap
+WorkingDirectory=/var/lib/mdrap
+ExecStartPre=/usr/local/bin/python /usr/local/lib/mdrap/deploy/validate_environment.py --quiet
+ExecStart=/usr/local/bin/python -m mdrap.cli live --config /etc/mdrap/config.toml
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=always
+RestartSec=5s
+TimeoutStopSec=15s
+
+# Process and capability restrictions
+NoNewPrivileges=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+# Filesystem permissions
+ReadWritePaths=/var/lib/mdrap /var/log/mdrap
+ReadOnlyPaths=/etc/mdrap
+
+# Resource limits (sized for standard pilot instance)
+LimitNOFILE=65536
+MemoryMax=2G
+CPUQuota=200%
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MDRAP — Design Partner Pilot & Commercial Strategy</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <header>
+    <div class="container nav-bar">
+      <a href="index.html" class="brand">
+        <span>MDRAP</span>
+        <span class="brand-badge">v6.0.0 STABLE</span>
+      </a>
+      <nav>
+        <ul>
+          <li><a href="index.html">Overview</a></li>
+          <li><a href="product.html">Product</a></li>
+          <li><a href="architecture.html">Architecture</a></li>
+          <li><a href="benchmarks.html">Benchmarks</a></li>
+          <li><a href="security.html">Security</a></li>
+          <li><a href="pricing.html" class="active">Pilot Program</a></li>
+          <li><a href="contact.html" class="btn btn-primary">Join Pilot</a></li>
+        </ul>
+      </nav>
+    </div>
+  </header>
+
+  <section class="hero">
+    <div class="container">
+      <div class="hero-pill">
+        <span>● INSTITUTIONAL ENGAGEMENT MODEL</span>
+      </div>
+      <h1>Design Partner Pilot Program</h1>
+      <p>
+        We collaborate directly with quantitative hedge funds, proprietary trading desks, and market makers to validate reliability before commercial rollout.
+      </p>
+    </div>
+  </section>
+
+  <!-- Pilot Tiers -->
+  <section class="section">
+    <div class="container">
+      <div class="grid-2">
+        <!-- Card 1: 30-Day Pilot -->
+        <div class="card" style="border: 1px solid var(--accent-blue);">
+          <div style="font-family: var(--font-mono); font-size: 11px; color: var(--accent-blue); text-transform: uppercase; margin-bottom: 8px;">PHASE 4 PILOT</div>
+          <h3 style="font-size: 24px; font-weight: 700; margin-bottom: 8px;">30-Day Design Partner Pilot</h3>
+          <p style="color: var(--text-secondary); margin-bottom: 24px;">
+            A structured, collaborative technical pilot designed to measure data reliability anomalies on your active feeds with zero trading disruption.
+          </p>
+          <div style="font-size: 32px; font-weight: 800; color: var(--text-primary); margin-bottom: 24px;">
+            $0 <span style="font-size: 14px; font-weight: 400; color: var(--text-muted);">/ during 30-day evaluation</span>
+          </div>
+
+          <ul style="color: var(--text-secondary); list-style: none; line-height: 2; margin-bottom: 32px;">
+            <li>&#10003; <strong>Full Self-Hosted Deployment</strong>: Run on-premises or in your private VPC.</li>
+            <li>&#10003; <strong>Up to 5 Exchange Feeds</strong>: Passive read-only monitoring.</li>
+            <li>&#10003; <strong>Direct Engineering Support</strong>: Weekly incident review & corridor analysis.</li>
+            <li>&#10003; <strong>Forensic Evidence Exporter</strong>: RFC 6962 Merkle tree proofs.</li>
+            <li>&#10003; <strong>Zero Trading Risk</strong>: No API keys, no order routing.</li>
+          </ul>
+
+          <a href="contact.html" class="btn btn-primary" style="width: 100%;">Apply for Design Partner Pilot</a>
+        </div>
+
+        <!-- Card 2: Commercial License -->
+        <div class="card">
+          <div style="font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px;">ENTERPRISE ROADMAP</div>
+          <h3 style="font-size: 24px; font-weight: 700; margin-bottom: 8px;">Self-Hosted Enterprise License</h3>
+          <p style="color: var(--text-secondary); margin-bottom: 24px;">
+            Post-pilot commercial deployment for high-frequency trading desks and institutional clearing houses requiring perpetual reliability assurance.
+          </p>
+          <div style="font-size: 32px; font-weight: 800; color: var(--text-primary); margin-bottom: 24px;">
+            Custom <span style="font-size: 14px; font-weight: 400; color: var(--text-muted);">/ per node / year</span>
+          </div>
+
+          <ul style="color: var(--text-secondary); list-style: none; line-height: 2; margin-bottom: 32px;">
+            <li>&#10003; <strong>Unlimited Feeds & Instruments</strong>: Scaled across trading pods.</li>
+            <li>&#10003; <strong>Native C Hot Path Kernel</strong>: Sub-microsecond validation.</li>
+            <li>&#10003; <strong>Shared Memory (SHM) Ring Buffers</strong>: Zero-copy IPC distribution.</li>
+            <li>&#10003; <strong>24/7 Severity-1 SLA</strong>: Direct core developer escalation.</li>
+            <li>&#10003; <strong>Air-Gapped Operation</strong>: Zero external telemetry phone-home.</li>
+          </ul>
+
+          <a href="contact.html" class="btn btn-outline" style="width: 100%;">Inquire About Enterprise Terms</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ROI Justification -->
+  <section class="section" style="background-color: var(--bg-secondary);">
+    <div class="container">
+      <div class="section-header">
+        <div class="section-tag">ROI JUSTIFICATION</div>
+        <h2 class="section-title">The Cost of a Single Market Data Anomaly</h2>
+      </div>
+
+      <div class="grid-3">
+        <div class="card">
+          <h3 class="card-title">Crossed Book Arbitrage Trap</h3>
+          <p>
+            During a sudden sell-off, a feed delays an order cancellation by 250ms, showing a crossed spread. An algorithmic execution algorithm fires into phantom liquidity, incurring immediate slippage losses of $15,000 to $100,000+.
+          </p>
+        </div>
+        <div class="card">
+          <h3 class="card-title">Sequence Gap Pricing Distortion</h3>
+          <p>
+            An exchange drops 300 WebSocket packets during a burst. Without sequence tracking, pricing models calculate volatility against a 20-second stale curve, mispricing downstream derivatives.
+          </p>
+        </div>
+        <div class="card">
+          <h3 class="card-title">Forensic Audit & Trade Disputes</h3>
+          <p>
+            Resolving an execution dispute with an exchange broker requires cryptographic proof of what wire bytes were delivered. MDRAP’s RFC 6962 Merkle proofs resolve disputes with mathematical finality.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="container">
+      <div class="footer-bottom" style="border:none; padding-top:0;">
+        <div>&copy; 2026 MDRAP Platform Engineering. Institutional Engagement.</div>
+        <div><a href="index.html">Back to Home</a></div>
+      </div>
+    </div>
+  </footer>
+
+  <script src="js/main.js"></script>
+</body>
+</html>

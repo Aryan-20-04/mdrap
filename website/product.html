@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MDRAP — Product Architecture & Core Capabilities</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <header>
+    <div class="container nav-bar">
+      <a href="index.html" class="brand">
+        <span>MDRAP</span>
+        <span class="brand-badge">v6.0.0 STABLE</span>
+      </a>
+      <nav>
+        <ul>
+          <li><a href="index.html">Overview</a></li>
+          <li><a href="product.html" class="active">Product</a></li>
+          <li><a href="architecture.html">Architecture</a></li>
+          <li><a href="benchmarks.html">Benchmarks</a></li>
+          <li><a href="security.html">Security</a></li>
+          <li><a href="pricing.html">Pilot Program</a></li>
+          <li><a href="contact.html" class="btn btn-primary">Join Pilot</a></li>
+        </ul>
+      </nav>
+    </div>
+  </header>
+
+  <section class="hero">
+    <div class="container">
+      <div class="hero-pill">
+        <span>● ASSURANCE CAPABILITIES & FORENSIC INTEGRITY</span>
+      </div>
+      <h1>Deep-Dive: The MDRAP Reliability Engine</h1>
+      <p>
+        Engineered specifically for quantitative trading teams, algorithmic execution desks, and risk controllers who cannot afford silent data corruption.
+      </p>
+    </div>
+  </section>
+
+  <!-- Capability 1: Ingestion & Normalization -->
+  <section class="section">
+    <div class="container">
+      <div class="section-header">
+        <div class="section-tag">CAPABILITY 01</div>
+        <h2 class="section-title">Passive Multi-Venue Ingestion & Normalization</h2>
+        <p class="section-desc">
+          Unifies fragmented exchange schemas into a strongly typed canonical event stream.
+        </p>
+      </div>
+      <div class="grid-2">
+        <div>
+          <p style="margin-bottom: 16px; color: var(--text-secondary);">
+            Every venue pushes market data in its own proprietary JSON, WebSocket, or binary encoding format. MDRAP connects strictly in passive read-only mode to exchanges like Coinbase, Kraken, Binance, and Databento.
+          </p>
+          <ul style="color: var(--text-secondary); margin-left: 20px; line-height: 1.8;">
+            <li>Zero API execution credentials or private secrets required.</li>
+            <li>Stamps precise tri-timestamp vectors: <code>(exchange_ts, receive_ts, processing_ts)</code>.</li>
+            <li>Assigns deterministic monotonic IDs avoiding non-deterministic UUID overhead.</li>
+            <li>Preserves raw wire bytes and computes immediate SHA-256 payload digests.</li>
+          </ul>
+        </div>
+        <div class="card" style="background-color: #030712;">
+          <div style="font-family: var(--font-mono); font-size: 12px; color: var(--accent-green); margin-bottom: 8px;">// CanonicalEvent Schema</div>
+          <pre style="color: #9ca3af; font-size: 12px; line-height: 1.5;">
+CanonicalEvent:
+  event_id:             "evt-cd75491fa9b6-10"
+  instrument_id:        "BTC-USD"
+  source:               "COINBASE"
+  sequence_number:      1049281
+  exchange_timestamp:   1700000000.124500
+  receive_timestamp:    1700000000.126100
+  processing_timestamp: 1700000000.126130
+  bid_price:            65200.00
+  ask_price:            65200.50
+  quality_status:       VALID
+  payload_sha256:       "fedd0ea63dcb92..."
+  lineage_hash:         "240057078e6226..."</pre>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Capability 2: 15-Rule Quality Engine -->
+  <section class="section" style="background-color: var(--bg-secondary);">
+    <div class="container">
+      <div class="section-header">
+        <div class="section-tag">CAPABILITY 02</div>
+        <h2 class="section-title">15-Rule Deterministic Microstructure Engine</h2>
+        <p class="section-desc">
+          Evaluates every tick in sub-microsecond time with strict priority preservation.
+        </p>
+      </div>
+
+      <div class="grid-3">
+        <div class="card">
+          <h3 class="card-title">Spread & Book Checks</h3>
+          <p>
+            Instantly flags inverted books (bid &ge; ask), extreme spread widening (&gt;500 bps), and empty level 2 order book snapshots.
+          </p>
+        </div>
+        <div class="card">
+          <h3 class="card-title">Sequence & Protocol Continuity</h3>
+          <p>
+            Detects dropped exchange packets by tracking monotonic sequence counters across venues, catching sequence gaps (&ge; 2 packets).
+          </p>
+        </div>
+        <div class="card">
+          <h3 class="card-title">Temporal & Network Health</h3>
+          <p>
+            Identifies clock skew (&gt;50ms drift against monotonic QPC clocks), stale ticks (&gt;3.0s quiet intervals), and future-dated frames.
+          </p>
+        </div>
+      </div>
+
+      <div style="margin-top: 24px; padding: 16px; background-color: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 6px;">
+        <span style="font-weight: 600; color: var(--accent-amber);">Strict Priority Invariant:</span>
+        <span style="color: var(--text-secondary); margin-left: 8px;">
+          <code>INVALID &gt; SUSPICIOUS &gt; VALID</code>. Once an event is marked INVALID or SUSPICIOUS, downstream reconcilers can never downgrade its severity.
+        </span>
+      </div>
+    </div>
+  </section>
+
+  <!-- Capability 3: Provenance & Merkle Tree -->
+  <section class="section">
+    <div class="container">
+      <div class="section-header">
+        <div class="section-tag">CAPABILITY 03</div>
+        <h2 class="section-title">Cryptographic Lineage & RFC 6962 Merkle Anchoring</h2>
+        <p class="section-desc">
+          Mathematics-backed forensic proof that market data records were not forged or altered.
+        </p>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <h3 class="card-title">Multi-Field Lineage Hash</h3>
+          <p style="margin-bottom: 12px;">
+            MDRAP computes a continuous cryptographic binding linking raw frames to validation outcomes:
+          </p>
+          <div style="background-color: #030712; padding: 12px; border-radius: 4px; font-family: var(--font-mono); font-size: 11px; color: var(--text-primary); word-break: break-all;">
+            SHA256(event_id : raw_id : provider : instrument : data_mode : payload_sha256 : quality_status : processing_timestamp)
+          </div>
+        </div>
+        <div class="card">
+          <h3 class="card-title">RFC 6962 Inclusion Proofs</h3>
+          <p style="margin-bottom: 12px;">
+            Audit batches and incident corridors are structured into Merkle trees using Certificate Transparency domain separation:
+          </p>
+          <div style="background-color: #030712; padding: 12px; border-radius: 4px; font-family: var(--font-mono); font-size: 11px; color: var(--accent-green);">
+            Leaf: SHA256(0x00 || LineageHash)<br>
+            Node: SHA256(0x01 || LeftChild || RightChild)
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Capability 4: Replay & Standalone Verification -->
+  <section class="section" style="background-color: var(--bg-secondary);">
+    <div class="container">
+      <div class="section-header">
+        <div class="section-tag">CAPABILITY 04</div>
+        <h2 class="section-title">Deterministic Replay & Standalone Verification</h2>
+        <p class="section-desc">
+          Reproduce market microstructure state exactly as it occurred during volatility anomalies.
+        </p>
+      </div>
+
+      <div class="grid-2">
+        <div>
+          <h3 style="font-size: 20px; font-weight: 700; margin-bottom: 12px;">Deterministic Incident Replay Engine</h3>
+          <p style="color: var(--text-secondary); margin-bottom: 16px;">
+            When a sequence jump or spread inversion occurs, MDRAP records the entire time corridor into SQLite WAL. Researchers can replay the corridor under an isolated <code>VirtualClock</code>, ensuring the order book and pricing behavior recreate bit-for-bit with 0 timing jitter.
+          </p>
+          <code style="background-color: var(--bg-tertiary); padding: 4px 8px; border-radius: 4px; color: var(--accent-green);">python cli.py replay --incident inc-1700000001-0001</code>
+        </div>
+        <div>
+          <h3 style="font-size: 20px; font-weight: 700; margin-bottom: 12px;">Zero-Dependency External Verifier</h3>
+          <p style="color: var(--text-secondary); margin-bottom: 16px;">
+            MDRAP ships with <code>tools/verify_evidence.py</code> — a 100% self-contained Python script requiring zero external packages. Compliance auditors and legal teams can verify exported evidence packages on air-gapped workstations without installing MDRAP.
+          </p>
+          <code style="background-color: var(--bg-tertiary); padding: 4px 8px; border-radius: 4px; color: var(--accent-green);">python tools/verify_evidence.py evidence_inc-*.json</code>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="container">
+      <div class="footer-bottom" style="border:none; padding-top:0;">
+        <div>&copy; 2026 MDRAP Platform Engineering. Institutional Market Assurance.</div>
+        <div><a href="index.html">Back to Home</a></div>
+      </div>
+    </div>
+  </footer>
+
+  <script src="js/main.js"></script>
+</body>
+</html>

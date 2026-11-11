@@ -3,6 +3,29 @@
 All notable changes to MDRAP are documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.0.0] - 2026-11-11
+
+### Strategic Product Reset, Read-Only Assurance Platform & Launch Experience
+- **Strategic Identity & Boundary Consolidation**:
+  - Refocused MDRAP strictly as an independent, read-only market-data reliability, provenance, and forensic evidence sidecar.
+  - Eliminated order routing, execution logic, trading terminals, and corporate filing shims from core engine.
+  - Preserved 100% passive, non-intrusive tap architecture with zero private key requirements.
+- **15-Step Interactive Demonstration (`tools/demo/run_demo.py`)**:
+  - Built repeatable, turnkey demonstration supporting Mode A (offline synthetic multi-venue corridor) and Mode B (read-only live public feeds).
+  - Validates 15 core architectural invariants: dual-venue normalization, telemetry, sequence tracking, SHA-256 provenance, 15-rule quality engine, sequence gap injection, quarantine, incident creation, RFC 6962 Merkle tree anchoring, crash teardown, WAL recovery, deterministic replay, standalone verification, and post-mortem export.
+- **Self-Hosted Deployment Experience (`deploy/`)**:
+  - Multi-stage Dockerfile and docker-compose.yml running as unprivileged user `10001` with `cap_drop: [ALL]` and read-only rootfs.
+  - Hardened Linux systemd service unit (`deploy/mdrap.service`) with `ProtectSystem=strict` and `NoNewPrivileges=true`.
+  - Automated pre-flight environment validator (`deploy/validate_environment.py`) and non-intrusive container health probe (`deploy/healthcheck.py`).
+- **Comprehensive Developer Documentation (`docs/developer/`)**:
+  - Published 18 comprehensive technical guides covering getting started, installation, configuration, architecture, connectors, provenance, quality engine, incidents, replay, evidence verification, CLI reference, API reference, deployment, troubleshooting, security, limitations, and demo walkthrough.
+- **Institutional Product Website (`website/`)**:
+  - Developed restrained, dark-themed institutional website with zero external CDN dependencies.
+  - Built interactive browser terminal simulator (`website/js/main.js`) and structured design partner inquiry flow.
+- **Design Partner Onboarding Package (`business/phase4/`)**:
+  - Authored 5-stage onboarding workflow, technical discovery questionnaire, 30-day pilot agreement, deployment checklist, weekly review template, and clean decommissioning protocol.
+  - Published technical marketing whitepapers on why sequence gaps matter, deterministic replay value, and read-only security.
+
 ## [5.3.0] - 2026-11-05
 
 ### Independent Engineering Remediation, Quantitative Hardening & Release Certification

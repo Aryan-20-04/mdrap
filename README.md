@@ -18,7 +18,7 @@ A deterministic, high-throughput market data validation, normalization, and cryp
 [![Language](https://img.shields.io/badge/language-Python%20%7C%20C%20(AVX2)-6366f1?style=flat-square)](src/mdrap/fastpath.c)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Windows-334155?style=flat-square)](#installation)
 
-[**Quickstart**](#quickstart--demo) &nbsp;•&nbsp; [**Architecture**](docs/architecture.md) &nbsp;•&nbsp; [**Editions & Boundaries**](docs/editions.md) &nbsp;•&nbsp; [**Benchmarks**](#performance-benchmarks-v53) &nbsp;•&nbsp; [**Audit Certification**](FINAL_V5_PRODUCTION_CERTIFICATION.md) &nbsp;•&nbsp; [**Documentation**](docs/)
+[**Quickstart**](#quickstart--demo) &nbsp;•&nbsp; [**Developer Docs**](docs/developer/getting-started.md) &nbsp;•&nbsp; [**Architecture**](docs/developer/architecture.md) &nbsp;•&nbsp; [**Demo Guide**](docs/developer/demo.md) &nbsp;•&nbsp; [**Benchmarks**](website/benchmarks.html) &nbsp;•&nbsp; [**Security Model**](docs/developer/security.md) &nbsp;•&nbsp; [**Self-Hosted Deploy**](docs/developer/self-hosted-deployment.md)
 
 </div>
 
@@ -105,6 +105,26 @@ Status: VALID
 BBO: 150.25 / 150.3
 Queried ticks: 1
 ```
+
+### Interactive 15-Step Reliability Demonstration
+
+Run the turnkey, 15-step interactive demonstration:
+
+```bash
+# Run local offline synthetic demonstration (reproducible multi-venue corridor)
+python tools/demo/run_demo.py --mode local
+
+# Run with interactive presentation pause
+python tools/demo/run_demo.py --mode local --interactive
+
+# Run read-only live public feed demonstration (Coinbase & Kraken public WebSockets)
+python tools/demo/run_demo.py --mode live
+
+# Verify exported evidence package independently (zero dependencies)
+python tools/verify_evidence.py demo/output/evidence_inc-*.json
+```
+
+See the [Demonstration Walkthrough Guide](docs/developer/demo.md) for step-by-step invariant details.
 
 ---
 

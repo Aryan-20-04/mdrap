@@ -1,0 +1,34 @@
+version: "3.8"
+
+services:
+  mdrap:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: mdrap:6.0.0
+    container_name: mdrap-sidecar
+    restart: unless-stopped
+    read_only: true
+    user: "10001:10001"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - ./data:/data:rw
+      - ./config.toml:/etc/mdrap/config.toml:ro
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    environment:
+      - PYTHONUNBUFFERED=1
+      - MDRAP_DATA_DIR=/data
+      - MDRAP_CONFIG=/etc/mdrap/config.toml
+    ports:
+      # Bind strictly to loopback interface to prevent unauthorized external network access
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "/app/deploy/healthcheck.py"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
