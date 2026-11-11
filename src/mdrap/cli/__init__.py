@@ -1974,14 +1974,6 @@ def build_parser() -> argparse.ArgumentParser:
         help_text="Maximum number of vessels to display (default: 25)",
     )
 
-    # Quantitative Research, Trading & Risk Subparsers (Gaps 1-12)
-    try:
-        from ..trading_cli import add_trading_parsers
-
-        add_trading_parsers(sub)
-    except Exception:
-        pass
-
     # Phase 12: Hierarchical Configuration Show
     p_cfg = _sub(
         "config",

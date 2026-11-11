@@ -1085,7 +1085,8 @@ def cmd_sdk_demo(args):
 
 
 def cmd_desk(args):
-    from ..navigator import MDRAPNavigator
-
-    nav = MDRAPNavigator()
-    nav.run()
+    console = Console()
+    console.print(
+        "[yellow]Notice:[/yellow] Interactive modal desk has been retired. "
+        "Use operational commands: [bold cyan]mdrap status[/bold cyan], [bold cyan]mdrap doctor[/bold cyan], or [bold cyan]mdrap replay[/bold cyan]."
+    )
