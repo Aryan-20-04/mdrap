@@ -121,7 +121,7 @@ def test_stor_01_journal_scan_forward_crash_recovery():
 
 
 def test_stor_02_shm_drainer_retains_batch_on_store_exception():
-    with patch("shm_drainer.SHMReader"):
+    with patch("mdrap.shm_drainer.SHMReader"):
         worker = SHMDrainWorker(shm_name="dummy_shm", batch_size=10)
         mock_store = MagicMock()
         mock_store.write_batches_atomic.side_effect = RuntimeError(

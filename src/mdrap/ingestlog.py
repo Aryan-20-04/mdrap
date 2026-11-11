@@ -2000,6 +2000,14 @@ class IngestLog:
                         )
                         break
 
+                    if length > MAX_FRAME_PAYLOAD_BYTES or length > s_size:
+                        report["corrupted_frames"] += 1
+                        seg_corrupt = True
+                        report["errors"].append(
+                            f"{s_name}: Oversized frame length {length} at offset {offset}"
+                        )
+                        break
+
                     payload_bytes = f.read(length)
                     if len(payload_bytes) < length:
                         report["corrupted_frames"] += 1

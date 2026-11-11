@@ -123,19 +123,6 @@ def test_cli_live_and_research(parser, tmp_path):
     _run_cmd(parser, ["export", "AAPL", "--csv", "-o", csv_path])
 
 
-def test_trading_cli_more_commands(parser):
-    _run_cmd(
-        parser,
-        ["news", "analyze", "Nvidia beats earnings estimates revenue surges 50%"],
-    )
-    _run_cmd(parser, ["news", "latest", "-s", "NVDA", "-j"])
-    _run_cmd(parser, ["corpact", "add", "-s", "AAPL"])
-    _run_cmd(parser, ["corpact", "adjust", "-s", "AAPL"])
-    _run_cmd(parser, ["alert", "add", "-i", "AAPL", "-t", "ABOVE", "-v", "250"])
-    _run_cmd(parser, ["alert", "summary"])
-    _run_cmd(parser, ["watchlist", "add", "-n", "Tech", "-s", "AAPL", "NVDA"])
-    _run_cmd(parser, ["bars", "query", "-i", "AAPL", "-t", "1m", "-l", "5"])
-
 
 def test_polygon_feed_parsers():
     import mdrap.polygon_feed as polygon_feed

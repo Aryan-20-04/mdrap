@@ -101,8 +101,8 @@ def network(monkeypatch):
             raise response
         return response
 
-    monkeypatch.setattr("chd.urlopen", open_request)
-    monkeypatch.setattr("chd.time.sleep", lambda _: None)
+    monkeypatch.setattr("mdrap.chd.urlopen", open_request)
+    monkeypatch.setattr("mdrap.chd.time.sleep", lambda _: None)
     monkeypatch.delenv("CRYPTOHFTDATA_API_KEY", raising=False)
     return calls, replies
 
@@ -233,7 +233,7 @@ def test_retries_rate_limit_server_and_network(tmp_path, network):
             Response(parquet([trade()])),
         ]
     )
-    with patch("chd.time.sleep") as sleep:
+    with patch("mdrap.chd.time.sleep") as sleep:
         CHDClient(cache_dir=tmp_path).fetch(next(request().partitions()))
     assert len(calls) == 4
     assert any(call.args == (2,) for call in sleep.call_args_list)
@@ -624,7 +624,7 @@ def test_http_redirects_never_forward_credentials():
 
 def test_long_retry_after_stops_without_sleeping(tmp_path, network):
     network[1].append(http_error(429, {"Retry-After": "3600"}))
-    with patch("chd.time.sleep") as sleep:
+    with patch("mdrap.chd.time.sleep") as sleep:
         with pytest.raises(CHDError, match="resume later"):
             CHDClient(cache_dir=tmp_path).fetch(next(request().partitions()))
     sleep.assert_not_called()
@@ -727,7 +727,7 @@ def test_malformed_content_length_handled(tmp_path):
 
     c = CHDClient(cache_dir=tmp_path, max_retries=2)
     dest = tmp_path / "download.tmp"
-    with patch("chd.urlopen", side_effect=open_request):
+    with patch("mdrap.chd.urlopen", side_effect=open_request):
         # Should catch invalid Content-Length as IntegrityError, retry, and succeed on second attempt
         c._request("/download", destination=dest)
     assert dest.read_bytes() == b"PAR1good"

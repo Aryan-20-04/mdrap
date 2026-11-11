@@ -97,7 +97,7 @@ def backup_database(
     if verify_audit:
         try:
             from mdrap.security import SecurityManager
-            from storage import Store
+            from mdrap.storage import Store
 
             chk_store = Store(temp_target)
             sec = SecurityManager(store=chk_store)
