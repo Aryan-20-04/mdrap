@@ -1023,6 +1023,7 @@ class Store(StoreAuditMixin):
         cols = [d[0] for d in cur.description]
         return dict(zip(cols, row))
 
+    @_read_synchronized
     def reprocess_quarantine(self, event_id: str, pipeline: Any) -> Any | None:
         """Reprocess a quarantined event through the pipeline."""
         rec = self.get_quarantined_record(event_id)

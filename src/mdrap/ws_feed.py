@@ -843,7 +843,11 @@ class WebSocketFeedManager:
                                         evicted = self._queue.get_nowait()
                                     except queue.Empty:
                                         pass
-                                    self._queue.put_nowait(raw)
+                                    try:
+                                        self._queue.put_nowait(raw)
+                                    except queue.Full:
+                                        # Queue filled immediately by peer thread; drop frame safely without crash
+                                        evicted = raw
                                     self._drop_count += 1
                                     self._drop_counts[venue] = (
                                         self._drop_counts.get(venue, 0) + 1

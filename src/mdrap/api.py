@@ -290,10 +290,12 @@ class AppState:
         # WebSocket subscribers & bounded subscriber queues for slow client isolation
         self.subscribers: Dict[WebSocket, Set[str]] = {}
         self.subscriber_tokens: Dict[WebSocket, str] = {}
+        self.subscriber_entitlements: Dict[WebSocket, Any] = {}
         self.subscriber_queues: Dict[WebSocket, asyncio.Queue] = {}
         self.subscriber_loops: Dict[WebSocket, Any] = {}
         self.subscriber_drops: Dict[WebSocket, int] = {}
         self.subscriber_tasks: Dict[WebSocket, asyncio.Task] = {}
+        self._dead_subscribers: Set[WebSocket] = set()
         self.total_subscriber_drops: int = 0
         self.max_client_drops: int = int(
             os.environ.get("MDRAP_MAX_CLIENT_DROPS", "500")
@@ -357,28 +359,64 @@ class AppState:
             return True, "All monitored feed sources are silent"
         return False, ""
 
+    def _enqueue_subscriber_event(
+        self, ws: Any, q: asyncio.Queue, event_data: dict
+    ) -> None:
+        """Safely push event to subscriber queue; records drops and flags slow clients."""
+        try:
+            q.put_nowait(event_data)
+        except asyncio.QueueFull:
+            self.total_subscriber_drops += 1
+            drops = self.subscriber_drops.get(ws, 0) + 1
+            self.subscriber_drops[ws] = drops
+            if drops % 100 == 1:
+                logger.warning(
+                    "[api] WebSocket subscriber queue full, dropped message #%d",
+                    drops,
+                )
+            if drops >= self.max_client_drops:
+                logger.warning(
+                    "[api] Evicting slow WebSocket subscriber after exceeding %d dropped messages",
+                    self.max_client_drops,
+                )
+                self._dead_subscribers.add(ws)
+
     async def broadcast_event(self, event_data: dict):
         """Dispatch validated canonical tick or BBO event to connected WebSocket clients."""
         sym = str(
             event_data.get("instrument_id") or event_data.get("symbol") or ""
         ).upper()
-        dead_sockets = []
+        dead_sockets = list(self._dead_subscribers)
+        self._dead_subscribers.clear()
 
+        now = time.time()
         # Deliver to subscriber queues without blocking ingestion pipeline
         for ws, sub_syms in list(self.subscribers.items()):
+            if ws in dead_sockets:
+                continue
+
             # Revocation check during stream broadcast (fail-closed for registered tokens)
-            if ws in self.subscriber_tokens:
+            ent = self.subscriber_entitlements.get(ws)
+            if ent is None and ws in self.subscriber_tokens:
+                # Lazy-cache entitlement if missing
                 tok = self.subscriber_tokens[ws]
                 ent = (
                     self.security_manager.get_entitlement(tok, active_only=True)
                     if tok
                     else None
                 )
-                if not ent:
+                if ent:
+                    self.subscriber_entitlements[ws] = ent
+
+            if ent is not None:
+                if not ent.is_active or (
+                    ent.expires_at is not None and now > ent.expires_at
+                ):
                     dead_sockets.append(ws)
                     continue
-            else:
-                ent = None
+            elif ws in self.subscriber_tokens:
+                dead_sockets.append(ws)
+                continue
 
             # Granular licensing check (source & symbol)
             if ent:
@@ -394,36 +432,25 @@ class AppState:
                 q = self.subscriber_queues.get(ws)
                 ws_loop = self.subscriber_loops.get(ws)
                 if q is not None:
+                    cur_loop = None
                     try:
-                        cur_loop = None
-                        try:
-                            cur_loop = asyncio.get_running_loop()
-                        except RuntimeError:
-                            pass
+                        cur_loop = asyncio.get_running_loop()
+                    except RuntimeError:
+                        pass
 
-                        if (
-                            ws_loop is not None
-                            and ws_loop.is_running()
-                            and ws_loop != cur_loop
-                        ):
-                            ws_loop.call_soon_threadsafe(q.put_nowait, event_data)
-                        else:
-                            q.put_nowait(event_data)
-                    except asyncio.QueueFull:
-                        self.total_subscriber_drops += 1
-                        drops = self.subscriber_drops.get(ws, 0) + 1
-                        self.subscriber_drops[ws] = drops
-                        if drops % 100 == 1:
-                            logger.warning(
-                                "[api] WebSocket subscriber queue full, dropped message #%d",
-                                drops,
-                            )
-                        if drops >= self.max_client_drops:
-                            logger.warning(
-                                "[api] Evicting slow WebSocket subscriber after exceeding %d dropped messages",
-                                self.max_client_drops,
-                            )
+                    if (
+                        ws_loop is not None
+                        and ws_loop.is_running()
+                        and ws_loop != cur_loop
+                    ):
+                        ws_loop.call_soon_threadsafe(
+                            self._enqueue_subscriber_event, ws, q, event_data
+                        )
+                    else:
+                        self._enqueue_subscriber_event(ws, q, event_data)
+                        if ws in self._dead_subscribers:
                             dead_sockets.append(ws)
+                            self._dead_subscribers.discard(ws)
                 else:
                     try:
                         await ws.send_json(event_data)
@@ -433,15 +460,17 @@ class AppState:
         for ws in dead_sockets:
             self.subscribers.pop(ws, None)
             self.subscriber_tokens.pop(ws, None)
+            self.subscriber_entitlements.pop(ws, None)
             self.subscriber_queues.pop(ws, None)
             self.subscriber_loops.pop(ws, None)
             self.subscriber_drops.pop(ws, None)
+            self._dead_subscribers.discard(ws)
             task = self.subscriber_tasks.pop(ws, None)
             if task:
                 task.cancel()
             try:
                 await ws.close(
-                    code=status.WS_1008_POLICY_VIOLATION, reason="API key revoked"
+                    code=status.WS_1008_POLICY_VIOLATION, reason="API key revoked or slow client"
                 )
             except Exception:
                 pass
@@ -1518,6 +1547,7 @@ def create_app(
         queue: asyncio.Queue = asyncio.Queue(maxsize=1000)
         st.subscribers[websocket] = subscribed_symbols
         st.subscriber_tokens[websocket] = token
+        st.subscriber_entitlements[websocket] = client_ent
         st.subscriber_queues[websocket] = queue
         st.subscriber_loops[websocket] = asyncio.get_running_loop()
         st.subscriber_drops[websocket] = 0
