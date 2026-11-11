@@ -673,7 +673,9 @@ class IncidentReplayEngine:
     def __init__(self, db_path: str = "data/mdrap.db"):
         self.db_path = db_path
 
-    def replay_incident(self, incident_id: str) -> IncidentReplayResult:
+    def replay_incident(
+        self, incident_id: str, buffer_s: float = 5.0
+    ) -> IncidentReplayResult:
         """Deterministically reconstruct market microstructure state during an incident."""
         from .bbo import BBOEngine
         from .incidents import IncidentManager
@@ -691,9 +693,10 @@ class IncidentReplayEngine:
         conn.row_factory = sqlite3.Row
         events: list[CanonicalEvent] = []
         try:
-            buffer_s = 5.0
-            start_ts = incident.start_timestamp - buffer_s
-            end_ts = (incident.end_timestamp or incident.start_timestamp) + buffer_s
+            start_ts = incident.start_timestamp - max(0.1, float(buffer_s))
+            end_ts = (
+                incident.end_timestamp or incident.start_timestamp
+            ) + max(0.1, float(buffer_s))
             cursor = conn.execute(
                 "SELECT * FROM canonical_events WHERE instrument_id = ? AND ((receive_timestamp BETWEEN ? AND ?) OR (exchange_timestamp BETWEEN ? AND ?)) ORDER BY exchange_timestamp ASC, sequence_number ASC",
                 (incident.instrument, start_ts, end_ts, start_ts, end_ts),

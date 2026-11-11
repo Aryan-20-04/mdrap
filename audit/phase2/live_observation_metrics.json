@@ -1,0 +1,44 @@
+{
+  "execution": {
+    "start_time": "2026-11-11T06:04:41.620423+00:00",
+    "end_time": "2026-11-11T06:04:56.986487+00:00",
+    "duration_s": 15.37
+  },
+  "volume": {
+    "total_events": 98,
+    "events_by_venue": {
+      "COINBASE": 96,
+      "KRAKEN": 2
+    },
+    "rates_eps": {
+      "min": 1.66,
+      "avg": 6.38,
+      "max": 37.53
+    }
+  },
+  "latency_us": {
+    "p50": 239.8,
+    "p95": 463.2,
+    "p99": 3680.0
+  },
+  "quality_distribution": {
+    "VALID": 0,
+    "SUSPICIOUS": 98,
+    "INVALID": 0
+  },
+  "cross_venue_arbitrage_divergence": {
+    "comparisons_recorded": 96,
+    "avg_divergence_bps": 0.49,
+    "max_divergence_bps": 0.94
+  },
+  "durability": {
+    "in_memory_recorded": 98,
+    "persisted_sqlite_rows": 98,
+    "data_loss_count": 0
+  },
+  "read_only_safety": {
+    "order_keys_configured": false,
+    "private_endpoints_called": 0,
+    "execution_routes_exposed": 0
+  }
+}
