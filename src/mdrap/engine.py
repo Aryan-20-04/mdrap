@@ -2511,7 +2511,7 @@ class Engine:
 
         bid = payload.get("bid")
         ask = payload.get("ask")
-        if bid is not None or ask is not None:
+        if (bid is not None or ask is not None) and cur_status != QualityStatus.INVALID:
             if txn is not None:
                 txn.record_bbo(instrument, raw_event.source)
             source_quotes = state.bbo_state.setdefault(instrument, {})
@@ -2520,6 +2520,41 @@ class Engine:
                 current_src["bid"] = float(bid)
             if ask is not None:
                 current_src["ask"] = float(ask)
+            current_src["ts"] = exch_ts
+
+            if cur_status != QualityStatus.INVALID and "bid" in current_src and "ask" in current_src:
+                active_quotes = {
+                    src: q
+                    for src, q in source_quotes.items()
+                    if "bid" in q and "ask" in q and abs(exch_ts - q.get("ts", exch_ts)) <= 0.25
+                }
+                if len(active_quotes) >= 2:
+                    bids = [q["bid"] for q in active_quotes.values()]
+                    asks = [q["ask"] for q in active_quotes.values()]
+                    ind_crossed = any(q["bid"] >= q["ask"] for q in active_quotes.values())
+                    cross_crossed = max(bids) >= min(asks)
+                    if ind_crossed or cross_crossed:
+                        if reasons_out is reasons:
+                            reasons_out = list(reasons)
+                        if Reason.CROSSED_QUOTE.value not in reasons_out:
+                            reasons_out.append(Reason.CROSSED_QUOTE.value)
+                        cur_status = QualityStatus.merge(cur_status, QualityStatus.SUSPICIOUS)
+                        disagreement = True
+
+                    mean_bid = sum(bids) / len(bids)
+                    mean_ask = sum(asks) / len(asks)
+                    q_disagree = False
+                    if mean_bid > 0 and any(abs(b - mean_bid) / mean_bid > 0.005 for b in bids):
+                        q_disagree = True
+                    if mean_ask > 0 and any(abs(a - mean_ask) / mean_ask > 0.005 for a in asks):
+                        q_disagree = True
+                    if q_disagree:
+                        if reasons_out is reasons:
+                            reasons_out = list(reasons)
+                        if Reason.CROSS_FEED_DISAGREEMENT.value not in reasons_out:
+                            reasons_out.append(Reason.CROSS_FEED_DISAGREEMENT.value)
+                        cur_status = QualityStatus.merge(cur_status, QualityStatus.SUSPICIOUS)
+                        disagreement = True
 
         if price is not None and cur_status != QualityStatus.INVALID:
             if txn is not None:

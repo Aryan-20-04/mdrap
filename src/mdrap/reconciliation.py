@@ -386,12 +386,12 @@ class HighestReliabilityStrategy:
         cross_venue_crossed = (max(bids.values()) >= min(asks.values())) if bids and asks else False
         is_crossed_book = individual_crossed or cross_venue_crossed
 
-        disagreement = bid_disagreement or ask_disagreement or spread_disagreement or is_crossed_book
+        disagreement = bid_disagreement or ask_disagreement or is_crossed_book
 
         quality_reasons: list[str] = []
         if is_crossed_book:
             quality_reasons.append(Reason.CROSSED_QUOTE.value)
-        if bid_disagreement or ask_disagreement or spread_disagreement:
+        if bid_disagreement or ask_disagreement:
             quality_reasons.append(Reason.CROSS_FEED_DISAGREEMENT.value)
 
         # Primary: highest score
@@ -632,12 +632,12 @@ class MedianPriceStrategy:
         cross_venue_crossed = (max(bids.values()) >= min(asks.values())) if bids and asks else False
         is_crossed_book = individual_crossed or cross_venue_crossed
 
-        disagreement = bid_disagreement or ask_disagreement or spread_disagreement or is_crossed_book
+        disagreement = bid_disagreement or ask_disagreement or is_crossed_book
 
         quality_reasons: list[str] = []
         if is_crossed_book:
             quality_reasons.append(Reason.CROSSED_QUOTE.value)
-        if bid_disagreement or ask_disagreement or spread_disagreement:
+        if bid_disagreement or ask_disagreement:
             quality_reasons.append(Reason.CROSS_FEED_DISAGREEMENT.value)
 
         # Median selection based on quote midpoint
