@@ -387,6 +387,35 @@ class Store(StoreAuditMixin):
                     updated_at REAL NOT NULL
                 );
             """)
+            # Ensure event_provenance exists across all migrated databases
+            self.conn.execute("""
+                CREATE TABLE IF NOT EXISTS event_provenance (
+                    event_id TEXT PRIMARY KEY,
+                    raw_id TEXT NOT NULL,
+                    provider TEXT NOT NULL,
+                    instrument TEXT NOT NULL,
+                    channel TEXT NOT NULL,
+                    data_mode TEXT NOT NULL,
+                    exchange_timestamp REAL NOT NULL,
+                    receive_timestamp REAL NOT NULL,
+                    processing_timestamp REAL NOT NULL,
+                    sequence_number INTEGER,
+                    parser_version TEXT NOT NULL,
+                    normalizer_version TEXT NOT NULL,
+                    quality_status TEXT NOT NULL,
+                    quality_reasons TEXT NOT NULL,
+                    payload_sha256 TEXT NOT NULL,
+                    processing_status TEXT NOT NULL,
+                    durability_status TEXT NOT NULL,
+                    lineage_hash TEXT NOT NULL
+                );
+            """)
+            self.conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_provenance_inst_ts ON event_provenance(instrument, receive_timestamp);"
+            )
+            self.conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_provenance_prov ON event_provenance(provider);"
+            )
             self.conn.commit()
 
             if not is_mem:
@@ -611,6 +640,50 @@ class Store(StoreAuditMixin):
         inserted = self.conn.total_changes - c_before
         if inserted < len(rows):
             self.conflicts += len(rows) - inserted
+
+    @_synchronized
+    def write_provenance_batch(self, rows: list[Any]) -> None:
+        """Persist a batch of first-class EventProvenance records."""
+        if not rows:
+            return
+        tuples = []
+        for r in rows:
+            if hasattr(r, "event_id"):
+                tuples.append(
+                    (
+                        r.event_id,
+                        r.raw_id,
+                        r.provider,
+                        r.instrument,
+                        r.channel,
+                        r.data_mode,
+                        r.exchange_timestamp,
+                        r.receive_timestamp,
+                        r.processing_timestamp,
+                        r.sequence_number,
+                        r.parser_version,
+                        r.normalizer_version,
+                        r.quality_status,
+                        json.dumps(r.quality_reasons),
+                        r.payload_sha256,
+                        r.processing_status,
+                        r.durability_status,
+                        r.lineage_hash,
+                    )
+                )
+            elif isinstance(r, (list, tuple)):
+                tuples.append(tuple(r))
+        self.conn.executemany(
+            """INSERT OR REPLACE INTO event_provenance (
+                event_id, raw_id, provider, instrument, channel, data_mode,
+                exchange_timestamp, receive_timestamp, processing_timestamp,
+                sequence_number, parser_version, normalizer_version,
+                quality_status, quality_reasons, payload_sha256,
+                processing_status, durability_status, lineage_hash
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            tuples,
+        )
+        self.conn.commit()
 
     @_synchronized
     def upsert_source_health(self, rows: list[tuple]):
@@ -919,6 +992,24 @@ class Store(StoreAuditMixin):
             return None
         cols = [d[0] for d in cur.description]
         return dict(zip(cols, row))
+
+    @_read_synchronized
+    def get_provenance(self, event_id: str) -> dict | None:
+        """Fetch a single first-class event provenance record by event_id."""
+        cur = self.read_conn.execute(
+            "SELECT * FROM event_provenance WHERE event_id=?", (event_id,)
+        )
+        row = cur.fetchone()
+        if not row:
+            return None
+        cols = [d[0] for d in cur.description]
+        d = dict(zip(cols, row))
+        if "quality_reasons" in d and isinstance(d["quality_reasons"], str):
+            try:
+                d["quality_reasons"] = json.loads(d["quality_reasons"])
+            except Exception:
+                pass
+        return d
 
     @_read_synchronized
     def get_quarantined_record(self, event_id: str) -> dict | None:

@@ -47,20 +47,57 @@ class DataQualityIncident:
 class IncidentManager:
     """Manages active and historical data-quality incident lifecycles."""
 
-    def __init__(self, db_path: Optional[str] = None):
-        self.db_path = db_path
+    def __init__(self, db_path: Optional[str] = None, store: Any = None):
+        self.store = store
+        self.db_path = db_path or (
+            getattr(store, "path", None) or getattr(store, "db_path", None)
+            if store
+            else None
+        )
         self._lock = threading.Lock()
         self._active_incidents: dict[tuple[str, str, str], DataQualityIncident] = {}
         self._incident_history: list[DataQualityIncident] = []
         self._counter: int = 0
-        if self.db_path:
+        if self.store or self.db_path:
             self._init_db()
 
     def _init_db(self) -> None:
+        if self.store and hasattr(self.store, "conn"):
+            with self.store._lock:
+                self.store.conn.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS data_quality_incidents (
+                        incident_id TEXT PRIMARY KEY,
+                        provider TEXT NOT NULL,
+                        instrument TEXT NOT NULL,
+                        anomaly_type TEXT NOT NULL,
+                        severity TEXT NOT NULL,
+                        start_timestamp REAL NOT NULL,
+                        end_timestamp REAL,
+                        event_ids TEXT NOT NULL,
+                        impact_summary TEXT,
+                        is_active INTEGER NOT NULL,
+                        reproduced INTEGER NOT NULL,
+                        reproduction_hash TEXT
+                    )
+                    """
+                )
+                self.store.conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_incident_prov_inst ON data_quality_incidents(provider, instrument)"
+                )
+                self.store.conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_incident_start ON data_quality_incidents(start_timestamp)"
+                )
+                self.store.conn.commit()
+            return
+
         if not self.db_path:
             return
+        conn = None
         try:
-            with sqlite3.connect(self.db_path, timeout=5.0) as conn:
+            conn = sqlite3.connect(self.db_path, timeout=10.0)
+            conn.execute("PRAGMA busy_timeout=5000;")
+            with conn:
                 conn.execute(
                     """
                     CREATE TABLE IF NOT EXISTS data_quality_incidents (
@@ -87,6 +124,9 @@ class IncidentManager:
                 )
         except Exception:
             pass
+        finally:
+            if conn:
+                conn.close()
 
     def record_anomaly(
         self,
@@ -166,10 +206,48 @@ class IncidentManager:
                     self._persist_incident(inc)
 
     def _persist_incident(self, inc: DataQualityIncident) -> None:
+        if self.store and hasattr(self.store, "conn"):
+            with self.store._lock:
+                self.store.conn.execute(
+                    """
+                    INSERT INTO data_quality_incidents (
+                        incident_id, provider, instrument, anomaly_type, severity,
+                        start_timestamp, end_timestamp, event_ids, impact_summary,
+                        is_active, reproduced, reproduction_hash
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(incident_id) DO UPDATE SET
+                        end_timestamp=excluded.end_timestamp,
+                        event_ids=excluded.event_ids,
+                        impact_summary=excluded.impact_summary,
+                        is_active=excluded.is_active,
+                        reproduced=excluded.reproduced,
+                        reproduction_hash=excluded.reproduction_hash
+                    """,
+                    (
+                        inc.incident_id,
+                        inc.provider,
+                        inc.instrument,
+                        inc.anomaly_type,
+                        inc.severity,
+                        inc.start_timestamp,
+                        inc.end_timestamp,
+                        json.dumps(inc.event_ids),
+                        inc.impact_summary,
+                        1 if inc.is_active else 0,
+                        1 if inc.reproduced else 0,
+                        inc.reproduction_hash,
+                    ),
+                )
+                self.store.conn.commit()
+            return
+
         if not self.db_path:
             return
+        conn = None
         try:
-            with sqlite3.connect(self.db_path, timeout=5.0) as conn:
+            conn = sqlite3.connect(self.db_path, timeout=10.0)
+            conn.execute("PRAGMA busy_timeout=5000;")
+            with conn:
                 conn.execute(
                     """
                     INSERT INTO data_quality_incidents (
@@ -200,8 +278,12 @@ class IncidentManager:
                         inc.reproduction_hash,
                     ),
                 )
-        except Exception:
-            pass
+        except Exception as exc:
+            import logging
+            logging.getLogger("mdrap.incidents").error("[incidents] _persist_incident exception: %s", exc)
+        finally:
+            if conn:
+                conn.close()
 
     def query_incidents(
         self,
@@ -225,10 +307,8 @@ class IncidentManager:
                     :limit
                 ]
 
-        # Query from SQLite if DB path provided
-        try:
-            with sqlite3.connect(self.db_path, timeout=5.0) as conn:
-                conn.row_factory = sqlite3.Row
+        if self.store and hasattr(self.store, "conn"):
+            with (self.store._read_lock if hasattr(self.store, "_read_lock") else self.store._lock):
                 query = "SELECT * FROM data_quality_incidents"
                 params = []
                 clauses = []
@@ -243,7 +323,9 @@ class IncidentManager:
                 query += " ORDER BY start_timestamp DESC LIMIT ?"
                 params.append(limit)
 
-                rows = conn.execute(query, params).fetchall()
+                c = self.store.read_conn if hasattr(self.store, "read_conn") else self.store.conn
+                c.row_factory = sqlite3.Row
+                rows = c.execute(query, params).fetchall()
                 results = []
                 for r in rows:
                     results.append(
@@ -263,8 +345,52 @@ class IncidentManager:
                         )
                     )
                 return results
+
+        # Query from SQLite if DB path provided
+        conn = None
+        try:
+            conn = sqlite3.connect(self.db_path, timeout=10.0)
+            conn.execute("PRAGMA busy_timeout=5000;")
+            conn.row_factory = sqlite3.Row
+            query = "SELECT * FROM data_quality_incidents"
+            params = []
+            clauses = []
+            if provider:
+                clauses.append("provider = ?")
+                params.append(provider.upper())
+            if instrument:
+                clauses.append("instrument = ?")
+                params.append(instrument.upper())
+            if clauses:
+                query += " WHERE " + " AND ".join(clauses)
+            query += " ORDER BY start_timestamp DESC LIMIT ?"
+            params.append(limit)
+
+            rows = conn.execute(query, params).fetchall()
+            results = []
+            for r in rows:
+                results.append(
+                    DataQualityIncident(
+                        incident_id=r["incident_id"],
+                        provider=r["provider"],
+                        instrument=r["instrument"],
+                        anomaly_type=r["anomaly_type"],
+                        severity=r["severity"],
+                        start_timestamp=r["start_timestamp"],
+                        end_timestamp=r["end_timestamp"],
+                        event_ids=json.loads(r["event_ids"]),
+                        impact_summary=r["impact_summary"],
+                        is_active=bool(r["is_active"]),
+                        reproduced=bool(r["reproduced"]),
+                        reproduction_hash=r["reproduction_hash"],
+                    )
+                )
+            return results
         except Exception:
             return []
+        finally:
+            if conn:
+                conn.close()
 
     def get_incident(self, incident_id: str) -> Optional[DataQualityIncident]:
         """Fetch a specific incident by its unique ID."""
@@ -273,13 +399,11 @@ class IncidentManager:
                 if inc.incident_id == incident_id:
                     return inc
 
-        if not self.db_path:
-            return None
-
-        try:
-            with sqlite3.connect(self.db_path, timeout=5.0) as conn:
-                conn.row_factory = sqlite3.Row
-                r = conn.execute(
+        if self.store and hasattr(self.store, "conn"):
+            with (self.store._read_lock if hasattr(self.store, "_read_lock") else self.store._lock):
+                c = self.store.read_conn if hasattr(self.store, "read_conn") else self.store.conn
+                c.row_factory = sqlite3.Row
+                r = c.execute(
                     "SELECT * FROM data_quality_incidents WHERE incident_id = ?",
                     (incident_id,),
                 ).fetchone()
@@ -298,6 +422,38 @@ class IncidentManager:
                         reproduced=bool(r["reproduced"]),
                         reproduction_hash=r["reproduction_hash"],
                     )
-        except Exception:
-            pass
+
+        if not self.db_path:
+            return None
+
+        conn = None
+        try:
+            conn = sqlite3.connect(self.db_path, timeout=10.0)
+            conn.execute("PRAGMA busy_timeout=5000;")
+            conn.row_factory = sqlite3.Row
+            r = conn.execute(
+                "SELECT * FROM data_quality_incidents WHERE incident_id = ?",
+                (incident_id,),
+            ).fetchone()
+            if r:
+                return DataQualityIncident(
+                    incident_id=r["incident_id"],
+                    provider=r["provider"],
+                    instrument=r["instrument"],
+                    anomaly_type=r["anomaly_type"],
+                    severity=r["severity"],
+                    start_timestamp=r["start_timestamp"],
+                    end_timestamp=r["end_timestamp"],
+                    event_ids=json.loads(r["event_ids"]),
+                    impact_summary=r["impact_summary"],
+                    is_active=bool(r["is_active"]),
+                    reproduced=bool(r["reproduced"]),
+                    reproduction_hash=r["reproduction_hash"],
+                )
+        except Exception as exc:
+            import logging
+            logging.getLogger("mdrap.incidents").error("[incidents] get_incident exception: %s", exc)
+        finally:
+            if conn:
+                conn.close()
         return None

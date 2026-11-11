@@ -586,6 +586,7 @@ class WebSocketFeedManager:
         venues: list[str] | None = None,
         max_queue_size: int = 10000,
         on_drop: Callable[[RawEvent], None] | None = None,
+        stale_timeout_ms: float = 10_000.0,
     ):
         self.symbols = symbols
         self.venues = (
@@ -596,6 +597,7 @@ class WebSocketFeedManager:
         self.max_queue_size = max_queue_size
         self._queue: queue.Queue[RawEvent] = queue.Queue(maxsize=max_queue_size)
         self._on_drop = on_drop
+        self.stale_timeout_ms = stale_timeout_ms
         self._tombstones: collections.deque[RawEvent] = collections.deque(maxlen=1000)
         self._tombstone_lock = threading.Lock()
         self._stop_event = threading.Event()
@@ -699,7 +701,7 @@ class WebSocketFeedManager:
             if is_conn:
                 if last_rx is not None:
                     freshness_ms = max(0.0, (now - last_rx) * 1000.0)
-                    if freshness_ms > 10_000.0:  # >10s without frame on active socket
+                    if freshness_ms > self.stale_timeout_ms:
                         state = ConnectorState.STALE
                     elif (
                         meta.get("sequence_gaps_count", 0) > 0

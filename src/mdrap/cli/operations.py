@@ -411,10 +411,17 @@ def cmd_replay(args):
         console = Console()
         db_path = getattr(args, "db", None) or from_sqlite or "data/mdrap.db"
         if not os.path.exists(db_path):
-            console.print(
-                f"[bold red]✖ Error: Database '{db_path}' does not exist.[/bold red]"
-            )
-            sys.exit(1)
+            if db_path == "data/mdrap_replay.db" and os.path.exists("data/mdrap.db"):
+                db_path = "data/mdrap.db"
+            else:
+                console.print(
+                    f"[bold red]✖ Error: Database '{db_path}' does not exist.[/bold red]"
+                )
+                sys.exit(1)
+        elif db_path == "data/mdrap_replay.db" and os.path.exists("data/mdrap.db"):
+            from ..incidents import IncidentManager
+            if not IncidentManager(db_path).get_incident(incident_id):
+                db_path = "data/mdrap.db"
         engine = IncidentReplayEngine(db_path=db_path)
         try:
             res = engine.replay_incident(incident_id)

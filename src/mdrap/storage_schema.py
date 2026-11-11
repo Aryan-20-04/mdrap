@@ -87,6 +87,29 @@ CREATE TABLE IF NOT EXISTS lineage (
     created_at REAL
 );
 
+CREATE TABLE IF NOT EXISTS event_provenance (
+    event_id TEXT PRIMARY KEY,
+    raw_id TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    instrument TEXT NOT NULL,
+    channel TEXT NOT NULL,
+    data_mode TEXT NOT NULL,
+    exchange_timestamp REAL NOT NULL,
+    receive_timestamp REAL NOT NULL,
+    processing_timestamp REAL NOT NULL,
+    sequence_number INTEGER,
+    parser_version TEXT NOT NULL,
+    normalizer_version TEXT NOT NULL,
+    quality_status TEXT NOT NULL,
+    quality_reasons TEXT NOT NULL,
+    payload_sha256 TEXT NOT NULL,
+    processing_status TEXT NOT NULL,
+    durability_status TEXT NOT NULL,
+    lineage_hash TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_provenance_inst_ts ON event_provenance(instrument, receive_timestamp);
+CREATE INDEX IF NOT EXISTS idx_provenance_prov ON event_provenance(provider);
+
 CREATE TABLE IF NOT EXISTS source_health (
     source TEXT PRIMARY KEY,
     total INTEGER,

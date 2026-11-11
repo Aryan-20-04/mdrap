@@ -17,6 +17,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 import hashlib
 import json
+import sqlite3
 import time
 from typing import Any, Optional
 
@@ -125,14 +126,69 @@ def create_provenance(
 class ProvenanceTracker:
     """In-memory and persistent tracker for event-level assurance evidence."""
 
-    def __init__(self, max_records: int = 50_000, store: Any = None):
+    def __init__(
+        self,
+        max_records: int = 50_000,
+        store: Any = None,
+        db_path: Optional[str] = None,
+    ):
         self.max_records = max_records
         self.store = store
+        self.db_path = db_path or (
+            getattr(store, "path", None) or getattr(store, "db_path", None)
+            if store
+            else None
+        )
         self._records: dict[str, EventProvenance] = {}
         self._order: list[str] = []
+        if self.db_path and self.db_path != ":memory:":
+            self._init_db()
+
+    def _init_db(self) -> None:
+        if not self.db_path or self.db_path == ":memory:":
+            return
+        conn = None
+        try:
+            conn = sqlite3.connect(self.db_path, timeout=5.0)
+            with conn:
+                conn.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS event_provenance (
+                        event_id TEXT PRIMARY KEY,
+                        raw_id TEXT NOT NULL,
+                        provider TEXT NOT NULL,
+                        instrument TEXT NOT NULL,
+                        channel TEXT NOT NULL,
+                        data_mode TEXT NOT NULL,
+                        exchange_timestamp REAL NOT NULL,
+                        receive_timestamp REAL NOT NULL,
+                        processing_timestamp REAL NOT NULL,
+                        sequence_number INTEGER,
+                        parser_version TEXT NOT NULL,
+                        normalizer_version TEXT NOT NULL,
+                        quality_status TEXT NOT NULL,
+                        quality_reasons TEXT NOT NULL,
+                        payload_sha256 TEXT NOT NULL,
+                        processing_status TEXT NOT NULL,
+                        durability_status TEXT NOT NULL,
+                        lineage_hash TEXT NOT NULL
+                    )
+                    """
+                )
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_provenance_inst_ts ON event_provenance(instrument, receive_timestamp)"
+                )
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_provenance_prov ON event_provenance(provider)"
+                )
+        except Exception:
+            pass
+        finally:
+            if conn:
+                conn.close()
 
     def record(self, prov: EventProvenance) -> None:
-        """Record an event provenance entry into the tracker."""
+        """Record an event provenance entry into the tracker and persistent store."""
         if len(self._order) >= self.max_records:
             oldest = self._order.pop(0)
             self._records.pop(oldest, None)
@@ -140,10 +196,135 @@ class ProvenanceTracker:
         self._records[prov.event_id] = prov
         self._order.append(prov.event_id)
 
+        # Persist to store if available
+        if self.store and hasattr(self.store, "write_provenance_batch"):
+            try:
+                self.store.write_provenance_batch([prov])
+            except Exception:
+                pass
+        elif self.db_path and self.db_path != ":memory:":
+            conn = None
+            try:
+                conn = sqlite3.connect(self.db_path, timeout=5.0)
+                with conn:
+                    conn.execute(
+                        """
+                        INSERT OR REPLACE INTO event_provenance (
+                            event_id, raw_id, provider, instrument, channel, data_mode,
+                            exchange_timestamp, receive_timestamp, processing_timestamp,
+                            sequence_number, parser_version, normalizer_version,
+                            quality_status, quality_reasons, payload_sha256,
+                            processing_status, durability_status, lineage_hash
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            prov.event_id,
+                            prov.raw_id,
+                            prov.provider,
+                            prov.instrument,
+                            prov.channel,
+                            prov.data_mode,
+                            prov.exchange_timestamp,
+                            prov.receive_timestamp,
+                            prov.processing_timestamp,
+                            prov.sequence_number,
+                            prov.parser_version,
+                            prov.normalizer_version,
+                            prov.quality_status,
+                            json.dumps(prov.quality_reasons),
+                            prov.payload_sha256,
+                            prov.processing_status,
+                            prov.durability_status,
+                            prov.lineage_hash,
+                        ),
+                    )
+            except Exception:
+                pass
+            finally:
+                if conn:
+                    conn.close()
+
     def get(self, event_id: str) -> Optional[EventProvenance]:
         """Lookup provenance by event_id from memory or persistent store."""
         if event_id in self._records:
             return self._records[event_id]
+
+        # 1. Query store if available
+        if self.store and hasattr(self.store, "get_provenance"):
+            try:
+                r = self.store.get_provenance(event_id)
+                if r:
+                    reasons = (
+                        r["quality_reasons"]
+                        if isinstance(r["quality_reasons"], list)
+                        else json.loads(r["quality_reasons"] or "[]")
+                    )
+                    prov = EventProvenance(
+                        event_id=r["event_id"],
+                        raw_id=r["raw_id"],
+                        provider=r["provider"],
+                        instrument=r["instrument"],
+                        channel=r["channel"],
+                        data_mode=r["data_mode"],
+                        exchange_timestamp=r["exchange_timestamp"],
+                        receive_timestamp=r["receive_timestamp"],
+                        processing_timestamp=r["processing_timestamp"],
+                        sequence_number=r["sequence_number"],
+                        parser_version=r["parser_version"],
+                        normalizer_version=r["normalizer_version"],
+                        quality_status=r["quality_status"],
+                        quality_reasons=reasons,
+                        payload_sha256=r["payload_sha256"],
+                        processing_status=r["processing_status"],
+                        durability_status=r["durability_status"],
+                        lineage_hash=r["lineage_hash"],
+                    )
+                    self._records[event_id] = prov
+                    return prov
+            except Exception:
+                pass
+
+        # 2. Query SQLite directly if db_path configured
+        if self.db_path and self.db_path != ":memory:":
+            conn = None
+            try:
+                conn = sqlite3.connect(self.db_path, timeout=5.0)
+                conn.row_factory = sqlite3.Row
+                r = conn.execute(
+                    "SELECT * FROM event_provenance WHERE event_id = ?",
+                    (event_id,),
+                ).fetchone()
+                if r:
+                    reasons = json.loads(r["quality_reasons"] or "[]")
+                    prov = EventProvenance(
+                        event_id=r["event_id"],
+                        raw_id=r["raw_id"],
+                        provider=r["provider"],
+                        instrument=r["instrument"],
+                        channel=r["channel"],
+                        data_mode=r["data_mode"],
+                        exchange_timestamp=r["exchange_timestamp"],
+                        receive_timestamp=r["receive_timestamp"],
+                        processing_timestamp=r["processing_timestamp"],
+                        sequence_number=r["sequence_number"],
+                        parser_version=r["parser_version"],
+                        normalizer_version=r["normalizer_version"],
+                        quality_status=r["quality_status"],
+                        quality_reasons=reasons,
+                        payload_sha256=r["payload_sha256"],
+                        processing_status=r["processing_status"],
+                        durability_status=r["durability_status"],
+                        lineage_hash=r["lineage_hash"],
+                    )
+                    self._records[event_id] = prov
+                    return prov
+            except Exception:
+                pass
+            finally:
+                if conn:
+                    conn.close()
+
+        # 3. Fallback to legacy lineage table
         if self.store and hasattr(self.store, "event_lineage"):
             raw_lin = self.store.event_lineage(event_id)
             if raw_lin:
