@@ -808,7 +808,7 @@ class ConnectorCertificationSuite:
 
         return ConnectorCertificationReport(
             provider=provider.upper(),
-            software_version="5.3.0",
+            software_version="6.0.0",
             environment=f"{platform.system()} {platform.machine()} Python {platform.python_version()}",
             timestamp=time.time(),
             final_verdict=final_verdict,

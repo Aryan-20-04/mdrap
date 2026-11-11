@@ -20,7 +20,7 @@ def test_c04_version_consistency():
     """Verify version is synchronized across code, configurations, and docs."""
     from mdrap._version import __version__
 
-    assert __version__ in ("4.0.0", "4.0.1", "5.3.0")
+    assert __version__ in ("4.0.0", "4.0.1", "5.3.0", "6.0.0")
 
     compat_toml = (REPO_ROOT / "compat" / "pyproject.toml").read_text(encoding="utf-8")
     assert (

@@ -12,7 +12,7 @@
 
 A deterministic, high-throughput market data validation, normalization, and cryptographic audit sidecar for quantitative trading systems.
 
-[![Version](https://img.shields.io/badge/version-5.3.0-blue.svg?style=flat-square)](pyproject.toml)
+[![Version](https://img.shields.io/badge/version-6.0.0-blue.svg?style=flat-square)](pyproject.toml)
 [![Tests](https://img.shields.io/badge/tests-1700%2B%20passing-10b981?style=flat-square)](tests/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-8b5cf6?style=flat-square)](LICENSE)
 [![Language](https://img.shields.io/badge/language-Python%20%7C%20C%20(AVX2)-6366f1?style=flat-square)](src/mdrap/fastpath.c)

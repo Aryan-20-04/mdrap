@@ -24,8 +24,8 @@ from typing import Any, Optional
 from .models import CanonicalEvent, RawEvent
 
 __stability__ = "stable"
-PARSER_VERSION: str = "5.3.0"
-NORMALIZER_VERSION: str = "5.3.0"
+PARSER_VERSION: str = "6.0.0"
+NORMALIZER_VERSION: str = "6.0.0"
 
 
 def compute_payload_hash(wire: str | bytes | dict | None) -> str:
