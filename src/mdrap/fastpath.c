@@ -1242,11 +1242,25 @@ EXPORT void fastpath_reset(void) {
 }
 
 EXPORT void fastpath_evaluate(const FastEvent *ev, FastResult *res) {
-    fastpath_engine_evaluate(get_default_engine(), ev, res);
+    MD_LOCK(&g_lifecycle_lock);
+    FastEngine *e = get_default_engine();
+    if (e) {
+        fastpath_engine_evaluate(e, ev, res);
+    } else {
+        evaluate_nolock(NULL, ev, res);
+    }
+    MD_UNLOCK(&g_lifecycle_lock);
 }
 
 EXPORT void fastpath_evaluate_batch(const FastEvent *events, FastResult *results, int32_t count) {
-    fastpath_engine_evaluate_batch(get_default_engine(), events, results, count);
+    MD_LOCK(&g_lifecycle_lock);
+    FastEngine *e = get_default_engine();
+    if (e) {
+        fastpath_engine_evaluate_batch(e, events, results, count);
+    } else if (events && results && count > 0) {
+        for (int32_t i = 0; i < count; ++i) evaluate_nolock(NULL, &events[i], &results[i]);
+    }
+    MD_UNLOCK(&g_lifecycle_lock);
 }
 
 EXPORT void fastpath_evaluate_soa(
@@ -1267,10 +1281,15 @@ EXPORT void fastpath_evaluate_soa(
     int32_t *out_statuses,
     uint64_t *out_reasons
 ) {
-    fastpath_engine_evaluate_soa(
-        get_default_engine(), count, source_ids, instrument_ids, event_types,
-        prices, quantities, bids, asks, bid_sizes, ask_sizes, sequences,
-        exchange_ts, receive_ts, present_masks, out_statuses, out_reasons);
+    MD_LOCK(&g_lifecycle_lock);
+    FastEngine *e = get_default_engine();
+    if (e) {
+        fastpath_engine_evaluate_soa(
+            e, count, source_ids, instrument_ids, event_types,
+            prices, quantities, bids, asks, bid_sizes, ask_sizes, sequences,
+            exchange_ts, receive_ts, present_masks, out_statuses, out_reasons);
+    }
+    MD_UNLOCK(&g_lifecycle_lock);
 }
 
 EXPORT uint64_t fastpath_eval_fast(
@@ -1279,9 +1298,16 @@ EXPORT uint64_t fastpath_eval_fast(
     double price, double quantity, double bid_price, double ask_price,
     double bid_size, double ask_size
 ) {
-    return fastpath_engine_eval_fast(
-        get_default_engine(), source_id, instrument_id, event_type,
-        exchange_ts, receive_ts, sequence_num, price, quantity, bid_price, ask_price, bid_size, ask_size);
+    MD_LOCK(&g_lifecycle_lock);
+    FastEngine *e = get_default_engine();
+    uint64_t res = 0;
+    if (e) {
+        res = fastpath_engine_eval_fast(
+            e, source_id, instrument_id, event_type,
+            exchange_ts, receive_ts, sequence_num, price, quantity, bid_price, ask_price, bid_size, ask_size);
+    }
+    MD_UNLOCK(&g_lifecycle_lock);
+    return res;
 }
 
 EXPORT uint64_t fastpath_noop(

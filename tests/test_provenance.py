@@ -117,6 +117,7 @@ def test_provenance_happy_path_memory_and_store():
             assert ev2["verification_status"] == "VERIFIED_TAMPER_EVIDENT"
             assert ev2["integrity"]["persistence_state"] == ProvenanceDurabilityState.DURABLE.value
         finally:
+            tracker_disk.close()
             store_disk.close()
 
 
@@ -193,21 +194,25 @@ def test_provenance_sqlite_direct_recovery_after_restart():
         prov1 = create_provenance(raw, canon)
         tracker1.record(prov1)
         assert tracker1.persisted_count == 1
+        tracker1.close()
 
         # 2. Second process life: new tracker on same database file
         tracker2 = ProvenanceTracker(max_records=1000, db_path=db_path)
-        # In-memory records initially empty
-        assert "evt-restart-01" not in tracker2._records
+        try:
+            # In-memory records initially empty
+            assert "evt-restart-01" not in tracker2._records
 
-        # Retrieve from disk
-        prov2 = tracker2.get("evt-restart-01")
-        assert prov2 is not None
-        assert prov2.event_id == "evt-restart-01"
-        assert prov2.instrument == "ETHUSDT"
-        assert prov2.lineage_hash == prov1.lineage_hash
+            # Retrieve from disk
+            prov2 = tracker2.get("evt-restart-01")
+            assert prov2 is not None
+            assert prov2.event_id == "evt-restart-01"
+            assert prov2.instrument == "ETHUSDT"
+            assert prov2.lineage_hash == prov1.lineage_hash
 
-        ev = tracker2.export_evidence("evt-restart-01")
-        assert ev["verification_status"] == "VERIFIED_TAMPER_EVIDENT"
+            ev = tracker2.export_evidence("evt-restart-01")
+            assert ev["verification_status"] == "VERIFIED_TAMPER_EVIDENT"
+        finally:
+            tracker2.close()
 
 
 def test_provenance_concurrent_recording_thread_safety():

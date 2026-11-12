@@ -293,6 +293,8 @@ def test_multithreaded_fastpath_safety():
 def test_fastpath_evaluate_batch_scratch_reuse():
     """Verify FastQualityEngine.evaluate_batch reuses scratch buffers across multiple sizes."""
     eng = FastQualityEngine(thread_safe=True)
+    if not getattr(eng, "is_native", False):
+        pytest.skip("Native fastpath not available")
     assert eng._batch_capacity == 0
     assert eng._batch_c_events is None
 

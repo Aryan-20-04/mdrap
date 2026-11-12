@@ -418,29 +418,64 @@ class Store(StoreAuditMixin):
             )
             self.conn.commit()
 
+            self._local_readers = threading.local()
+            self._all_local_conns: list[sqlite3.Connection] = []
+            self._all_local_conns_lock = threading.Lock()
+            self._mmap_bytes = mmap_bytes
+            self._cache_kib = cache_kib
+
             if not is_mem:
                 try:
-                    self.read_conn = sqlite3.connect(
+                    self._shared_read_conn = sqlite3.connect(
                         path, timeout=DEFAULT_SQLITE_TIMEOUT_S, check_same_thread=False
                     )
-                    self.read_conn.execute("PRAGMA query_only=ON;")
-                    self.read_conn.execute(
+                    self._shared_read_conn.execute("PRAGMA query_only=ON;")
+                    self._shared_read_conn.execute(
                         f"PRAGMA busy_timeout={DEFAULT_BUSY_TIMEOUT_MS};"
                     )
-                    self.read_conn.execute(f"PRAGMA mmap_size={mmap_bytes};")
-                    self.read_conn.execute(f"PRAGMA cache_size=-{cache_kib};")
-                    self.read_conn.execute("PRAGMA temp_store=MEMORY;")
+                    self._shared_read_conn.execute(f"PRAGMA mmap_size={mmap_bytes};")
+                    self._shared_read_conn.execute(f"PRAGMA cache_size=-{cache_kib};")
+                    self._shared_read_conn.execute("PRAGMA temp_store=MEMORY;")
                 except Exception:
-                    self.read_conn = self.conn
+                    self._shared_read_conn = self.conn
                     self._read_lock = self._lock
             else:
-                self.read_conn = self.conn
+                self._shared_read_conn = self.conn
                 self._read_lock = self._lock
 
             if path != ":memory:" and not path.startswith("file:"):
                 journal_path = f"{path}.journal"
                 if os.path.exists(journal_path) and os.path.getsize(journal_path) > 0:
                     self._recover_from_journal(journal_path)
+
+    @property
+    def read_conn(self) -> sqlite3.Connection:
+        if getattr(self, "path", "") == ":memory:" or not hasattr(self, "_local_readers"):
+            return getattr(self, "_shared_read_conn", getattr(self, "conn", None))
+        conn = getattr(self._local_readers, "conn", None)
+        if conn is None:
+            try:
+                conn = sqlite3.connect(
+                    self.path, timeout=DEFAULT_SQLITE_TIMEOUT_S, check_same_thread=False
+                )
+                conn.execute("PRAGMA query_only=ON;")
+                conn.execute(f"PRAGMA busy_timeout={DEFAULT_BUSY_TIMEOUT_MS};")
+                mmap_bytes = getattr(self, "_mmap_bytes", 64 * 1024 * 1024)
+                cache_kib = getattr(self, "_cache_kib", 32 * 1024)
+                conn.execute(f"PRAGMA mmap_size={mmap_bytes};")
+                conn.execute(f"PRAGMA cache_size=-{cache_kib};")
+                conn.execute("PRAGMA temp_store=MEMORY;")
+                self._local_readers.conn = conn
+                if hasattr(self, "_all_local_conns_lock"):
+                    with self._all_local_conns_lock:
+                        self._all_local_conns.append(conn)
+            except Exception:
+                return getattr(self, "_shared_read_conn", getattr(self, "conn", None))
+        return conn
+
+    @read_conn.setter
+    def read_conn(self, val: Any) -> None:
+        self._shared_read_conn = val
 
     def _recover_from_journal(self, journal_path: str) -> None:
         """Recover unprojected transactions from write-ahead journal after an ungraceful crash (Audit C1)."""
@@ -1083,20 +1118,48 @@ class Store(StoreAuditMixin):
             except Exception:
                 pass
         self._on_close = []
+        if hasattr(self, "_all_local_conns_lock"):
+            with self._all_local_conns_lock:
+                for c in getattr(self, "_all_local_conns", []):
+                    try:
+                        c.close()
+                    except Exception:
+                        pass
+                if hasattr(self, "_all_local_conns"):
+                    self._all_local_conns.clear()
+        if hasattr(self, "_local_readers") and hasattr(self._local_readers, "conn"):
+            try:
+                if self._local_readers.conn:
+                    self._local_readers.conn.close()
+            except Exception:
+                pass
+            self._local_readers.conn = None
         if (
-            hasattr(self, "read_conn")
-            and self.read_conn
-            and self.read_conn != self.conn
+            hasattr(self, "_shared_read_conn")
+            and self._shared_read_conn
+            and self._shared_read_conn != getattr(self, "conn", None)
         ):
             try:
-                self.read_conn.close()
+                self._shared_read_conn.close()
             except Exception as exc:
                 logger.debug("Error closing read_conn: %s", exc)
-            self.read_conn = None
+            self._shared_read_conn = None
         if hasattr(self, "conn") and self.conn:
-            self.conn.commit()
-            self.conn.close()
+            try:
+                self.conn.commit()
+            except Exception:
+                pass
+            try:
+                self.conn.close()
+            except Exception:
+                pass
             self.conn = None
+
+    def __del__(self) -> None:
+        try:
+            self.close()
+        except Exception:
+            pass
 
     # -- Data lifecycle: retention & compaction --
     # ponytail: WORM tables (audit_log, lineage) are never touched — spec A3.

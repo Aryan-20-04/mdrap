@@ -154,12 +154,13 @@ class ProvenanceTracker:
             if store
             else None
         )
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._records: dict[str, EventProvenance] = {}
         self._order: collections.deque[str] = collections.deque()
         self._pending_retry: collections.deque[EventProvenance] = collections.deque(
             maxlen=10_000
         )
+        self._db_conn: Optional[sqlite3.Connection] = None
 
         # Operational failure & lifecycle counters (Spec §5 & §26, Agent 1)
         self.recorded_count: int = 0
@@ -175,11 +176,14 @@ class ProvenanceTracker:
     def _init_db(self) -> None:
         if not self.db_path or self.db_path == ":memory:":
             return
-        conn = None
         try:
-            conn = sqlite3.connect(self.db_path, timeout=5.0)
-            with conn:
-                conn.execute(
+            self._db_conn = sqlite3.connect(
+                self.db_path, timeout=5.0, check_same_thread=False
+            )
+            self._db_conn.execute("PRAGMA journal_mode=WAL;")
+            self._db_conn.execute("PRAGMA busy_timeout=5000;")
+            with self._db_conn:
+                self._db_conn.execute(
                     """
                     CREATE TABLE IF NOT EXISTS event_provenance (
                         event_id TEXT PRIMARY KEY,
@@ -203,10 +207,10 @@ class ProvenanceTracker:
                     )
                     """
                 )
-                conn.execute(
+                self._db_conn.execute(
                     "CREATE INDEX IF NOT EXISTS idx_provenance_inst_ts ON event_provenance(instrument, receive_timestamp)"
                 )
-                conn.execute(
+                self._db_conn.execute(
                     "CREATE INDEX IF NOT EXISTS idx_provenance_prov ON event_provenance(provider)"
                 )
         except Exception as exc:
@@ -215,9 +219,6 @@ class ProvenanceTracker:
                 self.db_path,
                 exc,
             )
-        finally:
-            if conn:
-                conn.close()
 
     def record(self, prov: EventProvenance) -> None:
         """Record an event provenance entry into the tracker and persistent store."""
@@ -239,9 +240,13 @@ class ProvenanceTracker:
                 except Exception as exc:
                     self._handle_persistence_failure(prov, exc)
             elif self.db_path and self.db_path != ":memory:":
-                conn = None
                 try:
-                    conn = sqlite3.connect(self.db_path, timeout=5.0)
+                    conn = self._db_conn
+                    if not conn:
+                        self._db_conn = sqlite3.connect(
+                            self.db_path, timeout=5.0, check_same_thread=False
+                        )
+                        conn = self._db_conn
                     with conn:
                         conn.execute(
                             """
@@ -277,9 +282,6 @@ class ProvenanceTracker:
                     persisted = True
                 except Exception as exc:
                     self._handle_persistence_failure(prov, exc)
-                finally:
-                    if conn:
-                        conn.close()
             else:
                 # In-memory only store
                 persisted = True
@@ -326,6 +328,8 @@ class ProvenanceTracker:
             prov.durability_status = (
                 ProvenanceDurabilityState.FAILED_RECOVERABLE.value
             )
+            if len(self._pending_retry) >= self._pending_retry.maxlen:
+                self.dropped_provenance_count += 1
             self._pending_retry.append(prov)
             logger.warning(
                 "[provenance] Transient storage lock for event '%s': %s. Queued in dead-letter retry buffer (pending=%d)",
@@ -365,9 +369,13 @@ class ProvenanceTracker:
                     except Exception:
                         persisted = False
                 elif self.db_path and self.db_path != ":memory:":
-                    conn = None
                     try:
-                        conn = sqlite3.connect(self.db_path, timeout=5.0)
+                        conn = self._db_conn
+                        if not conn:
+                            self._db_conn = sqlite3.connect(
+                                self.db_path, timeout=5.0, check_same_thread=False
+                            )
+                            conn = self._db_conn
                         with conn:
                             conn.execute(
                                 """
@@ -403,9 +411,6 @@ class ProvenanceTracker:
                         persisted = True
                     except Exception:
                         persisted = False
-                    finally:
-                        if conn:
-                            conn.close()
 
                 if persisted:
                     prov.durability_status = (
@@ -424,6 +429,27 @@ class ProvenanceTracker:
                     len(self._pending_retry),
                 )
             return recovered
+
+    def close(self) -> None:
+        """Close tracker, flush pending retries, and release database resources."""
+        with self._lock:
+            self.flush_pending_retries()
+            if self._db_conn:
+                try:
+                    self._db_conn.commit()
+                except Exception:
+                    pass
+                try:
+                    self._db_conn.close()
+                except Exception:
+                    pass
+                self._db_conn = None
+
+    def __del__(self) -> None:
+        try:
+            self.close()
+        except Exception:
+            pass
 
     def get(self, event_id: str) -> Optional[EventProvenance]:
         """Lookup provenance by event_id from memory or persistent store."""

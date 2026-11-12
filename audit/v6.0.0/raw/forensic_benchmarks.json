@@ -3,71 +3,71 @@
     "1_threads": {
       "threads": 1,
       "total_queries": 50,
-      "total_time_sec": 0.0011,
-      "qps": 45955.88,
-      "latency_p50_ms": 0.004,
-      "latency_p95_ms": 0.008,
-      "latency_p99_ms": 0.119
+      "total_time_sec": 0.0145,
+      "qps": 3451.73,
+      "latency_p50_ms": 0.092,
+      "latency_p95_ms": 0.105,
+      "latency_p99_ms": 8.91
     },
     "2_threads": {
       "threads": 2,
       "total_queries": 100,
-      "total_time_sec": 0.0013,
-      "qps": 76062.98,
-      "latency_p50_ms": 0.004,
-      "latency_p95_ms": 0.042,
-      "latency_p99_ms": 0.203
+      "total_time_sec": 0.016,
+      "qps": 6253.4,
+      "latency_p50_ms": 0.276,
+      "latency_p95_ms": 0.677,
+      "latency_p99_ms": 1.995
     },
     "4_threads": {
       "threads": 4,
       "total_queries": 200,
-      "total_time_sec": 0.0031,
-      "qps": 64975.15,
-      "latency_p50_ms": 0.007,
-      "latency_p95_ms": 0.137,
-      "latency_p99_ms": 0.379
+      "total_time_sec": 0.0407,
+      "qps": 4909.07,
+      "latency_p50_ms": 0.489,
+      "latency_p95_ms": 2.193,
+      "latency_p99_ms": 5.498
     },
     "8_threads": {
       "threads": 8,
       "total_queries": 400,
-      "total_time_sec": 0.0055,
-      "qps": 72874.35,
-      "latency_p50_ms": 0.008,
-      "latency_p95_ms": 0.383,
-      "latency_p99_ms": 0.781
+      "total_time_sec": 0.3132,
+      "qps": 1276.95,
+      "latency_p50_ms": 7.094,
+      "latency_p95_ms": 9.239,
+      "latency_p99_ms": 10.224
     },
     "16_threads": {
       "threads": 16,
       "total_queries": 800,
-      "total_time_sec": 0.0108,
-      "qps": 73734.76,
-      "latency_p50_ms": 0.008,
-      "latency_p95_ms": 0.754,
-      "latency_p99_ms": 1.932
+      "total_time_sec": 1.0299,
+      "qps": 776.76,
+      "latency_p50_ms": 20.473,
+      "latency_p95_ms": 23.939,
+      "latency_p99_ms": 26.036
     }
   },
   "engine_parity": {
     "has_native_fastpath": true,
     "python_engine": {
       "count": 10000,
-      "total_time_sec": 0.0265,
-      "events_per_sec": 376730.13,
-      "mean_latency_us": 2.65
+      "total_time_sec": 0.033,
+      "events_per_sec": 302855.93,
+      "mean_latency_us": 3.3
     },
     "fast_engine": {
       "count": 10000,
-      "total_time_sec": 0.0122,
-      "events_per_sec": 820856.32,
-      "mean_latency_us": 1.22
+      "total_time_sec": 0.0149,
+      "events_per_sec": 669855.18,
+      "mean_latency_us": 1.49
     }
   },
   "provenance_dlq": {
-    "record_100_latency_sec": 1.2167,
-    "record_latency_mean_ms": 12.167,
+    "record_100_latency_sec": 0.2917,
+    "record_latency_mean_ms": 2.917,
     "dlq_len": 10000,
     "dlq_maxlen": 10000,
-    "dropped_counter_after_overflow": 0,
-    "dropped_counter_missed_discards": 50
+    "dropped_counter_after_overflow": 50,
+    "dropped_counter_missed_discards": 0
   },
   "packaging": {
     "wheels_found": [
@@ -101,11 +101,9 @@
       },
       {
         "filename": "mdrap_core-6.0.0-py3-none-any.whl",
-        "binaries_present": [
-          "mdrap/_fastpath_native.dll"
-        ],
+        "binaries_present": [],
         "is_pure_python_tag": true,
-        "violates_pep427": true
+        "violates_pep427": false
       }
     ]
   }

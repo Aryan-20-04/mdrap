@@ -158,6 +158,9 @@ version = {attr = "mdrap._version.__version__"}
     "*.pyi",
 ]
 
+[tool.setuptools.exclude-package-data]
+"*" = ["*.dll", "*.so", "*.dylib", "*.pyd"]
+
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["mdrap", "mdrap.*"]
@@ -171,7 +174,10 @@ filterwarnings = [
     "ignore:.*StarletteDeprecationWarning.*",
     "ignore:.*Using .httpx. with .starlette.testclient.*:DeprecationWarning",
     "ignore:.*is deprecated in MDRAP v3.0.0.*:DeprecationWarning",
-    "ignore:.*are deprecated and non-core to the market data engine.*:DeprecationWarning",
+    "ignore:.*deprecated and non-core to the market data engine.*:DeprecationWarning",
+    "ignore:.*QuarantineManager in mdrap.quarantine is deprecated.*:DeprecationWarning",
+    "ignore:.*websockets.legacy is deprecated.*:DeprecationWarning",
+    "ignore:.*websockets.server.WebSocketServerProtocol is deprecated.*:DeprecationWarning",
     "ignore:.*scheduled for migration to mdrap_analytics.*:DeprecationWarning",
 ]
 

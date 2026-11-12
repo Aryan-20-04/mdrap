@@ -307,15 +307,20 @@ def _read_synchronized(method):
 
     @functools.wraps(method)
     def wrapper(self, *args, **kwargs):
+        # In-memory databases must synchronize on _read_lock
+        if getattr(self, "path", "") == ":memory:":
+            with self._read_lock:
+                return method(self, *args, **kwargs)
+
+        # On-disk WAL databases with thread-local connections read in parallel without mutex
         retries = DEFAULT_SQLITE_RETRIES
         while True:
-            with self._read_lock:
-                try:
-                    return method(self, *args, **kwargs)
-                except sqlite3.OperationalError as exc:
-                    if "locked" not in str(exc).lower() or retries <= 0:
-                        raise
-                    retries -= 1
+            try:
+                return method(self, *args, **kwargs)
+            except sqlite3.OperationalError as exc:
+                if "locked" not in str(exc).lower() or retries <= 0:
+                    raise
+                retries -= 1
             time.sleep(SQLITE_RETRY_BACKOFF_READ_S)
 
     return wrapper

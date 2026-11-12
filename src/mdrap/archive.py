@@ -67,8 +67,9 @@ class RawArchive:
             dir_path = os.path.join(self.base_dir, date_str)
             file_path = os.path.abspath(os.path.join(dir_path, f"{safe_src}.jsonl"))
 
-            # Enforce destination stays strictly inside base_dir (Finding M1)
-            if not file_path.startswith(self.base_dir):
+            # Enforce destination stays strictly inside base_dir (Finding M1 / VULN-02)
+            base_abs = os.path.abspath(self.base_dir)
+            if os.path.commonpath([base_abs, file_path]) != base_abs:
                 raise ValueError(f"Path traversal detected for source {raw.source!r}")
 
             os.makedirs(dir_path, exist_ok=True)

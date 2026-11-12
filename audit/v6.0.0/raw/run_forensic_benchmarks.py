@@ -27,8 +27,10 @@ from mdrap.fastpath import HAS_FASTPATH, FastQualityEngine
 
 def benchmark_sqlite_readers():
     print("[1/4] Benchmarking SQLite concurrent readers...")
+    import gc, shutil
     results = {}
-    with tempfile.TemporaryDirectory() as tmpdir:
+    tmpdir = tempfile.mkdtemp()
+    try:
         db_path = os.path.join(tmpdir, "bench.db")
         store = Store(path=db_path)
         
@@ -51,6 +53,7 @@ def benchmark_sqlite_readers():
             for i in range(2000)
         ]
         store.write_canonical_batch(events)
+        store.commit()
         
         # Test concurrent reader threads: 1, 2, 4, 8, 16
         for n_threads in [1, 2, 4, 8, 16]:
@@ -91,6 +94,18 @@ def benchmark_sqlite_readers():
                 "latency_p99_ms": round(p99, 3)
             }
         store.close()
+        # Clean up thread-local reader connections across threads before exiting
+        def cleanup_worker():
+            if hasattr(store, "_local_readers") and hasattr(store._local_readers, "conn"):
+                if store._local_readers.conn:
+                    try: store._local_readers.conn.close()
+                    except Exception: pass
+                    store._local_readers.conn = None
+        with ThreadPoolExecutor(max_workers=16) as executor:
+            list(executor.map(lambda _: cleanup_worker(), range(16)))
+    finally:
+        gc.collect()
+        shutil.rmtree(tmpdir, ignore_errors=True)
     return results
 
 def benchmark_engine_parity():
@@ -153,7 +168,8 @@ def benchmark_engine_parity():
 def audit_provenance_and_dlq():
     print("[3/4] Auditing ProvenanceTracker latency and DLQ overflow...")
     results = {}
-    with tempfile.TemporaryDirectory() as tmpdir:
+    tmpdir = tempfile.mkdtemp()
+    try:
         db_path = os.path.join(tmpdir, "prov.db")
         tracker = ProvenanceTracker(db_path=db_path)
 
@@ -181,16 +197,21 @@ def audit_provenance_and_dlq():
         t_rec = time.perf_counter() - t0
         
         # Test DLQ overflow: fill 10,050 items into _pending_retry (maxlen=10000)
-        initial_dropped = tracker.dropped_provenance_count
-        for i in range(10050):
-            tracker._pending_retry.append((prov, "retry_err"))
+        err = sqlite3.OperationalError("database is locked")
+        for _ in range(10050):
+            tracker._handle_persistence_failure(prov, err)
         
         results["record_100_latency_sec"] = round(t_rec, 4)
         results["record_latency_mean_ms"] = round((t_rec / 100) * 1000.0, 3)
         results["dlq_len"] = len(tracker._pending_retry)
         results["dlq_maxlen"] = tracker._pending_retry.maxlen
         results["dropped_counter_after_overflow"] = tracker.dropped_provenance_count
-        results["dropped_counter_missed_discards"] = 10050 - len(tracker._pending_retry)
+        results["dropped_counter_missed_discards"] = 10050 - tracker.dropped_provenance_count - tracker._pending_retry.maxlen
+        tracker.close()
+    finally:
+        import gc, shutil
+        gc.collect()
+        shutil.rmtree(tmpdir, ignore_errors=True)
         
     return results
 
