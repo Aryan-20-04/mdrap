@@ -1,0 +1,30 @@
+﻿{
+    "passed":  1704,
+    "deselected":  40,
+    "slowest_tests":  [
+                          {
+                              "duration_s":  17.46,
+                              "name":  "tests/test_phase11_e2e_chaos_recovery.py::test_e2e_soak_burst_stability"
+                          },
+                          {
+                              "duration_s":  14.87,
+                              "name":  "tests/test_fastpath_spsc_atomics.py::TestFastpathSpscAtomics::test_high_volume_concurrent_producer_consumer"
+                          },
+                          {
+                              "duration_s":  8.08,
+                              "name":  "tests/test_gate_g2_kill9.py::test_gate_g2_kill9_recovery_smoke"
+                          },
+                          {
+                              "duration_s":  6,
+                              "name":  "tests/test_chaos.py::test_run_all_drills"
+                          },
+                          {
+                              "duration_s":  5.68,
+                              "name":  "tests/test_audit_hardening.py::test_duckdb_read_only_concurrency"
+                          }
+                      ],
+    "warnings":  18,
+    "skipped":  1,
+    "total_collected":  1745,
+    "duration_seconds":  317.08
+}

@@ -1,0 +1,112 @@
+{
+  "sqlite_readers": {
+    "1_threads": {
+      "threads": 1,
+      "total_queries": 50,
+      "total_time_sec": 0.0011,
+      "qps": 45955.88,
+      "latency_p50_ms": 0.004,
+      "latency_p95_ms": 0.008,
+      "latency_p99_ms": 0.119
+    },
+    "2_threads": {
+      "threads": 2,
+      "total_queries": 100,
+      "total_time_sec": 0.0013,
+      "qps": 76062.98,
+      "latency_p50_ms": 0.004,
+      "latency_p95_ms": 0.042,
+      "latency_p99_ms": 0.203
+    },
+    "4_threads": {
+      "threads": 4,
+      "total_queries": 200,
+      "total_time_sec": 0.0031,
+      "qps": 64975.15,
+      "latency_p50_ms": 0.007,
+      "latency_p95_ms": 0.137,
+      "latency_p99_ms": 0.379
+    },
+    "8_threads": {
+      "threads": 8,
+      "total_queries": 400,
+      "total_time_sec": 0.0055,
+      "qps": 72874.35,
+      "latency_p50_ms": 0.008,
+      "latency_p95_ms": 0.383,
+      "latency_p99_ms": 0.781
+    },
+    "16_threads": {
+      "threads": 16,
+      "total_queries": 800,
+      "total_time_sec": 0.0108,
+      "qps": 73734.76,
+      "latency_p50_ms": 0.008,
+      "latency_p95_ms": 0.754,
+      "latency_p99_ms": 1.932
+    }
+  },
+  "engine_parity": {
+    "has_native_fastpath": true,
+    "python_engine": {
+      "count": 10000,
+      "total_time_sec": 0.0265,
+      "events_per_sec": 376730.13,
+      "mean_latency_us": 2.65
+    },
+    "fast_engine": {
+      "count": 10000,
+      "total_time_sec": 0.0122,
+      "events_per_sec": 820856.32,
+      "mean_latency_us": 1.22
+    }
+  },
+  "provenance_dlq": {
+    "record_100_latency_sec": 1.2167,
+    "record_latency_mean_ms": 12.167,
+    "dlq_len": 10000,
+    "dlq_maxlen": 10000,
+    "dropped_counter_after_overflow": 0,
+    "dropped_counter_missed_discards": 50
+  },
+  "packaging": {
+    "wheels_found": [
+      {
+        "filename": "mdrap_compat-4.0.1-py3-none-any.whl",
+        "binaries_present": [],
+        "is_pure_python_tag": true,
+        "violates_pep427": false
+      },
+      {
+        "filename": "mdrap_contrib-4.0.1-py3-none-any.whl",
+        "binaries_present": [],
+        "is_pure_python_tag": true,
+        "violates_pep427": false
+      },
+      {
+        "filename": "mdrap_core-4.0.1-py3-none-any.whl",
+        "binaries_present": [
+          "mdrap/_fastpath_native.dll"
+        ],
+        "is_pure_python_tag": true,
+        "violates_pep427": true
+      },
+      {
+        "filename": "mdrap_core-5.3.0-py3-none-any.whl",
+        "binaries_present": [
+          "mdrap/_fastpath_native.dll"
+        ],
+        "is_pure_python_tag": true,
+        "violates_pep427": true
+      },
+      {
+        "filename": "mdrap_core-6.0.0-py3-none-any.whl",
+        "binaries_present": [
+          "mdrap/_fastpath_native.dll"
+        ],
+        "is_pure_python_tag": true,
+        "violates_pep427": true
+      }
+    ]
+  }
+}
