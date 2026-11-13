@@ -17,6 +17,7 @@ import math
 import os
 import sys
 import threading
+from contextlib import contextmanager
 from typing import Any
 
 from .models import CanonicalEvent, EventType, QualityStatus, Reason
@@ -983,6 +984,11 @@ class FastQualityEngine:
         )
         self.thread_safe = thread_safe
         self._eval_lock = threading.Lock()
+        # Protect pointer lifetime independently of thread_safe evaluation policy.
+        self._lifecycle = threading.Condition(threading.Lock())
+        self._closing = False
+        self._closed = False
+        self._active_operations = 0
         self._batch_capacity: int = 0
         self._batch_c_events: Any = None
         self._batch_c_results: Any = None
@@ -1055,29 +1061,57 @@ class FastQualityEngine:
         elif not self._engine_ptr_c:
             self._fallback_engine = QualityEngine(self.cfg)
 
-    def close(self) -> None:
-        """Release native C engine context heap allocations."""
-        if getattr(self, "_engine_ptr_c", None) and _C_EXT:
-            try:
-                _C_EXT.engine_destroy(self._engine_ptr_c)
-            except Exception:
-                pass
-            self._engine_ptr_c = None
+    @contextmanager
+    def _native_operation(self):
+        with self._lifecycle:
+            if self._closing or self._closed:
+                raise RuntimeError("FastQualityEngine is closed")
+            self._active_operations += 1
+        try:
+            yield
+        finally:
+            with self._lifecycle:
+                self._active_operations -= 1
+                if self._active_operations == 0:
+                    self._lifecycle.notify_all()
 
-        if (
-            getattr(self, "_engine_ptr", None)
-            and _NATIVE_LIB
-            and hasattr(_NATIVE_LIB, "fastpath_engine_destroy")
-        ):
-            _NATIVE_LIB.fastpath_engine_destroy(self._engine_ptr)
-            self._engine_ptr = None
+    def close(self) -> None:
+        """Wait for native operations and release each engine pointer once."""
+        lifecycle = getattr(self, "_lifecycle", None)
+        if lifecycle is None:
+            return
+        with lifecycle:
+            if self._closed:
+                return
+            if self._closing:
+                while not self._closed:
+                    lifecycle.wait()
+                return
+            self._closing = True
+            while self._active_operations:
+                lifecycle.wait()
+            ptr_c, self._engine_ptr_c = self._engine_ptr_c, None
+            ptr, self._engine_ptr = self._engine_ptr, None
+            try:
+                if ptr_c and _C_EXT:
+                    _C_EXT.engine_destroy(ptr_c)
+                if ptr and _NATIVE_LIB and hasattr(_NATIVE_LIB, "fastpath_engine_destroy"):
+                    _NATIVE_LIB.fastpath_engine_destroy(ptr)
+            finally:
+                self._closed = True
+                self._closing = False
+                lifecycle.notify_all()
 
     def __del__(self) -> None:
-        self.close()
+        try:
+            if not sys.is_finalizing():
+                self.close()
+        except BaseException:
+            pass
 
     def reset(self) -> None:
         """Reset engine tracking state."""
-        with self._eval_lock:
+        with self._native_operation(), self._eval_lock:
             self.counts = {"VALID": 0, "SUSPICIOUS": 0, "INVALID": 0}
             self.reason_counts = {}
             if getattr(self, "_engine_ptr_c", None) and _C_EXT:
@@ -1124,11 +1158,12 @@ class FastQualityEngine:
         self.effective_max_sources = min(self._max_sources, self.compiled_max_sources)
 
     def evaluate(self, event: CanonicalEvent) -> CanonicalEvent:
-        if self.thread_safe:
-            with self._eval_lock:
+        with self._native_operation():
+            if self.thread_safe:
+                with self._eval_lock:
+                    res = self._evaluate_unlocked(event)
+            else:
                 res = self._evaluate_unlocked(event)
-        else:
-            res = self._evaluate_unlocked(event)
 
         if _USER_RULES and evaluate_user_rules is not None:
             res = evaluate_user_rules(res)
@@ -1341,13 +1376,13 @@ class FastQualityEngine:
         Evaluate a micro-batch of CanonicalEvents in a single C boundary crossing.
         Strictly preserves per-source/per-instrument arrival order (Invariant A5).
         """
-        if not events:
-            return events
-
-        if self.thread_safe:
-            with self._eval_lock:
-                return self._evaluate_batch_unlocked(events)
-        return self._evaluate_batch_unlocked(events)
+        with self._native_operation():
+            if not events:
+                return events
+            if self.thread_safe:
+                with self._eval_lock:
+                    return self._evaluate_batch_unlocked(events)
+            return self._evaluate_batch_unlocked(events)
 
     def _ensure_batch_scratch(self, n: int) -> tuple[Any, Any]:
         """Ensure reusable ctypes scratch arrays have capacity >= n (Phase 1 allocation reduction)."""

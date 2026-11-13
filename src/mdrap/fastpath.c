@@ -591,6 +591,10 @@ EXPORT FastEngine *fastpath_engine_create(double staleness, double stddev, int32
 
 EXPORT void fastpath_engine_destroy(FastEngine *eng) {
     if (!eng) return;
+    /* Drain an operation already holding the engine lock before releasing storage.
+     * Callers must also prevent new raw-pointer calls once destruction starts. */
+    MD_LOCK(&eng->lock);
+    MD_UNLOCK(&eng->lock);
     for (uint32_t i = 0; i < eng->ring_chunk_count; ++i) free(eng->ring_chunk[i]);
     free(eng->slots);
     free(eng);

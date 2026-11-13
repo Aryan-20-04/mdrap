@@ -5,6 +5,7 @@ Adversarial test suite verifying absence of Use-After-Free race condition in nat
 import threading
 import time
 import pytest
+import os
 from mdrap.fastpath import (
     _NATIVE_LIB,
     _CFastEvent,
@@ -14,6 +15,98 @@ from mdrap.fastpath import (
     FE_HAS_PRICE,
     FE_HAS_QTY,
 )
+from mdrap.fastpath import FastQualityEngine, _C_EXT
+from mdrap.models import CanonicalEvent, EventType
+
+
+def _canonical_event(i=1):
+    return CanonicalEvent(
+        event_id=f"native-lifecycle-{i}",
+        instrument_id="AAPL",
+        event_type=EventType.TRADE,
+        exchange_timestamp=1000.0 + i,
+        receive_timestamp=1000.001 + i,
+        source="FEEDX",
+        sequence_number=i,
+        price=100.0 + i / 100,
+        quantity=10.0,
+    )
+
+
+def _require_native_engine():
+    engine = FastQualityEngine()
+    native_extension = bool(_C_EXT and engine._engine_ptr_c)
+    if not engine.is_native or not native_extension:
+        engine.close()
+        if os.environ.get("MDRAP_REQUIRE_NATIVE") == "1":
+            pytest.fail("MDRAP_REQUIRE_NATIVE=1 but the compiled C extension is unavailable")
+        pytest.skip("Compiled C extension FastQualityEngine is unavailable")
+    return engine
+
+
+@pytest.mark.parametrize("operation", ["evaluate", "batch", "reset"])
+def test_per_instance_close_waits_for_inflight_native_operations(operation, monkeypatch):
+    engine = _require_native_engine()
+    entered = threading.Event()
+    release = threading.Event()
+    errors = []
+    original = {
+        "evaluate": engine._evaluate_unlocked,
+        "batch": engine._evaluate_batch_unlocked,
+    }.get(operation)
+
+    def delayed(*args, **kwargs):
+        entered.set()
+        if not release.wait(5):
+            raise TimeoutError("test failed to release in-flight operation")
+        return original(*args, **kwargs)
+
+    if original:
+        monkeypatch.setattr(
+            engine,
+            "_evaluate_unlocked" if operation == "evaluate" else "_evaluate_batch_unlocked",
+            delayed,
+        )
+    elif operation == "reset":
+        class DelayedLock:
+            def __enter__(self):
+                entered.set()
+                if not release.wait(5):
+                    raise TimeoutError("test failed to release reset")
+            def __exit__(self, *exc):
+                return False
+
+        monkeypatch.setattr(engine, "_eval_lock", DelayedLock())
+
+    def run_operation():
+        try:
+            if operation == "evaluate":
+                engine.evaluate(_canonical_event())
+            elif operation == "batch":
+                engine.evaluate_batch([_canonical_event(1), _canonical_event(2)])
+            else:
+                engine.reset()
+        except Exception as exc:
+            errors.append(exc)
+
+    worker = threading.Thread(target=run_operation)
+    worker.start()
+    assert entered.wait(5)
+    closer = threading.Thread(target=engine.close)
+    closer.start()
+    time.sleep(0.02)
+    assert closer.is_alive(), "close returned while a native operation was in flight"
+    with pytest.raises(RuntimeError, match="closed"):
+        engine.evaluate_batch([])
+    release.set()
+    worker.join(5)
+    closer.join(5)
+    assert not worker.is_alive() and not closer.is_alive()
+    assert not errors
+    assert engine._engine_ptr is None and engine._engine_ptr_c is None
+    engine.close()
+    with pytest.raises(RuntimeError, match="closed"):
+        engine.evaluate(_canonical_event(3))
 
 
 def test_concurrent_evaluate_and_cleanup_race():
