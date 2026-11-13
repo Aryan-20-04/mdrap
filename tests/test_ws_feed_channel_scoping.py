@@ -42,3 +42,47 @@ def test_sequence_scope_channel_isolation():
     # Depth stream remains unaffected
     gap6 = feed.check_sequence_gap(scope_depth, 5002)
     assert not gap6, "Depth stream should not report a gap when trade stream had a gap"
+
+
+def test_stale_and_duplicate_sequences_preserve_high_watermark():
+    feed = LiveCryptoFeed()
+    scope = SequenceScope("BINANCE", "BTCUSDT", "TRADE", 1)
+    assert not feed.check_sequence_gap(scope, 100)
+    assert not feed.check_sequence_gap(scope, 50)  # stale/out of order
+    assert feed.last_seq[scope.key()] == 100
+    assert not feed.check_sequence_gap(scope, 100)  # duplicate
+    assert feed.duplicate_count[scope.key()] == 1
+    assert not feed.check_sequence_gap(scope, 101)
+    assert feed.last_seq[scope.key()] == 101
+    assert feed.missing_events_count[scope.key()] == 0
+
+
+def test_explicit_reset_snapshot_and_epoch_start_new_sequence_scope():
+    feed = LiveCryptoFeed()
+    scope = SequenceScope("BINANCE", "BTCUSDT", "DEPTH", 1)
+    assert not feed.check_sequence_gap(scope, 100)
+    assert not feed.check_sequence_gap(scope, 2, is_reset=True)
+    assert feed.last_seq[scope.key()] == 2
+    assert not feed.check_sequence_gap(scope, 3)
+    assert not feed.check_sequence_gap(scope, 10, is_snapshot=True)
+    assert feed.last_seq[scope.key()] == 10
+
+    next_epoch = SequenceScope("BINANCE", "BTCUSDT", "DEPTH", 2)
+    assert not feed.check_sequence_gap(next_epoch, 1)
+    assert feed.last_seq[next_epoch.key()] == 1
+    assert feed.last_seq[scope.key()] == 10
+
+
+def test_stale_sequence_isolated_by_instrument_and_channel():
+    feed = LiveCryptoFeed()
+    trade = SequenceScope("BINANCE", "BTCUSDT", "TRADE", 3)
+    other_instrument = SequenceScope("BINANCE", "ETHUSDT", "TRADE", 3)
+    depth = SequenceScope("BINANCE", "BTCUSDT", "DEPTH", 3)
+    assert not feed.check_sequence_gap(trade, 100)
+    assert not feed.check_sequence_gap(other_instrument, 50)
+    assert not feed.check_sequence_gap(depth, 9)
+    assert not feed.check_sequence_gap(trade, 50)
+    assert not feed.check_sequence_gap(trade, 101)
+    assert feed.last_seq[trade.key()] == 101
+    assert feed.last_seq[other_instrument.key()] == 50
+    assert feed.last_seq[depth.key()] == 9

@@ -45,3 +45,19 @@ def test_dlq_saturation_increments_dropped_counter():
     assert tracker.dropped_provenance_count == overflow_count, (
         f"Expected {overflow_count} dropped items, got {tracker.dropped_provenance_count}"
     )
+
+    evicted = tracker._pending_retry[0]
+    replacement_event = CanonicalEvent(
+        event_id="EVT-DLQ-REPLACEMENT",
+        instrument_id="AAPL",
+        event_type=EventType.QUOTE,
+        exchange_timestamp=time.time(),
+        receive_timestamp=time.time(),
+        quality_status=QualityStatus.VALID,
+    )
+    replacement = create_provenance(
+        RawEvent(source="FEED-1", payload={"data": 2}), replacement_event, "trans_2"
+    )
+    tracker._handle_persistence_failure(replacement, err)
+    assert evicted.durability_status == "FAILED_UNRECOVERABLE"
+    assert tracker.dropped_provenance_count == overflow_count + 1

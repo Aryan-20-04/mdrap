@@ -169,6 +169,7 @@ class ProvenanceTracker:
         self.failed_unrecoverable_count: int = 0
         self.recovered_count: int = 0
         self.dropped_provenance_count: int = 0
+        self._last_retry_log_count = 0
 
         if self.db_path and self.db_path != ":memory:":
             self._init_db()
@@ -329,25 +330,42 @@ class ProvenanceTracker:
                 ProvenanceDurabilityState.FAILED_RECOVERABLE.value
             )
             if len(self._pending_retry) >= self._pending_retry.maxlen:
+                evicted = self._pending_retry.popleft()
                 self.dropped_provenance_count += 1
+                evicted.durability_status = (
+                    ProvenanceDurabilityState.FAILED_UNRECOVERABLE.value
+                )
             self._pending_retry.append(prov)
-            logger.warning(
-                "[provenance] Transient storage lock for event '%s': %s. Queued in dead-letter retry buffer (pending=%d)",
-                prov.event_id,
-                exc,
-                len(self._pending_retry),
-            )
+            failures = self.failed_recoverable_count
+            # Log the first failure and exponentially spaced updates, avoiding
+            # one synchronous log write per market-data event during a lockout.
+            if failures == 1 or failures & (failures - 1) == 0:
+                suppressed = failures - self._last_retry_log_count - 1
+                logger.warning(
+                    "[provenance] Transient persistence failure #%d (event=%s, pending=%d, dropped=%d, suppressed_since_last=%d): %s",
+                    failures,
+                    prov.event_id,
+                    len(self._pending_retry),
+                    self.dropped_provenance_count,
+                    max(0, suppressed),
+                    exc,
+                )
+                self._last_retry_log_count = failures
         else:
             self.failed_unrecoverable_count += 1
             self.dropped_provenance_count += 1
             prov.durability_status = (
                 ProvenanceDurabilityState.FAILED_UNRECOVERABLE.value
             )
-            logger.error(
-                "[provenance] Unrecoverable persistence failure for event '%s': %s. Lineage marked unpersisted.",
-                prov.event_id,
-                exc,
-            )
+            failures = self.failed_unrecoverable_count
+            if failures == 1 or failures & (failures - 1) == 0:
+                logger.error(
+                    "[provenance] Unrecoverable persistence failure #%d (event=%s, dropped=%d): %s",
+                    failures,
+                    prov.event_id,
+                    self.dropped_provenance_count,
+                    exc,
+                )
 
     def flush_pending_retries(self) -> int:
         """Attempt to flush pending dead-letter retry items to persistent storage."""

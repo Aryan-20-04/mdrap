@@ -55,6 +55,7 @@ export = [
 config = [
     "pyyaml>=6.0",
 ]
+# Both extra names are retained for compatibility with existing install commands.
 yaml = [
     "pyyaml>=6.0",
 ]

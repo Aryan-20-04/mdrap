@@ -345,7 +345,9 @@ class HighestReliabilityStrategy:
         if n_recent < 2:
             return None
 
-        recent_sources = sorted(active_quotes.keys())
+        # active_quotes was populated from sorted candidates above, so preserve
+        # that deterministic order without sorting the same source set again.
+        recent_sources = list(active_quotes)
         bids = {src: ev.bid_price for src, ev in active_quotes.items() if ev.bid_price is not None}
         asks = {src: ev.ask_price for src, ev in active_quotes.items() if ev.ask_price is not None}
         spreads = {

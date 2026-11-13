@@ -641,9 +641,11 @@ class LiveCryptoFeed:
         """Check for sequence gap within an adapter-defined sequence scope."""
         key = self._resolve_key(scope_or_venue, instrument, channel, epoch)
         prev = self.last_seq.get(key)
-        self.last_seq[key] = seq
-
-        if prev is None or is_reset or is_snapshot:
+        if is_reset or is_snapshot:
+            self.last_seq[key] = seq
+            return False
+        if prev is None:
+            self.last_seq[key] = seq
             return False
 
         if seq == prev:
@@ -651,9 +653,11 @@ class LiveCryptoFeed:
             return False
 
         if seq < prev:
-            # Sequence wrapped / reconnected / reset
-            self.resets_count[key] += 1
+            # Keep the high-water mark: this is stale/out of order unless the
+            # caller explicitly starts a new epoch or marks a reset.
             return False
+
+        self.last_seq[key] = seq
 
         if seq > prev + 1:
             missing = seq - prev - 1
@@ -963,7 +967,12 @@ class WebSocketFeedManager:
                                         channel=channel,
                                         epoch=meta.get("reconnects", 0),
                                     )
-                                    has_gap = self._crypto_feed.check_sequence_gap(scope, seq)
+                                    has_gap = self._crypto_feed.check_sequence_gap(
+                                        scope,
+                                        seq,
+                                        is_reset=bool(raw.payload.get("is_reset", False)),
+                                        is_snapshot=bool(raw.payload.get("is_snapshot", False)),
+                                    )
                                     if has_gap:
                                         meta["sequence_gaps_count"] = self._crypto_feed.missing_events_count[scope.key()]
                                     self._stream_seq[scope.key()] = seq

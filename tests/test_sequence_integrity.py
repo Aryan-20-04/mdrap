@@ -105,14 +105,18 @@ def test_sequence_range_packets():
 def test_snapshot_recovery_and_reconnection_resets():
     """Verify snapshot recovery and explicit resets do not trigger false gap bursts."""
     feed = LiveCryptoFeed()
-    scope = SequenceScope(venue="COINBASE", instrument="ETHUSD")
+    scope = SequenceScope(venue="COINBASE", instrument="ETHUSD", epoch=1)
 
     assert not feed.check_sequence_gap(scope, 100)
     assert not feed.check_sequence_gap(scope, 101)
 
-    # Reconnection happens: server starts over at sequence 1
-    assert not feed.check_sequence_gap(scope, 1)  # seq < prev triggers reset, not gap
-    assert feed.resets_count[scope.key()] == 1
+    # Reconnection starts an explicitly identified epoch; stale lower values in
+    # the previous epoch do not implicitly reset its high-water mark.
+    assert not feed.check_sequence_gap(scope, 1)
+    assert feed.last_seq[scope.key()] == 101
+    scope = SequenceScope(venue="COINBASE", instrument="ETHUSD", epoch=2)
+    assert not feed.check_sequence_gap(scope, 1)
+    assert feed.resets_count["COINBASE:ETHUSD:ep1"] == 0
     assert feed.gap_counts[scope.key()] == 0
 
     # Snapshot arriving with is_snapshot=True
