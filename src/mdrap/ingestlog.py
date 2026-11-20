@@ -1246,8 +1246,7 @@ class IngestLog:
     def _flusher_loop(self) -> None:
         """Periodic background coordinator for quiet-period fsync in grouped durability modes."""
         while self._flusher_stop and not self._flusher_stop.is_set():
-            time.sleep(0.015)
-            if self._flusher_stop and self._flusher_stop.is_set():
+            if self._flusher_stop.wait(0.015):
                 break
             with self._lock:
                 if self._current_file is None:

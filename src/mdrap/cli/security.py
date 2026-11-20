@@ -164,7 +164,7 @@ def cmd_keys(args):
                 "[bold red]Error:[/bold red] API token or prefix must be specified for revocation (use --token <key_or_prefix>)."
             )
             store.close()
-            return
+            return 1
         ok = sec.revoke_api_key(token)
         if ok:
             console.print(
@@ -174,6 +174,8 @@ def cmd_keys(args):
             console.print(
                 f"[bold red]Error:[/bold red] API token/prefix not found: {token}"
             )
+        store.close()
+        return 0 if ok else 1
 
     elif action == "rotate":
         token = getattr(args, "token", "")
@@ -183,7 +185,7 @@ def cmd_keys(args):
                 "[bold red]Error:[/bold red] API token must be specified for rotation (use --token <key>)."
             )
             store.close()
-            return
+            return 1
         new_ent, old_ent = sec.rotate_api_key(token, grace_period_s=grace)
         store.commit()
         console.print(
@@ -197,6 +199,7 @@ def cmd_keys(args):
         )
 
     store.close()
+    return 0
 
 
 def cmd_audit(args):
@@ -215,6 +218,7 @@ def cmd_audit(args):
                     border_style="green",
                 )
             )
+            return 0
         else:
             console.print(
                 Panel.fit(
@@ -222,14 +226,14 @@ def cmd_audit(args):
                     border_style="red",
                 )
             )
-        return
+            return 1
 
     store = Store(args.db) if os.path.exists(args.db) else None
     if not store:
         console.print(
             f"[yellow]Database '{args.db}' not found. Run pipeline first.[/yellow]"
         )
-        return
+        return 1
 
     # Export standalone proof
     if getattr(args, "export_proof", None):
@@ -238,15 +242,16 @@ def cmd_audit(args):
             f"[bold green]✔ Cryptographic audit proof successfully exported to '{args.export_proof}' ({proof['total_entries']} entries).[/bold green]"
         )
         store.close()
-        return
+        return 0
 
     if getattr(args, "print_anchor", False):
         count, head = store.get_audit_anchor()
         console.print(f"{count}:{head}")
         store.close()
-        return
+        return 0
 
     if getattr(args, "sign_checkpoint", False):
+        err = False
         try:
             import json
 
@@ -254,8 +259,9 @@ def cmd_audit(args):
             console.print(json.dumps(cp, indent=2))
         except Exception as exc:
             console.print(f"[bold red]✖ Checkpoint signing error: {exc}[/bold red]")
+            err = True
         store.close()
-        return
+        return 1 if err else 0
 
     try:
         sec = SecurityManager(store=store)
@@ -274,7 +280,7 @@ def cmd_audit(args):
                 "[bold red]✖ Invalid anchor format. Expected <count>:<head_hash>[/bold red]"
             )
             store.close()
-            return
+            return 1
 
     if getattr(args, "verify", False) or anchor_tuple is not None:
         valid, msg, count = sec.verify_audit_trail(anchor=anchor_tuple)
@@ -293,7 +299,7 @@ def cmd_audit(args):
                 )
             )
         store.close()
-        return
+        return 0 if valid else 1
 
     if getattr(args, "anchor_batch", False):
         batch_sz = getattr(args, "batch_size", 100) or 100
@@ -309,7 +315,7 @@ def cmd_audit(args):
             )
         )
         store.close()
-        return
+        return 0
 
     rows = store.query_audit_log(limit=args.limit)
     if not rows:
@@ -349,6 +355,7 @@ def cmd_audit(args):
     color = "green" if valid else "red"
     console.print(f"[dim]Chain Integrity: [{color}]{msg}[/{color}][/dim]\n")
     store.close()
+    return 0 if valid else 1
 
 
 def cmd_deadletter(args):

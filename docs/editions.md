@@ -36,11 +36,11 @@ MDRAP follows a clean **Open-Core Architecture**:
 | **Hot-Path Acceleration** | Native C SIMD (AVX2) hot-path kernel (`fastpath.c`) with **100% pure-Python fallback parity**. | Custom FPGA / ASIC register maps, kernel-bypass Solarflare EF_VI / DPDK drivers. | Core: `src/mdrap/fastpath.c`, `src/mdrap/mdrap_core.c` |
 | **Durability & Persistence** | High-throughput segmented Write-Ahead Log (WAL) with **IEEE 802.3 CRC-32**, atomic batch commits, and automatic crash-tail salvage (`IngestLog`). SQLite WAL projection. | Columnar historical Parquet archives (`chd.py`), ClickHouse, TimescaleDB, and cloud S3 tiered offloaders. | Core: `src/mdrap/ingestlog.py`, `src/mdrap/storage.py` |
 | **IPC & Tick Distribution** | **Lock-free SPSC Seqlock Shared Memory ring buffer** (`/dev/shm` / Windows named mapping, 128-byte slots) and localhost TCP streaming socket fan-out. | Distributed multi-node message fabric, WAN cross-region replication, low-latency multicast brokers. | Core: `src/mdrap/shm.py`, `src/mdrap/gateway_tcp.py` |
-| **Derivatives & Options Pricing** | **None** (Out of core scope). | **Black-Scholes-Merton (BSM)**, Cox-Ross-Rubinstein (CRR) binomial trees for American options, Greeks ($\Delta, \Gamma, \Theta, \mathcal{V}, \rho$), Implied Volatility solver, Options chains. | Commercial: `packages/mdrap-options/`<br>Shim: `src/mdrap/options.py` |
-| **Transaction Cost Analysis (TCA)** | **None** (Out of core scope). | Sub-microsecond slippage vs NBBO, **SEC Rule 605/606** and **MiFID II RTS 27/28** compliance reporting, Effective vs Quoted spread, Broker scorecards. | Commercial: `packages/mdrap-analytics/`<br>Shim: `src/mdrap/tca.py` |
-| **Portfolio Risk Engine** | **None** (Out of core scope). | Historical, Parametric, and Monte Carlo **Value-at-Risk (VaR)**, Expected Shortfall (CVaR), Portfolio drawdown circuit breakers, Position limits. | Commercial: `packages/mdrap-analytics/`<br>Shim: `src/mdrap/risk.py` |
-| **Algorithmic Strategy SDK** | **None** (Out of core scope). | Strategy execution templates (`Strategy`, `StrategyRunner`), simulated paper execution engine, portfolio position trackers. | Commercial: `packages/mdrap-strategies/`<br>Shim: `src/mdrap/strategy_sdk.py` |
-| **Maritime Intelligence** | **None** (Out of core scope). | AIS vessel navigation tracking, geofenced chokepoint monitoring (Suez, Panama, Malacca, Hormuz), ETA forecasting. | Commercial: `packages/mdrap-contrib-vessel/`<br>Shim: `src/mdrap/vessel.py` |
+| **Derivatives & Options Pricing** | **None** (Out of core scope). | **Black-Scholes-Merton (BSM)**, Cox-Ross-Rubinstein (CRR) binomial trees for American options, Greeks ($\Delta, \Gamma, \Theta, \mathcal{V}, \rho$), Implied Volatility solver, Options chains. | Commercial: `packages/mdrap-options/` (Pruned from core) |
+| **Transaction Cost Analysis (TCA)** | **None** (Out of core scope). | Sub-microsecond slippage vs NBBO, **SEC Rule 605/606** and **MiFID II RTS 27/28** compliance reporting, Effective vs Quoted spread, Broker scorecards. | Commercial: `packages/mdrap-analytics/` (Pruned from core) |
+| **Portfolio Risk Engine** | **None** (Out of core scope). | Historical, Parametric, and Monte Carlo **Value-at-Risk (VaR)**, Expected Shortfall (CVaR), Portfolio drawdown circuit breakers, Position limits. | Commercial: `packages/mdrap-analytics/` (Pruned from core) |
+| **Algorithmic Strategy SDK** | **None** (Out of core scope). | Strategy execution templates (`Strategy`, `StrategyRunner`), simulated paper execution engine, portfolio position trackers. | Commercial: `packages/mdrap-strategies/` (Pruned from core) |
+| **Maritime Intelligence** | **None** (Out of core scope). | AIS vessel navigation tracking, geofenced chokepoint monitoring (Suez, Panama, Malacca, Hormuz), ETA forecasting. | Commercial: `packages/mdrap-contrib-vessel/` (Pruned from core) |
 | **API & Administration** | Single-node REST/WebSocket daemon (`service.py`), constant-time token authentication, local RBAC. | Enterprise multi-tenant portal, OAuth2/OIDC single sign-on, billing & token quota managers. | Core: `src/mdrap/service.py`, `src/mdrap/security.py` |
 
 ---
@@ -58,7 +58,7 @@ To ensure both editions remain reliable, testable, and independently deployable:
    - Downstream packages must adapt to `CanonicalEvent` rather than requiring `mdrap-core` to mutate its internal layout.
 
 3. **Backward Compatibility via Deprecation Shims**:
-   - In the core repository, modules that were transitioned to companion packages (`options.py`, `tca.py`, `risk.py`, `strategy_sdk.py`, `vessel.py`) contain backward-compatible shims.
+   - In core v6.0.8, modules transitioned to companion packages (`options.py`, `tca.py`, `risk.py`, `strategy_sdk.py`, `vessel.py`) were fully pruned to minimize attack surface and binary footprint.
    - When a caller imports `from mdrap.options import ...`, a `DeprecationWarning` is emitted, informing the developer to migrate to the standalone package (`mdrap_options`).
 
 ---
@@ -102,7 +102,7 @@ If you add or modify fields in `CanonicalEvent`, `RawEvent`, or `EventType`:
      dependencies = ["mdrap-core>=3.1.0"]
      ```
 3. **Never Add Commercial Logic to `src/mdrap/`**:
-   - Keep `src/mdrap/options.py`, `src/mdrap/tca.py`, etc., strictly as non-intrusive import shims.
+   - Commercial extensions remain decoupled from core read-only infrastructure.
 
 ### Scenario D: Release & Public Git Hygiene
 

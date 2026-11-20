@@ -127,24 +127,6 @@ def test_cli_trading_commands(parser):
     _run_cmd(parser, ["corpact", "list", "-i", "AAPL"])
 
 
-def test_cli_fix_engine():
-    import mdrap.fix_engine as fix_engine
-
-    sample_fix = (
-        "8=FIX.4.2\x019=55\x0135=D\x0149=BUYER\x0156=SELLER\x0134=1\x01"
-        "52=20260901-12:00:00\x0111=ORD1\x0121=1\x0155=AAPL\x0154=1\x01"
-        "60=20260901-12:00:00\x0140=2\x0144=150.00\x0138=100\x0110=123\x01"
-    )
-    msg = fix_engine.FIXMessage.parse(sample_fix)
-    assert msg.get(fix_engine.FIXTag.SYMBOL) == "AAPL"
-    assert msg.get_float(fix_engine.FIXTag.PRICE) == 150.0
-    encoded = msg.encode("BUYER", "SELLER", 1)
-    assert "8=FIX.4.2" in encoded
-    session = fix_engine.FIXSession("TEST_CLIENT", "MDRAP")
-    hb = session.create_heartbeat()
-    assert hb.get(fix_engine.FIXTag.MSG_TYPE) == "0"
-
-
 def test_cli_typo_correction(parser):
     # Test fuzzy suggestion and scoping
     buf = io.StringIO()

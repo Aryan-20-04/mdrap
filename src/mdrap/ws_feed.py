@@ -82,17 +82,51 @@ WS_ENDPOINTS = {
 }
 
 
+_KRAKEN_BOOKS: dict[str, dict[str, dict[float, float]]] = {}
+
+
 def parse_binance_frame(
     data: dict, canonical_sym: str, t_recv: float | None = None, wire: str | bytes = ""
 ) -> RawEvent | None:
-    """Parse Binance @depth5 or @bookTicker WebSocket JSON frame."""
+    """Parse Binance @depth5, @bookTicker, or @trade WebSocket JSON frame."""
     t_recv = t_recv if t_recv is not None else time.time()
     try:
+        # Handle combined stream wrapper: {"stream": "...", "data": {...}}
+        if isinstance(data, dict) and "stream" in data and "data" in data:
+            data = data["data"]
+        if not isinstance(data, dict):
+            return None
+
         ex_ts = (
             (_num(data["E"]) / 1000.0)
             if ("E" in data and _num(data["E"]) is not None)
             else None
         )
+
+        # Check trade format: "e" == "trade" or ("p" in data and "q" in data and "bids" not in data and "b" not in data)
+        if data.get("e") == "trade" or (
+            "p" in data and "q" in data and "bids" not in data and "b" not in data
+        ):
+            px = _num(data.get("p"))
+            qty = _num(data.get("q"))
+            tid = data.get("t")
+            seq = int(tid) if (tid is not None and _num(tid) is not None) else None
+            return RawEvent(
+                source="BINANCE",
+                payload={
+                    "instrument": canonical_sym,
+                    "event_type": "TRADE",
+                    "channel": "trade",
+                    "exchange_ts": ex_ts,
+                    "sequence": None,
+                    "trade_id": seq,
+                    "price": px,
+                    "quantity": qty,
+                },
+                receive_timestamp=t_recv,
+                raw_id=f"ws-binance-trd-{RUN_ID}-{next(_raw_counter)}",
+                wire=wire,
+            )
 
         # Check depth format (e.g. @depth5)
         if "bids" in data and "asks" in data and data["bids"] and data["asks"]:
@@ -113,6 +147,7 @@ def parse_binance_frame(
                 payload={
                     "instrument": canonical_sym,
                     "event_type": "QUOTE",
+                    "channel": "depth",
                     "exchange_ts": ex_ts,
                     "sequence": None,
                     "bid": best_bid,
@@ -139,6 +174,7 @@ def parse_binance_frame(
                 payload={
                     "instrument": canonical_sym,
                     "event_type": "QUOTE",
+                    "channel": "bookTicker",
                     "exchange_ts": ex_ts,
                     "sequence": None,
                     "bid": best_bid,
@@ -171,7 +207,7 @@ def parse_binance_frame(
 def parse_coinbase_frame(
     data: dict, canonical_sym: str, t_recv: float | None = None, wire: str | bytes = ""
 ) -> RawEvent | None:
-    """Parse Coinbase ticker or snapshot/l2update WebSocket frame."""
+    """Parse Coinbase ticker, match, or snapshot/l2update WebSocket frame."""
     t_recv = t_recv if t_recv is not None else time.time()
     try:
         msg_type = data.get("type")
@@ -181,6 +217,33 @@ def parse_coinbase_frame(
             if ("sequence" in data and _num(data["sequence"]) is not None)
             else None
         )
+
+        if msg_type in ("match", "last_match"):
+            px = _num(data.get("price"))
+            sz = _num(data.get("size"))
+            trade_id = data.get("trade_id")
+            trade_seq = (
+                int(trade_id)
+                if (trade_id is not None and _num(trade_id) is not None)
+                else seq
+            )
+            return RawEvent(
+                source="COINBASE",
+                payload={
+                    "instrument": canonical_sym,
+                    "event_type": "TRADE",
+                    "channel": "matches",
+                    "exchange_ts": ex_ts,
+                    "sequence": None,
+                    "trade_id": trade_seq,
+                    "price": px,
+                    "quantity": sz,
+                    "side": data.get("side"),
+                },
+                receive_timestamp=t_recv,
+                raw_id=f"ws-coinbase-trd-{RUN_ID}-{next(_raw_counter)}",
+                wire=wire,
+            )
 
         if msg_type == "ticker":
             bid = _num(data.get("best_bid"))
@@ -192,8 +255,10 @@ def parse_coinbase_frame(
                 payload={
                     "instrument": canonical_sym,
                     "event_type": "QUOTE",
+                    "channel": "ticker",
                     "exchange_ts": ex_ts,
                     "sequence": seq,
+                    "venue_update_id": seq,
                     "bid": bid,
                     "ask": ask,
                     "bid_size": bid_s,
@@ -222,6 +287,7 @@ def parse_coinbase_frame(
                     payload={
                         "instrument": canonical_sym,
                         "event_type": "QUOTE",
+                        "channel": "snapshot",
                         "exchange_ts": ex_ts,
                         "sequence": seq,
                         "bid": bids[0][0],
@@ -253,30 +319,76 @@ def parse_coinbase_frame(
 def parse_kraken_frame(
     data: Any, canonical_sym: str, t_recv: float | None = None, wire: str | bytes = ""
 ) -> RawEvent | None:
-    """Parse Kraken book or ticker WebSocket list-based frame."""
+    """Parse Kraken book, ticker, or trade WebSocket list-based frame."""
     t_recv = t_recv if t_recv is not None else time.time()
     try:
         if isinstance(data, list) and len(data) >= 2:
-            body = data[1]
-            if isinstance(body, dict):
-                # Book snapshot: "bs" and "as"
-                if "bs" in body and "as" in body and body["bs"] and body["as"]:
-                    bids = [
-                        [_num(row[0]), _num(row[1])]
-                        for row in body["bs"][:5]
-                        if _num(row[0]) is not None and _num(row[1]) is not None
-                    ]
-                    asks = [
-                        [_num(row[0]), _num(row[1])]
-                        for row in body["as"][:5]
-                        if _num(row[0]) is not None and _num(row[1]) is not None
-                    ]
-                    ex_ts = _num(body["bs"][0][2]) if (len(body["bs"][0]) > 2) else None
+            # 1. Trade messages: data[1] is list of trades [[price, volume, time, side, ...], ...]
+            if isinstance(data[1], list) and data[1] and isinstance(data[1][0], list):
+                trades = data[1]
+                last_trd = trades[-1]
+                px = float(last_trd[0])
+                vol = float(last_trd[1])
+                ex_ts = float(last_trd[2]) if len(last_trd) > 2 else t_recv
+                side_code = str(last_trd[3]) if len(last_trd) > 3 else "b"
+                side = (
+                    "buy"
+                    if side_code == "b"
+                    else ("sell" if side_code == "s" else side_code)
+                )
+                return RawEvent(
+                    source="KRAKEN",
+                    payload={
+                        "instrument": canonical_sym,
+                        "event_type": "TRADE",
+                        "channel": "trade",
+                        "exchange_ts": ex_ts,
+                        "sequence": None,
+                        "price": px,
+                        "quantity": vol,
+                        "side": side,
+                    },
+                    receive_timestamp=t_recv,
+                    raw_id=f"ws-kraken-trd-{RUN_ID}-{next(_raw_counter)}",
+                    wire=wire,
+                )
+
+            # 2. Book or ticker messages: dict payloads in data[1:]
+            payloads = [item for item in data[1:] if isinstance(item, dict)]
+            if payloads:
+                p0 = payloads[0]
+                # 2a. Book snapshot: "bs" and "as"
+                if "bs" in p0 and "as" in p0 and p0["bs"] and p0["as"]:
+                    bids_dict = {
+                        float(row[0]): float(row[1])
+                        for row in p0["bs"]
+                        if _num(row[0]) is not None
+                        and _num(row[1]) is not None
+                        and float(row[1]) > 0
+                    }
+                    asks_dict = {
+                        float(row[0]): float(row[1])
+                        for row in p0["as"]
+                        if _num(row[0]) is not None
+                        and _num(row[1]) is not None
+                        and float(row[1]) > 0
+                    }
+                    _KRAKEN_BOOKS[canonical_sym] = {"bids": bids_dict, "asks": asks_dict}
+                    bids = sorted(
+                        [[p, s] for p, s in bids_dict.items()],
+                        key=lambda x: x[0],
+                        reverse=True,
+                    )[:5]
+                    asks = sorted(
+                        [[p, s] for p, s in asks_dict.items()], key=lambda x: x[0]
+                    )[:5]
+                    ex_ts = _num(p0["bs"][0][2]) if (len(p0["bs"][0]) > 2) else None
                     return RawEvent(
                         source="KRAKEN",
                         payload={
                             "instrument": canonical_sym,
                             "event_type": "QUOTE",
+                            "channel": "book",
                             "exchange_ts": ex_ts,
                             "sequence": None,
                             "bid": bids[0][0] if bids else None,
@@ -290,17 +402,119 @@ def parse_kraken_frame(
                         raw_id=f"ws-kraken-{RUN_ID}-{next(_raw_counter)}",
                         wire=wire,
                     )
-                # Ticker update: "b" and "a"
-                elif "b" in body and "a" in body:
-                    bid = _num(body["b"][0])
-                    ask = _num(body["a"][0])
-                    bid_s = _num(body["b"][2]) if len(body["b"]) > 2 else None
-                    ask_s = _num(body["a"][2]) if len(body["a"]) > 2 else None
+
+                # 2b. Incremental book updates: "a" and/or "b" level arrays
+                has_book_update = any("a" in p or "b" in p for p in payloads)
+                if has_book_update and any(
+                    isinstance(p.get("a", [None])[0], list)
+                    or isinstance(p.get("b", [None])[0], list)
+                    for p in payloads
+                    if ("a" in p or "b" in p)
+                ):
+                    book = _KRAKEN_BOOKS.setdefault(
+                        canonical_sym, {"bids": {}, "asks": {}}
+                    )
+                    fresh_ts: list[float] = []
+                    for p in payloads:
+                        for row in p.get("a", []):
+                            if isinstance(row, list) and len(row) >= 2:
+                                px, sz = float(row[0]), float(row[1])
+                                if len(row) > 2 and _num(row[2]) is not None:
+                                    if not (len(row) > 3 and row[3] == "r"):
+                                        fresh_ts.append(float(row[2]))
+                                if sz == 0.0:
+                                    book["asks"].pop(px, None)
+                                else:
+                                    book["asks"][px] = sz
+                        for row in p.get("b", []):
+                            if isinstance(row, list) and len(row) >= 2:
+                                px, sz = float(row[0]), float(row[1])
+                                if len(row) > 2 and _num(row[2]) is not None:
+                                    if not (len(row) > 3 and row[3] == "r"):
+                                        fresh_ts.append(float(row[2]))
+                                if sz == 0.0:
+                                    book["bids"].pop(px, None)
+                                else:
+                                    book["bids"][px] = sz
+
+                    latest_ts = max(fresh_ts) if fresh_ts else None
+                    if latest_ts is None:
+                        all_ts = [
+                            float(row[2])
+                            for p in payloads
+                            for k in ("a", "b")
+                            for row in p.get(k, [])
+                            if isinstance(row, list)
+                            and len(row) > 2
+                            and _num(row[2]) is not None
+                        ]
+                        latest_ts = max(all_ts) if all_ts else t_recv
+
+                    # Prune stale crossed levels that were traded out
+                    if book["bids"] and book["asks"]:
+                        max_b = max(book["bids"].keys())
+                        stale_asks = [p for p in book["asks"].keys() if p <= max_b]
+                        for p in stale_asks:
+                            del book["asks"][p]
+                        if book["asks"]:
+                            min_a = min(book["asks"].keys())
+                            stale_bids = [p for p in book["bids"].keys() if p >= min_a]
+                            for p in stale_bids:
+                                del book["bids"][p]
+
+                    # Bound depth to 10 levels
+                    if len(book["bids"]) > 10:
+                        sb_keys = sorted(book["bids"].keys(), reverse=True)
+                        for p in sb_keys[10:]:
+                            del book["bids"][p]
+                    if len(book["asks"]) > 10:
+                        sa_keys = sorted(book["asks"].keys())
+                        for p in sa_keys[10:]:
+                            del book["asks"][p]
+
+                    sorted_bids = sorted(
+                        book["bids"].items(), key=lambda x: x[0], reverse=True
+                    )[:5]
+                    sorted_asks = sorted(book["asks"].items(), key=lambda x: x[0])[:5]
+                    best_bid, bid_sz = sorted_bids[0] if sorted_bids else (None, None)
+                    best_ask, ask_sz = sorted_asks[0] if sorted_asks else (None, None)
                     return RawEvent(
                         source="KRAKEN",
                         payload={
                             "instrument": canonical_sym,
                             "event_type": "QUOTE",
+                            "channel": "book",
+                            "exchange_ts": latest_ts,
+                            "sequence": None,
+                            "bid": best_bid,
+                            "ask": best_ask,
+                            "bid_size": bid_sz,
+                            "ask_size": ask_sz,
+                            "bids": [[p, s] for p, s in sorted_bids],
+                            "asks": [[p, s] for p, s in sorted_asks],
+                        },
+                        receive_timestamp=t_recv,
+                        raw_id=f"ws-kraken-{RUN_ID}-{next(_raw_counter)}",
+                        wire=wire,
+                    )
+
+                # 2c. Ticker update: "b" and "a" scalar ticker lists
+                if (
+                    "b" in p0
+                    and "a" in p0
+                    and isinstance(p0["b"], list)
+                    and not isinstance(p0["b"][0], list)
+                ):
+                    bid = _num(p0["b"][0])
+                    ask = _num(p0["a"][0])
+                    bid_s = _num(p0["b"][2]) if len(p0["b"]) > 2 else None
+                    ask_s = _num(p0["a"][2]) if len(p0["a"]) > 2 else None
+                    return RawEvent(
+                        source="KRAKEN",
+                        payload={
+                            "instrument": canonical_sym,
+                            "event_type": "QUOTE",
+                            "channel": "ticker",
                             "exchange_ts": None,
                             "sequence": None,
                             "bid": bid,
@@ -332,13 +546,43 @@ def parse_kraken_frame(
 def parse_okx_frame(
     data: dict, canonical_sym: str, t_recv: float | None = None, wire: str | bytes = ""
 ) -> RawEvent | None:
-    """Parse OKX books5 or tickers WebSocket frame."""
+    """Parse OKX books5, tickers, or trades WebSocket frame."""
     t_recv = t_recv if t_recv is not None else time.time()
     try:
         items = data.get("data")
+        channel = str(data.get("arg", {}).get("channel", ""))
         if isinstance(items, list) and len(items) > 0:
             item = items[0]
             ex_ts = (_num(item.get("ts")) / 1000.0) if item.get("ts") else None
+
+            # Trade frame
+            if channel == "trades" or (
+                "tradeId" in item
+                or ("px" in item and "sz" in item and "bids" not in item and "bidPx" not in item)
+            ):
+                tid = item.get("tradeId")
+                seq = int(tid) if (tid and _num(tid) is not None) else None
+                px = _num(item.get("px"))
+                sz = _num(item.get("sz"))
+                side = item.get("side")
+                return RawEvent(
+                    source="OKX",
+                    payload={
+                        "instrument": canonical_sym,
+                        "event_type": "TRADE",
+                        "channel": "trades",
+                        "exchange_ts": ex_ts,
+                        "sequence": None,
+                        "trade_id": seq,
+                        "price": px,
+                        "quantity": sz,
+                        "side": side,
+                    },
+                    receive_timestamp=t_recv,
+                    raw_id=f"ws-okx-trd-{RUN_ID}-{next(_raw_counter)}",
+                    wire=wire,
+                )
+
             seq = (
                 int(item["seqId"])
                 if ("seqId" in item and _num(item["seqId"]) is not None)
@@ -360,8 +604,10 @@ def parse_okx_frame(
                     payload={
                         "instrument": canonical_sym,
                         "event_type": "QUOTE",
+                        "channel": "books5",
                         "exchange_ts": ex_ts,
-                        "sequence": seq,
+                        "sequence": None,
+                        "venue_update_id": seq,
                         "bid": bids[0][0] if bids else None,
                         "ask": asks[0][0] if asks else None,
                         "bid_size": bids[0][1] if bids else None,
@@ -383,6 +629,7 @@ def parse_okx_frame(
                     payload={
                         "instrument": canonical_sym,
                         "event_type": "QUOTE",
+                        "channel": "tickers",
                         "exchange_ts": ex_ts,
                         "sequence": seq,
                         "bid": bid,
@@ -414,10 +661,49 @@ def parse_okx_frame(
 def parse_bybit_frame(
     data: dict, canonical_sym: str, t_recv: float | None = None, wire: str | bytes = ""
 ) -> RawEvent | None:
-    """Parse Bybit orderbook.5 or tickers WebSocket frame."""
+    """Parse Bybit orderbook, tickers, or publicTrade WebSocket frame."""
     t_recv = t_recv if t_recv is not None else time.time()
     try:
+        topic = str(data.get("topic", ""))
+
+        # Trade frame
+        if topic.startswith("publicTrade") or (
+            isinstance(data.get("data"), list)
+            and data["data"]
+            and isinstance(data["data"][0], dict)
+            and "p" in data["data"][0]
+        ):
+            trades = data.get("data", [])
+            if trades and isinstance(trades, list) and isinstance(trades[-1], dict):
+                latest_t = trades[-1]
+                px = _num(latest_t.get("p"))
+                vol = _num(latest_t.get("v"))
+                t_ms = _num(latest_t.get("T") or data.get("ts"))
+                ex_ts = (t_ms / 1000.0) if t_ms else None
+                tid = latest_t.get("i")
+                seq = int(tid) if (tid and _num(tid) is not None) else None
+                side = str(latest_t.get("S", "")).lower()
+                return RawEvent(
+                    source="BYBIT",
+                    payload={
+                        "instrument": canonical_sym,
+                        "event_type": "TRADE",
+                        "channel": "publicTrade",
+                        "exchange_ts": ex_ts,
+                        "sequence": None,
+                        "trade_id": seq,
+                        "price": px,
+                        "quantity": vol,
+                        "side": side,
+                    },
+                    receive_timestamp=t_recv,
+                    raw_id=f"ws-bybit-trd-{RUN_ID}-{next(_raw_counter)}",
+                    wire=wire,
+                )
+
         body = data.get("data", {})
+        if not isinstance(body, dict):
+            return None
         ex_ts = (
             (_num(data.get("ts") or data.get("cts")) / 1000.0)
             if (data.get("ts") or data.get("cts"))
@@ -444,8 +730,10 @@ def parse_bybit_frame(
                 payload={
                     "instrument": canonical_sym,
                     "event_type": "QUOTE",
+                    "channel": "orderbook",
                     "exchange_ts": ex_ts,
-                    "sequence": seq,
+                    "sequence": None,
+                    "venue_update_id": seq,
                     "bid": bids[0][0] if bids else None,
                     "ask": asks[0][0] if asks else None,
                     "bid_size": bids[0][1] if bids else None,
@@ -467,6 +755,7 @@ def parse_bybit_frame(
                 payload={
                     "instrument": canonical_sym,
                     "event_type": "QUOTE",
+                    "channel": "tickers",
                     "exchange_ts": ex_ts,
                     "sequence": seq,
                     "bid": bid,
@@ -562,6 +851,8 @@ class ProviderTelemetry:
     last_sequence_num: int | None
     wire_latency_us: float | None
     data_mode: str = "LIVE"
+    last_heartbeat_ts: float | None = None
+    watchdog_triggers: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
@@ -571,6 +862,177 @@ class ProviderTelemetry:
             else str(self.state)
         )
         return d
+
+
+
+
+
+@dataclass(slots=True)
+class SequenceScope:
+    """Explicit multi-dimensional scope identifying a sequence stream."""
+
+    venue: str
+    instrument: str = ""
+    channel: str = ""
+    epoch: int = 0
+
+    def key(self) -> str:
+        parts = [self.venue.upper()]
+        if self.instrument:
+            parts.append(self.instrument.upper())
+        if self.channel:
+            parts.append(self.channel.upper())
+        if self.epoch:
+            parts.append(f"ep{self.epoch}")
+        return ":".join(parts)
+
+
+class LiveCryptoFeed:
+    """High-performance multi-venue sequence and gap tracking feed wrapper."""
+
+    MAX_PLAUSIBLE_GAP: int = (
+        1_000_000  # Gaps larger than this are treated as resets / update ID jumps
+    )
+
+    def __init__(self):
+        self.last_seq: dict[str, int] = {}
+        self.gap_counts: dict[str, int] = collections.defaultdict(int)
+        self.missing_events_count: dict[str, int] = collections.defaultdict(int)
+        self.resets_count: dict[str, int] = collections.defaultdict(int)
+        self.duplicate_count: dict[str, int] = collections.defaultdict(int)
+
+    def _resolve_key(
+        self,
+        scope_or_venue: str | SequenceScope,
+        instrument: str = "",
+        channel: str = "",
+        epoch: int = 0,
+    ) -> str:
+        if isinstance(scope_or_venue, SequenceScope):
+            return scope_or_venue.key()
+        parts = [str(scope_or_venue).upper()]
+        if instrument:
+            parts.append(str(instrument).upper())
+        if channel:
+            parts.append(str(channel).upper())
+        if epoch:
+            parts.append(f"ep{epoch}")
+        return ":".join(parts)
+
+    def check_sequence_gap(
+        self,
+        scope_or_venue: str | SequenceScope,
+        seq: int,
+        instrument: str = "",
+        channel: str = "",
+        epoch: int = 0,
+        is_reset: bool = False,
+        is_snapshot: bool = False,
+    ) -> bool:
+        """Check for sequence gap within an adapter-defined sequence scope."""
+        key = self._resolve_key(scope_or_venue, instrument, channel, epoch)
+        prev = self.last_seq.get(key)
+        if is_reset or is_snapshot:
+            self.last_seq[key] = seq
+            return False
+        if prev is None:
+            self.last_seq[key] = seq
+            return False
+
+        if seq == prev:
+            self.duplicate_count[key] += 1
+            return False
+
+        if seq < prev:
+            # Keep the high-water mark: this is stale/out of order unless the
+            # caller explicitly starts a new epoch or marks a reset.
+            return False
+
+        self.last_seq[key] = seq
+
+        chan_str = ""
+        if isinstance(scope_or_venue, SequenceScope):
+            chan_str = scope_or_venue.channel.lower()
+        elif channel:
+            chan_str = channel.lower()
+
+        # Sampled ticker, depth, and public trade channels update only when events occur
+        # or at sampling intervals (skipping passive order book adjustments or matching trades
+        # across all instruments). Monotonic advance is expected and valid, and should not
+        # accumulate false missing packet gaps.
+        if (
+            chan_str in (
+                "ticker",
+                "bookticker",
+                "tickers",
+                "books5",
+                "orderbook",
+                "depth",
+                "trades",
+                "publictrade",
+                "matches",
+            )
+            or chan_str.startswith("orderbook")
+        ):
+            return False
+
+        if seq > prev + 1:
+            missing = seq - prev - 1
+            if missing > self.MAX_PLAUSIBLE_GAP:
+                # Discontinuous epoch jump or update ID jump (e.g. Binance update ID vs packet seq)
+                self.resets_count[key] += 1
+                return False
+            self.gap_counts[key] += 1
+            self.missing_events_count[key] += missing
+            return True
+
+        return False
+
+    def check_sequence_range(
+        self,
+        scope_or_venue: str | SequenceScope,
+        first_seq: int,
+        final_seq: int,
+        instrument: str = "",
+        channel: str = "",
+        epoch: int = 0,
+        is_reset: bool = False,
+        is_snapshot: bool = False,
+    ) -> bool:
+        """Check for sequence gap across a range-based update (e.g., Binance U..u depth packets)."""
+        key = self._resolve_key(scope_or_venue, instrument, channel, epoch)
+        prev = self.last_seq.get(key)
+        self.last_seq[key] = final_seq
+
+        if prev is None or is_reset or is_snapshot:
+            return False
+
+        if first_seq <= prev + 1 and final_seq >= prev:
+            # Contiguous or overlapping range
+            return False
+
+        if first_seq > prev + 1:
+            missing = first_seq - prev - 1
+            if missing > self.MAX_PLAUSIBLE_GAP:
+                self.resets_count[key] += 1
+                return False
+            self.gap_counts[key] += 1
+            self.missing_events_count[key] += missing
+            return True
+
+        return False
+
+    def reset_scope(
+        self,
+        scope_or_venue: str | SequenceScope,
+        instrument: str = "",
+        channel: str = "",
+        epoch: int = 0,
+    ) -> None:
+        """Explicitly reset sequence state for a reconnected stream."""
+        key = self._resolve_key(scope_or_venue, instrument, channel, epoch)
+        self.last_seq.pop(key, None)
+        self.resets_count[key] += 1
 
 
 class WebSocketFeedManager:
@@ -587,6 +1049,7 @@ class WebSocketFeedManager:
         max_queue_size: int = 10000,
         on_drop: Callable[[RawEvent], None] | None = None,
         stale_timeout_ms: float = 10_000.0,
+        max_tombstones: int = 100_000,
     ):
         self.symbols = symbols
         self.venues = (
@@ -598,7 +1061,10 @@ class WebSocketFeedManager:
         self._queue: queue.Queue[RawEvent] = queue.Queue(maxsize=max_queue_size)
         self._on_drop = on_drop
         self.stale_timeout_ms = stale_timeout_ms
-        self._tombstones: collections.deque[RawEvent] = collections.deque(maxlen=1000)
+        self.max_tombstones = max_tombstones
+        self._tombstones: collections.deque[RawEvent] = collections.deque(
+            maxlen=max_tombstones
+        )
         self._tombstone_lock = threading.Lock()
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
@@ -615,11 +1081,17 @@ class WebSocketFeedManager:
                 "last_sequence_num": None,
                 "last_wire_latency_us": None,
                 "error_count": 0,
+                "last_heartbeat_ts": None,
+                "watchdog_triggers": 0,
+                "consecutive_timeouts": 0,
             }
             for v in self.venues
         }
+        self._stream_seq: dict[str, int] = {}  # Scoped sequence tracking per venue:symbol
+        self._crypto_feed: LiveCryptoFeed = LiveCryptoFeed()
         self._drop_count: int = 0  # Total frames dropped due to backpressure
         self._drop_counts: dict[str, int] = {v: 0 for v in self.venues}
+        self._active_sockets: dict[tuple[str, str], Any] = {}
         self._ssl_ctx = ssl.create_default_context()
 
     def _create_drop_tombstone(
@@ -645,6 +1117,37 @@ class WebSocketFeedManager:
         """Return recently recorded backpressure drop tombstone events."""
         with self._tombstone_lock:
             return list(self._tombstones)
+
+    def get_tombstones(self, limit: int | None = None) -> list[RawEvent]:
+        """Return snapshot of dropped event tombstones."""
+        with self._tombstone_lock:
+            items = list(self._tombstones)
+            return items[-limit:] if limit else items
+
+    def drop_summary(self) -> dict[str, Any]:
+        """Return drop statistics and retained tombstone counts."""
+        with self._tombstone_lock:
+            retained = len(self._tombstones)
+        return {
+            "total_drops": self._drop_count,
+            "retained_tombstones": retained,
+            "per_venue_drops": dict(self._drop_counts),
+            "per_venue": dict(self._drop_counts),
+        }
+
+    def inject_disconnect(self, venue: str, symbol: str | None = None) -> int:
+        """Inject a controlled client-side disconnect on active socket(s) for chaos/recovery testing."""
+        closed = 0
+        v_upper = venue.upper()
+        if self._loop and self._loop.is_running():
+            for (v, s), ws in list(self._active_sockets.items()):
+                if v == v_upper and (symbol is None or s == symbol):
+                    try:
+                        asyncio.run_coroutine_threadsafe(ws.close(), self._loop)
+                        closed += 1
+                    except Exception as exc:
+                        logger.debug("[ws_feed] inject_disconnect error: %s", exc)
+        return closed
 
     def start(self) -> None:
         """Start the background asynchronous WebSocket workers."""
@@ -732,6 +1235,8 @@ class WebSocketFeedManager:
                 last_sequence_num=meta.get("last_sequence_num"),
                 wire_latency_us=round(lat_us, 2) if lat_us is not None else None,
                 data_mode="LIVE",
+                last_heartbeat_ts=meta.get("last_heartbeat_ts"),
+                watchdog_triggers=meta.get("watchdog_triggers", 0),
             )
         return telemetry
 
@@ -791,83 +1296,132 @@ class WebSocketFeedManager:
                     close_timeout=5,
                     max_size=10 * 1024 * 1024,
                 ) as ws:
-                    self._stats[venue]["connected"] = True
-                    backoff = 1.0
+                    try:
+                        self._active_sockets[(venue, symbol)] = ws
+                        self._stats[venue]["connected"] = True
+                        backoff = 1.0
 
-                    # Send subscribe message if required by protocol
-                    sub_msg = self._get_subscribe_msg(venue, v_sym)
-                    if sub_msg:
-                        await ws.send(json.dumps(sub_msg))
+                        # Send subscribe message if required by protocol
+                        sub_msgs = self._get_subscribe_msgs(venue, v_sym)
+                        for sub_msg in sub_msgs:
+                            await ws.send(json.dumps(sub_msg))
 
-                    while not self._stop_event.is_set():
-                        try:
-                            frame = await asyncio.wait_for(ws.recv(), timeout=15.0)
-                            raw = parse_venue_frame(venue, frame, canon)
-                            if raw:
-                                self._stats[venue]["frames"] += 1
-                                meta = self._provider_meta[venue]
+                        consecutive_timeouts = 0
+                        while not self._stop_event.is_set():
+                            try:
+                                frame = await asyncio.wait_for(ws.recv(), timeout=15.0)
+                                consecutive_timeouts = 0
                                 now_t = time.time()
+                                meta = self._provider_meta[venue]
                                 meta["last_received_ts"] = now_t
-                                meta["last_processed_ts"] = now_t
+                                meta["last_heartbeat_ts"] = now_t
+                                meta["consecutive_timeouts"] = 0
 
-                                # Track sequence numbers and sequence gaps
-                                seq = raw.payload.get("sequence")
-                                if seq is not None and isinstance(seq, int):
-                                    prev_seq = meta.get("last_sequence_num")
-                                    if prev_seq is not None and seq > prev_seq + 1:
-                                        meta["sequence_gaps_count"] += (
-                                            seq - prev_seq - 1
+                                raw = parse_venue_frame(venue, frame, canon)
+                                if raw:
+                                    self._stats[venue]["frames"] += 1
+                                    meta["last_processed_ts"] = now_t
+
+                                    # Attach provenance tags
+                                    if raw.payload and isinstance(raw.payload, dict):
+                                        raw.payload.setdefault("epoch", meta.get("reconnects", 0))
+                                        raw.payload.setdefault("ingest_mono_ns", time.perf_counter_ns())
+
+                                    # Track sequence numbers and sequence gaps per (venue, symbol, channel) stream
+                                    seq = raw.payload.get("sequence") or raw.payload.get("venue_update_id") or raw.payload.get("trade_id")
+                                    if seq is not None and isinstance(seq, int):
+                                        channel = str(raw.payload.get("channel", ""))
+                                        scope = SequenceScope(
+                                            venue=venue,
+                                            instrument=symbol,
+                                            channel=channel,
+                                            epoch=meta.get("reconnects", 0),
                                         )
-                                    meta["last_sequence_num"] = seq
+                                        has_gap = self._crypto_feed.check_sequence_gap(
+                                            scope,
+                                            seq,
+                                            is_reset=bool(raw.payload.get("is_reset", False)),
+                                            is_snapshot=bool(raw.payload.get("is_snapshot", False)),
+                                        )
+                                        if has_gap:
+                                            meta["sequence_gaps_count"] = self._crypto_feed.missing_events_count[scope.key()]
+                                        self._stream_seq[scope.key()] = seq
+                                        self._stream_seq[f"{venue}:{symbol}"] = seq
+                                        meta["last_sequence_num"] = seq
 
-                                # Track wire network latency
-                                ex_ts = raw.payload.get("exchange_ts")
-                                if (
-                                    ex_ts is not None
-                                    and isinstance(ex_ts, (int, float))
-                                    and ex_ts > 0
-                                ):
-                                    lat = (raw.receive_timestamp - ex_ts) * 1e6
-                                    if 0 <= lat <= 30_000_000:
-                                        meta["last_wire_latency_us"] = lat
+                                    # Track wire network latency
+                                    ex_ts = raw.payload.get("exchange_ts")
+                                    if (
+                                        ex_ts is not None
+                                        and isinstance(ex_ts, (int, float))
+                                        and ex_ts > 0
+                                    ):
+                                        lat = (raw.receive_timestamp - ex_ts) * 1e6
+                                        if 0 <= lat <= 30_000_000:
+                                            meta["last_wire_latency_us"] = lat
 
-                                try:
-                                    self._queue.put_nowait(raw)
-                                except queue.Full:
-                                    # Evict oldest frame to keep stream real-time
-                                    evicted: RawEvent | None = None
                                     try:
-                                        evicted = self._queue.get_nowait()
-                                    except queue.Empty:
-                                        pass
-                                    self._queue.put_nowait(raw)
-                                    self._drop_count += 1
-                                    self._drop_counts[venue] = (
-                                        self._drop_counts.get(venue, 0) + 1
-                                    )
-                                    tombstone = self._create_drop_tombstone(
-                                        venue, canon, evicted
-                                    )
-                                    with self._tombstone_lock:
-                                        self._tombstones.append(tombstone)
-                                    if self._on_drop is not None:
+                                        self._queue.put_nowait(raw)
+                                    except queue.Full:
+                                        # Evict oldest frame to keep stream real-time
+                                        evicted: RawEvent | None = None
                                         try:
-                                            self._on_drop(tombstone)
-                                        except Exception as cb_exc:
-                                            logger.debug(
-                                                "[ws_feed] on_drop callback error: %s",
-                                                cb_exc,
-                                            )
-                                    if self._drop_count % 100 == 1:
-                                        logger.warning(
-                                            "[ws_feed] Backpressure drop #%d on %s (total: %d)",
-                                            self._drop_counts[venue],
-                                            venue,
-                                            self._drop_count,
+                                            evicted = self._queue.get_nowait()
+                                        except queue.Empty:
+                                            pass
+                                        try:
+                                            self._queue.put_nowait(raw)
+                                        except queue.Full:
+                                            # Queue filled immediately by peer thread; drop frame safely without crash
+                                            evicted = raw
+                                        self._drop_count += 1
+                                        self._drop_counts[venue] = (
+                                            self._drop_counts.get(venue, 0) + 1
                                         )
-                        except asyncio.TimeoutError:
-                            # Send ping keepalive
-                            await ws.ping()
+                                        tombstone = self._create_drop_tombstone(
+                                            venue, canon, evicted
+                                        )
+                                        with self._tombstone_lock:
+                                            self._tombstones.append(tombstone)
+                                        if self._on_drop is not None:
+                                            try:
+                                                self._on_drop(tombstone)
+                                            except Exception as cb_exc:
+                                                logger.debug(
+                                                    "[ws_feed] on_drop callback error: %s",
+                                                    cb_exc,
+                                                )
+                                        if self._drop_count % 100 == 1:
+                                            logger.warning(
+                                                "[ws_feed] Backpressure drop #%d on %s (total: %d)",
+                                                self._drop_counts[venue],
+                                                venue,
+                                                self._drop_count,
+                                            )
+                            except asyncio.TimeoutError:
+                                consecutive_timeouts += 1
+                                meta = self._provider_meta[venue]
+                                meta["consecutive_timeouts"] = consecutive_timeouts
+                                last_rx = meta.get("last_received_ts")
+                                silence_s = (time.time() - last_rx) if last_rx else (consecutive_timeouts * 15.0)
+                                if consecutive_timeouts >= 3 or (silence_s * 1000.0 > self.stale_timeout_ms and consecutive_timeouts >= 2):
+                                    meta["watchdog_triggers"] = meta.get("watchdog_triggers", 0) + 1
+                                    logger.warning(
+                                        "[ws_feed] Watchdog: %s feed silent for %.1fs (%d timeouts > threshold). Forcing reconnect.",
+                                        venue, silence_s, consecutive_timeouts
+                                    )
+                                    self._stats[venue]["connected"] = False
+                                    break
+                                # Send ping keepalive
+                                try:
+                                    await ws.ping()
+                                    meta["last_heartbeat_ts"] = time.time()
+                                except Exception as ping_exc:
+                                    logger.debug("[ws_feed] %s ping error: %s", venue, ping_exc)
+                                    self._stats[venue]["connected"] = False
+                                    break
+                    finally:
+                        self._active_sockets.pop((venue, symbol), None)
             except Exception as exc:
                 self._stats[venue]["errors"] += 1
                 self._provider_meta[venue]["error_count"] += 1
@@ -882,17 +1436,19 @@ class WebSocketFeedManager:
 
     def _get_url(self, venue: str, venue_sym: str) -> str:
         if venue == "BINANCE":
-            stream = f"{venue_sym.lower()}@depth5@100ms"
-            return WS_ENDPOINTS["BINANCE"].format(stream=stream)
+            stream = f"{venue_sym.lower()}@depth5@100ms/{venue_sym.lower()}@trade"
+            return f"wss://stream.binance.com:9443/stream?streams={stream}"
         return WS_ENDPOINTS.get(venue, "")
 
-    def _get_subscribe_msg(self, venue: str, venue_sym: str) -> dict | None:
+    def _get_subscribe_msgs(self, venue: str, venue_sym: str) -> list[dict]:
         if venue == "COINBASE":
-            return {
-                "type": "subscribe",
-                "product_ids": [venue_sym],
-                "channels": ["ticker"],
-            }
+            return [
+                {
+                    "type": "subscribe",
+                    "product_ids": [venue_sym],
+                    "channels": ["ticker", "matches"],
+                }
+            ]
         elif venue == "KRAKEN":
             k_sym = (
                 venue_sym
@@ -903,19 +1459,43 @@ class WebSocketFeedManager:
                     else venue_sym
                 )
             )
-            return {
-                "event": "subscribe",
-                "pair": [k_sym],
-                "subscription": {"name": "book", "depth": 10},
-            }
+            return [
+                {
+                    "event": "subscribe",
+                    "pair": [k_sym],
+                    "subscription": {"name": "book", "depth": 10},
+                },
+                {
+                    "event": "subscribe",
+                    "pair": [k_sym],
+                    "subscription": {"name": "trade"},
+                },
+            ]
         elif venue == "OKX":
-            return {
-                "op": "subscribe",
-                "args": [{"channel": "books5", "instId": venue_sym}],
-            }
+            return [
+                {
+                    "op": "subscribe",
+                    "args": [
+                        {"channel": "books5", "instId": venue_sym},
+                        {"channel": "trades", "instId": venue_sym},
+                    ],
+                }
+            ]
         elif venue == "BYBIT":
-            return {"op": "subscribe", "args": [f"orderbook.1.{venue_sym}"]}
-        return None
+            return [
+                {
+                    "op": "subscribe",
+                    "args": [
+                        f"orderbook.1.{venue_sym}",
+                        f"publicTrade.{venue_sym}",
+                    ],
+                }
+            ]
+        return []
+
+    def _get_subscribe_msg(self, venue: str, venue_sym: str) -> dict | None:
+        msgs = self._get_subscribe_msgs(venue, venue_sym)
+        return msgs[0] if msgs else None
 
     def stream_events(
         self,
@@ -1104,22 +1684,4 @@ def parse_bybit_bbo_payload(raw: str | bytes) -> ParsedBookFrame | None:
         return None
 
 
-class LiveCryptoFeed:
-    """High-performance multi-venue sequence and gap tracking feed wrapper."""
 
-    def __init__(self):
-        self.last_seq: dict[str, int] = {}
-        self.gap_counts: dict[str, int] = collections.defaultdict(int)
-        self.missing_events_count: dict[str, int] = collections.defaultdict(int)
-
-    def check_sequence_gap(self, venue: str, seq: int) -> bool:
-        prev = self.last_seq.get(venue)
-        self.last_seq[venue] = seq
-        if prev is None:
-            return False
-        if seq > prev + 1:
-            missing = seq - prev - 1
-            self.gap_counts[venue] += 1
-            self.missing_events_count[venue] += missing
-            return True
-        return False

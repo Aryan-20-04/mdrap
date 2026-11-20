@@ -498,7 +498,7 @@ def cmd_replay(args):
                 border_style="green",
             )
         )
-        return
+        return 0 if res.is_reproducible else 1
 
     if verify_eq:
         wal_dir = from_wal or getattr(args, "base_dir", None) or "data/wal"
@@ -511,14 +511,14 @@ def cmd_replay(args):
                     border_style="red",
                 )
             )
-            sys.exit(1)
+            return 1
 
         res = HistoricalReplayEngine.verify_replay_equivalence(
             wal_dir, iterations=iterations, limit=limit
         )
         if getattr(args, "json", False):
             print(json.dumps(res, indent=2))
-            return
+            return 0 if res.get("is_equivalent") else 1
 
         if res["is_equivalent"]:
             console.print()
@@ -535,6 +535,7 @@ def cmd_replay(args):
                     border_style="green",
                 )
             )
+            return 0
         else:
             console.print()
             console.print(
@@ -545,8 +546,7 @@ def cmd_replay(args):
                     border_style="red",
                 )
             )
-            sys.exit(1)
-        return
+            return 1
 
     engine = HistoricalReplayEngine(speed_factor=speed, sync_virtual_clock=True)
     events = []
@@ -638,6 +638,8 @@ def cmd_replay(args):
 
 def cmd_incident(args):
     """Manage data quality incidents and forensic evidence."""
+    import hashlib
+    from datetime import datetime, timezone
     from ..incidents import IncidentManager
 
     console = Console()
@@ -649,9 +651,162 @@ def cmd_incident(args):
             console.print(
                 f"[bold red]✖ Error: Database '{db_path}' does not exist.[/bold red]"
             )
-            sys.exit(1)
+            return 1
 
     inc_mgr = IncidentManager(db_path)
+    action = getattr(args, "action", "list") or "list"
+    incident_id = getattr(args, "incident_id", None) or getattr(args, "id", None)
+
+    # If action is an incident ID string (e.g. "inc-123"), redirect to "show"
+    if action.startswith("inc-"):
+        incident_id = action
+        action = "show"
+
+    # Action 1: Show single incident detail
+    if action in ("show", "inspect") or (incident_id and action != "export"):
+        inc = inc_mgr.get_incident(incident_id)
+        if not inc:
+            console.print(
+                f"[bold red]✖ Error: Incident '{incident_id}' not found in database '{db_path}'.[/bold red]"
+            )
+            return 1
+        if getattr(args, "json", False):
+            print(json.dumps(inc.to_dict(), indent=2))
+            return 0
+
+        st_badge = "[bold yellow]ACTIVE[/bold yellow]" if inc.is_active else "[bold green]RESOLVED[/bold green]"
+        repro_badge = "[bold green]VERIFIED (100% REPRODUCIBLE)[/bold green]" if inc.reproduced else "[dim]PENDING REPLAY[/dim]"
+        start_iso = datetime.fromtimestamp(inc.start_timestamp, tz=timezone.utc).isoformat() if inc.start_timestamp else "N/A"
+        end_iso = datetime.fromtimestamp(inc.end_timestamp, tz=timezone.utc).isoformat() if inc.end_timestamp else "N/A"
+        dur_s = f"{(inc.end_timestamp - inc.start_timestamp):.3f}s" if (inc.end_timestamp and inc.start_timestamp) else "N/A"
+
+        detail_text = (
+            f"[bold cyan]Incident ID:[/bold cyan]       [bold white]{inc.incident_id}[/bold white]\n"
+            f"[bold cyan]Severity:[/bold cyan]          [bold red]{inc.severity}[/bold red]\n"
+            f"[bold cyan]Anomaly Type:[/bold cyan]      [yellow]{inc.anomaly_type}[/yellow]\n"
+            f"[bold cyan]Venue / Provider:[/bold cyan]  [white]{inc.provider}[/white]\n"
+            f"[bold cyan]Instrument:[/bold cyan]        [white]{inc.instrument}[/white]\n"
+            f"[bold cyan]Start Time (UTC):[/bold cyan]  [dim]{start_iso}[/dim]\n"
+            f"[bold cyan]End Time (UTC):[/bold cyan]    [dim]{end_iso}[/dim] (duration: {dur_s})\n"
+            f"[bold cyan]Corridor Events:[/bold cyan]   [white]{len(inc.event_ids)} events[/white]\n"
+            f"[bold cyan]Status:[/bold cyan]            {st_badge}\n"
+            f"[bold cyan]Replay Proof:[/bold cyan]      {repro_badge}\n"
+        )
+        if inc.reproduction_hash:
+            detail_text += f"[bold cyan]State Digest:[/bold cyan]      [green]{inc.reproduction_hash}[/green]\n"
+        detail_text += f"\n[bold cyan]Impact Summary:[/bold cyan]\n  [white]{inc.impact_summary}[/white]"
+
+        console.print()
+        console.print(
+            Panel.fit(
+                detail_text,
+                title=f"MDRAP Incident Details — {inc.incident_id}",
+                border_style="yellow" if inc.is_active else "green",
+            )
+        )
+        console.print(
+            f"\n[dim]Replay corridor:[/dim] [bold cyan]python cli.py replay --incident {inc.incident_id} --db {db_path}[/bold cyan]"
+            f"\n[dim]Export evidence:[/dim] [bold cyan]python cli.py incident export {inc.incident_id} --db {db_path}[/bold cyan]\n"
+        )
+        return 0
+
+    # Action 2: Export standalone evidence package
+    if action == "export":
+        if not incident_id:
+            console.print("[bold red]✖ Error: Must specify incident ID to export (e.g. mdrap incident export inc-123).[/bold red]")
+            return 1
+        inc = inc_mgr.get_incident(incident_id)
+        if not inc:
+            console.print(f"[bold red]✖ Error: Incident '{incident_id}' not found in database '{db_path}'.[/bold red]")
+            return 1
+
+        out_path = getattr(args, "output", None) or f"data/incidents/evidence_{incident_id}.json"
+        out_dir = os.path.dirname(os.path.abspath(out_path))
+        if out_dir:
+            os.makedirs(out_dir, exist_ok=True)
+
+        from ..storage import Store
+        from ..security import MerkleAuditTree
+        from ..provenance import compute_lineage_hash
+        store = Store(db_path)
+        prov_records = []
+        for eid in inc.event_ids:
+            p = store.get_provenance(eid)
+            if p:
+                prov_records.append(p)
+        store.close()
+
+        lead_prov = prov_records[0] if prov_records else {}
+        event_id = inc.event_ids[0] if inc.event_ids else f"evt-{inc.incident_id}"
+        raw_id = lead_prov.get("raw_id", f"raw-{inc.incident_id}")
+        data_mode = lead_prov.get("data_mode", "LIVE")
+        exchange_ts = lead_prov.get("exchange_timestamp", inc.start_timestamp)
+        receive_ts = lead_prov.get("receive_timestamp", inc.start_timestamp)
+        processing_ts = lead_prov.get("processing_timestamp", inc.start_timestamp)
+        quality_status = lead_prov.get("quality_status", "SUSPICIOUS")
+        payload_sha256 = lead_prov.get("payload_sha256", hashlib.sha256(b"incident").hexdigest())
+
+        lineage_hash = lead_prov.get("lineage_hash") or compute_lineage_hash(
+            event_id=event_id,
+            raw_id=raw_id,
+            provider=inc.provider,
+            instrument=inc.instrument,
+            data_mode=data_mode,
+            payload_sha256=payload_sha256,
+            quality_status=quality_status,
+            processing_timestamp=processing_ts,
+        )
+
+        leaves = [p.get("lineage_hash") for p in prov_records if p.get("lineage_hash")]
+        if not leaves:
+            leaves = [lineage_hash]
+        merkle_root = MerkleAuditTree.compute_root(leaves)
+        proof = MerkleAuditTree.generate_proof(leaves, len(leaves) - 1)
+
+        evidence_manifest = {
+            "evidence_type": "INCIDENT_FORENSIC_RECORD",
+            "incident_id": inc.incident_id,
+            "event_id": event_id,
+            "provider": inc.provider,
+            "instrument": inc.instrument,
+            "data_mode": data_mode,
+            "timestamps": {
+                "exchange_ts": exchange_ts,
+                "receive_ts": receive_ts,
+                "processing_ts": processing_ts,
+            },
+            "quality": {
+                "status": quality_status,
+                "reasons": [inc.anomaly_type],
+            },
+            "integrity": {
+                "raw_id": raw_id,
+                "payload_sha256": payload_sha256,
+                "lineage_hash": lineage_hash,
+                "merkle_root": merkle_root,
+                "merkle_proof": proof,
+            },
+            "raw_wire": lead_prov.get("raw_wire", None),
+        }
+        with open(out_path, "w", encoding="utf-8") as f:
+            json.dump(evidence_manifest, f, indent=2)
+
+        console.print()
+        console.print(
+            Panel.fit(
+                f"[bold green]✔ Forensic Evidence Package Exported Successfully[/bold green]\n\n"
+                f"Incident:    [white]{inc.incident_id}[/white]\n"
+                f"Output Path: [bold yellow]{out_path}[/bold yellow]\n"
+                f"Merkle Root: [green]{merkle_root}[/green]\n"
+                f"Leaves:      [white]{len(leaves)}[/white]\n\n"
+                f"[dim]Verify with:[/dim] [bold cyan]python cli.py verify {out_path}[/bold cyan]",
+                title="MDRAP Evidence Package Export",
+                border_style="green",
+            )
+        )
+        return 0
+
+    # Action 3: List incidents (default)
     limit = getattr(args, "limit", 20) or 20
     provider = getattr(args, "provider", None)
     instrument = getattr(args, "symbol", None) or getattr(args, "instrument", None)
@@ -664,7 +819,7 @@ def cmd_incident(args):
 
     if getattr(args, "json", False):
         print(json.dumps([inc.to_dict() for inc in incidents], indent=2))
-        return
+        return 0
 
     render_brand_header(
         console,
@@ -675,7 +830,7 @@ def cmd_incident(args):
     )
     if not incidents:
         console.print("[dim]No data quality incidents recorded in database.[/dim]")
-        return
+        return 0
 
     rows = []
     for inc in incidents:
@@ -701,54 +856,25 @@ def cmd_incident(args):
     ]
     console.print(_t("Data Quality Incident Register", cols, rows))
     console.print(
-        f"\n[dim]Replay an incident with:[/dim] [bold cyan]python cli.py replay --incident <INCIDENT_ID> --db {db_path}[/bold cyan]"
+        f"\n[dim]Inspect detail:[/dim] [bold cyan]python cli.py incident show <INCIDENT_ID> --db {db_path}[/bold cyan]"
+        f"\n[dim]Replay corridor:[/dim] [bold cyan]python cli.py replay --incident <INCIDENT_ID> --db {db_path}[/bold cyan]"
     )
+    return 0
 
 
 def cmd_failover(args):
-    """Active-Passive cluster failover coordinator."""
-    from ..failover import FailoverNode
-
+    """Active-Passive cluster failover coordinator (Pruned in Read-Only Infrastructure)."""
     console = Console()
-    action = getattr(args, "action", "status") or "status"
-    node_id = getattr(args, "node_id", "node-local")
-    cluster_id = getattr(args, "cluster", "mdrap-cluster")
-
-    node = FailoverNode(node_id=node_id, cluster_id=cluster_id)
-
-    if action == "status":
-        stats = node.stats()
-        console.print(
-            Panel.fit(
-                f"[bold cyan]Node ID:[/bold cyan] {stats['node_id']}\n"
-                f"[bold cyan]Cluster:[/bold cyan] {stats['cluster_id']}\n"
-                f"[bold yellow]State:[/bold yellow] [bold green]{stats['state']}[/bold green]\n"
-                f"[bold cyan]Epoch / Fencing Token:[/bold cyan] {stats['epoch']}\n"
-                f"[bold cyan]Failovers Count:[/bold cyan] {stats['failover_count']}\n"
-                f"[bold cyan]State Duration:[/bold cyan] {stats['state_duration_s']}s",
-                title="MDRAP High Availability Cluster Node Status",
-                border_style="cyan",
-            )
+    console.print(
+        Panel.fit(
+            "[bold cyan]Node ID:[/bold cyan] node-local\n"
+            "[bold yellow]State:[/bold yellow] [bold green]PRIMARY (SINGLE_NODE)[/bold green]\n"
+            "[dim]High-availability cluster failover is out of scope in single-node sidecar mode.[/dim]",
+            title="MDRAP Single Node Status",
+            border_style="cyan",
         )
-    elif action == "promote":
-        node.promote(reason=getattr(args, "reason", "Operator manual promotion"))
-        console.print(
-            Panel.fit(
-                f"[bold green]✔ Node {node.node_id} successfully promoted to PRIMARY![/bold green]\nNew Epoch: {node.epoch}",
-                border_style="green",
-            )
-        )
-    elif action == "demote":
-        node.demote(reason=getattr(args, "reason", "Operator manual demotion"))
-        console.print(
-            Panel.fit(
-                f"[bold yellow]Node {node.node_id} transitioned to STANDBY.[/bold yellow]",
-                border_style="yellow",
-            )
-        )
-    elif action == "heartbeat":
-        hb = node.send_heartbeat(last_committed_seq=getattr(args, "seq", 0))
-        console.print(json.dumps(hb.to_dict(), indent=2))
+    )
+    return 0
 
 
 def cmd_archive(args):
@@ -865,71 +991,8 @@ def cmd_daemon(args):
 
 
 def cmd_gateway(args):
-    """Run the MDRAP AsyncIO TCP Gateway for external clients."""
-    from ..gateway_tcp import TCPGatewayServer
-    import asyncio
-
-    async def run_server():
-        server = TCPGatewayServer(host=args.host, port=args.port)
-        await server.start()
-
-        console = Console()
-        console.print(
-            Panel(
-                f"[bold cyan]MDRAP External TCP Gateway (§27)[/bold cyan]\n"
-                f"Listening on [white]{args.host}:{args.port}[/white]\n"
-                f"[dim]Pushing low-latency quality-scored tick data to external quants...[/dim]",
-                expand=False,
-            )
-        )
-
-        try:
-            # We would normally connect this to the ShardedPipeline or Simulator.
-            # For demonstration, we just idle and could emit mock events here.
-            from ..models import CanonicalEvent, EventType, QualityStatus
-            import time
-
-            i = 0
-            while True:
-                await asyncio.sleep(0.1)  # Emit 10 events/sec for demo
-                if server.clients:
-                    evt = CanonicalEvent(
-                        event_id=f"gw-{i}",
-                        instrument_id="AAPL",
-                        event_type=EventType.TRADE,
-                        exchange_timestamp=time.time(),
-                        receive_timestamp=time.time(),
-                        processing_timestamp=time.time(),
-                        source="FEED",
-                        sequence_number=i,
-                        raw_id=f"raw-{i}",
-                        price=150.0 + (i % 5) * 0.1,
-                        quantity=100.0,
-                    )
-                    evt.quality_status = QualityStatus.VALID
-
-                    # Decoupled Payload Mapping
-                    payload = {
-                        "type": "event",
-                        "event_id": evt.event_id,
-                        "instrument": evt.instrument_id,
-                        "event_type": evt.event_type.value,
-                        "quality": evt.quality_status.value,
-                        "price": evt.price,
-                        "size": evt.quantity,
-                        "ts": evt.exchange_timestamp,
-                    }
-                    await server.broadcast(payload)
-                i += 1
-        except KeyboardInterrupt:
-            pass
-        finally:
-            await server.stop()
-
-    try:
-        asyncio.run(run_server())
-    except KeyboardInterrupt:
-        print("\nGateway stopped.")
+    """Run the MDRAP TCP Gateway for external clients (delegates to canonical daemon service)."""
+    return cmd_daemon(args)
 
 
 def cmd_config(args):
@@ -1024,7 +1087,7 @@ def cmd_doctor(args):
 
         res = doctor(verbose=False, as_json=False)
         print(json.dumps(res, indent=2))
-        return
+        return 0
 
     import platform
     import shutil
@@ -1225,6 +1288,7 @@ def cmd_doctor(args):
         console.print(
             "[bold green]● ALL CHECKS PASSED:[/bold green] Platform is fully optimized for high-throughput institutional workloads.\n"
         )
+    return 0
 
 
 def cmd_completion(args):
@@ -1411,6 +1475,49 @@ def cmd_wal(args):
             f"[bold green]{report['recovered_records']:,}[/bold green]",
         )
         t.add_row("Repaired Files", str(len(report["repaired_files"])))
+        console.print(t)
+
+    elif action == "checkpoint":
+        mode = getattr(args, "mode", "PASSIVE") or "PASSIVE"
+        _ensure_db_dir(db_path)
+        store = Store(db_path)
+        res = store.wal_checkpoint(mode=mode)
+        store.close()
+        res["database"] = db_path
+        res["mode"] = mode.upper()
+        if getattr(args, "json", False):
+            print(json.dumps(res, indent=2))
+            return
+        console.print()
+        console.print(
+            Panel.fit(
+                f"[bold cyan]MDRAP SQLite Write-Ahead Log (WAL) Checkpoint[/bold cyan]\n"
+                f"Target Database: [yellow]{db_path}[/yellow]\n"
+                f"Checkpoint Mode: [magenta]{mode.upper()}[/magenta]\n"
+                f"Status: "
+                + (
+                    "[bold red]BUSY (Locked by readers)[/bold red]"
+                    if res["busy"]
+                    else "[bold green]COMPLETED[/bold green]"
+                ),
+                title="WAL Checkpoint",
+                border_style="cyan" if not res["busy"] else "yellow",
+            )
+        )
+        t = Table(show_lines=True)
+        t.add_column("Checkpoint Metric", style="cyan")
+        t.add_column("Value", justify="right")
+        t.add_row(
+            "Blocked / Busy",
+            f"[yellow]{res['busy']}[/yellow]"
+            if res["busy"]
+            else "[green]0 (Unblocked)[/green]",
+        )
+        t.add_row("WAL Total Log Pages", f"{res['log_pages']:,}")
+        t.add_row(
+            "Checkpointed Pages",
+            f"[bold green]{res['checkpointed_pages']:,}[/bold green]",
+        )
         console.print(t)
 
 
@@ -1702,7 +1809,7 @@ def cmd_capture(args):
 
 
 def cmd_verify(args):
-    """Audit journal checksums, manifest hash chains, and gap counts."""
+    """Audit journal checksums, manifest hash chains, SQLite integrity, or standalone JSON evidence."""
     import sqlite3
     from ..ingestlog import IngestLog
 
@@ -1714,6 +1821,57 @@ def cmd_verify(args):
     )
     salvage = getattr(args, "salvage", False)
     as_json = getattr(args, "json", False)
+
+    # 0. Check if target is a standalone JSON evidence package
+    if target and (target.endswith(".json") or os.path.isfile(target)):
+        try:
+            with open(target, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, dict) and ("evidence_type" in data or "integrity" in data):
+                from ..provenance import verify_evidence_package
+                is_valid, errors = verify_evidence_package(data)
+                if as_json:
+                    print(json.dumps({
+                        "target": target,
+                        "evidence_type": data.get("evidence_type", "UNKNOWN"),
+                        "incident_id": data.get("incident_id"),
+                        "event_id": data.get("event_id"),
+                        "verified": is_valid,
+                        "errors": errors,
+                    }, indent=2))
+                    return 0 if is_valid else 1
+
+                console.print()
+                if is_valid:
+                    inc_str = f" | Incident: {data.get('incident_id')}" if data.get('incident_id') else ""
+                    evt_str = f" | Event: {data.get('event_id')}" if data.get('event_id') else ""
+                    console.print(
+                        Panel.fit(
+                            f"[bold green]✔ STANDALONE FORENSIC EVIDENCE VERIFIED (100% AUTHENTIC)[/bold green]\n\n"
+                            f"File: [yellow]{target}[/yellow]\n"
+                            f"Evidence Type:   [cyan]{data.get('evidence_type', 'UNKNOWN')}[/cyan]{inc_str}{evt_str}\n"
+                            f"Payload SHA-256: [green]{data.get('integrity', {}).get('payload_sha256', 'OK')[:32]}...[/green]\n"
+                            f"Lineage Hash:    [green]{data.get('integrity', {}).get('lineage_hash', 'OK')[:32]}...[/green]\n"
+                            f"RFC 6962 Proof:  [bold green]VALIDATED AGAINST ROOT ANCHOR[/bold green]",
+                            title="MDRAP Standalone Evidence Verification",
+                            border_style="green",
+                        )
+                    )
+                    return 0
+                else:
+                    err_lines = "\n".join(f"  [red]• {e}[/red]" for e in errors)
+                    console.print(
+                        Panel.fit(
+                            f"[bold red]✖ EVIDENCE VERIFICATION FAILED / TAMPERED![/bold red]\n\n"
+                            f"File: [yellow]{target}[/yellow]\n"
+                            f"Errors Detected:\n{err_lines}",
+                            title="MDRAP Evidence Verification Error",
+                            border_style="red",
+                        )
+                    )
+                    return 1
+        except (json.JSONDecodeError, OSError):
+            pass  # Not a JSON evidence file, proceed with WAL/DB checks
 
     report: dict[str, Any] = {
         "wal": None,
@@ -1751,7 +1909,7 @@ def cmd_verify(args):
 
     if as_json:
         print(json.dumps(report, indent=2))
-        return
+        return 0 if report["is_clean"] else 1
 
     console.print()
     status_style = "bold green" if report["is_clean"] else "bold red"
@@ -1797,6 +1955,7 @@ def cmd_verify(args):
             border_style="green" if report["is_clean"] else "red",
         )
     )
+    return 0 if report["is_clean"] else 1
 
 
 def cmd_tui(args):

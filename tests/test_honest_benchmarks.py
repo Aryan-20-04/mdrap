@@ -16,7 +16,6 @@ from pathlib import Path
 import time
 import pytest
 
-from mdrap.async_fanout import AsyncFanoutManager
 from mdrap.clock import SystemClock
 from mdrap.engine import Engine, EngineConfig
 from mdrap.metrics import percentile

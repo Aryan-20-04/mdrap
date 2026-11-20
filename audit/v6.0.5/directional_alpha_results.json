@@ -1,0 +1,1821 @@
+{
+  "metadata": {
+    "total_frames": 3683381,
+    "total_samples": 137268,
+    "sample_interval_s": 0.5,
+    "latency_s": 0.0025,
+    "partitions": {
+      "DEV": 51379,
+      "VAL": 40232,
+      "HOLDOUT": 45657
+    }
+  },
+  "signals": {
+    "Order Flow Imbalance (OFI)": {
+      "DEV": {
+        "100ms": {
+          "pearson_ic": 0.0076,
+          "spearman_ic": -0.0002,
+          "hit_rate_pct": 51.14,
+          "mean_return_bps": 0.001,
+          "ci95_bps": 0.002,
+          "t_stat": 1.01,
+          "active_samples": 51369,
+          "total_samples": 51379
+        },
+        "500ms": {
+          "pearson_ic": 0.0099,
+          "spearman_ic": 0.0111,
+          "hit_rate_pct": 51.61,
+          "mean_return_bps": 0.0049,
+          "ci95_bps": 0.0051,
+          "t_stat": 1.87,
+          "active_samples": 51369,
+          "total_samples": 51379
+        },
+        "1000ms": {
+          "pearson_ic": 0.0121,
+          "spearman_ic": 0.0146,
+          "hit_rate_pct": 51.79,
+          "mean_return_bps": 0.0095,
+          "ci95_bps": 0.0075,
+          "t_stat": 2.48,
+          "active_samples": 51369,
+          "total_samples": 51379
+        },
+        "5000ms": {
+          "pearson_ic": 0.0127,
+          "spearman_ic": 0.0152,
+          "hit_rate_pct": 52.68,
+          "mean_return_bps": 0.0563,
+          "ci95_bps": 0.0182,
+          "t_stat": 6.05,
+          "active_samples": 51369,
+          "total_samples": 51379
+        },
+        "10000ms": {
+          "pearson_ic": 0.0112,
+          "spearman_ic": 0.0065,
+          "hit_rate_pct": 52.95,
+          "mean_return_bps": 0.1174,
+          "ci95_bps": 0.0267,
+          "t_stat": 8.61,
+          "active_samples": 51369,
+          "total_samples": 51379
+        }
+      },
+      "VAL": {
+        "100ms": {
+          "pearson_ic": 0.0039,
+          "spearman_ic": 0.0058,
+          "hit_rate_pct": 50.37,
+          "mean_return_bps": 0.0006,
+          "ci95_bps": 0.0024,
+          "t_stat": 0.51,
+          "active_samples": 40232,
+          "total_samples": 40232
+        },
+        "500ms": {
+          "pearson_ic": 0.0023,
+          "spearman_ic": 0.0142,
+          "hit_rate_pct": 50.77,
+          "mean_return_bps": 0.0037,
+          "ci95_bps": 0.0063,
+          "t_stat": 1.17,
+          "active_samples": 40232,
+          "total_samples": 40232
+        },
+        "1000ms": {
+          "pearson_ic": 0.0003,
+          "spearman_ic": 0.014,
+          "hit_rate_pct": 50.82,
+          "mean_return_bps": 0.0069,
+          "ci95_bps": 0.0092,
+          "t_stat": 1.48,
+          "active_samples": 40232,
+          "total_samples": 40232
+        },
+        "5000ms": {
+          "pearson_ic": 0.0064,
+          "spearman_ic": 0.0261,
+          "hit_rate_pct": 50.04,
+          "mean_return_bps": 0.0394,
+          "ci95_bps": 0.0226,
+          "t_stat": 3.42,
+          "active_samples": 40232,
+          "total_samples": 40232
+        },
+        "10000ms": {
+          "pearson_ic": 0.0102,
+          "spearman_ic": 0.0344,
+          "hit_rate_pct": 49.63,
+          "mean_return_bps": 0.0776,
+          "ci95_bps": 0.0319,
+          "t_stat": 4.76,
+          "active_samples": 40232,
+          "total_samples": 40232
+        }
+      },
+      "HOLDOUT": {
+        "100ms": {
+          "pearson_ic": 0.0031,
+          "spearman_ic": 0.0173,
+          "hit_rate_pct": 47.77,
+          "mean_return_bps": -0.0002,
+          "ci95_bps": 0.0019,
+          "t_stat": -0.16,
+          "active_samples": 45657,
+          "total_samples": 45657
+        },
+        "500ms": {
+          "pearson_ic": 0.0066,
+          "spearman_ic": 0.0168,
+          "hit_rate_pct": 48.49,
+          "mean_return_bps": 0.0018,
+          "ci95_bps": 0.0048,
+          "t_stat": 0.73,
+          "active_samples": 45657,
+          "total_samples": 45657
+        },
+        "1000ms": {
+          "pearson_ic": 0.0068,
+          "spearman_ic": 0.0187,
+          "hit_rate_pct": 48.62,
+          "mean_return_bps": 0.0041,
+          "ci95_bps": 0.0071,
+          "t_stat": 1.11,
+          "active_samples": 45657,
+          "total_samples": 45657
+        },
+        "5000ms": {
+          "pearson_ic": 0.0009,
+          "spearman_ic": -0.0016,
+          "hit_rate_pct": 51.96,
+          "mean_return_bps": 0.0181,
+          "ci95_bps": 0.017,
+          "t_stat": 2.08,
+          "active_samples": 45657,
+          "total_samples": 45657
+        },
+        "10000ms": {
+          "pearson_ic": -0.0131,
+          "spearman_ic": -0.0109,
+          "hit_rate_pct": 52.91,
+          "mean_return_bps": 0.031,
+          "ci95_bps": 0.0242,
+          "t_stat": 2.51,
+          "active_samples": 45657,
+          "total_samples": 45657
+        }
+      }
+    },
+    "Signed Trade Imbalance (STI)": {
+      "DEV": {
+        "100ms": {
+          "pearson_ic": 0.0476,
+          "spearman_ic": 0.066,
+          "hit_rate_pct": 57.69,
+          "mean_return_bps": 0.0103,
+          "ci95_bps": 0.0022,
+          "t_stat": 9.4,
+          "active_samples": 43177,
+          "total_samples": 51379
+        },
+        "500ms": {
+          "pearson_ic": 0.0626,
+          "spearman_ic": 0.0972,
+          "hit_rate_pct": 56.63,
+          "mean_return_bps": 0.0345,
+          "ci95_bps": 0.0056,
+          "t_stat": 12.08,
+          "active_samples": 43177,
+          "total_samples": 51379
+        },
+        "1000ms": {
+          "pearson_ic": 0.0696,
+          "spearman_ic": 0.1009,
+          "hit_rate_pct": 55.54,
+          "mean_return_bps": 0.0545,
+          "ci95_bps": 0.0081,
+          "t_stat": 13.14,
+          "active_samples": 43177,
+          "total_samples": 51379
+        },
+        "5000ms": {
+          "pearson_ic": 0.0661,
+          "spearman_ic": 0.0716,
+          "hit_rate_pct": 52.42,
+          "mean_return_bps": 0.1257,
+          "ci95_bps": 0.0198,
+          "t_stat": 12.45,
+          "active_samples": 43177,
+          "total_samples": 51379
+        },
+        "10000ms": {
+          "pearson_ic": 0.0496,
+          "spearman_ic": 0.0571,
+          "hit_rate_pct": 51.77,
+          "mean_return_bps": 0.1457,
+          "ci95_bps": 0.029,
+          "t_stat": 9.86,
+          "active_samples": 43177,
+          "total_samples": 51379
+        }
+      },
+      "VAL": {
+        "100ms": {
+          "pearson_ic": 0.0395,
+          "spearman_ic": 0.0602,
+          "hit_rate_pct": 56.26,
+          "mean_return_bps": 0.0095,
+          "ci95_bps": 0.0026,
+          "t_stat": 7.14,
+          "active_samples": 34239,
+          "total_samples": 40232
+        },
+        "500ms": {
+          "pearson_ic": 0.0629,
+          "spearman_ic": 0.0921,
+          "hit_rate_pct": 56.16,
+          "mean_return_bps": 0.039,
+          "ci95_bps": 0.0066,
+          "t_stat": 11.53,
+          "active_samples": 34239,
+          "total_samples": 40232
+        },
+        "1000ms": {
+          "pearson_ic": 0.0671,
+          "spearman_ic": 0.0917,
+          "hit_rate_pct": 55.12,
+          "mean_return_bps": 0.0611,
+          "ci95_bps": 0.0098,
+          "t_stat": 12.23,
+          "active_samples": 34239,
+          "total_samples": 40232
+        },
+        "5000ms": {
+          "pearson_ic": 0.0461,
+          "spearman_ic": 0.0466,
+          "hit_rate_pct": 51.65,
+          "mean_return_bps": 0.1038,
+          "ci95_bps": 0.0242,
+          "t_stat": 8.41,
+          "active_samples": 34239,
+          "total_samples": 40232
+        },
+        "10000ms": {
+          "pearson_ic": 0.0385,
+          "spearman_ic": 0.0328,
+          "hit_rate_pct": 50.93,
+          "mean_return_bps": 0.1237,
+          "ci95_bps": 0.0344,
+          "t_stat": 7.06,
+          "active_samples": 34239,
+          "total_samples": 40232
+        }
+      },
+      "HOLDOUT": {
+        "100ms": {
+          "pearson_ic": 0.0438,
+          "spearman_ic": 0.06,
+          "hit_rate_pct": 56.57,
+          "mean_return_bps": 0.0084,
+          "ci95_bps": 0.0021,
+          "t_stat": 7.99,
+          "active_samples": 39237,
+          "total_samples": 45657
+        },
+        "500ms": {
+          "pearson_ic": 0.0676,
+          "spearman_ic": 0.095,
+          "hit_rate_pct": 56.72,
+          "mean_return_bps": 0.0339,
+          "ci95_bps": 0.0052,
+          "t_stat": 12.84,
+          "active_samples": 39237,
+          "total_samples": 45657
+        },
+        "1000ms": {
+          "pearson_ic": 0.0723,
+          "spearman_ic": 0.1013,
+          "hit_rate_pct": 55.97,
+          "mean_return_bps": 0.0527,
+          "ci95_bps": 0.0077,
+          "t_stat": 13.46,
+          "active_samples": 39237,
+          "total_samples": 45657
+        },
+        "5000ms": {
+          "pearson_ic": 0.0747,
+          "spearman_ic": 0.0913,
+          "hit_rate_pct": 54.46,
+          "mean_return_bps": 0.1294,
+          "ci95_bps": 0.0183,
+          "t_stat": 13.89,
+          "active_samples": 39237,
+          "total_samples": 45657
+        },
+        "10000ms": {
+          "pearson_ic": 0.0539,
+          "spearman_ic": 0.0627,
+          "hit_rate_pct": 52.99,
+          "mean_return_bps": 0.1331,
+          "ci95_bps": 0.0261,
+          "t_stat": 9.98,
+          "active_samples": 39237,
+          "total_samples": 45657
+        }
+      }
+    },
+    "Microprice Displacement": {
+      "DEV": {
+        "100ms": {
+          "pearson_ic": 0.0332,
+          "spearman_ic": 0.1459,
+          "hit_rate_pct": 53.09,
+          "mean_return_bps": 0.0239,
+          "ci95_bps": 0.0454,
+          "t_stat": 1.03,
+          "active_samples": 382,
+          "total_samples": 51379
+        },
+        "500ms": {
+          "pearson_ic": 0.0329,
+          "spearman_ic": 0.202,
+          "hit_rate_pct": 47.67,
+          "mean_return_bps": -0.0125,
+          "ci95_bps": 0.1014,
+          "t_stat": -0.24,
+          "active_samples": 382,
+          "total_samples": 51379
+        },
+        "1000ms": {
+          "pearson_ic": 0.032,
+          "spearman_ic": 0.2054,
+          "hit_rate_pct": 50.54,
+          "mean_return_bps": 0.0342,
+          "ci95_bps": 0.1315,
+          "t_stat": 0.51,
+          "active_samples": 382,
+          "total_samples": 51379
+        },
+        "5000ms": {
+          "pearson_ic": 0.0285,
+          "spearman_ic": 0.1542,
+          "hit_rate_pct": 54.07,
+          "mean_return_bps": 0.1265,
+          "ci95_bps": 0.335,
+          "t_stat": 0.74,
+          "active_samples": 382,
+          "total_samples": 51379
+        },
+        "10000ms": {
+          "pearson_ic": 0.0223,
+          "spearman_ic": 0.1179,
+          "hit_rate_pct": 49.48,
+          "mean_return_bps": 0.0531,
+          "ci95_bps": 0.4868,
+          "t_stat": 0.21,
+          "active_samples": 382,
+          "total_samples": 51379
+        }
+      },
+      "VAL": {
+        "100ms": {
+          "pearson_ic": 0.0252,
+          "spearman_ic": 0.1253,
+          "hit_rate_pct": 52.61,
+          "mean_return_bps": 0.022,
+          "ci95_bps": 0.0355,
+          "t_stat": 1.21,
+          "active_samples": 588,
+          "total_samples": 40232
+        },
+        "500ms": {
+          "pearson_ic": 0.0252,
+          "spearman_ic": 0.1823,
+          "hit_rate_pct": 50.46,
+          "mean_return_bps": 0.0209,
+          "ci95_bps": 0.0671,
+          "t_stat": 0.61,
+          "active_samples": 588,
+          "total_samples": 40232
+        },
+        "1000ms": {
+          "pearson_ic": 0.0184,
+          "spearman_ic": 0.1815,
+          "hit_rate_pct": 50.96,
+          "mean_return_bps": -0.01,
+          "ci95_bps": 0.0865,
+          "t_stat": -0.23,
+          "active_samples": 588,
+          "total_samples": 40232
+        },
+        "5000ms": {
+          "pearson_ic": 0.0121,
+          "spearman_ic": 0.1197,
+          "hit_rate_pct": 51.37,
+          "mean_return_bps": 0.0373,
+          "ci95_bps": 0.1797,
+          "t_stat": 0.41,
+          "active_samples": 588,
+          "total_samples": 40232
+        },
+        "10000ms": {
+          "pearson_ic": 0.0062,
+          "spearman_ic": 0.0812,
+          "hit_rate_pct": 50.86,
+          "mean_return_bps": -0.0012,
+          "ci95_bps": 0.2688,
+          "t_stat": -0.01,
+          "active_samples": 588,
+          "total_samples": 40232
+        }
+      },
+      "HOLDOUT": {
+        "100ms": {
+          "pearson_ic": 0.041,
+          "spearman_ic": 0.1371,
+          "hit_rate_pct": 52.53,
+          "mean_return_bps": 0.042,
+          "ci95_bps": 0.0418,
+          "t_stat": 1.97,
+          "active_samples": 298,
+          "total_samples": 45657
+        },
+        "500ms": {
+          "pearson_ic": 0.0275,
+          "spearman_ic": 0.184,
+          "hit_rate_pct": 48.94,
+          "mean_return_bps": -0.0205,
+          "ci95_bps": 0.073,
+          "t_stat": -0.55,
+          "active_samples": 298,
+          "total_samples": 45657
+        },
+        "1000ms": {
+          "pearson_ic": 0.0191,
+          "spearman_ic": 0.1871,
+          "hit_rate_pct": 50.0,
+          "mean_return_bps": -0.0763,
+          "ci95_bps": 0.1054,
+          "t_stat": -1.42,
+          "active_samples": 298,
+          "total_samples": 45657
+        },
+        "5000ms": {
+          "pearson_ic": 0.0186,
+          "spearman_ic": 0.1422,
+          "hit_rate_pct": 46.46,
+          "mean_return_bps": -0.1588,
+          "ci95_bps": 0.2128,
+          "t_stat": -1.46,
+          "active_samples": 298,
+          "total_samples": 45657
+        },
+        "10000ms": {
+          "pearson_ic": 0.0178,
+          "spearman_ic": 0.1127,
+          "hit_rate_pct": 46.13,
+          "mean_return_bps": -0.1827,
+          "ci95_bps": 0.2985,
+          "t_stat": -1.2,
+          "active_samples": 298,
+          "total_samples": 45657
+        }
+      }
+    },
+    "Bid/Ask Depth Imbalance": {
+      "DEV": {
+        "100ms": {
+          "pearson_ic": 0.1323,
+          "spearman_ic": 0.1652,
+          "hit_rate_pct": 70.44,
+          "mean_return_bps": 0.0318,
+          "ci95_bps": 0.0023,
+          "t_stat": 26.94,
+          "active_samples": 39581,
+          "total_samples": 51379
+        },
+        "500ms": {
+          "pearson_ic": 0.1897,
+          "spearman_ic": 0.2535,
+          "hit_rate_pct": 70.11,
+          "mean_return_bps": 0.1168,
+          "ci95_bps": 0.0059,
+          "t_stat": 39.07,
+          "active_samples": 39581,
+          "total_samples": 51379
+        },
+        "1000ms": {
+          "pearson_ic": 0.1985,
+          "spearman_ic": 0.2626,
+          "hit_rate_pct": 67.97,
+          "mean_return_bps": 0.1777,
+          "ci95_bps": 0.0084,
+          "t_stat": 41.52,
+          "active_samples": 39581,
+          "total_samples": 51379
+        },
+        "5000ms": {
+          "pearson_ic": 0.1666,
+          "spearman_ic": 0.2,
+          "hit_rate_pct": 60.94,
+          "mean_return_bps": 0.3668,
+          "ci95_bps": 0.0204,
+          "t_stat": 35.2,
+          "active_samples": 39581,
+          "total_samples": 51379
+        },
+        "10000ms": {
+          "pearson_ic": 0.1242,
+          "spearman_ic": 0.1486,
+          "hit_rate_pct": 58.03,
+          "mean_return_bps": 0.4107,
+          "ci95_bps": 0.03,
+          "t_stat": 26.82,
+          "active_samples": 39581,
+          "total_samples": 51379
+        }
+      },
+      "VAL": {
+        "100ms": {
+          "pearson_ic": 0.1307,
+          "spearman_ic": 0.1543,
+          "hit_rate_pct": 68.03,
+          "mean_return_bps": 0.0336,
+          "ci95_bps": 0.0028,
+          "t_stat": 23.58,
+          "active_samples": 31572,
+          "total_samples": 40232
+        },
+        "500ms": {
+          "pearson_ic": 0.1927,
+          "spearman_ic": 0.2353,
+          "hit_rate_pct": 68.02,
+          "mean_return_bps": 0.1282,
+          "ci95_bps": 0.007,
+          "t_stat": 35.81,
+          "active_samples": 31572,
+          "total_samples": 40232
+        },
+        "1000ms": {
+          "pearson_ic": 0.2017,
+          "spearman_ic": 0.2411,
+          "hit_rate_pct": 65.92,
+          "mean_return_bps": 0.196,
+          "ci95_bps": 0.0102,
+          "t_stat": 37.57,
+          "active_samples": 31572,
+          "total_samples": 40232
+        },
+        "5000ms": {
+          "pearson_ic": 0.1488,
+          "spearman_ic": 0.166,
+          "hit_rate_pct": 58.28,
+          "mean_return_bps": 0.3569,
+          "ci95_bps": 0.0251,
+          "t_stat": 27.85,
+          "active_samples": 31572,
+          "total_samples": 40232
+        },
+        "10000ms": {
+          "pearson_ic": 0.1112,
+          "spearman_ic": 0.1178,
+          "hit_rate_pct": 55.07,
+          "mean_return_bps": 0.3813,
+          "ci95_bps": 0.036,
+          "t_stat": 20.76,
+          "active_samples": 31572,
+          "total_samples": 40232
+        }
+      },
+      "HOLDOUT": {
+        "100ms": {
+          "pearson_ic": 0.137,
+          "spearman_ic": 0.162,
+          "hit_rate_pct": 70.98,
+          "mean_return_bps": 0.0299,
+          "ci95_bps": 0.0022,
+          "t_stat": 26.39,
+          "active_samples": 35277,
+          "total_samples": 45657
+        },
+        "500ms": {
+          "pearson_ic": 0.1977,
+          "spearman_ic": 0.2329,
+          "hit_rate_pct": 68.93,
+          "mean_return_bps": 0.1097,
+          "ci95_bps": 0.0054,
+          "t_stat": 39.99,
+          "active_samples": 35277,
+          "total_samples": 45657
+        },
+        "1000ms": {
+          "pearson_ic": 0.2041,
+          "spearman_ic": 0.2412,
+          "hit_rate_pct": 66.7,
+          "mean_return_bps": 0.1663,
+          "ci95_bps": 0.0079,
+          "t_stat": 41.23,
+          "active_samples": 35277,
+          "total_samples": 45657
+        },
+        "5000ms": {
+          "pearson_ic": 0.1761,
+          "spearman_ic": 0.188,
+          "hit_rate_pct": 59.92,
+          "mean_return_bps": 0.3402,
+          "ci95_bps": 0.0189,
+          "t_stat": 35.28,
+          "active_samples": 35277,
+          "total_samples": 45657
+        },
+        "10000ms": {
+          "pearson_ic": 0.1403,
+          "spearman_ic": 0.144,
+          "hit_rate_pct": 57.26,
+          "mean_return_bps": 0.3854,
+          "ci95_bps": 0.0272,
+          "t_stat": 27.73,
+          "active_samples": 35277,
+          "total_samples": 45657
+        }
+      }
+    },
+    "Short-Term Momentum (100ms)": {
+      "DEV": {
+        "100ms": {
+          "pearson_ic": 0.0506,
+          "spearman_ic": 0.1123,
+          "hit_rate_pct": 64.93,
+          "mean_return_bps": 0.0523,
+          "ci95_bps": 0.0158,
+          "t_stat": 6.48,
+          "active_samples": 2367,
+          "total_samples": 51379
+        },
+        "500ms": {
+          "pearson_ic": 0.0458,
+          "spearman_ic": 0.1193,
+          "hit_rate_pct": 61.31,
+          "mean_return_bps": 0.1001,
+          "ci95_bps": 0.0373,
+          "t_stat": 5.27,
+          "active_samples": 2367,
+          "total_samples": 51379
+        },
+        "1000ms": {
+          "pearson_ic": 0.0417,
+          "spearman_ic": 0.103,
+          "hit_rate_pct": 59.34,
+          "mean_return_bps": 0.1216,
+          "ci95_bps": 0.0512,
+          "t_stat": 4.66,
+          "active_samples": 2367,
+          "total_samples": 51379
+        },
+        "5000ms": {
+          "pearson_ic": 0.036,
+          "spearman_ic": 0.0602,
+          "hit_rate_pct": 55.69,
+          "mean_return_bps": 0.2223,
+          "ci95_bps": 0.1123,
+          "t_stat": 3.88,
+          "active_samples": 2367,
+          "total_samples": 51379
+        },
+        "10000ms": {
+          "pearson_ic": 0.0226,
+          "spearman_ic": 0.0414,
+          "hit_rate_pct": 53.97,
+          "mean_return_bps": 0.2478,
+          "ci95_bps": 0.1601,
+          "t_stat": 3.03,
+          "active_samples": 2367,
+          "total_samples": 51379
+        }
+      },
+      "VAL": {
+        "100ms": {
+          "pearson_ic": 0.0629,
+          "spearman_ic": 0.1039,
+          "hit_rate_pct": 61.09,
+          "mean_return_bps": 0.0625,
+          "ci95_bps": 0.0153,
+          "t_stat": 8.02,
+          "active_samples": 2148,
+          "total_samples": 40232
+        },
+        "500ms": {
+          "pearson_ic": 0.0597,
+          "spearman_ic": 0.1231,
+          "hit_rate_pct": 62.74,
+          "mean_return_bps": 0.1473,
+          "ci95_bps": 0.0331,
+          "t_stat": 8.73,
+          "active_samples": 2148,
+          "total_samples": 40232
+        },
+        "1000ms": {
+          "pearson_ic": 0.0627,
+          "spearman_ic": 0.1082,
+          "hit_rate_pct": 59.93,
+          "mean_return_bps": 0.2041,
+          "ci95_bps": 0.0471,
+          "t_stat": 8.49,
+          "active_samples": 2148,
+          "total_samples": 40232
+        },
+        "5000ms": {
+          "pearson_ic": 0.0297,
+          "spearman_ic": 0.0535,
+          "hit_rate_pct": 53.01,
+          "mean_return_bps": 0.1889,
+          "ci95_bps": 0.104,
+          "t_stat": 3.56,
+          "active_samples": 2148,
+          "total_samples": 40232
+        },
+        "10000ms": {
+          "pearson_ic": 0.0138,
+          "spearman_ic": 0.0345,
+          "hit_rate_pct": 51.38,
+          "mean_return_bps": 0.1618,
+          "ci95_bps": 0.1419,
+          "t_stat": 2.23,
+          "active_samples": 2148,
+          "total_samples": 40232
+        }
+      },
+      "HOLDOUT": {
+        "100ms": {
+          "pearson_ic": 0.0807,
+          "spearman_ic": 0.126,
+          "hit_rate_pct": 69.08,
+          "mean_return_bps": 0.0636,
+          "ci95_bps": 0.0154,
+          "t_stat": 8.11,
+          "active_samples": 1788,
+          "total_samples": 45657
+        },
+        "500ms": {
+          "pearson_ic": 0.072,
+          "spearman_ic": 0.109,
+          "hit_rate_pct": 65.21,
+          "mean_return_bps": 0.1499,
+          "ci95_bps": 0.0301,
+          "t_stat": 9.75,
+          "active_samples": 1788,
+          "total_samples": 45657
+        },
+        "1000ms": {
+          "pearson_ic": 0.0561,
+          "spearman_ic": 0.0979,
+          "hit_rate_pct": 63.41,
+          "mean_return_bps": 0.1657,
+          "ci95_bps": 0.0411,
+          "t_stat": 7.9,
+          "active_samples": 1788,
+          "total_samples": 45657
+        },
+        "5000ms": {
+          "pearson_ic": 0.04,
+          "spearman_ic": 0.0599,
+          "hit_rate_pct": 57.13,
+          "mean_return_bps": 0.3006,
+          "ci95_bps": 0.0881,
+          "t_stat": 6.69,
+          "active_samples": 1788,
+          "total_samples": 45657
+        },
+        "10000ms": {
+          "pearson_ic": 0.0215,
+          "spearman_ic": 0.0461,
+          "hit_rate_pct": 55.62,
+          "mean_return_bps": 0.2023,
+          "ci95_bps": 0.1248,
+          "t_stat": 3.18,
+          "active_samples": 1788,
+          "total_samples": 45657
+        }
+      }
+    },
+    "Short-Term Momentum (1s)": {
+      "DEV": {
+        "100ms": {
+          "pearson_ic": 0.0517,
+          "spearman_ic": 0.0998,
+          "hit_rate_pct": 61.39,
+          "mean_return_bps": 0.0284,
+          "ci95_bps": 0.0068,
+          "t_stat": 8.14,
+          "active_samples": 8560,
+          "total_samples": 51379
+        },
+        "500ms": {
+          "pearson_ic": 0.0566,
+          "spearman_ic": 0.1265,
+          "hit_rate_pct": 59.13,
+          "mean_return_bps": 0.0717,
+          "ci95_bps": 0.0165,
+          "t_stat": 8.54,
+          "active_samples": 8560,
+          "total_samples": 51379
+        },
+        "1000ms": {
+          "pearson_ic": 0.0564,
+          "spearman_ic": 0.1263,
+          "hit_rate_pct": 58.07,
+          "mean_return_bps": 0.0967,
+          "ci95_bps": 0.0235,
+          "t_stat": 8.07,
+          "active_samples": 8560,
+          "total_samples": 51379
+        },
+        "5000ms": {
+          "pearson_ic": 0.0646,
+          "spearman_ic": 0.0948,
+          "hit_rate_pct": 55.37,
+          "mean_return_bps": 0.2625,
+          "ci95_bps": 0.0545,
+          "t_stat": 9.45,
+          "active_samples": 8560,
+          "total_samples": 51379
+        },
+        "10000ms": {
+          "pearson_ic": 0.0446,
+          "spearman_ic": 0.0718,
+          "hit_rate_pct": 55.01,
+          "mean_return_bps": 0.235,
+          "ci95_bps": 0.0772,
+          "t_stat": 5.97,
+          "active_samples": 8560,
+          "total_samples": 51379
+        }
+      },
+      "VAL": {
+        "100ms": {
+          "pearson_ic": 0.0513,
+          "spearman_ic": 0.0815,
+          "hit_rate_pct": 59.03,
+          "mean_return_bps": 0.0231,
+          "ci95_bps": 0.0063,
+          "t_stat": 7.23,
+          "active_samples": 8022,
+          "total_samples": 40232
+        },
+        "500ms": {
+          "pearson_ic": 0.0811,
+          "spearman_ic": 0.1186,
+          "hit_rate_pct": 58.76,
+          "mean_return_bps": 0.0729,
+          "ci95_bps": 0.0149,
+          "t_stat": 9.59,
+          "active_samples": 8022,
+          "total_samples": 40232
+        },
+        "1000ms": {
+          "pearson_ic": 0.0926,
+          "spearman_ic": 0.1173,
+          "hit_rate_pct": 57.5,
+          "mean_return_bps": 0.1288,
+          "ci95_bps": 0.0219,
+          "t_stat": 11.54,
+          "active_samples": 8022,
+          "total_samples": 40232
+        },
+        "5000ms": {
+          "pearson_ic": 0.0391,
+          "spearman_ic": 0.0574,
+          "hit_rate_pct": 51.63,
+          "mean_return_bps": 0.1089,
+          "ci95_bps": 0.0526,
+          "t_stat": 4.06,
+          "active_samples": 8022,
+          "total_samples": 40232
+        },
+        "10000ms": {
+          "pearson_ic": 0.0123,
+          "spearman_ic": 0.0299,
+          "hit_rate_pct": 49.91,
+          "mean_return_bps": 0.0725,
+          "ci95_bps": 0.0734,
+          "t_stat": 1.94,
+          "active_samples": 8022,
+          "total_samples": 40232
+        }
+      },
+      "HOLDOUT": {
+        "100ms": {
+          "pearson_ic": 0.055,
+          "spearman_ic": 0.087,
+          "hit_rate_pct": 60.62,
+          "mean_return_bps": 0.0193,
+          "ci95_bps": 0.0059,
+          "t_stat": 6.39,
+          "active_samples": 7059,
+          "total_samples": 45657
+        },
+        "500ms": {
+          "pearson_ic": 0.0603,
+          "spearman_ic": 0.1115,
+          "hit_rate_pct": 58.33,
+          "mean_return_bps": 0.0528,
+          "ci95_bps": 0.0134,
+          "t_stat": 7.72,
+          "active_samples": 7059,
+          "total_samples": 45657
+        },
+        "1000ms": {
+          "pearson_ic": 0.0499,
+          "spearman_ic": 0.1065,
+          "hit_rate_pct": 56.51,
+          "mean_return_bps": 0.0596,
+          "ci95_bps": 0.019,
+          "t_stat": 6.15,
+          "active_samples": 7059,
+          "total_samples": 45657
+        },
+        "5000ms": {
+          "pearson_ic": 0.0419,
+          "spearman_ic": 0.0816,
+          "hit_rate_pct": 53.64,
+          "mean_return_bps": 0.1353,
+          "ci95_bps": 0.0437,
+          "t_stat": 6.06,
+          "active_samples": 7059,
+          "total_samples": 45657
+        },
+        "10000ms": {
+          "pearson_ic": 0.0261,
+          "spearman_ic": 0.0664,
+          "hit_rate_pct": 53.31,
+          "mean_return_bps": 0.1415,
+          "ci95_bps": 0.0616,
+          "t_stat": 4.51,
+          "active_samples": 7059,
+          "total_samples": 45657
+        }
+      }
+    },
+    "Short-Term Momentum (5s)": {
+      "DEV": {
+        "100ms": {
+          "pearson_ic": 0.0392,
+          "spearman_ic": 0.0533,
+          "hit_rate_pct": 57.15,
+          "mean_return_bps": 0.0146,
+          "ci95_bps": 0.0048,
+          "t_stat": 5.91,
+          "active_samples": 13704,
+          "total_samples": 51379
+        },
+        "500ms": {
+          "pearson_ic": 0.0509,
+          "spearman_ic": 0.0833,
+          "hit_rate_pct": 57.77,
+          "mean_return_bps": 0.0524,
+          "ci95_bps": 0.0124,
+          "t_stat": 8.3,
+          "active_samples": 13704,
+          "total_samples": 51379
+        },
+        "1000ms": {
+          "pearson_ic": 0.0641,
+          "spearman_ic": 0.0949,
+          "hit_rate_pct": 57.68,
+          "mean_return_bps": 0.0955,
+          "ci95_bps": 0.0179,
+          "t_stat": 10.45,
+          "active_samples": 13704,
+          "total_samples": 51379
+        },
+        "5000ms": {
+          "pearson_ic": 0.07,
+          "spearman_ic": 0.0993,
+          "hit_rate_pct": 55.5,
+          "mean_return_bps": 0.2667,
+          "ci95_bps": 0.0412,
+          "t_stat": 12.68,
+          "active_samples": 13704,
+          "total_samples": 51379
+        },
+        "10000ms": {
+          "pearson_ic": 0.0405,
+          "spearman_ic": 0.0677,
+          "hit_rate_pct": 54.19,
+          "mean_return_bps": 0.2556,
+          "ci95_bps": 0.0581,
+          "t_stat": 8.62,
+          "active_samples": 13704,
+          "total_samples": 51379
+        }
+      },
+      "VAL": {
+        "100ms": {
+          "pearson_ic": 0.0315,
+          "spearman_ic": 0.0387,
+          "hit_rate_pct": 55.57,
+          "mean_return_bps": 0.0115,
+          "ci95_bps": 0.0048,
+          "t_stat": 4.74,
+          "active_samples": 12304,
+          "total_samples": 40232
+        },
+        "500ms": {
+          "pearson_ic": 0.0373,
+          "spearman_ic": 0.0524,
+          "hit_rate_pct": 54.93,
+          "mean_return_bps": 0.0341,
+          "ci95_bps": 0.0117,
+          "t_stat": 5.7,
+          "active_samples": 12304,
+          "total_samples": 40232
+        },
+        "1000ms": {
+          "pearson_ic": 0.038,
+          "spearman_ic": 0.0472,
+          "hit_rate_pct": 53.73,
+          "mean_return_bps": 0.0445,
+          "ci95_bps": 0.0176,
+          "t_stat": 4.97,
+          "active_samples": 12304,
+          "total_samples": 40232
+        },
+        "5000ms": {
+          "pearson_ic": -0.0111,
+          "spearman_ic": -0.0119,
+          "hit_rate_pct": 47.46,
+          "mean_return_bps": -0.0195,
+          "ci95_bps": 0.0441,
+          "t_stat": -0.87,
+          "active_samples": 12304,
+          "total_samples": 40232
+        },
+        "10000ms": {
+          "pearson_ic": -0.032,
+          "spearman_ic": -0.0317,
+          "hit_rate_pct": 47.17,
+          "mean_return_bps": -0.0582,
+          "ci95_bps": 0.0594,
+          "t_stat": -1.92,
+          "active_samples": 12304,
+          "total_samples": 40232
+        }
+      },
+      "HOLDOUT": {
+        "100ms": {
+          "pearson_ic": 0.0341,
+          "spearman_ic": 0.0491,
+          "hit_rate_pct": 56.21,
+          "mean_return_bps": 0.0104,
+          "ci95_bps": 0.004,
+          "t_stat": 5.11,
+          "active_samples": 11335,
+          "total_samples": 45657
+        },
+        "500ms": {
+          "pearson_ic": 0.0422,
+          "spearman_ic": 0.0652,
+          "hit_rate_pct": 55.46,
+          "mean_return_bps": 0.0355,
+          "ci95_bps": 0.01,
+          "t_stat": 6.96,
+          "active_samples": 11335,
+          "total_samples": 45657
+        },
+        "1000ms": {
+          "pearson_ic": 0.0409,
+          "spearman_ic": 0.0666,
+          "hit_rate_pct": 54.06,
+          "mean_return_bps": 0.0472,
+          "ci95_bps": 0.0147,
+          "t_stat": 6.31,
+          "active_samples": 11335,
+          "total_samples": 45657
+        },
+        "5000ms": {
+          "pearson_ic": 0.0181,
+          "spearman_ic": 0.0533,
+          "hit_rate_pct": 52.05,
+          "mean_return_bps": 0.0315,
+          "ci95_bps": 0.0346,
+          "t_stat": 1.78,
+          "active_samples": 11335,
+          "total_samples": 45657
+        },
+        "10000ms": {
+          "pearson_ic": 0.0154,
+          "spearman_ic": 0.0504,
+          "hit_rate_pct": 51.38,
+          "mean_return_bps": 0.0166,
+          "ci95_bps": 0.0487,
+          "t_stat": 0.67,
+          "active_samples": 11335,
+          "total_samples": 45657
+        }
+      }
+    },
+    "EWMA Vol-Signed Momentum": {
+      "DEV": {
+        "100ms": {
+          "pearson_ic": 0.0405,
+          "spearman_ic": 0.0696,
+          "hit_rate_pct": 46.81,
+          "mean_return_bps": -0.0062,
+          "ci95_bps": 0.0681,
+          "t_stat": -0.18,
+          "active_samples": 170,
+          "total_samples": 51379
+        },
+        "500ms": {
+          "pearson_ic": 0.0477,
+          "spearman_ic": 0.0893,
+          "hit_rate_pct": 46.07,
+          "mean_return_bps": -0.0368,
+          "ci95_bps": 0.2059,
+          "t_stat": -0.35,
+          "active_samples": 170,
+          "total_samples": 51379
+        },
+        "1000ms": {
+          "pearson_ic": 0.0546,
+          "spearman_ic": 0.0903,
+          "hit_rate_pct": 52.73,
+          "mean_return_bps": 0.1709,
+          "ci95_bps": 0.244,
+          "t_stat": 1.37,
+          "active_samples": 170,
+          "total_samples": 51379
+        },
+        "5000ms": {
+          "pearson_ic": 0.0514,
+          "spearman_ic": 0.0685,
+          "hit_rate_pct": 67.5,
+          "mean_return_bps": 1.0149,
+          "ci95_bps": 0.5145,
+          "t_stat": 3.87,
+          "active_samples": 170,
+          "total_samples": 51379
+        },
+        "10000ms": {
+          "pearson_ic": 0.0415,
+          "spearman_ic": 0.0501,
+          "hit_rate_pct": 73.53,
+          "mean_return_bps": 2.1187,
+          "ci95_bps": 0.7362,
+          "t_stat": 5.64,
+          "active_samples": 170,
+          "total_samples": 51379
+        }
+      },
+      "VAL": {
+        "100ms": {
+          "pearson_ic": 0.0409,
+          "spearman_ic": 0.0607,
+          "hit_rate_pct": 52.17,
+          "mean_return_bps": 0.0046,
+          "ci95_bps": 0.1075,
+          "t_stat": 0.08,
+          "active_samples": 79,
+          "total_samples": 40232
+        },
+        "500ms": {
+          "pearson_ic": 0.0622,
+          "spearman_ic": 0.0904,
+          "hit_rate_pct": 54.55,
+          "mean_return_bps": 0.1968,
+          "ci95_bps": 0.2999,
+          "t_stat": 1.29,
+          "active_samples": 79,
+          "total_samples": 40232
+        },
+        "1000ms": {
+          "pearson_ic": 0.0711,
+          "spearman_ic": 0.0907,
+          "hit_rate_pct": 50.75,
+          "mean_return_bps": 0.3328,
+          "ci95_bps": 0.4121,
+          "t_stat": 1.58,
+          "active_samples": 79,
+          "total_samples": 40232
+        },
+        "5000ms": {
+          "pearson_ic": 0.033,
+          "spearman_ic": 0.0392,
+          "hit_rate_pct": 47.44,
+          "mean_return_bps": -0.1354,
+          "ci95_bps": 0.5618,
+          "t_stat": -0.47,
+          "active_samples": 79,
+          "total_samples": 40232
+        },
+        "10000ms": {
+          "pearson_ic": 0.0097,
+          "spearman_ic": 0.0133,
+          "hit_rate_pct": 40.51,
+          "mean_return_bps": -0.7349,
+          "ci95_bps": 0.7106,
+          "t_stat": -2.03,
+          "active_samples": 79,
+          "total_samples": 40232
+        }
+      },
+      "HOLDOUT": {
+        "100ms": {
+          "pearson_ic": 0.0408,
+          "spearman_ic": 0.0589,
+          "hit_rate_pct": 38.46,
+          "mean_return_bps": -0.0646,
+          "ci95_bps": 0.1357,
+          "t_stat": -0.93,
+          "active_samples": 39,
+          "total_samples": 45657
+        },
+        "500ms": {
+          "pearson_ic": 0.0454,
+          "spearman_ic": 0.0739,
+          "hit_rate_pct": 42.11,
+          "mean_return_bps": -0.1196,
+          "ci95_bps": 0.1861,
+          "t_stat": -1.26,
+          "active_samples": 39,
+          "total_samples": 45657
+        },
+        "1000ms": {
+          "pearson_ic": 0.0379,
+          "spearman_ic": 0.0725,
+          "hit_rate_pct": 24.0,
+          "mean_return_bps": -0.3881,
+          "ci95_bps": 0.2329,
+          "t_stat": -3.27,
+          "active_samples": 39,
+          "total_samples": 45657
+        },
+        "5000ms": {
+          "pearson_ic": 0.0301,
+          "spearman_ic": 0.0581,
+          "hit_rate_pct": 13.16,
+          "mean_return_bps": -1.4836,
+          "ci95_bps": 0.6352,
+          "t_stat": -4.58,
+          "active_samples": 39,
+          "total_samples": 45657
+        },
+        "10000ms": {
+          "pearson_ic": 0.0274,
+          "spearman_ic": 0.0487,
+          "hit_rate_pct": 35.9,
+          "mean_return_bps": -1.1857,
+          "ci95_bps": 0.8679,
+          "t_stat": -2.68,
+          "active_samples": 39,
+          "total_samples": 45657
+        }
+      }
+    },
+    "Aggressor Trade Runs (>=3)": {
+      "DEV": {
+        "100ms": {
+          "pearson_ic": 0.0406,
+          "spearman_ic": 0.0806,
+          "hit_rate_pct": 62.02,
+          "mean_return_bps": 0.0175,
+          "ci95_bps": 0.0026,
+          "t_stat": 13.2,
+          "active_samples": 30548,
+          "total_samples": 51379
+        },
+        "500ms": {
+          "pearson_ic": 0.0646,
+          "spearman_ic": 0.126,
+          "hit_rate_pct": 61.82,
+          "mean_return_bps": 0.0619,
+          "ci95_bps": 0.0067,
+          "t_stat": 17.99,
+          "active_samples": 30548,
+          "total_samples": 51379
+        },
+        "1000ms": {
+          "pearson_ic": 0.0733,
+          "spearman_ic": 0.1296,
+          "hit_rate_pct": 60.01,
+          "mean_return_bps": 0.0967,
+          "ci95_bps": 0.0098,
+          "t_stat": 19.42,
+          "active_samples": 30548,
+          "total_samples": 51379
+        },
+        "5000ms": {
+          "pearson_ic": 0.0708,
+          "spearman_ic": 0.0981,
+          "hit_rate_pct": 55.53,
+          "mean_return_bps": 0.1966,
+          "ci95_bps": 0.0237,
+          "t_stat": 16.26,
+          "active_samples": 30548,
+          "total_samples": 51379
+        },
+        "10000ms": {
+          "pearson_ic": 0.0545,
+          "spearman_ic": 0.075,
+          "hit_rate_pct": 53.74,
+          "mean_return_bps": 0.1911,
+          "ci95_bps": 0.0348,
+          "t_stat": 10.76,
+          "active_samples": 30548,
+          "total_samples": 51379
+        }
+      },
+      "VAL": {
+        "100ms": {
+          "pearson_ic": 0.0437,
+          "spearman_ic": 0.0844,
+          "hit_rate_pct": 61.96,
+          "mean_return_bps": 0.0199,
+          "ci95_bps": 0.0031,
+          "t_stat": 12.76,
+          "active_samples": 24602,
+          "total_samples": 40232
+        },
+        "500ms": {
+          "pearson_ic": 0.0683,
+          "spearman_ic": 0.1286,
+          "hit_rate_pct": 61.46,
+          "mean_return_bps": 0.0726,
+          "ci95_bps": 0.008,
+          "t_stat": 17.91,
+          "active_samples": 24602,
+          "total_samples": 40232
+        },
+        "1000ms": {
+          "pearson_ic": 0.0757,
+          "spearman_ic": 0.1281,
+          "hit_rate_pct": 59.57,
+          "mean_return_bps": 0.1148,
+          "ci95_bps": 0.0115,
+          "t_stat": 19.51,
+          "active_samples": 24602,
+          "total_samples": 40232
+        },
+        "5000ms": {
+          "pearson_ic": 0.0508,
+          "spearman_ic": 0.0673,
+          "hit_rate_pct": 53.15,
+          "mean_return_bps": 0.1571,
+          "ci95_bps": 0.0286,
+          "t_stat": 10.77,
+          "active_samples": 24602,
+          "total_samples": 40232
+        },
+        "10000ms": {
+          "pearson_ic": 0.0348,
+          "spearman_ic": 0.0402,
+          "hit_rate_pct": 51.55,
+          "mean_return_bps": 0.162,
+          "ci95_bps": 0.0409,
+          "t_stat": 7.76,
+          "active_samples": 24602,
+          "total_samples": 40232
+        }
+      },
+      "HOLDOUT": {
+        "100ms": {
+          "pearson_ic": 0.0431,
+          "spearman_ic": 0.0818,
+          "hit_rate_pct": 63.65,
+          "mean_return_bps": 0.0173,
+          "ci95_bps": 0.0026,
+          "t_stat": 13.16,
+          "active_samples": 26967,
+          "total_samples": 45657
+        },
+        "500ms": {
+          "pearson_ic": 0.0739,
+          "spearman_ic": 0.1187,
+          "hit_rate_pct": 61.93,
+          "mean_return_bps": 0.0619,
+          "ci95_bps": 0.0061,
+          "t_stat": 19.75,
+          "active_samples": 26967,
+          "total_samples": 45657
+        },
+        "1000ms": {
+          "pearson_ic": 0.0846,
+          "spearman_ic": 0.1249,
+          "hit_rate_pct": 60.39,
+          "mean_return_bps": 0.0949,
+          "ci95_bps": 0.0091,
+          "t_stat": 20.52,
+          "active_samples": 26967,
+          "total_samples": 45657
+        },
+        "5000ms": {
+          "pearson_ic": 0.0969,
+          "spearman_ic": 0.1051,
+          "hit_rate_pct": 55.96,
+          "mean_return_bps": 0.2098,
+          "ci95_bps": 0.0218,
+          "t_stat": 18.88,
+          "active_samples": 26967,
+          "total_samples": 45657
+        },
+        "10000ms": {
+          "pearson_ic": 0.0851,
+          "spearman_ic": 0.0873,
+          "hit_rate_pct": 54.87,
+          "mean_return_bps": 0.2673,
+          "ci95_bps": 0.0313,
+          "t_stat": 16.73,
+          "active_samples": 26967,
+          "total_samples": 45657
+        }
+      }
+    }
+  },
+  "holdout_matrix": {},
+  "economic_eval": {
+    "holdout_samples": 45657,
+    "avg_half_spread_bps": 0.0569,
+    "cost_assumptions": {
+      "standard_taker_fee_bps": 6.0,
+      "vip_taker_fee_bps": 2.0,
+      "maker_fee_bps": 1.0,
+      "execution_latency_ms": 2.5
+    },
+    "signals_holdout_1s": {
+      "Order Flow Imbalance (OFI)": {
+        "triggers": 45657,
+        "trigger_pct": 100.0,
+        "gross_return_bps": 0.0041,
+        "half_spread_bps": 0.0569,
+        "net_taker_standard_bps": -12.1098,
+        "net_taker_vip_bps": -4.1098,
+        "net_maker_edge_bps": -0.939,
+        "profitable_taker": false,
+        "profitable_maker": false
+      },
+      "Signed Trade Imbalance (STI)": {
+        "triggers": 39237,
+        "trigger_pct": 85.94,
+        "gross_return_bps": 0.0527,
+        "half_spread_bps": 0.0516,
+        "net_taker_standard_bps": -12.0504,
+        "net_taker_vip_bps": -4.0504,
+        "net_maker_edge_bps": -0.8957,
+        "profitable_taker": false,
+        "profitable_maker": false
+      },
+      "Microprice Displacement": {
+        "triggers": 298,
+        "trigger_pct": 0.65,
+        "gross_return_bps": -0.0763,
+        "half_spread_bps": 0.6995,
+        "net_taker_standard_bps": -13.4753,
+        "net_taker_vip_bps": -5.4753,
+        "net_maker_edge_bps": -0.3768,
+        "profitable_taker": false,
+        "profitable_maker": false
+      },
+      "Bid/Ask Depth Imbalance": {
+        "triggers": 35277,
+        "trigger_pct": 77.27,
+        "gross_return_bps": 0.1663,
+        "half_spread_bps": 0.0541,
+        "net_taker_standard_bps": -11.9419,
+        "net_taker_vip_bps": -3.9419,
+        "net_maker_edge_bps": -0.7796,
+        "profitable_taker": false,
+        "profitable_maker": false
+      },
+      "Short-Term Momentum (100ms)": {
+        "triggers": 1788,
+        "trigger_pct": 3.92,
+        "gross_return_bps": 0.1657,
+        "half_spread_bps": 0.1391,
+        "net_taker_standard_bps": -12.1126,
+        "net_taker_vip_bps": -4.1126,
+        "net_maker_edge_bps": -0.6952,
+        "profitable_taker": false,
+        "profitable_maker": false
+      },
+      "Short-Term Momentum (1s)": {
+        "triggers": 7059,
+        "trigger_pct": 15.46,
+        "gross_return_bps": 0.0596,
+        "half_spread_bps": 0.0859,
+        "net_taker_standard_bps": -12.1122,
+        "net_taker_vip_bps": -4.1122,
+        "net_maker_edge_bps": -0.8545,
+        "profitable_taker": false,
+        "profitable_maker": false
+      },
+      "Short-Term Momentum (5s)": {
+        "triggers": 11335,
+        "trigger_pct": 24.83,
+        "gross_return_bps": 0.0472,
+        "half_spread_bps": 0.069,
+        "net_taker_standard_bps": -12.0907,
+        "net_taker_vip_bps": -4.0907,
+        "net_maker_edge_bps": -0.8838,
+        "profitable_taker": false,
+        "profitable_maker": false
+      },
+      "EWMA Vol-Signed Momentum": {
+        "triggers": 39,
+        "trigger_pct": 0.09,
+        "gross_return_bps": -0.3881,
+        "half_spread_bps": 0.0977,
+        "net_taker_standard_bps": -12.5835,
+        "net_taker_vip_bps": -4.5835,
+        "net_maker_edge_bps": -1.2904,
+        "profitable_taker": false,
+        "profitable_maker": false
+      },
+      "Aggressor Trade Runs (>=3)": {
+        "triggers": 26967,
+        "trigger_pct": 59.06,
+        "gross_return_bps": 0.0949,
+        "half_spread_bps": 0.0497,
+        "net_taker_standard_bps": -12.0045,
+        "net_taker_vip_bps": -4.0045,
+        "net_maker_edge_bps": -0.8554,
+        "profitable_taker": false,
+        "profitable_maker": false
+      }
+    },
+    "signals_holdout_5s": {
+      "Order Flow Imbalance (OFI)": {
+        "triggers": 45657,
+        "trigger_pct": 100.0,
+        "gross_return_bps": 0.0181,
+        "half_spread_bps": 0.0569,
+        "net_taker_standard_bps": -12.0958,
+        "net_taker_vip_bps": -4.0958,
+        "net_maker_edge_bps": -0.925,
+        "profitable_taker": false,
+        "profitable_maker": false
+      },
+      "Signed Trade Imbalance (STI)": {
+        "triggers": 39237,
+        "trigger_pct": 85.94,
+        "gross_return_bps": 0.1294,
+        "half_spread_bps": 0.0516,
+        "net_taker_standard_bps": -11.9738,
+        "net_taker_vip_bps": -3.9738,
+        "net_maker_edge_bps": -0.8191,
+        "profitable_taker": false,
+        "profitable_maker": false
+      },
+      "Microprice Displacement": {
+        "triggers": 298,
+        "trigger_pct": 0.65,
+        "gross_return_bps": -0.1588,
+        "half_spread_bps": 0.6995,
+        "net_taker_standard_bps": -13.5578,
+        "net_taker_vip_bps": -5.5578,
+        "net_maker_edge_bps": -0.4593,
+        "profitable_taker": false,
+        "profitable_maker": false
+      },
+      "Bid/Ask Depth Imbalance": {
+        "triggers": 35277,
+        "trigger_pct": 77.27,
+        "gross_return_bps": 0.3402,
+        "half_spread_bps": 0.0541,
+        "net_taker_standard_bps": -11.768,
+        "net_taker_vip_bps": -3.768,
+        "net_maker_edge_bps": -0.6057,
+        "profitable_taker": false,
+        "profitable_maker": false
+      },
+      "Short-Term Momentum (100ms)": {
+        "triggers": 1788,
+        "trigger_pct": 3.92,
+        "gross_return_bps": 0.3006,
+        "half_spread_bps": 0.1391,
+        "net_taker_standard_bps": -11.9777,
+        "net_taker_vip_bps": -3.9777,
+        "net_maker_edge_bps": -0.5603,
+        "profitable_taker": false,
+        "profitable_maker": false
+      },
+      "Short-Term Momentum (1s)": {
+        "triggers": 7059,
+        "trigger_pct": 15.46,
+        "gross_return_bps": 0.1353,
+        "half_spread_bps": 0.0859,
+        "net_taker_standard_bps": -12.0365,
+        "net_taker_vip_bps": -4.0365,
+        "net_maker_edge_bps": -0.7788,
+        "profitable_taker": false,
+        "profitable_maker": false
+      },
+      "Short-Term Momentum (5s)": {
+        "triggers": 11335,
+        "trigger_pct": 24.83,
+        "gross_return_bps": 0.0315,
+        "half_spread_bps": 0.069,
+        "net_taker_standard_bps": -12.1064,
+        "net_taker_vip_bps": -4.1064,
+        "net_maker_edge_bps": -0.8995,
+        "profitable_taker": false,
+        "profitable_maker": false
+      },
+      "EWMA Vol-Signed Momentum": {
+        "triggers": 39,
+        "trigger_pct": 0.09,
+        "gross_return_bps": -1.4836,
+        "half_spread_bps": 0.0977,
+        "net_taker_standard_bps": -13.679,
+        "net_taker_vip_bps": -5.679,
+        "net_maker_edge_bps": -2.3859,
+        "profitable_taker": false,
+        "profitable_maker": false
+      },
+      "Aggressor Trade Runs (>=3)": {
+        "triggers": 26967,
+        "trigger_pct": 59.06,
+        "gross_return_bps": 0.2098,
+        "half_spread_bps": 0.0497,
+        "net_taker_standard_bps": -11.8896,
+        "net_taker_vip_bps": -3.8896,
+        "net_maker_edge_bps": -0.7405,
+        "profitable_taker": false,
+        "profitable_maker": false
+      }
+    }
+  },
+  "regime_eval": {
+    "Low_Vol": {
+      "samples": 15204,
+      "OFI": {
+        "spearman_ic": 0.0398,
+        "mean_return_bps": 0.0073,
+        "triggers": 15204
+      },
+      "Microprice": {
+        "spearman_ic": 0.2036,
+        "mean_return_bps": -0.1953,
+        "triggers": 31
+      },
+      "Mom_1s": {
+        "spearman_ic": 0.0888,
+        "mean_return_bps": 0.0583,
+        "triggers": 615
+      }
+    },
+    "Med_Vol": {
+      "samples": 15203,
+      "OFI": {
+        "spearman_ic": 0.0123,
+        "mean_return_bps": -0.0084,
+        "triggers": 15203
+      },
+      "Microprice": {
+        "spearman_ic": 0.2023,
+        "mean_return_bps": 0.0684,
+        "triggers": 120
+      },
+      "Mom_1s": {
+        "spearman_ic": 0.1488,
+        "mean_return_bps": 0.0798,
+        "triggers": 1532
+      }
+    },
+    "High_Vol": {
+      "samples": 15250,
+      "OFI": {
+        "spearman_ic": 0.0129,
+        "mean_return_bps": 0.0132,
+        "triggers": 15250
+      },
+      "Microprice": {
+        "spearman_ic": 0.1613,
+        "mean_return_bps": -0.1693,
+        "triggers": 147
+      },
+      "Mom_1s": {
+        "spearman_ic": 0.0858,
+        "mean_return_bps": 0.0534,
+        "triggers": 4912
+      }
+    }
+  },
+  "exchange_eval": {
+    "BINANCE": {
+      "samples": 9491,
+      "OFI": {
+        "spearman_ic": 0.0285,
+        "mean_return_bps": 0.003,
+        "triggers": 9491
+      },
+      "Mom_1s": {
+        "spearman_ic": 0.2759,
+        "mean_return_bps": 0.209,
+        "triggers": 950
+      }
+    },
+    "COINBASE": {
+      "samples": 8987,
+      "OFI": {
+        "spearman_ic": 0.0155,
+        "mean_return_bps": 0.0042,
+        "triggers": 8987
+      },
+      "Microprice": {
+        "spearman_ic": 0.0772,
+        "mean_return_bps": -0.1696,
+        "triggers": 152
+      },
+      "Mom_1s": {
+        "spearman_ic": 0.0835,
+        "mean_return_bps": 0.0165,
+        "triggers": 1483
+      }
+    },
+    "KRAKEN": {
+      "samples": 8537,
+      "OFI": {
+        "spearman_ic": 0.054,
+        "mean_return_bps": 0.0041,
+        "triggers": 8537
+      },
+      "Microprice": {
+        "spearman_ic": 0.1191,
+        "mean_return_bps": 0.0243,
+        "triggers": 144
+      },
+      "Mom_1s": {
+        "spearman_ic": 0.0624,
+        "mean_return_bps": 0.0519,
+        "triggers": 1261
+      }
+    },
+    "OKX": {
+      "samples": 9539,
+      "OFI": {
+        "spearman_ic": 0.0291,
+        "mean_return_bps": 0.0039,
+        "triggers": 9539
+      },
+      "Mom_1s": {
+        "spearman_ic": 0.0293,
+        "mean_return_bps": -0.0014,
+        "triggers": 1895
+      }
+    },
+    "BYBIT": {
+      "samples": 9103,
+      "OFI": {
+        "spearman_ic": 0.0209,
+        "mean_return_bps": 0.0051,
+        "triggers": 9103
+      },
+      "Mom_1s": {
+        "spearman_ic": 0.141,
+        "mean_return_bps": 0.0917,
+        "triggers": 1470
+      }
+    }
+  },
+  "asset_eval": {
+    "BTC/USD": {
+      "samples": 22782,
+      "OFI": {
+        "spearman_ic": 0.0236,
+        "mean_return_bps": 0.0014,
+        "triggers": 22782
+      },
+      "Microprice": {
+        "spearman_ic": 0.2615,
+        "mean_return_bps": -0.1452,
+        "triggers": 39
+      },
+      "Mom_1s": {
+        "spearman_ic": 0.1743,
+        "mean_return_bps": 0.097,
+        "triggers": 2804
+      }
+    },
+    "ETH/USD": {
+      "samples": 22875,
+      "OFI": {
+        "spearman_ic": 0.0178,
+        "mean_return_bps": 0.0067,
+        "triggers": 22875
+      },
+      "Microprice": {
+        "spearman_ic": 0.155,
+        "mean_return_bps": -0.0659,
+        "triggers": 259
+      },
+      "Mom_1s": {
+        "spearman_ic": 0.0625,
+        "mean_return_bps": 0.0349,
+        "triggers": 4255
+      }
+    }
+  }
+}

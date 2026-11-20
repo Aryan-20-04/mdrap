@@ -17,7 +17,10 @@ from typing import Any
 if sys.version_info >= (3, 11):
     import tomllib
 else:
-    import tomli as tomllib  # type: ignore
+    try:
+        import tomli as tomllib  # type: ignore
+    except ImportError:
+        tomllib = None  # type: ignore
 
 from .quality import QualityConfig
 
@@ -255,10 +258,23 @@ def load_config(
     path: str | Path | None = None, validate: bool = True
 ) -> dict[str, Any]:
     """Load configuration dictionary from mdrap.toml or fallback to defaults."""
-    cfg_file = Path(path) if path else find_config_path()
-    if not cfg_file or not cfg_file.is_file():
+    if path is not None:
+        cfg_file = Path(path)
+        if not cfg_file.is_file():
+            raise FileNotFoundError(
+                f"Explicitly specified configuration file not found: {path}"
+            )
+    else:
+        cfg_file = find_config_path()
+
+    if cfg_file is None:
         cfg = dict(DEFAULT_CONFIG)
     else:
+        if tomllib is None:
+            raise ImportError(
+                "tomli is required to parse TOML configuration files on Python < 3.11. "
+                "Install tomli: pip install tomli"
+            )
         with open(cfg_file, "rb") as f:
             raw = f.read()
         if raw.startswith(b"\xef\xbb\xbf"):

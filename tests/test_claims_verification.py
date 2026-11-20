@@ -20,23 +20,15 @@ def test_c04_version_consistency():
     """Verify version is synchronized across code, configurations, and docs."""
     from mdrap._version import __version__
 
-    assert __version__ in ("4.0.0", "4.0.1", "5.3.0", "6.0.0")
+    assert __version__ == "6.0.8"
 
     compat_toml = (REPO_ROOT / "compat" / "pyproject.toml").read_text(encoding="utf-8")
-    assert (
-        'version = "4.0.0"' in compat_toml
-        or 'version = "4.0.1"' in compat_toml
-        or 'version = "5.3.0"' in compat_toml
-    )
+    assert 'version = "6.0.8"' in compat_toml
 
     contrib_toml = (REPO_ROOT / "contrib" / "pyproject.toml").read_text(
         encoding="utf-8"
     )
-    assert (
-        'version = "4.0.0"' in contrib_toml
-        or 'version = "4.0.1"' in contrib_toml
-        or 'version = "5.3.0"' in contrib_toml
-    )
+    assert 'version = "6.0.8"' in contrib_toml
 
     cargo_toml = (REPO_ROOT / "sdk" / "rust" / "Cargo.toml").read_text(encoding="utf-8")
     assert (
@@ -87,15 +79,9 @@ def test_c02_forbidden_claims_scan():
 
 
 def test_c05_single_node_consensus_disclosure():
-    """Verify ConsensusCoordinator docstring explicitly discloses single-process in-memory simulation."""
-    from mdrap.consensus import ConsensusCoordinator
-
-    doc = ConsensusCoordinator.__doc__ or ""
-    assert (
-        "single-process" in doc.lower()
-        or "simulation" in doc.lower()
-        or "in-process" in doc.lower()
-    ), "ConsensusCoordinator docstring must disclose single-process/simulated nature"
+    """Verify consensus module is completely pruned from read-only core."""
+    with pytest.raises(ModuleNotFoundError):
+        import mdrap.consensus  # noqa: F401
 
 
 def test_x01_call_site_review_record():

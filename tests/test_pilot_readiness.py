@@ -153,6 +153,7 @@ def test_pilot_readiness_end_to_end_lifecycle():
 
         # Step 6: SIMULATE COMPLETE PLATFORM RESTART
         # Close all active handles and drop in-memory trackers
+        prov_tracker.close()
         store.close()
         del store
         del prov_tracker
@@ -199,6 +200,7 @@ def test_pilot_readiness_end_to_end_lifecycle():
         assert result_1.replayed_state_hash == result_2.replayed_state_hash
 
         # Step 10: Clean close
+        prov_restarted.close()
         store_restarted.close()
 
 

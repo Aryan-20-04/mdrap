@@ -1,89 +1,112 @@
 # MDRAP Quant-Ready Python SDK Guide
 
-Welcome to the MDRAP SDK! This guide explains how to connect to the TCP Gateway to ingest real-time tick data, build Pandas DataFrames, and execute algorithmic paper trades.
+Welcome to the MDRAP SDK! This guide explains how to connect downstream applications, sidecars, and quant research pipelines to MDRAP's read-only market data infrastructure using either TCP streaming or sub-microsecond shared memory IPC.
 
-## 1. Connecting to the Live Stream
-The `MDrapClient` connects to the gateway via raw TCP sockets, providing microsecond latency.
+> [!IMPORTANT]
+> **Governance Notice: NO DEPLOYMENT**
+> MDRAP is strictly a read-only market data validation and normalization infrastructure sidecar. It contains zero order routing, strategy activation, or execution capabilities.
+
+---
+
+## 1. Connecting via TCP StreamClient
+
+The `StreamClient` connects to the running MDRAP streaming daemon (`mdrap daemon`) over a local TCP socket for streaming canonical market events:
 
 ```python
 import asyncio
-from client import MDrapClient
+from mdrap.service import StreamClient
 
 async def main():
-    client = MDrapClient(host="127.0.0.1", port=9000)
+    client = StreamClient(host="127.0.0.1", port=9000)
+    await client.connect()
 
-    def on_event(msg):
-        print(f"Received tick: {msg}")
+    async for event in client.stream_events(symbol="BTCUSDT"):
+        print(f"[{event['timestamp']}] {event['symbol']} {event['event_type']} @ {event['price']}")
 
-    client.on("event", on_event)
-    await client.subscribe()
-
-asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
-## 2. Advanced: Non-Blocking DataFrame Processing
-Pandas operations (`pd.concat`) block the python event loop. If you block the loop, the TCP Gateway's backpressure system will explicitly disconnect you to protect server RAM!
+---
 
-To prevent disconnects, use an `asyncio.Queue` and `asyncio.to_thread`:
+## 2. Ultra-Low Latency IPC via SHMReader
+
+For sub-microsecond consumption without TCP overhead, downstream sidecars consume canonical events directly from POSIX/Windows shared memory via `SHMReader`:
 
 ```python
-import asyncio
-from client import MDrapClient
+from mdrap.shm import SHMReader
 
-async def main():
-    client = MDrapClient()
-    queue = asyncio.Queue()
+def main():
+    reader = SHMReader(ring_name="mdrap_canonical_ring")
+    reader.attach()
 
-    def on_event(msg):
-        queue.put_nowait(msg) # Unblocks instantly!
-
-    async def process_queue():
+    try:
         while True:
-            msg = await queue.get()
-            # Do heavy pandas work inside asyncio.to_thread...
-            
-    await asyncio.gather(client.subscribe(), process_queue())
+            batch = reader.read_batch(max_events=128)
+            for event in batch:
+                print(f"Seq: {event.sequence} | {event.symbol} {event.event_type} @ {event.price}")
+    finally:
+        reader.close()
+
+if __name__ == "__main__":
+    main()
 ```
 
-## 3. Algorithmic Trading (Paper Sandbox)
-MDRAP provides a paper-trading execution engine. Write your logic by inheriting from `Strategy`.
+---
+
+## 3. Asynchronous Downstream Processing
+
+To prevent blocking the event stream with heavy downstream computation (e.g., pandas calculations), use an `asyncio.Queue` and thread pool:
 
 ```python
-from strategy_sdk import Strategy, LiveStrategyRunner
-from models import CanonicalEvent
+import asyncio
+from mdrap.service import StreamClient
 
-class MyAlgo(Strategy):
-    def __init__(self):
-        super().__init__(name="MyAlgo", symbols=["AAPL"])
+async def main():
+    client = StreamClient(host="127.0.0.1", port=9000)
+    await client.connect()
+    queue = asyncio.Queue(maxsize=10000)
 
-    def on_tick(self, event: CanonicalEvent):
-        if event.price and event.price < 150.0:
-            self.buy("AAPL", 100) # Automatically calculates slippage!
+    async def ingest_worker():
+        async for event in client.stream_events():
+            try:
+                queue.put_nowait(event)
+            except asyncio.QueueFull:
+                pass  # Record dropped frame / backpressure counter
 
-runner = LiveStrategyRunner(MyAlgo(), port=9000)
-asyncio.run(runner.run())
+    async def analytics_worker():
+        while True:
+            event = await queue.get()
+            # Offload heavy analytics to thread pool
+            await asyncio.to_thread(process_event, event)
+            queue.task_done()
+
+    await asyncio.gather(ingest_worker(), analytics_worker())
+
+def process_event(event):
+    # Quant analytics, feature engineering, or external database write
+    pass
+
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
-See `src/mdrap/strategy_sdk.py` for complete reference implementations (e.g., `WhaleMomentumStrategy`, `GridMakerStrategy`).
+---
 
-## 4. Level-2 Order Book & Execution Ledger
-Every strategy automatically maintains a synthetic or live Level-2 Limit Order Book with multi-tier depth for every subscribed symbol:
+## 4. Querying Historical Canonical Data
+
+Downstream research platforms query sanitized canonical tick history using `Engine.open()`:
 
 ```python
-# Query order book depth and microstructure
-book = algo.get_order_book("AAPL")
-ladder = book.get_ladder(depth=5)
-print(f"Spread: {book.spread_bps:.2f} bps | MicroPrice: ${book.micro_price:.2f} | Imbalance: {book.imbalance:+.2%}")
+from mdrap import Engine, EngineConfig
 
-# Access detailed execution ledger with arrival price and slippage
-ledger = algo.get_execution_ledger()
-for fill in ledger:
-    print(f"{fill['side']} {fill['quantity']} @ ${fill['fill_price']} "
-          f"(Arrival: ${fill['arrival_price']}, Slippage: ${fill['slippage_usd']:.2f}, "
-          f"Spread: {fill['effective_spread_bps']:.1f} bps, Reason: {fill['signal_reason']})")
+engine = Engine.open(
+    wal_dir="./data/wal",
+    config=EngineConfig(db_path="./data/mdrap.db")
+)
 
-# Export executions with point-in-time order book snapshots
-algo.export_executions("executions.json", format="json")
-algo.export_executions("executions.csv", format="csv")
+# Fetch latest validated ticks for quantitative analysis
+ticks = engine.query("BTCUSDT", limit=1000)
+print(f"Retrieved {len(ticks)} validated canonical ticks")
+engine.close()
 ```
-

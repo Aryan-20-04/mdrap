@@ -48,7 +48,7 @@
 - `[EXTERNAL-RESEARCH]` Introduced in Linux Kernel 4.18+:
   - Allows user-space applications to receive packets directly from the NIC driver via a memory-mapped UMEM ring buffer using the XSK (XDP Sockets) subsystem.
   - **Advantage over DPDK**: The NIC remains bound to the Linux kernel. Packets not handled by AF_XDP pass seamlessly through the standard kernel TCP/IP stack. Does not require unbinding the interface.
-  - MDRAP already includes an experimental AF_XDP module in [`src/mdrap/af_xdp.py`](file:///C:/Users/KIIT0001/Desktop/Projects/mdrap/src/mdrap/af_xdp.py).
+  - MDRAP already includes an experimental AF_XDP module in `src/mdrap/af_xdp.py`.
 
 ### 3.2 Optimized Standard Sockets (Windows & Linux)
 - High-performance market data ingestion without kernel bypass:
@@ -60,7 +60,7 @@
 
 ## 4. Empirical Evaluation Against MDRAP Bottlenecks
 
-From MDRAP empirical stage profiling ([`audit/v5/raw_evidence/benchmark_stage_breakdown.log`](file:///C:/Users/KIIT0001/Desktop/Projects/mdrap/audit/v5/raw_evidence/benchmark_stage_breakdown.log)):
+From MDRAP empirical stage profiling (`audit/v5/raw_evidence/benchmark_stage_breakdown.log`):
 - Pure Python execution:
   - Feed decode (JSON): **28.8%** ($3.7\ \mu\text{s}$)
   - Object Allocation: **26.7%** ($2.6\ \mu\text{s}$)

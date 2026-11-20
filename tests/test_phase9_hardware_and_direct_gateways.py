@@ -23,22 +23,26 @@ import platform
 import time
 import pytest
 
-from mdrap.cme import (
-    CME_SCHEMA_ID,
-    CME_SCHEMA_VERSION,
-    CMESBEDecoder,
-    MDUpdateAction,
-    TEMPLATE_MD_INCREMENTAL_REFRESH_BOOK,
-    TEMPLATE_MD_INCREMENTAL_REFRESH_VOLUME,
-    pack_cme_incremental_book,
-)
-from mdrap.eurex import (
-    EurexDepthMessage,
-    EurexT7Decoder,
-    EurexTradeMessage,
-    pack_eurex_depth_message,
-    pack_eurex_trade_message,
-)
+try:
+    from mdrap.cme import (
+        CME_SCHEMA_ID,
+        CME_SCHEMA_VERSION,
+        CMESBEDecoder,
+        MDUpdateAction,
+        TEMPLATE_MD_INCREMENTAL_REFRESH_BOOK,
+        TEMPLATE_MD_INCREMENTAL_REFRESH_VOLUME,
+        pack_cme_incremental_book,
+    )
+    from mdrap.eurex import (
+        EurexDepthMessage,
+        EurexT7Decoder,
+        EurexTradeMessage,
+        pack_eurex_depth_message,
+        pack_eurex_trade_message,
+    )
+except ImportError:
+    CMESBEDecoder = None
+    EurexT7Decoder = None
 from mdrap.models import EventType, QualityStatus
 from mdrap.profile import (
     HardwareProfile,
@@ -82,6 +86,11 @@ class TestSpecializedHardwareProfiles:
 
 class TestCMEMDP3DirectSBEDecoder:
     """Verifies CME MDP 3.0 SBE binary decoder."""
+
+    @pytest.fixture(autouse=True)
+    def _check_cme(self):
+        if CMESBEDecoder is None:
+            pytest.skip("CME decoder pruned in read-only core")
 
     def test_sbe_header_unpacking_and_schema_validation(self):
         decoder = CMESBEDecoder()
@@ -152,6 +161,11 @@ class TestCMEMDP3DirectSBEDecoder:
 
 class TestEurexT7DirectBinaryDecoder:
     """Verifies Eurex T7 ETI / EMDI direct binary decoder."""
+
+    @pytest.fixture(autouse=True)
+    def _check_eurex(self):
+        if EurexT7Decoder is None:
+            pytest.skip("Eurex decoder pruned in read-only core")
 
     def test_eurex_order_book_depth_decode(self):
         decoder = EurexT7Decoder()

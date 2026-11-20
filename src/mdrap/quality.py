@@ -234,6 +234,35 @@ class _UnseqDedup:
         self.count = 0
 
 
+class _SlotDict(dict):
+    """Dictionary supporting backward-compatible 2-tuple lookup for QualityEngine slots."""
+
+    def __getitem__(self, key: Any) -> Any:
+        if super().__contains__(key):
+            return super().__getitem__(key)
+        if isinstance(key, tuple) and len(key) == 2:
+            for domain in ("QUOTE", "TRADE"):
+                k3 = (key[0], key[1], domain)
+                if super().__contains__(k3):
+                    return super().__getitem__(k3)
+        return super().__getitem__(key)
+
+    def get(self, key: Any, default: Any = None) -> Any:
+        try:
+            return self[key]
+        except KeyError:
+            return default
+
+    def __contains__(self, key: Any) -> bool:
+        if super().__contains__(key):
+            return True
+        if isinstance(key, tuple) and len(key) == 2:
+            for domain in ("QUOTE", "TRADE"):
+                if super().__contains__((key[0], key[1], domain)):
+                    return True
+        return False
+
+
 class QualityEngine:
     """Stateful market data quality assessment engine with 100% C-kernel parity."""
 
@@ -269,7 +298,8 @@ class QualityEngine:
 
         self.clock = clock if clock is not None else SystemClock()
 
-        self._slots: dict[tuple[str, str], _SlotState] = {}
+        self._slots: dict[Any, _SlotState] = _SlotDict()
+        self._min_clock_diff: dict[str, float] = {}
         self._cfg_cache: dict[str, QualityConfig] = {}
         self._unseq_dedup = _UnseqDedup(
             getattr(self.cfg, "dedup_cache_size", DEFAULT_DEDUP_CACHE_SIZE)
@@ -295,6 +325,7 @@ class QualityEngine:
         self._slots.clear()
         self._cfg_cache.clear()
         self._unseq_dedup.clear()
+        self._min_clock_diff.clear()
         self.counts = {"VALID": 0, "SUSPICIOUS": 0, "INVALID": 0}
         self.reason_counts.clear()
         self.reorder_repaired_total = 0
@@ -306,6 +337,8 @@ class QualityEngine:
         keys_to_del = [k for k in self._slots if k[0].upper() == s_upper]
         for k in keys_to_del:
             del self._slots[k]
+        self._min_clock_diff.pop(source, None)
+        self._min_clock_diff.pop(s_upper, None)
 
     @property
     def _price_stats(self) -> dict:
@@ -339,24 +372,30 @@ class QualityEngine:
             self._cfg_cache[instrument_id] = cfg
         return cfg
 
-    def _get_slot(self, key: tuple[str, str], window: int) -> _SlotState:
+    def _get_slot(self, key: tuple, window: int) -> _SlotState:
         sl = self._slots.get(key)
         if sl is None:
             if len(self._slots) >= self.max_tracked_instruments:
                 # Evict an arbitrary key
                 self._slots.pop(next(iter(self._slots)))
             sl = self._slots[key] = _SlotState(window)
+        if len(key) == 3:
+            self._slots[(key[0], key[1])] = sl
         return sl
 
     def evaluate(self, event: CanonicalEvent) -> CanonicalEvent | None:
         """Execute stateful data quality checks across all dimensions."""
-        key = (event.source, event.instrument_id)
+        is_quote = event.event_type == EventType.QUOTE or event.event_type == "QUOTE"
+        is_trade = event.event_type == EventType.TRADE or event.event_type == "TRADE"
         cfg = self._get_cfg(event.instrument_id)
+        if getattr(cfg, "split_sequence_domains", False):
+            domain = "TRADE" if is_trade else "QUOTE"
+            key = (event.source, event.instrument_id, domain)
+        else:
+            key = (event.source, event.instrument_id)
         sl = self._get_slot(key, cfg.price_window)
 
         # Stage 1: Structural Validation
-        is_quote = event.event_type == EventType.QUOTE or event.event_type == "QUOTE"
-        is_trade = event.event_type == EventType.TRADE or event.event_type == "TRADE"
         is_status = event.event_type in (
             EventType.HALT,
             EventType.STATUS,
@@ -603,6 +642,19 @@ class QualityEngine:
 
         # Stage 3: Exchange Timestamp Monotonicity & Watermark Protection
         if ex_fin and rc_fin:
+            raw_diff = event.receive_timestamp - event.exchange_timestamp
+            src = event.source or "default"
+            prev_min = self._min_clock_diff.get(src)
+            if prev_min is None or raw_diff < prev_min:
+                if raw_diff >= -cfg.max_future_skew_s:
+                    self._min_clock_diff[src] = raw_diff
+
+            if getattr(cfg, "compensate_clock_skew", False):
+                clock_offset = max(0.0, self._min_clock_diff.get(src, 0.0))
+                effective_age = raw_diff - clock_offset
+            else:
+                effective_age = raw_diff
+
             plausible = (
                 event.exchange_timestamp
                 <= event.receive_timestamp + cfg.max_future_skew_s
@@ -616,8 +668,10 @@ class QualityEngine:
                     sl.last_ts = event.exchange_timestamp
                     sl.has_ts = True
             elif event.exchange_timestamp < sl.last_ts:
-                self._mark(event, QualityStatus.SUSPICIOUS, Reason.OUT_OF_ORDER)
-                self._bump(Reason.OUT_OF_ORDER)
+                reorder_tol = getattr(cfg, "reorder_window_s", 0.0)
+                if (sl.last_ts - event.exchange_timestamp) > reorder_tol:
+                    self._mark(event, QualityStatus.SUSPICIOUS, Reason.OUT_OF_ORDER)
+                    self._bump(Reason.OUT_OF_ORDER)
             elif plausible:
                 sl.last_ts = event.exchange_timestamp
 
@@ -628,8 +682,7 @@ class QualityEngine:
                 "STATUS",
             )
             if not is_status_event and (
-                event.receive_timestamp - event.exchange_timestamp
-                > cfg.staleness_threshold_s
+                effective_age > cfg.staleness_threshold_s
             ):
                 self._mark(event, QualityStatus.SUSPICIOUS, Reason.STALE)
                 self._bump(Reason.STALE)
@@ -743,7 +796,8 @@ class QualityEngine:
         now = now_monotonic if now_monotonic is not None else time.monotonic()
         released: list[CanonicalEvent] = []
 
-        for (src, inst), sl in self._slots.items():
+        for k, sl in list(self._slots.items()):
+            inst = k[1]
             cfg = self._cfg_cache.get(inst)
             if cfg is None:
                 cfg = self.cfg.for_instrument(inst)

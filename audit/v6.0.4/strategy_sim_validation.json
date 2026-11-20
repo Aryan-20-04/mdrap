@@ -1,0 +1,45 @@
+{
+  "wall_s_all_4_strategies": 5.178,
+  "strategies": {
+    "No-Trade Baseline": {
+      "orders_submitted": 0,
+      "post_only_rejected": 0,
+      "fills_total": 0,
+      "maker_fills": 0,
+      "taker_fills": 0,
+      "fees_usd": 0,
+      "realized_pnl_usd": 0.0,
+      "strategy_status": "SIMULATOR_VALIDATION_ONLY"
+    },
+    "Inventory-Skewed (penalty=0.04)": {
+      "orders_submitted": 2753,
+      "post_only_rejected": 0,
+      "fills_total": 1341,
+      "maker_fills": 1341,
+      "taker_fills": 0,
+      "fees_usd": 9.2686,
+      "realized_pnl_usd": 1.4971,
+      "strategy_status": "SIMULATOR_VALIDATION_ONLY"
+    },
+    "Avellaneda-Stoikov (gamma=0.50)": {
+      "orders_submitted": 2699,
+      "post_only_rejected": 0,
+      "fills_total": 1345,
+      "maker_fills": 1345,
+      "taker_fills": 0,
+      "fees_usd": 9.1729,
+      "realized_pnl_usd": 0.8685,
+      "strategy_status": "SIMULATOR_VALIDATION_ONLY"
+    },
+    "Fixed-Spread Post-Only [ABANDONED]": {
+      "orders_submitted": 2451,
+      "post_only_rejected": 0,
+      "fills_total": 1464,
+      "maker_fills": 1464,
+      "taker_fills": 0,
+      "fees_usd": 9.7023,
+      "realized_pnl_usd": -0.2821,
+      "strategy_status": "ABANDONED / RESEARCH ONLY"
+    }
+  }
+}

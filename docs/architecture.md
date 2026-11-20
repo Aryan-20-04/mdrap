@@ -127,16 +127,14 @@ The platform converts noisy, delayed, duplicated, and inconsistent market data f
 - Tracks rolling bid/ask spread distributions and crossed-quote occurrences.
 - Computes realized price volatility and price range percentages using Welford's online variance algorithm.
 
-### 2.7 In-Place Terminal Visualization, Modal Navigator & Institutional Exporter (`src/mdrap/terminal_display.py`, `src/mdrap/navigator.py`, `src/mdrap/exporter.py`)
+### 2.7 In-Place Terminal Visualization & Institutional Exporter (`src/mdrap/terminal_display.py`, `src/mdrap/exporter.py`)
 - **In-Place Terminal HUD**: ANSI cursor repositioning renders live ticker tables and candlestick charts without vertical scrolling or terminal flicker.
-- **Modal Keyboard Navigator Desk (`src/mdrap/navigator.py`)**: High-velocity terminal desk with a 3-mode state machine (`NORMAL`, `FILTER`, `MODAL`), Vim home-row motions, live incremental search debounce, and two-stage armed execution tickets preventing stray key accidental order submissions.
 - **Visual Candlestick Charts**: 3-character columns (` █ `, ` │ `, ` ┼ `) with outlier-resilient 10th–90th percentile scaling and synchronized volume histograms.
 - **5-Tab Financial Model Exporter**: Translates market microstructure data into styled Microsoft Excel workbooks (`.xlsx`) or automated CSV report packages.
 
-### 2.8 IPC, Shared Memory, Kafka & Alert Delivery (`src/mdrap/service.py`, `src/mdrap/shm.py`, `src/mdrap/kafka_sink.py`, `src/mdrap/alert_sinks.py`, `src/mdrap/prometheus.py`)
+### 2.8 IPC, Shared Memory & Alert Delivery (`src/mdrap/service.py`, `src/mdrap/shm.py`, `src/mdrap/alert_sinks.py`, `src/mdrap/prometheus.py`)
 - Headless daemon running on a non-blocking streaming socket.
 - **Binary Shared Memory Transport (SHM v3)**: Lock-free 128B ring buffer with two-phase seqlock commit. Cache Line 2 carries `SHM_FLAG_WATERMARK_WARNING = 0x01` at offset 80, signaling backpressure when reader lag or buffer occupancy crosses 80%.
-- **Durable Kafka / Redpanda Sink (`src/mdrap/kafka_sink.py`)**: High-throughput distributed streaming sink with per-instrument partition routing and thread-safe batch delivery.
 - **External Alert Delivery Sinks (`src/mdrap/alert_sinks.py`)**: Asynchronous worker dispatching operational and watchdog alerts to Webhook, Slack, and PagerDuty endpoints.
 - **Prometheus Exporter (`src/mdrap/prometheus.py`)**: Production-grade metric exporter with reverse-proxy IP spoofing protection.
 

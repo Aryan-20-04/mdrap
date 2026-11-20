@@ -3,6 +3,55 @@
 All notable changes to MDRAP are documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.0.8] - 2026-11-20
+
+### Core Architecture Pruning, Dependency Decoupling & Read-Only Infrastructure Certification
+- **Core Architecture Pruning (28 Modules Removed, -16,693 Net LOC)**:
+  - Pruned dead, speculative, and out-of-scope enterprise/trading components:
+    - *Trading & Risk Stubs*: `backtest.py`, `fix_engine.py`, `options.py`, `risk.py`, `shadow.py`, `strategy_sdk.py`, `tca.py`, `vessel.py`.
+    - *Distributed Clustering & Multi-Node*: `consensus.py`, `failover.py`, `journal_replicator.py`, `partition.py`, `async_fanout.py`, `network.py`, `multicast_arbitrator.py`, `pcap.py`, `scheduler.py`, `sample_plugins.py`.
+    - *Duplicate Protocols & Secondary Gateways*: `cme.py`, `eurex.py`, `gateway_tcp.py`, `mbo.py`, `flow_tracker.py`, `bardb.py`, `chd_history.py`, `workload_simulator.py`.
+    - *Ad-Hoc Stress Scripts & External Sinks*: `stresstest.py`, `kafka_sink.py`.
+  - Inlined zero-allocation SPSC ring queues (`PySpscRingQueue`, `SpscRingQueue`, `ChannelIngressSequencer`) directly into `src/mdrap/supervisor.py`.
+  - Relocated hardware nanosecond latency converter `compute_latencies_us(durations_ns: list[int]) -> dict` to `src/mdrap/metrics.py`.
+  - Streamlined `cmd_stress` to benchmark via native engine primitives with zero synthetic bloat.
+  - Reduced Python modules in `src/mdrap/` from 121 to 93 files (-23.1%).
+- **Dependency Reduction & Packaging Streamlining**:
+  - Removed 4 heavy optional dependencies: `confluent-kafka`, `duckdb`, `pyarrow`, and unbundled `pyyaml`.
+  - Reduced wheel package size by 16.0% (710 KB -> 596 KB) and source distribution by 12.6% (1,167 KB -> 1,019 KB).
+  - Maintained zero mandatory runtime dependencies in `mdrap-core` (pure Python stdlib + optional native C compilation).
+- **Performance & Latency Optimization**:
+  - Dedicated native fastpath microbenchmarks achieved up to 11,918.5 EPS (2.1x improvement over baseline 5,635.4 EPS) with 47.2 µs p50 and 84.9 µs p99 processing latency.
+  - Standard end-to-end pipeline benchmark with SQLite WAL storage reproduced at ~5,991.3 EPS with 75.3 µs p50 and 374.2 µs p99 processing latency, with zero dropped events and zero storage conflicts.
+  - Shared memory ring buffer achieves sub-microsecond IPC latency (22.9 ns seqlock write, <1 µs IPC read), while TCP streaming daemon handles multi-client socket fanout at low-millisecond network latencies.
+- **Read-Only Infrastructure & Governance Affirmation**:
+  - Re-certified strict **NO DEPLOYMENT** policy: zero live order execution paths, zero real-money trading capabilities, zero broker credentials required.
+  - Full regression suite verified clean: 1,489 passed, 32 skipped, 0 failed.
+  - Pure-Python fallback verified: 100% semantic parity with native C hot path.
+
+## [6.0.0] - 2026-11-11
+
+### Strategic Product Reset, Read-Only Assurance Platform & Launch Experience
+- **Strategic Identity & Boundary Consolidation**:
+  - Refocused MDRAP strictly as an independent, read-only market-data reliability, provenance, and forensic evidence sidecar.
+  - Eliminated order routing, execution logic, trading terminals, and corporate filing shims from core engine.
+  - Preserved 100% passive, non-intrusive tap architecture with zero private key requirements.
+- **15-Step Interactive Demonstration (`tools/demo/run_demo.py`)**:
+  - Built repeatable, turnkey demonstration supporting Mode A (offline synthetic multi-venue corridor) and Mode B (read-only live public feeds).
+  - Validates 15 core architectural invariants: dual-venue normalization, telemetry, sequence tracking, SHA-256 provenance, 15-rule quality engine, sequence gap injection, quarantine, incident creation, RFC 6962 Merkle tree anchoring, crash teardown, WAL recovery, deterministic replay, standalone verification, and post-mortem export.
+- **Self-Hosted Deployment Experience (`deploy/`)**:
+  - Multi-stage Dockerfile and docker-compose.yml running as unprivileged user `10001` with `cap_drop: [ALL]` and read-only rootfs.
+  - Hardened Linux systemd service unit (`deploy/mdrap.service`) with `ProtectSystem=strict` and `NoNewPrivileges=true`.
+  - Automated pre-flight environment validator (`deploy/validate_environment.py`) and non-intrusive container health probe (`deploy/healthcheck.py`).
+- **Comprehensive Developer Documentation (`docs/developer/`)**:
+  - Published 18 comprehensive technical guides covering getting started, installation, configuration, architecture, connectors, provenance, quality engine, incidents, replay, evidence verification, CLI reference, API reference, deployment, troubleshooting, security, limitations, and demo walkthrough.
+- **Headless CLI & Terminal Operator Experience**:
+  - Streamlined CLI command suite with Rich and plain-text fallbacks, non-TTY pipe support, structured exit codes, and automated pre-flight diagnostics.
+  - Zero browser frontend, zero web dashboard, zero external UI dependencies.
+- **Design Partner Onboarding Package (`business/phase4/`)**:
+  - Authored 5-stage onboarding workflow, technical discovery questionnaire, 30-day pilot agreement, deployment checklist, weekly review template, and clean decommissioning protocol.
+  - Published technical marketing whitepapers on why sequence gaps matter, deterministic replay value, and read-only security.
+
 ## [5.3.0] - 2026-11-05
 
 ### Independent Engineering Remediation, Quantitative Hardening & Release Certification

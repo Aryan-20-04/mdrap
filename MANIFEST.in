@@ -1,21 +1,8 @@
+# Ensure no platform-specific compiled binaries are included in pure wheels or sdist
+global-exclude *.dll *.so *.dylib *.pyd
+global-exclude *.pyc __pycache__
+
+# Include C source files and templates
+recursive-include src/mdrap *.py *.c *.h *.def *.pyi py.typed
 include README.md
 include LICENSE
-include pyproject.toml
-
-exclude src/*.py
-include src/mdrap_build.py
-recursive-include src/mdrap *.py *.c *.h *.def *.pyi py.typed
-
-prune docs
-prune tests
-prune examples
-prune personas
-prune fuzz
-prune Microsoft
-prune dist
-prune build
-prune scratch
-prune .pytest_cache
-
-global-exclude *.py[cod] __pycache__ *.o *.obj
-global-exclude *.prof *.pstats *.coverage *.tmp *.db *.duckdb *.parquet

@@ -1,0 +1,255 @@
+{
+  "dataset_label": "OUT_OF_SAMPLE_HOLDOUT_1H",
+  "frames_processed": 1758120,
+  "elapsed_wall_s": 1133.02,
+  "strategies": {
+    "A: Baseline Inventory-Skewed": {
+      "name": "A: Baseline Inventory-Skewed",
+      "orders_submitted": 170990,
+      "orders_rejected": 0,
+      "total_fills": 28083,
+      "maker_fills": 28083,
+      "taker_fills": 0,
+      "maker_fill_pct": 100.0,
+      "fill_probability_pct": 16.42,
+      "gross_pnl_usd": -257.3203,
+      "total_fees_usd": 280.2384,
+      "net_pnl_usd": -537.5587,
+      "final_equity_usd": 99462.44,
+      "max_drawdown_usd": 548.3422,
+      "max_drawdown_pct": 0.5483,
+      "peak_inventory_btc": 0.309794,
+      "peak_inventory_eth": 1.929193,
+      "final_position_btc": 0.263135,
+      "final_position_eth": -0.904256,
+      "markouts": {
+        "100ms": -0.6243,
+        "1000ms": -0.9077,
+        "5000ms": -1.0966,
+        "10000ms": -1.1731
+      },
+      "instrument_fills": {
+        "BTC": 27814,
+        "ETH": 269
+      },
+      "venue_executions": {
+        "KRAKEN": 928,
+        "BYBIT": 2736,
+        "COINBASE": 11658,
+        "OKX": 2698,
+        "BINANCE": 10063
+      }
+    },
+    "B: Nonlinear Penalty Only": {
+      "name": "B: Nonlinear Penalty Only",
+      "orders_submitted": 177910,
+      "orders_rejected": 0,
+      "total_fills": 26959,
+      "maker_fills": 26959,
+      "taker_fills": 0,
+      "maker_fill_pct": 100.0,
+      "fill_probability_pct": 15.15,
+      "gross_pnl_usd": -255.7597,
+      "total_fees_usd": 277.7413,
+      "net_pnl_usd": -533.501,
+      "final_equity_usd": 99466.5,
+      "max_drawdown_usd": 542.793,
+      "max_drawdown_pct": 0.5428,
+      "peak_inventory_btc": 0.31325,
+      "peak_inventory_eth": 1.448164,
+      "final_position_btc": 0.256339,
+      "final_position_eth": -0.614542,
+      "markouts": {
+        "100ms": -0.6362,
+        "1000ms": -0.9113,
+        "5000ms": -1.1053,
+        "10000ms": -1.1795
+      },
+      "instrument_fills": {
+        "BTC": 26613,
+        "ETH": 346
+      },
+      "venue_executions": {
+        "KRAKEN": 864,
+        "BYBIT": 2669,
+        "COINBASE": 11683,
+        "OKX": 2460,
+        "BINANCE": 9283
+      }
+    },
+    "C: Asymmetric Widening Only": {
+      "name": "C: Asymmetric Widening Only",
+      "orders_submitted": 158905,
+      "orders_rejected": 0,
+      "total_fills": 30486,
+      "maker_fills": 30486,
+      "taker_fills": 0,
+      "maker_fill_pct": 100.0,
+      "fill_probability_pct": 19.19,
+      "gross_pnl_usd": -285.9013,
+      "total_fees_usd": 298.2125,
+      "net_pnl_usd": -584.1138,
+      "final_equity_usd": 99415.89,
+      "max_drawdown_usd": 589.0238,
+      "max_drawdown_pct": 0.589,
+      "peak_inventory_btc": 0.306557,
+      "peak_inventory_eth": 1.111398,
+      "final_position_btc": 0.22197,
+      "final_position_eth": 0.02278,
+      "markouts": {
+        "100ms": -0.6562,
+        "1000ms": -0.9362,
+        "5000ms": -1.0899,
+        "10000ms": -1.177
+      },
+      "instrument_fills": {
+        "BTC": 28615,
+        "ETH": 1871
+      },
+      "venue_executions": {
+        "KRAKEN": 1339,
+        "BYBIT": 2949,
+        "COINBASE": 12187,
+        "OKX": 4131,
+        "BINANCE": 9880
+      }
+    },
+    "D: OFI Filtering Only": {
+      "name": "D: OFI Filtering Only",
+      "orders_submitted": 169265,
+      "orders_rejected": 0,
+      "total_fills": 22287,
+      "maker_fills": 22287,
+      "taker_fills": 0,
+      "maker_fill_pct": 100.0,
+      "fill_probability_pct": 13.17,
+      "gross_pnl_usd": -286.6553,
+      "total_fees_usd": 240.6101,
+      "net_pnl_usd": -527.2654,
+      "final_equity_usd": 99472.73,
+      "max_drawdown_usd": 534.8029,
+      "max_drawdown_pct": 0.5348,
+      "peak_inventory_btc": 0.326074,
+      "peak_inventory_eth": 2.979965,
+      "final_position_btc": 0.255855,
+      "final_position_eth": -2.131294,
+      "markouts": {
+        "100ms": -0.6094,
+        "1000ms": -0.8405,
+        "5000ms": -1.0254,
+        "10000ms": -1.1071
+      },
+      "instrument_fills": {
+        "BTC": 21922,
+        "ETH": 365
+      },
+      "venue_executions": {
+        "KRAKEN": 720,
+        "BYBIT": 2644,
+        "COINBASE": 11343,
+        "OKX": 1862,
+        "BINANCE": 5718
+      }
+    },
+    "E: EWMA Vol & Toxic Pullback Only": {
+      "name": "E: EWMA Vol & Toxic Pullback Only",
+      "orders_submitted": 183493,
+      "orders_rejected": 0,
+      "total_fills": 21324,
+      "maker_fills": 21324,
+      "taker_fills": 0,
+      "maker_fill_pct": 100.0,
+      "fill_probability_pct": 11.62,
+      "gross_pnl_usd": -281.7102,
+      "total_fees_usd": 236.5504,
+      "net_pnl_usd": -518.2606,
+      "final_equity_usd": 99481.74,
+      "max_drawdown_usd": 523.1264,
+      "max_drawdown_pct": 0.5231,
+      "peak_inventory_btc": 0.320513,
+      "peak_inventory_eth": 1.598,
+      "final_position_btc": 0.239801,
+      "final_position_eth": -1.159922,
+      "markouts": {
+        "100ms": -0.6556,
+        "1000ms": -0.8704,
+        "5000ms": -1.043,
+        "10000ms": -1.1465
+      },
+      "instrument_fills": {
+        "BTC": 21120,
+        "ETH": 204
+      },
+      "venue_executions": {
+        "KRAKEN": 876,
+        "BYBIT": 2470,
+        "COINBASE": 9865,
+        "OKX": 2219,
+        "BINANCE": 5894
+      }
+    },
+    "F: Combined Configuration": {
+      "name": "F: Combined Configuration",
+      "orders_submitted": 177412,
+      "orders_rejected": 0,
+      "total_fills": 22169,
+      "maker_fills": 22169,
+      "taker_fills": 0,
+      "maker_fill_pct": 100.0,
+      "fill_probability_pct": 12.5,
+      "gross_pnl_usd": -281.8929,
+      "total_fees_usd": 250.5717,
+      "net_pnl_usd": -532.4647,
+      "final_equity_usd": 99467.54,
+      "max_drawdown_usd": 536.1627,
+      "max_drawdown_pct": 0.5362,
+      "peak_inventory_btc": 0.30488,
+      "peak_inventory_eth": 1.293149,
+      "final_position_btc": 0.226744,
+      "final_position_eth": 0.053558,
+      "markouts": {
+        "100ms": -0.6952,
+        "1000ms": -0.9282,
+        "5000ms": -1.048,
+        "10000ms": -1.1385
+      },
+      "instrument_fills": {
+        "BTC": 19993,
+        "ETH": 2176
+      },
+      "venue_executions": {
+        "KRAKEN": 1056,
+        "BYBIT": 3025,
+        "COINBASE": 9522,
+        "OKX": 2825,
+        "BINANCE": 5741
+      }
+    },
+    "G: No-Trade Baseline": {
+      "name": "G: No-Trade Baseline",
+      "orders_submitted": 0,
+      "orders_rejected": 0,
+      "total_fills": 0,
+      "maker_fills": 0,
+      "taker_fills": 0,
+      "maker_fill_pct": 0.0,
+      "fill_probability_pct": 0.0,
+      "gross_pnl_usd": 0.0,
+      "total_fees_usd": 0.0,
+      "net_pnl_usd": 0.0,
+      "final_equity_usd": 100000.0,
+      "max_drawdown_usd": 0.0,
+      "max_drawdown_pct": 0.0,
+      "peak_inventory_btc": 0.0,
+      "peak_inventory_eth": 0.0,
+      "final_position_btc": 0.0,
+      "final_position_eth": 0.0,
+      "markouts": {},
+      "instrument_fills": {
+        "BTC": 0,
+        "ETH": 0
+      },
+      "venue_executions": {}
+    }
+  }
+}

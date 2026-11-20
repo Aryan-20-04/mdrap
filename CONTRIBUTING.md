@@ -177,15 +177,15 @@ Consult [`docs/API_STABILITY.md`](docs/API_STABILITY.md) for stability contracts
 MDRAP provides standardized extension interfaces for integrating external venues, custom validation logic, and alternate persistence engines:
 
 ### 1. Adding a New Feed Adapter
-Exchange and venue integrations implement the [`FeedAdapter`](src/protocols.py) protocol (`open()`, `__iter__()`, `close()`) and emit standardized [`RawEvent`](src/models.py) objects.
+Exchange and venue integrations implement the [`FeedAdapter`](src/mdrap/protocols.py) protocol (`open()`, `__iter__()`, `close()`) and emit standardized [`RawEvent`](src/mdrap/models.py) objects.
 - Guide: [Feed Adapter Development](docs/extending/feed-adapter.md)
 
 ### 2. Adding a Custom Quality Rule
-User-defined validation rules are registered in the user bitmask range (bits 32–63) using the [`@register_rule`](src/rules.py) decorator from [`src/rules.py`](src/rules.py). User rules run post-native evaluation and cannot crash the pipeline or downgrade existing anomaly statuses.
+User-defined validation rules are registered in the user bitmask range (bits 32–63) using the [`@register_rule`](src/mdrap/rules.py) decorator from [`src/rules.py`](src/mdrap/rules.py). User rules run post-native evaluation and cannot crash the pipeline or downgrade existing anomaly statuses.
 - Guide: [Custom Quality Rules](docs/extending/quality-rules.md)
 
 ### 3. Implementing a Storage Backend
-Custom persistence engines implement the [`StorageBackend`](src/protocols.py) protocol defined in [`src/protocols.py`](src/protocols.py).
+Custom persistence engines implement the [`StorageBackend`](src/mdrap/protocols.py) protocol defined in [`src/protocols.py`](src/mdrap/protocols.py).
 - Guide: [Storage Backend Implementation](docs/extending/storage-backend.md)
 
 ---

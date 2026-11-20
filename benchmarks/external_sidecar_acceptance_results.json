@@ -1,0 +1,122 @@
+{
+  "metadata": {
+    "platform": "linux",
+    "python_version": "3.10.12",
+    "interpreter": "/home/kiit/.clean_linux_venv/bin/python",
+    "timestamp": 1795186525.1361425
+  },
+  "test1_dual_interface": {
+    "status": "PASS",
+    "stats": {
+      "shm": {
+        "ticks": 963,
+        "depths": 4,
+        "total_events": 967,
+        "torn_reads": 0,
+        "seq_gaps": 0,
+        "laps": 0,
+        "reconnects": 0,
+        "latency_us": {
+          "p50": 197.65,
+          "p95": 381.95,
+          "p99": 629.19,
+          "p999": 2967.6,
+          "max": 2967.6
+        }
+      },
+      "tcp": {
+        "ticks": 963,
+        "seq_gaps": 4,
+        "reconnects": 0,
+        "latency_us": {
+          "p50": 390.77,
+          "p95": 737.67,
+          "p99": 1147.99,
+          "p999": 6648.3,
+          "max": 6648.3
+        }
+      },
+      "consistency": {
+        "passed": 477,
+        "failed": 0
+      }
+    }
+  },
+  "test2_protocol_fuzz": {
+    "status": "PASS",
+    "non_existent_handled": true,
+    "fuzz_tests": 7,
+    "daemon_healthy": true
+  },
+  "test3_failure_recovery": {
+    "status": "PASS",
+    "results": {
+      "consumer_crash_replacement": "PASS",
+      "tcp_hard_rst_recovery": "PASS",
+      "slow_consumer_lap_handling": "PASS",
+      "multiple_independent_consumers": "PASS",
+      "publisher_restart_epoch_recovery": "PASS"
+    }
+  },
+  "test4_reliability_soak": {
+    "status": "PASS",
+    "duration_s": 10.01,
+    "shm_total": 3419,
+    "shm_eps": 341.6,
+    "tcp_total": 3419,
+    "tcp_eps": 341.6,
+    "shm_latency_us": {
+      "p50": 154.02,
+      "p95": 295.64,
+      "p99": 412.7,
+      "p999": 825.17,
+      "max": 2610.68
+    },
+    "tcp_latency_us": {
+      "p50": 222.21,
+      "p95": 555.99,
+      "p99": 938.65,
+      "p999": 1499.65,
+      "max": 3033.16
+    },
+    "rss_start_mb": 28.77,
+    "rss_end_mb": 28.82,
+    "rss_delta_mb": 0.05,
+    "handles_start": 7,
+    "handles_end": 7,
+    "stats": {
+      "shm": {
+        "ticks": 3419,
+        "depths": 0,
+        "total_events": 3419,
+        "torn_reads": 0,
+        "seq_gaps": 0,
+        "laps": 0,
+        "reconnects": 0,
+        "latency_us": {
+          "p50": 154.02,
+          "p95": 295.64,
+          "p99": 412.7,
+          "p999": 825.17,
+          "max": 2610.68
+        }
+      },
+      "tcp": {
+        "ticks": 3419,
+        "seq_gaps": 0,
+        "reconnects": 0,
+        "latency_us": {
+          "p50": 222.21,
+          "p95": 555.99,
+          "p99": 938.65,
+          "p999": 1499.65,
+          "max": 3033.16
+        }
+      },
+      "consistency": {
+        "passed": 1694,
+        "failed": 0
+      }
+    }
+  }
+}

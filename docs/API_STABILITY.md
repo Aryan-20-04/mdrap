@@ -101,27 +101,22 @@ Third-party packages and plugins rely on these structural subtyping protocols:
 | `MarketEvent` | **`BETA`** | [`src/mdrap/client.py`](../src/mdrap/client.py) | Normalized client event model |
 | `REST & WebSocket API` | **`BETA`** | [`src/mdrap/api.py`](../src/mdrap/api.py) | Commercial REST endpoints and real-time streaming WebSocket hub |
 | `PrometheusExporter` | **`STABLE`** | [`src/mdrap/prometheus.py`](../src/mdrap/prometheus.py) | OpenMetrics / Prometheus scrape exposition |
-| `DurableKafkaSink` | **`STABLE`** | [`src/mdrap/kafka_sink.py`](../src/mdrap/kafka_sink.py) | Decoupled background Kafka publication queue |
+| `MarketDataDaemon` | **`STABLE`** | [`src/mdrap/service.py`](../src/mdrap/service.py) | High-performance TCP push streaming daemon |
+| `StreamClient` | **`STABLE`** | [`src/mdrap/service.py`](../src/mdrap/service.py) | Resilient TCP consumer client for downstream sidecars |
 
 ### 3.5 High-Speed Transport & Analytical Storage
 
 | Component | Stability | Module | Responsibility |
 | :--- | :--- | :--- | :--- |
-| `SHMRingBuffer` | **`BETA`** | [`src/mdrap/shm.py`](../src/mdrap/shm.py) | Lockless zero-copy shared memory IPC ring buffer |
-| `ColumnarStore` | **`BETA`** | [`src/mdrap/columnar.py`](../src/mdrap/columnar.py) | Embedded DuckDB vectorized analytics and Parquet archival |
+| `SHMRingBuffer` | **`STABLE`** | [`src/mdrap/shm.py`](../src/mdrap/shm.py) | Lockless zero-copy shared memory IPC ring buffer |
+| `ColumnarStore` | **`BETA`** | [`src/mdrap/columnar.py`](../src/mdrap/columnar.py) | Analytical query engine and SQLite WAL synchronization |
 | `ITCHParser` | **`BETA`** | [`src/mdrap/itch.py`](../src/mdrap/itch.py) | NASDAQ TotalView ITCH 5.0 binary feed dissector |
-| `SBEParser` | **`BETA`** | [`src/mdrap/sbe.py`](../src/mdrap/sbe.py) | Simple Binary Encoding (SBE) parser |
+| `SBEDecoder` | **`BETA`** | [`src/mdrap/sbe.py`](../src/mdrap/sbe.py) | Simple Binary Encoding (SBE) parser |
 
-### 3.6 Research, Modeling & Quantitative Strategies
+### 3.6 Research, Modeling & Out-of-Scope Modules
 
-| Module | Stability | Responsibility |
-| :--- | :--- | :--- |
-| `strategy_sdk` | **`EXPERIMENTAL`** | Algorithmic execution templates (Avellaneda-Stoikov MM, Whale Tracker) |
-| `options` | **`EXPERIMENTAL`** | Black-Scholes valuation and Options Greeks engine |
-| `risk` | **`EXPERIMENTAL`** | Pre-trade risk limits, margin checking, and draw-down kill switches |
-| `backtest` | **`BETA`** | Historical event replay and execution simulation |
-| `tca` | **`EXPERIMENTAL`** | Transaction Cost Analysis (TCA) and slippage benchmarking |
-| `research` | **`EXPERIMENTAL`** | Jupyter workspace helpers and statistical exploratory tooling |
+> [!NOTE]
+> In accordance with the **NO DEPLOYMENT** read-only infrastructure governance mandate, live execution, options pricing, portfolio risk management, and order routing modules (`strategy_sdk`, `options`, `risk`, `backtest`, `tca`) have been decoupled from the core platform into external companion packages. The core platform exposes strictly read-only validation, normalization, and audit stream interfaces.
 
 ---
 

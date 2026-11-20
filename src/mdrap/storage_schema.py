@@ -259,8 +259,11 @@ SQLITE_RETRY_BACKOFF_WRITE_S: float = 0.05  # 50 ms backoff on write lock conten
 SQLITE_RETRY_BACKOFF_READ_S: float = 0.01  # 10 ms backoff on read contention
 DEFAULT_SQLITE_TIMEOUT_S: float = 30.0  # 30-second busy timeout
 DEFAULT_BUSY_TIMEOUT_MS: int = 30000  # 30,000 ms pragma busy timeout
-DEFAULT_SQLITE_MMAP_MB: int = 256  # 256 MB mmap
-DEFAULT_SQLITE_CACHE_MB: int = 64  # 64 MB dedicated cache
+DEFAULT_SQLITE_MMAP_MB: int = 256  # Writer mapping; readers use bounded settings below.
+DEFAULT_SQLITE_CACHE_MB: int = 64  # Writer page cache.
+DEFAULT_SQLITE_READER_POOL_SIZE: int = 16
+DEFAULT_SQLITE_READER_MMAP_MB: int = 16
+DEFAULT_SQLITE_READER_CACHE_MB: int = 2
 BYTES_PER_MB: int = 1024 * 1024
 PAGE_CACHE_KIB_PER_MB: int = 1000
 CURRENT_SCHEMA_VERSION: int = 3
@@ -307,15 +310,21 @@ def _read_synchronized(method):
 
     @functools.wraps(method)
     def wrapper(self, *args, **kwargs):
+        # In-memory databases must synchronize on _read_lock
+        if getattr(self, "path", "") == ":memory:":
+            with self._read_lock:
+                return method(self, *args, **kwargs)
+
+        # On-disk WAL reads borrow an exclusive connection from a bounded pool.
         retries = DEFAULT_SQLITE_RETRIES
         while True:
-            with self._read_lock:
-                try:
+            try:
+                with self._reader_connection():
                     return method(self, *args, **kwargs)
-                except sqlite3.OperationalError as exc:
-                    if "locked" not in str(exc).lower() or retries <= 0:
-                        raise
-                    retries -= 1
+            except sqlite3.OperationalError as exc:
+                if "locked" not in str(exc).lower() or retries <= 0:
+                    raise
+                retries -= 1
             time.sleep(SQLITE_RETRY_BACKOFF_READ_S)
 
     return wrapper

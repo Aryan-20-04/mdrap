@@ -60,13 +60,6 @@ from .supervisor import (
     MultiChannelSupervisor,
     set_core_affinity,
 )
-from .network import (
-    AFXDPConfig,
-    HighSpeedSocketReceiver,
-    NetworkBackendType,
-    NetworkCapabilities,
-    detect_network_capabilities,
-)
 
 # Backward-compatible alias for deterministic engine
 CoreEngine = Engine
@@ -136,11 +129,6 @@ __all__ = [
     "ChannelWorker",
     "ChannelWorkerConfig",
     "set_core_affinity",
-    "detect_network_capabilities",
-    "NetworkCapabilities",
-    "NetworkBackendType",
-    "AFXDPConfig",
-    "HighSpeedSocketReceiver",
     "CompanionPackageMissing",
     "require_companion",
 ]

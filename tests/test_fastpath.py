@@ -293,6 +293,8 @@ def test_multithreaded_fastpath_safety():
 def test_fastpath_evaluate_batch_scratch_reuse():
     """Verify FastQualityEngine.evaluate_batch reuses scratch buffers across multiple sizes."""
     eng = FastQualityEngine(thread_safe=True)
+    if not getattr(eng, "is_native", False):
+        pytest.skip("Native fastpath not available")
     assert eng._batch_capacity == 0
     assert eng._batch_c_events is None
 
@@ -429,3 +431,84 @@ def test_fastpath_halt_and_status_event_parity():
     res_c_status = c_eng.evaluate(ev_status)
     assert res_py_status.quality_status == QualityStatus.VALID
     assert res_c_status.quality_status == QualityStatus.VALID
+
+
+def test_split_sequence_domains_parity_and_gaps():
+    """Verify Python/C parity for both unified-sequence and split-domain sequence channels."""
+    import time
+    from mdrap.config import QualityConfig, DEFAULT_ASSET_CLASSES
+    from mdrap.models import CanonicalEvent, EventType, QualityStatus, Reason
+
+    now = time.time()
+
+    def _mk(ev_id, ev_type, seq, inst="AAPL"):
+        if ev_type == EventType.QUOTE:
+            return CanonicalEvent(
+                event_id=ev_id,
+                source="EXCHANGE_A",
+                instrument_id=inst,
+                event_type=EventType.QUOTE,
+                exchange_timestamp=now,
+                receive_timestamp=now,
+                sequence_number=seq,
+                bid_price=100.0,
+                ask_price=100.1,
+                bid_size=1.0,
+                ask_size=1.0,
+            )
+        return CanonicalEvent(
+            event_id=ev_id,
+            source="EXCHANGE_A",
+            instrument_id=inst,
+            event_type=EventType.TRADE,
+            exchange_timestamp=now,
+            receive_timestamp=now,
+            sequence_number=seq,
+            price=100.05,
+            quantity=1.0,
+        )
+
+    # 1. Unified-sequence feed (default split_sequence_domains=False)
+    py_uni = QualityEngine(QualityConfig(split_sequence_domains=False))
+    c_uni = FastQualityEngine(QualityConfig(split_sequence_domains=False))
+
+    unified_stream = [
+        (EventType.QUOTE, 1, QualityStatus.VALID, False),
+        (EventType.TRADE, 2, QualityStatus.VALID, False),
+        (EventType.QUOTE, 3, QualityStatus.VALID, False),
+        (EventType.TRADE, 5, QualityStatus.SUSPICIOUS, True),  # Genuine gap (4 skipped)
+    ]
+    for idx, (etype, seq, exp_status, exp_gap) in enumerate(unified_stream):
+        r_py = py_uni.evaluate(_mk(f"u-py-{idx}", etype, seq))
+        r_c = c_uni.evaluate(_mk(f"u-c-{idx}", etype, seq))
+        assert r_py.quality_status == exp_status
+        assert r_c.quality_status == exp_status
+        assert (Reason.SEQUENCE_GAP.value in r_py.reasons) == exp_gap
+        assert (Reason.SEQUENCE_GAP.value in r_c.reasons) == exp_gap
+
+    # 2. Independently-sequenced channels (split_sequence_domains=True)
+    py_split = QualityEngine(QualityConfig(split_sequence_domains=True))
+    c_split = FastQualityEngine(QualityConfig(split_sequence_domains=True))
+
+    split_stream = [
+        (EventType.QUOTE, 100, QualityStatus.VALID, False),
+        (EventType.TRADE, 5000, QualityStatus.VALID, False),
+        (EventType.QUOTE, 101, QualityStatus.VALID, False),
+        (EventType.TRADE, 5001, QualityStatus.VALID, False),
+        (EventType.QUOTE, 103, QualityStatus.SUSPICIOUS, True),   # Genuine quote gap (102 skipped)
+        (EventType.TRADE, 5004, QualityStatus.SUSPICIOUS, True),  # Genuine trade gap (5002-5003 skipped)
+    ]
+    for idx, (etype, seq, exp_status, exp_gap) in enumerate(split_stream):
+        r_py = py_split.evaluate(_mk(f"s-py-{idx}", etype, seq, inst="BTC/USD"))
+        r_c = c_split.evaluate(_mk(f"s-c-{idx}", etype, seq, inst="BTC/USD"))
+        assert r_py.quality_status == exp_status
+        assert r_c.quality_status == exp_status
+        assert (Reason.SEQUENCE_GAP.value in r_py.reasons) == exp_gap
+        assert (Reason.SEQUENCE_GAP.value in r_c.reasons) == exp_gap
+
+    # 3. Adapter asset-class selection (DEFAULT_ASSET_CLASSES -> crypto auto-splits, equities unified)
+    ac_cfg = QualityConfig(asset_classes=DEFAULT_ASSET_CLASSES)
+    assert ac_cfg.for_instrument("BTC/USD").split_sequence_domains is True
+    assert ac_cfg.for_instrument("ETH/USD").split_sequence_domains is True
+    assert ac_cfg.for_instrument("AAPL").split_sequence_domains is False
+

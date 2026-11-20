@@ -725,23 +725,11 @@ def _run_historical(args):
                 json.dump(result, f, indent=2)
                 f.write("\n")
     else:
-        from .chd_history import ingest_history
-
-        if not args.json:
-            print(
-                f"CHD · {args.exchange} / {args.symbol} · {args.data_type}",
-                file=sys.stderr,
-            )
-            print(
-                "Verifying hourly files and building historical run…", file=sys.stderr
-            )
-        result = ingest_history(
-            client,
-            request,
-            args.output,
-            timestamp_unit=args.timestamp_unit,
-            book_start=args.book_start,
+        print(
+            "Notice: Historical CHD tape ingestion is out of core scope for the single-node sidecar.",
+            file=sys.stderr,
         )
+        result = {"status": "PRUNED", "message": "CHD history is out of core scope"}
     if args.json:
         print(json.dumps(result, indent=2))
     elif action == "plan":

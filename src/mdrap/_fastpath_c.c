@@ -8,6 +8,51 @@
 #define PY_SSIZE_T_CLEAN
 #include <Python.h>
 #include "fastpath.c"
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <sched.h>
+#endif
+
+typedef struct {
+    FastEngine *engine;
+    volatile long active_batch_calls;
+    int closing;
+} FastEngineHandle;
+
+static const char *FAST_ENGINE_CAPSULE = "mdrap.FastEngine";
+
+static FastEngineHandle *get_engine_handle(PyObject *obj) {
+    FastEngineHandle *handle = (FastEngineHandle *)PyCapsule_GetPointer(
+        obj, FAST_ENGINE_CAPSULE
+    );
+    if (!handle) return NULL;
+    if (!handle->engine || handle->closing) {
+        PyErr_SetString(PyExc_RuntimeError, "FastQualityEngine is closed");
+        return NULL;
+    }
+    return handle;
+}
+
+static void engine_handle_capsule_destroy(PyObject *capsule) {
+    FastEngineHandle *handle = (FastEngineHandle *)PyCapsule_GetPointer(
+        capsule, FAST_ENGINE_CAPSULE
+    );
+    if (!handle) {
+        PyErr_Clear();
+        return;
+    }
+    if (handle->engine) fastpath_engine_destroy(handle->engine);
+    free(handle);
+}
+
+static void yield_during_engine_close(void) {
+#ifdef _WIN32
+    Sleep(1);
+#else
+    sched_yield();
+#endif
+}
 
 #if defined(_MSC_VER)
   #include <intrin.h>
@@ -62,8 +107,8 @@ static PyObject *py_eval_fast2(PyObject *self, PyObject *const *args, Py_ssize_t
         PyErr_SetString(PyExc_TypeError, "eval_fast2 requires 14 positional arguments");
         return NULL;
     }
-    uint64_t engine_ptr = PyLong_AsUnsignedLongLong(args[0]);
-    if (PyErr_Occurred()) return NULL;
+    FastEngineHandle *handle = get_engine_handle(args[0]);
+    if (!handle) return NULL;
 
     int32_t s_id = (int32_t)PyLong_AsLong(args[1]);
     int32_t i_id = (int32_t)PyLong_AsLong(args[2]);
@@ -81,13 +126,8 @@ static PyObject *py_eval_fast2(PyObject *self, PyObject *const *args, Py_ssize_t
 
     if (PyErr_Occurred()) return NULL;
 
-    FastEngine *eng = (FastEngine *)(uintptr_t)engine_ptr;
-    if (!eng) {
-        PyErr_SetString(PyExc_ValueError, "FastEngine pointer is NULL or destroyed");
-        return NULL;
-    }
     uint64_t packed = fastpath_engine_eval_fast2(
-        eng, s_id, i_id, ev_type, ex_ts, rc_ts, seq, price, qty, bid, ask, bid_sz, ask_sz, pm
+        handle->engine, s_id, i_id, ev_type, ex_ts, rc_ts, seq, price, qty, bid, ask, bid_sz, ask_sz, pm
     );
 
     return PyLong_FromUnsignedLongLong(packed);
@@ -110,24 +150,56 @@ static PyObject *py_engine_create(PyObject *self, PyObject *args) {
         PyErr_SetString(PyExc_RuntimeError, "Failed to allocate FastEngine");
         return NULL;
     }
-    return PyLong_FromUnsignedLongLong((uintptr_t)eng);
+    FastEngineHandle *handle = (FastEngineHandle *)calloc(1, sizeof(FastEngineHandle));
+    if (!handle) {
+        fastpath_engine_destroy(eng);
+        return PyErr_NoMemory();
+    }
+    handle->engine = eng;
+    PyObject *capsule = PyCapsule_New(handle, FAST_ENGINE_CAPSULE, engine_handle_capsule_destroy);
+    if (!capsule) {
+        fastpath_engine_destroy(eng);
+        free(handle);
+    }
+    return capsule;
+}
+
+static PyObject *py_engine_address(PyObject *self, PyObject *args) {
+    (void)self;
+    PyObject *capsule = NULL;
+    if (!PyArg_ParseTuple(args, "O", &capsule)) return NULL;
+    FastEngineHandle *handle = get_engine_handle(capsule);
+    if (!handle) return NULL;
+    return PyLong_FromUnsignedLongLong((uintptr_t)handle->engine);
 }
 
 static PyObject *py_engine_destroy(PyObject *self, PyObject *args) {
     (void)self;
-    uint64_t engine_ptr = 0;
-    if (!PyArg_ParseTuple(args, "K", &engine_ptr)) {
+    PyObject *capsule = NULL;
+    if (!PyArg_ParseTuple(args, "O", &capsule)) {
         return NULL;
     }
-    if (engine_ptr) {
-        fastpath_engine_destroy((FastEngine *)(uintptr_t)engine_ptr);
+    FastEngineHandle *handle = (FastEngineHandle *)PyCapsule_GetPointer(
+        capsule, FAST_ENGINE_CAPSULE
+    );
+    if (!handle) return NULL;
+    if (!handle->engine) Py_RETURN_NONE;
+    handle->closing = 1;
+    while (handle->active_batch_calls > 0) {
+        Py_BEGIN_ALLOW_THREADS
+        yield_during_engine_close();
+        Py_END_ALLOW_THREADS
     }
+    FastEngine *eng = handle->engine;
+    handle->engine = NULL;
+    handle->closing = 0;
+    fastpath_engine_destroy(eng);
     Py_RETURN_NONE;
 }
 
 static PyObject *py_engine_configure(PyObject *self, PyObject *args) {
     (void)self;
-    uint64_t engine_ptr = 0;
+    PyObject *capsule = NULL;
     int32_t price_min_samples = -1;
     int32_t price_reseed_after = -1;
     double price_sigma_floor_rel = -1.0;
@@ -138,8 +210,8 @@ static PyObject *py_engine_configure(PyObject *self, PyObject *args) {
     int32_t allow_negative = -1;
 
     if (!PyArg_ParseTuple(
-        args, "KiidddLii",
-        &engine_ptr,
+        args, "OiidddLii",
+        &capsule,
         &price_min_samples,
         &price_reseed_after,
         &price_sigma_floor_rel,
@@ -152,9 +224,11 @@ static PyObject *py_engine_configure(PyObject *self, PyObject *args) {
         return NULL;
     }
 
-    if (engine_ptr) {
+    FastEngineHandle *handle = get_engine_handle(capsule);
+    if (!handle) return NULL;
+    {
         fastpath_engine_configure(
-            (FastEngine *)(uintptr_t)engine_ptr,
+            handle->engine,
             price_min_samples,
             price_reseed_after,
             price_sigma_floor_rel,
@@ -170,60 +244,64 @@ static PyObject *py_engine_configure(PyObject *self, PyObject *args) {
 
 static PyObject *py_engine_reset(PyObject *self, PyObject *args) {
     (void)self;
-    uint64_t engine_ptr = 0;
-    if (!PyArg_ParseTuple(args, "K", &engine_ptr)) {
+    PyObject *capsule = NULL;
+    if (!PyArg_ParseTuple(args, "O", &capsule)) {
         return NULL;
     }
-    if (engine_ptr) {
-        fastpath_engine_reset((FastEngine *)(uintptr_t)engine_ptr);
-    }
+    FastEngineHandle *handle = get_engine_handle(capsule);
+    if (!handle) return NULL;
+    fastpath_engine_reset(handle->engine);
     Py_RETURN_NONE;
 }
 
 static PyObject *py_engine_evaluate_batch(PyObject *self, PyObject *args) {
     (void)self;
-    uint64_t engine_ptr = 0;
+    PyObject *capsule = NULL;
     uint64_t events_ptr = 0;
     uint64_t results_ptr = 0;
     int32_t count = 0;
-    if (!PyArg_ParseTuple(args, "KKKi", &engine_ptr, &events_ptr, &results_ptr, &count)) {
+    if (!PyArg_ParseTuple(args, "OKKi", &capsule, &events_ptr, &results_ptr, &count)) {
         return NULL;
     }
-    FastEngine *eng = (FastEngine *)(uintptr_t)engine_ptr;
+    FastEngineHandle *handle = get_engine_handle(capsule);
+    if (!handle) return NULL;
+    FastEngine *eng = handle->engine;
     const FastEvent *evs = (const FastEvent *)(uintptr_t)events_ptr;
     FastResult *res = (FastResult *)(uintptr_t)results_ptr;
     if (!eng || !evs || !res || count <= 0) {
         Py_RETURN_NONE;
     }
+    handle->active_batch_calls++;
     Py_BEGIN_ALLOW_THREADS
     fastpath_engine_evaluate_batch(eng, evs, res, count);
     Py_END_ALLOW_THREADS
+    handle->active_batch_calls--;
     Py_RETURN_NONE;
 }
 
 static PyObject *py_engine_source_reset(PyObject *self, PyObject *args) {
     (void)self;
-    uint64_t engine_ptr = 0;
+    PyObject *capsule = NULL;
     int32_t source_id = 0;
-    if (!PyArg_ParseTuple(args, "Ki", &engine_ptr, &source_id)) {
+    if (!PyArg_ParseTuple(args, "Oi", &capsule, &source_id)) {
         return NULL;
     }
-    if (engine_ptr) {
-        fastpath_engine_source_reset((FastEngine *)(uintptr_t)engine_ptr, source_id);
-    }
+    FastEngineHandle *handle = get_engine_handle(capsule);
+    if (!handle) return NULL;
+    fastpath_engine_source_reset(handle->engine, source_id);
     Py_RETURN_NONE;
 }
 
 static PyObject *py_engine_set_hash_seed(PyObject *self, PyObject *args) {
     (void)self;
-    uint64_t engine_ptr = 0;
+    PyObject *capsule = NULL;
     uint64_t seed = 0;
-    if (!PyArg_ParseTuple(args, "KK", &engine_ptr, &seed)) {
+    if (!PyArg_ParseTuple(args, "OK", &capsule, &seed)) {
         return NULL;
     }
-    if (engine_ptr) {
-        fastpath_engine_set_hash_seed((FastEngine *)(uintptr_t)engine_ptr, seed);
-    }
+    FastEngineHandle *handle = get_engine_handle(capsule);
+    if (!handle) return NULL;
+    fastpath_engine_set_hash_seed(handle->engine, seed);
     Py_RETURN_NONE;
 }
 
@@ -642,6 +720,7 @@ static PyTypeObject NativeSpscQueueType = {
 static PyMethodDef FastpathMethods[] = {
     {"eval_fast2", (PyCFunction)py_eval_fast2, METH_FASTCALL, "Evaluate an event on FastEngine returning packed (status << 32 | reason_mask)"},
     {"engine_create", (PyCFunction)py_engine_create, METH_VARARGS, "Create FastEngine context"},
+    {"engine_address", (PyCFunction)py_engine_address, METH_VARARGS, "Return native address for diagnostics"},
     {"engine_destroy", (PyCFunction)py_engine_destroy, METH_VARARGS, "Destroy FastEngine context"},
     {"engine_configure", (PyCFunction)py_engine_configure, METH_VARARGS, "Configure FastEngine thresholds"},
     {"engine_reset", (PyCFunction)py_engine_reset, METH_VARARGS, "Reset FastEngine internal statistics"},

@@ -12,8 +12,184 @@ import threading
 import time
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+import abc
 from .models import CanonicalEvent, QualityStatus, RawEvent, Reason
-from .partition import ChannelIngressSequencer, SpscRingQueue
+
+# ---------------------------------------------------------------------------
+# SPSC Ring Queue (Pure Python & C11 Native Fastpath fallback)
+# ---------------------------------------------------------------------------
+class PySpscRingQueue:
+    """Pure-Python bounded, lock-free SPSC circular ring buffer fallback."""
+
+    def __init__(self, capacity: int = 65536) -> None:
+        cap = 1
+        while cap < capacity:
+            cap <<= 1
+        self.capacity = cap
+        self.mask = cap - 1
+        self._buffer: List[Any] = [None] * cap
+        self._head: int = 0
+        self._tail: int = 0
+
+    def offer(self, item: Any) -> bool:
+        """Enqueue item without blocking. Returns False if buffer is full."""
+        head = self._head
+        tail = self._tail
+        if (head - tail) >= self.capacity:
+            return False
+        self._buffer[head & self.mask] = item
+        self._head = head + 1
+        return True
+
+    def poll(self) -> Any | None:
+        """Dequeue next item without blocking. Returns None if buffer is empty."""
+        tail = self._tail
+        head = self._head
+        if tail == head:
+            return None
+        idx = tail & self.mask
+        item = self._buffer[idx]
+        self._buffer[idx] = None
+        self._tail = tail + 1
+        return item
+
+    def qsize(self) -> int:
+        return max(0, self._head - self._tail)
+
+    def empty(self) -> bool:
+        return self._tail == self._head
+
+    def full(self) -> bool:
+        return (self._head - self._tail) >= self.capacity
+
+
+_NATIVE_SPSC = None
+if os.environ.get("MDRAP_DISABLE_FASTPATH") != "1":
+    try:
+        from ._fastpath_c import NativeSpscQueue as _NativeSpscQueue
+
+        _NATIVE_SPSC = _NativeSpscQueue
+    except (ImportError, AttributeError):
+        _NATIVE_SPSC = None
+
+
+class SpscRingQueueMeta(abc.ABCMeta):
+    """Metaclass ensuring virtual inheritance works for both C11 Native & Pure-Python queues."""
+
+    pass
+
+
+class SpscRingQueue(metaclass=SpscRingQueueMeta):
+    """Bounded, lock-free Single-Producer Single-Consumer (SPSC) circular ring buffer."""
+
+    def __new__(cls, capacity: int = 65536) -> Any:
+        if _NATIVE_SPSC is not None and os.environ.get("MDRAP_DISABLE_FASTPATH") != "1":
+            return _NATIVE_SPSC(capacity=capacity)
+        return PySpscRingQueue(capacity=capacity)
+
+
+SpscRingQueue.register(PySpscRingQueue)
+if _NATIVE_SPSC is not None:
+    SpscRingQueue.register(_NATIVE_SPSC)
+
+
+class ChannelIngressSequencer:
+    """Enforces single-threaded exchange channel sequencing."""
+
+    def __init__(
+        self,
+        channel_id: str,
+        gap_manager: Optional[Any] = None,
+        max_jump_limit: int = 1_000_000,
+    ) -> None:
+        self.channel_id = str(channel_id)
+        self.gap_manager = gap_manager
+        self.max_jump_limit = max_jump_limit
+
+        self.last_sequence: Optional[int] = None
+        self.expected_sequence: Optional[int] = None
+        self.current_session_id: Optional[str] = None
+
+        self.total_received: int = 0
+        self.in_order_count: int = 0
+        self.gaps_detected: int = 0
+        self.missing_events_count: int = 0
+        self.duplicates_detected: int = 0
+        self.out_of_order_count: int = 0
+        self.resets_detected: int = 0
+
+    def verify_sequence(self, event: Any) -> Tuple[QualityStatus, Optional[str]]:
+        self.total_received += 1
+
+        seq = getattr(event, "sequence_number", None)
+        sess = getattr(event, "session_id", None)
+        src = getattr(event, "source", "UNKNOWN")
+        inst = getattr(event, "instrument_id", None) or getattr(event, "instrument", "")
+
+        payload = getattr(event, "payload", None)
+        if isinstance(payload, dict):
+            if seq is None:
+                seq = payload.get("sequence")
+            if sess is None:
+                sess = payload.get("session_id")
+            if not inst:
+                inst = payload.get("instrument") or payload.get("symbol") or ""
+
+        if seq is None:
+            return QualityStatus.VALID, None
+
+        sess_str = str(sess) if sess is not None else "SESSION_0"
+
+        if self.current_session_id is not None and sess_str != self.current_session_id:
+            self.resets_detected += 1
+            self.current_session_id = sess_str
+            self.last_sequence = seq
+            self.expected_sequence = seq + 1
+            self.in_order_count += 1
+            return QualityStatus.VALID, None
+
+        if self.current_session_id is None:
+            self.current_session_id = sess_str
+
+        if self.expected_sequence is None:
+            self.last_sequence = seq
+            self.expected_sequence = seq + 1
+            self.in_order_count += 1
+            return QualityStatus.VALID, None
+
+        if seq == self.expected_sequence:
+            self.last_sequence = seq
+            self.expected_sequence = seq + 1
+            self.in_order_count += 1
+            return QualityStatus.VALID, None
+
+        if seq == self.last_sequence:
+            self.duplicates_detected += 1
+            return QualityStatus.SUSPICIOUS, Reason.DUPLICATE.value
+
+        if seq < self.expected_sequence:
+            self.out_of_order_count += 1
+            if self.last_sequence is not None and (self.last_sequence - seq) < 100:
+                self.duplicates_detected += 1
+                return QualityStatus.SUSPICIOUS, Reason.DUPLICATE.value
+            return QualityStatus.SUSPICIOUS, Reason.OUT_OF_ORDER.value
+
+        gap_size = seq - self.expected_sequence
+        self.gaps_detected += 1
+        self.missing_events_count += gap_size
+
+        if self.gap_manager is not None:
+            self.gap_manager.record_gap(
+                source=src,
+                instrument=str(inst),
+                expected_start=self.expected_sequence,
+                received_seq=seq,
+                epoch=self.current_session_id,
+            )
+
+        self.last_sequence = seq
+        self.expected_sequence = seq + 1
+        return QualityStatus.SUSPICIOUS, Reason.SEQUENCE_GAP.value
 
 __stability__ = "stable"
 

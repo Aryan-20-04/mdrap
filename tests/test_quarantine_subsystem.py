@@ -9,7 +9,7 @@ Tests:
 """
 
 from mdrap.models import CanonicalEvent, EventType, QualityStatus, RawEvent, Reason
-from mdrap.quarantine import QuarantineManager, QuarantineRecord
+from mdrap.quarantine import QuarantineRecord
 
 
 def test_quarantine_record_preservation():
@@ -40,9 +40,7 @@ def test_quarantine_record_preservation():
 
 
 def test_quarantine_isolation_and_inspection():
-    """Quarantine manager stores, queries, and filters rejected records."""
-    qm = QuarantineManager()
-
+    """Verify QuarantineRecord representation and dictionary conversion."""
     rec1 = QuarantineRecord(
         event_id="q1",
         instrument_id="AAPL",
@@ -53,60 +51,38 @@ def test_quarantine_isolation_and_inspection():
         stage="Quality",
         raw_payload={"price": 150.0},
     )
-    rec2 = QuarantineRecord(
-        event_id="q2",
-        instrument_id="MSFT",
-        source="FEED_B",
-        timestamp=101.0,
-        rule="MD007",
-        reason=Reason.SCHEMA_VIOLATION.value,
-        stage="Gateway",
-        raw_payload={"price": "not_a_number"},
+    d = rec1.to_dict()
+    assert d["event_id"] == "q1"
+    assert d["instrument_id"] == "AAPL"
+    assert d["rule"] == "MD001"
+    assert d["reason"] == Reason.DUPLICATE.value
+
+
+def test_quarantine_from_canonical():
+    """Verify creating QuarantineRecord from CanonicalEvent."""
+    ev = CanonicalEvent(
+        event_id="can_1",
+        instrument_id="AAPL",
+        event_type=EventType.TRADE,
+        exchange_timestamp=100.0,
+        receive_timestamp=100.005,
+        processing_timestamp=100.006,
+        source="FEED_A",
+        sequence_number=1,
+        price=150.0,
+        quantity=100.0,
+        quality_status=QualityStatus.INVALID,
+        reasons=[Reason.CROSSED_QUOTE.value],
     )
-
-    qm.isolate(rec1)
-    qm.isolate(rec2)
-
-    assert qm.count() == 2
-    assert qm.get("q1") == rec1
-    assert qm.get("q2") == rec2
-
-    # Filter by rule
-    dups = qm.list_records(rule="MD001")
-    assert len(dups) == 1
-    assert dups[0].event_id == "q1"
-
-    # Filter by source
-    feed_b = qm.list_records(source="FEED_B")
-    assert len(feed_b) == 1
-    assert feed_b[0].event_id == "q2"
-
-
-def test_quarantine_deterministic_replay():
-    """Replaying an identical stream produces an identical quarantine ledger."""
-
-    def run_stream():
-        qm = QuarantineManager()
-        for i in range(50):
-            if i % 5 == 0:
-                qm.isolate(
-                    QuarantineRecord(
-                        event_id=f"bad_{i}",
-                        instrument_id="AAPL",
-                        source="FEED_A",
-                        timestamp=100.0 + i,
-                        rule="MD005",
-                        reason=Reason.CROSSED_QUOTE.value,
-                        stage="Book",
-                        raw_payload={"bid": 150.0, "ask": 149.0},
-                    )
-                )
-        return [(r.event_id, r.rule, r.reason) for r in qm.list_records(limit=100)]
-
-    run1 = run_stream()
-    run2 = run_stream()
-    assert len(run1) == 10
-    assert run1 == run2
+    rec = QuarantineRecord.from_canonical(
+        event=ev,
+        rule="MD005",
+        stage="Quality",
+    )
+    assert rec.event_id == "can_1"
+    assert rec.reason == Reason.CROSSED_QUOTE.value
+    assert rec.rule == "MD005"
+    assert ev.quality_status == QualityStatus.INVALID
 
 
 def test_quarantine_does_not_mutate_accepted_data():
@@ -127,15 +103,12 @@ def test_quarantine_does_not_mutate_accepted_data():
         reasons=[],
     )
 
-    qm = QuarantineManager()
     bad_record = QuarantineRecord.from_canonical(
         event=accepted_event,
         rule="MD001",
         stage="Quality",
     )
-    qm.isolate(bad_record)
-
+    assert bad_record.event_id == "clean_1"
     # accepted_event itself must remain VALID with empty reasons
     assert accepted_event.quality_status == QualityStatus.VALID
     assert accepted_event.reasons == []
-    assert qm.get("clean_1") is not None

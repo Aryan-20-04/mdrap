@@ -27,6 +27,7 @@ Performance & Concurrency Pragmas:
 from __future__ import annotations
 
 from contextlib import contextmanager
+import collections
 import functools
 import hashlib
 import hmac
@@ -36,6 +37,7 @@ import os
 import sqlite3
 import threading
 import time
+import weakref
 from typing import Any
 
 from .models import CanonicalEvent
@@ -46,6 +48,9 @@ from .storage_schema import (
     DEFAULT_BUSY_TIMEOUT_MS,
     DEFAULT_SQLITE_CACHE_MB,
     DEFAULT_SQLITE_MMAP_MB,
+    DEFAULT_SQLITE_READER_CACHE_MB,
+    DEFAULT_SQLITE_READER_MMAP_MB,
+    DEFAULT_SQLITE_READER_POOL_SIZE,
     DEFAULT_SQLITE_RETRIES,
     DEFAULT_SQLITE_TIMEOUT_S,
     PAGE_CACHE_KIB_PER_MB,
@@ -69,6 +74,9 @@ __all__ = [
     "DEFAULT_BUSY_TIMEOUT_MS",
     "DEFAULT_SQLITE_CACHE_MB",
     "DEFAULT_SQLITE_MMAP_MB",
+    "DEFAULT_SQLITE_READER_CACHE_MB",
+    "DEFAULT_SQLITE_READER_MMAP_MB",
+    "DEFAULT_SQLITE_READER_POOL_SIZE",
     "DEFAULT_SQLITE_RETRIES",
     "DEFAULT_SQLITE_TIMEOUT_S",
     "PAGE_CACHE_KIB_PER_MB",
@@ -127,6 +135,11 @@ class Store(StoreAuditMixin):
             )
         self.conflicts: int = 0
         self.recovery_conflicts: int = 0
+        self._writes_since_checkpoint: int = 0
+        self._checkpoint_interval: int = int(
+            os.environ.get("MDRAP_WAL_CHECKPOINT_INTERVAL", "5000")
+        )
+        self._wal_checkpoint_count: int = 0
         is_mem = (
             path == ":memory:"
             or "mode=memory" in path
@@ -418,29 +431,178 @@ class Store(StoreAuditMixin):
             )
             self.conn.commit()
 
-            if not is_mem:
-                try:
-                    self.read_conn = sqlite3.connect(
-                        path, timeout=DEFAULT_SQLITE_TIMEOUT_S, check_same_thread=False
-                    )
-                    self.read_conn.execute("PRAGMA query_only=ON;")
-                    self.read_conn.execute(
-                        f"PRAGMA busy_timeout={DEFAULT_BUSY_TIMEOUT_MS};"
-                    )
-                    self.read_conn.execute(f"PRAGMA mmap_size={mmap_bytes};")
-                    self.read_conn.execute(f"PRAGMA cache_size=-{cache_kib};")
-                    self.read_conn.execute("PRAGMA temp_store=MEMORY;")
-                except Exception:
-                    self.read_conn = self.conn
-                    self._read_lock = self._lock
-            else:
-                self.read_conn = self.conn
-                self._read_lock = self._lock
+            self._local_readers = threading.local()
+            self._all_local_conns: dict[int, sqlite3.Connection] = {}
+            self._idle_readers: collections.deque[sqlite3.Connection] = collections.deque()
+            self._reader_limit = min(
+                32,
+                max(
+                    1,
+                    int(
+                        os.environ.get(
+                            "MDRAP_SQLITE_READER_POOL_SIZE",
+                            DEFAULT_SQLITE_READER_POOL_SIZE,
+                        )
+                    ),
+                ),
+            )
+            self._reader_cache_kib = min(
+                8,
+                max(
+                    1,
+                    int(
+                        os.environ.get(
+                            "MDRAP_SQLITE_READER_CACHE_MB",
+                            DEFAULT_SQLITE_READER_CACHE_MB,
+                        )
+                    ),
+                ),
+            ) * PAGE_CACHE_KIB_PER_MB
+            self._reader_mmap_bytes = min(
+                64,
+                max(
+                    0,
+                    int(
+                        os.environ.get(
+                            "MDRAP_SQLITE_READER_MMAP_MB",
+                            DEFAULT_SQLITE_READER_MMAP_MB,
+                        )
+                    ),
+                ),
+            ) * BYTES_PER_MB
+            self._reader_condition = threading.Condition(threading.Lock())
+            self._reader_creating = 0
+            self._reader_active = 0
+            self._reader_closing = False
+            self._shared_read_conn = self.conn if is_mem else None
 
             if path != ":memory:" and not path.startswith("file:"):
                 journal_path = f"{path}.journal"
                 if os.path.exists(journal_path) and os.path.getsize(journal_path) > 0:
                     self._recover_from_journal(journal_path)
+
+    @property
+    def read_conn(self) -> sqlite3.Connection:
+        if self.is_memory or not hasattr(self, "_local_readers"):
+            return getattr(self, "_shared_read_conn", getattr(self, "conn", None))
+        conn = getattr(self._local_readers, "borrowed", None)
+        if conn is not None:
+            return conn
+        conn = self._checkout_reader()
+        self._local_readers.borrowed = conn
+        self._local_readers.manual = True
+        thread = threading.current_thread()
+        weakref.finalize(
+            thread,
+            Store._finalize_thread_reader,
+            weakref.ref(self),
+            id(conn),
+        )
+        return conn
+
+    @read_conn.setter
+    def read_conn(self, val: Any) -> None:
+        self._shared_read_conn = val
+
+    def _checkout_reader(self) -> sqlite3.Connection:
+        with self._reader_condition:
+            while True:
+                if self._reader_closing:
+                    raise RuntimeError("Store is closed")
+                if self._idle_readers:
+                    conn = self._idle_readers.pop()
+                    self._reader_active += 1
+                    return conn
+                if len(self._all_local_conns) + self._reader_creating < self._reader_limit:
+                    self._reader_creating += 1
+                    break
+                self._reader_condition.wait()
+
+        try:
+            conn = sqlite3.connect(
+                self.path, timeout=DEFAULT_SQLITE_TIMEOUT_S, check_same_thread=False
+            )
+            conn.execute("PRAGMA query_only=ON;")
+            conn.execute(f"PRAGMA busy_timeout={DEFAULT_BUSY_TIMEOUT_MS};")
+            conn.execute(f"PRAGMA mmap_size={self._reader_mmap_bytes};")
+            conn.execute(f"PRAGMA cache_size=-{self._reader_cache_kib};")
+            conn.execute("PRAGMA temp_store=MEMORY;")
+        except Exception:
+            with self._reader_condition:
+                self._reader_creating -= 1
+                self._reader_condition.notify_all()
+            raise
+
+        with self._reader_condition:
+            self._reader_creating -= 1
+            if self._reader_closing:
+                conn.close()
+                self._reader_condition.notify_all()
+                raise RuntimeError("Store is closed")
+            self._all_local_conns[id(conn)] = conn
+            self._reader_active += 1
+            self._reader_condition.notify_all()
+            return conn
+
+    def _return_reader(self, conn_id: int) -> None:
+        with self._reader_condition:
+            conn = self._all_local_conns.get(conn_id)
+            if conn is None:
+                return
+            self._reader_active -= 1
+            if not self._reader_closing:
+                self._idle_readers.append(conn)
+            self._reader_condition.notify_all()
+
+    @staticmethod
+    def _finalize_thread_reader(store_ref, conn_id: int) -> None:
+        store = store_ref()
+        if store is not None:
+            store._return_reader(conn_id)
+
+    @contextmanager
+    def _reader_connection(self):
+        if self.is_memory:
+            with self._read_lock:
+                yield self.conn
+            return
+
+        borrowed = getattr(self._local_readers, "borrowed", None)
+        if borrowed is not None and not getattr(self._local_readers, "manual", False):
+            self._local_readers.depth = getattr(self._local_readers, "depth", 1) + 1
+            try:
+                yield borrowed
+            finally:
+                self._local_readers.depth -= 1
+            return
+
+        conn = self._checkout_reader()
+        self._local_readers.borrowed = conn
+        self._local_readers.manual = False
+        self._local_readers.depth = 1
+        try:
+            yield conn
+        finally:
+            self._local_readers.borrowed = None
+            self._local_readers.depth = 0
+            self._local_readers.manual = False
+            self._return_reader(id(conn))
+
+    @property
+    def reader_pool_stats(self) -> dict[str, int]:
+        """Return bounded reader connection and configured page-cache usage."""
+        with self._reader_condition:
+            total = len(self._all_local_conns)
+            return {
+                "limit": self._reader_limit,
+                "connections": total,
+                "active": self._reader_active,
+                "idle": len(self._idle_readers),
+                "page_cache_limit_mb": self._reader_limit
+                * (self._reader_cache_kib // PAGE_CACHE_KIB_PER_MB),
+                "mmap_virtual_limit_mb": self._reader_limit
+                * (self._reader_mmap_bytes // BYTES_PER_MB),
+            }
 
     def _recover_from_journal(self, journal_path: str) -> None:
         """Recover unprojected transactions from write-ahead journal after an ungraceful crash (Audit C1)."""
@@ -605,6 +767,7 @@ class Store(StoreAuditMixin):
         inserted = self.conn.total_changes - c_before
         if inserted < len(events):
             self.conflicts += len(events) - inserted
+        self._writes_since_checkpoint += len(events)
 
     @_synchronized
     def write_quarantine_batch(self, rows: list[tuple]):
@@ -775,6 +938,46 @@ class Store(StoreAuditMixin):
                     "INSERT OR REPLACE INTO source_health VALUES (?,?,?,?,?,?,?,?,?)",
                     source_health,
                 )
+            n_rows = len(canonical or []) + len(quarantine or [])
+            self._writes_since_checkpoint += n_rows
+
+    @_synchronized
+    def wal_checkpoint(self, mode: str = "PASSIVE") -> dict[str, int]:
+        """
+        Execute an explicit SQLite Write-Ahead Log (WAL) checkpoint.
+
+        Args:
+            mode: Checkpoint mode ('PASSIVE', 'FULL', 'RESTART', 'TRUNCATE').
+                  - PASSIVE: Checkpoints as many frames as possible without waiting for readers.
+                  - FULL: Waits for active readers to finish, checkpoints all frames.
+                  - RESTART: Like FULL, and additionally ensures next writer starts at frame 1.
+                  - TRUNCATE: Like RESTART, and truncates the WAL file to zero bytes.
+
+        Returns:
+            dict with:
+                - busy: 0 if checkpoint succeeded, 1 if blocked by active readers
+                - log_pages: Total number of frames in the WAL file
+                - checkpointed_pages: Number of frames successfully transferred to main DB
+        """
+        mode_upper = mode.upper()
+        if mode_upper not in ("PASSIVE", "FULL", "RESTART", "TRUNCATE"):
+            raise ValueError(
+                f"Invalid WAL checkpoint mode: {mode!r}. Must be one of ('PASSIVE', 'FULL', 'RESTART', 'TRUNCATE')"
+            )
+        try:
+            res = self.conn.execute(f"PRAGMA wal_checkpoint({mode_upper});").fetchone()
+            if res:
+                self._wal_checkpoint_count += 1
+                return {
+                    "busy": int(res[0]),
+                    "log_pages": int(res[1]),
+                    "checkpointed_pages": int(res[2]),
+                }
+        except sqlite3.OperationalError:
+            pass  # in-memory or non-WAL
+        except Exception as exc:
+            logger.debug("wal_checkpoint (%s) note: %s", mode_upper, exc)
+        return {"busy": 0, "log_pages": 0, "checkpointed_pages": 0}
 
     @_synchronized
     def checkpoint(self) -> int:
@@ -882,11 +1085,15 @@ class Store(StoreAuditMixin):
                 """,
                 (offset, time.time()),
             )
+            self._writes_since_checkpoint += len(batch) if batch else 1
 
     @_synchronized
     def commit(self):
         """Commit active database transaction."""
         self.conn.commit()
+        if self._writes_since_checkpoint >= self._checkpoint_interval:
+            self.wal_checkpoint("PASSIVE")
+            self._writes_since_checkpoint = 0
 
     # -- Rowid cursor tailing for streaming sinks (Kafka, downstream consumers) --
 
@@ -1023,6 +1230,7 @@ class Store(StoreAuditMixin):
         cols = [d[0] for d in cur.description]
         return dict(zip(cols, row))
 
+    @_read_synchronized
     def reprocess_quarantine(self, event_id: str, pipeline: Any) -> Any | None:
         """Reprocess a quarantined event through the pipeline."""
         rec = self.get_quarantined_record(event_id)
@@ -1082,20 +1290,53 @@ class Store(StoreAuditMixin):
             except Exception:
                 pass
         self._on_close = []
+        if hasattr(self, "_reader_condition"):
+            # A raw read_conn access is pinned to its thread until that thread exits.
+            # Release the current thread's manual lease so close() cannot wait on itself.
+            current_conn = getattr(self._local_readers, "borrowed", None)
+            if current_conn is not None and getattr(self._local_readers, "manual", False):
+                self._local_readers.borrowed = None
+                self._local_readers.manual = False
+                self._return_reader(id(current_conn))
+            with self._reader_condition:
+                self._reader_closing = True
+                self._reader_condition.notify_all()
+                while self._reader_active or self._reader_creating:
+                    self._reader_condition.wait()
+                readers = list(self._all_local_conns.values())
+                self._all_local_conns.clear()
+                self._idle_readers.clear()
+            for c in readers:
+                try:
+                    c.close()
+                except Exception:
+                    pass
         if (
-            hasattr(self, "read_conn")
-            and self.read_conn
-            and self.read_conn != self.conn
+            hasattr(self, "_shared_read_conn")
+            and self._shared_read_conn
+            and self._shared_read_conn != getattr(self, "conn", None)
         ):
             try:
-                self.read_conn.close()
+                self._shared_read_conn.close()
             except Exception as exc:
                 logger.debug("Error closing read_conn: %s", exc)
-            self.read_conn = None
+            self._shared_read_conn = None
         if hasattr(self, "conn") and self.conn:
-            self.conn.commit()
-            self.conn.close()
+            try:
+                self.conn.commit()
+            except Exception:
+                pass
+            try:
+                self.conn.close()
+            except Exception:
+                pass
             self.conn = None
+
+    def __del__(self) -> None:
+        try:
+            self.close()
+        except Exception:
+            pass
 
     # -- Data lifecycle: retention & compaction --
     # ponytail: WORM tables (audit_log, lineage) are never touched — spec A3.

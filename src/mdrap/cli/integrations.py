@@ -146,23 +146,10 @@ def cmd_top(args):
 
 
 def cmd_strategy(args):
-    """Institutional Algorithmic Strategy Engine & Paper EMS (§26)."""
-    from ..strategy_sdk import (
-        WhaleMomentumStrategy,
-        SpreadCaptureMarketMaker,
-        AvellanedaStoikovStrategy,
-    )
-    from ..simulator import FeedSimulator, SimulatorConfig
-    from ..gateway import ingest, normalize
-    from ..flow_tracker import OrderFlowTracker
-    from ..models import EventType, QualityStatus
-
+    """Institutional Algorithmic Strategy Engine & Paper EMS (Pruned in Read-Only Infrastructure)."""
     console = Console()
 
     action = getattr(args, "action", "list") or "list"
-    strat_name = getattr(args, "strategy", "whale_momentum") or "whale_momentum"
-    sym = getattr(args, "symbol", "AAPL") or "AAPL"
-    events_count = getattr(args, "events", 1000) or 1000
     show_book = getattr(args, "book", False)
     show_executions = getattr(args, "executions", False)
     export_arg = getattr(args, "export", None)
@@ -210,354 +197,33 @@ def cmd_strategy(args):
         console.print(
             "[dim]Run a strategy: [bold]mdrap strategy run -s avellaneda_stoikov -i AAPL -e 2000[/bold][/dim]\n"
         )
-        return
+        return 0
 
-    # Execute Paper Strategy Run
-    is_all_market = sym.upper() in ("ALL", "*", "MARKET")
-    sym_list = [s.strip().upper() for s in sym.split(",")] if not is_all_market else []
-    display_sym = "WHOLE MARKET UNIVERSE" if is_all_market else sym
-
-    if not getattr(args, "json", False):
-        console.print(
-            Panel(
-                f"[bold cyan]MDRAP Paper Trading Strategy Engine (§26)[/bold cyan]\n"
-                f"• Strategy: [bold yellow]{strat_name}[/bold yellow]  |  Universe: [bold green]{display_sym}[/bold green]  |  Events: [white]{events_count:,}[/white]",
-                expand=False,
+    if getattr(args, "json", False):
+        import json
+        print(
+            json.dumps(
+                {
+                    "status": "COMPANION_PACKAGE_REQUIRED",
+                    "package": "mdrap-strategies",
+                    "install_hint": "pip install packages/mdrap-strategies",
+                },
+                indent=2,
             )
         )
-
-    try:
-        if strat_name == "spread_capture":
-            strat = SpreadCaptureMarketMaker(
-                symbol=sym, min_spread_bps=3.0, quote_size=50.0
-            )
-        elif strat_name in (
-            "avellaneda_stoikov",
-            "as_mm",
-            "hft_mm",
-            "hft_market_maker",
-        ):
-            strat = AvellanedaStoikovStrategy(
-                symbol=sym, gamma=0.1, kappa=1.5, quote_size=50.0, max_inventory=500.0
-            )
-        else:
-            strat = WhaleMomentumStrategy(
-                symbol=sym, trade_size=100.0, stop_loss_pct=0.5
-            )
-    except (Exception,) as exc:
-        if "Companion" in type(exc).__name__ or isinstance(
-            exc, (NotImplementedError, TypeError, AttributeError)
-        ):
-            if getattr(args, "json", False):
-                import json
-
-                print(
-                    json.dumps(
-                        {
-                            "status": "COMPANION_PACKAGE_REQUIRED",
-                            "strategy": strat_name,
-                            "error": str(exc),
-                            "install_hint": "pip install packages/mdrap-strategies",
-                        },
-                        indent=2,
-                    )
-                )
-            else:
-                console.print(
-                    Panel(
-                        f"[bold yellow]{exc}[/bold yellow]\n\n"
-                        "[dim]To enable algorithmic strategy execution and backtesting:\n"
-                        "  [green]pip install packages/mdrap-strategies[/green][/dim]",
-                        title="[bold cyan]Companion Package Required[/bold cyan]",
-                        border_style="yellow",
-                    )
-                )
-            return 3
-        raise
-
-    flow_tracker = OrderFlowTracker()
-
-    # Data Quality Engine initialization (defaults to Native C Fastpath)
-    quality_engine = None
-    use_fastpath = getattr(args, "fastpath", True)
-    if use_fastpath:
-        try:
-            from ..fastpath import FastQualityEngine, is_available
-
-            quality_engine = FastQualityEngine() if is_available() else None
-        except Exception:
-            quality_engine = None
-    if quality_engine is None:
-        from ..quality import QualityEngine
-
-        quality_engine = QualityEngine()
-
-    # Single-pass streaming: generate → ingest → normalize → quality evaluate → strategy dispatch
-    sim_cfg = SimulatorConfig(seed=42, num_events=events_count)
-    if not is_all_market and sym_list:
-        sim_cfg.instruments = sym_list
-    sim = FeedSimulator(sim_cfg)
-    active_symbols = set()
-    event_count = 0
-
-    t_start = time.perf_counter()
-    strat.on_start()
-
-    for raw, _ in sim.generate():
-        try:
-            raw_ing = ingest(raw)
-            can = normalize(raw_ing)
-        except Exception:
-            continue
-
-        if not (
-            is_all_market or can.instrument_id == sym or can.instrument_id in sym_list
-        ):
-            continue
-
-        # Fastpath Data Quality Guard: Filter corrupted or crossed events
-        if quality_engine is not None:
-            can = quality_engine.evaluate(can)
-            if (
-                getattr(can, "quality_status", QualityStatus.VALID)
-                == QualityStatus.INVALID
-            ):
-                continue
-
-        event_count += 1
-        active_symbols.add(can.instrument_id)
-
-        # Dispatch directly to strategy (single pass)
-        if can.event_type == EventType.QUOTE:
-            strat.on_quote(can)
-        elif can.event_type == EventType.TRADE:
-            strat.on_tick(can)
-            if can.price and can.quantity:
-                flow_tracker.observe_trade(
-                    can.price, can.quantity, can.exchange_timestamp, can.source
-                )
-                notional = can.price * can.quantity
-                if notional >= 100_000.0 or can.quantity >= 500:
-                    whale_info = {
-                        "instrument": can.instrument_id,
-                        "price": can.price,
-                        "quantity": can.quantity,
-                        "notional": notional,
-                        "side": "BUY"
-                        if can.price
-                        >= strat._current_mid.get(can.instrument_id, can.price)
-                        else "SELL",
-                        "timestamp": can.exchange_timestamp,
-                    }
-                    strat.on_whale(whale_info)
-
-    strat.on_stop()
-    elapsed_ms = (time.perf_counter() - t_start) * 1000.0
-    metrics = strat.performance_summary()
-
-    table_title = (
-        f"Performance Tear-Sheet: {strat_name.upper()} on Whole Market Universe"
-        if is_all_market
-        else f"Performance Tear-Sheet: {strat_name.upper()} on {sym}"
-    )
-    t_rows = []
-    if is_all_market or len(sym_list) > 1:
-        sorted_syms = sorted(active_symbols)
-        t_rows.append(
-            (
-                "Simulated Market Universe",
-                f"{len(sorted_syms)} instruments ({', '.join(sorted_syms)})",
-                "Cross-market feed",
-            )
-        )
-
-    eps = event_count / (elapsed_ms / 1000.0) if elapsed_ms > 0 else 0
-    pnl = metrics["total_pnl"]
-    pnl_col = "green" if pnl >= 0 else "red"
-    t_rows.extend(
-        [
-            (
-                "Events Ingested & Evaluated",
-                f"{event_count:,}",
-                f"{elapsed_ms:.2f} ms ({eps:,.0f} eps)",
-            ),
-            (
-                "Total Executed Trades",
-                str(metrics["total_trades"]),
-                "Paper EMS executions",
-            ),
-            (
-                "Win Rate %",
-                f"{metrics['win_rate_pct']:.1f}%",
-                "Profitable closed roundtrips",
-            ),
-            (
-                "Realized Net P&L",
-                f"[{pnl_col}]{'+$' if pnl >= 0 else '-$'}{abs(pnl):,.2f}[/{pnl_col}]",
-                "TCA slippage deducted",
-            ),
-            (
-                "Portfolio Return",
-                f"[{pnl_col}]{'+' if pnl >= 0 else ''}{metrics['return_pct']:.2f}%[/{pnl_col}]",
-                "On $100k starting capital",
-            ),
-            (
-                "Ending Equity",
-                f"${metrics['final_equity']:,.2f}",
-                "Cash + Mark-to-Market",
-            ),
-            (
-                "Mean Execution Slippage",
-                f"{metrics['avg_slippage_bps']:.2f} bps",
-                "Effective spread capture",
-            ),
-        ]
-    )
-    if is_all_market or len(sym_list) > 1:
-        active_pos = {k: v for k, v in metrics["positions"].items() if v != 0}
-        pos_summary = (
-            ", ".join(f"{k}:{v:+.0f}" for k, v in sorted(active_pos.items()))
-            if active_pos
-            else "Flat (0 all)"
-        )
-        t_rows.append(
-            ("Open Net Positions", pos_summary, f"{len(active_pos)} symbols held")
-        )
-    else:
-        pos_qty = metrics["positions"].get(sym, 0.0)
-        t_rows.append(
-            (
-                "Open Net Position",
-                f"{pos_qty:,.0f} shares",
-                "Pre-trade risk limit: 5,000 shs",
-            )
-        )
+        return 3
 
     console.print(
-        _t(
-            table_title,
-            [
-                ("Performance Metric", "left", "cyan"),
-                ("Result Value", "right", "bold white"),
-                ("Institutional Benchmark", "left", "dim"),
-            ],
-            t_rows,
+        Panel(
+            "[bold cyan]MDRAP Paper Trading Strategy Engine (§26)[/bold cyan]\n"
+            "[bold yellow]Notice: Algorithmic execution and trading strategies are out of scope (NO DEPLOYMENT governance strictly enforced; Companion Package Required).[/bold yellow]\n\n"
+            "[dim]To enable algorithmic execution and trading strategies:\n"
+            "  [green]pip install packages/mdrap-strategies[/green][/dim]",
+            title="[bold cyan]Companion Package Required[/bold cyan]",
+            border_style="yellow",
         )
     )
-    console.print(
-        "[bold green]✔ Strategy run completed with zero risk limit breaches.[/bold green]\n"
-    )
-
-    # Render Level-2 Limit Order Book Ladder
-    if show_book:
-        symbols_to_render = (
-            sorted(active_symbols) if (is_all_market or len(sym_list) > 1) else [sym]
-        )
-        for symbol_to_show in symbols_to_render:
-            ob = strat.get_order_book(symbol_to_show)
-            bids, asks = ob.get_ladder(depth=5)
-            if bids or asks:
-                book_table = Table(
-                    title=f"📖 Level-2 Limit Order Book · {symbol_to_show.upper()}"
-                )
-                book_table.add_column("Bid Qty", justify="right", style="bold green")
-                book_table.add_column("Bid Price", justify="right", style="green")
-                book_table.add_column("Spread", justify="center", style="dim")
-                book_table.add_column("Ask Price", justify="left", style="red")
-                book_table.add_column("Ask Qty", justify="left", style="bold red")
-
-                max_depth = max(len(bids), len(asks))
-                for i in range(max_depth):
-                    b_px, b_sz = bids[i] if i < len(bids) else (None, None)
-                    a_px, a_sz = asks[i] if i < len(asks) else (None, None)
-                    b_px_str = f"${b_px:,.2f}" if b_px else ""
-                    b_sz_str = f"{b_sz:,.0f}" if b_sz else ""
-                    a_px_str = f"${a_px:,.2f}" if a_px else ""
-                    a_sz_str = f"{a_sz:,.0f}" if a_sz else ""
-                    spr_str = f"{ob.spread_bps:.1f} bps" if i == 0 else ""
-                    book_table.add_row(b_sz_str, b_px_str, spr_str, a_px_str, a_sz_str)
-
-                console.print(book_table)
-                console.print(
-                    f"[dim]• Mid: ${ob.mid_price:,.2f}  |  Micro-Price: ${ob.micro_price:,.2f}  |  "
-                    f"Spread: ${ob.spread:.4f} ({ob.spread_bps:.1f} bps)  |  "
-                    f"Imbalance: {ob.imbalance:+.2f}[/dim]\n"
-                )
-
-    # Render Execution Quality & Microstructure Ledger Table
-    ledger = strat.get_execution_ledger()
-    if show_executions:
-        if ledger:
-            exec_cols = [
-                ("Trade ID", "left", "bold cyan"),
-                ("Symbol", "left", "white"),
-                ("Side", "center"),
-                ("Qty", "right"),
-                ("Arrival Px", "right", "dim"),
-                ("Fill Px", "right", "bold white"),
-                ("Slippage", "right"),
-                ("Eff Spread", "right", "yellow"),
-                ("Signal / Action Reason", "left", "dim white"),
-            ]
-            exec_rows = []
-            for item in ledger:
-                side_str = (
-                    "[bold green]BUY[/bold green]"
-                    if item["side"] == "BUY"
-                    else "[bold red]SELL[/bold red]"
-                )
-                slip_bps = item.get("slippage_bps", 0.0)
-                slip_str = f"{slip_bps:+.1f} bps" if slip_bps != 0 else "0.0 bps"
-                slip_colored = (
-                    f"[red]{slip_str}[/red]"
-                    if slip_bps > 0
-                    else f"[green]{slip_str}[/green]"
-                )
-                arr_px = (
-                    f"${item['arrival_price']:.2f}"
-                    if item.get("arrival_price")
-                    else "-"
-                )
-                fill_px = (
-                    f"${item['filled_price']:.2f}" if item.get("filled_price") else "-"
-                )
-                eff_spr = f"{item.get('effective_spread_bps', 0.0):.1f} bps"
-                exec_rows.append(
-                    [
-                        item["trade_id"],
-                        item["symbol"],
-                        side_str,
-                        f"{item['quantity']:,.0f}",
-                        arr_px,
-                        fill_px,
-                        slip_colored,
-                        eff_spr,
-                        item.get("signal_reason") or "Market Aggressor",
-                    ]
-                )
-            console.print(
-                _t(
-                    f"⚡ Strategy Execution Quality & Microstructure Ledger · {strat_name.upper()}",
-                    exec_cols,
-                    exec_rows,
-                )
-            )
-            console.print(f"[dim]Total executions in session: {len(ledger)}[/dim]\n")
-        else:
-            console.print(
-                "[dim]No trades executed during this session (market conditions did not trigger entry).[/dim]\n"
-            )
-
-    # Export to File (JSON or CSV)
-    if export_arg is not None:
-        target_file = None if export_arg == "default" else export_arg
-        fmt = (
-            "csv" if (target_file and target_file.lower().endswith(".csv")) else "json"
-        )
-        exported_path = strat.export_executions(filepath=target_file, format=fmt)
-        console.print(
-            f"[bold green]✔ Strategy run and order book executions successfully exported to:[/bold green] [cyan]{exported_path}[/cyan]\n"
-        )
+    return 3
 
 
 def cmd_itch(args):
@@ -761,266 +427,30 @@ def cmd_edgar(args):
 
 
 def cmd_vessel(args):
-    """Global Maritime Tanker & Cargo Tracking Alternative Data Engine."""
-    from ..vessel import VesselTracker, GLOBAL_CHOKEPOINTS
-
+    """Global Maritime Tanker & Cargo Tracking Alternative Data Engine (Pruned from Core)."""
     console = Console()
-
-    action = getattr(args, "action", "list") or "list"
-    identifier = getattr(args, "identifier", None)
-    vessel_type = getattr(args, "vessel_type", None)
-    company = getattr(args, "company", None)
-    chokepoint = getattr(args, "chokepoint", None)
-    status = getattr(args, "status", None)
-    limit = getattr(args, "limit", 25) or 25
-
-    try:
-        tracker = VesselTracker()
-    except (Exception,) as exc:
-        if "Companion" in type(exc).__name__ or isinstance(
-            exc, (NotImplementedError, AttributeError)
-        ):
-            if getattr(args, "json", False):
-                import json
-
-                print(
-                    json.dumps(
-                        {
-                            "status": "COMPANION_PACKAGE_REQUIRED",
-                            "error": str(exc),
-                            "install_hint": "pip install packages/mdrap-contrib-vessel",
-                        },
-                        indent=2,
-                    )
-                )
-            else:
-                console.print(
-                    Panel(
-                        f"[bold yellow]{exc}[/bold yellow]\n\n"
-                        "[dim]To enable maritime AIS intelligence and commodity tanker tracking:\n"
-                        "  [green]pip install packages/mdrap-contrib-vessel[/green][/dim]",
-                        title="[bold cyan]Companion Package Required[/bold cyan]",
-                        border_style="yellow",
-                    )
-                )
-            return 3
-        raise
-    try:
-        if action in ("list", "all", "ls"):
-            vessels = tracker.list_vessels(
-                vessel_type=vessel_type,
-                company=company,
-                chokepoint=chokepoint,
-                laden_status=status,
-                limit=limit,
+    if getattr(args, "json", False):
+        import json
+        print(
+            json.dumps(
+                {
+                    "status": "COMPANION_PACKAGE_REQUIRED",
+                    "install_hint": "pip install packages/mdrap-contrib-vessel",
+                },
+                indent=2,
             )
-            filter_parts = []
-            if vessel_type:
-                filter_parts.append(f"Type={vessel_type}")
-            if company:
-                filter_parts.append(f"Company={company}")
-            if chokepoint:
-                filter_parts.append(f"Chokepoint={chokepoint}")
-            if status:
-                filter_parts.append(f"Status={status}")
-            filter_str = f" ({', '.join(filter_parts)})" if filter_parts else ""
-
-            v_cols = [
-                ("Vessel Name", "left", "bold cyan"),
-                ("IMO / Flag", "left", "dim"),
-                ("Type", "left", "magenta"),
-                ("Operator (Owner)", "left", "white"),
-                ("Charterer / Major", "left", "bold yellow"),
-                ("Commodity Payload", "left", "bold green"),
-                ("Load", "center"),
-                ("Voyage (From → To)", "left", "white"),
-                ("Nearest Chokepoint", "left", "bright_cyan"),
-                ("Speed", "right"),
-            ]
-            v_rows = []
-            for v in vessels:
-                load_style = (
-                    "[bold green]LADEN[/bold green]"
-                    if v.laden_status == "LADEN"
-                    else "[dim]BALLAST[/dim]"
-                )
-                cp_style = (
-                    f"[bold red]⚠️ {v.nearest_chokepoint} ({v.distance_to_chokepoint_nm} nm)[/bold red]"
-                    if v.in_chokepoint
-                    else f"{v.nearest_chokepoint} ({v.distance_to_chokepoint_nm} nm)"
-                )
-                route_str = f"{v.origin_port.split(',')[0]} → {v.destination_port.split(',')[0]}"
-                v_rows.append(
-                    [
-                        v.name,
-                        f"{v.imo}\n{v.flag}",
-                        v.vessel_type,
-                        v.operator,
-                        v.charterer,
-                        f"{v.commodity}\n[dim]{v.cargo_volume}[/dim]",
-                        load_style,
-                        f"{route_str}\n[dim]ETA: {v.eta.split(' ')[0]}[/dim]",
-                        cp_style,
-                        f"{v.speed_knots} kts",
-                    ]
-                )
-            console.print(
-                _t(
-                    f"🚢 Global Commercial Tanker & Cargo Fleet{filter_str}",
-                    v_cols,
-                    v_rows,
-                )
-            )
-            console.print(
-                f"[dim]Tracking {len(vessels)} commercial vessels (reference watch-list fixture). Use 'python -m cli vessel track <NAME>' for full voyage dossier.[/dim]\n"
-            )
-
-        elif action in ("track", "inspect", "show"):
-            if not identifier:
-                console.print(
-                    "[red]Please specify a vessel IMO number, MMSI, or Name to track. e.g. python -m cli vessel track 'FRONT ALTAIR'[/red]"
-                )
-                raise SystemExit(1)
-            v = tracker.get_vessel(identifier)
-            if not v:
-                console.print(
-                    f"[bold red]Vessel not found matching identifier '{identifier}'.[/bold red]"
-                )
-                raise SystemExit(1)
-
-            in_cp_msg = (
-                f"[bold red]⚠️ CURRENTLY IN CHOKEPOINT PASSAGE ({v.distance_to_chokepoint_nm} nm)[/bold red]"
-                if v.in_chokepoint
-                else f"[green]{v.distance_to_chokepoint_nm} nm away[/green]"
-            )
-            load_msg = (
-                "[bold green]LADEN (Full Cargo Onboard)[/bold green]"
-                if v.laden_status == "LADEN"
-                else "[dim]BALLAST (Empty / Repositioning)[/dim]"
-            )
-
-            panel_content = (
-                f"[bold cyan]{v.name}[/bold cyan] · [dim]IMO: {v.imo} | MMSI: {v.mmsi} | Flag: {v.flag}[/dim]\n"
-                f"[bold magenta]Vessel Type:[/bold magenta] {v.vessel_type} | [bold white]DWT Capacity:[/bold white] {v.dwt:,} MT\n\n"
-                f"🏢 [bold white]Commercial Ownership & Charter:[/bold white]\n"
-                f"  • [bold]Commercial Operator / Owner:[/bold] [yellow]{v.operator}[/yellow]\n"
-                f"  • [bold]Charterer / Commodity Major:[/bold] [bold bright_yellow]{v.charterer}[/bold bright_yellow]\n\n"
-                f"📦 [bold white]Cargo Intelligence:[/bold white]\n"
-                f"  • [bold]Commodity Category:[/bold] {v.cargo_category}\n"
-                f"  • [bold]Specific Cargo Tag:[/bold] [bold green]{v.commodity}[/bold green]\n"
-                f"  • [bold]Estimated Payload:[/bold] {v.cargo_volume}\n"
-                f"  • [bold]Laden Status:[/bold] {load_msg}\n\n"
-                f"🗺️ [bold white]Voyage & Geofencing Status:[/bold white]\n"
-                f"  • [bold]Departure Port:[/bold] {v.origin_port}\n"
-                f"  • [bold]Destination Port:[/bold] {v.destination_port}\n"
-                f"  • [bold]Estimated Arrival (ETA):[/bold] {v.eta}\n"
-                f"  • [bold]GPS Telemetry:[/bold] Lat {v.latitude:.4f}°, Lon {v.longitude:.4f}° | Speed: {v.speed_knots} kts | Heading: {v.heading}°\n"
-                f"  • [bold]Navigation Status:[/bold] {v.nav_status}\n"
-                f"  • [bold]Nearest Strategic Chokepoint:[/bold] [bold yellow]{v.nearest_chokepoint}[/bold yellow] ({in_cp_msg})\n"
-                f"  • [dim]Last Position Telemetry Received: {v.last_update}[/dim]"
-            )
-            console.print(
-                Panel(
-                    panel_content,
-                    title=f"⚓ Vessel Intelligence Dossier · {v.name}",
-                    expand=False,
-                )
-            )
-
-        elif action in ("chokepoints", "bottlenecks", "cp"):
-            traffic = tracker.get_chokepoint_traffic(max_distance_nm=150.0)
-            cp_cols = [
-                ("Chokepoint", "left", "bold yellow"),
-                ("Strategic Importance & Global Trade Role", "left", "white"),
-                ("Daily Global Flow", "left", "bold cyan"),
-                ("Nearby Tracked Vessels", "center", "bold"),
-                ("Active Ships within 150 nm", "left", "dim"),
-            ]
-            cp_rows = []
-            for key, cp in GLOBAL_CHOKEPOINTS.items():
-                nearby = traffic.get(cp.name, [])
-                count_str = (
-                    f"[bold red]{len(nearby)}[/bold red]" if nearby else "[dim]0[/dim]"
-                )
-                vessel_list_str = (
-                    ", ".join(
-                        f"{v.name} ({v.distance_to_chokepoint_nm} nm)" for v in nearby
-                    )
-                    if nearby
-                    else "No active vessels within 150 nm"
-                )
-                cp_rows.append(
-                    [
-                        cp.name,
-                        cp.significance,
-                        cp.daily_flow,
-                        count_str,
-                        vessel_list_str,
-                    ]
-                )
-            console.print(
-                _t(
-                    "🌐 Global Maritime Chokepoints & Strategic Bottleneck Monitor",
-                    cp_cols,
-                    cp_rows,
-                )
-            )
-            console.print(
-                "[dim]Monitoring primary global energy and container choke points for geopolitical and congestion risks.[/dim]\n"
-            )
-
-        elif action in ("commodities", "cargo", "breakdown"):
-            breakdown = tracker.get_commodity_breakdown()
-            cm_cols = [
-                ("Commodity Category", "left", "bold cyan"),
-                ("Active Vessels", "center", "bold"),
-                ("Total DWT", "right", "magenta"),
-                ("Specific Commodities Carried", "left", "green"),
-                ("Chartering Majors & Traders", "left", "yellow"),
-            ]
-            cm_rows = [
-                [
-                    cat_name,
-                    str(info["vessel_count"]),
-                    f"{info['total_dwt']:,} MT",
-                    ", ".join(info["commodities"]),
-                    ", ".join(info["charterers"]),
-                ]
-                for cat_name, info in breakdown["categories"].items()
-            ]
-            console.print(
-                _t(
-                    "🛢️ Floating Commodities & Seaborne Supply Chain Exposure",
-                    cm_cols,
-                    cm_rows,
-                )
-            )
-
-            summary_panel = (
-                f"• [bold white]Total Commercial Fleet Tracked:[/bold white] {breakdown['total_vessels_tracked']}\n"
-                f"• [bold white]Laden with Cargo:[/bold white] [bold green]{breakdown['laden_vessels']}[/bold green] | "
-                f"[bold white]Ballast / Repositioning:[/bold white] [dim]{breakdown['ballast_vessels']}[/dim]\n"
-                f"• [bold white]Top Chartering Entities:[/bold white] {', '.join(f'{k} ({v})' for k, v in breakdown['top_charterers'][:6])}\n"
-                f"• [bold white]Top Fleet Operators:[/bold white] {', '.join(f'{k} ({v})' for k, v in breakdown['top_operators'][:6])}"
-            )
-            console.print(
-                Panel(
-                    summary_panel,
-                    title="📊 Seaborne Supply Chain Summary",
-                    expand=False,
-                )
-            )
-
-        else:
-            console.print(
-                f"[red]Unknown vessel action '{action}'. Choices: list, track, chokepoints, commodities.[/red]"
-            )
-            raise SystemExit(1)
-    except Exception as exc:
-        if isinstance(exc, SystemExit):
-            raise
-        console.print(f"[bold red]Maritime Tracking Error:[/bold red] {str(exc)}")
-        raise SystemExit(1)
+        )
+        return 3
+    console.print(
+        Panel(
+            "[bold yellow]Maritime AIS intelligence is out of core scope for the market data engine sidecar.[/bold yellow]\n\n"
+            "[dim]To enable maritime AIS intelligence and commodity tanker tracking:\n"
+            "  [green]pip install packages/mdrap-contrib-vessel[/green][/dim]",
+            title="[bold cyan]Companion Package Required[/bold cyan]",
+            border_style="yellow",
+        )
+    )
+    return 3
 
 
 def cmd_dashboard(args):

@@ -5,6 +5,7 @@ import os
 import pytest
 
 from mdrap.fastpath import (
+    _C_EXT,
     _NATIVE_LIB,
     FastQualityEngine,
     exact_int_corridor_check,
@@ -221,7 +222,11 @@ def test_soa_batch_validation_matches_aos():
     out_statuses = (ctypes.c_int32 * count)()
     out_reasons = (ctypes.c_uint64 * count)()
 
-    ptr = engine._engine_ptr_c or engine._engine_ptr
+    ptr = (
+        _C_EXT.engine_address(engine._engine_ptr_c)
+        if engine._engine_ptr_c and _C_EXT
+        else engine._engine_ptr
+    )
     _NATIVE_LIB.fastpath_engine_evaluate_soa(
         ptr,
         count,

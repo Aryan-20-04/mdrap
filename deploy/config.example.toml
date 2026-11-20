@@ -1,0 +1,67 @@
+# MDRAP Production Sidecar Configuration Template
+# Format: TOML
+# Designed for self-hosted read-only deployment alongside institutional trading infrastructure.
+
+[general]
+instance_id = "prod-ny4-sidecar-01"
+data_dir = "/data"
+log_level = "INFO"
+data_mode = "LIVE"
+
+[storage]
+database_path = "/data/mdrap.db"
+journal_mode = "WAL"
+synchronous = "NORMAL"
+busy_timeout_ms = 5000
+batch_size = 1000
+wal_autocheckpoint_pages = 1000
+retention_days = 30
+
+[api]
+enabled = true
+host = "127.0.0.1"
+port = 8000
+cors_origins = []
+rate_limit_per_second = 100
+enable_websockets = true
+
+[security]
+read_only_enforced = true
+require_salt = true
+salt = "CHANGE_ME_TO_A_SECURE_RANDOM_HEX_SALT"
+mtls_enabled = false
+
+[quality]
+max_clock_drift_ms = 50.0
+max_spread_bps = 500.0
+stale_threshold_seconds = 3.0
+price_jump_threshold_ratio = 0.10
+min_book_depth_levels = 5
+enforce_sbe_bounds = true
+
+[providers.coinbase]
+enabled = true
+ws_url = "wss://ws-feed.exchange.coinbase.com"
+channels = ["ticker", "level2"]
+instruments = ["BTC-USD", "ETH-USD"]
+read_only = true
+
+[providers.kraken]
+enabled = true
+ws_url = "wss://ws.kraken.com"
+channels = ["ticker", "book-10"]
+instruments = ["XBT/USD", "ETH/USD"]
+read_only = true
+
+[providers.binance]
+enabled = false
+ws_url = "wss://stream.binance.com:9443/ws"
+channels = ["bookTicker", "depth5@100ms"]
+instruments = ["btcusdt", "ethusdt"]
+read_only = true
+
+[incidents]
+auto_quarantine = true
+export_directory = "/data/incidents"
+merkle_batch_size = 500
+notification_webhook = ""

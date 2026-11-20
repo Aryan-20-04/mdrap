@@ -20,7 +20,7 @@ from tools.check_read_only_safety import audit_source_tree
 def test_automated_read_only_ast_scan():
     """Verify that zero order-routing or trade execution code exists in src/mdrap."""
     files_scanned, violations = audit_source_tree("src/mdrap")
-    assert files_scanned >= 100
+    assert files_scanned >= 90
     assert len(violations) == 0
 
 

@@ -9,7 +9,7 @@
 
 ## 1. Context & Problem Statement
 
-MDRAP has expanded from a lightweight, single-process market data pipeline into a multi-layered ecosystem comprising 72 Python modules, native C acceleration primitives, and multiple domain-specific engines across 12 architectural layers (detailed in [`docs/map.md`](docs/map.md)).
+MDRAP has expanded from a lightweight, single-process market data pipeline into a multi-layered ecosystem comprising 72 Python modules, native C acceleration primitives, and multiple domain-specific engines across 12 architectural layers (detailed in [`docs/map.md`](../map.md)).
 
 These modules span a wide spectrum of maturity:
 1. **Core Infrastructure**: Battle-tested pipeline components, quality validators, storage engines, and binary protocols with zero tolerance for breaking changes.
@@ -51,26 +51,26 @@ The three tiers are defined as follows:
 - **Definition**: Mission-critical platform backbone. The public API surface (exported classes, method signatures, parameter names, return types) is frozen.
 - **Breaking Changes**: Strictly prohibited in patch releases. Any breaking alteration requires a formal deprecation period lasting at least one minor release cycle (`vX.Y -> vX.Y+1`) where a runtime `DeprecationWarning` is emitted before removal.
 - **Covered Modules**:
-  - Core Pipeline: [`models.py`](src/mdrap/models.py), [`gateway.py`](src/mdrap/gateway.py), [`quality.py`](src/mdrap/quality.py), [`reconciliation.py`](src/mdrap/reconciliation.py), [`pipeline.py`](src/mdrap/pipeline.py), [`metrics.py`](src/mdrap/metrics.py), [`config.py`](src/mdrap/config.py), [`rules.py`](src/mdrap/rules.py).
-  - Storage & Audit: [`storage.py`](src/mdrap/storage.py), [`archive.py`](src/mdrap/archive.py), [`security.py`](src/mdrap/security.py), [`audit_format.py`](src/mdrap/audit_format.py).
-  - Delivery Protocols: [`shm.py`](src/mdrap/shm.py), [`protocol.py`](src/mdrap/protocol.py), [`service.py`](src/mdrap/service.py).
-  - Native Hot Path: [`fastpath.py`](src/mdrap/fastpath.py), [`fastpath.c`](src/mdrap/fastpath.c).
-  - Extension Interfaces: [`adapters/__init__.py`](src/adapters/__init__.py), [`protocols.py`](src/mdrap/protocols.py).
+  - Core Pipeline: [`models.py`](../../src/mdrap/models.py), [`gateway.py`](../../src/mdrap/gateway.py), [`quality.py`](../../src/mdrap/quality.py), [`reconciliation.py`](../../src/mdrap/reconciliation.py), [`pipeline.py`](../../src/mdrap/pipeline.py), [`metrics.py`](../../src/mdrap/metrics.py), [`config.py`](../../src/mdrap/config.py), [`rules.py`](../../src/mdrap/rules.py).
+  - Storage & Audit: [`storage.py`](../../src/mdrap/storage.py), [`archive.py`](../../src/mdrap/archive.py), [`security.py`](../../src/mdrap/security.py), [`audit_format.py`](../../src/mdrap/audit_format.py).
+  - Delivery Protocols: [`shm.py`](../../src/mdrap/shm.py), [`protocol.py`](../../src/mdrap/protocol.py), [`service.py`](../../src/mdrap/service.py).
+  - Native Hot Path: [`fastpath.py`](../../src/mdrap/fastpath.py), [`fastpath.c`](../../src/mdrap/fastpath.c).
+  - Extension Interfaces: [`adapters/__init__.py`](../../src/adapters/__init__.py), [`protocols.py`](../../src/mdrap/protocols.py).
 
 ### 2.2 `beta` Tier
 - **Definition**: Production-grade and covered by comprehensive automated tests, but subject to ergonomic refinements or protocol adjustments across minor versions.
-- **Breaking Changes**: Permitted across minor version bumps (`v2.1 -> v2.2`), provided all changes are thoroughly documented in [`CHANGELOG.md`](CHANGELOG.md).
+- **Breaking Changes**: Permitted across minor version bumps (`v2.1 -> v2.2`), provided all changes are thoroughly documented in [`CHANGELOG.md`](../../CHANGELOG.md).
 - **Covered Modules**:
-  - Analytics & Quantitative: [`analytics.py`](src/mdrap/analytics.py), [`depth.py`](src/mdrap/depth.py), [`columnar.py`](src/mdrap/columnar.py), [`backtest.py`](src/mdrap/backtest.py), [`features.py`](src/mdrap/features.py), [`options.py`](src/mdrap/options.py), [`risk.py`](src/mdrap/risk.py).
-  - Feeds & Ingestion: [`ws_feed.py`](src/mdrap/ws_feed.py), [`polygon_feed.py`](src/mdrap/polygon_feed.py), [`databento_feed.py`](src/mdrap/databento_feed.py), [`live.py`](src/mdrap/live.py).
-  - Client & Server Interfaces: [`api.py`](src/mdrap/api.py), [`client.py`](src/mdrap/client.py), [`cli.py`](src/cli.py), [`navigator.py`](src/mdrap/navigator.py).
+  - Analytics & Quantitative: [`analytics.py`](../../src/mdrap/analytics.py), [`depth.py`](../../src/mdrap/depth.py), [`columnar.py`](../../src/mdrap/columnar.py), `backtest.py` (pruned), [`features.py`](../../src/mdrap/features.py), `options.py` (pruned), `risk.py` (pruned).
+  - Feeds & Ingestion: [`ws_feed.py`](../../src/mdrap/ws_feed.py), [`polygon_feed.py`](../../src/mdrap/polygon_feed.py), [`databento_feed.py`](../../src/mdrap/databento_feed.py), [`live.py`](../../src/mdrap/live.py).
+  - Client & Server Interfaces: [`api.py`](../../src/mdrap/api.py), [`client.py`](../../src/mdrap/client.py), [`cli.py`](../../cli.py), `navigator.py` (pruned).
 
 ### 2.3 `experimental` Tier
 - **Definition**: Exploratory prototypes, cutting-edge research modules, and incubating features under active design.
 - **Breaking Changes**: No guarantees whatsoever. Classes, functions, or entire modules may be renamed, restructured, or eliminated without notice between any release.
 - **Covered Modules**:
-  - Alternative Data: `research.py` (pruned) (SEC EDGAR), `news.py` (pruned), [`vessel.py`](src/mdrap/vessel.py) (AIS tracking).
-  - Advanced Trading Tools: [`tca.py`](src/mdrap/tca.py), [`strategy_sdk.py`](src/mdrap/strategy_sdk.py), [`trading_cli.py`](src/mdrap/trading_cli.py).
+  - Alternative Data: `research.py` (pruned) (SEC EDGAR), `news.py` (pruned), `vessel.py` (pruned) (AIS tracking).
+  - Advanced Trading Tools: `tca.py` (pruned), `strategy_sdk.py` (pruned), `trading_cli.py` (pruned).
 
 ---
 
@@ -116,5 +116,5 @@ stateDiagram-v2
 
 ### Governance in Contribution Workflow
 - All new modules submitted via Pull Requests must declare the `__stability__` attribute.
-- Documented in [`CONTRIBUTING.md`](CONTRIBUTING.md).
-- Architectural layer mapping documented and maintained in [`docs/map.md`](docs/map.md).
+- Documented in [`CONTRIBUTING.md`](../../CONTRIBUTING.md).
+- Architectural layer mapping documented and maintained in [`docs/map.md`](../map.md).

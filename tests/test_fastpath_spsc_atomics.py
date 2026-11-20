@@ -11,7 +11,7 @@ import threading
 import time
 import pytest
 
-from mdrap.partition import PySpscRingQueue, SpscRingQueue
+from mdrap.supervisor import PySpscRingQueue, SpscRingQueue
 from mdrap._fastpath_c import NativeSpscQueue
 
 

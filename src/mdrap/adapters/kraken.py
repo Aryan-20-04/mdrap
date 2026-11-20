@@ -41,6 +41,7 @@ class KrakenAdapter(BaseFeedAdapter):
             strict_sequence=False,
         )
         self.stream_type = stream_type
+        self._orderbook: dict[str, dict[float, float]] = {"bids": {}, "asks": {}}
 
     def capabilities(self) -> AdapterCapabilities:
         """Declare Kraken adapter capabilities and licensing boundaries."""
@@ -80,63 +81,7 @@ class KrakenAdapter(BaseFeedAdapter):
             if seq is not None:
                 self.seq_tracker.observe(seq)
 
-            if isinstance(body, dict):
-                # 1. Book snapshot: "bs" and "as"
-                if "bs" in body and "as" in body and body["bs"] and body["as"]:
-                    bids = [[float(row[0]), float(row[1])] for row in body["bs"][:5]]
-                    asks = [[float(row[0]), float(row[1])] for row in body["as"][:5]]
-                    ex_ts = (
-                        float(body["bs"][0][2]) if len(body["bs"][0]) > 2 else t_recv
-                    )
-
-                    raw = RawEvent(
-                        source="KRAKEN",
-                        payload={
-                            "instrument": self.symbol,
-                            "event_type": "QUOTE",
-                            "exchange_ts": ex_ts,
-                            "sequence": seq,
-                            "bid": bids[0][0] if bids else None,
-                            "ask": asks[0][0] if asks else None,
-                            "bid_size": bids[0][1] if bids else None,
-                            "ask_size": asks[0][1] if asks else None,
-                            "bids": bids,
-                            "asks": asks,
-                        },
-                        receive_timestamp=t_recv,
-                        raw_id=f"kraken_book_{seq or int(t_recv * 1000)}",
-                    )
-                    self.enqueue_raw(raw)
-                    return raw
-
-                # 2. Ticker update: "b"=bid, "a"=ask
-                if "b" in body and "a" in body:
-                    bid = float(body["b"][0])
-                    ask = float(body["a"][0])
-                    bid_sz = float(body["b"][2]) if len(body["b"]) > 2 else None
-                    ask_sz = float(body["a"][2]) if len(body["a"]) > 2 else None
-
-                    raw = RawEvent(
-                        source="KRAKEN",
-                        payload={
-                            "instrument": self.symbol,
-                            "event_type": "QUOTE",
-                            "exchange_ts": t_recv,
-                            "sequence": seq,
-                            "bid": bid,
-                            "ask": ask,
-                            "bid_size": bid_sz,
-                            "ask_size": ask_sz,
-                            "bids": [[bid, bid_sz]] if bid is not None else [],
-                            "asks": [[ask, ask_sz]] if ask is not None else [],
-                        },
-                        receive_timestamp=t_recv,
-                        raw_id=f"kraken_tick_{seq or int(t_recv * 1000)}",
-                    )
-                    self.enqueue_raw(raw)
-                    return raw
-
-            # 3. Trade messages: body is list of trades [[price, volume, time, side, ...], ...]
+            # 1. Trade messages: data[1] is list of trades [[price, volume, time, side, ...], ...]
             if isinstance(body, list) and body and isinstance(body[0], list):
                 last_raw = None
                 for trd in body:
@@ -159,6 +104,173 @@ class KrakenAdapter(BaseFeedAdapter):
                     self.enqueue_raw(raw)
                     last_raw = raw
                 return last_raw
+
+            payloads = [item for item in data[1:] if isinstance(item, dict)]
+            if payloads:
+                p0 = payloads[0]
+                # 2. Book snapshot: "bs" and "as"
+                if "bs" in p0 and "as" in p0 and p0["bs"] and p0["as"]:
+                    self._orderbook["bids"] = {
+                        float(row[0]): float(row[1])
+                        for row in p0["bs"]
+                        if float(row[1]) > 0
+                    }
+                    self._orderbook["asks"] = {
+                        float(row[0]): float(row[1])
+                        for row in p0["as"]
+                        if float(row[1]) > 0
+                    }
+                    sorted_bids = sorted(
+                        self._orderbook["bids"].items(),
+                        key=lambda x: x[0],
+                        reverse=True,
+                    )[:5]
+                    sorted_asks = sorted(
+                        self._orderbook["asks"].items(), key=lambda x: x[0]
+                    )[:5]
+                    ex_ts = (
+                        float(p0["bs"][0][2]) if len(p0["bs"][0]) > 2 else t_recv
+                    )
+
+                    raw = RawEvent(
+                        source="KRAKEN",
+                        payload={
+                            "instrument": self.symbol,
+                            "event_type": "QUOTE",
+                            "exchange_ts": ex_ts,
+                            "sequence": seq,
+                            "bid": sorted_bids[0][0] if sorted_bids else None,
+                            "ask": sorted_asks[0][0] if sorted_asks else None,
+                            "bid_size": sorted_bids[0][1] if sorted_bids else None,
+                            "ask_size": sorted_asks[0][1] if sorted_asks else None,
+                            "bids": [[p, s] for p, s in sorted_bids],
+                            "asks": [[p, s] for p, s in sorted_asks],
+                        },
+                        receive_timestamp=t_recv,
+                        raw_id=f"kraken_book_{seq or int(t_recv * 1000)}",
+                    )
+                    self.enqueue_raw(raw)
+                    return raw
+
+                # 3. Incremental book updates: "a" and/or "b" level arrays
+                has_book_update = any("a" in p or "b" in p for p in payloads)
+                if has_book_update and any(
+                    isinstance(p.get("a", [None])[0], list)
+                    or isinstance(p.get("b", [None])[0], list)
+                    for p in payloads
+                    if ("a" in p or "b" in p)
+                ):
+                    latest_ts = t_recv
+                    for p in payloads:
+                        for row in p.get("a", []):
+                            if isinstance(row, list) and len(row) >= 2:
+                                px, sz = float(row[0]), float(row[1])
+                                if len(row) > 2:
+                                    try:
+                                        latest_ts = float(row[2])
+                                    except (ValueError, TypeError):
+                                        pass
+                                if sz == 0.0:
+                                    self._orderbook["asks"].pop(px, None)
+                                else:
+                                    self._orderbook["asks"][px] = sz
+                        for row in p.get("b", []):
+                            if isinstance(row, list) and len(row) >= 2:
+                                px, sz = float(row[0]), float(row[1])
+                                if len(row) > 2:
+                                    try:
+                                        latest_ts = float(row[2])
+                                    except (ValueError, TypeError):
+                                        pass
+                                if sz == 0.0:
+                                    self._orderbook["bids"].pop(px, None)
+                                else:
+                                    self._orderbook["bids"][px] = sz
+
+                    # Prune stale crossed levels that were traded out
+                    if self._orderbook["bids"] and self._orderbook["asks"]:
+                        max_b = max(self._orderbook["bids"].keys())
+                        stale_asks = [p for p in self._orderbook["asks"].keys() if p <= max_b]
+                        for p in stale_asks:
+                            del self._orderbook["asks"][p]
+                        if self._orderbook["asks"]:
+                            min_a = min(self._orderbook["asks"].keys())
+                            stale_bids = [p for p in self._orderbook["bids"].keys() if p >= min_a]
+                            for p in stale_bids:
+                                del self._orderbook["bids"][p]
+
+                    # Bound depth to 10 levels
+                    if len(self._orderbook["bids"]) > 10:
+                        sb_keys = sorted(self._orderbook["bids"].keys(), reverse=True)
+                        for p in sb_keys[10:]:
+                            del self._orderbook["bids"][p]
+                    if len(self._orderbook["asks"]) > 10:
+                        sa_keys = sorted(self._orderbook["asks"].keys())
+                        for p in sa_keys[10:]:
+                            del self._orderbook["asks"][p]
+
+                    sorted_bids = sorted(
+                        self._orderbook["bids"].items(),
+                        key=lambda x: x[0],
+                        reverse=True,
+                    )[:5]
+                    sorted_asks = sorted(
+                        self._orderbook["asks"].items(), key=lambda x: x[0]
+                    )[:5]
+                    best_bid, bid_sz = sorted_bids[0] if sorted_bids else (None, None)
+                    best_ask, ask_sz = sorted_asks[0] if sorted_asks else (None, None)
+
+                    raw = RawEvent(
+                        source="KRAKEN",
+                        payload={
+                            "instrument": self.symbol,
+                            "event_type": "QUOTE",
+                            "exchange_ts": latest_ts,
+                            "sequence": seq,
+                            "bid": best_bid,
+                            "ask": best_ask,
+                            "bid_size": bid_sz,
+                            "ask_size": ask_sz,
+                            "bids": [[p, s] for p, s in sorted_bids],
+                            "asks": [[p, s] for p, s in sorted_asks],
+                        },
+                        receive_timestamp=t_recv,
+                        raw_id=f"kraken_book_{seq or int(t_recv * 1000)}",
+                    )
+                    self.enqueue_raw(raw)
+                    return raw
+
+                # 4. Ticker update: "b"=bid, "a"=ask
+                if (
+                    "b" in p0
+                    and "a" in p0
+                    and isinstance(p0["b"], list)
+                    and not isinstance(p0["b"][0], list)
+                ):
+                    bid = float(p0["b"][0])
+                    ask = float(p0["a"][0])
+                    bid_sz = float(p0["b"][2]) if len(p0["b"]) > 2 else None
+                    ask_sz = float(p0["a"][2]) if len(p0["a"]) > 2 else None
+
+                    raw = RawEvent(
+                        source="KRAKEN",
+                        payload={
+                            "instrument": self.symbol,
+                            "event_type": "QUOTE",
+                            "exchange_ts": t_recv,
+                            "sequence": seq,
+                            "bid": bid,
+                            "ask": ask,
+                            "bid_size": bid_sz,
+                            "ask_size": ask_sz,
+                            "bids": [[bid, bid_sz]] if bid is not None else [],
+                            "asks": [[ask, ask_sz]] if ask is not None else [],
+                        },
+                        receive_timestamp=t_recv,
+                        raw_id=f"kraken_tick_{seq or int(t_recv * 1000)}",
+                    )
+                    self.enqueue_raw(raw)
+                    return raw
 
         # Handle direct dict format (e.g. from Kraken WebSocket v2)
         if isinstance(data, dict):

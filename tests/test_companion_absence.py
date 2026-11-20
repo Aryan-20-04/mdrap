@@ -15,42 +15,16 @@ import pytest
 from mdrap.exceptions import CompanionPackageMissing, EXIT_COMPANION_MISSING
 
 
-def test_companion_exceptions_and_stubs(monkeypatch):
-    """Verify that companion stub classes raise CompanionPackageMissing with install hints."""
-    monkeypatch.setenv("MDRAP_DISABLE_COMPANIONS", "1")
+def test_companion_modules_pruned_from_core(monkeypatch):
+    """Verify that companion modules are completely absent from core package."""
     target_mods = (
         "mdrap.tca",
-        "mdrap_analytics",
         "mdrap.strategy_sdk",
-        "mdrap_strategies",
         "mdrap.vessel",
-        "mdrap_vessel",
     )
     for mod in target_mods:
-        sys.modules.pop(mod, None)
-
-    try:
-        import mdrap.tca as tca_mod
-        import mdrap.strategy_sdk as strat_mod
-        import mdrap.vessel as vessel_mod
-
-        # TCAEngine
-        with pytest.raises((CompanionPackageMissing, NotImplementedError)) as exc:
-            _ = tca_mod.TCAEngine()
-        assert "mdrap_analytics" in str(exc.value)
-
-        # Strategy
-        with pytest.raises((CompanionPackageMissing, NotImplementedError)) as exc:
-            _ = strat_mod.WhaleMomentumStrategy("AAPL")
-        assert "mdrap_strategies" in str(exc.value)
-
-        # Vessel
-        with pytest.raises((CompanionPackageMissing, NotImplementedError)) as exc:
-            _ = vessel_mod.VesselTracker()
-        assert "mdrap_vessel" in str(exc.value)
-    finally:
-        for mod in target_mods:
-            sys.modules.pop(mod, None)
+        with pytest.raises(ModuleNotFoundError):
+            __import__(mod)
 
 
 @pytest.mark.parametrize(

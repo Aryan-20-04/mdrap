@@ -17,13 +17,18 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from mdrap.async_fanout import AsyncFanoutManager
-from mdrap.consensus import (
-    ConsensusCoordinator,
-    FencedWALWriter,
-    FencingTokenError,
-    QuorumLossError,
-)
+try:
+    from mdrap.async_fanout import AsyncFanoutManager
+    from mdrap.consensus import (
+        ConsensusCoordinator,
+        FencedWALWriter,
+        FencingTokenError,
+        QuorumLossError,
+    )
+except ImportError:
+    pytestmark = pytest.mark.skip(
+        reason="async_fanout and consensus pruned in read-only core"
+    )
 
 
 def test_fault_01_stalled_consumer_overflow():

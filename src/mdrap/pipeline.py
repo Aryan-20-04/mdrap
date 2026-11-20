@@ -748,7 +748,9 @@ class Pipeline:
         decision = self.reconciler.reconcile(event)
         # Apply reconciliation quality annotations to current event (not cached copies)
         if decision and decision.quality_reasons:
-            event.reasons.extend(decision.quality_reasons)
+            for r in decision.quality_reasons:
+                if r not in event.reasons:
+                    event.reasons.append(r)
             if event.quality_status == QualityStatus.VALID:
                 event.quality_status = QualityStatus.SUSPICIOUS
         self.reliability.observe(event)

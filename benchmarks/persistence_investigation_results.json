@@ -1,0 +1,82 @@
+{
+  "durability_tiers": {
+    "fast": {
+      "durability": "fast",
+      "total_events": 5000,
+      "executemany_p50_us": 2236.2,
+      "executemany_p95_us": 3235.6,
+      "executemany_p99_us": 4786.2,
+      "commit_p50_us": 854.7,
+      "commit_p95_us": 3499.3,
+      "commit_p99_us": 9857.1,
+      "commit_max_us": 9857.1,
+      "total_p50_us": 3102.4,
+      "total_p95_us": 6971.6,
+      "total_p99_us": 11530.8,
+      "db_size_bytes": 1339392,
+      "wal_size_bytes": 4210672
+    },
+    "balanced": {
+      "durability": "balanced",
+      "total_events": 5000,
+      "executemany_p50_us": 1266.8,
+      "executemany_p95_us": 2736.2,
+      "executemany_p99_us": 3622.8,
+      "commit_p50_us": 578.8,
+      "commit_p95_us": 11367.5,
+      "commit_p99_us": 29272.4,
+      "commit_max_us": 29272.4,
+      "total_p50_us": 1862.8,
+      "total_p95_us": 13307.3,
+      "total_p99_us": 31873.5,
+      "db_size_bytes": 1339392,
+      "wal_size_bytes": 4210672
+    },
+    "compliance": {
+      "durability": "compliance",
+      "total_events": 5000,
+      "executemany_p50_us": 2362.2,
+      "executemany_p95_us": 4256.9,
+      "executemany_p99_us": 6101.6,
+      "commit_p50_us": 4670.8,
+      "commit_p95_us": 13998.7,
+      "commit_p99_us": 25237.1,
+      "commit_max_us": 25237.1,
+      "total_p50_us": 7458.1,
+      "total_p95_us": 16413.7,
+      "total_p99_us": 27791.8,
+      "db_size_bytes": 1339392,
+      "wal_size_bytes": 4210672
+    }
+  },
+  "concurrent_reader_writer": {
+    "total_writes": 3000,
+    "total_queries_executed": 485,
+    "total_query_errors": 0,
+    "zero_lock_contention": true,
+    "query_p50_us": 523.3,
+    "query_p95_us": 1463.6,
+    "writer_p50_us": 5711.8,
+    "writer_p95_us": 23216.3
+  },
+  "snapshot_isolation_truncate": {
+    "initial_reader_count": 500,
+    "snapshot_isolated_count": 500,
+    "snapshot_isolation_verified": true,
+    "passive_checkpoint_during_read": {
+      "busy": 0,
+      "log_pages": 206,
+      "checkpointed_pages": 130
+    },
+    "wal_size_before_truncate_bytes": 848752,
+    "wal_size_after_truncate_bytes": 0,
+    "truncated_to_zero": true
+  },
+  "abrupt_shutdown_recovery": {
+    "expected_events": 3000,
+    "recovered_events": 3000,
+    "recovery_rate": 1.0,
+    "recovery_time_us": 8405.4,
+    "zero_data_loss": true
+  }
+}

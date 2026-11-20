@@ -17,13 +17,10 @@ Total commands documented: **69**.
 
 | Command | Aliases | Description |
 | --- | --- | --- |
-| [`alert`](#alert) | `alerts` | Real-time alert engine (price, spread, volume, drawdown) |
 | [`analytics`](#analytics) | `a` | Query OHLCV candles, bid-ask spreads, and realized volatility |
 | [`arbitrate`](#arbitrate) | `arb` | Run dual-path Multicast UDP A/B feed arbitration and TCP replay test (§18, §26) |
 | [`archive`](#archive) | `arc` | Show raw event archive statistics |
 | [`audit`](#audit) | *none* | View and cryptographically verify tamper-evident audit logs |
-| [`backtest`](#backtest) | `bt` | Historical backtesting engine with point-in-time event replay |
-| [`bars`](#bars) | `bardb`, `candles` | Multi-timeframe OHLCV bar database and historical lookup |
 | [`bbo`](#bbo) | `nbbo` | Query Synthetic Consolidated Best Bid & Offer (NBBO) |
 | [`benchmark`](#benchmark) | `bench` | Run controlled benchmark and score quality detection |
 | [`chaos`](#chaos) | `ch` | Execute automated chaos & resilience drills (§15) |
@@ -33,7 +30,6 @@ Total commands documented: **69**.
 | [`completion`](#completion) | `complete` | Generate shell autocompletion script (bash, zsh, fish, powershell) |
 | [`config`](#config) | `cfg` | Inspect and query hierarchical mdrap.toml configuration |
 | [`core`](#core) | `fast-core`, `t1` | Run standalone native C hot-path engine (T1 zero-lock tier) |
-| [`corpact`](#corpact) | `dividends`, `splits` | Corporate actions processor: splits, dividends, ticker changes |
 | [`daemon`](#daemon) | `d` | Run headless streaming socket daemon service (§18) |
 | [`dashboard`](#dashboard) | `dash` | Launch real-time terminal visualizer dashboard |
 | [`deadletter`](#deadletter) | *none* | Inspect and replay uncommitted dead-letter transaction logs |
@@ -44,7 +40,6 @@ Total commands documented: **69**.
 | [`edgar`](#edgar) | `filings` | SEC EDGAR Alternative Data: 8-K material events, Form 4 insiders, GAAP facts |
 | [`export`](#export) | `exp` | Export market microstructure data to Excel (.xlsx) or CSV |
 | [`failover`](#failover) | `fo` | Active-Passive cluster failover coordinator |
-| [`features`](#features) | `feat` | ML feature store: technical indicators and microstructure metrics |
 | [`feed`](#feed) | `feeds` | Inspect, benchmark, and test streaming feeds (Polygon, Databento, Crypto WS) |
 | [`flow`](#flow) | `cvd` | Track Institutional Order Flow, Lee-Ready Aggressor Side, CVD & MPID Net Deltas |
 | [`gateway`](#gateway) | `gw` | Launch AsyncIO TCP Gateway for external clients |
@@ -54,19 +49,13 @@ Total commands documented: **69**.
 | [`lake`](#lake) | `partitions`, `store-hist` | Manage partitioned historical market data store |
 | [`live`](#live) | `stream` | Stream live market ticks with in-place updating table & candlestick chart |
 | [`loadtest`](#loadtest) | `load` | Sweep increasing event volumes and report trend |
-| [`markets`](#markets) | `venues`, `world` | Global financial exchange directory, market clocks, and microstructure |
 | [`mbo`](#mbo) | `l3` | Inspect Level-3 Market-By-Order (MBO) FIFO queue ranks and L2 book projection (§18, §26) |
-| [`news`](#news) | `sentiment` | Financial news aggregation, sentiment analysis, and entity extraction |
-| [`options`](#options) | `greeks`, `opt` | Options pricing models, Greeks chain, and implied volatility solver |
 | [`plugins`](#plugins) | *none* | List installed plugins and extension entry points |
-| [`portfolio`](#portfolio) | `port` | Portfolio tracker with P&L attribution and benchmark comparison |
 | [`query`](#query) | `q` | Inspect stored data: health, latest, lineage, quarantine |
 | [`replay`](#replay) | `rep` | Replay archived raw events through the pipeline |
 | [`report`](#report) | `reg` | Generate institutional fund regulatory compliance reports (SEC 13F, MiFID II RTS 28) |
 | [`retention`](#retention) | `prune` | Run storage retention compaction and disk reclamation |
-| [`risk`](#risk) | `cvar`, `var` | Portfolio risk management, VaR, CVaR, and correlation analysis |
 | [`run`](#run) | `r` | Run the pipeline against the simulator (optionally with live dashboard) |
-| [`schedule`](#schedule) | `cron`, `sched` | Scheduled tasks and automated EOD reports |
 | [`sdk-demo`](#sdk-demo) | `sdk` | Run Quant-Ready Python SDK Client Demo |
 | [`security`](#security) | `sec` | Display platform security posture, HMAC verification, RBAC, and rate limiting status |
 | [`serve`](#serve) | `api` | Start production REST API and WebSocket event streaming server |
@@ -85,36 +74,10 @@ Total commands documented: **69**.
 | [`vwap`](#vwap) | `curve` | Compute multi-venue real-time VWAP execution & slippage curves |
 | [`wal`](#wal) | `log` | Verify, inspect, or salvage IngestLog Write-Ahead Log segments |
 | [`watchdog`](#watchdog) | `w` | Show source health status and watchdog alerts |
-| [`watchlist`](#watchlist) | `wl` | Named watchlist management |
 
 ---
 
 ## Subcommand Details
-
-### `alert`
-
-**Description:** Real-time alert engine (price, spread, volume, drawdown)
-
-**Aliases:** `alerts`
-
-**Usage:** `mdrap alert [OPTIONS]`
-
-#### Positional Arguments
-
-| Argument | Description |
-| --- | --- |
-| `action` |  (default: `list`) |
-
-#### Options
-
-| Option | Description |
-| --- | --- |
-| `-i`, `--symbol` |  (default: `AAPL`) |
-| `-t`, `--type` |  (default: `ABOVE`) |
-| `-v`, `--target` |  (default: `200.0`) |
-| `--db` |  (default: `data/alerts.db`) |
-
----
 
 ### `analytics`
 
@@ -198,50 +161,6 @@ Total commands documented: **69**.
 | `--print-anchor` | Print current audit anchor (<count>:<head_hash>) for external witnessing |
 | `--sign-checkpoint` | Generate HMAC-SHA256 signed audit checkpoint using MDRAP_AUDIT_KEY |
 | `-l`, `--limit` | Number of audit records to show (default: `20`) |
-
----
-
-### `backtest`
-
-**Description:** Historical backtesting engine with point-in-time event replay
-
-**Aliases:** `bt`
-
-**Usage:** `mdrap backtest [OPTIONS]`
-
-#### Options
-
-| Option | Description |
-| --- | --- |
-| `-s`, `--strategy` |  (default: `whale_momentum`) |
-| `-i`, `--symbol` |  (default: `AAPL`) |
-| `-c`, `--capital` |  (default: `100000.0`) |
-| `--db` |  (default: `data/mdrap.db`) |
-
----
-
-### `bars`
-
-**Description:** Multi-timeframe OHLCV bar database and historical lookup
-
-**Aliases:** `bardb`, `candles`
-
-**Usage:** `mdrap bars [OPTIONS]`
-
-#### Positional Arguments
-
-| Argument | Description |
-| --- | --- |
-| `action` |  (default: `summary`) |
-
-#### Options
-
-| Option | Description |
-| --- | --- |
-| `-i`, `-s`, `--symbol` |  (default: `AAPL`) |
-| `-t`, `--interval` |  (default: `1m`) |
-| `-l`, `--limit` |  (default: `10`) |
-| `--db` |  (default: `data/bars.db`) |
 
 ---
 
@@ -470,28 +389,6 @@ Total commands documented: **69**.
 
 ---
 
-### `corpact`
-
-**Description:** Corporate actions processor: splits, dividends, ticker changes
-
-**Aliases:** `dividends`, `splits`
-
-**Usage:** `mdrap corpact [OPTIONS]`
-
-#### Positional Arguments
-
-| Argument | Description |
-| --- | --- |
-| `action` |  (default: `list`) |
-
-#### Options
-
-| Option | Description |
-| --- | --- |
-| `-i`, `-s`, `--symbol` |  (default: `AAPL`) |
-
----
-
 ### `daemon`
 
 **Description:** Run headless streaming socket daemon service (§18)
@@ -695,28 +592,6 @@ Total commands documented: **69**.
 | `--cluster` | Cluster name (default: `mdrap-cluster`) |
 | `--reason` | Transition reason (default: `Manual operator request`) |
 | `--seq` | Heartbeat sequence number (default: `0`) |
-
----
-
-### `features`
-
-**Description:** ML feature store: technical indicators and microstructure metrics
-
-**Aliases:** `feat`
-
-**Usage:** `mdrap features [OPTIONS]`
-
-#### Positional Arguments
-
-| Argument | Description |
-| --- | --- |
-| `action` |  (default: `list`) |
-
-#### Options
-
-| Option | Description |
-| --- | --- |
-| `-i`, `-s`, `--symbol` |  (default: `AAPL`) |
 
 ---
 
@@ -929,16 +804,6 @@ Total commands documented: **69**.
 
 ---
 
-### `markets`
-
-**Description:** Global financial exchange directory, market clocks, and microstructure
-
-**Aliases:** `venues`, `world`
-
-**Usage:** `mdrap markets [OPTIONS]`
-
----
-
 ### `mbo`
 
 **Description:** Inspect Level-3 Market-By-Order (MBO) FIFO queue ranks and L2 book projection (§18, §26)
@@ -961,88 +826,11 @@ Total commands documented: **69**.
 
 ---
 
-### `news`
-
-**Description:** Financial news aggregation, sentiment analysis, and entity extraction
-
-**Aliases:** `sentiment`
-
-**Usage:** `mdrap news [OPTIONS]`
-
-#### Positional Arguments
-
-| Argument | Description |
-| --- | --- |
-| `action` |  (default: `latest`) |
-| `text` | Headline text to analyze (when action is analyze) |
-
-#### Options
-
-| Option | Description |
-| --- | --- |
-| `-s`, `--symbol` | Stock or crypto ticker symbol (e.g. NVDA, AAPL, BTC) |
-| `-l`, `--limit` | Maximum number of headlines to display (default: `10`) |
-| `--feed` | Custom RSS feed URL or source identifier |
-| `-j`, `--json` | Output results in JSON format |
-
----
-
-### `options`
-
-**Description:** Options pricing models, Greeks chain, and implied volatility solver
-
-**Aliases:** `greeks`, `opt`
-
-**Usage:** `mdrap options [OPTIONS]`
-
-#### Positional Arguments
-
-| Argument | Description |
-| --- | --- |
-| `action` |  (default: `price`) |
-
-#### Options
-
-| Option | Description |
-| --- | --- |
-| `-s`, `--spot` |  (default: `100.0`) |
-| `-k`, `--strike` |  (default: `100.0`) |
-| `-e`, `--expiry` |  (default: `30.0`) |
-| `-v`, `--vol` |  (default: `0.25`) |
-| `-r`, `--rate` |  (default: `0.05`) |
-| `-t`, `--type` |  (default: `call`) |
-
----
-
 ### `plugins`
 
 **Description:** List installed plugins and extension entry points
 
 **Usage:** `mdrap plugins [OPTIONS]`
-
----
-
-### `portfolio`
-
-**Description:** Portfolio tracker with P&L attribution and benchmark comparison
-
-**Aliases:** `port`
-
-**Usage:** `mdrap portfolio [OPTIONS]`
-
-#### Positional Arguments
-
-| Argument | Description |
-| --- | --- |
-| `action` |  (default: `summary`) |
-
-#### Options
-
-| Option | Description |
-| --- | --- |
-| `-c`, `--capital` |  (default: `100000.0`) |
-| `--currency` | Base reporting currency (e.g. USD, INR, EUR, JPY) (default: `USD`) |
-| `--db` |  (default: `data/portfolio.db`) |
 
 ---
 
@@ -1141,25 +929,6 @@ Total commands documented: **69**.
 
 ---
 
-### `risk`
-
-**Description:** Portfolio risk management, VaR, CVaR, and correlation analysis
-
-**Aliases:** `cvar`, `var`
-
-**Usage:** `mdrap risk [OPTIONS]`
-
-#### Options
-
-| Option | Description |
-| --- | --- |
-| `-c`, `--capital` |  (default: `100000.0`) |
-| `-w`, `--window` |  (default: `252`) |
-| `-p`, `--confidence` |  (default: `0.95`) |
-| `--db` |  (default: `data/mdrap.db`) |
-
----
-
 ### `run`
 
 **Description:** Run the pipeline against the simulator (optionally with live dashboard)
@@ -1190,22 +959,6 @@ Total commands documented: **69**.
 | `-d`, `--dashboard` | Show live rich terminal dashboard |
 | `--strict-sync` | Exit 1 if secondary DuckDB sync fails (prevents silent store divergence in automation) |
 | `--no-sync` | Skip automatic DuckDB columnar store sync at run completion |
-
----
-
-### `schedule`
-
-**Description:** Scheduled tasks and automated EOD reports
-
-**Aliases:** `cron`, `sched`
-
-**Usage:** `mdrap schedule [OPTIONS]`
-
-#### Positional Arguments
-
-| Argument | Description |
-| --- | --- |
-| `action` |  (default: `list`) |
 
 ---
 
@@ -1579,29 +1332,5 @@ Total commands documented: **69**.
 | `--status` | Show current source health status |
 | `-a`, `--alerts` | Show recent watchdog alerts |
 | `-l`, `--limit` | Alert count limit (default: `10`) |
-
----
-
-### `watchlist`
-
-**Description:** Named watchlist management
-
-**Aliases:** `wl`
-
-**Usage:** `mdrap watchlist [OPTIONS]`
-
-#### Positional Arguments
-
-| Argument | Description |
-| --- | --- |
-| `action` |  (default: `list`) |
-
-#### Options
-
-| Option | Description |
-| --- | --- |
-| `-n`, `--name` |  (default: `Tech`) |
-| `-s`, `--symbols` |  (default: `['AAPL', 'MSFT']`) |
-| `--db` |  (default: `data/portfolio.db`) |
 
 ---

@@ -1,0 +1,116 @@
+{
+  "Fixed-Spread Post-Only": {
+    "fills_analyzed": 3361,
+    "buys": 1244,
+    "sells": 2117,
+    "btc_fills": 2691,
+    "eth_fills": 670,
+    "spread_capture": {
+      "overall_bps": -0.083,
+      "buy_bps": -0.0877,
+      "sell_bps": -0.0802,
+      "btc_bps": -0.0697,
+      "eth_bps": -0.1363
+    },
+    "markouts": {
+      "100ms": -0.5428,
+      "1000ms": -0.8693,
+      "5000ms": -1.4369,
+      "10000ms": -1.8289
+    },
+    "markout_1s_breakdown": {
+      "buy_bps": -0.7797,
+      "sell_bps": -0.9219,
+      "btc_bps": -0.7364,
+      "eth_bps": -1.4033,
+      "by_venue": {
+        "OKX": -1.6443,
+        "BINANCE": -1.2487,
+        "COINBASE": -0.6375,
+        "BYBIT": -0.9524,
+        "KRAKEN": -1.0132
+      }
+    },
+    "net_edge_per_fill_bps": -0.9523,
+    "quote_age_ms": {
+      "median": 41.85,
+      "p95": 89.0
+    }
+  },
+  "Inventory-Skewed": {
+    "fills_analyzed": 3021,
+    "buys": 1087,
+    "sells": 1934,
+    "btc_fills": 3007,
+    "eth_fills": 14,
+    "spread_capture": {
+      "overall_bps": -0.0246,
+      "buy_bps": -0.0007,
+      "sell_bps": -0.038,
+      "btc_bps": -0.0341,
+      "eth_bps": 2.0312
+    },
+    "markouts": {
+      "100ms": -0.5782,
+      "1000ms": -0.8935,
+      "5000ms": -1.479,
+      "10000ms": -1.7629
+    },
+    "markout_1s_breakdown": {
+      "buy_bps": -0.7924,
+      "sell_bps": -0.9504,
+      "btc_bps": -0.8873,
+      "eth_bps": -2.2252,
+      "by_venue": {
+        "OKX": -1.337,
+        "BINANCE": -1.0403,
+        "KRAKEN": -1.2401,
+        "COINBASE": -0.7529,
+        "BYBIT": -1.0671
+      }
+    },
+    "net_edge_per_fill_bps": -0.9181,
+    "quote_age_ms": {
+      "median": 41.0,
+      "p95": 88.25
+    }
+  },
+  "Avellaneda-Stoikov": {
+    "fills_analyzed": 2941,
+    "buys": 1149,
+    "sells": 1792,
+    "btc_fills": 2927,
+    "eth_fills": 14,
+    "spread_capture": {
+      "overall_bps": -0.0301,
+      "buy_bps": 0.0066,
+      "sell_bps": -0.0537,
+      "btc_bps": -0.04,
+      "eth_bps": 2.0393
+    },
+    "markouts": {
+      "100ms": -0.5648,
+      "1000ms": -0.8813,
+      "5000ms": -1.4745,
+      "10000ms": -1.7191
+    },
+    "markout_1s_breakdown": {
+      "buy_bps": -0.783,
+      "sell_bps": -0.9444,
+      "btc_bps": -0.8749,
+      "eth_bps": -2.2252,
+      "by_venue": {
+        "OKX": -1.2416,
+        "BINANCE": -1.044,
+        "KRAKEN": -1.1948,
+        "COINBASE": -0.7263,
+        "BYBIT": -0.9753
+      }
+    },
+    "net_edge_per_fill_bps": -0.9115,
+    "quote_age_ms": {
+      "median": 40.71,
+      "p95": 91.0
+    }
+  }
+}

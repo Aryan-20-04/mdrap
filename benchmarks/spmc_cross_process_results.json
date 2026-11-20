@@ -1,0 +1,110 @@
+{
+  "concurrency_test": {
+    "total_ticks": 10000,
+    "slot_count": 16384,
+    "producer_duration_s": 6.5731,
+    "producer_throughput_eps": 1521.3,
+    "consumer_count": 4,
+    "consumers": [
+      {
+        "consumer_id": 0,
+        "pid": 19104,
+        "ticks_read": 10000,
+        "expected_ticks": 10000,
+        "torn_reads": 0,
+        "seq_errors": 0,
+        "p50_us": 144.65,
+        "p95_us": 766.19,
+        "p99_us": 1832.65,
+        "p999_us": 4539.23,
+        "total_laps": 0,
+        "skipped_ticks": 0
+      },
+      {
+        "consumer_id": 2,
+        "pid": 20988,
+        "ticks_read": 10000,
+        "expected_ticks": 10000,
+        "torn_reads": 0,
+        "seq_errors": 0,
+        "p50_us": 146.9,
+        "p95_us": 765.9,
+        "p99_us": 1750.07,
+        "p999_us": 4146.86,
+        "total_laps": 0,
+        "skipped_ticks": 0
+      },
+      {
+        "consumer_id": 3,
+        "pid": 23796,
+        "ticks_read": 10000,
+        "expected_ticks": 10000,
+        "torn_reads": 0,
+        "seq_errors": 0,
+        "p50_us": 140.7,
+        "p95_us": 769.39,
+        "p99_us": 1860.16,
+        "p999_us": 4267.99,
+        "total_laps": 0,
+        "skipped_ticks": 0
+      },
+      {
+        "consumer_id": 1,
+        "pid": 13200,
+        "ticks_read": 10000,
+        "expected_ticks": 10000,
+        "torn_reads": 0,
+        "seq_errors": 0,
+        "p50_us": 124.25,
+        "p95_us": 771.18,
+        "p99_us": 1735.34,
+        "p999_us": 4034.59,
+        "total_laps": 0,
+        "skipped_ticks": 0
+      }
+    ]
+  },
+  "wraparound_stress_test": {
+    "burst_ticks": 30000,
+    "buffer_slots": 1024,
+    "wraparounds": 29,
+    "burst_throughput_eps": 360399.3,
+    "consumer_result": {
+      "consumer_id": 0,
+      "pid": 18852,
+      "error": "Invalid SHM magic: b'\\x00\\x00\\x00\\x00' (expected b'MDRP')",
+      "ticks_read": 0
+    }
+  },
+  "slow_consumer_test": {
+    "consumer_id": 99,
+    "pid": 20756,
+    "ticks_read": 1,
+    "laps_detected": 1930,
+    "skipped_ticks": 8974
+  },
+  "crash_recovery_test": {
+    "doomed_terminated": true,
+    "replacement_result": {
+      "consumer_id": 102,
+      "pid": 788,
+      "ticks_read": 2000,
+      "expected_ticks": 2000,
+      "torn_reads": 0,
+      "seq_errors": 0,
+      "p50_us": 0.0,
+      "p95_us": 0.0,
+      "p99_us": 0.0,
+      "p999_us": 0.0,
+      "total_laps": 0,
+      "skipped_ticks": 0
+    }
+  },
+  "epoch_invalidation_test": {
+    "initial_epoch": 3198655398699100220,
+    "reader_initial_epoch": 3198655398699100220,
+    "new_epoch": 8392963453512273400,
+    "detected_invalidation": true,
+    "epoch_changed": true
+  }
+}

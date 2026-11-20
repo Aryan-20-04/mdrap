@@ -162,12 +162,13 @@ class InstitutionalRiskEngine:
         quote_timestamp: float | None = None,
         venue: str = "DEFAULT",
         idempotency_key: str | None = None,
+        current_time: float | None = None,
     ) -> RiskCheckResult:
         """
         Validate order against all 14 pre-trade institutional risk gates.
         Returns RiskCheckResult(passed=True) if fully compliant, else passed=False with reason.
         """
-        now = time.time()
+        now = time.time() if current_time is None else current_time
 
         # Gate 1: Emergency Kill-Switch Check
         if self.kill_switch_active:
@@ -267,7 +268,7 @@ class InstitutionalRiskEngine:
 
     def _reject(self, gate: str, reason: str) -> RiskCheckResult:
         self.reject_counts[gate] = self.reject_counts.get(gate, 0) + 1
-        logger.warning("[risk_engine] PRE-TRADE REJECT [%s]: %s", gate, reason)
+        logger.debug("[risk_engine] PRE-TRADE REJECT [%s]: %s", gate, reason)
         return RiskCheckResult(passed=False, reason=reason, gate=gate)
 
     def persist_state(self) -> None:

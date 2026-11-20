@@ -80,6 +80,29 @@ def percentile(sorted_values: List[float], pct: float) -> float:
     )
 
 
+def compute_latencies_us(durations_ns: list[int]) -> dict:
+    """Compute exact hardware nanosecond latencies converted to microseconds."""
+    if not durations_ns:
+        return {
+            "p50": 0.0,
+            "p95": 0.0,
+            "p99": 0.0,
+            "p999": 0.0,
+            "max": 0.0,
+            "mean": 0.0,
+        }
+    s = sorted(durations_ns)
+    n = len(s)
+    return {
+        "p50": round(s[int(n * 0.50)] / 1000.0, 2),
+        "p95": round(s[int(n * 0.95)] / 1000.0, 2),
+        "p99": round(s[int(n * 0.99)] / 1000.0, 2),
+        "p999": round(s[int(n * 0.999)] / 1000.0, 2),
+        "max": round(s[-1] / 1000.0, 2),
+        "mean": round((sum(s) / n) / 1000.0, 2),
+    }
+
+
 def get_rss_mb() -> float:
     """Return process Resident Set Size (RSS) in MB without external dependencies."""
     if resource:

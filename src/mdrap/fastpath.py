@@ -943,6 +943,8 @@ class FastQualityEngine:
         for k, v in kwargs.items():
             if hasattr(self.cfg, k):
                 setattr(self.cfg, k, v)
+        if getattr(self.cfg, "split_sequence_domains", False):
+            force_pure_mode = True
 
         self.counts = {"VALID": 0, "SUSPICIOUS": 0, "INVALID": 0}
         self.reason_counts: dict[str, int] = {}
@@ -983,6 +985,14 @@ class FastQualityEngine:
         )
         self.thread_safe = thread_safe
         self._eval_lock = threading.Lock()
+        # Protect pointer lifetime independently of thread_safe evaluation policy.
+        self._lifecycle = threading.Lock()
+        self._operations_drained = threading.Event()
+        self._operations_drained.set()
+        self._close_complete = threading.Event()
+        self._closing = False
+        self._closed = False
+        self._active_operations = 0
         self._batch_capacity: int = 0
         self._batch_c_events: Any = None
         self._batch_c_results: Any = None
@@ -1055,43 +1065,104 @@ class FastQualityEngine:
         elif not self._engine_ptr_c:
             self._fallback_engine = QualityEngine(self.cfg)
 
-    def close(self) -> None:
-        """Release native C engine context heap allocations."""
-        if getattr(self, "_engine_ptr_c", None) and _C_EXT:
-            try:
-                _C_EXT.engine_destroy(self._engine_ptr_c)
-            except Exception:
-                pass
-            self._engine_ptr_c = None
+    def _begin_native_operation(self) -> None:
+        self._lifecycle.acquire()
+        try:
+            if self._closing or self._closed:
+                raise RuntimeError("FastQualityEngine is closed")
+            if self._active_operations == 0:
+                self._operations_drained.clear()
+            self._active_operations += 1
+        finally:
+            self._lifecycle.release()
 
-        if (
-            getattr(self, "_engine_ptr", None)
-            and _NATIVE_LIB
-            and hasattr(_NATIVE_LIB, "fastpath_engine_destroy")
-        ):
-            _NATIVE_LIB.fastpath_engine_destroy(self._engine_ptr)
-            self._engine_ptr = None
+    def _end_native_operation(self) -> None:
+        self._lifecycle.acquire()
+        try:
+            self._active_operations -= 1
+            if self._active_operations == 0:
+                self._operations_drained.set()
+        finally:
+            self._lifecycle.release()
+
+    def close(self) -> None:
+        """Wait for native operations and release each engine pointer once."""
+        lifecycle = getattr(self, "_lifecycle", None)
+        if lifecycle is None:
+            return
+        lifecycle.acquire()
+        try:
+            if self._closed:
+                return
+            if self._closing:
+                wait_for_close = True
+            else:
+                self._closing = True
+                wait_for_close = False
+        finally:
+            lifecycle.release()
+        if wait_for_close:
+            self._close_complete.wait()
+            return
+
+        self._operations_drained.wait()
+        lifecycle.acquire()
+        try:
+            ptr_c, self._engine_ptr_c = self._engine_ptr_c, None
+            ptr, self._engine_ptr = self._engine_ptr, None
+        finally:
+            lifecycle.release()
+        try:
+            if ptr_c and _C_EXT:
+                _C_EXT.engine_destroy(ptr_c)
+            if ptr and _NATIVE_LIB and hasattr(_NATIVE_LIB, "fastpath_engine_destroy"):
+                _NATIVE_LIB.fastpath_engine_destroy(ptr)
+        finally:
+            lifecycle.acquire()
+            try:
+                self._closed = True
+                self._closing = False
+                self._close_complete.set()
+            finally:
+                lifecycle.release()
 
     def __del__(self) -> None:
-        self.close()
+        try:
+            if not sys.is_finalizing():
+                self.close()
+        except BaseException:
+            pass
 
     def reset(self) -> None:
         """Reset engine tracking state."""
-        with self._eval_lock:
-            self.counts = {"VALID": 0, "SUSPICIOUS": 0, "INVALID": 0}
-            self.reason_counts = {}
-            if getattr(self, "_engine_ptr_c", None) and _C_EXT:
-                _C_EXT.engine_reset(self._engine_ptr_c)
-            elif (
-                self._engine_ptr
-                and _NATIVE_LIB
-                and hasattr(_NATIVE_LIB, "fastpath_engine_reset")
-            ):
-                _NATIVE_LIB.fastpath_engine_reset(self._engine_ptr)
-            elif _NATIVE_LIB:
-                _NATIVE_LIB.fastpath_reset()
-            if self._fallback_engine:
-                self._fallback_engine.reset()
+        self._begin_native_operation()
+        try:
+            with self._eval_lock:
+                self._reset_unlocked()
+        finally:
+            self._end_native_operation()
+
+    def _reset_unlocked(self) -> None:
+        self.counts = {"VALID": 0, "SUSPICIOUS": 0, "INVALID": 0}
+        self.reason_counts = {}
+        if getattr(self, "_engine_ptr_c", None) and _C_EXT:
+            _C_EXT.engine_reset(self._engine_ptr_c)
+        elif (
+            self._engine_ptr
+            and _NATIVE_LIB
+            and hasattr(_NATIVE_LIB, "fastpath_engine_reset")
+        ):
+            _NATIVE_LIB.fastpath_engine_reset(self._engine_ptr)
+        elif _NATIVE_LIB:
+            _NATIVE_LIB.fastpath_reset()
+        if self._fallback_engine:
+            self._fallback_engine.reset()
+
+    def drain_expired(self, force: bool = False) -> list[CanonicalEvent]:
+        """Drain any expired pending events from fallback engine reorder buffers."""
+        if self._fallback_engine and hasattr(self._fallback_engine, "drain_expired"):
+            return self._fallback_engine.drain_expired(force=force)
+        return []
 
     def _get_source_id(self, source: str) -> int:
         if source not in self._source_map:
@@ -1124,13 +1195,25 @@ class FastQualityEngine:
         self.effective_max_sources = min(self._max_sources, self.compiled_max_sources)
 
     def evaluate(self, event: CanonicalEvent) -> CanonicalEvent:
-        if self.thread_safe:
-            with self._eval_lock:
+        if self._closed or self._closing:
+            raise RuntimeError("FastQualityEngine is closed")
+        # The extension handle is GIL-safe for scalar calls and pins the native
+        # pointer across GIL-releasing batch calls. The ctypes backend releases
+        # the GIL on every call, so it still needs the Python lifecycle gate.
+        guarded = self._engine_ptr is not None or self.thread_safe
+        if guarded:
+            self._begin_native_operation()
+        try:
+            if self.thread_safe:
+                with self._eval_lock:
+                    res = self._evaluate_unlocked(event)
+            else:
                 res = self._evaluate_unlocked(event)
-        else:
-            res = self._evaluate_unlocked(event)
+        finally:
+            if guarded:
+                self._end_native_operation()
 
-        if _USER_RULES and evaluate_user_rules is not None:
+        if res is not None and _USER_RULES and evaluate_user_rules is not None:
             res = evaluate_user_rules(res)
 
         return res
@@ -1179,25 +1262,20 @@ class FastQualityEngine:
                 i_id = self._inst_map[event.instrument_id] = len(self._inst_map)
             event.instrument_id_int = i_id
 
-        # Fallback if instrument has custom overrides (such as crypto asset-class overrides in asset_classes)
+        # Fallback if instrument has custom overrides (such as crypto, equities, or commodities in asset_classes)
         # that diverge from the global C kernel scalar configuration (Finding 7).
-        if getattr(self.cfg, "asset_classes", None):
-            inst = event.instrument_id.upper()
-            if (
-                any(
-                    c in inst
-                    for c in ("BTC", "ETH", "SOL", "DOGE", "XRP", "ADA", "USDT")
-                )
-                and "crypto" in self.cfg.asset_classes
-            ):
+        if getattr(self.cfg, "asset_classes", None) and hasattr(self.cfg, "for_instrument"):
+            inst_cfg = self.cfg.for_instrument(event.instrument_id)
+            if inst_cfg is not self.cfg:
                 if not self._fallback_engine:
                     self._fallback_engine = QualityEngine(self.cfg)
                 res = self._fallback_engine.evaluate(event)
-                self.counts[res.quality_status.value] = (
-                    self.counts.get(res.quality_status.value, 0) + 1
-                )
-                for r in res.reasons:
-                    self.reason_counts[r] = self.reason_counts.get(r, 0) + 1
+                if res is not None:
+                    self.counts[res.quality_status.value] = (
+                        self.counts.get(res.quality_status.value, 0) + 1
+                    )
+                    for r in res.reasons:
+                        self.reason_counts[r] = self.reason_counts.get(r, 0) + 1
                 return res
 
         # Graceful fallback: C static tables have COMPILED_MAX_SOURCES, COMPILED_MAX_INSTRUMENTS bounds.
@@ -1221,11 +1299,12 @@ class FastQualityEngine:
             if not self._fallback_engine:
                 self._fallback_engine = QualityEngine(self.cfg)
             res = self._fallback_engine.evaluate(event)
-            self.counts[res.quality_status.value] = (
-                self.counts.get(res.quality_status.value, 0) + 1
-            )
-            for r in res.reasons:
-                self.reason_counts[r] = self.reason_counts.get(r, 0) + 1
+            if res is not None:
+                self.counts[res.quality_status.value] = (
+                    self.counts.get(res.quality_status.value, 0) + 1
+                )
+                for r in res.reasons:
+                    self.reason_counts[r] = self.reason_counts.get(r, 0) + 1
             return res
 
         # F-10: Map event type cleanly for C hotpath (1=QUOTE, 0=TRADE, 2=HALT, 3=STATUS, -1=other/unknown)
@@ -1309,6 +1388,8 @@ class FastQualityEngine:
                     c_ask_sz,
                 )
         except Exception:
+            if self._closed or self._closing:
+                raise RuntimeError("FastQualityEngine is closed")
             # Fault-tolerant shield: seamlessly fall back to pure Python if C DLL faults
             if not self._fallback_engine:
                 self._fallback_engine = QualityEngine(self.cfg)
@@ -1341,13 +1422,16 @@ class FastQualityEngine:
         Evaluate a micro-batch of CanonicalEvents in a single C boundary crossing.
         Strictly preserves per-source/per-instrument arrival order (Invariant A5).
         """
-        if not events:
-            return events
-
-        if self.thread_safe:
-            with self._eval_lock:
-                return self._evaluate_batch_unlocked(events)
-        return self._evaluate_batch_unlocked(events)
+        self._begin_native_operation()
+        try:
+            if not events:
+                return events
+            if self.thread_safe:
+                with self._eval_lock:
+                    return self._evaluate_batch_unlocked(events)
+            return self._evaluate_batch_unlocked(events)
+        finally:
+            self._end_native_operation()
 
     def _ensure_batch_scratch(self, n: int) -> tuple[Any, Any]:
         """Ensure reusable ctypes scratch arrays have capacity >= n (Phase 1 allocation reduction)."""

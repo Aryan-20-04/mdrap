@@ -70,27 +70,41 @@ def test_core_pipeline_functional_without_companion():
             log.close()
 
 
-def test_companion_modules_emit_deprecation_warnings():
-    """Verify that importing companion/non-core modules emits DeprecationWarning."""
-    import sys
+def test_pruned_modules_raise_module_not_found():
+    """Verify that obsolete/companion non-core modules are completely removed from core."""
     import importlib
 
-    companion_mods = [
+    pruned_mods = [
         "mdrap.options",
         "mdrap.tca",
         "mdrap.risk",
         "mdrap.strategy_sdk",
         "mdrap.vessel",
+        "mdrap.backtest",
+        "mdrap.fix_engine",
+        "mdrap.shadow",
+        "mdrap.consensus",
+        "mdrap.failover",
+        "mdrap.journal_replicator",
+        "mdrap.partition",
+        "mdrap.async_fanout",
+        "mdrap.network",
+        "mdrap.multicast_arbitrator",
+        "mdrap.pcap",
+        "mdrap.scheduler",
+        "mdrap.sample_plugins",
+        "mdrap.cme",
+        "mdrap.eurex",
+        "mdrap.gateway_tcp",
+        "mdrap.mbo",
+        "mdrap.flow_tracker",
+        "mdrap.bardb",
+        "mdrap.chd_history",
+        "mdrap.workload_simulator",
+        "mdrap.stresstest",
+        "mdrap.kafka_sink",
     ]
 
-    for mod in companion_mods:
-        sys.modules.pop(mod, None)
-        with warnings.catch_warnings(record=True) as recorded:
-            warnings.simplefilter("always")
-            try:
-                importlib.import_module(mod)
-            except ImportError:
-                pass
-            assert any(issubclass(w.category, DeprecationWarning) for w in recorded), (
-                f"{mod} failed to emit DeprecationWarning on import"
-            )
+    for mod in pruned_mods:
+        with pytest.raises(ModuleNotFoundError):
+            importlib.import_module(mod)

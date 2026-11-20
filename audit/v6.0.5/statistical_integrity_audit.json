@@ -1,0 +1,295 @@
+{
+  "sample_metadata": {
+    "stream": "BINANCE:BTC/USD",
+    "holdout_samples_total": 4741,
+    "holdout_active_depth_signals": 4443
+  },
+  "autocorrelation": {
+    "acf_1s_lags_0_to_10": [
+      1.0,
+      0.4326,
+      0.0319,
+      0.0106,
+      0.0154,
+      0.0272,
+      0.0056,
+      0.0032,
+      0.0082,
+      0.0101,
+      -0.0115
+    ],
+    "acf_5s_lags_0_to_10": [
+      1.0,
+      0.6489,
+      0.4306,
+      0.3276,
+      0.2605,
+      0.1476,
+      0.066,
+      0.0506,
+      0.0291,
+      0.0071,
+      -0.0027
+    ],
+    "first_order_autocorr_1s": 0.4326,
+    "first_order_autocorr_5s": 0.6489
+  },
+  "effective_sample_size": {
+    "nominal_N": 4443,
+    "n_eff_1s": 2780.2,
+    "n_eff_ratio_1s": 0.626,
+    "n_eff_5s": 1119.6,
+    "n_eff_ratio_5s": 0.252
+  },
+  "hac_standard_errors": {
+    "1s_horizon": {
+      "mean_bps": 0.1645,
+      "se_ols": 0.00901,
+      "se_hac": 0.01138,
+      "hac_inflation_ratio": 1.264,
+      "t_stat_ols": 18.27,
+      "t_stat_hac": 14.45
+    },
+    "5s_horizon": {
+      "mean_bps": 0.445,
+      "se_ols": 0.02337,
+      "se_hac": 0.04655,
+      "hac_inflation_ratio": 1.992,
+      "t_stat_ols": 19.05,
+      "t_stat_hac": 9.56
+    }
+  },
+  "block_bootstrap": {
+    "iterations": 1000,
+    "block_length_samples": 20,
+    "block_length_seconds": 10.0,
+    "1s_horizon_mean_bps": 0.1645,
+    "1s_horizon_ci95_boot": [
+      0.1395,
+      0.1908
+    ],
+    "5s_horizon_mean_bps": 0.445,
+    "5s_horizon_ci95_boot": [
+      0.3512,
+      0.5368
+    ]
+  },
+  "multiple_testing": {
+    "total_hypotheses": 45,
+    "bonferroni_critical_alpha": 0.0011111111111111111,
+    "significant_hypotheses_bonferroni": 29,
+    "significant_hypotheses_fdr_q05": 32,
+    "rankings": [
+      {
+        "signal": "Signed Trade Imbalance (STI)",
+        "horizon": "500ms",
+        "spearman_ic": 0.095,
+        "mean_return_bps": 0.0339,
+        "t_stat": 12.84,
+        "p_val_raw": 0.0,
+        "p_bonferroni": 0.0,
+        "sig_bonferroni": true,
+        "p_holm": 0.0,
+        "sig_holm": true,
+        "bh_threshold": 0.0011111111111111111,
+        "sig_bh_fdr": true
+      },
+      {
+        "signal": "Signed Trade Imbalance (STI)",
+        "horizon": "1000ms",
+        "spearman_ic": 0.1013,
+        "mean_return_bps": 0.0527,
+        "t_stat": 13.46,
+        "p_val_raw": 0.0,
+        "p_bonferroni": 0.0,
+        "sig_bonferroni": true,
+        "p_holm": 0.0,
+        "sig_holm": true,
+        "bh_threshold": 0.0022222222222222222,
+        "sig_bh_fdr": true
+      },
+      {
+        "signal": "Signed Trade Imbalance (STI)",
+        "horizon": "5000ms",
+        "spearman_ic": 0.0913,
+        "mean_return_bps": 0.1294,
+        "t_stat": 13.89,
+        "p_val_raw": 0.0,
+        "p_bonferroni": 0.0,
+        "sig_bonferroni": true,
+        "p_holm": 0.0,
+        "sig_holm": true,
+        "bh_threshold": 0.0033333333333333335,
+        "sig_bh_fdr": true
+      },
+      {
+        "signal": "Signed Trade Imbalance (STI)",
+        "horizon": "10000ms",
+        "spearman_ic": 0.0627,
+        "mean_return_bps": 0.1331,
+        "t_stat": 9.98,
+        "p_val_raw": 0.0,
+        "p_bonferroni": 0.0,
+        "sig_bonferroni": true,
+        "p_holm": 0.0,
+        "sig_holm": true,
+        "bh_threshold": 0.0044444444444444444,
+        "sig_bh_fdr": true
+      },
+      {
+        "signal": "Bid/Ask Depth Imbalance",
+        "horizon": "100ms",
+        "spearman_ic": 0.162,
+        "mean_return_bps": 0.0299,
+        "t_stat": 26.39,
+        "p_val_raw": 0.0,
+        "p_bonferroni": 0.0,
+        "sig_bonferroni": true,
+        "p_holm": 0.0,
+        "sig_holm": true,
+        "bh_threshold": 0.005555555555555556,
+        "sig_bh_fdr": true
+      },
+      {
+        "signal": "Bid/Ask Depth Imbalance",
+        "horizon": "500ms",
+        "spearman_ic": 0.2329,
+        "mean_return_bps": 0.1097,
+        "t_stat": 39.99,
+        "p_val_raw": 0.0,
+        "p_bonferroni": 0.0,
+        "sig_bonferroni": true,
+        "p_holm": 0.0,
+        "sig_holm": true,
+        "bh_threshold": 0.006666666666666667,
+        "sig_bh_fdr": true
+      },
+      {
+        "signal": "Bid/Ask Depth Imbalance",
+        "horizon": "1000ms",
+        "spearman_ic": 0.2412,
+        "mean_return_bps": 0.1663,
+        "t_stat": 41.23,
+        "p_val_raw": 0.0,
+        "p_bonferroni": 0.0,
+        "sig_bonferroni": true,
+        "p_holm": 0.0,
+        "sig_holm": true,
+        "bh_threshold": 0.007777777777777778,
+        "sig_bh_fdr": true
+      },
+      {
+        "signal": "Bid/Ask Depth Imbalance",
+        "horizon": "5000ms",
+        "spearman_ic": 0.188,
+        "mean_return_bps": 0.3402,
+        "t_stat": 35.28,
+        "p_val_raw": 0.0,
+        "p_bonferroni": 0.0,
+        "sig_bonferroni": true,
+        "p_holm": 0.0,
+        "sig_holm": true,
+        "bh_threshold": 0.008888888888888889,
+        "sig_bh_fdr": true
+      },
+      {
+        "signal": "Bid/Ask Depth Imbalance",
+        "horizon": "10000ms",
+        "spearman_ic": 0.144,
+        "mean_return_bps": 0.3854,
+        "t_stat": 27.73,
+        "p_val_raw": 0.0,
+        "p_bonferroni": 0.0,
+        "sig_bonferroni": true,
+        "p_holm": 0.0,
+        "sig_holm": true,
+        "bh_threshold": 0.010000000000000002,
+        "sig_bh_fdr": true
+      },
+      {
+        "signal": "Short-Term Momentum (100ms)",
+        "horizon": "500ms",
+        "spearman_ic": 0.109,
+        "mean_return_bps": 0.1499,
+        "t_stat": 9.75,
+        "p_val_raw": 0.0,
+        "p_bonferroni": 0.0,
+        "sig_bonferroni": true,
+        "p_holm": 0.0,
+        "sig_holm": true,
+        "bh_threshold": 0.011111111111111112,
+        "sig_bh_fdr": true
+      },
+      {
+        "signal": "Aggressor Trade Runs (>=3)",
+        "horizon": "100ms",
+        "spearman_ic": 0.0818,
+        "mean_return_bps": 0.0173,
+        "t_stat": 13.16,
+        "p_val_raw": 0.0,
+        "p_bonferroni": 0.0,
+        "sig_bonferroni": true,
+        "p_holm": 0.0,
+        "sig_holm": true,
+        "bh_threshold": 0.012222222222222223,
+        "sig_bh_fdr": true
+      },
+      {
+        "signal": "Aggressor Trade Runs (>=3)",
+        "horizon": "500ms",
+        "spearman_ic": 0.1187,
+        "mean_return_bps": 0.0619,
+        "t_stat": 19.75,
+        "p_val_raw": 0.0,
+        "p_bonferroni": 0.0,
+        "sig_bonferroni": true,
+        "p_holm": 0.0,
+        "sig_holm": true,
+        "bh_threshold": 0.013333333333333334,
+        "sig_bh_fdr": true
+      },
+      {
+        "signal": "Aggressor Trade Runs (>=3)",
+        "horizon": "1000ms",
+        "spearman_ic": 0.1249,
+        "mean_return_bps": 0.0949,
+        "t_stat": 20.52,
+        "p_val_raw": 0.0,
+        "p_bonferroni": 0.0,
+        "sig_bonferroni": true,
+        "p_holm": 0.0,
+        "sig_holm": true,
+        "bh_threshold": 0.014444444444444444,
+        "sig_bh_fdr": true
+      },
+      {
+        "signal": "Aggressor Trade Runs (>=3)",
+        "horizon": "5000ms",
+        "spearman_ic": 0.1051,
+        "mean_return_bps": 0.2098,
+        "t_stat": 18.88,
+        "p_val_raw": 0.0,
+        "p_bonferroni": 0.0,
+        "sig_bonferroni": true,
+        "p_holm": 0.0,
+        "sig_holm": true,
+        "bh_threshold": 0.015555555555555557,
+        "sig_bh_fdr": true
+      },
+      {
+        "signal": "Aggressor Trade Runs (>=3)",
+        "horizon": "10000ms",
+        "spearman_ic": 0.0873,
+        "mean_return_bps": 0.2673,
+        "t_stat": 16.73,
+        "p_val_raw": 0.0,
+        "p_bonferroni": 0.0,
+        "sig_bonferroni": true,
+        "p_holm": 0.0,
+        "sig_holm": true,
+        "bh_threshold": 0.016666666666666666,
+        "sig_bh_fdr": true
+      }
+    ]
+  }
+}

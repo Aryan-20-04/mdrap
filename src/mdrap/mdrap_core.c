@@ -245,8 +245,12 @@ static int shm_init(ShmContext *ctx, const char *name, uint32_t slot_count) {
 #ifdef _WIN32
     char map_name[256];
     snprintf(map_name, sizeof(map_name), "Local\\%s", name);
+    SECURITY_ATTRIBUTES sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.nLength = sizeof(sa);
+    sa.bInheritHandle = FALSE;
     ctx->h_map = CreateFileMappingA(
-        INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, 0,
+        INVALID_HANDLE_VALUE, &sa, PAGE_READWRITE, 0,
         (DWORD)ctx->total_size, map_name
     );
     if (!ctx->h_map) return -1;

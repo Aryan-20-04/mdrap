@@ -591,6 +591,10 @@ EXPORT FastEngine *fastpath_engine_create(double staleness, double stddev, int32
 
 EXPORT void fastpath_engine_destroy(FastEngine *eng) {
     if (!eng) return;
+    /* Drain an operation already holding the engine lock before releasing storage.
+     * Callers must also prevent new raw-pointer calls once destruction starts. */
+    MD_LOCK(&eng->lock);
+    MD_UNLOCK(&eng->lock);
     for (uint32_t i = 0; i < eng->ring_chunk_count; ++i) free(eng->ring_chunk[i]);
     free(eng->slots);
     free(eng);
@@ -1165,6 +1169,11 @@ EXPORT void fastpath_engine_replay_clear(FastEngine *eng) {
 // Deprecated Global Singleton Compatibility Shim  (C-8: race-free lazy creation)
 // ---------------------------------------------------------------------------
 static FastEngine *g_default_engine = NULL;
+#if defined(_MSC_VER) && !defined(__clang__)
+static volatile long g_lifecycle_lock = 0;
+#else
+static volatile int g_lifecycle_lock = 0;
+#endif
 
 static inline FastEngine *md_load_default(void) {
 #if defined(_MSC_VER) && !defined(__clang__)
@@ -1192,13 +1201,19 @@ static inline FastEngine *get_default_engine(void) {
 }
 
 EXPORT void fastpath_cleanup(void) {
-    if (g_default_engine) {
-        fastpath_engine_destroy(g_default_engine);
-        g_default_engine = NULL;
+    MD_LOCK(&g_lifecycle_lock);
+    FastEngine *old = g_default_engine;
+    g_default_engine = NULL;
+    if (old) {
+        MD_LOCK(&old->lock);
+        MD_UNLOCK(&old->lock);
+        fastpath_engine_destroy(old);
     }
+    MD_UNLOCK(&g_lifecycle_lock);
 }
 
 EXPORT void fastpath_init(double staleness_threshold_s, double anomaly_stddev, int32_t price_window) {
+    MD_LOCK(&g_lifecycle_lock);
     FastEngine *e = get_default_engine();
     if (e) {
         MD_LOCK(&e->lock);
@@ -1209,6 +1224,7 @@ EXPORT void fastpath_init(double staleness_threshold_s, double anomaly_stddev, i
         if (e->price_window < 2) e->price_window = 2;
         MD_UNLOCK(&e->lock);
     }
+    MD_UNLOCK(&g_lifecycle_lock);
 }
 
 EXPORT int32_t fastpath_get_compiled_max_sources(void) {
@@ -1220,19 +1236,35 @@ EXPORT int32_t fastpath_get_compiled_max_instruments(void) {
 }
 
 EXPORT void fastpath_reset(void) {
+    MD_LOCK(&g_lifecycle_lock);
     if (g_default_engine) {
         fastpath_engine_reset(g_default_engine);
     } else {
         g_default_engine = fastpath_engine_create(0.05, 6.0, 50);
     }
+    MD_UNLOCK(&g_lifecycle_lock);
 }
 
 EXPORT void fastpath_evaluate(const FastEvent *ev, FastResult *res) {
-    fastpath_engine_evaluate(get_default_engine(), ev, res);
+    MD_LOCK(&g_lifecycle_lock);
+    FastEngine *e = get_default_engine();
+    if (e) {
+        fastpath_engine_evaluate(e, ev, res);
+    } else {
+        evaluate_nolock(NULL, ev, res);
+    }
+    MD_UNLOCK(&g_lifecycle_lock);
 }
 
 EXPORT void fastpath_evaluate_batch(const FastEvent *events, FastResult *results, int32_t count) {
-    fastpath_engine_evaluate_batch(get_default_engine(), events, results, count);
+    MD_LOCK(&g_lifecycle_lock);
+    FastEngine *e = get_default_engine();
+    if (e) {
+        fastpath_engine_evaluate_batch(e, events, results, count);
+    } else if (events && results && count > 0) {
+        for (int32_t i = 0; i < count; ++i) evaluate_nolock(NULL, &events[i], &results[i]);
+    }
+    MD_UNLOCK(&g_lifecycle_lock);
 }
 
 EXPORT void fastpath_evaluate_soa(
@@ -1253,10 +1285,15 @@ EXPORT void fastpath_evaluate_soa(
     int32_t *out_statuses,
     uint64_t *out_reasons
 ) {
-    fastpath_engine_evaluate_soa(
-        get_default_engine(), count, source_ids, instrument_ids, event_types,
-        prices, quantities, bids, asks, bid_sizes, ask_sizes, sequences,
-        exchange_ts, receive_ts, present_masks, out_statuses, out_reasons);
+    MD_LOCK(&g_lifecycle_lock);
+    FastEngine *e = get_default_engine();
+    if (e) {
+        fastpath_engine_evaluate_soa(
+            e, count, source_ids, instrument_ids, event_types,
+            prices, quantities, bids, asks, bid_sizes, ask_sizes, sequences,
+            exchange_ts, receive_ts, present_masks, out_statuses, out_reasons);
+    }
+    MD_UNLOCK(&g_lifecycle_lock);
 }
 
 EXPORT uint64_t fastpath_eval_fast(
@@ -1265,9 +1302,16 @@ EXPORT uint64_t fastpath_eval_fast(
     double price, double quantity, double bid_price, double ask_price,
     double bid_size, double ask_size
 ) {
-    return fastpath_engine_eval_fast(
-        get_default_engine(), source_id, instrument_id, event_type,
-        exchange_ts, receive_ts, sequence_num, price, quantity, bid_price, ask_price, bid_size, ask_size);
+    MD_LOCK(&g_lifecycle_lock);
+    FastEngine *e = get_default_engine();
+    uint64_t res = 0;
+    if (e) {
+        res = fastpath_engine_eval_fast(
+            e, source_id, instrument_id, event_type,
+            exchange_ts, receive_ts, sequence_num, price, quantity, bid_price, ask_price, bid_size, ask_size);
+    }
+    MD_UNLOCK(&g_lifecycle_lock);
+    return res;
 }
 
 EXPORT uint64_t fastpath_noop(

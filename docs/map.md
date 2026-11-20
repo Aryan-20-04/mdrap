@@ -1,239 +1,204 @@
 # MDRAP Architecture Map
 
-This document serves as the canonical architectural map and reference for the module layout of the Market Data Reliability & Acceleration Platform (MDRAP). MDRAP employs a flat `src/` layout consisting of 82 Python modules (alongside native C acceleration sources and definition files). All Python modules import directly from one another (for example, `from models import CanonicalEvent` or `from storage import Store`) without nested namespace packages or heavyweight ORM/web frameworks. The platform adheres to strict data segregation across Raw, Canonical, Quarantined, and Derived analytics tiers, enforces an immutable quarantine-never-drop policy, prioritizes quality status evaluation (`INVALID` > `SUSPICIOUS` > `VALID`), and relies on deterministic monotonic identifiers generated via `itertools.count()`.
+This document serves as the canonical architectural map and module reference for the **Market Data Reliability & Acceleration Platform (MDRAP v6.0.8)**. 
+
+MDRAP employs a modular package structure in `src/mdrap/` consisting of **93 Python modules** alongside native C acceleration kernels (`fastpath.c`, `mdrap_core.c`, `_fastpath_c.c`). The platform operates strictly as an institutional **read-only market-data reliability sidecar**, converting noisy, delayed, and duplicate feed events into validated, sequence-continuous, canonical streams.
 
 ---
 
-## Module Layers
+## Architectural Principles & Invariants
 
-The 82 Python modules in `src/` are structured across 12 distinct functional layers, categorized from low-level data ingest and canonical pipeline processing to analytical engines, delivery fabrics, and client interfaces.
+1. **Strict Read-Only Infrastructure**: Zero live order routing, zero strategy execution, permanent **NO DEPLOYMENT** status.
+2. **Quality Priority**: Strict non-downgradable quality states (`INVALID > SUSPICIOUS > VALID`).
+3. **Quarantine Without Drops**: Bad or corrupted market data is never silently discarded; it is recorded into a queryable quarantine ledger with explicit reason bitmasks.
+4. **Pure Python Fallback Parity**: Standalone Python stdlib engine matches the compiled C kernel's validation logic with 100% semantic parity.
+5. **Separation of Concerns**: Clean isolation between Raw Ingress, Canonical Normalization, Provenance Reconciliation, and Low-Latency Delivery.
 
-### Core Pipeline (stable)
+---
+
+## Functional Module Layers (93 Modules)
+
+### 1. Core Pipeline & Engine
+Canonical data structures, schema validation, quality evaluation, and pipeline orchestration.
 
 | Module | Purpose | Key Exports | Stability |
-|---|---|---|---|
-| [`models.py`](../src/mdrap/models.py) | Canonical data types | `RawEvent`, `CanonicalEvent`, `EventType`, `QualityStatus`, `Reason`, `AssetClass` | `stable` |
+| :--- | :--- | :--- | :--- |
+| [`models.py`](../src/mdrap/models.py) | Canonical data models & enums | `RawEvent`, `CanonicalEvent`, `EventType`, `QualityStatus`, `Reason` | `stable` |
 | [`gateway.py`](../src/mdrap/gateway.py) | Ingestion and normalization | `ingest()`, `normalize()`, `SchemaError` | `stable` |
-| [`quality.py`](../src/mdrap/quality.py) | Data quality evaluation engine | `QualityEngine`, `QualityConfig` | `stable` |
-| [`reconciliation.py`](../src/mdrap/reconciliation.py) | Cross-feed reconciliation | `Reconciler`, `ReliabilityTracker` | `stable` |
-| [`pipeline.py`](../src/mdrap/pipeline.py) | Pipeline orchestration | `Pipeline`, `tuned_gc` | `stable` |
-| [`metrics.py`](../src/mdrap/metrics.py) | Runtime metrics | `RunMetrics`, `CompactSampleBuffer`, `percentile` | `stable` |
-| [`config.py`](../src/mdrap/config.py) | Configuration dataclasses | `PlatformConfig`, `QualityConfig`, `PipelineConfig`, `StorageConfig` | `stable` |
-| [`config_loader.py`](../src/mdrap/config_loader.py) | YAML config loading | `load_yaml_config` | `stable` |
-| [`rules.py`](../src/mdrap/rules.py) | User-defined quality rules | `@register_rule`, `evaluate_user_rules` | `stable` |
-| [`rules.def`](../src/mdrap/rules.def) | C X-Macro quality rule definitions | Preprocessor table of validation rules | `stable` |
-| [`protocols.py`](../src/mdrap/protocols.py) | Extension Protocol interfaces | `StorageBackend`, `AuthProvider`, `QualityEvaluator`, `OutputSink` | `stable` |
+| [`quality.py`](../src/mdrap/quality.py) | 15-rule quality evaluation engine | `QualityEngine`, `QualityConfig` | `stable` |
+| [`reconciliation.py`](../src/mdrap/reconciliation.py) | Multi-feed arbitration & reliability | `Reconciler`, `ReliabilityTracker` | `stable` |
+| [`pipeline.py`](../src/mdrap/pipeline.py) | Stateful pipeline processing | `Pipeline`, `tuned_gc` | `stable` |
+| [`engine.py`](../src/mdrap/engine.py) | High-level unified engine API | `Engine`, `EngineConfig`, `StepResult` | `stable` |
+| [`metrics.py`](../src/mdrap/metrics.py) | Hardware latency & throughput metrics | `compute_latencies_us`, `RunMetrics`, `percentile` | `stable` |
+| [`config.py`](../src/mdrap/config.py) | Configuration dataclasses | `PlatformConfig`, `QualityConfig`, `PipelineConfig` | `stable` |
+| [`config_loader.py`](../src/mdrap/config_loader.py) | Hierarchical TOML/YAML loader | `load_config`, `resolve_config` | `stable` |
+| [`rules.py`](../src/mdrap/rules.py) | Dynamic quality rule registration | `@register_rule`, `evaluate_user_rules` | `stable` |
+| [`protocols.py`](../src/mdrap/protocols.py) | Structural extension protocols | `FeedAdapter`, `StorageBackend`, `OutputSink` | `stable` |
+| [`runtime.py`](../src/mdrap/runtime.py) | Platform runtime environment inspection | `RuntimeProfile`, `get_runtime_profile` | `stable` |
+| [`facade.py`](../src/mdrap/facade.py) | Simplified top-level developer interface | `MDRAPFacade` | `beta` |
+| [`mdrap.py`](../src/mdrap/mdrap.py) | Primary engine lifecycle wrapper | `MDRAPEngine` | `stable` |
+| [`quarantine.py`](../src/mdrap/quarantine.py) | Quarantined event models & factories | `QuarantineRecord` | `stable` |
 
-### Storage (stable)
-
-| Module | Purpose | Key Exports | Stability |
-|---|---|---|---|
-| [`storage.py`](../src/mdrap/storage.py) | SQLite persistence engine | `Store` | `stable` |
-| [`historical.py`](../src/mdrap/historical.py) | Columnar Parquet & DuckDB storage | `HistoricalStorageEngine`, `PartitionWriter` | `stable` |
-| [`columnar.py`](../src/mdrap/columnar.py) | DuckDB analytical queries | `ColumnarStore` | `beta` |
-| [`archive.py`](../src/mdrap/archive.py) | Raw event archival | `RawArchive`, `replay` | `stable` |
-| [`bardb.py`](../src/mdrap/bardb.py) | Bar/candle database | `BarDatabase` | `beta` |
-| [`chd.py`](../src/mdrap/chd.py) | CHD machine | `CHDMachine` | `beta` |
-| [`chd_history.py`](../src/mdrap/chd_history.py) | CHD history engine | `CHDHistoryEngine` | `beta` |
-
-### Ingestion & Feed Handling (stable)
+### 2. Storage & Durability
+Crash-resilient write-ahead logging (WAL), SQLite persistence, and columnar exports.
 
 | Module | Purpose | Key Exports | Stability |
-|---|---|---|---|
-| [`adapters/__init__.py`](../src/adapters/__init__.py) | FeedAdapter Protocol + entry_point discovery | `FeedAdapter`, discovery functions | `stable` |
-| [`adapters/template.py`](../src/adapters/template.py) | Template adapter implementation | Example adapter implementation | `stable` |
-| [`feed_handler.py`](../src/mdrap/feed_handler.py) | Streaming feed supervisor | `StreamingFeedSupervisor` | `stable` |
-| [`recovery.py`](../src/mdrap/recovery.py) | Feed recovery state machine & gap stitching | `FeedRecoveryEngine`, `RecoveryState` | `stable` |
-| [`pcap.py`](../src/mdrap/pcap.py) | PCAP 2.4 & MoldUDP64 packet dissector | `PCAPReader`, `MoldUDP64Dissector` | `stable` |
-| [`simulator.py`](../src/mdrap/simulator.py) | Synthetic feed simulator | `FeedSimulator`, `SimulatorConfig` | `stable` |
-| [`ws_feed.py`](../src/mdrap/ws_feed.py) | WebSocket feed manager for crypto venues | `WebSocketFeedManager` | `beta` |
-| [`polygon_feed.py`](../src/mdrap/polygon_feed.py) | Polygon.io feed manager | `PolygonFeedManager` | `beta` |
-| [`databento_feed.py`](../src/mdrap/databento_feed.py) | Databento feed manager | `DatabentoFeedManager` | `beta` |
-| [`live.py`](../src/mdrap/live.py) | Live market data connector | `LiveConnector` | `beta` |
+| :--- | :--- | :--- | :--- |
+| [`storage.py`](../src/mdrap/storage.py) | Primary SQLite persistence store | `Store` | `stable` |
+| [`storage_schema.py`](../src/mdrap/storage_schema.py) | Database DDL and indexing schema | `SCHEMA_DDL`, `INDEX_DDL` | `stable` |
+| [`storage_audit.py`](../src/mdrap/storage_audit.py) | Database integrity verification queries | `verify_database_integrity` | `stable` |
+| [`ingestlog.py`](../src/mdrap/ingestlog.py) | Append-only CRC-32C write-ahead log | `IngestLog`, `WALSegment` | `stable` |
+| [`journal.py`](../src/mdrap/journal.py) | Undo transaction journal for rollback | `UndoJournal` | `stable` |
+| [`projection.py`](../src/mdrap/projection.py) | Asynchronous WAL-to-SQLite projection | `SQLiteProjection`, `ProjectionWorker` | `stable` |
+| [`archive.py`](../src/mdrap/archive.py) | Raw payload compressed archiving | `RawArchive`, `replay` | `stable` |
+| [`historical.py`](../src/mdrap/historical.py) | Historical dataset partitioning | `HistoricalStorageEngine` | `beta` |
+| [`columnar.py`](../src/mdrap/columnar.py) | Optional columnar storage queries | `ColumnarStore` | `beta` |
+| [`chd.py`](../src/mdrap/chd.py) | Historical market data fetcher | `CHDClient`, `HistoricalRequest` | `beta` |
+| [`export.py`](../src/mdrap/export.py) | Standard CSV and JSON event exporter | `export_data` | `stable` |
 
-### Security & Audit (stable)
-
-| Module | Purpose | Key Exports | Stability |
-|---|---|---|---|
-| [`security.py`](../src/mdrap/security.py) | RBAC, HMAC auth, API key management | `SecurityManager`, `Role`, `ClientEntitlement` | `stable` |
-| [`audit_format.py`](../src/mdrap/audit_format.py) | Merkle-chain audit hash computation | `compute_audit_hash` | `stable` |
-
-### Delivery & Output (stable)
+### 3. Ingestion, Protocol Dissectors & Adapters
+Pluggable exchange feed decoders, binary dissectors, and network connectors.
 
 | Module | Purpose | Key Exports | Stability |
-|---|---|---|---|
-| [`shm.py`](../src/mdrap/shm.py) | Shared memory ring buffer SPMC | `SHMWriter`, `SHMReader` | `stable` |
-| [`kafka_sink.py`](../src/mdrap/kafka_sink.py) | Durable Kafka/Redpanda streaming sink | `DurableKafkaSink`, `KafkaSinkConfig`, `InMemoryKafkaProducer` | `stable` |
-| [`protocol.py`](../src/mdrap/protocol.py) | Binary wire protocol | `pack_tick_frame`, `unpack_tick_frame` | `stable` |
-| [`service.py`](../src/mdrap/service.py) | TCP streaming daemon | `MarketDataDaemon` | `stable` |
-| [`gateway_tcp.py`](../src/mdrap/gateway_tcp.py) | TCP gateway server | `TCPGatewayServer` | `beta` |
+| :--- | :--- | :--- | :--- |
+| [`adapters/base.py`](../src/mdrap/adapters/base.py) | Feed adapter abstract base classes | `BaseFeedAdapter` | `stable` |
+| [`adapters/binance.py`](../src/mdrap/adapters/binance.py) | Binance WebSocket spot/futures normalizer | `BinanceAdapter` | `stable` |
+| [`adapters/kraken.py`](../src/mdrap/adapters/kraken.py) | Kraken WebSocket v2 normalizer | `KrakenAdapter` | `stable` |
+| [`adapters/databento.py`](../src/mdrap/adapters/databento.py) | Databento DBN binary stream normalizer | `DatabentoAdapter` | `stable` |
+| [`adapters/itch.py`](../src/mdrap/adapters/itch.py) | NASDAQ TotalView-ITCH normalizer | `ITCHAdapter` | `stable` |
+| [`adapters/reference.py`](../src/mdrap/adapters/reference.py) | Synthetic reference validation adapter | `ReferenceAdapter` | `stable` |
+| [`adapters/template.py`](../src/mdrap/adapters/template.py) | Developer skeleton for custom feeds | `TemplateAdapter` | `stable` |
+| [`feed_handler.py`](../src/mdrap/feed_handler.py) | Streaming feed lifecycle coordinator | `StreamingFeedSupervisor` | `stable` |
+| [`ws_feed.py`](../src/mdrap/ws_feed.py) | Asynchronous WebSocket feed manager | `WebSocketFeedManager` | `beta` |
+| [`polygon_feed.py`](../src/mdrap/polygon_feed.py) | Polygon.io market data connector | `PolygonFeedManager` | `beta` |
+| [`databento_feed.py`](../src/mdrap/databento_feed.py) | Databento live stream connector | `DatabentoFeedManager` | `beta` |
+| [`itch.py`](../src/mdrap/itch.py) | ITCH 5.0 binary protocol parser | `ITCHParser`, `ITCHOrderBookTracker` | `stable` |
+| [`sbe.py`](../src/mdrap/sbe.py) | Simple Binary Encoding (SBE) decoder | `SBEDecoder`, `SBEMessage` | `stable` |
+| [`recovery.py`](../src/mdrap/recovery.py) | Sequence gap recovery state machine | `FeedRecoveryEngine` | `stable` |
+| [`gap.py`](../src/mdrap/gap.py) | Gap detection and request tracking | `GapDetector`, `GapRequest` | `stable` |
+| [`ingress.py`](../src/mdrap/ingress.py) | Multi-channel ingress sequencer | `IngressSequencer` | `stable` |
+| [`simulator.py`](../src/mdrap/simulator.py) | Deterministic market feed generator | `FeedSimulator`, `SimulatorConfig` | `stable` |
+| [`live.py`](../src/mdrap/live.py) | Live public market data connector | `LiveConnector` | `beta` |
 
-### API (beta)
-
-| Module | Purpose | Key Exports | Stability |
-|---|---|---|---|
-| [`api.py`](../src/mdrap/api.py) | FastAPI REST + WebSocket server | `create_app`, `AppState` | `beta` |
-
-### Analytics & Quantitative (beta)
-
-| Module | Purpose | Key Exports | Stability |
-|---|---|---|---|
-| [`analytics.py`](../src/mdrap/analytics.py) | OHLCV, spread, volatility aggregation | `MarketAnalytics` | `beta` |
-| [`bbo.py`](../src/mdrap/bbo.py) | Best Bid/Offer engine | `BBOEngine`, `ConsolidatedBBO` | `stable` |
-| [`depth.py`](../src/mdrap/depth.py) | L2 order book consolidation | `ConsolidatedDepthEngine` | `beta` |
-| [`features.py`](../src/mdrap/features.py) | Technical indicators | `sma`, `ema`, `rsi`, `macd`, `bollinger_bands`, `atr` | `beta` |
-| [`options.py`](../src/mdrap/options.py) | BSM options pricing | `bsm_price`, `bsm_greeks`, `implied_volatility` | `beta` |
-| [`risk.py`](../src/mdrap/risk.py) | Risk analytics | `PortfolioRiskEngine`, `ReturnSeries`, `DrawdownCircuitBreaker` | `beta` |
-| [`flow_tracker.py`](../src/mdrap/flow_tracker.py) | Order flow analysis | `OrderFlowTracker`, `LeeReadyClassifier` | `beta` |
-| [`backtest.py`](../src/mdrap/backtest.py) | Backtesting engine | `BacktestEngine` | `beta` |
-| [`tca.py`](../src/mdrap/tca.py) | Transaction cost analysis | `TCAEngine`, `TCAMetrics`, `ExecutionRecord` | `experimental` ⚠️ |
-| [`replay.py`](../src/mdrap/replay.py) | Deterministic historical replay engine | `HistoricalReplayEngine`, `ReplayConfig` | `stable` |
-
-> ⚠️ **`tca.py` compliance notice:** this module implements metrics shaped around SEC Rule 605/606 and MiFID II RTS 27/28 concepts (execution quality, price improvement, venue routing statistics). It has **not been reviewed by a securities compliance professional or counsel**. If you're building a real best-execution or regulatory reporting product on top of it, get that review before relying on its output for any compliance, audit, or regulatory-filing purpose — treat it as a starting implementation of the *shape* of these metrics, not a validated compliance engine.
-
-### Research & Alternative Data (experimental)
+### 4. IPC Delivery & Client Distribution
+Shared memory ring buffers and streaming sockets for downstream sidecars.
 
 | Module | Purpose | Key Exports | Stability |
-|---|---|---|---|
-| [`vessel.py`](../src/mdrap/vessel.py) | AIS vessel tracking | `VesselTracker`, `Vessel`, `Chokepoint` | `experimental` |
+| :--- | :--- | :--- | :--- |
+| [`shm.py`](../src/mdrap/shm.py) | Zero-copy seqlock SHM ring buffer | `SHMWriter`, `SHMReader` | `stable` |
+| [`shm_drainer.py`](../src/mdrap/shm_drainer.py) | Background ring buffer reader daemon | `SHMDrainer` | `beta` |
+| [`service.py`](../src/mdrap/service.py) | Production TCP market data daemon | `MarketDataDaemon`, `StreamClient` | `stable` |
+| [`protocol.py`](../src/mdrap/protocol.py) | Fixed-width binary wire protocol | `pack_tick_frame`, `unpack_tick_frame` | `stable` |
+| [`client.py`](../src/mdrap/client.py) | Python REST & WebSocket client | `MDRAPClient` | `beta` |
+| [`api.py`](../src/mdrap/api.py) | FastAPI REST & WebSocket streaming server | `create_app`, `AppState` | `beta` |
 
-### Infrastructure & Native Acceleration (stable)
-
-| Module | Purpose | Key Exports | Stability |
-|---|---|---|---|
-| [`fastpath.py`](../src/mdrap/fastpath.py) | C FFI acceleration layer | `FastQualityEngine`, `NativeReplayBuffer`, `is_available` | `stable` |
-| [`fastpath.c`](../src/mdrap/fastpath.c) | C source for native acceleration | Fast validation, ring buffer, and Welford variance routines | `stable` |
-| [`fastpath.pyi`](../src/mdrap/fastpath.pyi) | Type stubs | Type annotations for native C module | `stable` |
-
-### CLI & Terminal UI (beta)
+### 5. Order Book & Analytics
+Real-time consolidated top-of-book (NBBO) and L2 market depth aggregation.
 
 | Module | Purpose | Key Exports | Stability |
-|---|---|---|---|
-| [`cli.py`](../src/cli.py) | Main CLI entry point | `main` | `beta` |
-| [`trading_cli.py`](../src/mdrap/trading_cli.py) | Trading CLI | `add_trading_parsers`, `cmd_backtest`, `cmd_risk` | `experimental` |
-| [`navigator.py`](../src/mdrap/navigator.py) | TUI navigator | `MDRAPNavigator` | `beta` |
-| [`terminal_display.py`](../src/mdrap/terminal_display.py) | Rich terminal rendering | ANSI/Rich renderers, tables, live tickers | `beta` |
-| [`dashboard.py`](../src/mdrap/dashboard.py) | Dashboard view | Summary cockpit and telemetry widgets | `beta` |
-| [`term.py`](../src/mdrap/term.py) | Console abstraction | Terminal screen, formatting, and cursor utilities | `stable` |
+| :--- | :--- | :--- | :--- |
+| [`bbo.py`](../src/mdrap/bbo.py) | Consolidated Best Bid & Offer (NBBO) | `BBOEngine`, `ConsolidatedBBO` | `stable` |
+| [`depth.py`](../src/mdrap/depth.py) | Multi-venue Level-2 depth ladder | `ConsolidatedDepthEngine` | `stable` |
+| [`analytics.py`](../src/mdrap/analytics.py) | Streaming OHLCV and volatility metrics | `MarketAnalytics`, `OHLCVAggregator`| `beta` |
+| [`features.py`](../src/mdrap/features.py) | Microstructure feature indicators | `sma`, `ema`, `rsi`, `bollinger_bands` | `beta` |
+| [`symbology.py`](../src/mdrap/symbology.py) | Symbol resolution & normalization | `resolve_symbol` | `stable` |
+| [`venues.py`](../src/mdrap/venues.py) | Venue registry, phases & tick rules | `MarketVenue`, `TickSizeModel` | `stable` |
+| [`clock.py`](../src/mdrap/clock.py) | Monotonic clock abstractions | `SystemClock`, `FixedClock` | `stable` |
+| [`replay.py`](../src/mdrap/replay.py) | Deterministic historical replay | `HistoricalReplayEngine` | `stable` |
 
-### SDK & Client Libraries (beta)
-
-| Module | Purpose | Key Exports | Stability |
-|---|---|---|---|
-| [`client.py`](../src/mdrap/client.py) | Python SDK client | `MDRAPClient` | `beta` |
-| [`strategy_sdk.py`](../src/mdrap/strategy_sdk.py) | Strategy development SDK | Quantitative strategy base classes and runner interfaces | `experimental` |
-
-### Supporting Infrastructure (various)
+### 6. Security, Governance & Forensic Audit
+Cryptographic Merkle proofs, HMAC authentication, and tamper verification.
 
 | Module | Purpose | Key Exports | Stability |
-|---|---|---|---|
-| [`symbology.py`](../src/mdrap/symbology.py) | Symbol resolution | `resolve_symbol` | `stable` |
-| [`venues.py`](../src/mdrap/venues.py) | Global venue definitions | Global venue definitions and metadata registry | `stable` |
-| [`fx.py`](../src/mdrap/fx.py) | FX currency conversion | `FXConverter` | `beta` |
-| [`scheduler.py`](../src/mdrap/scheduler.py) | Task scheduler | `Scheduler`, `ScheduledJob`, `CronParser` | `beta` |
-| [`watchdog.py`](../src/mdrap/watchdog.py) | Source health watchdog | `SourceWatchdog` | `stable` |
-| [`alerts.py`](../src/mdrap/alerts.py) | Alert engine | `AlertEngine` | `beta` |
-| [`alert_sinks.py`](../src/mdrap/alert_sinks.py) | External alert delivery sinks & worker | `AlertDeliveryWorker`, `WebhookAlertSink`, `SlackAlertSink`, `PagerDutyAlertSink` | `stable` |
-| [`prometheus.py`](../src/mdrap/prometheus.py) | Prometheus exposition formatter | `format_prometheus_metrics`, `export_prometheus_metrics` | `stable` |
-| [`benchmark.py`](../src/mdrap/benchmark.py) | Pipeline benchmarking | `run_benchmark` | `stable` |
-| [`export.py`](../src/mdrap/export.py) | CSV/JSON export utilities | Export utilities for ticks, bars, and anomalies | `stable` |
-| [`exporter.py`](../src/mdrap/exporter.py) | Market data exporter | `MarketDataExporter` | `beta` |
-| [`manifest.py`](../src/mdrap/manifest.py) | Build manifest generation | Build manifest generator and commit hash utilities | `stable` |
-| [`chaos.py`](../src/mdrap/chaos.py) | Chaos/fault injection | `ChaosEngine`, `ChaosInjector` | `beta` |
-| [`stresstest.py`](../src/mdrap/stresstest.py) | Stress testing | `stress_end_to_end`, `stress_gateway`, `stress_quality_engine` | `beta` |
-| [`workload_simulator.py`](../src/mdrap/workload_simulator.py) | Concurrent workload simulator | `ConcurrentWorkloadSimulator`, `UserArchetype`, `DeviceConfig` | `beta` |
-| [`multicast_arbitrator.py`](../src/mdrap/multicast_arbitrator.py) | A/B multicast feed arbitration | `ABFeedArbitrator` | `beta` |
-| [`sbe.py`](../src/mdrap/sbe.py) | SBE codec | Simple Binary Encoding (SBE) encoders and decoders | `experimental` |
-| [`itch.py`](../src/mdrap/itch.py) | ITCH 5.0 parser | `ITCHParser`, `ITCHOrderBookTracker` | `beta` |
-| [`fix_engine.py`](../src/mdrap/fix_engine.py) | FIX protocol engine | `FIXSession`, `FIXEngineServer` | `experimental` |
-| [`mbo.py`](../src/mdrap/mbo.py) | Market-by-Order book | `OrderBookMBO` | `beta` |
-| [`failover.py`](../src/mdrap/failover.py) | Active-passive failover & DR clustering | `ClusterManager`, `FailoverEngine`, `ClusterNode` | `stable` |
+| :--- | :--- | :--- | :--- |
+| [`security.py`](../src/mdrap/security.py) | RBAC, HMAC auth, API key hashing | `SecurityManager`, `Role`, `HashedKeyStore` | `stable` |
+| [`audit_format.py`](../src/mdrap/audit_format.py) | Merkle-chain audit hash calculation | `compute_audit_hash` | `stable` |
+| [`provenance.py`](../src/mdrap/provenance.py) | End-to-end event lineage tracking | `EventProvenance`, `ProvenanceTracker` | `stable` |
+| [`incidents.py`](../src/mdrap/incidents.py) | Quality incident lifecycle tracking | `IncidentManager`, `IncidentRecord` | `stable` |
+| [`historical_verifier.py`](../src/mdrap/historical_verifier.py) | Replay state verification against store | `HistoricalVerifier` | `stable` |
+
+### 7. Reliability, SRE & Observability
+Watchdogs, alert sinks, Prometheus exposition, and chaos engineering.
+
+| Module | Purpose | Key Exports | Stability |
+| :--- | :--- | :--- | :--- |
+| [`watchdog.py`](../src/mdrap/watchdog.py) | Feed silence & degradation monitor | `SourceWatchdog` | `stable` |
+| [`alerts.py`](../src/mdrap/alerts.py) | Threshold & anomaly alert engine | `AlertEngine`, `Alert` | `beta` |
+| [`alert_sinks.py`](../src/mdrap/alert_sinks.py) | Webhook and alert delivery workers | `AlertDeliveryWorker`, `WebhookAlertSink` | `stable` |
+| [`prometheus.py`](../src/mdrap/prometheus.py) | Prometheus metrics scraping endpoint | `PrometheusExporter` | `stable` |
+| [`telemetry.py`](../src/mdrap/telemetry.py) | Latency and throughput telemetry | `TelemetryCollector` | `stable` |
+| [`supervisor.py`](../src/mdrap/supervisor.py) | Inlined SPSC queues & channel workers | `PySpscRingQueue`, `SpscRingQueue` | `stable` |
+| [`chaos.py`](../src/mdrap/chaos.py) | Controlled fault & latency injection | `ChaosEngine`, `ChaosInjector` | `beta` |
+| [`exceptions.py`](../src/mdrap/exceptions.py) | Typed platform exception hierarchy | `MDRAPException`, `SecurityError` | `stable` |
+| [`log.py`](../src/mdrap/log.py) | Structured logging utilities | `get_logger` | `stable` |
+
+### 8. CLI & Terminal Operations
+Command-line tools, terminal displays, and interactive cockpit.
+
+| Module | Purpose | Key Exports | Stability |
+| :--- | :--- | :--- | :--- |
+| [`cli/core.py`](../src/mdrap/cli/core.py) | Primary CLI subcommands (run, bench) | `cmd_run`, `cmd_benchmark`, `cmd_stress` | `stable` |
+| [`cli/operations.py`](../src/mdrap/cli/operations.py) | Operational commands (wal, daemon, serve) | `cmd_daemon`, `cmd_serve`, `cmd_doctor` | `stable` |
+| [`cli/market.py`](../src/mdrap/cli/market.py) | Market data queries (bbo, depth, live) | `cmd_bbo`, `cmd_depth`, `cmd_live` | `stable` |
+| [`cli/security.py`](../src/mdrap/cli/security.py) | Security and audit verification | `cmd_audit`, `cmd_security` | `stable` |
+| [`cli/integrations.py`](../src/mdrap/cli/integrations.py) | Out-of-scope companion notices | `cmd_strategy`, `cmd_vessel` | `stable` |
+| [`cli/_common.py`](../src/mdrap/cli/_common.py) | Shared table formatters & palette | `_t`, `Console` | `stable` |
+| [`term.py`](../src/mdrap/term.py) | Terminal cursor and screen controls | Screen abstractions | `stable` |
+| [`terminal_display.py`](../src/mdrap/terminal_display.py) | ANSI formatting and tables | Terminal renderers | `beta` |
+| [`dashboard.py`](../src/mdrap/dashboard.py) | Real-time terminal HUD display | `render` | `beta` |
+| [`tui.py`](../src/mdrap/tui.py) | Interactive Text User Interface | TUI application | `beta` |
+| [`profile.py`](../src/mdrap/profile.py) | CPU and memory profiler utilities | `profile_run` | `beta` |
+
+### 9. Native Acceleration & Build
+C FFI bindings and build utilities.
+
+| Module | Purpose | Key Exports | Stability |
+| :--- | :--- | :--- | :--- |
+| [`fastpath.py`](../src/mdrap/fastpath.py) | Native C shared library loader & FFI | `FastQualityEngine`, `NativeReplayBuffer` | `stable` |
+| [`build_fastpath.py`](../src/mdrap/build_fastpath.py) | Standalone C compiler harness | Compiler invocation script | `stable` |
+| [`manifest.py`](../src/mdrap/manifest.py) | Package manifest and checksum audit | `generate_manifest` | `stable` |
+| [`benchmark.py`](../src/mdrap/benchmark.py) | Reproducible benchmark harness | `run_benchmark` | `stable` |
+| [`_version.py`](../src/mdrap/_version.py) | Authoritative canonical version string | `__version__ = "6.0.8"` | `stable` |
 
 ---
 
-## Extension Points
-
-MDRAP provides 6 primary extension points that allow external packages or user code to plug into the pipeline lifecycle without modifying core engine files:
-
-| Extension Point | Protocol | Entry Point Group | Registration | Documentation |
-|---|---|---|---|---|
-| Feed Adapters | `FeedAdapter` | `mdrap.adapters` | `entry_points` | [docs/extending/feed-adapter.md](./extending/feed-adapter.md) |
-| Quality Rules | — (decorator) | `mdrap.quality_rules` | `@register_rule(bit=N)` | [docs/extending/quality-rules.md](./extending/quality-rules.md) |
-| Storage Backends | `StorageBackend` | `mdrap.storage_backends` | `entry_points` | [docs/extending/storage-backend.md](./extending/storage-backend.md) |
-| Auth Providers | `AuthProvider` | `mdrap.auth_providers` | `entry_points` | [docs/extending/auth-provider.md](./extending/auth-provider.md) |
-| Output Sinks | `OutputSink` | `mdrap.output_sinks` | `entry_points` | [docs/extending/output-sink.md](./extending/output-sink.md) |
-| Alert Sinks | `AlertSink` | `mdrap.alert_sinks` | `entry_points` | [docs/extending/alert-sink.md](./extending/alert-sink.md) |
-
----
-
-## Dependency Graph
-
-The following Mermaid flowchart displays core module relationships and dependencies across ingestion, validation, state reconciliation, persistence, and output distribution:
+## Architecture Flow Diagram
 
 ```mermaid
 flowchart TD
-    models["models.py"]
-    gateway["gateway.py"]
-    quality["quality.py"]
-    reconciliation["reconciliation.py"]
-    pipeline["pipeline.py"]
-    storage["storage.py"]
-    security["security.py"]
-    api["api.py"]
-    service["service.py"]
-    shm["shm.py"]
-    protocol["protocol.py"]
-    bbo["bbo.py"]
-    depth["depth.py"]
-    adapters["adapters/"]
-    feed_handler["feed_handler.py"]
-    simulator["simulator.py"]
-    kafka_sink["kafka_sink.py"]
-    alerts["alerts.py"]
-    alert_sinks["alert_sinks.py"]
-    prometheus["prometheus.py"]
-    
-    gateway --> models
-    quality --> models
-    reconciliation --> models
-    pipeline --> gateway
-    pipeline --> quality
-    pipeline --> reconciliation
-    pipeline --> storage
-    pipeline --> models
-    api --> pipeline
-    api --> storage
-    api --> security
-    api --> bbo
-    api --> depth
-    api --> prometheus
-    service --> pipeline
-    service --> storage
-    service --> security
-    service --> shm
-    service --> protocol
-    feed_handler --> simulator
-    feed_handler --> adapters
-    bbo --> models
-    depth --> models
-    kafka_sink --> storage
-    alerts --> models
-    alert_sinks --> alerts
-    prometheus --> storage
-```
+    subgraph Ingress ["1. Ingress & Normalization"]
+        adapters["Feed Adapters\n(Binance, Kraken, Databento, ITCH/SBE)"]
+        gateway["Gateway\n(normalize -> RawEvent)"]
+        adapters --> gateway
+    end
 
----
+    subgraph CoreEngine ["2. Core Reliability Engine"]
+        quality["QualityEngine\n(15 Microstructure Rules)"]
+        reconciliation["Reconciler\n(Multi-Feed Provenance)"]
+        quarantine["Quarantine Ledger\n(Reason Bitmask)"]
+        
+        gateway --> quality
+        quality -->|Valid / Suspicious| reconciliation
+        quality -->|Invalid| quarantine
+    end
 
-## Stability Labels
+    subgraph Durability ["3. Durability & Handoff"]
+        wal["IngestLog WAL\n(CRC-32C Crash Resilient)"]
+        shm["SPMC Seqlock Ring Buffer\n(Zero-Copy SHM <1µs)"]
+        store["SQLite WAL Store\n(Merkle Audit & Projections)"]
+        
+        reconciliation --> wal
+        reconciliation --> shm
+        wal --> store
+    end
 
-MDRAP categorizes all modules using explicit stability tiers to clarify public API support and deprecation lifecycle commitments:
-
-- **stable**: Public API will not break without a deprecation cycle. Safe to depend on for production deployments and third-party integrations.
-- **beta**: API may change between minor versions. Functional, tested, and active in pipeline benchmarks, but interface contracts are not yet frozen.
-- **experimental**: No stability guarantees. May be incomplete, undergoing rapid iteration, untested in production environments, or subject to redesign/removal.
-
-Each module declares its stability tier at the module level:
-
-```python
-__stability__ = "stable"  # or "beta" | "experimental"
+    subgraph Sidecars ["4. Downstream Sidecars & Clients"]
+        shm_reader["SHMReader (IPC)"]
+        stream_client["StreamClient (TCP)"]
+        api_client["REST / WebSocket"]
+        
+        shm --> shm_reader
+        store --> stream_client
+        store --> api_client
+    end
 ```

@@ -1,0 +1,42 @@
+{
+  "duration_s": 21.4,
+  "total_broadcast_ticks": 20942,
+  "total_shm_ticks_read": 0,
+  "total_torn_reads": 0,
+  "total_laps_detected": 6949,
+  "total_skipped_ticks": 2569,
+  "ingestion_errors": 0,
+  "shm_errors": 0,
+  "core_cpu_pct": {
+    "median": 107.6,
+    "max": 124.8
+  },
+  "core_rss_mb": {
+    "start": 54.68,
+    "end": 62.12,
+    "peak": 62.12,
+    "memory_leak_detected": false
+  },
+  "delivery_latency_us": {
+    "p50_median": 0.0,
+    "p95_median": 0.0,
+    "p99_median": 0.0
+  },
+  "chaos_events": [
+    {
+      "type": "checkpoint_invoked",
+      "res": {
+        "busy": 0,
+        "log_pages": 13389,
+        "checkpointed_pages": 13389
+      },
+      "ts": 8.00686764717102
+    },
+    {
+      "type": "sidecar_restart",
+      "old_pid": 17072,
+      "ts": 13.177463054656982
+    }
+  ],
+  "wal_final_size_bytes": 103024752
+}

@@ -768,8 +768,19 @@ def build_parser() -> argparse.ArgumentParser:
         "action",
         nargs="?",
         default="list",
-        choices=["list"],
-        help="Action: list incidents (default: list)",
+        help="Action: list, show, or export incident (or an incident ID directly)",
+    )
+    p_incident.add_argument(
+        "incident_id",
+        nargs="?",
+        default=None,
+        help="Incident ID (e.g. inc-1700000001-0001) for show or export",
+    )
+    p_incident.add_argument(
+        "-o",
+        "--output",
+        default=None,
+        help="Output file path for exported evidence JSON",
     )
     p_incident.add_argument(
         "--status",
@@ -871,8 +882,14 @@ def build_parser() -> argparse.ArgumentParser:
         "action",
         nargs="?",
         default="verify",
-        choices=["verify", "salvage"],
-        help="Action: verify (integrity check) or salvage (recover valid frames)",
+        choices=["verify", "salvage", "checkpoint"],
+        help="Action: verify (integrity check), salvage (recover valid frames), or checkpoint (SQLite WAL checkpoint)",
+    )
+    p_wal.add_argument(
+        "--mode",
+        default="PASSIVE",
+        choices=["PASSIVE", "FULL", "RESTART", "TRUNCATE"],
+        help="Checkpoint mode: PASSIVE (default), FULL, RESTART, or TRUNCATE",
     )
     p_wal.add_argument(
         "--wal-path",
@@ -887,19 +904,33 @@ def build_parser() -> argparse.ArgumentParser:
         help="Do not create backup files during salvage",
     )
 
+    p_chk = _sub(
+        "checkpoint",
+        lambda args: (setattr(args, "action", "checkpoint"), cmd_wal(args))[1],
+        "Execute explicit SQLite WAL checkpoint (PASSIVE, FULL, RESTART, TRUNCATE)",
+        ["ckpt"],
+        db=True,
+    )
+    p_chk.add_argument(
+        "--mode",
+        default="PASSIVE",
+        choices=["PASSIVE", "FULL", "RESTART", "TRUNCATE"],
+        help="Checkpoint mode: PASSIVE (default), FULL, RESTART, or TRUNCATE",
+    )
+
     # Phase 3: Verify
     p_verify = _sub(
         "verify",
         cmd_verify,
-        "Audit IngestLog checksums, manifest hash chains, and gap counts",
-        aliases=["check-wal"],
+        "Audit IngestLog checksums, manifest hash chains, SQLite integrity, or standalone JSON evidence",
+        aliases=["check-wal", "check", "chk"],
         db=True,
     )
     p_verify.add_argument(
         "target",
         nargs="?",
         default=None,
-        help="Optional path to WAL directory or database",
+        help="Optional path to WAL directory, SQLite database, or JSON evidence package",
     )
     p_verify.add_argument(
         "--wal-path",
@@ -2214,6 +2245,9 @@ MNEMONIC_MAP = {
     "audit": "audit",
     "verify": "verify",
     "check-wal": "verify",
+    "check": "verify",
+    "chk": "verify",
+    "export-evidence": "incident",
     "init": "init",
     "capture": "capture",
     "cap": "capture",
@@ -2352,6 +2386,8 @@ MNEMONIC_MAP = {
     "partitions": "lake",
     "wal": "wal",
     "ingestlog": "wal",
+    "checkpoint": "checkpoint",
+    "ckpt": "checkpoint",
 }
 
 QUICK_ACTIONS = {
@@ -2368,6 +2404,7 @@ QUICK_ACTIONS = {
 }
 
 ALL_CANONICAL_COMMANDS = [
+    "checkpoint",
     "wal",
     "incident",
     "incidents",
@@ -2882,9 +2919,17 @@ def cmd_shell(args=None, parser=None):
 
 def main():
     # Detect explicit color suppression before any Console is constructed
-    if "--no-color" in sys.argv or "--plain" in sys.argv or os.environ.get("NO_COLOR"):
+    if (
+        "--no-color" in sys.argv
+        or "--plain" in sys.argv
+        or "--json" in sys.argv
+        or os.environ.get("NO_COLOR")
+    ):
         os.environ["NO_COLOR"] = "1"
         os.environ["MDRAP_NO_COLOR"] = "1"
+
+    if "--pretty" in sys.argv:
+        os.environ["MDRAP_PRETTY"] = "1"
 
     # Pre-process direct slash commands, Wall Street mnemonics, or ticker-first syntax
     if len(sys.argv) > 1:
@@ -3254,8 +3299,11 @@ def main():
 
         try:
             ret = args.func(args)
-            if isinstance(ret, int) and ret != 0:
+            if isinstance(ret, int):
                 sys.exit(ret)
+        except KeyboardInterrupt:
+            sys.stderr.write("\n[mdrap] Operation cancelled by user.\n")
+            sys.exit(130)
         except CompanionPackageMissing as exc:
             if getattr(args, "json", False):
                 import json
@@ -3283,7 +3331,7 @@ def main():
                     )
                 )
             sys.exit(3)
-        except Exception:
+        except Exception as exc:
             if os.environ.get("MDRAP_DEBUG") == "1" or "--debug" in sys.argv:
                 import traceback
 
@@ -3293,6 +3341,8 @@ def main():
                     tb = tb.replace(home, "~")
                 sys.stderr.write(tb)
                 sys.exit(1)
-            raise
+            else:
+                sys.stderr.write(f"\n[mdrap] Error: {exc}\n")
+                sys.exit(1)
     else:
         parser.print_help()

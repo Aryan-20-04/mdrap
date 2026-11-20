@@ -455,5 +455,8 @@ class IncidentManager:
             logging.getLogger("mdrap.incidents").error("[incidents] get_incident exception: %s", exc)
         finally:
             if conn:
-                conn.close()
+                try:
+                    conn.close()
+                except Exception:
+                    pass
         return None

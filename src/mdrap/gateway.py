@@ -251,6 +251,16 @@ class Gateway:
 
         # sequence: optional for feeds that don't provide monotonic sequence numbers (bounded to signed int64)
         sequence = p.get("sequence")
+        if sequence is None and event_type_raw == "TRADE" and p.get("trade_id") is not None:
+            tid = p.get("trade_id")
+            if isinstance(tid, int) and not isinstance(tid, bool):
+                sequence = tid
+            elif isinstance(tid, str):
+                if tid.isdigit():
+                    sequence = int(tid)
+                else:
+                    sequence = abs(hash(tid)) % (1 << 62)
+
         if sequence is not None:
             if isinstance(sequence, bool) or not isinstance(sequence, int):
                 raise SchemaError(f"sequence not an int: {sequence!r}")
@@ -291,6 +301,7 @@ class Gateway:
             raw_id=raw.raw_id,
             source_id=s_id,
             instrument_id_int=i_id,
+            session_id=p.get("session_id") or p.get("channel"),
         )
         event.clock_source = clock_source
         if p.get("is_simulated") or "SIM" in raw.source:

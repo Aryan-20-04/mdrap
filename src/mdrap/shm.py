@@ -44,11 +44,11 @@ def _safe_unregister(name: str) -> None:
     try:
         from multiprocessing import resource_tracker
 
-        for target in {name, "/" + name.lstrip("/")}:
-            try:
-                resource_tracker.unregister(target, "shared_memory")
-            except Exception:
-                pass
+        target = "/" + name.lstrip("/")
+        try:
+            resource_tracker.unregister(target, "shared_memory")
+        except Exception:
+            pass
     except Exception:
         pass
 
@@ -526,8 +526,18 @@ class SHMWriter:
         """Close and unlink shared memory segment."""
         if self.shm:
             try:
+                name = getattr(self.shm, "_name", None)
                 self.shm.close()
-                self.shm.unlink()
+                if name:
+                    try:
+                        import _posixshmem
+
+                        _posixshmem.shm_unlink(name)
+                    except (ImportError, AttributeError, FileNotFoundError):
+                        try:
+                            self.shm.unlink()
+                        except Exception:
+                            pass
             except Exception as exc:
                 logger.debug("[shm] Error closing/unlinking shm: %s", exc)
             self.shm = None

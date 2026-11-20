@@ -52,6 +52,20 @@ DEFAULT_RATE_LIMIT_CAPACITY: float = 40_000.0
 DEFAULT_REORDER_WINDOW_S: float = float(os.environ.get("MDRAP_REORDER_WINDOW_S", "0.0"))
 DEFAULT_REORDER_MAX_SLOTS: int = int(os.environ.get("MDRAP_REORDER_SLOTS", "32"))
 
+# Standard institutional asset-class profiles (Spec §7, config.yaml)
+DEFAULT_ASSET_CLASSES: Dict[str, Dict[str, Any]] = {
+    "crypto": {
+        "staleness_threshold_s": 2.00,
+        "price_anomaly_stddev": 6.0,
+        "reorder_window_s": 0.100,
+        "compensate_clock_skew": True,
+        "max_future_skew_s": 2.0,
+        "split_sequence_domains": True,
+    },
+    "equities": {"staleness_threshold_s": 0.25, "price_anomaly_stddev": 6.0},
+    "commodities": {"staleness_threshold_s": 0.50, "allow_negative": True},
+}
+
 
 @dataclass
 class QualityConfig:
@@ -70,7 +84,9 @@ class QualityConfig:
     reorder_window_s: float = DEFAULT_REORDER_WINDOW_S
     reorder_max_slots: int = DEFAULT_REORDER_MAX_SLOTS
     session_policy: str = "strict"  # strict, session_marker, auto_detect
-    asset_classes: Dict[str, Dict[str, float]] = field(default_factory=dict)
+    compensate_clock_skew: bool = False
+    split_sequence_domains: bool = False
+    asset_classes: Dict[str, Dict[str, Any]] = field(default_factory=dict)
 
     def for_instrument(self, instrument_id: str) -> "QualityConfig":
         """Return a tailored QualityConfig instance with asset-class overrides applied."""
@@ -153,6 +169,12 @@ class QualityConfig:
             ),
             reorder_max_slots=int(
                 overrides.get("reorder_max_slots", self.reorder_max_slots)
+            ),
+            compensate_clock_skew=bool(
+                overrides.get("compensate_clock_skew", self.compensate_clock_skew)
+            ),
+            split_sequence_domains=bool(
+                overrides.get("split_sequence_domains", self.split_sequence_domains)
             ),
             asset_classes=self.asset_classes,
         )

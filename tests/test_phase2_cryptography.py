@@ -60,10 +60,16 @@ def test_standalone_verifier_on_authentic_package():
         ev_file = f.name
 
     try:
+        child_env = os.environ.copy()
+        child_env["PYTHONIOENCODING"] = "utf-8"
+        child_env["PYTHONUTF8"] = "1"
         proc = subprocess.run(
             [sys.executable, "tools/verify_evidence.py", ev_file],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
+            env=child_env,
         )
         assert proc.returncode == 0
         assert "VERIFIED_TAMPER_EVIDENT" in proc.stdout

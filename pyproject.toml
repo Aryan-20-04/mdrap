@@ -49,24 +49,15 @@ api = [
 ui = [
     "rich>=13.0.0",
 ]
-export = [
-    "pyarrow>=20.0.0",
-]
 config = [
     "pyyaml>=6.0",
 ]
+# Both extra names are retained for compatibility with existing install commands.
 yaml = [
     "pyyaml>=6.0",
 ]
-columnar = [
-    "duckdb>=0.9.0",
-    "pyarrow>=20.0.0",
-]
 feeds = [
     "websockets>=12.0,<17.0",
-]
-kafka = [
-    "confluent-kafka>=2.3.0",
 ]
 all = [
     "rich>=13.0.0",
@@ -74,8 +65,6 @@ all = [
     "fastapi>=0.110.0",
     "uvicorn>=0.28.0",
     "httpx>=0.27.0",
-    "duckdb>=0.9.0",
-    "pyarrow>=20.0.0",
     "pyyaml>=6.0",
 ]
 test = [
@@ -123,21 +112,6 @@ mdrap = "mdrap.cli:main"
 template = "mdrap.adapters.template:TemplateAdapter"
 reference = "mdrap.adapters.reference:ReferenceFeedAdapter"
 
-[project.entry-points."mdrap.quality_rules"]
-sample_rules = "mdrap.sample_plugins:register_sample_quality_rules"
-
-[project.entry-points."mdrap.storage_backends"]
-sample_memory = "mdrap.sample_plugins:SampleMemoryStorageBackend"
-
-[project.entry-points."mdrap.auth_providers"]
-sample_auth = "mdrap.sample_plugins:SampleAuthProvider"
-
-[project.entry-points."mdrap.output_sinks"]
-sample_sink = "mdrap.sample_plugins:SampleOutputSink"
-
-[project.entry-points."mdrap.alert_sinks"]
-sample_alert = "mdrap.sample_plugins:SampleAlertSink"
-
 [tool.setuptools]
 py-modules = []
 package-dir = {"" = "src"}
@@ -156,14 +130,10 @@ version = {attr = "mdrap._version.__version__"}
     "rules.def",
     "py.typed",
     "*.pyi",
-    "*.pyd",
-    "_fastpath_native.dll",
-    "_fastpath_native.so",
-    "_fastpath_native.dylib",
-    "_fastpath_native.pyd",
-    "fastpath.dll",
-    "fastpath.dylib",
 ]
+
+[tool.setuptools.exclude-package-data]
+"*" = ["*.dll", "*.so", "*.dylib", "*.pyd"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -178,7 +148,10 @@ filterwarnings = [
     "ignore:.*StarletteDeprecationWarning.*",
     "ignore:.*Using .httpx. with .starlette.testclient.*:DeprecationWarning",
     "ignore:.*is deprecated in MDRAP v3.0.0.*:DeprecationWarning",
-    "ignore:.*are deprecated and non-core to the market data engine.*:DeprecationWarning",
+    "ignore:.*deprecated and non-core to the market data engine.*:DeprecationWarning",
+    "ignore:.*QuarantineManager in mdrap.quarantine is deprecated.*:DeprecationWarning",
+    "ignore:.*websockets.legacy is deprecated.*:DeprecationWarning",
+    "ignore:.*websockets.server.WebSocketServerProtocol is deprecated.*:DeprecationWarning",
     "ignore:.*scheduled for migration to mdrap_analytics.*:DeprecationWarning",
 ]
 

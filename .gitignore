@@ -167,3 +167,6 @@ plan.md
 benchmarks/phase0/
 tools/phase0/
 
+
+# Large historical captures (>100MB excluded from remote push)
+audit/v6.0.4/l2_capture_2hour.jsonl.gz

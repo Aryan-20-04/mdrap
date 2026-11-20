@@ -1,0 +1,33 @@
+﻿{
+    "commit":  "e634203b00ee6ab6450e188353e40e21b5d7d143",
+    "remote":  "origin\thttps://github.com/Aryan-20-04/mdrap.git (fetch)\r\norigin\thttps://github.com/Aryan-20-04/mdrap.git (push)",
+    "branch":  "remediation/v6.0.0-p1-hardening",
+    "remediation_commits":  [
+                                {
+                                    "hash":  "bea7c8a",
+                                    "title":  "fix(provenance): eliminate swallowed SQLite persistence exceptions and add dead-letter queue"
+                                },
+                                {
+                                    "hash":  "378eecb",
+                                    "title":  "fix(domain): implement full cross-venue quote reconciliation and scoped sequence tracking"
+                                },
+                                {
+                                    "hash":  "4ed7587",
+                                    "title":  "fix(security): resolve API broadcast unbounded memory, authorization caching, and SQLite read serialization"
+                                },
+                                {
+                                    "hash":  "3ec4237",
+                                    "title":  "fix(native): make C-extension optional for wheels, implement lifecycle spinlocks, and enforce native skips"
+                                },
+                                {
+                                    "hash":  "9fecf75",
+                                    "title":  "fix(engine): enforce strict monotonic validation status hierarchy across all paths"
+                                },
+                                {
+                                    "hash":  "2c65c4c",
+                                    "title":  "fix(audit): correct reconciliation status checks and eliminate brittle mock patches"
+                                }
+                            ],
+    "base_commit":  "01fe87f08c09169305153f817b83c3c9fd8e9118",
+    "status":  ""
+}
