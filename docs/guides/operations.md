@@ -5,7 +5,7 @@ Deploy, configure, monitor, and maintain MDRAP in production environments, ensur
 
 ## Prerequisites
 - Python 3.10+
-- Production host or container environment (Linux x86-64 / ARM64 or Windows Server)
+- Production host or container environment: Verified on Linux x86_64 (Ubuntu 22.04+) and Windows 11 (x86_64). Windows Server, Debian/RHEL, and ARM64 are unverified in local test runs.
 - Core package and optional API dependencies installed: `pip install -e ".[api]"`
 
 ## Steps

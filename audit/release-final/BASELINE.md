@@ -62,7 +62,7 @@ All claims in this document derive directly from executable evidence, SHA-256 ar
    - **Failed**: 0
    - **Errors**: 0
    - **Duration**: 386.38 seconds (6 minutes 26 seconds)
-   - **Machine-Readable Log**: Stored at [`audit/release-final/pytest_results.xml`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/audit/release-final/pytest_results.xml).
+   - **Machine-Readable Log**: Stored at `audit/release-final/pytest_results.xml` (`pytest_results.xml`).
 
 ---
 

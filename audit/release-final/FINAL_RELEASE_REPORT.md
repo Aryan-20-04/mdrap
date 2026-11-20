@@ -29,7 +29,7 @@ Across Phases 1 through 4, all engineering, packaging, security, and performance
 - **Total Test Items**: 1,718 collected.
 - **Execution Policy**: 40 stress/network tests deselected by default per `pytest.ini` (`-m "not slow and not network"`).
 - **Execution Metric**: **1,677 passed, 1 skipped, 0 failed, 0 errors in 386.38 seconds**.
-- **Proof**: Machine-readable JUnit XML saved to [`audit/release-final/pytest_results.xml`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/audit/release-final/pytest_results.xml).
+- **Proof**: Machine-readable JUnit XML saved to `audit/release-final/pytest_results.xml` (`pytest_results.xml`).
 
 ### 2. Packaging & External Installation
 - Built distribution artifacts:

@@ -57,9 +57,9 @@ To ensure both editions remain reliable, testable, and independently deployable:
    - All components exchange data using the immutable, slotted `CanonicalEvent` dataclass or 128-byte SBE binary frames.
    - Downstream packages must adapt to `CanonicalEvent` rather than requiring `mdrap-core` to mutate its internal layout.
 
-3. **Backward Compatibility via Deprecation Shims**:
-   - In core v6.0.8, modules transitioned to companion packages (`options.py`, `tca.py`, `risk.py`, `strategy_sdk.py`, `vessel.py`) were fully pruned to minimize attack surface and binary footprint.
-   - When a caller imports `from mdrap.options import ...`, a `DeprecationWarning` is emitted, informing the developer to migrate to the standalone package (`mdrap_options`).
+3. **Companion Package Segregation**:
+   - In core v6.0.8, modules transitioned to companion packages (`options.py`, `tca.py`, `risk.py`, `strategy_sdk.py`, `vessel.py`) were completely removed from the core package to minimize attack surface and binary footprint.
+   - Applications requiring options pricing, TCA compliance, or strategy simulation must install the respective standalone package (`mdrap-options`, `mdrap-analytics`, `mdrap-strategies`).
 
 ---
 

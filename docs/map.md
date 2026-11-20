@@ -37,6 +37,7 @@ Canonical data structures, schema validation, quality evaluation, and pipeline o
 | [`runtime.py`](../src/mdrap/runtime.py) | Platform runtime environment inspection | `RuntimeProfile`, `get_runtime_profile` | `stable` |
 | [`facade.py`](../src/mdrap/facade.py) | Simplified top-level developer interface | `MDRAPFacade` | `beta` |
 | [`mdrap.py`](../src/mdrap/mdrap.py) | Primary engine lifecycle wrapper | `MDRAPEngine` | `stable` |
+| [`plugins.py`](../src/mdrap/plugins.py) | Dynamic plugin discovery & extension registry | `PluginManager`, `discover_plugins` | `stable` |
 | [`quarantine.py`](../src/mdrap/quarantine.py) | Quarantined event models & factories | `QuarantineRecord` | `stable` |
 
 ### 2. Storage & Durability

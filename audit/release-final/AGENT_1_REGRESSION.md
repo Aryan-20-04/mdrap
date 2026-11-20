@@ -4,7 +4,7 @@
 **Date**: 2026-11-11  
 **Target Commit**: `4cf15c7`  
 **Execution Environment**: Python 3.13.1 on Windows 11 Enterprise (AMD64)  
-**Machine-Readable Test Artifact**: [`audit/release-final/pytest_results.xml`](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/audit/release-final/pytest_results.xml)  
+**Machine-Readable Test Artifact**: `audit/release-final/pytest_results.xml` (`pytest_results.xml`)  
 
 ---
 

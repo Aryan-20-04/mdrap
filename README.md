@@ -208,7 +208,7 @@ All figures are measured on committed benchmark hardware (12-core host, Windows 
 | Persona | 3-Line Example | Guide |
 | :--- | :--- | :--- |
 | **Quant Researcher** | `from mdrap.chd import CHDClient`<br>`client = CHDClient()`<br>`ticks = client.download("binance", "BTCUSDT")` | [Historical Data Guide](docs/CHD.md) |
-| **Downstream Consumer / Sidecar** | `from mdrap.service import StreamClient`<br>`client = StreamClient(host="127.0.0.1", port=9988)`<br>`for tick in client.subscribe(["NVDA"]): print(tick)` | [Operations Guide](docs/operations.md) |
+| **Downstream Consumer / Sidecar** | `from mdrap.service import StreamClient`<br>`client = StreamClient(host="127.0.0.1", port=9876)`<br>`for tick in client.stream("NVDA"): print(tick)` | [Operations Guide](docs/operations.md) |
 | **Developer** | `engine = Engine.open("./wal", config=EngineConfig(db_path=":memory:"))`<br>`decision = engine.submit(raw_event)`<br>`ticks = engine.query("AAPL", limit=10)` | [Quickstart Guide](docs/quickstart.md) |
 | **SRE / DevOps** | `curl -f http://127.0.0.1:8000/v1/health`<br>`curl -f http://127.0.0.1:8000/metrics`<br>`mdrap doctor --json` | [Operations Guide](docs/operations.md) |
 | **Compliance / Auditor** | `from mdrap.storage import Store`<br>`store = Store("data/mdrap.db")`<br>`report = store.verify_audit_integrity()` | [Audit Guide](docs/audit-log-format.md) |

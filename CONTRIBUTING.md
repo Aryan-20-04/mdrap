@@ -84,7 +84,7 @@ Every contribution, whether submitted by core maintainers or external contributo
 1. **Never modify `main` directly.** All work occurs on feature or fix branches branching from `develop`.
 2. **Every feature begins in its own branch.** Branch naming convention: `feature/<topic>`, `fix/<issue>`, or `release/<version>`.
 3. **Every feature must have tests.** Untested code is dead code.
-4. **Existing tests must continue to pass.** Zero test regressions allowed across the 800+ suite.
+4. **Existing tests must continue to pass.** Zero test regressions allowed across the 1,400+ suite.
 5. **New functionality must not silently change existing public APIs.** Adhere to [`docs/API_STABILITY.md`](docs/API_STABILITY.md).
 6. **Security-sensitive changes require explicit security testing.**
 7. **Performance-sensitive changes require benchmarks.** Measure before claiming; record JSON outputs under `benchmarks/`.

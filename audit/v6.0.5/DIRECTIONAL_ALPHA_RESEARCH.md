@@ -3,7 +3,7 @@
 **Objective:** Investigate whether genuine, economically exploitable directional predictive signals exist in genuine sub-second L2 order-book market data before attempting to construct or deploy directional or hybrid market-making strategies.
 
 **Protocol Standards:**
-- **Zero Real Orders & Zero Capital Risk:** Conducted 100% offline using immutable 2-hour multi-venue L2 capture ([l2_capture_2hour.jsonl.gz](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/audit/v6.0.4/l2_capture_2hour.jsonl.gz)).
+- **Zero Real Orders & Zero Capital Risk:** Conducted 100% offline using immutable 2-hour multi-venue L2 capture ([l2_capture_2hour.jsonl.gz (see Provenance)](../v6.0.4/L2_CAPTURE_PROVENANCE.md)).
 - **Causal Signal Hygiene:** Every signal computed strictly using information available at or before observation timestamp $t$. Zero look-ahead bias.
 - **Latency Adjustment:** All forward returns evaluated from $t + 2.5\text{ ms}$ (modeling $2.0\text{ ms}$ wire latency $+ 0.5\text{ ms}$ engine processing delay). Zero instantaneous zero-latency artifacts.
 - **Strict Chronological Non-Overlapping Partitions:**
@@ -15,7 +15,7 @@
 **Primary Artifacts:**
 - Research Engine Harness: [research_directional_alpha.py](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/tools/research_directional_alpha.py)
 - Quantitative Results JSON: [directional_alpha_results.json](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/audit/v6.0.5/directional_alpha_results.json)
-- Underlying Capture: [l2_capture_2hour.jsonl.gz](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/audit/v6.0.4/l2_capture_2hour.jsonl.gz)
+- Underlying Capture: [l2_capture_2hour.jsonl.gz (see Provenance)](../v6.0.4/L2_CAPTURE_PROVENANCE.md)
 
 ---
 
@@ -284,7 +284,7 @@ flowchart TD
 
 ## 8. Audit Compliance Checklist
 
-- [x] **Zero Real Orders:** Replay conducted 100% locally from immutable capture [l2_capture_2hour.jsonl.gz](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/audit/v6.0.4/l2_capture_2hour.jsonl.gz).
+- [x] **Zero Real Orders:** Replay conducted 100% locally from immutable capture [l2_capture_2hour.jsonl.gz (see Provenance)](../v6.0.4/L2_CAPTURE_PROVENANCE.md).
 - [x] **Zero Look-Ahead Bias:** Strict causal calculation; forward returns evaluated from $t + 2.5\text{ ms}$ latency point.
 - [x] **Strict Chronological Non-Overlapping Partitions:** DEV (0–45m), VAL (45–80m), and HOLDOUT (80–120m) evaluated independently.
 - [x] **No Post-Hoc Parameter Fitting on Holdout:** Fixed thresholds evaluated unchanged.

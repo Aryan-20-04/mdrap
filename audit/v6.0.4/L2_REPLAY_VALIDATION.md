@@ -6,7 +6,7 @@
 
 **Primary Artifacts:**
 - Capture & Replay Harness: [replay_l2.py](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/tools/replay_l2.py)
-- Continuous 2-Hour Raw Capture (bounded, 258.87 MiB gzip): [l2_capture_2hour.jsonl.gz](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/audit/v6.0.4/l2_capture_2hour.jsonl.gz)
+- Continuous 2-Hour Raw Capture (bounded, 258.87 MiB gzip): [l2_capture_2hour.jsonl.gz (see Provenance)](../v6.0.4/L2_CAPTURE_PROVENANCE.md)
 - Reproducible Replay Summary (2-Hour): [replay_summary_2hour.json](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/audit/v6.0.4/replay_summary_2hour.json)
 - 4-Strategy Simulation Summary (2-Hour): [strategy_sim_2hour.json](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/audit/v6.0.4/strategy_sim_2hour.json)
 - Deterministic Unit Tests: [test_l2_replay_validation.py](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/tests/test_l2_replay_validation.py)

@@ -2,7 +2,7 @@
 
 Complete, authoritative reference for the `mdrap` command-line interface, generated directly from the live `argparse` definition.
 
-Total commands documented: **69**.
+Total canonical commands documented: **65** (with 75 aliases; 140 total parser entries).
 
 ## Global Options
 
@@ -20,11 +20,13 @@ Total commands documented: **69**.
 | [`analytics`](#analytics) | `a` | Query OHLCV candles, bid-ask spreads, and realized volatility |
 | [`arbitrate`](#arbitrate) | `arb` | Run dual-path Multicast UDP A/B feed arbitration and TCP replay test (§18, §26) |
 | [`archive`](#archive) | `arc` | Show raw event archive statistics |
-| [`audit`](#audit) | *none* | View and cryptographically verify tamper-evident audit logs |
+| [`audit`](#audit) | `aud` | View and cryptographically verify tamper-evident audit logs |
 | [`bbo`](#bbo) | `nbbo` | Query Synthetic Consolidated Best Bid & Offer (NBBO) |
 | [`benchmark`](#benchmark) | `bench` | Run controlled benchmark and score quality detection |
+| [`capture`](#capture) | `cap` | Capture live market data and append to IngestLog Write-Ahead Log |
 | [`chaos`](#chaos) | `ch` | Execute automated chaos & resilience drills (§15) |
 | [`chart`](#chart) | `candle` | Display visual in-terminal ASCII/Unicode candlestick chart |
+| [`checkpoint`](#checkpoint) | `ckpt` | Trigger synchronous SQLite WAL checkpoint (PASSIVE, FULL, RESTART, TRUNCATE) |
 | [`columnar`](#columnar) | `col` | Query high-performance DuckDB columnar time-series storage & analytics (Phase 3) |
 | [`compare`](#compare) | `comp` | Run V1 Pure Python vs V1 Native C on identical workloads and compare |
 | [`completion`](#completion) | `complete` | Generate shell autocompletion script (bash, zsh, fish, powershell) |
@@ -32,36 +34,40 @@ Total commands documented: **69**.
 | [`core`](#core) | `fast-core`, `t1` | Run standalone native C hot-path engine (T1 zero-lock tier) |
 | [`daemon`](#daemon) | `d` | Run headless streaming socket daemon service (§18) |
 | [`dashboard`](#dashboard) | `dash` | Launch real-time terminal visualizer dashboard |
-| [`deadletter`](#deadletter) | *none* | Inspect and replay uncommitted dead-letter transaction logs |
+| [`deadletter`](#deadletter) | `dl`, `quarantine` | Inspect and replay uncommitted dead-letter transaction logs |
 | [`demo`](#demo) | `dm` | Execute bundled 50k-event run and open live desk navigator |
 | [`depth`](#depth) | `l2` | Show Consolidated Level-2 Multi-Venue Market Depth Ladder |
-| [`desk`](#desk) | `nav` | Launch interactive keyboard-first modal desk navigator (Vim/Excel ergonomics) |
+| [`desk`](#desk) | `nav`, `navigator` | Launch interactive keyboard-first modal desk navigator (Vim/Excel ergonomics) |
 | [`doctor`](#doctor) | `doc` | Inspect environment, compiler, engine tier, WAL status, and run 10k smoke check |
 | [`edgar`](#edgar) | `filings` | SEC EDGAR Alternative Data: 8-K material events, Form 4 insiders, GAAP facts |
+| [`explain`](#explain) | `expl`, `why` | Inspect and explain WAL event offset or anomaly failure reasons |
 | [`export`](#export) | `exp` | Export market microstructure data to Excel (.xlsx) or CSV |
 | [`failover`](#failover) | `fo` | Active-Passive cluster failover coordinator |
 | [`feed`](#feed) | `feeds` | Inspect, benchmark, and test streaming feeds (Polygon, Databento, Crypto WS) |
 | [`flow`](#flow) | `cvd` | Track Institutional Order Flow, Lee-Ready Aggressor Side, CVD & MPID Net Deltas |
 | [`gateway`](#gateway) | `gw` | Launch AsyncIO TCP Gateway for external clients |
 | [`historical`](#historical) | `chd`, `history` | CHD historical data: discover, download and ingest |
+| [`incident`](#incident) | `inc`, `incidents` | Inspect, list, and export quality incident records |
+| [`init`](#init) | `new` | Initialize default mdrap.toml configuration file |
 | [`itch`](#itch) | `totalview` | NASDAQ TotalView-ITCH 5.0 Binary Feed Engine & Global Benchmark |
 | [`keys`](#keys) | *none* | Manage client API keys and authentication tokens |
 | [`lake`](#lake) | `partitions`, `store-hist` | Manage partitioned historical market data store |
 | [`live`](#live) | `stream` | Stream live market ticks with in-place updating table & candlestick chart |
 | [`loadtest`](#loadtest) | `load` | Sweep increasing event volumes and report trend |
 | [`mbo`](#mbo) | `l3` | Inspect Level-3 Market-By-Order (MBO) FIFO queue ranks and L2 book projection (§18, §26) |
+| [`metrics`](#metrics) | `telemetry` | Export engine latency, throughput, and memory metrics in Prometheus format |
 | [`plugins`](#plugins) | *none* | List installed plugins and extension entry points |
 | [`query`](#query) | `q` | Inspect stored data: health, latest, lineage, quarantine |
 | [`replay`](#replay) | `rep` | Replay archived raw events through the pipeline |
 | [`report`](#report) | `reg` | Generate institutional fund regulatory compliance reports (SEC 13F, MiFID II RTS 28) |
 | [`retention`](#retention) | `prune` | Run storage retention compaction and disk reclamation |
-| [`run`](#run) | `r` | Run the pipeline against the simulator (optionally with live dashboard) |
+| [`run`](#run) | `ingest`, `r` | Run the pipeline against the simulator (optionally with live dashboard) |
 | [`sdk-demo`](#sdk-demo) | `sdk` | Run Quant-Ready Python SDK Client Demo |
 | [`security`](#security) | `sec` | Display platform security posture, HMAC verification, RBAC, and rate limiting status |
 | [`serve`](#serve) | `api` | Start production REST API and WebSocket event streaming server |
 | [`shell`](#shell) | `sh` | Launch low-latency interactive slash-command shell |
 | [`simulate`](#simulate) | `sim` | Simulate concurrent multi-device normal vs fast-paced user workloads (§26) |
-| [`status`](#status) | `s` | Show comprehensive platform status overview |
+| [`status`](#status) | `s`, `stats` | Show comprehensive platform status overview |
 | [`strategy`](#strategy) | `strat` | Institutional Algorithmic Strategy Engine & Paper EMS (§26) |
 | [`stress`](#stress) | `str` | Run multi-directional stress tests and 1M to 1B scale analysis |
 | [`sub`](#sub) | `subscribe` | Subscribe to daemon stream and output ticks or depth to stdout |
@@ -69,6 +75,8 @@ Total commands documented: **69**.
 | [`test-all`](#test-all) | `t` | Run all CLI tests, benchmarks, queries, and validations in one place |
 | [`throughput`](#throughput) | `tp` | Benchmark 500,000 to 1,000,000+ events/sec on vectorized Native C SBE stream (§26) |
 | [`top`](#top) | `mon` | Launch dynamic full-screen terminal service cockpit |
+| [`tui`](#tui) | `live-tui`, `term` | Launch lightweight interactive terminal ticker and depth monitor |
+| [`verify`](#verify) | `check`, `check-wal`, `chk` | Verify database, WAL segments, or JSON evidence packages |
 | [`version`](#version) | `v` | Show MDRAP version |
 | [`vessel`](#vessel) | `ais` | Maritime Tanker & Cargo Tracking: Crude oil, LNG, bulk, and container tracking |
 | [`vwap`](#vwap) | `curve` | Compute multi-venue real-time VWAP execution & slippage curves |
@@ -1332,5 +1340,182 @@ Total commands documented: **69**.
 | `--status` | Show current source health status |
 | `-a`, `--alerts` | Show recent watchdog alerts |
 | `-l`, `--limit` | Alert count limit (default: `10`) |
+
+---
+
+
+### `capture`
+
+**Description:** Capture live market data and append to IngestLog Write-Ahead Log
+
+**Aliases:** `cap`
+
+**Usage:** `mdrap capture [OPTIONS]`
+
+#### Options
+
+| Option | Description |
+| --- | --- |
+| `-s`, `--source` | Market data source target (e.g. `sim:AAPL`, `binance:BTCUSDT`). |
+| `-w`, `--wal-dir` | Target Write-Ahead Log directory (default: `data/wal`). |
+| `-d`, `--durability` | IngestLog fsync durability policy (`grouped_by_time`, `always`, `grouped_by_count`, `os_buffer`). |
+| `-e`, `--events` | Number of events to capture (0 = continuous). |
+| `--shm` | Optional seqlock shared memory ring buffer name to broadcast frames. |
+
+---
+
+### `checkpoint`
+
+**Description:** Trigger synchronous SQLite WAL checkpoint (PASSIVE, FULL, RESTART, TRUNCATE)
+
+**Aliases:** `ckpt`, `check-wal`
+
+**Usage:** `mdrap checkpoint [OPTIONS]`
+
+#### Options
+
+| Option | Description |
+| --- | --- |
+| `--db` | Database file path (default: `data/mdrap.db`). |
+| `--mode` | Checkpoint mode: `PASSIVE` (default), `FULL`, `RESTART`, or `TRUNCATE`. |
+
+---
+
+### `explain`
+
+**Description:** Inspect and explain WAL event offset or anomaly failure reasons
+
+**Aliases:** `expl`, `why`
+
+**Usage:** `mdrap explain [OPTIONS] offset`
+
+#### Positional Arguments
+
+| Argument | Description |
+| --- | --- |
+| `offset` | WAL event offset integer to inspect and explain. |
+
+#### Options
+
+| Option | Description |
+| --- | --- |
+| `--wal-path` | Write-Ahead Log directory path (default: `data/wal`). |
+
+---
+
+### `incident`
+
+**Description:** Inspect, list, and export quality incident records
+
+**Aliases:** `inc`, `incidents`
+
+**Usage:** `mdrap incident [OPTIONS] [action] [incident_id]`
+
+#### Positional Arguments
+
+| Argument | Description |
+| --- | --- |
+| `action` | Action: `list`, `show`, or `export` (default: `list`). |
+| `incident_id` | Incident ID (e.g. `inc-1700000001-0001`) for show or export. |
+
+#### Options
+
+| Option | Description |
+| --- | --- |
+| `--db` | Database path (default: `data/mdrap.db`). |
+| `-o`, `--output` | Output file path for exported evidence JSON package. |
+| `--status` | Filter by incident status (`OPEN`, `ACTIVE`, `CLOSED`, `RESOLVED`). |
+| `--provider` | Filter by provider/venue. |
+| `--symbol` | Filter by instrument ticker symbol. |
+| `--limit` | Maximum incidents to return (default: 20). |
+
+---
+
+### `init`
+
+**Description:** Initialize default mdrap.toml configuration file
+
+**Aliases:** `new`
+
+**Usage:** `mdrap init [OPTIONS] [path]`
+
+#### Positional Arguments
+
+| Argument | Description |
+| --- | --- |
+| `path` | Target config file path (default: `mdrap.toml`). |
+
+#### Options
+
+| Option | Description |
+| --- | --- |
+| `-p`, `--profile` | Hardware profile optimization target (`auto`, `lite`, `standard`, `ultra`). |
+| `--venue` | Default venue adapter (default: `binance`). |
+| `--symbol` | Default trading symbol (default: `BTCUSDT`). |
+| `-f`, `--force` | Overwrite existing configuration file if present. |
+
+---
+
+### `metrics`
+
+**Description:** Export engine latency, throughput, and memory metrics in Prometheus format
+
+**Aliases:** *none*
+
+**Usage:** `mdrap metrics [OPTIONS]`
+
+#### Options
+
+| Option | Description |
+| --- | --- |
+| `--format` | Export exposition format: `prometheus` (default), `otlp`, `json`, `summary`. |
+
+---
+
+### `tui`
+
+**Description:** Launch lightweight interactive terminal ticker and depth monitor
+
+**Aliases:** `live-tui`
+
+**Usage:** `mdrap tui [OPTIONS] [symbol]`
+
+#### Positional Arguments
+
+| Argument | Description |
+| --- | --- |
+| `symbol` | Instrument symbol or stream target (default: `BTC/USDT`). |
+
+#### Options
+
+| Option | Description |
+| --- | --- |
+| `-t`, `--target` | Custom stream target (e.g. `sim:AAPL`, `binance:BTCUSDT`, `wal:data/wal`, `shm:mdrap_live`). |
+| `-n`, `--ticks` | Maximum ticks to display before exiting. |
+| `--render-once` | Render a single frame snapshot to stdout without live streaming. |
+
+---
+
+### `verify`
+
+**Description:** Verify database, WAL segments, or JSON evidence packages
+
+**Aliases:** `chk`, `check`
+
+**Usage:** `mdrap verify [OPTIONS] [target]`
+
+#### Positional Arguments
+
+| Argument | Description |
+| --- | --- |
+| `target` | Optional path to WAL directory, SQLite database, or JSON evidence package. |
+
+#### Options
+
+| Option | Description |
+| --- | --- |
+| `--db` | Database path (default: `data/mdrap.db`). |
+| `--wal-path` | IngestLog WAL directory (defaults to `data/wal`). |
+| `--salvage` | Attempt automated salvage on corrupted segments. |
 
 ---

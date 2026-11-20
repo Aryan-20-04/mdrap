@@ -8,7 +8,7 @@
 - Research Engine Harness: [research_inventory_skew.py](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/tools/research_inventory_skew.py)
 - In-Sample Development Tear Sheet (1-Hour): [research_in_sample.json](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/audit/v6.0.4.1/research_in_sample.json)
 - Out-of-Sample Holdout Tear Sheet (1-Hour): [research_holdout.json](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/audit/v6.0.4.1/research_holdout.json)
-- Underlying 2-Hour Continuous Capture: [l2_capture_2hour.jsonl.gz](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/audit/v6.0.4/l2_capture_2hour.jsonl.gz)
+- Underlying 2-Hour Continuous Capture: [l2_capture_2hour.jsonl.gz (see Provenance)](../v6.0.4/L2_CAPTURE_PROVENANCE.md)
 
 ---
 
@@ -358,7 +358,7 @@ For an automated market maker to achieve positive net PnL in production, at leas
 
 ## 10. Audit & Testing Compliance Checklist
 
-- [x] **Zero Real Orders:** Replay conducted 100% locally from immutable capture [l2_capture_2hour.jsonl.gz](file:///c:/Users/KIIT0001/Desktop/Projects/mdrap/audit/v6.0.4/l2_capture_2hour.jsonl.gz). No exchange API keys, network endpoints, or live credentials loaded.
+- [x] **Zero Real Orders:** Replay conducted 100% locally from immutable capture [l2_capture_2hour.jsonl.gz (see Provenance)](../v6.0.4/L2_CAPTURE_PROVENANCE.md). No exchange API keys, network endpoints, or live credentials loaded.
 - [x] **Zero Forced Market Orders:** All unwinding logic strictly operated via non-crossing limit orders (`bid_px <= ask - tick`, `ask_px >= bid + tick`), producing 100.0% maker executions.
 - [x] **Causal Signal Hygiene:** All signals (normalized inventory $u$, Cont-Kukanov-Stoikov OFI $I_{OFI}$, tick EWMA $\sigma_t$, and toxic aggressor runs) computed strictly on prior events with zero look-ahead bias.
 - [x] **Holdout Purity:** Parameters were developed exclusively on In-Sample (First 1 Hour). The Out-of-Sample Holdout (Second 1 Hour) was evaluated untouched.

@@ -13,18 +13,20 @@ Welcome to the MDRAP SDK! This guide explains how to connect downstream applicat
 The `StreamClient` connects to the running MDRAP streaming daemon (`mdrap daemon`) over a local TCP socket for streaming canonical market events:
 
 ```python
-import asyncio
 from mdrap.service import StreamClient
 
-async def main():
-    client = StreamClient(host="127.0.0.1", port=9000)
-    await client.connect()
+def main():
+    client = StreamClient(host="127.0.0.1", port=9876)
+    client.connect()
 
-    async for event in client.stream_events(symbol="BTCUSDT"):
-        print(f"[{event['timestamp']}] {event['symbol']} {event['event_type']} @ {event['price']}")
+    try:
+        for event in client.stream(symbol="BTCUSDT"):
+            print(f"[{event.get('broadcast_ts')}] {event.get('sym')} @ {event.get('price')}")
+    finally:
+        client.close()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
 ```
 
 ---
@@ -37,14 +39,11 @@ For sub-microsecond consumption without TCP overhead, downstream sidecars consum
 from mdrap.shm import SHMReader
 
 def main():
-    reader = SHMReader(ring_name="mdrap_canonical_ring")
-    reader.attach()
+    reader = SHMReader(name="mdrap_feed")
 
     try:
-        while True:
-            batch = reader.read_batch(max_events=128)
-            for event in batch:
-                print(f"Seq: {event.sequence} | {event.symbol} {event.event_type} @ {event.price}")
+        for event in reader.stream(max_events=1000):
+            print(f"Seq: {event.get('seq')} | {event.get('symbol')} @ {event.get('price')}")
     finally:
         reader.close()
 
@@ -63,16 +62,18 @@ import asyncio
 from mdrap.service import StreamClient
 
 async def main():
-    client = StreamClient(host="127.0.0.1", port=9000)
-    await client.connect()
+    client = StreamClient(host="127.0.0.1", port=9876)
+    client.connect()
     queue = asyncio.Queue(maxsize=10000)
 
     async def ingest_worker():
-        async for event in client.stream_events():
-            try:
-                queue.put_nowait(event)
-            except asyncio.QueueFull:
-                pass  # Record dropped frame / backpressure counter
+        def poll_stream():
+            for event in client.stream(symbol="ALL"):
+                try:
+                    queue.put_nowait(event)
+                except asyncio.QueueFull:
+                    pass  # Record dropped frame / backpressure counter
+        await asyncio.to_thread(poll_stream)
 
     async def analytics_worker():
         while True:
@@ -81,7 +82,10 @@ async def main():
             await asyncio.to_thread(process_event, event)
             queue.task_done()
 
-    await asyncio.gather(ingest_worker(), analytics_worker())
+    try:
+        await asyncio.gather(ingest_worker(), analytics_worker())
+    finally:
+        client.close()
 
 def process_event(event):
     # Quant analytics, feature engineering, or external database write
