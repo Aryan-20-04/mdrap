@@ -58,7 +58,7 @@ for event in client.stream_events(symbols=["BTC/USD", "ETH/USD"]):
 from client import MDRAPClient
 
 # Connect with ADMIN privileges
-with MDRAPClient(base_url="http://localhost:8000", api_key="mdrap_live_admin_token") as admin:
+with MDRAPClient(base_url="http://localhost:8000", api_key="<your-api-key>") as admin:
     # 1. Register a new direct market feed
     admin.register_feed(
         source="POLYGON_CRYPTO",
