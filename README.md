@@ -13,7 +13,7 @@
 A deterministic, high-throughput market data validation, normalization, and cryptographic audit sidecar for institutional quantitative architectures.
 
 [![Version](https://img.shields.io/badge/version-6.0.8-blue.svg?style=flat-square)](pyproject.toml)
-[![Tests](https://img.shields.io/badge/tests-1400%2B%20passing-10b981?style=flat-square)](tests/)
+[![Tests](https://img.shields.io/badge/tests-1500%2B%20passing-10b981?style=flat-square)](tests/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-8b5cf6?style=flat-square)](LICENSE)
 [![Language](https://img.shields.io/badge/language-Python%20%7C%20C%20(AVX2)-6366f1?style=flat-square)](src/mdrap/fastpath.c)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Windows-334155?style=flat-square)](#installation)
@@ -172,13 +172,13 @@ All figures are measured on committed benchmark hardware (12-core host, Windows 
 | **Isolated Native C Kernel** | Peak tick evaluation & SBE decode (`fastpath.c`) | 22.9 ns | 22.9 ns | **43,673,843** | `python benchmarks/bench_scale.py` |
 | **Native C Fastpath Pipeline** | Integrated Normalization + 15 Rules + Reconcile | 47.2 µs | 84.9 µs | **11,918.5** | `python cli.py benchmark --events 10000` |
 | **Pure Python Fallback Parity** | In-memory normalization, 15 rules, dedup | 80.6 µs | 377.2 µs | **5,635.4** | `python cli.py benchmark --events 10000` |
-| **Shared Memory IPC Fanout** | 10 subscribers, zero-copy seqlock handoff | 0.40 µs | 0.60 µs | **1,529,870** | `python benchmarks/run_honest_benchmarks.py` |
+| **Shared Memory IPC Fanout** | 10 subscribers, zero-copy seqlock handoff | 1.10 µs | 2.20 µs | **624,648** | `python benchmarks/run_honest_benchmarks.py` |
 | **Stateful E2E Pipeline** | Ingestion → Validation → Reconciler → WAL | 41.00 µs | 110.00 µs | **21,850** | `python benchmarks/run_v53_unified_benchmark.py` |
 | **Disk Durability (Grouped)** | SQLite WAL, `fsync="grouped_by_time"` (batch 200) | 6.82 ms | 6.91 ms | **29,654** | `python benchmarks/run_honest_benchmarks.py` |
 | **Disk Durability (Always)** | SQLite WAL, `fsync="always"` (batch 100) | 4.60 ms | 4.84 ms | **21,615** | `python benchmarks/run_honest_benchmarks.py` |
 
 > [!NOTE]
-> **Understanding Throughput Tiers**: MDRAP's native C kernel operates at **>43M EPS** (sub-25ns) when performing isolated in-memory rule validation. In Python, the native C fastpath FFI processes **11.9k EPS** (47.2 µs p50, 84.9 µs p99), representing a **2.1x** speedup over the pure-Python fallback (5.6k EPS). Persisting every event durably to disk via synchronous SQLite WAL fsync achieves **21k–30k EPS**.
+> **Understanding Throughput Tiers**: MDRAP's native C kernel operates at **>43M EPS** (sub-25ns) when performing isolated in-memory rule validation. In Python, single-event step latency validates at **13.9 µs** p50; the integrated native C fastpath FFI processes **11.9k EPS** (47.2 µs p50, 84.9 µs p99), representing a **2.1x** speedup over the pure-Python fallback (5.6k EPS). Persisting every event durably to disk via synchronous SQLite WAL fsync achieves **21k–30k EPS**.
 
 ---
 
@@ -189,7 +189,7 @@ All figures are measured on committed benchmark hardware (12-core host, Windows 
 
 | Feature | Status | Docs | Test File |
 | :--- | :--- | :--- | :--- |
-| **Deterministic Quality Engine (15 Rules)** | **Stable** | [Quality Rules](docs/reference/rules.md) | `tests/test_adapters_and_rules.py` (1,400+ core test suite passed cleanly) |
+| **Deterministic Quality Engine (15 Rules)** | **Stable** | [Quality Rules](docs/reference/rules.md) | `tests/test_adapters_and_rules.py` (1,500+ core test suite passed cleanly) |
 | **Native C Fastpath Kernel** | **Stable** | [Benchmarks](docs/benchmarks.md) | `tests/test_fastpath.py` (100% pure Python fallback parity) |
 | **Live Venue Ingestion (5 Feeds)** | **Stable** | [Operations](docs/operations.md) | `tests/test_ws_live_market_data.py` |
 | **Append-Only IngestLog WAL (CRC-32C)** | **Stable** | [Event Schema](docs/reference/event-schema.md) | `tests/test_wal_format_v2.py` |
@@ -243,7 +243,7 @@ mdrap/
 │   ├── bbo.py              # Consolidated NBBO and micro-price tracking
 │   ├── depth.py            # Level-2 aggregated order book depth ladder
 │   └── security.py         # SHA-256 Merkle audit trail and API key hashing
-├── tests/                  # 1,400+ automated unit & integration test suites
+├── tests/                  # 1,500+ automated unit & integration test suites
 ├── benchmarks/             # Reproducible latency and throughput harnesses
 ├── docs/                   # Architectural guides, API specs, and runbooks
 ├── audit/                  # Independent engineering audit & certification logs

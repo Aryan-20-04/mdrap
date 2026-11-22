@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mdrap-observer"
+version = "1.0.0"
+description = "Institutional Read-Only Market Data Cockpit and Multi-Venue Integrity Observer for MDRAP"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "mdrap-core>=6.0.8",
+    "rich>=13.0.0",
+]
+
+[project.scripts]
+mdrap-observer = "observer.cli:main"

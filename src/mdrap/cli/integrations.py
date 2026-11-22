@@ -201,6 +201,7 @@ def cmd_strategy(args):
 
     if getattr(args, "json", False):
         import json
+
         print(
             json.dumps(
                 {
@@ -431,6 +432,7 @@ def cmd_vessel(args):
     console = Console()
     if getattr(args, "json", False):
         import json
+
         print(
             json.dumps(
                 {

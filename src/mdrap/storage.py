@@ -433,7 +433,9 @@ class Store(StoreAuditMixin):
 
             self._local_readers = threading.local()
             self._all_local_conns: dict[int, sqlite3.Connection] = {}
-            self._idle_readers: collections.deque[sqlite3.Connection] = collections.deque()
+            self._idle_readers: collections.deque[sqlite3.Connection] = (
+                collections.deque()
+            )
             self._reader_limit = min(
                 32,
                 max(
@@ -446,30 +448,36 @@ class Store(StoreAuditMixin):
                     ),
                 ),
             )
-            self._reader_cache_kib = min(
-                8,
-                max(
-                    1,
-                    int(
-                        os.environ.get(
-                            "MDRAP_SQLITE_READER_CACHE_MB",
-                            DEFAULT_SQLITE_READER_CACHE_MB,
-                        )
+            self._reader_cache_kib = (
+                min(
+                    8,
+                    max(
+                        1,
+                        int(
+                            os.environ.get(
+                                "MDRAP_SQLITE_READER_CACHE_MB",
+                                DEFAULT_SQLITE_READER_CACHE_MB,
+                            )
+                        ),
                     ),
-                ),
-            ) * PAGE_CACHE_KIB_PER_MB
-            self._reader_mmap_bytes = min(
-                64,
-                max(
-                    0,
-                    int(
-                        os.environ.get(
-                            "MDRAP_SQLITE_READER_MMAP_MB",
-                            DEFAULT_SQLITE_READER_MMAP_MB,
-                        )
+                )
+                * PAGE_CACHE_KIB_PER_MB
+            )
+            self._reader_mmap_bytes = (
+                min(
+                    64,
+                    max(
+                        0,
+                        int(
+                            os.environ.get(
+                                "MDRAP_SQLITE_READER_MMAP_MB",
+                                DEFAULT_SQLITE_READER_MMAP_MB,
+                            )
+                        ),
                     ),
-                ),
-            ) * BYTES_PER_MB
+                )
+                * BYTES_PER_MB
+            )
             self._reader_condition = threading.Condition(threading.Lock())
             self._reader_creating = 0
             self._reader_active = 0
@@ -513,7 +521,10 @@ class Store(StoreAuditMixin):
                     conn = self._idle_readers.pop()
                     self._reader_active += 1
                     return conn
-                if len(self._all_local_conns) + self._reader_creating < self._reader_limit:
+                if (
+                    len(self._all_local_conns) + self._reader_creating
+                    < self._reader_limit
+                ):
                     self._reader_creating += 1
                     break
                 self._reader_condition.wait()
@@ -1294,7 +1305,9 @@ class Store(StoreAuditMixin):
             # A raw read_conn access is pinned to its thread until that thread exits.
             # Release the current thread's manual lease so close() cannot wait on itself.
             current_conn = getattr(self._local_readers, "borrowed", None)
-            if current_conn is not None and getattr(self._local_readers, "manual", False):
+            if current_conn is not None and getattr(
+                self._local_readers, "manual", False
+            ):
                 self._local_readers.borrowed = None
                 self._local_readers.manual = False
                 self._return_reader(id(current_conn))

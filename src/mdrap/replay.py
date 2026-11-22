@@ -694,9 +694,9 @@ class IncidentReplayEngine:
         events: list[CanonicalEvent] = []
         try:
             start_ts = incident.start_timestamp - max(0.1, float(buffer_s))
-            end_ts = (
-                incident.end_timestamp or incident.start_timestamp
-            ) + max(0.1, float(buffer_s))
+            end_ts = (incident.end_timestamp or incident.start_timestamp) + max(
+                0.1, float(buffer_s)
+            )
             cursor = conn.execute(
                 "SELECT * FROM canonical_events WHERE instrument_id = ? AND ((receive_timestamp BETWEEN ? AND ?) OR (exchange_timestamp BETWEEN ? AND ?)) ORDER BY exchange_timestamp ASC, sequence_number ASC",
                 (incident.instrument, start_ts, end_ts, start_ts, end_ts),

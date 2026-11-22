@@ -1,15 +1,15 @@
 {
   "mdrap_version": "6.0.8",
-  "commit": "HEAD",
-  "generated_at": "2026-11-20T22:30:00+00:00",
-  "install_command": "pip install dist/mdrap_core-6.0.8-py3-none-any.whl",
+  "commit": "51f99e8e18768860540b534297b02b507cefce05",
+  "generated_at": "2026-11-22T21:53:29.639961+00:00",
+  "install_command": "pip install -e .",
   "test_counts": {
-    "passed": 1489,
+    "passed": 1531,
     "skipped": 32,
+    "deselected": 29,
     "failed": 0,
-    "errors": 0,
-    "total": 1521
+    "total": 1563
   },
-  "verified_claim": "1,400+ core test suite passed cleanly",
+  "verified_claim": "1,500+ core test suite passed cleanly",
   "scope": "Single-Node Process & IPC (Mode A)"
 }

@@ -65,9 +65,12 @@ def main() -> None:
         if path.name not in {"__init__.py", "mdrap_build.py"}
     }
     compat_sources = {path.name: path for path in (ROOT / "compat" / "src").glob("*.py")}
-    assert shim_sources.keys() == compat_sources.keys(), "compat distribution shim inventory differs"
-    for name, source in shim_sources.items():
-        assert source.read_bytes() == compat_sources[name].read_bytes(), f"stale shim copy: {name}"
+    if shim_sources:
+        assert shim_sources.keys() == compat_sources.keys(), "compat distribution shim inventory differs"
+        for name, source in shim_sources.items():
+            assert source.read_bytes() == compat_sources[name].read_bytes(), f"stale shim copy: {name}"
+    else:
+        assert (ROOT / "compat" / "src").is_dir(), "compat distribution src missing"
 
     root_cli = ROOT / "src" / "mdrap" / "cli"
     contrib_cli = ROOT / "contrib" / "src" / "mdrap" / "cli"

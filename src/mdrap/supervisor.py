@@ -15,6 +15,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 import abc
 from .models import CanonicalEvent, QualityStatus, RawEvent, Reason
 
+
 # ---------------------------------------------------------------------------
 # SPSC Ring Queue (Pure Python & C11 Native Fastpath fallback)
 # ---------------------------------------------------------------------------
@@ -190,6 +191,7 @@ class ChannelIngressSequencer:
         self.last_sequence = seq
         self.expected_sequence = seq + 1
         return QualityStatus.SUSPICIOUS, Reason.SEQUENCE_GAP.value
+
 
 __stability__ = "stable"
 

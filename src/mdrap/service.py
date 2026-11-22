@@ -37,6 +37,15 @@ __stability__ = "stable"
 logger = logging.getLogger("mdrap.service")
 
 
+def _safe_int_val(val: Any) -> Optional[int]:
+    if val is None:
+        return None
+    try:
+        return int(val)
+    except (ValueError, TypeError):
+        return None
+
+
 @dataclass
 class _ClientSession:
     """Session state for an individual connected TCP client.
@@ -782,6 +791,9 @@ class MarketDataDaemon:
     def _process_and_broadcast(self, raw: RawEvent) -> None:
         """Ingest raw event, evaluate quality, update BBO & L2 depth, and broadcast to subscribed sockets via non-blocking queues."""
         t0_ns = time.perf_counter_ns()
+        payload_dict = (
+            raw.payload if isinstance(getattr(raw, "payload", None), dict) else {}
+        )
         if self.use_engine and self.engine is not None:
             dec = self.engine.submit(raw)
             ev = dec.canonical_event if dec else None
@@ -842,7 +854,25 @@ class MarketDataDaemon:
                     receive_timestamp=recv_ts,
                     processing_timestamp=time.time(),
                     source=raw.source,
-                    sequence_number=payload_dict.get("sequence"),
+                    sequence_number=(
+                        _safe_int_val(payload_dict.get("sequence"))
+                        if payload_dict.get("sequence") is not None
+                        else (
+                            _safe_int_val(payload_dict.get("feed_seq"))
+                            if payload_dict.get("feed_seq") is not None
+                            else (
+                                _safe_int_val(payload_dict.get("venue_seq"))
+                                if payload_dict.get("venue_seq") is not None
+                                else (
+                                    _safe_int_val(payload_dict.get("channel_seq"))
+                                    if payload_dict.get("channel_seq") is not None
+                                    else None
+                                )
+                            )
+                        )
+                    )
+                    if isinstance(payload_dict, dict)
+                    else None,
                     price=parsed_price,
                     quantity=parsed_qty,
                     bid_price=payload_dict.get("bid"),
@@ -862,15 +892,83 @@ class MarketDataDaemon:
             ladder = self.depth.observe(raw)
         except Exception:
             ladder = None
-        lat_us = (time.perf_counter_ns() - t0_ns) / 1000.0
+        t_broadcast_ns = time.perf_counter_ns()
+        engine_ns = t_broadcast_ns - t0_ns
+        lat_us = engine_ns / 1000.0
         bbo_q = self.bbo.current_bbo(ev.instrument_id)
         t_broadcast = time.time()
         seq = self._next_seq()
         self._total_broadcast += 1
 
+        # Extract upstream venue-native sequence (preserve None if unavailable)
+        venue_seq = ev.sequence_number
+        if venue_seq is None and isinstance(payload_dict, dict):
+            raw_v_seq = (
+                payload_dict.get("sequence")
+                if "sequence" in payload_dict
+                else (
+                    payload_dict.get("feed_seq")
+                    if "feed_seq" in payload_dict
+                    else payload_dict.get("venue_seq")
+                )
+            )
+            if raw_v_seq is not None:
+                try:
+                    venue_seq = int(raw_v_seq)
+                except (ValueError, TypeError):
+                    venue_seq = None
+
+        # Monotonic ingest timestamp in nanoseconds
+        raw_ingest_ns = getattr(raw, "receive_timestamp_ns", 0)
+        if (
+            not raw_ingest_ns
+            and isinstance(getattr(raw, "receive_timestamp", None), int)
+            and raw.receive_timestamp > 1e15
+        ):
+            raw_ingest_ns = raw.receive_timestamp
+
+        # Extract deterministic epoch, snapshot, and gateway scoping metadata
+        epoch_id = getattr(raw, "session_id", None)
+        is_snapshot = False
+        gateway_id = None
+        if isinstance(payload_dict, dict):
+            if epoch_id is None:
+                epoch_id = (
+                    payload_dict.get("epoch_id")
+                    if "epoch_id" in payload_dict
+                    else (
+                        payload_dict.get("session_id")
+                        if "session_id" in payload_dict
+                        else payload_dict.get("epoch")
+                    )
+                )
+            is_snapshot = bool(
+                payload_dict.get("is_snapshot")
+                or payload_dict.get("snapshot")
+                or "SNAPSHOT" in str(payload_dict.get("event_type", "")).upper()
+            )
+            gateway_id = (
+                payload_dict.get("gateway_id")
+                if "gateway_id" in payload_dict
+                else (
+                    payload_dict.get("channel_id")
+                    if "channel_id" in payload_dict
+                    else payload_dict.get("channel")
+                )
+            )
+        if not is_snapshot and hasattr(ev, "event_type"):
+            is_snapshot = "SNAPSHOT" in getattr(ev.event_type, "name", "").upper()
+        if gateway_id is None and getattr(raw, "source", None):
+            gateway_id = raw.source
+
         payload = {
             "type": "TICK",
             "seq": seq,
+            "feed_seq": venue_seq,
+            "venue_seq": venue_seq,
+            "epoch_id": epoch_id,
+            "is_snapshot": is_snapshot,
+            "gateway_id": gateway_id,
             "sym": ev.instrument_id,
             "event": ev.event_type.value,
             "price": ev.price,
@@ -886,6 +984,10 @@ class MarketDataDaemon:
             "broadcast_ts": t_broadcast,
             "proc_us": round(lat_us, 1),
             "engine_us": round(lat_us, 1),
+            "t0_ns": t0_ns,
+            "broadcast_ts_ns": t_broadcast_ns,
+            "engine_ns": engine_ns,
+            "ingest_ts_ns": raw_ingest_ns,
             "bbo": {
                 "bid": bbo_q.best_bid,
                 "ask": bbo_q.best_ask,

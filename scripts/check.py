@@ -284,7 +284,7 @@ def gate_dependency_vulnerability_scan():
 def gate_native_tests_and_parity():
     """Gate 9: Native FFI Micro-benchmark Smoke & Differential Parity Verification."""
     sys.path.insert(0, str(_REPO_ROOT / "src"))
-    import fastpath
+    from mdrap import fastpath
 
     if not fastpath.is_available():
         raise RuntimeError("Native fastpath library not available")
@@ -379,7 +379,7 @@ def consolidate_test_results():
             "errors": total_errors,
             "total": total_tests,
         },
-        "verified_claim": f"{total_passed} verified tests passed cleanly without assertion swallowing",
+        "verified_claim": f"{(total_passed // 100) * 100:,}+ core test suite passed cleanly",
         "scope": "Single-Node Process & IPC (Mode A)",
     }
     manifest_path.write_text(json.dumps(manifest_data, indent=2), encoding="utf-8")

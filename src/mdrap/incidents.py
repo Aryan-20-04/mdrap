@@ -280,7 +280,10 @@ class IncidentManager:
                 )
         except Exception as exc:
             import logging
-            logging.getLogger("mdrap.incidents").error("[incidents] _persist_incident exception: %s", exc)
+
+            logging.getLogger("mdrap.incidents").error(
+                "[incidents] _persist_incident exception: %s", exc
+            )
         finally:
             if conn:
                 conn.close()
@@ -308,7 +311,11 @@ class IncidentManager:
                 ]
 
         if self.store and hasattr(self.store, "conn"):
-            with (self.store._read_lock if hasattr(self.store, "_read_lock") else self.store._lock):
+            with (
+                self.store._read_lock
+                if hasattr(self.store, "_read_lock")
+                else self.store._lock
+            ):
                 query = "SELECT * FROM data_quality_incidents"
                 params = []
                 clauses = []
@@ -323,7 +330,11 @@ class IncidentManager:
                 query += " ORDER BY start_timestamp DESC LIMIT ?"
                 params.append(limit)
 
-                c = self.store.read_conn if hasattr(self.store, "read_conn") else self.store.conn
+                c = (
+                    self.store.read_conn
+                    if hasattr(self.store, "read_conn")
+                    else self.store.conn
+                )
                 c.row_factory = sqlite3.Row
                 rows = c.execute(query, params).fetchall()
                 results = []
@@ -400,8 +411,16 @@ class IncidentManager:
                     return inc
 
         if self.store and hasattr(self.store, "conn"):
-            with (self.store._read_lock if hasattr(self.store, "_read_lock") else self.store._lock):
-                c = self.store.read_conn if hasattr(self.store, "read_conn") else self.store.conn
+            with (
+                self.store._read_lock
+                if hasattr(self.store, "_read_lock")
+                else self.store._lock
+            ):
+                c = (
+                    self.store.read_conn
+                    if hasattr(self.store, "read_conn")
+                    else self.store.conn
+                )
                 c.row_factory = sqlite3.Row
                 r = c.execute(
                     "SELECT * FROM data_quality_incidents WHERE incident_id = ?",
@@ -452,7 +471,10 @@ class IncidentManager:
                 )
         except Exception as exc:
             import logging
-            logging.getLogger("mdrap.incidents").error("[incidents] get_incident exception: %s", exc)
+
+            logging.getLogger("mdrap.incidents").error(
+                "[incidents] get_incident exception: %s", exc
+            )
         finally:
             if conn:
                 try:

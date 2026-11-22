@@ -681,9 +681,7 @@ class QualityEngine:
                 "HALT",
                 "STATUS",
             )
-            if not is_status_event and (
-                effective_age > cfg.staleness_threshold_s
-            ):
+            if not is_status_event and (effective_age > cfg.staleness_threshold_s):
                 self._mark(event, QualityStatus.SUSPICIOUS, Reason.STALE)
                 self._bump(Reason.STALE)
 

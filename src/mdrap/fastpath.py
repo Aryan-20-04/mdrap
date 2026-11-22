@@ -1264,7 +1264,9 @@ class FastQualityEngine:
 
         # Fallback if instrument has custom overrides (such as crypto, equities, or commodities in asset_classes)
         # that diverge from the global C kernel scalar configuration (Finding 7).
-        if getattr(self.cfg, "asset_classes", None) and hasattr(self.cfg, "for_instrument"):
+        if getattr(self.cfg, "asset_classes", None) and hasattr(
+            self.cfg, "for_instrument"
+        ):
             inst_cfg = self.cfg.for_instrument(event.instrument_id)
             if inst_cfg is not self.cfg:
                 if not self._fallback_engine:

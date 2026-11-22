@@ -483,6 +483,7 @@ class RawEvent:
     source: str
     payload: dict
     receive_timestamp: float = 0.0
+    receive_timestamp_ns: int = 0
     raw_id: str = ""
     wire: str | bytes = ""
     session_id: str | None = None

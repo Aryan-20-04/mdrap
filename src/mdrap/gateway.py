@@ -251,7 +251,11 @@ class Gateway:
 
         # sequence: optional for feeds that don't provide monotonic sequence numbers (bounded to signed int64)
         sequence = p.get("sequence")
-        if sequence is None and event_type_raw == "TRADE" and p.get("trade_id") is not None:
+        if (
+            sequence is None
+            and event_type_raw == "TRADE"
+            and p.get("trade_id") is not None
+        ):
             tid = p.get("trade_id")
             if isinstance(tid, int) and not isinstance(tid, bool):
                 sequence = tid

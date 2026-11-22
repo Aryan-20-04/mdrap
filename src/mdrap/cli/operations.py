@@ -317,23 +317,36 @@ def cmd_status(args):
         )
 
     from ..incidents import IncidentManager
+
     inc_mgr = IncidentManager(args.db)
     recent_incidents = inc_mgr.query_incidents(limit=5)
     if recent_incidents:
         console.print()
         inc_rows = []
         for inc in recent_incidents:
-            status_str = "[bold yellow]ACTIVE[/bold yellow]" if inc.is_active else "[bold green]RESOLVED[/bold green]"
-            repro_str = "[bold green]VERIFIED[/bold green]" if inc.reproduced else "[dim]PENDING[/dim]"
-            inc_rows.append((
-                inc.incident_id,
-                inc.provider,
-                inc.instrument,
-                inc.anomaly_type,
-                status_str,
-                repro_str,
-                inc.impact_summary[:35] + "..." if len(inc.impact_summary) > 35 else inc.impact_summary,
-            ))
+            status_str = (
+                "[bold yellow]ACTIVE[/bold yellow]"
+                if inc.is_active
+                else "[bold green]RESOLVED[/bold green]"
+            )
+            repro_str = (
+                "[bold green]VERIFIED[/bold green]"
+                if inc.reproduced
+                else "[dim]PENDING[/dim]"
+            )
+            inc_rows.append(
+                (
+                    inc.incident_id,
+                    inc.provider,
+                    inc.instrument,
+                    inc.anomaly_type,
+                    status_str,
+                    repro_str,
+                    inc.impact_summary[:35] + "..."
+                    if len(inc.impact_summary) > 35
+                    else inc.impact_summary,
+                )
+            )
         inc_cols = [
             ("Incident ID", "left", "cyan"),
             ("Provider", "left", "white"),
@@ -343,7 +356,9 @@ def cmd_status(args):
             ("Replay Proof", "center"),
             ("Impact Summary", "left"),
         ]
-        console.print(_t("Data Quality Incidents & Forensic Evidence (§23)", inc_cols, inc_rows))
+        console.print(
+            _t("Data Quality Incidents & Forensic Evidence (§23)", inc_cols, inc_rows)
+        )
 
     console.print()
     console.print(
@@ -420,6 +435,7 @@ def cmd_replay(args):
                 sys.exit(1)
         elif db_path == "data/mdrap_replay.db" and os.path.exists("data/mdrap.db"):
             from ..incidents import IncidentManager
+
             if not IncidentManager(db_path).get_incident(incident_id):
                 db_path = "data/mdrap.db"
         engine = IncidentReplayEngine(db_path=db_path)
@@ -447,24 +463,27 @@ def cmd_replay(args):
             q_color = (
                 "green"
                 if step["quality_status"] == "VALID"
-                else (
-                    "yellow"
-                    if step["quality_status"] == "SUSPICIOUS"
-                    else "red"
-                )
+                else ("yellow" if step["quality_status"] == "SUSPICIOUS" else "red")
             )
             reasons_str = ", ".join(step["reasons"]) if step["reasons"] else "None"
             bbo_str = (
                 f"${step['best_bid']:.2f} / ${step['best_ask']:.2f}"
-                if (step.get("best_bid") is not None and step.get("best_ask") is not None)
+                if (
+                    step.get("best_bid") is not None
+                    and step.get("best_ask") is not None
+                )
                 else "N/A"
             )
             rows.append(
                 (
                     str(step["step"]),
                     step["event_id"],
-                    f"${step.get('bid', 0.0):.2f}" if step.get("bid") is not None else "-",
-                    f"${step.get('ask', 0.0):.2f}" if step.get("ask") is not None else "-",
+                    f"${step.get('bid', 0.0):.2f}"
+                    if step.get("bid") is not None
+                    else "-",
+                    f"${step.get('ask', 0.0):.2f}"
+                    if step.get("ask") is not None
+                    else "-",
                     bbo_str,
                     f"[{q_color}]{step['quality_status']}[/{q_color}]",
                     reasons_str,
@@ -484,8 +503,16 @@ def cmd_replay(args):
         init_ask = res.initial_bbo.get("best_ask")
         fin_bid = res.final_bbo.get("best_bid")
         fin_ask = res.final_bbo.get("best_ask")
-        init_bbo_str = f"Bid: ${init_bid:.2f} | Ask: ${init_ask:.2f}" if (init_bid and init_ask) else "None"
-        fin_bbo_str = f"Bid: ${fin_bid:.2f} | Ask: ${fin_ask:.2f}" if (fin_bid and fin_ask) else "None"
+        init_bbo_str = (
+            f"Bid: ${init_bid:.2f} | Ask: ${init_ask:.2f}"
+            if (init_bid and init_ask)
+            else "None"
+        )
+        fin_bbo_str = (
+            f"Bid: ${fin_bid:.2f} | Ask: ${fin_ask:.2f}"
+            if (fin_bid and fin_ask)
+            else "None"
+        )
 
         console.print(
             Panel.fit(
@@ -674,11 +701,31 @@ def cmd_incident(args):
             print(json.dumps(inc.to_dict(), indent=2))
             return 0
 
-        st_badge = "[bold yellow]ACTIVE[/bold yellow]" if inc.is_active else "[bold green]RESOLVED[/bold green]"
-        repro_badge = "[bold green]VERIFIED (100% REPRODUCIBLE)[/bold green]" if inc.reproduced else "[dim]PENDING REPLAY[/dim]"
-        start_iso = datetime.fromtimestamp(inc.start_timestamp, tz=timezone.utc).isoformat() if inc.start_timestamp else "N/A"
-        end_iso = datetime.fromtimestamp(inc.end_timestamp, tz=timezone.utc).isoformat() if inc.end_timestamp else "N/A"
-        dur_s = f"{(inc.end_timestamp - inc.start_timestamp):.3f}s" if (inc.end_timestamp and inc.start_timestamp) else "N/A"
+        st_badge = (
+            "[bold yellow]ACTIVE[/bold yellow]"
+            if inc.is_active
+            else "[bold green]RESOLVED[/bold green]"
+        )
+        repro_badge = (
+            "[bold green]VERIFIED (100% REPRODUCIBLE)[/bold green]"
+            if inc.reproduced
+            else "[dim]PENDING REPLAY[/dim]"
+        )
+        start_iso = (
+            datetime.fromtimestamp(inc.start_timestamp, tz=timezone.utc).isoformat()
+            if inc.start_timestamp
+            else "N/A"
+        )
+        end_iso = (
+            datetime.fromtimestamp(inc.end_timestamp, tz=timezone.utc).isoformat()
+            if inc.end_timestamp
+            else "N/A"
+        )
+        dur_s = (
+            f"{(inc.end_timestamp - inc.start_timestamp):.3f}s"
+            if (inc.end_timestamp and inc.start_timestamp)
+            else "N/A"
+        )
 
         detail_text = (
             f"[bold cyan]Incident ID:[/bold cyan]       [bold white]{inc.incident_id}[/bold white]\n"
@@ -713,14 +760,21 @@ def cmd_incident(args):
     # Action 2: Export standalone evidence package
     if action == "export":
         if not incident_id:
-            console.print("[bold red]✖ Error: Must specify incident ID to export (e.g. mdrap incident export inc-123).[/bold red]")
+            console.print(
+                "[bold red]✖ Error: Must specify incident ID to export (e.g. mdrap incident export inc-123).[/bold red]"
+            )
             return 1
         inc = inc_mgr.get_incident(incident_id)
         if not inc:
-            console.print(f"[bold red]✖ Error: Incident '{incident_id}' not found in database '{db_path}'.[/bold red]")
+            console.print(
+                f"[bold red]✖ Error: Incident '{incident_id}' not found in database '{db_path}'.[/bold red]"
+            )
             return 1
 
-        out_path = getattr(args, "output", None) or f"data/incidents/evidence_{incident_id}.json"
+        out_path = (
+            getattr(args, "output", None)
+            or f"data/incidents/evidence_{incident_id}.json"
+        )
         out_dir = os.path.dirname(os.path.abspath(out_path))
         if out_dir:
             os.makedirs(out_dir, exist_ok=True)
@@ -728,6 +782,7 @@ def cmd_incident(args):
         from ..storage import Store
         from ..security import MerkleAuditTree
         from ..provenance import compute_lineage_hash
+
         store = Store(db_path)
         prov_records = []
         for eid in inc.event_ids:
@@ -744,7 +799,9 @@ def cmd_incident(args):
         receive_ts = lead_prov.get("receive_timestamp", inc.start_timestamp)
         processing_ts = lead_prov.get("processing_timestamp", inc.start_timestamp)
         quality_status = lead_prov.get("quality_status", "SUSPICIOUS")
-        payload_sha256 = lead_prov.get("payload_sha256", hashlib.sha256(b"incident").hexdigest())
+        payload_sha256 = lead_prov.get(
+            "payload_sha256", hashlib.sha256(b"incident").hexdigest()
+        )
 
         lineage_hash = lead_prov.get("lineage_hash") or compute_lineage_hash(
             event_id=event_id,
@@ -812,7 +869,9 @@ def cmd_incident(args):
     instrument = getattr(args, "symbol", None) or getattr(args, "instrument", None)
     status_filter = getattr(args, "status", None)
 
-    incidents = inc_mgr.query_incidents(limit=limit, provider=provider, instrument=instrument)
+    incidents = inc_mgr.query_incidents(
+        limit=limit, provider=provider, instrument=instrument
+    )
     if status_filter:
         want_active = status_filter.upper() in ("OPEN", "ACTIVE")
         incidents = [i for i in incidents if i.is_active == want_active]
@@ -834,17 +893,29 @@ def cmd_incident(args):
 
     rows = []
     for inc in incidents:
-        status_str = "[bold yellow]ACTIVE[/bold yellow]" if inc.is_active else "[bold green]RESOLVED[/bold green]"
-        repro_str = "[bold green]VERIFIED[/bold green]" if inc.reproduced else "[dim]PENDING[/dim]"
-        rows.append((
-            inc.incident_id,
-            inc.provider,
-            inc.instrument,
-            inc.anomaly_type,
-            status_str,
-            repro_str,
-            inc.impact_summary[:38] + "..." if len(inc.impact_summary) > 38 else inc.impact_summary,
-        ))
+        status_str = (
+            "[bold yellow]ACTIVE[/bold yellow]"
+            if inc.is_active
+            else "[bold green]RESOLVED[/bold green]"
+        )
+        repro_str = (
+            "[bold green]VERIFIED[/bold green]"
+            if inc.reproduced
+            else "[dim]PENDING[/dim]"
+        )
+        rows.append(
+            (
+                inc.incident_id,
+                inc.provider,
+                inc.instrument,
+                inc.anomaly_type,
+                status_str,
+                repro_str,
+                inc.impact_summary[:38] + "..."
+                if len(inc.impact_summary) > 38
+                else inc.impact_summary,
+            )
+        )
     cols = [
         ("Incident ID", "left", "cyan"),
         ("Provider", "left", "white"),
@@ -1827,24 +1898,40 @@ def cmd_verify(args):
         try:
             with open(target, "r", encoding="utf-8") as f:
                 data = json.load(f)
-            if isinstance(data, dict) and ("evidence_type" in data or "integrity" in data):
+            if isinstance(data, dict) and (
+                "evidence_type" in data or "integrity" in data
+            ):
                 from ..provenance import verify_evidence_package
+
                 is_valid, errors = verify_evidence_package(data)
                 if as_json:
-                    print(json.dumps({
-                        "target": target,
-                        "evidence_type": data.get("evidence_type", "UNKNOWN"),
-                        "incident_id": data.get("incident_id"),
-                        "event_id": data.get("event_id"),
-                        "verified": is_valid,
-                        "errors": errors,
-                    }, indent=2))
+                    print(
+                        json.dumps(
+                            {
+                                "target": target,
+                                "evidence_type": data.get("evidence_type", "UNKNOWN"),
+                                "incident_id": data.get("incident_id"),
+                                "event_id": data.get("event_id"),
+                                "verified": is_valid,
+                                "errors": errors,
+                            },
+                            indent=2,
+                        )
+                    )
                     return 0 if is_valid else 1
 
                 console.print()
                 if is_valid:
-                    inc_str = f" | Incident: {data.get('incident_id')}" if data.get('incident_id') else ""
-                    evt_str = f" | Event: {data.get('event_id')}" if data.get('event_id') else ""
+                    inc_str = (
+                        f" | Incident: {data.get('incident_id')}"
+                        if data.get("incident_id")
+                        else ""
+                    )
+                    evt_str = (
+                        f" | Event: {data.get('event_id')}"
+                        if data.get("event_id")
+                        else ""
+                    )
                     console.print(
                         Panel.fit(
                             f"[bold green]✔ STANDALONE FORENSIC EVIDENCE VERIFIED (100% AUTHENTIC)[/bold green]\n\n"

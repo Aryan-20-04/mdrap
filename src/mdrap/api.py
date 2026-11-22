@@ -470,7 +470,8 @@ class AppState:
                 task.cancel()
             try:
                 await ws.close(
-                    code=status.WS_1008_POLICY_VIOLATION, reason="API key revoked or slow client"
+                    code=status.WS_1008_POLICY_VIOLATION,
+                    reason="API key revoked or slow client",
                 )
             except Exception:
                 pass

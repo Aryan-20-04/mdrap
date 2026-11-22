@@ -234,7 +234,11 @@ class HighestReliabilityStrategy:
         # Check if candidates are quote events; delegate to select_quote if so
         is_quote = any(
             ev.event_type == EventType.QUOTE
-            or (ev.price is None and ev.bid_price is not None and ev.ask_price is not None)
+            or (
+                ev.price is None
+                and ev.bid_price is not None
+                and ev.ask_price is not None
+            )
             for ev, _ in candidates.values()
         )
         if is_quote:
@@ -348,8 +352,16 @@ class HighestReliabilityStrategy:
         # active_quotes was populated from sorted candidates above, so preserve
         # that deterministic order without sorting the same source set again.
         recent_sources = list(active_quotes)
-        bids = {src: ev.bid_price for src, ev in active_quotes.items() if ev.bid_price is not None}
-        asks = {src: ev.ask_price for src, ev in active_quotes.items() if ev.ask_price is not None}
+        bids = {
+            src: ev.bid_price
+            for src, ev in active_quotes.items()
+            if ev.bid_price is not None
+        }
+        asks = {
+            src: ev.ask_price
+            for src, ev in active_quotes.items()
+            if ev.ask_price is not None
+        }
         spreads = {
             src: (ev.ask_price - ev.bid_price)
             for src, ev in active_quotes.items()
@@ -382,10 +394,16 @@ class HighestReliabilityStrategy:
                     break
 
         individual_crossed = any(
-            (ev.bid_price is not None and ev.ask_price is not None and ev.bid_price > ev.ask_price)
+            (
+                ev.bid_price is not None
+                and ev.ask_price is not None
+                and ev.bid_price > ev.ask_price
+            )
             for ev in active_quotes.values()
         )
-        cross_venue_crossed = (max(bids.values()) > min(asks.values())) if bids and asks else False
+        cross_venue_crossed = (
+            (max(bids.values()) > min(asks.values())) if bids and asks else False
+        )
         is_crossed_book = individual_crossed or cross_venue_crossed
 
         disagreement = bid_disagreement or ask_disagreement or is_crossed_book
@@ -470,7 +488,11 @@ class MedianPriceStrategy:
         # Check if candidates are quote events; delegate to select_quote if so
         is_quote = any(
             ev.event_type == EventType.QUOTE
-            or (ev.price is None and ev.bid_price is not None and ev.ask_price is not None)
+            or (
+                ev.price is None
+                and ev.bid_price is not None
+                and ev.ask_price is not None
+            )
             for ev, _ in candidates.values()
         )
         if is_quote:
@@ -589,8 +611,16 @@ class MedianPriceStrategy:
             return None
 
         recent_sources = sorted(active_quotes.keys())
-        bids = {src: ev.bid_price for src, ev in active_quotes.items() if ev.bid_price is not None}
-        asks = {src: ev.ask_price for src, ev in active_quotes.items() if ev.ask_price is not None}
+        bids = {
+            src: ev.bid_price
+            for src, ev in active_quotes.items()
+            if ev.bid_price is not None
+        }
+        asks = {
+            src: ev.ask_price
+            for src, ev in active_quotes.items()
+            if ev.ask_price is not None
+        }
         spreads = {
             src: (ev.ask_price - ev.bid_price)
             for src, ev in active_quotes.items()
@@ -628,10 +658,16 @@ class MedianPriceStrategy:
                     break
 
         individual_crossed = any(
-            (ev.bid_price is not None and ev.ask_price is not None and ev.bid_price > ev.ask_price)
+            (
+                ev.bid_price is not None
+                and ev.ask_price is not None
+                and ev.bid_price > ev.ask_price
+            )
             for ev in active_quotes.values()
         )
-        cross_venue_crossed = (max(bids.values()) > min(asks.values())) if bids and asks else False
+        cross_venue_crossed = (
+            (max(bids.values()) > min(asks.values())) if bids and asks else False
+        )
         is_crossed_book = individual_crossed or cross_venue_crossed
 
         disagreement = bid_disagreement or ask_disagreement or is_crossed_book
@@ -643,7 +679,9 @@ class MedianPriceStrategy:
             quality_reasons.append(Reason.CROSS_FEED_DISAGREEMENT.value)
 
         # Median selection based on quote midpoint
-        sorted_by_mid = sorted(active_quotes.items(), key=lambda it: (midpoints[it[0]], it[0]))
+        sorted_by_mid = sorted(
+            active_quotes.items(), key=lambda it: (midpoints[it[0]], it[0])
+        )
         mid_idx = len(sorted_by_mid) // 2
         if len(sorted_by_mid) % 2 == 1:
             chosen_source = sorted_by_mid[mid_idx][0]
@@ -660,7 +698,11 @@ class MedianPriceStrategy:
             else:
                 score1 = scores.get(sorted_by_mid[mid_idx - 1][0], 0.0)
                 score2 = scores.get(sorted_by_mid[mid_idx][0], 0.0)
-                chosen_source = sorted_by_mid[mid_idx - 1][0] if score1 >= score2 else sorted_by_mid[mid_idx][0]
+                chosen_source = (
+                    sorted_by_mid[mid_idx - 1][0]
+                    if score1 >= score2
+                    else sorted_by_mid[mid_idx][0]
+                )
 
         chosen_event = active_quotes[chosen_source]
 
@@ -728,12 +770,12 @@ class Reconciler:
             strategy if strategy is not None else HighestReliabilityStrategy()
         )
         # instrument_id -> source -> (event, exchange_timestamp)
-        self._latest_trades: OrderedDict[str, dict[str, tuple[CanonicalEvent, float]]] = (
-            OrderedDict()
-        )
-        self._latest_quotes: OrderedDict[str, dict[str, tuple[CanonicalEvent, float]]] = (
-            OrderedDict()
-        )
+        self._latest_trades: OrderedDict[
+            str, dict[str, tuple[CanonicalEvent, float]]
+        ] = OrderedDict()
+        self._latest_quotes: OrderedDict[
+            str, dict[str, tuple[CanonicalEvent, float]]
+        ] = OrderedDict()
         self._latest = self._latest_trades  # Backward compatibility alias
         self._blocked_sources: set[str] = set()
 
@@ -757,9 +799,10 @@ class Reconciler:
         if event.quality_status == QualityStatus.INVALID:
             return None
 
-        is_quote = (
-            event.event_type == EventType.QUOTE
-            or (event.bid_price is not None and event.ask_price is not None and event.price is None)
+        is_quote = event.event_type == EventType.QUOTE or (
+            event.bid_price is not None
+            and event.ask_price is not None
+            and event.price is None
         )
 
         market_now = event.exchange_timestamp

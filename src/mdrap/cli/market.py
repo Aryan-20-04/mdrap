@@ -1729,6 +1729,7 @@ def cmd_tca(args):
     console = Console()
     if getattr(args, "json", False):
         import json
+
         print(
             json.dumps(
                 {
@@ -1816,12 +1817,36 @@ def cmd_flow(args):
     )
 
     f_rows = [
-        ("Total Traded Volume", f"{cnt * 100:,.0f} shares", "Aggregated executed volume"),
-        ("Aggressive Buy Volume", f"[green]{cnt * 55:,.0f}[/green] (55.0%)", "Buyer crossed the spread / executed on uptick"),
-        ("Aggressive Sell Volume", f"[red]{cnt * 45:,.0f}[/red] (45.0%)", "Seller crossed the spread / executed on downtick"),
-        ("Cumulative Volume Delta (CVD)", f"[green]+{cnt * 10:,.0f} shares[/green]", "Net aggressive buyer volume - seller volume"),
-        ("Cumulative Notional Delta (CND)", f"[green]+${cnt * 1500:,.2f}[/green]", "Net capital injected by aggressive takers"),
-        ("Institutional Bias Diagnosis", "[green]NET ACCUMULATION[/green]", "Taker directionality & institutional accumulation bias"),
+        (
+            "Total Traded Volume",
+            f"{cnt * 100:,.0f} shares",
+            "Aggregated executed volume",
+        ),
+        (
+            "Aggressive Buy Volume",
+            f"[green]{cnt * 55:,.0f}[/green] (55.0%)",
+            "Buyer crossed the spread / executed on uptick",
+        ),
+        (
+            "Aggressive Sell Volume",
+            f"[red]{cnt * 45:,.0f}[/red] (45.0%)",
+            "Seller crossed the spread / executed on downtick",
+        ),
+        (
+            "Cumulative Volume Delta (CVD)",
+            f"[green]+{cnt * 10:,.0f} shares[/green]",
+            "Net aggressive buyer volume - seller volume",
+        ),
+        (
+            "Cumulative Notional Delta (CND)",
+            f"[green]+${cnt * 1500:,.2f}[/green]",
+            "Net capital injected by aggressive takers",
+        ),
+        (
+            "Institutional Bias Diagnosis",
+            "[green]NET ACCUMULATION[/green]",
+            "Taker directionality & institutional accumulation bias",
+        ),
     ]
     console.print(
         _t(
@@ -1845,9 +1870,30 @@ def cmd_flow(args):
         ("Firm Stance", "left", "bold"),
     ]
     mp_rows = [
-        ["GSCO", "25,000", "15,000", "[green]+10,000[/green]", "62.5%", "[green]NET ACCUMULATION[/green]"],
-        ["MSCO", "20,000", "12,000", "[green]+8,000[/green]", "62.5%", "[green]NET ACCUMULATION[/green]"],
-        ["CDED", "15,000", "18,000", "[red]-3,000[/red]", "45.5%", "[red]NET DISTRIBUTION[/red]"],
+        [
+            "GSCO",
+            "25,000",
+            "15,000",
+            "[green]+10,000[/green]",
+            "62.5%",
+            "[green]NET ACCUMULATION[/green]",
+        ],
+        [
+            "MSCO",
+            "20,000",
+            "12,000",
+            "[green]+8,000[/green]",
+            "62.5%",
+            "[green]NET ACCUMULATION[/green]",
+        ],
+        [
+            "CDED",
+            "15,000",
+            "18,000",
+            "[red]-3,000[/red]",
+            "45.5%",
+            "[red]NET DISTRIBUTION[/red]",
+        ],
     ]
     console.print()
     console.print(

@@ -373,7 +373,10 @@ def parse_kraken_frame(
                         and _num(row[1]) is not None
                         and float(row[1]) > 0
                     }
-                    _KRAKEN_BOOKS[canonical_sym] = {"bids": bids_dict, "asks": asks_dict}
+                    _KRAKEN_BOOKS[canonical_sym] = {
+                        "bids": bids_dict,
+                        "asks": asks_dict,
+                    }
                     bids = sorted(
                         [[p, s] for p, s in bids_dict.items()],
                         key=lambda x: x[0],
@@ -558,7 +561,12 @@ def parse_okx_frame(
             # Trade frame
             if channel == "trades" or (
                 "tradeId" in item
-                or ("px" in item and "sz" in item and "bids" not in item and "bidPx" not in item)
+                or (
+                    "px" in item
+                    and "sz" in item
+                    and "bids" not in item
+                    and "bidPx" not in item
+                )
             ):
                 tid = item.get("tradeId")
                 seq = int(tid) if (tid and _num(tid) is not None) else None
@@ -864,9 +872,6 @@ class ProviderTelemetry:
         return d
 
 
-
-
-
 @dataclass(slots=True)
 class SequenceScope:
     """Explicit multi-dimensional scope identifying a sequence stream."""
@@ -960,20 +965,17 @@ class LiveCryptoFeed:
         # or at sampling intervals (skipping passive order book adjustments or matching trades
         # across all instruments). Monotonic advance is expected and valid, and should not
         # accumulate false missing packet gaps.
-        if (
-            chan_str in (
-                "ticker",
-                "bookticker",
-                "tickers",
-                "books5",
-                "orderbook",
-                "depth",
-                "trades",
-                "publictrade",
-                "matches",
-            )
-            or chan_str.startswith("orderbook")
-        ):
+        if chan_str in (
+            "ticker",
+            "bookticker",
+            "tickers",
+            "books5",
+            "orderbook",
+            "depth",
+            "trades",
+            "publictrade",
+            "matches",
+        ) or chan_str.startswith("orderbook"):
             return False
 
         if seq > prev + 1:
@@ -1087,7 +1089,9 @@ class WebSocketFeedManager:
             }
             for v in self.venues
         }
-        self._stream_seq: dict[str, int] = {}  # Scoped sequence tracking per venue:symbol
+        self._stream_seq: dict[
+            str, int
+        ] = {}  # Scoped sequence tracking per venue:symbol
         self._crypto_feed: LiveCryptoFeed = LiveCryptoFeed()
         self._drop_count: int = 0  # Total frames dropped due to backpressure
         self._drop_counts: dict[str, int] = {v: 0 for v in self.venues}
@@ -1324,11 +1328,19 @@ class WebSocketFeedManager:
 
                                     # Attach provenance tags
                                     if raw.payload and isinstance(raw.payload, dict):
-                                        raw.payload.setdefault("epoch", meta.get("reconnects", 0))
-                                        raw.payload.setdefault("ingest_mono_ns", time.perf_counter_ns())
+                                        raw.payload.setdefault(
+                                            "epoch", meta.get("reconnects", 0)
+                                        )
+                                        raw.payload.setdefault(
+                                            "ingest_mono_ns", time.perf_counter_ns()
+                                        )
 
                                     # Track sequence numbers and sequence gaps per (venue, symbol, channel) stream
-                                    seq = raw.payload.get("sequence") or raw.payload.get("venue_update_id") or raw.payload.get("trade_id")
+                                    seq = (
+                                        raw.payload.get("sequence")
+                                        or raw.payload.get("venue_update_id")
+                                        or raw.payload.get("trade_id")
+                                    )
                                     if seq is not None and isinstance(seq, int):
                                         channel = str(raw.payload.get("channel", ""))
                                         scope = SequenceScope(
@@ -1340,11 +1352,19 @@ class WebSocketFeedManager:
                                         has_gap = self._crypto_feed.check_sequence_gap(
                                             scope,
                                             seq,
-                                            is_reset=bool(raw.payload.get("is_reset", False)),
-                                            is_snapshot=bool(raw.payload.get("is_snapshot", False)),
+                                            is_reset=bool(
+                                                raw.payload.get("is_reset", False)
+                                            ),
+                                            is_snapshot=bool(
+                                                raw.payload.get("is_snapshot", False)
+                                            ),
                                         )
                                         if has_gap:
-                                            meta["sequence_gaps_count"] = self._crypto_feed.missing_events_count[scope.key()]
+                                            meta["sequence_gaps_count"] = (
+                                                self._crypto_feed.missing_events_count[
+                                                    scope.key()
+                                                ]
+                                            )
                                         self._stream_seq[scope.key()] = seq
                                         self._stream_seq[f"{venue}:{symbol}"] = seq
                                         meta["last_sequence_num"] = seq
@@ -1403,12 +1423,23 @@ class WebSocketFeedManager:
                                 meta = self._provider_meta[venue]
                                 meta["consecutive_timeouts"] = consecutive_timeouts
                                 last_rx = meta.get("last_received_ts")
-                                silence_s = (time.time() - last_rx) if last_rx else (consecutive_timeouts * 15.0)
-                                if consecutive_timeouts >= 3 or (silence_s * 1000.0 > self.stale_timeout_ms and consecutive_timeouts >= 2):
-                                    meta["watchdog_triggers"] = meta.get("watchdog_triggers", 0) + 1
+                                silence_s = (
+                                    (time.time() - last_rx)
+                                    if last_rx
+                                    else (consecutive_timeouts * 15.0)
+                                )
+                                if consecutive_timeouts >= 3 or (
+                                    silence_s * 1000.0 > self.stale_timeout_ms
+                                    and consecutive_timeouts >= 2
+                                ):
+                                    meta["watchdog_triggers"] = (
+                                        meta.get("watchdog_triggers", 0) + 1
+                                    )
                                     logger.warning(
                                         "[ws_feed] Watchdog: %s feed silent for %.1fs (%d timeouts > threshold). Forcing reconnect.",
-                                        venue, silence_s, consecutive_timeouts
+                                        venue,
+                                        silence_s,
+                                        consecutive_timeouts,
                                     )
                                     self._stats[venue]["connected"] = False
                                     break
@@ -1417,7 +1448,9 @@ class WebSocketFeedManager:
                                     await ws.ping()
                                     meta["last_heartbeat_ts"] = time.time()
                                 except Exception as ping_exc:
-                                    logger.debug("[ws_feed] %s ping error: %s", venue, ping_exc)
+                                    logger.debug(
+                                        "[ws_feed] %s ping error: %s", venue, ping_exc
+                                    )
                                     self._stats[venue]["connected"] = False
                                     break
                     finally:
@@ -1682,6 +1715,3 @@ def parse_bybit_bbo_payload(raw: str | bytes) -> ParsedBookFrame | None:
         )
     except Exception:
         return None
-
-
-

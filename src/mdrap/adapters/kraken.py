@@ -128,9 +128,7 @@ class KrakenAdapter(BaseFeedAdapter):
                     sorted_asks = sorted(
                         self._orderbook["asks"].items(), key=lambda x: x[0]
                     )[:5]
-                    ex_ts = (
-                        float(p0["bs"][0][2]) if len(p0["bs"][0]) > 2 else t_recv
-                    )
+                    ex_ts = float(p0["bs"][0][2]) if len(p0["bs"][0]) > 2 else t_recv
 
                     raw = RawEvent(
                         source="KRAKEN",
@@ -190,12 +188,16 @@ class KrakenAdapter(BaseFeedAdapter):
                     # Prune stale crossed levels that were traded out
                     if self._orderbook["bids"] and self._orderbook["asks"]:
                         max_b = max(self._orderbook["bids"].keys())
-                        stale_asks = [p for p in self._orderbook["asks"].keys() if p <= max_b]
+                        stale_asks = [
+                            p for p in self._orderbook["asks"].keys() if p <= max_b
+                        ]
                         for p in stale_asks:
                             del self._orderbook["asks"][p]
                         if self._orderbook["asks"]:
                             min_a = min(self._orderbook["asks"].keys())
-                            stale_bids = [p for p in self._orderbook["bids"].keys() if p >= min_a]
+                            stale_bids = [
+                                p for p in self._orderbook["bids"].keys() if p >= min_a
+                            ]
                             for p in stale_bids:
                                 del self._orderbook["bids"][p]
 

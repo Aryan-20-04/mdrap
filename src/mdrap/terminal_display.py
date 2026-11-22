@@ -251,7 +251,9 @@ class LiveTickerDashboard:
         """Feed a processed market event into the live dashboard state."""
         self.event_count += 1
         p = getattr(raw, "payload", {}) or {}
-        sym = (getattr(ev, "instrument_id", None) or p.get("instrument", "UNKNOWN")).upper()
+        sym = (
+            getattr(ev, "instrument_id", None) or p.get("instrument", "UNKNOWN")
+        ).upper()
         venue = (getattr(raw, "source", None) or p.get("exchange") or "UNKNOWN").upper()
 
         if sym not in self.venue_quotes:

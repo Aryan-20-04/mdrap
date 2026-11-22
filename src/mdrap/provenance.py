@@ -401,9 +401,7 @@ class ProvenanceTracker:
                     )
                 )
                 if is_disk:
-                    prov.durability_status = (
-                        ProvenanceDurabilityState.DURABLE.value
-                    )
+                    prov.durability_status = ProvenanceDurabilityState.DURABLE.value
                 elif prov.durability_status not in (
                     "COMMITTED_MEM",
                     "COMMITTED_WAL",
@@ -428,9 +426,7 @@ class ProvenanceTracker:
         )
         if is_recoverable:
             self.failed_recoverable_count += 1
-            prov.durability_status = (
-                ProvenanceDurabilityState.FAILED_RECOVERABLE.value
-            )
+            prov.durability_status = ProvenanceDurabilityState.FAILED_RECOVERABLE.value
             pending = self._pending_ids.get(prov.event_id)
             if pending is not None:
                 if pending.lineage_hash != prov.lineage_hash:
@@ -468,7 +464,9 @@ class ProvenanceTracker:
                             "receive_timestamp": prov.receive_timestamp,
                         }
                     )
-                    prov.durability_status = ProvenanceDurabilityState.COMMITTED_WAL.value
+                    prov.durability_status = (
+                        ProvenanceDurabilityState.COMMITTED_WAL.value
+                    )
                 except Exception as wal_exc:
                     self.failed_unrecoverable_count += 1
                     self.dropped_provenance_count += 1
@@ -617,14 +615,14 @@ class ProvenanceTracker:
             self._pending_offsets = collections.deque(
                 (offset for _, offset in remaining), maxlen=self.max_pending_retries
             )
-            self._pending_ids = {
-                prov.event_id: prov for prov in self._pending_retry
-            }
+            self._pending_ids = {prov.event_id: prov for prov in self._pending_retry}
             if self._retry_wal is not None and self._retry_ack_offset >= 0:
                 try:
                     self._retry_wal.delete_segments_before(self._retry_ack_offset + 1)
                 except Exception as exc:
-                    logger.warning("[provenance] Retry WAL compaction deferred: %s", exc)
+                    logger.warning(
+                        "[provenance] Retry WAL compaction deferred: %s", exc
+                    )
 
             if recovered > 0:
                 logger.info(
@@ -915,13 +913,11 @@ def verify_evidence_package(evidence: dict[str, Any]) -> tuple[bool, list[str]]:
     merkle_proof = evidence.get("merkle_proof") or evidence.get("integrity", {}).get(
         "merkle_proof"
     )
-    expected_root = evidence.get("merkle_root") or evidence.get(
-        "integrity", {}
-    ).get("merkle_root")
+    expected_root = evidence.get("merkle_root") or evidence.get("integrity", {}).get(
+        "merkle_root"
+    )
     if expected_root is not None:
-        leaf_input = (
-            evidence["integrity"].get("entry_hash") or claimed_lineage_hash
-        )
+        leaf_input = evidence["integrity"].get("entry_hash") or claimed_lineage_hash
         curr = hashlib.sha256(b"\x00" + leaf_input.encode("utf-8")).hexdigest()
         if merkle_proof:
             for sibling_hex, pos in merkle_proof:
@@ -939,4 +935,3 @@ def verify_evidence_package(evidence: dict[str, Any]) -> tuple[bool, list[str]]:
             )
 
     return len(errors) == 0, errors
-
