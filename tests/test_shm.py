@@ -247,3 +247,76 @@ def test_mdrap_client_with_shm_end_to_end():
             os.remove(db_path)
         except OSError:
             pass
+
+
+@pytest.mark.skipif(not HAS_SHM, reason="SharedMemory not available")
+def test_shm_portable_naming_normalization():
+    """Verify normalize_shm_name guarantees <= 30 chars for POSIX/macOS Darwin limits."""
+    from mdrap.shm import normalize_shm_name
+
+    # Short valid name is preserved
+    short = "mdrap_feed"
+    assert normalize_shm_name(short) == "mdrap_feed"
+
+    # Excessively long name (>31 chars, e.g. 60 chars) is stably shortened with digest
+    long_name = "test_very_long_shm_name_exceeding_darwin_31_char_limit_by_a_lot_12345"
+    norm1 = normalize_shm_name(long_name)
+    norm2 = normalize_shm_name(long_name)
+    assert norm1 == norm2
+    assert len(norm1) <= 30
+    assert norm1.startswith("test_very_lo_")
+
+    # Name with slashes is cleaned
+    slashed = "/test_shm_slash"
+    assert normalize_shm_name(slashed) == "test_shm_slash"
+
+    # Distinct long names produce distinct digests
+    long_name_b = "test_very_long_shm_name_exceeding_darwin_31_char_limit_by_a_lot_67890"
+    norm_b = normalize_shm_name(long_name_b)
+    assert norm1 != norm_b
+    assert len(norm_b) <= 30
+
+
+@pytest.mark.skipif(not HAS_SHM, reason="SharedMemory not available")
+def test_shm_long_name_attachment_and_cleanup():
+    """Verify that a 50+ character SHM name can be created, read, attached, and cleaned on POSIX."""
+    long_name = f"test_darwin_length_verification_{os.getpid()}_{time.time_ns()}"
+    writer = SHMWriter(name=long_name, slot_count=64)
+    reader = SHMReader(name=long_name)
+
+    try:
+        assert reader.name == writer.name
+        assert len(writer.name) <= 30
+        assert reader.check_epoch_valid() is True
+
+        writer.write_tick(
+            seq=1,
+            symbol="BTC/USD",
+            source="TEST",
+            price=50000.0,
+            size=1.0,
+            status="VALID",
+        )
+        item = reader.read_slot(1)
+        assert item is not None
+        assert item["seq"] == 1
+        assert item["sym"] == "BTC/USD"
+    finally:
+        reader.close()
+        writer.close()
+
+
+@pytest.mark.skipif(not HAS_SHM, reason="SharedMemory not available")
+def test_shm_writer_close_poisons_epoch_instantly():
+    """Verify that writer.close() writes epoch 0 into buffer, causing immediate invalidation."""
+    shm_name = f"test_poison_{os.getpid()}_{time.time_ns()}"
+    writer = SHMWriter(name=shm_name, slot_count=64)
+    reader = SHMReader(name=shm_name)
+
+    try:
+        assert reader.check_epoch_valid() is True
+        writer.close()
+        # Immediately upon writer close, reader sees epoch invalidation in zero syscalls
+        assert reader.check_epoch_valid() is False
+    finally:
+        reader.close()

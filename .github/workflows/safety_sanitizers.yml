@@ -29,8 +29,8 @@ jobs:
       - name: Install Python Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[test]"
-          pip install -e "./contrib[all]"
+          python -m pip install -e ".[test]"
+          python -m pip install -e "./contrib[all]"
 
       - name: Compile C Hot Path with Sanitizers
         run: |
@@ -67,4 +67,4 @@ jobs:
             export LD_PRELOAD="$LIB_TSAN"
             export TSAN_OPTIONS="suppress_equal_stacks=1"
           fi
-          pytest tests/test_fastpath.py tests/test_shm.py -v -q --timeout=60
+          python -m pytest tests/test_fastpath.py tests/test_shm.py -v -q --timeout=60

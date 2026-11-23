@@ -778,6 +778,10 @@ class MDRAPClient:
         if not self.is_connected():
             self.connect()
 
+        yielded_count = 0
+        if max_events is not None and max_events <= 0:
+            return
+
         # If streaming via Shared Memory (sub-microsecond IPC)
         if self.shm_reader:
             # Check epoch before streaming in case publisher restarted while client was idle
@@ -790,15 +794,18 @@ class MDRAPClient:
                 except Exception:
                     pass
 
-            count = 0
             t_start = time.time()
-            while True:
+            while self.shm_reader:
                 rem_timeout = (
                     max(0.001, timeout - (time.time() - t_start))
                     if timeout is not None
                     else None
                 )
-                rem_events = (max_events - count) if max_events is not None else None
+                rem_events = (
+                    (max_events - yielded_count) if max_events is not None else None
+                )
+                if rem_events is not None and rem_events <= 0:
+                    return
                 epoch_reset = False
 
                 try:
@@ -846,11 +853,11 @@ class MDRAPClient:
                             self._events_received += 1
                             self._record_latency(ev)
                             yield ev
-                            count += 1
-                            if max_events and count >= max_events:
+                            yielded_count += 1
+                            if max_events and yielded_count >= max_events:
                                 return
 
-                    if max_events and count >= max_events:
+                    if max_events and yielded_count >= max_events:
                         return
 
                     if epoch_reset:
@@ -890,7 +897,6 @@ class MDRAPClient:
 
             parser = BinaryStreamParser()
             self.sock.settimeout(timeout if timeout is not None else self.timeout)
-            count = 0
 
             while True:
                 try:
@@ -915,8 +921,8 @@ class MDRAPClient:
                                     self._events_received += 1
                                     self._record_latency(m)
                                     yield m
-                                    count += 1
-                                    if max_events and count >= max_events:
+                                    yielded_count += 1
+                                    if max_events and yielded_count >= max_events:
                                         return
 
                         self._last_seq = ev.seq
@@ -924,8 +930,8 @@ class MDRAPClient:
                         self._record_latency(ev)
 
                         yield ev
-                        count += 1
-                        if max_events and count >= max_events:
+                        yielded_count += 1
+                        if max_events and yielded_count >= max_events:
                             return
                 except (socket.timeout, TimeoutError):
                     if timeout is not None:
@@ -943,7 +949,6 @@ class MDRAPClient:
 
         self.sock.settimeout(timeout if timeout is not None else self.timeout)
         raw_buf = bytearray()
-        count = 0
 
         while True:
             try:
@@ -990,8 +995,8 @@ class MDRAPClient:
                                 self._events_received += 1
                                 self._record_latency(m)
                                 yield m
-                                count += 1
-                                if max_events and count >= max_events:
+                                yielded_count += 1
+                                if max_events and yielded_count >= max_events:
                                     return
 
                     self._last_seq = ev.seq
@@ -999,8 +1004,8 @@ class MDRAPClient:
                     self._record_latency(ev)
 
                     yield ev
-                    count += 1
-                    if max_events and count >= max_events:
+                    yielded_count += 1
+                    if max_events and yielded_count >= max_events:
                         return
 
             except (socket.timeout, TimeoutError):

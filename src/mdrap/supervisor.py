@@ -253,6 +253,7 @@ class RuntimeSupervisor:
     ):
         self._workers: Dict[str, WorkerInfo] = {}
         self._lock = threading.RLock()
+        self._state_cv = threading.Condition(self._lock)
         self._running = False
         self._stop_event = threading.Event()
         self._monitor_thread: Optional[threading.Thread] = None
@@ -295,6 +296,7 @@ class RuntimeSupervisor:
             for info in self._workers.values():
                 info.stop_event.set()
                 info.state = WorkerState.STOPPED
+            self._state_cv.notify_all()
 
         deadline = time.time() + timeout_s
         # Join worker threads
@@ -306,6 +308,29 @@ class RuntimeSupervisor:
         if self._monitor_thread and self._monitor_thread.is_alive():
             remaining = max(0.01, deadline - time.time())
             self._monitor_thread.join(timeout=remaining)
+
+    def wait_for_worker_state(
+        self,
+        worker_name: str,
+        target_state: WorkerState,
+        min_restarts: int = 0,
+        timeout_s: float = 3.0,
+    ) -> bool:
+        """Block until specified worker reaches target state with at least min_restarts or timeout expires."""
+        deadline = time.time() + timeout_s
+        with self._lock:
+            while True:
+                info = self._workers.get(worker_name)
+                if (
+                    info
+                    and info.state == target_state
+                    and info.total_restarts >= min_restarts
+                ):
+                    return True
+                remaining = deadline - time.time()
+                if remaining <= 0:
+                    return False
+                self._state_cv.wait(timeout=min(0.05, remaining))
 
     def is_healthy(self) -> bool:
         """Return True if all critical workers are running or safely restarting within budget."""
@@ -339,26 +364,34 @@ class RuntimeSupervisor:
 
     def _start_worker_thread(self, info: WorkerInfo) -> None:
         """Launch a worker thread wrapped in exception capture."""
-        info.stop_event.clear()
-        info.state = WorkerState.RUNNING
+        with self._lock:
+            info.stop_event.clear()
+            info.state = WorkerState.RUNNING
+            self._state_cv.notify_all()
 
         def runner():
             try:
                 info.spec.target(info.stop_event, *info.spec.args, **info.spec.kwargs)
             except FatalWorkerError as fatal_exc:
-                info.last_error = f"FATAL: {fatal_exc}"
-                info.state = WorkerState.FAILED_FATAL
+                with self._lock:
+                    info.last_error = f"FATAL: {fatal_exc}"
+                    info.state = WorkerState.FAILED_FATAL
+                    self._state_cv.notify_all()
                 self._handle_fatal(info.spec.name, str(fatal_exc))
             except Exception as exc:
-                info.last_error = f"{type(exc).__name__}: {exc}"
-                info.state = WorkerState.CRASHED
+                with self._lock:
+                    info.last_error = f"{type(exc).__name__}: {exc}"
+                    info.state = WorkerState.CRASHED
+                    self._state_cv.notify_all()
                 logger.warning(
                     "[supervisor] Worker '%s' crashed with error: %s",
                     info.spec.name,
                     info.last_error,
                 )
             else:
-                info.state = WorkerState.STOPPED
+                with self._lock:
+                    info.state = WorkerState.STOPPED
+                    self._state_cv.notify_all()
 
         t = threading.Thread(
             target=runner,
@@ -400,6 +433,7 @@ class RuntimeSupervisor:
                         # Check restart budget
                         if len(info.restart_timestamps) >= info.spec.max_retries:
                             info.state = WorkerState.FAILED_FATAL
+                            self._state_cv.notify_all()
                             err_msg = (
                                 f"Worker '{name}' exceeded max retries "
                                 f"({info.spec.max_retries} in {info.spec.retry_window_s}s). Last error: {info.last_error}"
@@ -417,6 +451,7 @@ class RuntimeSupervisor:
                         info.restart_timestamps.append(now)
                         info.total_restarts += 1
                         info.state = WorkerState.RESTARTING
+                        self._state_cv.notify_all()
 
                         logger.info(
                             "[supervisor] Restarting worker '%s' (attempt %d/%d) in %.2fs",

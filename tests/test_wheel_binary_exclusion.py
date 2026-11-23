@@ -16,7 +16,7 @@ def test_pure_wheel_contains_no_compiled_binaries(tmp_path):
     repo_root = pathlib.Path(__file__).resolve().parents[1]
     wheel_dir = tmp_path / "wheelhouse"
     wheel_dir.mkdir()
-    subprocess.run(
+    res = subprocess.run(
         [
             sys.executable,
             "-m",
@@ -27,12 +27,19 @@ def test_pure_wheel_contains_no_compiled_binaries(tmp_path):
             str(wheel_dir),
         ],
         cwd=repo_root,
-        check=True,
         capture_output=True,
         text=True,
         encoding="utf-8",
         errors="replace",
     )
+    if res.returncode != 0:
+        raise RuntimeError(
+            f"build --wheel failed with exit code {res.returncode}.\n"
+            f"Working directory: {repo_root}\n"
+            f"Python executable: {sys.executable}\n"
+            f"--- BUILD STDOUT ---\n{res.stdout}\n"
+            f"--- BUILD STDERR ---\n{res.stderr}"
+        )
 
     from mdrap._version import __version__
     wheels = sorted(wheel_dir.glob("mdrap_core-*.whl"))

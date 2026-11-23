@@ -242,6 +242,7 @@ class MarketDataDaemon:
         self._last_ingest_ts = 0.0
         self._ingest_thread: Optional[threading.Thread] = None
         self._server_thread: Optional[threading.Thread] = None
+        self._ready_event = threading.Event()
 
     @staticmethod
     def _is_loopback_host(host: str) -> bool:
@@ -263,6 +264,17 @@ class MarketDataDaemon:
         """Start the background socket server, feed workers, and ingestion engine."""
         self._running = True
         self._t0 = time.time()
+
+        if self.store is None:
+            self.store = Store(self.db_path)
+            self.security_manager.store = self.store
+        if self.pipeline is None:
+            self.pipeline = Pipeline(
+                store=self.store,
+                reliability=self.reliability,
+                bbo=self.bbo,
+                watchdog=self.watchdog,
+            )
 
         # 1. Bind and listen on local TCP socket
         self._server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -288,6 +300,8 @@ class MarketDataDaemon:
         if hasattr(self.watchdog, "start_heartbeat"):
             self.watchdog.start_heartbeat(interval_s=0.25)
 
+        self._ready_event.set()
+
         if blocking:
             try:
                 while self._running:
@@ -295,17 +309,13 @@ class MarketDataDaemon:
             except (KeyboardInterrupt, SystemExit):
                 self.stop()
 
+    def wait_ready(self, timeout: float = 5.0) -> bool:
+        """Block until the daemon socket listener and ingestion workers are ready."""
+        return self._ready_event.wait(timeout=timeout)
+
     def stop(self) -> None:
         """Gracefully stop the daemon and flush pending storage writes."""
-        if not self._running:
-            if self.engine:
-                self.engine.close()
-                self.engine = None
-            if self.pipeline:
-                self.pipeline.finish()
-            if self.store:
-                self.store.close()
-            return
+        self._ready_event.clear()
         self._running = False
 
         if hasattr(self.watchdog, "stop_heartbeat"):
@@ -320,9 +330,11 @@ class MarketDataDaemon:
                 self._server_sock.close()
             except Exception as exc:
                 logger.debug("[service] Server socket close error: %s", exc)
+            self._server_sock = None
 
         if self._server_thread and self._server_thread.is_alive():
             self._server_thread.join(timeout=2.0)
+            self._server_thread = None
 
         with self._sub_lock:
             for sess in list(self._sessions.values()):
@@ -345,6 +357,7 @@ class MarketDataDaemon:
 
         if self._ingest_thread and self._ingest_thread.is_alive():
             self._ingest_thread.join(timeout=2.0)
+            self._ingest_thread = None
 
         if self.shm_writer:
             try:
@@ -353,15 +366,33 @@ class MarketDataDaemon:
                 logger.debug("[service] SHM writer close error: %s", exc)
             self.shm_writer = None
 
+        if self.pipeline:
+            try:
+                self.pipeline.finish()
+            except Exception as exc:
+                logger.debug("[service] Pipeline finish error: %s", exc)
+            self.pipeline = None
+
         if self.engine:
-            self.engine.close()
+            try:
+                self.engine.close()
+            except Exception as exc:
+                logger.debug("[service] Engine close error: %s", exc)
             self.engine = None
 
-        if self.pipeline:
-            self.pipeline.finish()
+        if getattr(self, "_engine_projection", None):
+            try:
+                self._engine_projection.close()
+            except Exception as exc:
+                logger.debug("[service] Engine projection close error: %s", exc)
+            self._engine_projection = None
 
         if self.store:
-            self.store.close()
+            try:
+                self.store.close()
+            except Exception as exc:
+                logger.debug("[service] Store close error: %s", exc)
+            self.store = None
 
     def close(self) -> None:
         """Alias for stop()."""
@@ -1537,14 +1568,6 @@ class StreamClient:
             self.connect()
         self.sock.sendall(f"SUB {symbol}\n".encode("utf-8"))
         raw_buf = bytearray()
-        while b"\n" not in raw_buf:
-            chunk = self.sock.recv(4096)
-            if not chunk:
-                break
-            raw_buf.extend(chunk)
-
-        _, _, rest = raw_buf.partition(b"\n")
-        raw_buf = bytearray(rest)
         count = 0
         while True:
             while b"\n" in raw_buf:
@@ -1555,6 +1578,9 @@ class StreamClient:
                     continue
                 try:
                     payload = json.loads(line)
+                    # Ignore the SUB acknowledgment frame, preserving any interleaved or immediate ticks
+                    if payload.get("action") == "SUB" and payload.get("status") == "OK":
+                        continue
                     if payload.get("type") == "TICK":
                         yield payload
                         count += 1
@@ -1568,6 +1594,9 @@ class StreamClient:
                     break
                 raw_buf.extend(data)
             except (KeyboardInterrupt, GeneratorExit):
+                break
+            except Exception:
+                break
                 break
             except Exception:
                 break

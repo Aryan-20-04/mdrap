@@ -18,9 +18,11 @@ from __future__ import annotations
 
 from collections.abc import Generator
 from enum import Enum
+import hashlib
 import logging
 import os
 import platform
+import re
 import secrets
 import struct
 import sys
@@ -28,6 +30,30 @@ import time
 from dataclasses import dataclass
 
 logger = logging.getLogger("mdrap.shm")
+
+
+def normalize_shm_name(name: str) -> str:
+    """
+    Normalize shared memory name to ensure cross-platform POSIX compliance (macOS Darwin limit: 31 chars).
+    Produces identical normalized names for writers and readers deriving from the same input.
+    Avoids silent truncation and preserves collision resistance via SHA-256 digest hashing when length exceeds limit.
+    """
+    if not name:
+        return "mdrap_feed"
+    clean = name.strip()
+    # Strip any leading slashes for normalization
+    bare = clean.lstrip("/")
+    # If bare name is already valid POSIX length (<= 30 chars) and contains only safe chars
+    if len(bare) <= 30 and re.match(r"^[A-Za-z0-9_.-]+$", bare):
+        return bare
+
+    # For long or special-character names, compute stable digest
+    # Prefix (up to 12 chars sanitized) + '_' + 16-char hex digest = max 29 chars
+    prefix_raw = re.sub(r"[^A-Za-z0-9_]", "", bare)[:12].rstrip("_")
+    if not prefix_raw:
+        prefix_raw = "shm"
+    digest = hashlib.sha256(clean.encode("utf-8")).hexdigest()[:16]
+    return f"{prefix_raw}_{digest}"
 
 
 class ReaderState(str, Enum):
@@ -207,7 +233,8 @@ class SHMWriter:
         if slot_count < 2 or (slot_count & (slot_count - 1)) != 0:
             raise ValueError(f"slot_count must be a power of 2, got {slot_count}")
 
-        self.name = name
+        self.raw_name = name
+        self.name = normalize_shm_name(name)
         self.slot_count = slot_count
         self.mask = slot_count - 1
         self.total_size = HEADER_SIZE + (slot_count * SLOT_SIZE)
@@ -526,6 +553,13 @@ class SHMWriter:
         """Close and unlink shared memory segment."""
         if self.shm:
             try:
+                # Invalidate epoch and heartbeat before closing/unlinking to immediately alert mapped readers
+                if len(self.shm.buf) >= HEADER_SIZE:
+                    try:
+                        struct.pack_into("<Q", self.shm.buf, 16, 0)
+                        struct.pack_into("<d", self.shm.buf, 64, 0.0)
+                    except Exception:
+                        pass
                 name = getattr(self.shm, "_name", None)
                 self.shm.close()
                 if name:
@@ -547,6 +581,7 @@ def _probe_active_epoch(name: str) -> int | None:
     """Probe active named shared memory segment to verify current epoch without leaking descriptors."""
     if not HAS_SHM:
         return None
+    name = normalize_shm_name(name)
     try:
         try:
             probe = SharedMemory(name=name, create=False, track=False)
@@ -575,7 +610,8 @@ class SHMReader:
             )
         _check_arm_shm_safety()
 
-        self.name = name
+        self.raw_name = name
+        self.name = normalize_shm_name(name)
         self.state = ReaderState.DETACHED
         try:
             self.shm: SharedMemory | None = SharedMemory(
@@ -717,7 +753,7 @@ class SHMReader:
                     return False
 
             current_epoch = struct.unpack_from("<Q", self.shm.buf, 16)[0]
-            if current_epoch != self.epoch_id:
+            if current_epoch == 0 or current_epoch != self.epoch_id:
                 self.state = ReaderState.INVALIDATED
                 return False
 
@@ -725,12 +761,23 @@ class SHMReader:
             if not should_probe and not self.is_writer_alive(max_stale_s=2.0):
                 should_probe = True
 
+            # On Darwin (macOS), POSIX st_nlink is not reliably decremented on shm_open fds,
+            # so periodic probing verifies segment existence and active publisher epoch.
+            if not should_probe and platform.system() == "Darwin":
+                now = time.time()
+                if (now - self._last_epoch_probe) >= 0.1:
+                    should_probe = True
+
             if should_probe:
                 now = time.time()
                 if (now - self._last_epoch_probe) >= 0.05 or force_probe:
                     self._last_epoch_probe = now
                     active_epoch = _probe_active_epoch(self.name)
-                    if active_epoch is None or active_epoch != self.epoch_id:
+                    if (
+                        active_epoch is None
+                        or active_epoch == 0
+                        or active_epoch != self.epoch_id
+                    ):
                         self.state = ReaderState.INVALIDATED
                         return False
 

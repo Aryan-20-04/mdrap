@@ -52,6 +52,7 @@ venv.bak/
 .coverage.*
 htmlcov/
 nosetests.xml
+junit*.xml
 coverage.xml
 coverage.json
 *.cover
