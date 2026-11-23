@@ -333,13 +333,34 @@ class RuntimeSupervisor:
                 self._state_cv.wait(timeout=min(0.05, remaining))
 
     def is_healthy(self) -> bool:
-        """Return True if all critical workers are running or safely restarting within budget."""
+        """Return True if all critical workers are running or safely restarting within budget.
+
+        Supervisor is considered unhealthy if:
+        1. A supervisor-level fatal error occurred (_fatal_error is not None).
+        2. Any critical worker is in FAILED_FATAL state.
+        3. Any critical worker is in CRASHED state.
+        4. Any critical worker has exhausted its permitted retry budget.
+        5. Any critical worker stopped unexpectedly while supervisor is running.
+        """
         with self._lock:
             if self._fatal_error is not None:
                 return False
+            now = time.time()
             for info in self._workers.values():
                 if info.spec.is_critical:
-                    if info.state in (WorkerState.FAILED_FATAL,):
+                    if info.state in (WorkerState.FAILED_FATAL, WorkerState.CRASHED):
+                        return False
+                    window_start = now - info.spec.retry_window_s
+                    recent_restarts = [
+                        ts for ts in info.restart_timestamps if ts > window_start
+                    ]
+                    if len(recent_restarts) >= info.spec.max_retries:
+                        return False
+                    if (
+                        self._running
+                        and info.state == WorkerState.STOPPED
+                        and not info.stop_event.is_set()
+                    ):
                         return False
             return True
 
@@ -381,13 +402,28 @@ class RuntimeSupervisor:
             except Exception as exc:
                 with self._lock:
                     info.last_error = f"{type(exc).__name__}: {exc}"
-                    info.state = WorkerState.CRASHED
+                    now = time.time()
+                    window_start = now - info.spec.retry_window_s
+                    info.restart_timestamps = [
+                        ts for ts in info.restart_timestamps if ts > window_start
+                    ]
+                    if len(info.restart_timestamps) >= info.spec.max_retries:
+                        info.state = WorkerState.FAILED_FATAL
+                        err_msg = (
+                            f"Worker '{info.spec.name}' exceeded max retries "
+                            f"({info.spec.max_retries} in {info.spec.retry_window_s}s). Last error: {info.last_error}"
+                        )
+                        logger.error("[supervisor] %s", err_msg)
+                        self._handle_fatal(info.spec.name, err_msg)
+                    else:
+                        info.state = WorkerState.CRASHED
                     self._state_cv.notify_all()
-                logger.warning(
-                    "[supervisor] Worker '%s' crashed with error: %s",
-                    info.spec.name,
-                    info.last_error,
-                )
+                if info.state != WorkerState.FAILED_FATAL:
+                    logger.warning(
+                        "[supervisor] Worker '%s' crashed with error: %s",
+                        info.spec.name,
+                        info.last_error,
+                    )
             else:
                 with self._lock:
                     info.state = WorkerState.STOPPED

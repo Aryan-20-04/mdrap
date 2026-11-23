@@ -84,11 +84,13 @@ test = [
     "setuptools>=61.0",
     "build>=1.0.0",
     "wheel>=0.40.0",
+    "pip-audit>=2.7.0",
 ]
 dev = [
     "setuptools>=61.0",
     "build>=1.0.0",
     "wheel>=0.40.0",
+    "pip-audit>=2.7.0",
     "ruff>=0.1.0",
     "pytest>=9.0.3",
     "pytest-timeout>=2.3.0",

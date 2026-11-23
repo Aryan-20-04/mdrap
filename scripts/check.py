@@ -99,7 +99,9 @@ class QualityGateRunner:
 
     def _save_gate_summary(self) -> None:
         summary_path = _ARTIFACT_DIR / "GATE_EXECUTION_SUMMARY.json"
-        summary_path.write_text(json.dumps(self.gate_results, indent=2), encoding="utf-8")
+        summary_path.write_text(
+            json.dumps(self.gate_results, indent=2), encoding="utf-8"
+        )
 
 
 def gate_rules_and_claims_sync():
@@ -199,8 +201,12 @@ def gate_core_unit_tests():
 
     metrics = parse_junit_xml(xml_out)
     if metrics["failures"] > 0 or metrics["errors"] > 0:
-        raise RuntimeError(f"Core unit tests had {metrics['failures']} failures, {metrics['errors']} errors")
-    print(f"[*] Core unit tests verified: {metrics['passed']} passed, {metrics['skipped']} skipped")
+        raise RuntimeError(
+            f"Core unit tests had {metrics['failures']} failures, {metrics['errors']} errors"
+        )
+    print(
+        f"[*] Core unit tests verified: {metrics['passed']} passed, {metrics['skipped']} skipped"
+    )
 
 
 def gate_integration_tests():
@@ -225,7 +231,9 @@ def gate_integration_tests():
     metrics = parse_junit_xml(xml_out)
     if metrics["failures"] > 0 or metrics["errors"] > 0:
         raise RuntimeError(f"Integration tests had {metrics['failures']} failures")
-    print(f"[*] Integration tests verified: {metrics['passed']} passed, {metrics['skipped']} skipped")
+    print(
+        f"[*] Integration tests verified: {metrics['passed']} passed, {metrics['skipped']} skipped"
+    )
 
 
 def gate_security_and_audit_tests():
@@ -251,7 +259,9 @@ def gate_security_and_audit_tests():
     metrics = parse_junit_xml(xml_out)
     if metrics["failures"] > 0 or metrics["errors"] > 0:
         raise RuntimeError(f"Security tests had {metrics['failures']} failures")
-    print(f"[*] Security & cryptographic tests verified: {metrics['passed']} passed, {metrics['skipped']} skipped")
+    print(
+        f"[*] Security & cryptographic tests verified: {metrics['passed']} passed, {metrics['skipped']} skipped"
+    )
 
 
 def gate_dependency_vulnerability_scan():
@@ -268,17 +278,111 @@ def gate_dependency_vulnerability_scan():
         "-o",
         str(audit_json),
     ]
-    res = subprocess.run(cmd, cwd=str(_REPO_ROOT))
-    if res.returncode != 0:
-        raise RuntimeError("Supply chain security audit failed (vulnerabilities detected)")
 
-    if audit_json.exists():
+    # Verify scanner availability before executing
+    version_cmd = [sys.executable, "-m", "pip_audit", "--version"]
+    ver_res = subprocess.run(
+        version_cmd,
+        cwd=str(_REPO_ROOT),
+        capture_output=True,
+        text=True,
+    )
+    if ver_res.returncode != 0:
+        err_msg = (
+            f"Supply chain security audit execution failure (scanner unavailable or failed to launch):\n"
+            f"  Interpreter: {sys.executable}\n"
+            f"  Command: {' '.join(version_cmd)}\n"
+            f"  Exit code: {ver_res.returncode}\n"
+            f"  Stderr: {ver_res.stderr.strip() or ver_res.stdout.strip() or 'ModuleNotFoundError: No module named pip_audit'}"
+        )
+        print(f"\n[ERROR] Gate 8: {err_msg}")
+        raise RuntimeError(err_msg)
+
+    scanner_version = ver_res.stdout.strip() or ver_res.stderr.strip()
+
+    # Execute pip-audit scan
+    res = subprocess.run(
+        cmd,
+        cwd=str(_REPO_ROOT),
+        capture_output=True,
+        text=True,
+    )
+
+    # Outcome C: Execution / Infrastructure failure during audit
+    if res.returncode not in (0, 1):
+        err_msg = (
+            f"Supply chain security audit execution failure (unexpected scanner exit code {res.returncode}):\n"
+            f"  Interpreter: {sys.executable}\n"
+            f"  Command: {' '.join(cmd)}\n"
+            f"  Stderr: {res.stderr.strip()}\n"
+            f"  Stdout: {res.stdout.strip()}"
+        )
+        print(f"\n[ERROR] Gate 8: {err_msg}")
+        raise RuntimeError(err_msg)
+
+    # Check output JSON
+    if not audit_json.exists():
+        err_msg = (
+            f"Supply chain security audit execution failure (audit output JSON missing):\n"
+            f"  Path: {audit_json}\n"
+            f"  Stderr: {res.stderr.strip()}"
+        )
+        print(f"\n[ERROR] Gate 8: {err_msg}")
+        raise RuntimeError(err_msg)
+
+    try:
         data = json.loads(audit_json.read_text(encoding="utf-8"))
-        deps = data.get("dependencies", [])
-        vulns = sum(len(d.get("vulns", [])) for d in deps)
-        if vulns > 0:
-            raise RuntimeError(f"pip-audit found {vulns} known vulnerabilities in dependencies")
-        print(f"[*] Supply chain audit clean: {len(deps)} dependencies scanned, 0 vulnerabilities found")
+    except Exception as exc:
+        err_msg = f"Supply chain security audit execution failure (corrupt JSON output): {exc}"
+        print(f"\n[ERROR] Gate 8: {err_msg}")
+        raise RuntimeError(err_msg)
+
+    # Enrich audit artifact with metadata
+    data["scanner"] = {
+        "name": "pip-audit",
+        "version": scanner_version,
+        "interpreter": sys.executable,
+        "scanned_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "input": "requirements.txt",
+    }
+    audit_json.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+    deps = data.get("dependencies", [])
+    vulnerabilities = []
+    for d in deps:
+        for v in d.get("vulns", []):
+            vulnerabilities.append(
+                {
+                    "package": d.get("name"),
+                    "version": d.get("version"),
+                    "id": v.get("id"),
+                    "fix_versions": v.get("fix_versions", []),
+                    "description": v.get("description", ""),
+                }
+            )
+
+    # Outcome B: Vulnerabilities detected
+    if len(vulnerabilities) > 0 or res.returncode == 1:
+        print(
+            f"\n[VULNERABILITY DETECTED] Gate 8: Found {len(vulnerabilities)} vulnerabilities in dependencies:"
+        )
+        for vuln in vulnerabilities:
+            fix_str = (
+                ", ".join(vuln["fix_versions"])
+                if vuln["fix_versions"]
+                else "None available"
+            )
+            print(f"  - Package: {vuln['package']} == {vuln['version']}")
+            print(f"    Vulnerability ID: {vuln['id']}")
+            print(f"    Fix Versions: {fix_str}")
+        raise RuntimeError(
+            f"pip-audit found {len(vulnerabilities)} known vulnerabilities in dependencies"
+        )
+
+    # Outcome A: Clean audit, 0 vulnerabilities
+    print(
+        f"[*] Supply chain audit clean ({scanner_version}): {len(deps)} dependencies scanned, 0 vulnerabilities found"
+    )
 
 
 def gate_native_tests_and_parity():
@@ -406,7 +510,11 @@ def main():
     )
 
     # Gate 3: Single-Source Rules Parity & Claims Governance
-    runner.run_gate(3, "Single-Source Rules Parity & Claims Governance", func=gate_rules_and_claims_sync)
+    runner.run_gate(
+        3,
+        "Single-Source Rules Parity & Claims Governance",
+        func=gate_rules_and_claims_sync,
+    )
 
     # Gate 4: Native C Accelerator Compilation (MUST PRECEDE TESTS)
     runner.run_gate(4, "Native C Accelerator Compilation", func=gate_native_compilation)
@@ -415,16 +523,30 @@ def main():
     runner.run_gate(5, "Core Unit Tests", func=gate_core_unit_tests)
 
     # Gate 6: Integration, Durability & Packaging Tests
-    runner.run_gate(6, "Integration & Durability Test Suite", func=gate_integration_tests)
+    runner.run_gate(
+        6, "Integration & Durability Test Suite", func=gate_integration_tests
+    )
 
     # Gate 7: Security Hardening & Cryptographic Audit Tests
-    runner.run_gate(7, "Security & Cryptographic Audit Verification", func=gate_security_and_audit_tests)
+    runner.run_gate(
+        7,
+        "Security & Cryptographic Audit Verification",
+        func=gate_security_and_audit_tests,
+    )
 
     # Gate 8: Supply Chain & Dependency CVE Audit
-    runner.run_gate(8, "Supply Chain Dependency CVE Audit (pip-audit)", func=gate_dependency_vulnerability_scan)
+    runner.run_gate(
+        8,
+        "Supply Chain Dependency CVE Audit (pip-audit)",
+        func=gate_dependency_vulnerability_scan,
+    )
 
     # Gate 9: Native Tests & Micro-Benchmark Smoke Check
-    runner.run_gate(9, "Native Accelerator Smoke Check & Differential Parity", func=gate_native_tests_and_parity)
+    runner.run_gate(
+        9,
+        "Native Accelerator Smoke Check & Differential Parity",
+        func=gate_native_tests_and_parity,
+    )
 
     consolidate_test_results()
     runner._save_gate_summary()

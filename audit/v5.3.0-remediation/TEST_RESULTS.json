@@ -1,8 +1,8 @@
 {
-  "timestamp": "2026-11-23T20:03:37.452902+00:00",
+  "timestamp": "2026-11-23T20:52:03.634119+00:00",
   "summary": {
-    "total_executed": 1597,
-    "passed": 1572,
+    "total_executed": 1605,
+    "passed": 1580,
     "failed": 0,
     "skipped": 25,
     "errors": 0,
@@ -10,11 +10,11 @@
   },
   "breakdown": {
     "core": {
-      "tests": 1518,
+      "tests": 1526,
       "failures": 0,
       "errors": 0,
       "skipped": 21,
-      "passed": 1497
+      "passed": 1505
     },
     "integration": {
       "tests": 36,

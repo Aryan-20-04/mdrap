@@ -155,8 +155,13 @@ def test_supervisor_exhausted_retries_escalation():
     )
 
     supervisor.start()
-    # Wait for crashes + backoff retries to exhaust budget (max 2)
-    time.sleep(0.3)
+    # Deterministic synchronization: wait for worker to exhaust retries and enter FAILED_FATAL
+    assert (
+        supervisor.wait_for_worker_state(
+            "crash_loop", WorkerState.FAILED_FATAL, timeout_s=3.0
+        )
+        is True
+    )
 
     assert supervisor.is_healthy() is False
     status = supervisor.get_status()
@@ -166,8 +171,121 @@ def test_supervisor_exhausted_retries_escalation():
     supervisor.stop(timeout_s=1.0)
 
 
+def test_supervisor_transient_crashes_recovery():
+    """Verify worker with multiple transient crashes that recovers is healthy."""
+    crash_count = [0]
+
+    def flaky_worker(stop_event: threading.Event):
+        if crash_count[0] < 2:
+            crash_count[0] += 1
+            raise RuntimeError(f"Flaky crash #{crash_count[0]}")
+        while not stop_event.is_set():
+            time.sleep(0.01)
+
+    supervisor = RuntimeSupervisor()
+    supervisor.register_worker(
+        WorkerSpec(
+            name="flaky",
+            target=flaky_worker,
+            is_critical=True,
+            max_retries=5,
+            retry_window_s=5.0,
+            restart_delay_base_s=0.02,
+        )
+    )
+    supervisor.start()
+
+    # Wait until it has restarted twice and reached RUNNING in recovered mode
+    assert (
+        supervisor.wait_for_worker_state(
+            "flaky", WorkerState.RUNNING, min_restarts=2, timeout_s=3.0
+        )
+        is True
+    )
+    assert supervisor.is_healthy() is True
+    status = supervisor.get_status()
+    assert status["workers"]["flaky"]["total_restarts"] == 2
+    assert status["healthy"] is True
+
+    supervisor.stop(timeout_s=1.0)
+
+
+def test_supervisor_multi_worker_partial_failure():
+    """Verify supervisor health accurately reflects when one critical worker fails while another succeeds."""
+
+    def good_worker(stop_event: threading.Event):
+        while not stop_event.is_set():
+            time.sleep(0.01)
+
+    def bad_worker(stop_event: threading.Event):
+        raise ValueError("Bad worker failure")
+
+    supervisor = RuntimeSupervisor()
+    supervisor.register_worker(
+        WorkerSpec(
+            name="good",
+            target=good_worker,
+            is_critical=True,
+        )
+    )
+    supervisor.register_worker(
+        WorkerSpec(
+            name="bad",
+            target=bad_worker,
+            is_critical=True,
+            max_retries=1,
+            retry_window_s=5.0,
+            restart_delay_base_s=0.02,
+        )
+    )
+    supervisor.start()
+
+    # Wait for bad worker to exhaust its single retry and fail fatal
+    assert (
+        supervisor.wait_for_worker_state("bad", WorkerState.FAILED_FATAL, timeout_s=3.0)
+        is True
+    )
+    # Good worker is still running, but overall supervisor is not healthy because a critical worker failed
+    assert supervisor.is_healthy() is False
+    status = supervisor.get_status()
+    assert status["workers"]["good"]["state"] == WorkerState.RUNNING.value
+    assert status["workers"]["bad"]["state"] == WorkerState.FAILED_FATAL.value
+
+    supervisor.stop(timeout_s=1.0)
+
+
+def test_supervisor_repeated_status_queries_during_transitions():
+    """Verify rapid concurrent status queries during worker crashes do not deadlock or raise."""
+
+    def unstable_worker(stop_event: threading.Event):
+        raise RuntimeError("Unstable jitter")
+
+    supervisor = RuntimeSupervisor()
+    supervisor.register_worker(
+        WorkerSpec(
+            name="unstable",
+            target=unstable_worker,
+            is_critical=False,
+            max_retries=3,
+            retry_window_s=5.0,
+            restart_delay_base_s=0.01,
+        )
+    )
+    supervisor.start()
+
+    for _ in range(50):
+        status = supervisor.get_status()
+        assert isinstance(status, dict)
+        assert "workers" in status
+        _ = supervisor.is_healthy()
+        time.sleep(0.002)
+
+    supervisor.stop(timeout_s=1.0)
+
+
 def test_supervisor_deterministic_state_waiting():
     """Verify wait_for_worker_state handles rapid transitions, timeouts, and clean shutdowns."""
+
     def fast_worker(stop_event: threading.Event):
         while not stop_event.is_set():
             time.sleep(0.01)
@@ -177,18 +295,28 @@ def test_supervisor_deterministic_state_waiting():
     supervisor.start()
 
     # Worker immediately reaches RUNNING
-    assert supervisor.wait_for_worker_state("fast", WorkerState.RUNNING, timeout_s=1.0) is True
+    assert (
+        supervisor.wait_for_worker_state("fast", WorkerState.RUNNING, timeout_s=1.0)
+        is True
+    )
 
     # Non-existent state times out cleanly
-    assert supervisor.wait_for_worker_state("fast", WorkerState.CRASHED, timeout_s=0.05) is False
+    assert (
+        supervisor.wait_for_worker_state("fast", WorkerState.CRASHED, timeout_s=0.05)
+        is False
+    )
 
     # Stop transitions to STOPPED
     supervisor.stop(timeout_s=1.0)
-    assert supervisor.wait_for_worker_state("fast", WorkerState.STOPPED, timeout_s=1.0) is True
+    assert (
+        supervisor.wait_for_worker_state("fast", WorkerState.STOPPED, timeout_s=1.0)
+        is True
+    )
 
 
 def test_supervisor_shutdown_during_restart_delay():
     """Verify shutting down supervisor while worker is in RESTARTING backoff does not deadlock."""
+
     def crash_worker(stop_event: threading.Event):
         raise RuntimeError("Crash immediately")
 
@@ -204,10 +332,20 @@ def test_supervisor_shutdown_during_restart_delay():
     supervisor.start()
 
     # Wait until supervisor detects crash and enters RESTARTING
-    assert supervisor.wait_for_worker_state("delayed_restart", WorkerState.RESTARTING, timeout_s=2.0) is True
+    assert (
+        supervisor.wait_for_worker_state(
+            "delayed_restart", WorkerState.RESTARTING, timeout_s=2.0
+        )
+        is True
+    )
 
     # Immediate shutdown during restart timer
     t0 = time.time()
     supervisor.stop(timeout_s=2.0)
     assert (time.time() - t0) < 1.0
-    assert supervisor.wait_for_worker_state("delayed_restart", WorkerState.STOPPED, timeout_s=1.0) is True
+    assert (
+        supervisor.wait_for_worker_state(
+            "delayed_restart", WorkerState.STOPPED, timeout_s=1.0
+        )
+        is True
+    )

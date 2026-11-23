@@ -11,6 +11,7 @@ Validates:
 
 from __future__ import annotations
 
+import gc
 import json
 from pathlib import Path
 import time
@@ -26,15 +27,15 @@ BENCH_JSON_PATH = REPO_ROOT / "benchmarks" / "results" / "honest_benchmarks.json
 
 
 def _make_raw(seq: int) -> RawEvent:
-    now = time.time()
+    base_ts = 1700000000.0
     return RawEvent(
         source="CME",
         raw_id=f"f_raw_{seq}",
-        receive_timestamp=now + seq * 0.001,
+        receive_timestamp=base_ts + seq * 0.001,
         payload={
             "instrument": "NQ",
             "event_type": "TRADE",
-            "exchange_ts": now + seq * 0.001,
+            "exchange_ts": base_ts + seq * 0.001,
             "price": 18000.0 + (seq % 10),
             "quantity": 1.0,
             "sequence": seq,
@@ -47,34 +48,63 @@ def test_f01_benchmark_reproducibility():
     engine = Engine()
     clock = SystemClock()
 
-    # Warmup
-    st = engine.state
-    for i in range(50):
-        st, _ = engine.step(st, _make_raw(i), clock, offset=i)
+    # 1. Warm-up Phase: Run 1,000 iterations to allow CPU frequency governor, memory allocation arenas,
+    # and PEP 659 adaptive interpreter bytecode specialization to fully stabilize before measurement.
+    warmup_events = [_make_raw(i) for i in range(1000)]
+    st_warmup = engine.create_initial_state()
+    for ev in warmup_events:
+        st_warmup, _ = engine.step(st_warmup, ev, clock, offset=ev.payload["sequence"])
+
+    # 2. Identical Workload Setup: Pre-generate events outside the timing loop to isolate
+    # engine.step() latency from RawEvent dataclass allocation and dictionary instantiation.
+    workload_size = 500
+    workload_events = [_make_raw(5000 + i) for i in range(workload_size)]
+    preheat_events = [_make_raw(9000 + i) for i in range(50)]
 
     run_p50s = []
     run_p99s = []
+    run_decisions = []
 
     for run_idx in range(3):
-        st = engine.state
+        # 3. Preheat: Execute a brief burst right before measurement to keep CPU frequency boosted
+        st_pre = engine.create_initial_state()
+        for ev in preheat_events:
+            st_pre, _ = engine.step(st_pre, ev, clock, offset=ev.payload["sequence"])
+
+        # Fresh initial state ensures bit-for-bit identical workload execution across all runs
+        st = engine.create_initial_state()
         latencies_us = []
-        for i in range(300):
-            seq = 1000 + run_idx * 300 + i
-            t0 = time.perf_counter_ns()
-            st, _ = engine.step(st, _make_raw(seq), clock, offset=seq)
-            t1 = time.perf_counter_ns()
-            latencies_us.append((t1 - t0) / 1000.0)
+        decisions = []
+
+        # Isolate Garbage Collection pauses from micro-benchmark step timings
+        gc.collect()
+        gc.disable()
+        try:
+            for ev in workload_events:
+                t0 = time.perf_counter_ns()
+                st, dec = engine.step(st, ev, clock, offset=ev.payload["sequence"])
+                t1 = time.perf_counter_ns()
+                latencies_us.append((t1 - t0) / 1000.0)
+                decisions.append((dec.quality_status.value, tuple(dec.reasons)))
+        finally:
+            gc.enable()
 
         latencies_us.sort()
         run_p50s.append(percentile(latencies_us, 0.50))
         run_p99s.append(percentile(latencies_us, 0.99))
+        run_decisions.append(decisions)
 
     engine.close()
+
+    # 4. Assert Deterministic Functional Output directly: All runs must produce identical decisions
+    assert run_decisions[0] == run_decisions[1] == run_decisions[2], (
+        "Runs produced non-deterministic engine decisions across identical workloads"
+    )
 
     mean_p50 = sum(run_p50s) / len(run_p50s)
     mean_p99 = sum(run_p99s) / len(run_p99s)
 
-    # Allow generous tolerance for Windows background noise, but ensure stability
+    # 5. Assert Performance Measurement Stability
     for p50 in run_p50s:
         rel_diff = abs(p50 - mean_p50) / mean_p50
         assert rel_diff <= 0.35, (
