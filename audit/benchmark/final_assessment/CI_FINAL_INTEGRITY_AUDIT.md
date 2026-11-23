@@ -289,3 +289,72 @@ The execution of `scripts/check.py` was independently mapped to its underlying c
 4. **Action Items for Future Releases**:
    - Consider adding a dedicated step in `.github/workflows/ci.yml` for `pytest external_sidecar/mdrap_observer/` if the Observer sidecar is promoted into the standard release gate.
    - Refactor `scripts/check.py` to use disjoint test selection or deduplicate XML records so `TEST_RESULTS.json` reflects unique test counts rather than 1,566 combined executions.
+
+---
+
+## 11. Addendum — Post-Push CI Test Collection Remediation: Missing `psutil`
+
+### 11.1 Observed CI Failure Details
+* **Environment**: GitHub Actions CI (`ci.yml` matrix run on Python 3.13 / Ubuntu / Windows / macOS).
+* **Failure Point**: Test collection phase in `Run Test Suite` step (`pytest tests/ -q --timeout=120 --tb=short`).
+* **Error Log**:
+  ```
+  tests/test_phase2_security_profile.py:6
+  import psutil
+  ModuleNotFoundError: No module named 'psutil'
+  ```
+* **Impact**: Pytest halted during collection before executing test assertions.
+
+### 11.2 Root Cause Analysis
+1. `tests/test_phase2_security_profile.py` line 6 unconditionally imports `psutil` at module top-level to profile process memory RSS growth (`psutil.Process(os.getpid()).memory_info().rss`) and sidecar CPU overhead across 10,000 ingested events.
+2. In the local developer workstation, `psutil` was pre-installed in the user's global site-packages (`AppData\Roaming\Python\Python313\site-packages\psutil`), masking the dependency absence.
+3. In GitHub Actions, fresh virtual environments are provisioned using `.github/workflows/ci.yml`:
+   ```bash
+   pip install -e ".[dev]"
+   pip install -e "./contrib[all]"
+   ```
+4. `psutil` was completely missing from `pyproject.toml` (`[project.optional-dependencies]` under `dev` and `test`) and from `requirements.txt`. Consequently, the GitHub Actions runner never installed `psutil`, leading to `ModuleNotFoundError` during test collection.
+
+### 11.3 Targeted Remediation & Dependency Declaration
+Per project governance:
+* `psutil` was **not** added to mandatory runtime dependencies (`dependencies = []` remains pure Python stdlib).
+* `psutil>=6.0.0` was declared strictly in development and test dependency groups:
+  - `pyproject.toml`: Added `"psutil>=6.0.0"` to `[project.optional-dependencies.test]` and `[project.optional-dependencies.dev]`.
+  - `requirements.txt`: Added `psutil>=6.0.0,<7.0.0` under `# --- Automated Testing & Quality Assurance (Dev) ---`.
+* Maintained compatibility across Python 3.10–3.13 without suppressing or weakening any test assertions.
+
+### 11.4 Verification Execution & Evidence
+The CI dependency installation and test execution were reproduced locally:
+
+1. **Dependency Installation**:
+   ```bash
+   pip install -e ".[dev]"
+   # Output: Requirement already satisfied / successfully built and verified psutil>=6.0.0 (6.1.1)
+   # Exit code: 0
+   ```
+2. **Targeted Security Profile Test Suite**:
+   ```bash
+   pytest tests/test_phase2_security_profile.py -q --timeout=120 --tb=short
+   # Output: 2 passed, 1 warning in 3.90s
+   # Exit code: 0
+   ```
+3. **Full CI Test Suite Verification**:
+   ```bash
+   pytest tests/ -q --timeout=120 --tb=short
+   # Output: 1531 passed, 32 skipped, 29 deselected in 388.19s
+   # Exit code: 0
+   ```
+4. **Guardrail & Packaging Verification**:
+   - `ruff format --check src/`: 100/100 files clean (0.32s).
+   - `ruff check src/`: All checks passed (0.35s).
+   - `python tools/gen_reasons.py --check`: `rules.def` in complete sync.
+   - `python scripts/gen_claims.py --check`: 1,531 passed, claims manifest verified.
+   - `python scripts/verify_release_artifacts.py`: All 6 release artifacts passed.
+
+### 11.5 Summary of Changes & Remaining Issues
+* **Files Modified**:
+  - `pyproject.toml` (+2 lines: `"psutil>=6.0.0"` in `test` and `dev` extras)
+  - `requirements.txt` (+1 line: `psutil>=6.0.0,<7.0.0` in QA/Dev group)
+  - `audit/benchmark/final_assessment/CI_FINAL_INTEGRITY_AUDIT.md` (updated with Section 11)
+* **Remaining Failures**: **ZERO**. The test collection error is fully resolved; full suite passes with 1,531 clean tests.
+
