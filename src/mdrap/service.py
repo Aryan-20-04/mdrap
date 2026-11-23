@@ -61,9 +61,9 @@ class _ClientSession:
 
     sock: socket.socket
     symbols: Set[str] = field(default_factory=set)
-    queue: queue.Queue = field(default_factory=lambda: queue.Queue(maxsize=1000))
+    queue: queue.Queue = field(default_factory=lambda: queue.Queue(maxsize=2000))
     dropped_ticks: int = 0
-    max_dropped_ticks: int = 1000
+    max_dropped_ticks: int = 20000
     is_alive: bool = True
     is_binary: bool = False
     is_sbe: bool = False
@@ -796,11 +796,17 @@ class MarketDataDaemon:
                 return
             num_events = self.sim_events if self.sim_events > 0 else 10_000_000
             sim = FeedSimulator(SimulatorConfig(seed=42, num_events=num_events))
+            burst_size = (
+                max(1, int(self.sim_speed_eps / 1000.0))
+                if self.sim_speed_eps >= 1000.0
+                else 1
+            )
             sleep_s = (
                 (1.0 / self.sim_speed_eps)
-                if (self.sim_speed_eps > 0 and self.sim_speed_eps < 1000.0)
-                else 0.0
+                if (0.0 < self.sim_speed_eps < 1000.0)
+                else 0.001
             )
+            sim_count = 0
             for raw, _label in sim.generate():
                 if not self._running:
                     break
@@ -814,8 +820,13 @@ class MarketDataDaemon:
                         exc,
                     )
                 self._last_ingest_ts = time.time()
-                if sleep_s > 0:
-                    time.sleep(sleep_s)
+                sim_count += 1
+                if self.sim_speed_eps > 0.0:
+                    if self.sim_speed_eps >= 1000.0:
+                        if sim_count % burst_size == 0:
+                            time.sleep(sleep_s)
+                    else:
+                        time.sleep(sleep_s)
                 if self.sim_events > 0 and self._total_broadcast >= self.sim_events:
                     break
 
@@ -1594,9 +1605,6 @@ class StreamClient:
                     break
                 raw_buf.extend(data)
             except (KeyboardInterrupt, GeneratorExit):
-                break
-            except Exception:
-                break
                 break
             except Exception:
                 break

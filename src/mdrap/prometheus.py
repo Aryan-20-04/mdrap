@@ -12,6 +12,7 @@ Guarantees:
 
 from __future__ import annotations
 
+import queue
 import threading
 import time
 from typing import Any, Dict, Tuple
@@ -40,38 +41,62 @@ class PrometheusExporter:
         self._last_audit_check_ts: float = 0.0
         self._last_audit_status: int = 1
         self._last_verified_entry_id: int = 0
+        self._audit_queue: queue.Queue = queue.Queue(maxsize=1)
+        self._audit_worker_thread = threading.Thread(
+            target=self._audit_worker_loop,
+            name="prometheus-audit-worker",
+            daemon=True,
+        )
+        self._audit_worker_thread.start()
+
+    def _audit_worker_loop(self) -> None:
+        """Dedicated persistent background worker for audit checks (zero OS thread overhead on scrape)."""
+        while True:
+            try:
+                store = self._audit_queue.get()
+                if store is None:
+                    break
+                try:
+                    with self._audit_lock:
+                        last_id = self._last_verified_entry_id
+                    since_id = (last_id + 1) if last_id > 0 else None
+                    try:
+                        res = store.verify_audit_integrity(since_entry_id=since_id)
+                    except TypeError:
+                        res = store.verify_audit_integrity()
+                    verified = res[0] if isinstance(res, (tuple, list)) else bool(res)
+                    status = 1 if verified else 0
+                    new_id = (
+                        res[2]
+                        if (isinstance(res, (tuple, list)) and len(res) > 2)
+                        else 0
+                    )
+                except Exception:
+                    status = 0
+                    new_id = 0
+                with self._audit_lock:
+                    self._last_audit_status = status
+                    self._last_audit_check_ts = time.time()
+                    if status == 1 and new_id > 0:
+                        self._last_verified_entry_id = new_id
+                    self._audit_check_in_progress = False
+            except Exception:
+                with self._audit_lock:
+                    self._audit_check_in_progress = False
 
     def _run_audit_check_async(self, store: Any) -> None:
-        """Execute audit verification asynchronously in background thread (OPS-02)."""
+        """Enqueue audit verification to pre-warmed background worker (OPS-02)."""
+        try:
+            self._audit_queue.put_nowait(store)
+        except queue.Full:
+            pass
 
-        def _worker():
-            try:
-                with self._audit_lock:
-                    last_id = self._last_verified_entry_id
-                since_id = (last_id + 1) if last_id > 0 else None
-                try:
-                    res = store.verify_audit_integrity(since_entry_id=since_id)
-                except TypeError:
-                    res = store.verify_audit_integrity()
-                verified = res[0] if isinstance(res, (tuple, list)) else bool(res)
-                status = 1 if verified else 0
-                new_id = (
-                    res[2] if (isinstance(res, (tuple, list)) and len(res) > 2) else 0
-                )
-            except Exception:
-                status = 0
-                new_id = 0
-            with self._audit_lock:
-                self._last_audit_status = status
-                self._last_audit_check_ts = time.time()
-                if status == 1 and new_id > 0:
-                    self._last_verified_entry_id = new_id
-                self._audit_check_in_progress = False
-
-        t = threading.Thread(
-            target=_worker, name="prometheus-audit-verifier", daemon=True
-        )
-        t.start()
+    def close(self) -> None:
+        """Shut down background worker thread."""
+        try:
+            self._audit_queue.put_nowait(None)
+        except Exception:
+            pass
 
     def verify_audit_sync(self, store: Any) -> int:
         """Synchronously verify audit log integrity (for testing or explicit health checks)."""

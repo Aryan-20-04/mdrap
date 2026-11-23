@@ -8,7 +8,7 @@ version = "6.0.8"
 description = "Optional MDRAP command line and peripheral integrations"
 readme = "README.md"
 requires-python = ">=3.10"
-license = "MIT"
+license = { text = "MIT" }
 dependencies = ["mdrap-core>=3.1.2"]
 
 [project.scripts]

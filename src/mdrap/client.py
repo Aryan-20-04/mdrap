@@ -785,7 +785,7 @@ class MDRAPClient:
         # If streaming via Shared Memory (sub-microsecond IPC)
         if self.shm_reader:
             # Check epoch before streaming in case publisher restarted while client was idle
-            if not self.shm_reader.check_epoch_valid(force_probe=True):
+            if not self.shm_reader.check_epoch_valid(force_probe=False):
                 try:
                     self.shm_reader.close()
                     from .shm import SHMReader
@@ -827,10 +827,7 @@ class MDRAPClient:
                             self.shm_reader = None
                             break
 
-                        if (
-                            item_type == "EPOCH_CHANGE"
-                            or not self.shm_reader.check_epoch_valid()
-                        ):
+                        if item_type == "EPOCH_CHANGE":
                             # Publisher restarted! Re-attach cleanly without crashing
                             try:
                                 self.shm_reader.close()

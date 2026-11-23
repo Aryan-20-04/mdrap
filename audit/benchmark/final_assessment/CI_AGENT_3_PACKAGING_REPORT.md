@@ -1,38 +1,39 @@
-# CI AGENT 3: Cross-Platform Pure Wheel Build and Packaging Report
+# MDRAP CI Cross-Platform Remediation — Agent 3 Report: Cross-Platform Build Backend and Pure Wheel
 
-## Executive Summary
-Agent 3 diagnosed and remediated the cross-platform wheel build failure (`CalledProcessError`) affecting Ubuntu Linux (Python 3.12), Windows (Python 3.11), and macOS (Python 3.13), ensured PEP 517 build frontend/backend dependency completeness (`wheel>=0.40.0` in `[build-system]`, `test`, and `dev`), and improved test failure diagnostics.
+## 1. Domain Ownership & Executive Summary
+- **Agent Role**: Cross-Platform Build Backend & Pure Wheel Integrity
+- **Primary Files**:
+  - `pyproject.toml`
+  - `compat/pyproject.toml`
+  - `contrib/pyproject.toml`
+  - `tests/test_wheel_binary_exclusion.py`
+  - `scripts/verify_release_artifacts.py`
+- **Status**: PASSED / VERIFIED
 
-## Original Failure
-- **Platforms**: Ubuntu Linux (Python 3.12), Windows (Python 3.11), macOS (Python 3.13)
-- **Test**: `tests/test_wheel_binary_exclusion.py::test_pure_wheel_contains_no_compiled_binaries`
-- **Subprocess**: `python -m build --wheel --no-isolation` failed with `CalledProcessError`.
+## 2. Issues Diagnosed & Root Cause Analysis
 
-## Root Cause Analysis
-1. **Missing `wheel` Package in Build & Test Environments**:
-   When invoking `python -m build --wheel --no-isolation`, `build` delegates wheel packaging to `setuptools.build_meta`. Under `--no-isolation`, setuptools requires the `wheel` package installed in the active environment.
-   In CI runners using `actions/setup-python@v5`, `wheel` is not pre-installed by default. In `pyproject.toml`, `wheel` was omitted from `[build-system].requires = ["setuptools>=61.0"]` and omitted from `dev` and `test` dependency groups.
-2. **Hidden Subprocess Diagnostics in Test**:
-   `tests/test_wheel_binary_exclusion.py` used `subprocess.run(..., check=True, capture_output=True)`. When `check=True` triggered `subprocess.CalledProcessError`, Python concealed stdout and stderr in standard tracebacks, obscuring the underlying build error.
+### Issue 1: macOS Python 3.11 Setuptools Schema Rejection (`project.license`)
+- **Symptom**: On macOS with Python 3.11, building wheels or sdist failed with:
+  `project.license must be valid exactly by one definition`
+- **Root Cause**: In PEP 621, `project.license` was originally defined as a table containing either `file` or `text` (e.g. `license = { text = "MIT" }`). The bare SPDX string format (`license = "MIT"`) was specified in PEP 639 and is only recognized by setuptools >= 77.0.0. The setuptools version on macOS Python 3.11 runner strictly enforced the PEP 621 table schema and rejected the bare string `"MIT"`.
+- **Remediation**: Updated `license = { text = "MIT" }` across `pyproject.toml`, `compat/pyproject.toml`, and `contrib/pyproject.toml`. This table format is universally supported across all setuptools versions (>= 61.0 through 81.0+).
 
-## Design & Implementation
-1. **Explicit Build System & Packaging Dependencies (`pyproject.toml`)**:
-   - Updated `[build-system]` to explicitly declare `wheel`:
-     ```toml
-     [build-system]
-     requires = ["setuptools>=61.0", "wheel>=0.40.0"]
-     build-backend = "setuptools.build_meta"
-     ```
-   - Added `"build>=1.0.0"` and `"wheel>=0.40.0"` to `project.optional-dependencies.test` and `project.optional-dependencies.dev`.
-2. **Subprocess Diagnostic Exposure in Test Harness**:
-   - Refactored `tests/test_wheel_binary_exclusion.py` to capture and format complete stdout, stderr, working directory, and python executable upon build failure.
-3. **Pure-Python Wheel Binary Exclusion Verification**:
-   - `CleanBuildPy` in `src/mdrap_build.py` and `MANIFEST.in` global excludes were re-verified: zero `.so`, `.dll`, `.dylib`, or `.pyd` files are included in `mdrap_core-6.0.8-py3-none-any.whl`.
+### Issue 2: Windows and Ubuntu Python 3.13 Missing Setuptools in Non-Isolated Wheel Builds
+- **Symptom**: On Windows and Ubuntu runners with Python 3.13, `test_wheel_binary_exclusion.py` failed with:
+  `ModuleNotFoundError: No module named 'setuptools'`
+- **Root Cause**:
+  `test_wheel_binary_exclusion.py` executes:
+  ```bash
+  python -m build --wheel --no-isolation
+  ```
+  When `--no-isolation` is passed, `build` uses the active Python environment directly without creating a temporary venv. In Python 3.12+, Python eliminated `setuptools` from the default environment. While `setuptools` was declared in `[build-system].requires`, pip only provisions it into an isolated build container during `pip install -e`. Because `setuptools` was omitted from `[project.optional-dependencies].test` and `dev`, the test runner environment lacked `setuptools`.
+- **Remediation**:
+  Declared `"setuptools>=61.0"` in `project.optional-dependencies.test` and `dev` in `pyproject.toml`. When `pip install -e ".[dev]"` executes during CI setup, `setuptools` is explicitly installed in the active interpreter.
 
-## Verification Evidence
-1. `pytest tests/test_wheel_binary_exclusion.py -v` -> **1 passed, 0 failed**.
-2. `python scripts/verify_release_artifacts.py` -> **Passed cleanly**:
-   - `mdrap_core-6.0.8-py3-none-any.whl`: 106 entries, 0 leaked binaries.
-   - `mdrap_compat-6.0.8-py3-none-any.whl`: 94 entries, 0 leaked binaries.
-   - `mdrap_contrib-6.0.8-py3-none-any.whl`: 5 entries, 0 leaked binaries.
-   - All source distributions verified.
+## 3. Pure-Wheel Binary Cleanliness Evidence
+- Verified `test_pure_wheel_contains_no_compiled_binaries` passed cleanly.
+- Inspected wheel contents:
+  - `mdrap_core-6.0.8-py3-none-any.whl`: 106 entries, exactly 0 `.dll`, `.so`, `.dylib`, or `.pyd` files.
+  - `mdrap_compat-6.0.8-py3-none-any.whl`: 94 entries, exactly 0 compiled binaries.
+  - `mdrap_contrib-6.0.8-py3-none-any.whl`: 5 entries, pure package.
+- `scripts/verify_release_artifacts.py`: All 6 release artifacts (`core`, `compat`, `contrib` sdists and wheels) passed all inspection and isolation gates.

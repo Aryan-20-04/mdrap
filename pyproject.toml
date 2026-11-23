@@ -8,7 +8,7 @@ dynamic = ["version"]
 description = "Market Data Reliability & Acceleration Platform - Financial market infrastructure for converting noisy market feeds into validated canonical streams"
 readme = "README.md"
 requires-python = ">=3.10"
-license = "MIT"
+license = { text = "MIT" }
 authors = [
     { name = "MDRAP Team" }
 ]
@@ -81,10 +81,12 @@ test = [
     "websockets>=12.0,<17.0",
     "psutil>=6.0.0",
     "tomli>=1.1.0; python_version<'3.11'",
+    "setuptools>=61.0",
     "build>=1.0.0",
     "wheel>=0.40.0",
 ]
 dev = [
+    "setuptools>=61.0",
     "build>=1.0.0",
     "wheel>=0.40.0",
     "ruff>=0.1.0",

@@ -1,7 +1,7 @@
 {
   "mdrap_version": "6.0.8",
-  "commit": "4661eaf",
-  "generated_at": "2026-11-23T18:26:07.845072+00:00",
+  "commit": "87b50af",
+  "generated_at": "2026-11-23T20:03:37.453962+00:00",
   "install_command": "pip install -e .",
   "test_counts": {
     "passed": 1572,

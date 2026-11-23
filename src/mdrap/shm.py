@@ -653,7 +653,7 @@ class SHMReader:
         self.watermark_pct = DEFAULT_SHM_WATERMARK_PCT
         self.watermark_slots = int(self.slot_count * self.watermark_pct)
         self.overrun_stats = SHMOverrunStats()
-        self._last_epoch_probe = 0.0
+        self._last_epoch_probe = time.time()
         self.state = ReaderState.ATTACHED
 
     def is_watermark_warning_set(self) -> bool:
@@ -733,14 +733,15 @@ class SHMReader:
         Verify that the writer epoch has not changed (i.e. daemon has not restarted).
         Fast in-memory read from offset 16 of mapped buffer is zero syscalls.
         External named segment probing is performed when force_probe=True, when
-        the mapped POSIX inode is unlinked (st_nlink == 0), or when heartbeat is stale.
+        the mapped POSIX inode on Linux is unlinked (st_nlink == 0), or when heartbeat is stale.
         """
         if not self.shm or self.state == ReaderState.DETACHED:
             return False
         try:
-            # POSIX unlinked segment detection (st_nlink == 0)
+            # POSIX unlinked segment detection on Linux only (Darwin fstat always returns st_nlink == 0 for shm_open)
             if (
-                hasattr(self.shm, "_fd")
+                platform.system() == "Linux"
+                and hasattr(self.shm, "_fd")
                 and isinstance(self.shm._fd, int)
                 and self.shm._fd >= 0
             ):
@@ -760,13 +761,6 @@ class SHMReader:
             should_probe = force_probe
             if not should_probe and not self.is_writer_alive(max_stale_s=2.0):
                 should_probe = True
-
-            # On Darwin (macOS), POSIX st_nlink is not reliably decremented on shm_open fds,
-            # so periodic probing verifies segment existence and active publisher epoch.
-            if not should_probe and platform.system() == "Darwin":
-                now = time.time()
-                if (now - self._last_epoch_probe) >= 0.1:
-                    should_probe = True
 
             if should_probe:
                 now = time.time()
@@ -949,26 +943,31 @@ class SHMReader:
             }
             return
 
-        if not self.check_epoch_valid(force_probe=True):
+        if not self.check_epoch_valid(force_probe=False):
             old_epoch = self.epoch_id
-            if self._reattach():
+            if self._reattach() and self.epoch_id != old_epoch and self.epoch_id != 0:
                 curr_seq = self.read_latest_seq()
-            else:
-                curr_seq = 0
-            yield {
-                "type": "EPOCH_CHANGE",
-                "old_epoch": old_epoch,
-                "new_epoch": self.epoch_id,
-            }
+                yield {
+                    "type": "EPOCH_CHANGE",
+                    "old_epoch": old_epoch,
+                    "new_epoch": self.epoch_id,
+                }
+            elif not self.check_epoch_valid(force_probe=False):
+                return
 
         while True:
             # Fast in-memory epoch check (nanoseconds, zero syscalls)
             try:
                 current_epoch = struct.unpack_from("<Q", self.shm.buf, 16)[0]
-                if current_epoch != self.epoch_id:
+                if current_epoch != 0 and current_epoch != self.epoch_id:
+                    old_epoch = self.epoch_id
                     self.epoch_id = current_epoch
                     curr_seq = 0
-                    yield {"type": "EPOCH_CHANGE"}
+                    yield {
+                        "type": "EPOCH_CHANGE",
+                        "old_epoch": old_epoch,
+                        "new_epoch": self.epoch_id,
+                    }
                     continue
             except Exception as exc:
                 logger.debug("[shm] Error reading current epoch: %s", exc)
@@ -1009,16 +1008,20 @@ class SHMReader:
 
                 if not self.check_epoch_valid(force_probe=False):
                     old_epoch = self.epoch_id
-                    if self._reattach():
+                    if (
+                        self._reattach()
+                        and self.epoch_id != old_epoch
+                        and self.epoch_id != 0
+                    ):
                         curr_seq = self.read_latest_seq()
-                    else:
-                        curr_seq = 0
-                    yield {
-                        "type": "EPOCH_CHANGE",
-                        "old_epoch": old_epoch,
-                        "new_epoch": self.epoch_id,
-                    }
-                    continue
+                        yield {
+                            "type": "EPOCH_CHANGE",
+                            "old_epoch": old_epoch,
+                            "new_epoch": self.epoch_id,
+                        }
+                        continue
+                    elif not self.check_epoch_valid(force_probe=False):
+                        return
 
             # Timeout check
             if timeout is not None and (time.time() - t_start) > timeout:
