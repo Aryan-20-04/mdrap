@@ -80,6 +80,7 @@ test = [
     "pyarrow>=20.0.0",
     "websockets>=12.0,<17.0",
     "psutil>=6.0.0",
+    "tomli>=1.1.0; python_version<'3.11'",
 ]
 dev = [
     "build>=1.0.0",
@@ -96,6 +97,7 @@ dev = [
     "pyarrow>=20.0.0",
     "websockets>=12.0,<17.0",
     "psutil>=6.0.0",
+    "tomli>=1.1.0; python_version<'3.11'",
 ]
 
 # MDRAP Extension Entry Points

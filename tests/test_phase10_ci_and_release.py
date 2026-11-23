@@ -12,8 +12,16 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+import sys
 import pytest
-import tomllib
+
+if sys.version_info >= (3, 11):
+    import tomllib
+else:
+    try:
+        import tomllib
+    except ImportError:
+        import tomli as tomllib
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 

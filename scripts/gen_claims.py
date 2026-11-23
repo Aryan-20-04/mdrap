@@ -45,7 +45,7 @@ def run_test_count() -> dict[str, int]:
         "-m",
         "not slow and not network",
         "-q",
-        "--tb=no",
+        "--tb=short",
     ]
     res = subprocess.run(cmd, cwd=_REPO_ROOT, capture_output=True, text=True)
     out = res.stdout + "\n" + res.stderr
@@ -75,6 +75,7 @@ def run_test_count() -> dict[str, int]:
         counts["failed"] = int(failed_m.group(1))
 
     counts["total"] = counts["passed"] + counts["skipped"] + counts["failed"]
+    counts["_raw_output"] = out
     return counts
 
 
@@ -103,7 +104,10 @@ def main():
         f"Results: {counts['passed']} passed, {counts['skipped']} skipped, {counts['failed']} failed, {counts['deselected']} deselected"
     )
 
+    raw_out = counts.pop("_raw_output", "")
     if counts["failed"] > 0:
+        if raw_out:
+            print(raw_out, file=sys.stderr)
         print(
             f"[ERROR] Test suite failed with {counts['failed']} failures! Cannot generate verified claims.",
             file=sys.stderr,

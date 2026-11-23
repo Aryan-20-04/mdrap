@@ -30,3 +30,4 @@ pytest-timeout>=2.3.0,<3.0.0    # Execution deadlines on streaming, chaos, and I
 pytest-asyncio>=1.0.0,<2.0.0    # Async test fixture runner for streaming & API endpoints
 pytest-cov>=5.0.0,<7.0.0        # Automated code coverage and branch evaluation
 psutil>=6.0.0,<7.0.0            # Process resource and memory profiling in security tests
+tomli>=1.1.0,<3.0.0; python_version<'3.11' # TOML parser backport for Python 3.10

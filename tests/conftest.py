@@ -3,7 +3,17 @@ Pytest configuration for MDRAP test suite.
 """
 
 import os
+import sys
 import pytest
+
+# Ensure all companion packages under packages/ are importable
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_PACKAGES_DIR = os.path.join(_REPO_ROOT, "packages")
+if os.path.isdir(_PACKAGES_DIR):
+    for entry in os.listdir(_PACKAGES_DIR):
+        pkg_path = os.path.join(_PACKAGES_DIR, entry)
+        if os.path.isdir(pkg_path) and pkg_path not in sys.path:
+            sys.path.insert(0, pkg_path)
 
 # Tests use a stable non-demo salt; production must configure its own value.
 os.environ.setdefault("MDRAP_API_KEY_SALT", "test-only-mdrap-salt-not-for-deployment")
