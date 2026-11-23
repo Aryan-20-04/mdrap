@@ -17,7 +17,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Build wheels
-        uses: pypa/cibuildwheel@v2.22.0
+        uses: pypa/cibuildwheel@v4.3.1
         env:
           CIBW_BEFORE_BUILD: "python -m mdrap.build_fastpath"
           CIBW_TEST_COMMAND: "python -c \"import mdrap; from mdrap.engine import Engine; from mdrap.ingestlog import IngestLog; from mdrap.fastpath import HAS_FASTPATH; print('Wheel test passed; fastpath active:', HAS_FASTPATH)\""
