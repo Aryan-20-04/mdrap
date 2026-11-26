@@ -29,6 +29,6 @@ pytest>=9.0.3                   # Production test suite runner
 pytest-timeout>=2.3.0,<3.0.0    # Execution deadlines on streaming, chaos, and IPC tests
 pytest-asyncio>=1.0.0,<2.0.0    # Async test fixture runner for streaming & API endpoints
 pytest-cov>=5.0.0,<7.0.0        # Automated code coverage and branch evaluation
-psutil>=6.0.0,<7.0.0            # Process resource and memory profiling in security tests
+psutil>=6.0.0,<8.0.0            # Process resource and memory profiling in security tests
 pip-audit>=2.7.0,<3.0.0         # Supply-chain dependency vulnerability and CVE auditor (Gate 8)
 tomli>=1.1.0,<3.0.0; python_version<'3.11' # TOML parser backport for Python 3.10
