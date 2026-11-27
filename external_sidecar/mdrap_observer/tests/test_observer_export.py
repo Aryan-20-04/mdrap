@@ -514,3 +514,613 @@ def test_exporter_full_accounting_reconciliation(monkeypatch):
         )
         assert res["flushed_records"] == res["written_records"]
         assert res["fsynced_records"] == res["written_records"]
+        assert res["clean"] is False
+        assert res["flush_succeeded"] is True
+        assert res["fsync_succeeded"] is True
+        assert res["close_succeeded"] is True
+
+
+def test_exporter_enqueue_shutdown_race_deterministic(monkeypatch):
+    """R3: Producer must not enqueue after stop() closes admission; accepted records cannot be orphaned."""
+    import observer.exporter as exporter_mod
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        exporter = ObserverExporter(
+            output_dir=tmpdir, flush_interval_s=0.05, queue_size=100
+        )
+        exporter.start()
+        exporter.record_event({"seq": 0})
+
+        in_record_build = threading.Event()
+        allow_enqueue_attempt = threading.Event()
+        real_time = exporter_mod.time.time
+        hook_state = {"armed": False}
+
+        def paused_producer():
+            exporter.record_event({"seq": "late"})
+
+        def spy_time() -> float:
+            if (
+                hook_state["armed"]
+                and threading.current_thread().name == "RaceProducer"
+            ):
+                in_record_build.set()
+                assert allow_enqueue_attempt.wait(timeout=5.0)
+            return real_time()
+
+        monkeypatch.setattr(exporter_mod.time, "time", spy_time)
+        hook_state["armed"] = True
+
+        t = threading.Thread(target=paused_producer, name="RaceProducer")
+        t.start()
+        assert in_record_build.wait(timeout=5.0)
+
+        # Shutdown closes admission and drains worker while RaceProducer passed outer running check
+        stop_res = exporter.stop(timeout_s=5.0)
+        assert stop_res["clean"] is True
+        assert stop_res["worker_terminated"] is True
+
+        # Now release RaceProducer into _enqueue_record(); lifecycle lock must reject enqueueing
+        allow_enqueue_attempt.set()
+        t.join(timeout=5.0)
+
+        assert exporter._queue.qsize() == 0
+        assert exporter.accepted_records == 1
+        assert exporter.written_records == 1
+        assert exporter.abandoned_on_timeout == 0
+
+        with open(exporter.events_file, "r", encoding="utf-8") as f:
+            rows = [json.loads(line)["data"]["seq"] for line in f if line.strip()]
+        assert rows == [0]
+
+        # Part B: Producer active inside _enqueue_record before stop() finishes -> written, never orphaned
+        exporter2 = ObserverExporter(
+            output_dir=tmpdir, flush_interval_s=0.05, queue_size=500
+        )
+        exporter2.start()
+        ready = threading.Event()
+        stop_signal = threading.Event()
+
+        def burst_producer():
+            ready.set()
+            i = 0
+            while not stop_signal.is_set() and i < 200:
+                exporter2.record_event({"seq": i})
+                i += 1
+
+        pt = threading.Thread(target=burst_producer)
+        pt.start()
+        assert ready.wait(timeout=5.0)
+        res2 = exporter2.stop(timeout_s=5.0)
+        stop_signal.set()
+        pt.join(timeout=5.0)
+
+        assert res2["clean"] is True
+        assert res2["worker_terminated"] is True
+        assert exporter2._queue.qsize() == 0
+        assert (
+            res2["submitted_records"]
+            == res2["accepted_records"] + res2["dropped_records"]
+        )
+        assert res2["accepted_records"] == res2["written_records"]
+
+
+def test_exporter_clean_shutdown_reporting_and_failure_separation(monkeypatch):
+    """R4: Drained queue must not claim clean=True across open/write/flush/fsync/close failures."""
+    real_open = builtins.open
+    real_fsync = os.fsync
+
+    # 1. File-open failure even with EMPTY queue
+    with tempfile.TemporaryDirectory() as tmpdir:
+        exp_open = ObserverExporter(output_dir=tmpdir, flush_interval_s=0.05)
+        exp_open.events_file = tmpdir  # directory -> open() raises OSError
+        exp_open.start()
+        res_open = exp_open.stop(timeout_s=5.0)
+        assert res_open["queue_drained"] is True
+        assert res_open["drained"] is True
+        assert res_open["worker_terminated"] is True
+        assert res_open["open_succeeded"] is False
+        assert res_open["flush_succeeded"] is False
+        assert res_open["close_succeeded"] is False
+        assert res_open["flush_fsync_close_succeeded"] is False
+        assert res_open["clean"] is False
+        assert res_open["write_errors"] >= 1
+
+    # 2. Write OSError on queued record
+    with tempfile.TemporaryDirectory() as tmpdir:
+        exp_write = ObserverExporter(output_dir=tmpdir, flush_interval_s=0.05)
+
+        def open_fail_write(file, mode="r", *args, **kwargs):
+            fp = real_open(file, mode, *args, **kwargs)
+            if os.path.abspath(str(file)) == os.path.abspath(exp_write.events_file):
+                return _FailingWriteStream(fp, fail_on_calls={1})
+            return fp
+
+        monkeypatch.setattr(builtins, "open", open_fail_write)
+        exp_write.start()
+        exp_write.record_event({"seq": 1})
+        res_write = exp_write.stop(timeout_s=5.0)
+        assert res_write["drained"] is True
+        assert res_write["worker_terminated"] is True
+        assert res_write["records_written_ok"] is False
+        assert res_write["failed_records"] == 1
+        assert res_write["flush_succeeded"] is True
+        assert res_write["close_succeeded"] is True
+        assert res_write["clean"] is False
+
+    # 3. Flush OSError
+    with tempfile.TemporaryDirectory() as tmpdir:
+        exp_flush = ObserverExporter(output_dir=tmpdir, flush_interval_s=0.05)
+
+        def open_fail_flush(file, mode="r", *args, **kwargs):
+            fp = real_open(file, mode, *args, **kwargs)
+            if os.path.abspath(str(file)) == os.path.abspath(exp_flush.events_file):
+                return _FailingFlushStream(fp)
+            return fp
+
+        monkeypatch.setattr(builtins, "open", open_fail_flush)
+        exp_flush.start()
+        exp_flush.record_event({"seq": 1})
+        res_flush = exp_flush.stop(timeout_s=5.0)
+        assert res_flush["drained"] is True
+        assert res_flush["worker_terminated"] is True
+        assert res_flush["records_written_ok"] is True
+        assert res_flush["flush_succeeded"] is False
+        assert res_flush["flush_fsync_close_succeeded"] is False
+        assert res_flush["clean"] is False
+
+    # 4. Fsync OSError (with fsync_on_flush=True) even with EMPTY queue
+    monkeypatch.setattr(builtins, "open", real_open)
+    monkeypatch.setattr(
+        os, "fsync", lambda fd: (_ for _ in ()).throw(OSError("fsync boom"))
+    )
+    try:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            exp_fsync = ObserverExporter(
+                output_dir=tmpdir, flush_interval_s=0.05, fsync_on_flush=True
+            )
+            exp_fsync.start()
+            res_fsync = exp_fsync.stop(timeout_s=5.0)
+            assert res_fsync["queue_drained"] is True
+            assert res_fsync["drained"] is True
+            assert res_fsync["worker_terminated"] is True
+            assert res_fsync["flush_succeeded"] is True
+            assert res_fsync["fsync_succeeded"] is False
+            assert res_fsync["close_succeeded"] is True
+            assert res_fsync["flush_fsync_close_succeeded"] is False
+            assert res_fsync["clean"] is False
+    finally:
+        monkeypatch.setattr(os, "fsync", real_fsync)
+
+    # 5. Close OSError even with EMPTY queue
+    with tempfile.TemporaryDirectory() as tmpdir:
+        exp_close = ObserverExporter(output_dir=tmpdir, flush_interval_s=0.05)
+
+        def open_fail_close(file, mode="r", *args, **kwargs):
+            fp = real_open(file, mode, *args, **kwargs)
+            if os.path.abspath(str(file)) == os.path.abspath(exp_close.events_file):
+                return _SlowFailingCloseStream(fp, fail_close=True)
+            return fp
+
+        monkeypatch.setattr(builtins, "open", open_fail_close)
+        exp_close.start()
+        res_close = exp_close.stop(timeout_s=5.0)
+        assert res_close["queue_drained"] is True
+        assert res_close["drained"] is True
+        assert res_close["worker_terminated"] is True
+        assert res_close["flush_succeeded"] is True
+        assert res_close["close_succeeded"] is False
+        assert res_close["flush_fsync_close_succeeded"] is False
+        assert res_close["clean"] is False
+
+
+def test_cli_warns_when_shutdown_unclean_even_with_empty_queue(monkeypatch, capsys):
+    """R4 CLI: CLI must emit a warning to stderr when clean=False even if queue is empty."""
+    from observer import cli as observer_cli
+
+    real_open = builtins.open
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+
+        def open_fail_events(file, mode="r", *args, **kwargs):
+            if "events_" in os.path.basename(str(file)) and "a" in str(mode):
+                raise OSError("Simulated events file open failure")
+            return real_open(file, mode, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "open", open_fail_events)
+
+        class _NoOpClient:
+            def __init__(self, *args, **kwargs):
+                self.reconnect_count = 0
+
+            def start(self) -> None:
+                return None
+
+            def stop(self) -> None:
+                return None
+
+        monkeypatch.setattr(observer_cli, "ObserverClient", _NoOpClient)
+        monkeypatch.setattr(ObserverExporter, "record_health", lambda self, snap: None)
+
+        rc = observer_cli.main(
+            ["--export", tmpdir, "--refresh", "0.02", "--duration", "0.04", "--no-ui"]
+        )
+        assert rc == 0
+        captured = capsys.readouterr()
+        assert "WARNING: exporter shutdown was not clean" in captured.err
+        assert "clean=False" in captured.err
+        assert "remaining_queue=0" in captured.err
+
+
+def test_exporter_prevents_duplicate_workers_after_timeout(monkeypatch):
+    """R5: Never spawn a second worker while previous worker is still alive after timeout."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        exporter = ObserverExporter(
+            output_dir=tmpdir, flush_interval_s=60.0, queue_size=50
+        )
+        real_open = builtins.open
+        worker_blocked = threading.Event()
+        release_worker = threading.Event()
+
+        class _BlockingOnceStream:
+            def __init__(self, inner):
+                self._inner = inner
+                self._blocked = False
+
+            def write(self, data: str) -> int:
+                if not self._blocked:
+                    self._blocked = True
+                    worker_blocked.set()
+                    assert release_worker.wait(timeout=5.0)
+                return self._inner.write(data)
+
+            def flush(self) -> None:
+                self._inner.flush()
+
+            def fileno(self) -> int:
+                return self._inner.fileno()
+
+            def close(self) -> None:
+                self._inner.close()
+
+        def patched_open(file, mode="r", *args, **kwargs):
+            fp = real_open(file, mode, *args, **kwargs)
+            if os.path.abspath(str(file)) == os.path.abspath(exporter.events_file):
+                return _BlockingOnceStream(fp)
+            return fp
+
+        monkeypatch.setattr(builtins, "open", patched_open)
+
+        # 1. Start and block the original worker
+        exporter.start()
+        original_worker = exporter._thread
+        assert original_worker is not None
+        exporter.record_event({"seq": 1})
+        assert worker_blocked.wait(timeout=5.0)
+
+        try:
+            # 2. Cause shutdown timeout
+            res_timeout = exporter.stop(timeout_s=0.05)
+            assert res_timeout["timed_out"] is True
+            assert res_timeout["worker_alive"] is True
+            assert res_timeout["worker_terminated"] is False
+            assert res_timeout["clean"] is False
+            assert exporter._thread is original_worker
+
+            # 3 & 4. Attempt restart while blocked worker is still alive -> no second worker starts
+            exporter.start()
+            assert exporter._thread is original_worker
+            assert exporter.running is False
+            worker_threads = [
+                t for t in threading.enumerate() if t.name == "ObserverExporterWorker"
+            ]
+            assert len(worker_threads) == 1
+            assert worker_threads[0] is original_worker
+        finally:
+            # 5. Release the original worker
+            release_worker.set()
+
+        # 6. Verify termination of the original worker
+        original_worker.join(timeout=5.0)
+        assert not original_worker.is_alive()
+        res_drained = exporter.stop(timeout_s=5.0)
+        assert res_drained["worker_terminated"] is True
+        assert res_drained["worker_alive"] is False
+        assert res_drained["clean"] is True
+
+        # 7. Verify restart is safe after original worker terminated
+        exporter.start()
+        restarted_worker = exporter._thread
+        assert restarted_worker is not None
+        assert restarted_worker is not original_worker
+        exporter.record_event({"seq": 2})
+        res_final = exporter.stop(timeout_s=5.0)
+        assert res_final["clean"] is True
+        assert res_final["written_records"] == 2
+
+
+def test_exporter_concurrent_start_blocked_during_shutdown_bookkeeping(monkeypatch):
+    """A: Concurrent start() must not launch a worker after old worker exit while stop() bookkeeping runs."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        exporter = ObserverExporter(
+            output_dir=tmpdir, flush_interval_s=60.0, queue_size=50
+        )
+        real_open = builtins.open
+        record_written = threading.Event()
+        in_stop_bookkeeping = threading.Event()
+        allow_bookkeeping_finish = threading.Event()
+
+        class _SignalWriteStream:
+            def __init__(self, inner):
+                self._inner = inner
+
+            def write(self, data: str) -> int:
+                n = self._inner.write(data)
+                record_written.set()
+                return n
+
+            def flush(self) -> None:
+                self._inner.flush()
+
+            def fileno(self) -> int:
+                return self._inner.fileno()
+
+            def close(self) -> None:
+                self._inner.close()
+
+        def patched_open(file, mode="r", *args, **kwargs):
+            fp = real_open(file, mode, *args, **kwargs)
+            if os.path.abspath(str(file)) == os.path.abspath(exporter.events_file):
+                return _SignalWriteStream(fp)
+            return fp
+
+        monkeypatch.setattr(builtins, "open", patched_open)
+
+        exporter.start()
+        original_worker = exporter._thread
+        assert original_worker is not None
+        exporter.record_event({"seq": 1})
+        assert record_written.wait(timeout=5.0)
+
+        real_qsize = exporter._queue.qsize
+        stop_result_holder: dict[str, dict] = {}
+
+        def spy_qsize() -> int:
+            if (
+                threading.current_thread().name == "StopBookkeepingThread"
+                and not original_worker.is_alive()
+            ):
+                in_stop_bookkeeping.set()
+                assert allow_bookkeeping_finish.wait(timeout=5.0)
+            return real_qsize()
+
+        monkeypatch.setattr(exporter._queue, "qsize", spy_qsize)
+
+        def run_stop():
+            stop_result_holder["result"] = exporter.stop(timeout_s=5.0)
+
+        stop_thread = threading.Thread(target=run_stop, name="StopBookkeepingThread")
+        stop_thread.start()
+        assert in_stop_bookkeeping.wait(timeout=5.0)
+
+        try:
+            # Worker has already exited, while stop() is still inside post-join bookkeeping
+            assert not original_worker.is_alive()
+            assert exporter._stopping is True
+
+            # Concurrent start() and subsequent event enqueue must be rejected without deadlocking
+            exporter.start()
+            exporter.record_event({"seq": "rejected-during-stopping"})
+
+            assert exporter._thread is original_worker
+            assert exporter.running is False
+            assert exporter._lifecycle_epoch == 1
+            assert not any(
+                t.name == "ObserverExporterWorker" and t.is_alive()
+                for t in threading.enumerate()
+            )
+        finally:
+            allow_bookkeeping_finish.set()
+            stop_thread.join(timeout=5.0)
+
+        stop_res = stop_result_holder["result"]
+        assert stop_res["clean"] is True
+        assert stop_res["worker_terminated"] is True
+        assert stop_res["remaining_queue"] == 0
+        assert stop_res["written_records"] == 1
+        assert stop_res["accepted_records"] == 1
+        assert exporter.last_stop_result == stop_res
+        assert exporter._stopping is False
+
+        # Restart succeeds once previous lifecycle and bookkeeping are completely finalized
+        exporter.start()
+        restarted_worker = exporter._thread
+        assert restarted_worker is not None
+        assert restarted_worker is not original_worker
+        assert exporter._lifecycle_epoch == 2
+        exporter.record_event({"seq": 2})
+        res_after_restart = exporter.stop(timeout_s=5.0)
+        assert res_after_restart["clean"] is True
+        assert res_after_restart["written_records"] == 2
+
+
+def test_exporter_restart_after_timeout_deterministic(monkeypatch):
+    """B: Timeout retains worker identity; restart fails while alive and succeeds after termination."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        exporter = ObserverExporter(
+            output_dir=tmpdir, flush_interval_s=60.0, queue_size=50
+        )
+        real_open = builtins.open
+        in_blocked_write = threading.Event()
+        release_write = threading.Event()
+
+        class _ControlledBlockingStream:
+            def __init__(self, inner):
+                self._inner = inner
+                self._first = True
+
+            def write(self, data: str) -> int:
+                if self._first:
+                    self._first = False
+                    in_blocked_write.set()
+                    assert release_write.wait(timeout=5.0)
+                return self._inner.write(data)
+
+            def flush(self) -> None:
+                self._inner.flush()
+
+            def fileno(self) -> int:
+                return self._inner.fileno()
+
+            def close(self) -> None:
+                self._inner.close()
+
+        def patched_open(file, mode="r", *args, **kwargs):
+            fp = real_open(file, mode, *args, **kwargs)
+            if os.path.abspath(str(file)) == os.path.abspath(exporter.events_file):
+                return _ControlledBlockingStream(fp)
+            return fp
+
+        monkeypatch.setattr(builtins, "open", patched_open)
+
+        exporter.start()
+        authoritative_worker = exporter._thread
+        assert authoritative_worker is not None
+        exporter.record_event({"seq": 1})
+        assert in_blocked_write.wait(timeout=5.0)
+
+        try:
+            res_timeout = exporter.stop(timeout_s=0.05)
+            assert res_timeout["incomplete_shutdown"] is True
+            assert res_timeout["timed_out"] is True
+            assert res_timeout["worker_alive"] is True
+            assert res_timeout["clean"] is False
+            assert exporter._thread is authoritative_worker
+
+            exporter.start()
+            assert exporter._thread is authoritative_worker
+            assert exporter.running is False
+            live_workers = [
+                t
+                for t in threading.enumerate()
+                if t.name == "ObserverExporterWorker" and t.is_alive()
+            ]
+            assert live_workers == [authoritative_worker]
+        finally:
+            release_write.set()
+
+        authoritative_worker.join(timeout=5.0)
+        assert not authoritative_worker.is_alive()
+        res_drained = exporter.stop(timeout_s=5.0)
+        assert res_drained["clean"] is True
+        assert res_drained["incomplete_shutdown"] is False
+        assert res_drained["worker_terminated"] is True
+
+        exporter.start()
+        restarted_worker = exporter._thread
+        assert restarted_worker is not None
+        assert restarted_worker is not authoritative_worker
+        exporter.record_event({"seq": 2})
+        res_final = exporter.stop(timeout_s=5.0)
+        assert res_final["clean"] is True
+        assert res_final["written_records"] == 2
+
+
+def test_exporter_concurrent_stops_deterministic(monkeypatch):
+    """C: Concurrent stop() callers serialize coherently without double-counting or contradiction."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        exporter = ObserverExporter(
+            output_dir=tmpdir, flush_interval_s=60.0, queue_size=100
+        )
+        real_open = builtins.open
+        write_paused = threading.Event()
+        release_worker = threading.Event()
+
+        class _GateFirstWriteStream:
+            def __init__(self, inner):
+                self._inner = inner
+                self._first = True
+
+            def write(self, data: str) -> int:
+                if self._first:
+                    self._first = False
+                    write_paused.set()
+                    assert release_worker.wait(timeout=5.0)
+                return self._inner.write(data)
+
+            def flush(self) -> None:
+                self._inner.flush()
+
+            def fileno(self) -> int:
+                return self._inner.fileno()
+
+            def close(self) -> None:
+                self._inner.close()
+
+        def patched_open(file, mode="r", *args, **kwargs):
+            fp = real_open(file, mode, *args, **kwargs)
+            if os.path.abspath(str(file)) == os.path.abspath(exporter.events_file):
+                return _GateFirstWriteStream(fp)
+            return fp
+
+        monkeypatch.setattr(builtins, "open", patched_open)
+
+        exporter.start()
+        worker = exporter._thread
+        assert worker is not None
+
+        for i in range(10):
+            exporter.record_event({"seq": i})
+        for i in range(4):
+            exporter.record_health({"idx": i})
+        assert write_paused.wait(timeout=5.0)
+
+        join_gate_lock = threading.Lock()
+        join_entered = 0
+        both_joining = threading.Barrier(2, timeout=5.0)
+        real_join = worker.join
+
+        def synchronized_join(timeout=None):
+            nonlocal join_entered
+            with join_gate_lock:
+                join_entered += 1
+                if join_entered == 2:
+                    release_worker.set()
+            both_joining.wait()
+            return real_join(timeout=timeout)
+
+        monkeypatch.setattr(worker, "join", synchronized_join)
+
+        results: dict[str, dict] = {}
+        errors: list[BaseException] = []
+
+        def caller(tag: str) -> None:
+            try:
+                results[tag] = exporter.stop(timeout_s=5.0)
+            except BaseException as exc:
+                errors.append(exc)
+
+        t1 = threading.Thread(target=caller, args=("c1",))
+        t2 = threading.Thread(target=caller, args=("c2",))
+        t1.start()
+        t2.start()
+        t1.join(timeout=5.0)
+        t2.join(timeout=5.0)
+
+        assert not errors
+        assert set(results) == {"c1", "c2"}
+        r1 = results["c1"]
+        r2 = results["c2"]
+        assert r1 == r2
+        assert r1["clean"] is True
+        assert r1["drained"] is True
+        assert r1["accepted_records"] == 14
+        assert r1["written_records"] == 14
+        assert r1["events_written"] == 10
+        assert r1["health_written"] == 4
+        assert r1["flushed_records"] == 14
+        assert r1["remaining_queue"] == 0
+        assert exporter._lifecycle_epoch == 1
+        assert exporter._active_stops == 0
+        assert exporter._stopping is False
+        assert exporter.last_stop_result == r1

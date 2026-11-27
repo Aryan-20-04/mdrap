@@ -285,12 +285,30 @@ def test_gate8_isolated_audit_tool_policy_distinguishes_py310_filelock(
     )
 
 
-def test_gate8_real_execution():
+def test_gate8_real_execution(monkeypatch, tmp_path):
     """Test real non-mocked execution of gate_dependency_vulnerability_scan using active environment."""
+    repo_artifact_dir = (
+        Path(__file__).resolve().parent.parent / "audit" / "v5.3.0-remediation"
+    )
+    real_audit_file = repo_artifact_dir / "DEPENDENCY_AUDIT.json"
+    real_before_exists = real_audit_file.exists()
+    real_before_bytes = real_audit_file.read_bytes() if real_before_exists else None
+    real_before_mtime_ns = (
+        real_audit_file.stat().st_mtime_ns if real_before_exists else None
+    )
+    real_before_entries = (
+        sorted(p.name for p in repo_artifact_dir.iterdir())
+        if repo_artifact_dir.exists()
+        else []
+    )
+
+    monkeypatch.setattr("scripts.check._ARTIFACT_DIR", tmp_path)
+
     # This invokes real pip-audit against requirements.txt (and requirements-audit.txt if present)
     gate_dependency_vulnerability_scan()
-    audit_file = _ARTIFACT_DIR / "DEPENDENCY_AUDIT.json"
+    audit_file = tmp_path / "DEPENDENCY_AUDIT.json"
     assert audit_file.exists()
+    assert not list(tmp_path.glob(".DEPENDENCY_AUDIT*.tmp"))
     data = json.loads(audit_file.read_text(encoding="utf-8"))
     assert "scanner" in data
     assert data["scanner"]["name"] == "pip-audit"
@@ -299,3 +317,15 @@ def test_gate8_real_execution():
     assert all(
         (d.get("name") or "").lower() != "filelock" for d in data["dependencies"]
     )
+
+    # Regression check: repository's actual artifact directory and DEPENDENCY_AUDIT.json must remain untouched
+    real_after_entries = (
+        sorted(p.name for p in repo_artifact_dir.iterdir())
+        if repo_artifact_dir.exists()
+        else []
+    )
+    assert real_after_entries == real_before_entries
+    assert real_audit_file.exists() is real_before_exists
+    if real_before_exists:
+        assert real_audit_file.read_bytes() == real_before_bytes
+        assert real_audit_file.stat().st_mtime_ns == real_before_mtime_ns

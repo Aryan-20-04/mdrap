@@ -169,9 +169,17 @@ def main(argv: Optional[list[str]] = None) -> int:
             signal.signal(signal.SIGINT, prev_sigint)
         client.stop()
         stop_result = exporter.stop()
-        if isinstance(stop_result, dict) and not stop_result.get("drained", True):
+        if isinstance(stop_result, dict) and (
+            not stop_result.get("clean", True) or not stop_result.get("drained", True)
+        ):
             print(
-                f"WARNING: exporter did not drain cleanly: remaining_queue={stop_result.get('remaining_queue')}",
+                "WARNING: exporter shutdown was not clean: "
+                f"clean={stop_result.get('clean')}, "
+                f"drained={stop_result.get('drained')}, "
+                f"worker_terminated={stop_result.get('worker_terminated')}, "
+                f"remaining_queue={stop_result.get('remaining_queue')}, "
+                f"write_errors={stop_result.get('write_errors', 0)}, "
+                f"failed_records={stop_result.get('failed_records', 0)}",
                 file=sys.stderr,
             )
 

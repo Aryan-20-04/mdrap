@@ -189,7 +189,7 @@ All figures are measured on committed benchmark hardware (12-core host, Windows 
 
 | Feature | Status | Docs | Test File |
 | :--- | :--- | :--- | :--- |
-| **Deterministic Quality Engine (15 Rules)** | **Stable** | [Quality Rules](docs/reference/rules.md) | `tests/test_adapters_and_rules.py` (1,500+ core test suite passed cleanly) |
+| **Deterministic Quality Engine (15 Rules)** | **Stable** | [Quality Rules](docs/reference/rules.md) | `tests/test_adapters_and_rules.py` (1,550+ core test suite passed cleanly) |
 | **Native C Fastpath Kernel** | **Stable** | [Benchmarks](docs/benchmarks.md) | `tests/test_fastpath.py` (100% pure Python fallback parity) |
 | **Live Venue Ingestion (5 Feeds)** | **Stable** | [Operations](docs/operations.md) | `tests/test_ws_live_market_data.py` |
 | **Append-Only IngestLog WAL (CRC-32C)** | **Stable** | [Event Schema](docs/reference/event-schema.md) | `tests/test_wal_format_v2.py` |
@@ -243,7 +243,7 @@ mdrap/
 │   ├── bbo.py              # Consolidated NBBO and micro-price tracking
 │   ├── depth.py            # Level-2 aggregated order book depth ladder
 │   └── security.py         # SHA-256 Merkle audit trail and API key hashing
-├── tests/                  # 1,500+ automated unit & integration test suites
+├── tests/                  # 1,550+ automated unit & integration test suites
 ├── benchmarks/             # Reproducible latency and throughput harnesses
 ├── docs/                   # Architectural guides, API specs, and runbooks
 ├── audit/                  # Independent engineering audit & certification logs
@@ -256,7 +256,7 @@ mdrap/
 
 ## Documentation Index
 
-- **Getting Started**: [Quickstart Guide](docs/quickstart.md) · [Concepts & Data Model](docs/concepts.md) · [Installation Guide](docs/installation.md)
+- **Getting Started**: [Quickstart Guide](docs/quickstart.md) · [Concepts & Data Model](docs/concepts.md) · [Installation Guide](docs/installation.md) · [Observer Sidecar](external_sidecar/mdrap_observer/README.md)
 - **Architecture & Design**: [Architecture Overview](docs/architecture.md) · [Architecture Map](docs/map.md) · [Security Model](docs/security.md)
 - **Technical Reference**: [CLI Reference](docs/cli-reference.md) · [REST & WebSocket API](docs/api.md) · [Configuration Catalog](docs/configuration.md) · [Quality Rules Catalog](docs/quality-rules.md)
 - **Operations & Runbooks**: [Operations Guide](docs/operations.md) · [Disaster Recovery Runbook](docs/disaster_recovery_runbook.md) · [Backup & Restore](docs/backup-restore.md) · [Chaos Drills](docs/chaos-drills.md)

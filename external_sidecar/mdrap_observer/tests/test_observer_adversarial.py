@@ -884,60 +884,173 @@ def test_f03_nonconsecutive_delayed_duplicate_and_window_eviction():
 
 
 def test_channelsequencestate_positional_constructor_compatibility():
-    """Regression: positional constructor must preserve original field order.
+    """R1 Regression: preserve exact origin/main 16-field positional constructor contract.
 
-    After F-01/F-03 remediation added `last_observed_seq` and `_seen_bitmap`,
-    these new fields must be keyword-only and placed after all original fields
-    so that existing positional callers (e.g. `ChannelSequenceState("k", None, None, None, 100, 100, 5)`)
-    continue to assign the 7th positional argument to `feed_gaps`, not `last_observed_seq`.
+    Fields introduced by PR #20 (`max_accepted_seq`, `last_observed_seq`, `_seen_bitmap`)
+    must be keyword-only and placed after `continuity_state`, preserving the exact
+    16-parameter positional signature from origin/main.
     """
     import inspect
 
     sig = inspect.signature(ChannelSequenceState)
     params = list(sig.parameters.keys())
-
-    # Original field order preserved: feed_gaps at positional index 6 (0-based)
-    assert params.index("feed_gaps") == 6, (
-        f"feed_gaps at {params.index('feed_gaps')}, expected 6"
+    expected_origin_fields = [
+        "channel_key",
+        "gateway_id",
+        "symbol",
+        "current_epoch_id",
+        "last_feed_seq",
+        "feed_gaps",
+        "feed_duplicates",
+        "feed_out_of_order",
+        "feed_snapshots",
+        "feed_resets",
+        "stale_epoch_packets",
+        "epoch_unavailable",
+        "degraded_resets",
+        "has_sequence_feed",
+        "events_received",
+        "continuity_state",
+    ]
+    assert params[: len(expected_origin_fields)] == expected_origin_fields, (
+        f"Positional signature drifted from origin/main: {params[:16]!r}"
     )
 
-    # New fields come after continuity_state (the last original field)
-    continuity_idx = params.index("continuity_state")
-    assert params.index("last_observed_seq") > continuity_idx, (
-        f"last_observed_seq at {params.index('last_observed_seq')}, "
-        f"must be after continuity_state at {continuity_idx}"
-    )
-    assert params.index("_seen_bitmap") > continuity_idx, (
-        f"_seen_bitmap at {params.index('_seen_bitmap')}, "
-        f"must be after continuity_state at {continuity_idx}"
-    )
+    for idx, name in enumerate(expected_origin_fields):
+        assert sig.parameters[name].kind == inspect.Parameter.POSITIONAL_OR_KEYWORD, (
+            f"{name} at index {idx} must stay POSITIONAL_OR_KEYWORD"
+        )
 
-    # New fields are keyword-only
-    los_param = sig.parameters["last_observed_seq"]
-    bm_param = sig.parameters["_seen_bitmap"]
-    assert los_param.kind == inspect.Parameter.KEYWORD_ONLY, (
-        f"last_observed_seq must be KEYWORD_ONLY, got {los_param.kind.name}"
-    )
-    assert bm_param.kind == inspect.Parameter.KEYWORD_ONLY, (
-        f"_seen_bitmap must be KEYWORD_ONLY, got {bm_param.kind.name}"
-    )
+    for kw_name in ("max_accepted_seq", "last_observed_seq", "_seen_bitmap"):
+        assert sig.parameters[kw_name].kind == inspect.Parameter.KEYWORD_ONLY, (
+            f"{kw_name} must be KEYWORD_ONLY, got {sig.parameters[kw_name].kind.name}"
+        )
 
-    # Positional construction: 7th positional arg is feed_gaps
-    ch = ChannelSequenceState("test", None, None, None, 100, 100, 5)
-    assert ch.feed_gaps == 5, (
-        f"7th positional arg should be feed_gaps=5, got {ch.feed_gaps}"
-    )
-    assert ch.last_observed_seq == -1, (
-        f"last_observed_seq should default to -1, got {ch.last_observed_seq}"
-    )
-    assert ch._seen_bitmap == 0, (
-        f"_seen_bitmap should default to 0, got {ch._seen_bitmap}"
-    )
+    # Actual origin/main 6-arg positional call sets feed_gaps=5 at index 5
+    ch = ChannelSequenceState("test", None, None, None, 100, 5)
+    assert ch.last_feed_seq == 100
+    assert ch.feed_gaps == 5
+    assert ch.max_accepted_seq == -1
+    assert ch.last_observed_seq == -1
+    assert ch._seen_bitmap == 0
 
-    # Keyword construction still works
-    ch2 = ChannelSequenceState("test2", last_observed_seq=42)
+    # Full 16-arg origin/main positional construction maps every field accurately
+    ch_full = ChannelSequenceState(
+        "gw1:BTC-USD",
+        "gw1",
+        "BTC-USD",
+        7,
+        100,
+        5,
+        2,
+        1,
+        3,
+        4,
+        6,
+        8,
+        9,
+        True,
+        42,
+        "HEALTHY_EPOCH_INITIALIZED",
+    )
+    assert ch_full.channel_key == "gw1:BTC-USD"
+    assert ch_full.gateway_id == "gw1"
+    assert ch_full.symbol == "BTC-USD"
+    assert ch_full.current_epoch_id == 7
+    assert ch_full.last_feed_seq == 100
+    assert ch_full.feed_gaps == 5
+    assert ch_full.feed_duplicates == 2
+    assert ch_full.feed_out_of_order == 1
+    assert ch_full.feed_snapshots == 3
+    assert ch_full.feed_resets == 4
+    assert ch_full.stale_epoch_packets == 6
+    assert ch_full.epoch_unavailable == 8
+    assert ch_full.degraded_resets == 9
+    assert ch_full.has_sequence_feed is True
+    assert ch_full.events_received == 42
+    assert ch_full.continuity_state == "HEALTHY_EPOCH_INITIALIZED"
+    assert ch_full.update(101, epoch_id=7) == SequenceDisposition.ACCEPTED
+    assert ch_full.max_accepted_seq == 101
+
+    # Keyword construction for new fields still works
+    ch2 = ChannelSequenceState("test2", max_accepted_seq=99, last_observed_seq=42)
+    assert ch2.max_accepted_seq == 99
     assert ch2.last_observed_seq == 42
-    assert ch2.feed_gaps == 0  # default
+    assert ch2.feed_gaps == 0
+
+
+def test_venuehealth_positional_constructor_compatibility():
+    """R2 Regression: preserve exact origin/main 12-field positional constructor contract.
+
+    Fields introduced by PR #20 (`invalid_numeric_events`, `_lock`) must be keyword-only
+    and appended after `_last_active_channel`, keeping `latencies_us` at index 9 and
+    `channels` at index 10.
+    """
+    import collections
+    import inspect
+
+    sig = inspect.signature(VenueHealth)
+    params = list(sig.parameters.keys())
+    expected_origin_fields = [
+        "venue",
+        "status",
+        "feed_type",
+        "events_received",
+        "drops",
+        "reconnects",
+        "last_seen_ts",
+        "feed_seq_unavailable",
+        "gateway_unscoped",
+        "latencies_us",
+        "channels",
+        "_last_active_channel",
+    ]
+    assert params[: len(expected_origin_fields)] == expected_origin_fields, (
+        f"VenueHealth signature drifted from origin/main: {params[:12]!r}"
+    )
+    assert params.index("latencies_us") == 9
+    assert params.index("channels") == 10
+
+    for kw_name in ("invalid_numeric_events", "_lock"):
+        assert sig.parameters[kw_name].kind == inspect.Parameter.KEYWORD_ONLY, (
+            f"{kw_name} must be KEYWORD_ONLY, got {sig.parameters[kw_name].kind.name}"
+        )
+
+    lat_deque = collections.deque([12.5, 18.0], maxlen=100)
+    custom_channels = {"gw1:BTC-USD": ChannelSequenceState("gw1:BTC-USD")}
+    vh = VenueHealth(
+        "COINBASE",
+        "CONNECTED",
+        "LIVE",
+        10,
+        1,
+        2,
+        12345.0,
+        3,
+        4,
+        lat_deque,
+        custom_channels,
+        "gw1:BTC-USD",
+    )
+    assert vh.venue == "COINBASE"
+    assert vh.status == "CONNECTED"
+    assert vh.feed_type == "LIVE"
+    assert vh.events_received == 10
+    assert vh.drops == 1
+    assert vh.reconnects == 2
+    assert vh.last_seen_ts == 12345.0
+    assert vh.feed_seq_unavailable == 3
+    assert vh.gateway_unscoped == 4
+    assert vh.latencies_us is lat_deque
+    assert vh.channels is custom_channels
+    assert vh._last_active_channel == "gw1:BTC-USD"
+    assert vh.invalid_numeric_events == 0
+    assert vh._lock is None
+
+    vh_kw = VenueHealth("KRAKEN", invalid_numeric_events=7)
+    assert vh_kw.invalid_numeric_events == 7
+    assert vh_kw.drops is None
+    assert vh_kw.reconnects is None
 
 
 def test_legacy_sequence_zero_semantics_and_precedence():

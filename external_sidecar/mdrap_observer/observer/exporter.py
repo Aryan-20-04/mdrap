@@ -71,6 +71,10 @@ class ObserverExporter:
         self._thread: Optional[threading.Thread] = None
         self._stats_lock = threading.Lock()
         self._lifecycle_lock = threading.Lock()
+        self._stop_finalize_lock = threading.Lock()
+        self._stopping: bool = False
+        self._active_stops: int = 0
+        self._lifecycle_epoch: int = 0
 
         self.events_submitted = 0
         self.health_submitted = 0
@@ -88,6 +92,10 @@ class ObserverExporter:
         self.dropped_records = 0
         self.failed_records = 0
         self.write_errors = 0
+        self.open_errors = 0
+        self.flush_errors = 0
+        self.fsync_errors = 0
+        self.close_errors = 0
         self.abandoned_on_timeout = 0
         self.incomplete_shutdown = False
         self.last_stop_result: Optional[dict[str, Any]] = None
@@ -145,16 +153,35 @@ class ObserverExporter:
                 "dropped_records": self.dropped_records,
                 "failed_records": self.failed_records,
                 "write_errors": self.write_errors,
+                "open_errors": self.open_errors,
+                "flush_errors": self.flush_errors,
+                "fsync_errors": self.fsync_errors,
+                "close_errors": self.close_errors,
                 "abandoned_on_timeout": self.abandoned_on_timeout,
                 "incomplete_shutdown": self.incomplete_shutdown,
                 "queue_size": self._queue.qsize(),
                 "queue_capacity": self.queue_size,
             }
 
+    def _should_keep_running(self) -> bool:
+        with self._lifecycle_lock:
+            return self.running or not self._queue.empty()
+
     def start(self) -> None:
         with self._lifecycle_lock:
-            if self.running and self._thread and self._thread.is_alive():
+            if self._stopping:
+                logger.error(
+                    "Refusing to start a new ObserverExporter worker while shutdown is still in progress"
+                )
                 return
+            if self._thread is not None and self._thread.is_alive():
+                if self.running:
+                    return
+                logger.error(
+                    "Refusing to start a new ObserverExporter worker while previous worker is still alive"
+                )
+                return
+            self._lifecycle_epoch += 1
             self.incomplete_shutdown = False
             self.abandoned_on_timeout = 0
             self.running = True
@@ -164,23 +191,25 @@ class ObserverExporter:
             self._thread.start()
 
     def _enqueue_record(self, kind: str, record: dict[str, Any]) -> None:
-        if not self.running:
-            return
-        try:
-            self._queue.put_nowait(record)
+        with self._lifecycle_lock:
+            if not self.running:
+                return
+            try:
+                self._queue.put_nowait(record)
+            except queue.Full:
+                with self._stats_lock:
+                    if kind == "health":
+                        self.health_submitted += 1
+                    else:
+                        self.events_submitted += 1
+                    self.dropped_records += 1
+                return
             with self._stats_lock:
                 if kind == "health":
                     self.health_submitted += 1
                 else:
                     self.events_submitted += 1
                 self.accepted_records += 1
-        except queue.Full:
-            with self._stats_lock:
-                if kind == "health":
-                    self.health_submitted += 1
-                else:
-                    self.events_submitted += 1
-                self.dropped_records += 1
 
     def record_event(self, event: Any) -> None:
         """Enqueue an event for asynchronous writing."""
@@ -215,44 +244,159 @@ class ObserverExporter:
             )
 
         with self._lifecycle_lock:
+            self._active_stops += 1
+            self._stopping = True
             self.running = False
             thread = self._thread
+            stop_epoch = self._lifecycle_epoch
 
-        if thread and thread.is_alive():
-            thread.join(timeout=timeout_s)
+        finalized_active_stop = False
+        try:
+            if thread and thread.is_alive():
+                thread.join(timeout=timeout_s)
 
-        thread_alive = bool(thread and thread.is_alive())
-        remaining_queue = self._queue.qsize()
-        drained = (not thread_alive) and (remaining_queue == 0)
+            with self._stop_finalize_lock:
+                thread_alive = bool(thread and thread.is_alive())
+                worker_terminated = not thread_alive
 
-        with self._stats_lock:
+                with self._stats_lock:
+                    remaining_queue = self._queue.qsize()
+                    queue_drained = remaining_queue == 0
+                    drained = worker_terminated and queue_drained
+                    timed_out = not drained
+
+                    if not drained:
+                        self.incomplete_shutdown = True
+                        self.abandoned_on_timeout = remaining_queue
+                    else:
+                        self.incomplete_shutdown = False
+                        self.abandoned_on_timeout = 0
+
+                    submitted = self.events_submitted + self.health_submitted
+                    written = self.events_written + self.health_written
+                    flushed = self.events_flushed + self.health_flushed
+                    fsynced = self.events_fsynced + self.health_fsynced
+                    unflushed = self._unflushed_events + self._unflushed_health
+                    unfsynced = self._unfsynced_events + self._unfsynced_health
+
+                    open_succeeded = self.open_errors == 0
+                    records_written_ok = self.failed_records == 0 and written == (
+                        self.accepted_records - remaining_queue
+                    )
+                    flush_succeeded = (
+                        worker_terminated
+                        and open_succeeded
+                        and self.flush_errors == 0
+                        and unflushed == 0
+                        and flushed == written
+                    )
+                    fsync_succeeded: Optional[bool] = (
+                        (
+                            worker_terminated
+                            and open_succeeded
+                            and self.fsync_errors == 0
+                            and unfsynced == 0
+                            and fsynced == written
+                        )
+                        if self.fsync_on_flush
+                        else None
+                    )
+                    close_succeeded = (
+                        worker_terminated and open_succeeded and self.close_errors == 0
+                    )
+                    flush_fsync_close_succeeded = (
+                        flush_succeeded
+                        and close_succeeded
+                        and (fsync_succeeded is not False)
+                    )
+                    io_clean = (
+                        self.write_errors == 0
+                        and self.open_errors == 0
+                        and self.flush_errors == 0
+                        and self.fsync_errors == 0
+                        and self.close_errors == 0
+                        and self.failed_records == 0
+                        and unflushed == 0
+                        and (not self.fsync_on_flush or unfsynced == 0)
+                    )
+                    clean = drained and io_clean
+
+                    stats: dict[str, Any] = {
+                        "submitted_records": submitted,
+                        "events_submitted": self.events_submitted,
+                        "health_submitted": self.health_submitted,
+                        "accepted_records": self.accepted_records,
+                        "written_records": written,
+                        "events_written": self.events_written,
+                        "health_written": self.health_written,
+                        "flushed_records": flushed,
+                        "events_flushed": self.events_flushed,
+                        "health_flushed": self.health_flushed,
+                        "fsynced_records": fsynced,
+                        "events_fsynced": self.events_fsynced,
+                        "health_fsynced": self.health_fsynced,
+                        "dropped_records": self.dropped_records,
+                        "failed_records": self.failed_records,
+                        "write_errors": self.write_errors,
+                        "open_errors": self.open_errors,
+                        "flush_errors": self.flush_errors,
+                        "fsync_errors": self.fsync_errors,
+                        "close_errors": self.close_errors,
+                        "abandoned_on_timeout": self.abandoned_on_timeout,
+                        "incomplete_shutdown": self.incomplete_shutdown,
+                        "queue_size": remaining_queue,
+                        "queue_capacity": self.queue_size,
+                    }
+
+                result: dict[str, Any] = {
+                    "clean": clean,
+                    "drained": drained,
+                    "queue_drained": queue_drained,
+                    "timed_out": timed_out,
+                    "worker_terminated": worker_terminated,
+                    "worker_alive": thread_alive,
+                    "open_succeeded": open_succeeded,
+                    "records_written_ok": records_written_ok,
+                    "flush_succeeded": flush_succeeded,
+                    "fsync_succeeded": fsync_succeeded,
+                    "close_succeeded": close_succeeded,
+                    "flush_fsync_close_succeeded": flush_fsync_close_succeeded,
+                    "remaining_queue": remaining_queue,
+                    **stats,
+                }
+                with self._lifecycle_lock:
+                    if self._lifecycle_epoch == stop_epoch:
+                        self.last_stop_result = dict(result)
+                    self._active_stops -= 1
+                    if self._active_stops == 0:
+                        self._stopping = False
+                    finalized_active_stop = True
+        finally:
+            if not finalized_active_stop:
+                with self._lifecycle_lock:
+                    self._active_stops -= 1
+                    if self._active_stops == 0:
+                        self._stopping = False
+
+        if not clean:
             if not drained:
-                self.incomplete_shutdown = True
-                self.abandoned_on_timeout = remaining_queue
+                logger.error(
+                    "Incomplete exporter shutdown after timeout=%rs: worker_alive=%s, remaining_queue=%d",
+                    timeout_s,
+                    thread_alive,
+                    remaining_queue,
+                )
             else:
-                self.incomplete_shutdown = False
-                self.abandoned_on_timeout = 0
-
-        stats = self.snapshot_stats()
-        result: dict[str, Any] = {
-            "clean": drained,
-            "drained": drained,
-            "timed_out": not drained,
-            "worker_alive": thread_alive,
-            "remaining_queue": remaining_queue,
-            **stats,
-        }
-        with self._lifecycle_lock:
-            self.last_stop_result = dict(result)
-
-        if not drained:
-            logger.error(
-                "Incomplete exporter shutdown after timeout=%rs: worker_alive=%s, remaining_queue=%d",
-                timeout_s,
-                thread_alive,
-                remaining_queue,
-            )
-            if raise_on_timeout:
+                logger.error(
+                    "Exporter shutdown completed with I/O failures: write_errors=%d, failed_records=%d, open_errors=%d, flush_errors=%d, fsync_errors=%d, close_errors=%d",
+                    stats["write_errors"],
+                    stats["failed_records"],
+                    stats["open_errors"],
+                    stats["flush_errors"],
+                    stats["fsync_errors"],
+                    stats["close_errors"],
+                )
+            if not drained and raise_on_timeout:
                 raise TimeoutError(
                     f"ObserverExporter did not drain within {timeout_s}s "
                     f"(remaining_queue={remaining_queue}, worker_alive={thread_alive})"
@@ -283,14 +427,22 @@ class ObserverExporter:
             fp.flush()
             with self._stats_lock:
                 self._mark_flushed_unlocked(label)
-            if self.fsync_on_flush and hasattr(fp, "fileno"):
-                os.fsync(fp.fileno())
-                with self._stats_lock:
-                    self._mark_fsynced_unlocked(label)
         except OSError as e:
             with self._stats_lock:
                 self.write_errors += 1
+                self.flush_errors += 1
             logger.warning(f"I/O flush error on {label}: {e}")
+            return
+        if self.fsync_on_flush and hasattr(fp, "fileno"):
+            try:
+                os.fsync(fp.fileno())
+                with self._stats_lock:
+                    self._mark_fsynced_unlocked(label)
+            except OSError as e:
+                with self._stats_lock:
+                    self.write_errors += 1
+                    self.fsync_errors += 1
+                logger.warning(f"I/O fsync error on {label}: {e}")
 
     def _close_stream(self, fp: Any, label: str) -> None:
         if fp is None:
@@ -299,20 +451,29 @@ class ObserverExporter:
             fp.flush()
             with self._stats_lock:
                 self._mark_flushed_unlocked(label)
-            if self.fsync_on_flush and hasattr(fp, "fileno"):
-                os.fsync(fp.fileno())
-                with self._stats_lock:
-                    self._mark_fsynced_unlocked(label)
         except OSError as e:
             with self._stats_lock:
                 self.write_errors += 1
+                self.flush_errors += 1
             logger.warning(f"I/O final flush error on {label}: {e}")
+        else:
+            if self.fsync_on_flush and hasattr(fp, "fileno"):
+                try:
+                    os.fsync(fp.fileno())
+                    with self._stats_lock:
+                        self._mark_fsynced_unlocked(label)
+                except OSError as e:
+                    with self._stats_lock:
+                        self.write_errors += 1
+                        self.fsync_errors += 1
+                    logger.warning(f"I/O final fsync error on {label}: {e}")
         finally:
             try:
                 fp.close()
             except OSError as e:
                 with self._stats_lock:
                     self.write_errors += 1
+                    self.close_errors += 1
                 logger.warning(f"I/O close error on {label}: {e}")
 
     def _writer_loop(self) -> None:
@@ -323,11 +484,12 @@ class ObserverExporter:
             health_fp = open(self.health_file, "a", encoding="utf-8")
         except OSError as e:
             with self._stats_lock:
+                self.open_errors += 1
                 self.write_errors += 1
             logger.error(f"Failed to open export files: {e}")
             self._close_stream(events_fp, "events")
             self._close_stream(health_fp, "health")
-            while self.running or not self._queue.empty():
+            while self._should_keep_running():
                 try:
                     self._queue.get(timeout=0.05)
                 except queue.Empty:
@@ -340,7 +502,7 @@ class ObserverExporter:
         last_flush = time.monotonic()
 
         try:
-            while self.running or not self._queue.empty():
+            while self._should_keep_running():
                 try:
                     record = self._queue.get(timeout=0.1)
                 except queue.Empty:

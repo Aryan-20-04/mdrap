@@ -151,7 +151,6 @@ class ChannelSequenceState:
     symbol: Optional[str] = None
     current_epoch_id: Optional[Any] = None
     last_feed_seq: int = -1
-    max_accepted_seq: int = -1
     feed_gaps: int = 0
     feed_duplicates: int = 0
     feed_out_of_order: int = 0
@@ -163,7 +162,8 @@ class ChannelSequenceState:
     has_sequence_feed: bool = False
     events_received: int = 0
     continuity_state: str = "HEALTHY"
-    # --- New fields appended after all original fields (kw_only to preserve positional compat) ---
+    # --- New internal tracking fields (kw_only to preserve origin/main positional compat) ---
+    max_accepted_seq: int = field(default=-1, kw_only=True)
     last_observed_seq: int = field(default=-1, kw_only=True)
     # Fixed-width 4096-bit sliding bitmap anchored at high_water (bit 0 = high_water, bit d = high_water - d)
     _seen_bitmap: int = field(default=0, repr=False, compare=False, kw_only=True)
@@ -529,13 +529,16 @@ class VenueHealth:
     last_seen_ts: float = 0.0
     feed_seq_unavailable: int = 0
     gateway_unscoped: int = 0
-    invalid_numeric_events: int = 0
     latencies_us: collections.deque = field(
         default_factory=lambda: collections.deque(maxlen=1000)
     )
     channels: dict[str, ChannelSequenceState] = field(default_factory=dict)
     _last_active_channel: Optional[str] = None
-    _lock: Optional[threading.RLock] = field(default=None, repr=False, compare=False)
+    # --- New fields appended after all origin/main fields (kw_only to preserve positional compat) ---
+    invalid_numeric_events: int = field(default=0, kw_only=True)
+    _lock: Optional[threading.RLock] = field(
+        default=None, repr=False, compare=False, kw_only=True
+    )
 
     def _channels_snapshot(self) -> list[ChannelSequenceState]:
         if self._lock is not None:
