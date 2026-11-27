@@ -43,7 +43,9 @@ from mdrap.storage import Store
 
 
 def run_phase11_fault_and_failover_campaign():
-    print("=== MDRAP Phase 11 Distributed Fault Campaign & 100-Trial Failover Benchmark ===")
+    print(
+        "=== MDRAP Phase 11 Distributed Fault Campaign & 100-Trial Failover Benchmark ==="
+    )
 
     test_dir = os.path.join(_REPO_ROOT, "audit", "phase11", "fault_test_data")
     if os.path.exists(test_dir):
@@ -94,13 +96,15 @@ def run_phase11_fault_and_failover_campaign():
     print("\n--- Executing 15 Distributed Fault Scenarios ---")
 
     def record_scenario(s_id, name, desc, passed, details):
-        fault_results["scenarios"].append({
-            "scenario_id": s_id,
-            "name": name,
-            "description": desc,
-            "verdict": "PASS" if passed else "FAIL",
-            "details": details,
-        })
+        fault_results["scenarios"].append(
+            {
+                "scenario_id": s_id,
+                "name": name,
+                "description": desc,
+                "verdict": "PASS" if passed else "FAIL",
+                "details": details,
+            }
+        )
         if passed:
             fault_results["scenarios_passed"] += 1
         else:
@@ -116,23 +120,45 @@ def run_phase11_fault_and_failover_campaign():
     time.sleep(0.22)
     tok2 = c2.request_leadership()
     fenced_writer.validate_write(tok2)
-    record_scenario(1, "Primary Termination During Ingestion", "Primary terminated; secondary acquired lease monotonically.", tok2.epoch > tok1.epoch, f"Epoch {tok1.epoch} -> {tok2.epoch}")
+    record_scenario(
+        1,
+        "Primary Termination During Ingestion",
+        "Primary terminated; secondary acquired lease monotonically.",
+        tok2.epoch > tok1.epoch,
+        f"Epoch {tok1.epoch} -> {tok2.epoch}",
+    )
 
     # SCENARIO 2: Primary crash during an in-flight durable write
     wal_dir_sc2 = os.path.join(test_dir, "wal_sc2")
     log_sc2 = IngestLog(wal_dir_sc2, fsync_policy="always")
-    raw_evt = RawEvent("FEED_A", {"instrument": "AAPL", "price": 180.0, "quantity": 10}, time.time())
+    raw_evt = RawEvent(
+        "FEED_A", {"instrument": "AAPL", "price": 180.0, "quantity": 10}, time.time()
+    )
     offset_ack = log_sc2.append(raw_evt)
     ack_recovery_metrics["acknowledged_writes_tracked"] += 1
     ack_recovery_metrics["acknowledged_writes_recovered"] += 1
-    record_scenario(2, "Primary Crash In-Flight Write", "Verified IngestLog recovery preserved prior durable write.", offset_ack == 0, f"Offset {offset_ack} durably committed")
+    record_scenario(
+        2,
+        "Primary Crash In-Flight Write",
+        "Verified IngestLog recovery preserved prior durable write.",
+        offset_ack == 0,
+        f"Offset {offset_ack} durably committed",
+    )
 
     # SCENARIO 3: Primary termination immediately after acknowledging a write
-    raw_sc3 = RawEvent("FEED_A", {"instrument": "MSFT", "price": 400.0, "quantity": 50}, time.time())
+    raw_sc3 = RawEvent(
+        "FEED_A", {"instrument": "MSFT", "price": 400.0, "quantity": 50}, time.time()
+    )
     off_sc3 = log_sc2.append(raw_sc3)
     ack_recovery_metrics["acknowledged_writes_tracked"] += 1
     ack_recovery_metrics["acknowledged_writes_recovered"] += 1
-    record_scenario(3, "Primary Termination Post-ACK", "Acknowledged record survives abrupt caller unbind.", off_sc3 == 1, "Record present in segment")
+    record_scenario(
+        3,
+        "Primary Termination Post-ACK",
+        "Acknowledged record survives abrupt caller unbind.",
+        off_sc3 == 1,
+        "Record present in segment",
+    )
     log_sc2.close()
 
     # SCENARIO 4: Network isolation of the primary from a quorum
@@ -142,7 +168,13 @@ def run_phase11_fault_and_failover_campaign():
         c1.renew_lease()
     except QuorumLossError:
         isolated_ok = True
-    record_scenario(4, "Primary Isolated from Quorum", "Isolated primary fails lease renewal and abdicates.", isolated_ok, "QuorumLossError raised on renewal")
+    record_scenario(
+        4,
+        "Primary Isolated from Quorum",
+        "Isolated primary fails lease renewal and abdicates.",
+        isolated_ok,
+        "QuorumLossError raised on renewal",
+    )
 
     # SCENARIO 5: Network isolation of a minority node
     c1.heal_network_partition()
@@ -153,13 +185,25 @@ def run_phase11_fault_and_failover_campaign():
         c3.request_leadership()
     except QuorumLossError:
         c3_isolated = True
-    record_scenario(5, "Minority Node Network Isolation", "Isolated minority node cannot claim leadership.", c3_isolated, "Reachable 1 < Quorum 2")
+    record_scenario(
+        5,
+        "Minority Node Network Isolation",
+        "Isolated minority node cannot claim leadership.",
+        c3_isolated,
+        "Reachable 1 < Quorum 2",
+    )
 
     # SCENARIO 6: Partition between nodes followed by network healing
     c3.heal_network_partition()
     c3.sync_epoch(tok2.epoch)
     tok_heal = c3.request_leadership()
-    record_scenario(6, "Partition Followed by Healing", "Healed node successfully communicates and acquires lease.", tok_heal.epoch > 0, f"Healed leader: {tok_heal.leader_id}, Epoch: {tok_heal.epoch}")
+    record_scenario(
+        6,
+        "Partition Followed by Healing",
+        "Healed node successfully communicates and acquires lease.",
+        tok_heal.epoch > 0,
+        f"Healed leader: {tok_heal.leader_id}, Epoch: {tok_heal.epoch}",
+    )
 
     # SCENARIO 7: Delayed and reordered control messages
     t0_fence = time.perf_counter_ns()
@@ -172,10 +216,21 @@ def run_phase11_fault_and_failover_campaign():
     fencing_metrics["total_stale_writes_injected"] += 1
     fencing_metrics["total_stale_writes_intercepted"] += 1
     fencing_metrics["interception_latencies_us"].append((t1_fence - t0_fence) / 1000.0)
-    record_scenario(7, "Delayed & Reordered Control Messages", "Delayed token from older epoch rejected by FencedWALWriter.", delayed_caught, f"Stale epoch {tok1.epoch} rejected")
+    record_scenario(
+        7,
+        "Delayed & Reordered Control Messages",
+        "Delayed token from older epoch rejected by FencedWALWriter.",
+        delayed_caught,
+        f"Stale epoch {tok1.epoch} rejected",
+    )
 
     # SCENARIO 8: Expired leases and stale epochs
-    tok_expired = EpochToken(epoch=999, leader_id="node-01", issued_ts=time.time() - 10.0, lease_duration_sec=0.1)
+    tok_expired = EpochToken(
+        epoch=999,
+        leader_id="node-01",
+        issued_ts=time.time() - 10.0,
+        lease_duration_sec=0.1,
+    )
     expired_caught = False
     try:
         fenced_writer.validate_write(tok_expired)
@@ -183,25 +238,48 @@ def run_phase11_fault_and_failover_campaign():
         expired_caught = True
     fencing_metrics["total_stale_writes_injected"] += 1
     fencing_metrics["total_stale_writes_intercepted"] += 1
-    record_scenario(8, "Expired Leases and Stale Epochs", "Expired lease token rejected by FencedWALWriter.", expired_caught, "Lease timeout enforced")
+    record_scenario(
+        8,
+        "Expired Leases and Stale Epochs",
+        "Expired lease token rejected by FencedWALWriter.",
+        expired_caught,
+        "Lease timeout enforced",
+    )
 
     # SCENARIO 9: A former leader attempting writes after a new leader takes over
     zombie_caught = False
-    tok_zombie = EpochToken(epoch=tok2.epoch - 1, leader_id="node-01", issued_ts=time.time(), lease_duration_sec=5.0)
+    tok_zombie = EpochToken(
+        epoch=tok2.epoch - 1,
+        leader_id="node-01",
+        issued_ts=time.time(),
+        lease_duration_sec=5.0,
+    )
     try:
         fenced_writer.validate_write(tok_zombie)
     except FencingTokenError:
         zombie_caught = True
     fencing_metrics["total_stale_writes_injected"] += 1
     fencing_metrics["total_stale_writes_intercepted"] += 1
-    record_scenario(9, "Former Leader Zombie Write Attempt", "Demoted leader blocked from writing to active partition.", zombie_caught, "FencingTokenError raised")
+    record_scenario(
+        9,
+        "Former Leader Zombie Write Attempt",
+        "Demoted leader blocked from writing to active partition.",
+        zombie_caught,
+        "FencingTokenError raised",
+    )
 
     # SCENARIO 10: Node restart with stale local state
     c_stale = ConsensusCoordinator("node-01", cluster_nodes, lease_duration_sec=0.2)
     c_stale.sync_epoch(fenced_writer.highest_epoch)
     tok_sync = c_stale.request_leadership()
     fenced_writer.validate_write(tok_sync)
-    record_scenario(10, "Node Restart with Stale Local State", "Restarted node syncs and monotonically increments past cluster epoch.", tok_sync.epoch >= fenced_writer.highest_epoch, f"New epoch {tok_sync.epoch}")
+    record_scenario(
+        10,
+        "Node Restart with Stale Local State",
+        "Restarted node syncs and monotonically increments past cluster epoch.",
+        tok_sync.epoch >= fenced_writer.highest_epoch,
+        f"New epoch {tok_sync.epoch}",
+    )
 
     # SCENARIO 11: Simultaneous candidate elections
     c1.sync_epoch(tok_sync.epoch)
@@ -209,7 +287,13 @@ def run_phase11_fault_and_failover_campaign():
     c2.sync_epoch(tok_a.epoch)
     tok_b = c2.request_leadership()
     simul_ok = tok_b.epoch > tok_a.epoch
-    record_scenario(11, "Simultaneous Candidate Elections", "Concurrent election requests resolve with monotonic serial epochs.", simul_ok, f"Epoch A={tok_a.epoch}, Epoch B={tok_b.epoch}")
+    record_scenario(
+        11,
+        "Simultaneous Candidate Elections",
+        "Concurrent election requests resolve with monotonic serial epochs.",
+        simul_ok,
+        f"Epoch A={tok_a.epoch}, Epoch B={tok_b.epoch}",
+    )
 
     # SCENARIO 12: Quorum loss and quorum restoration
     c_loss = ConsensusCoordinator("node-01", cluster_nodes, lease_duration_sec=0.2)
@@ -222,19 +306,41 @@ def run_phase11_fault_and_failover_campaign():
     c_loss.heal_network_partition()
     c_loss.sync_epoch(tok_b.epoch)
     restored_tok = c_loss.request_leadership()
-    record_scenario(12, "Quorum Loss & Quorum Restoration", "Quorum loss halts leadership; healing restores election.", lost_ok and restored_tok.epoch > 0, "Quorum barrier enforced")
+    record_scenario(
+        12,
+        "Quorum Loss & Quorum Restoration",
+        "Quorum loss halts leadership; healing restores election.",
+        lost_ok and restored_tok.epoch > 0,
+        "Quorum barrier enforced",
+    )
 
     # SCENARIO 13: Slow or unavailable persistence destination
     db_sc13 = os.path.join(test_dir, "test_sc13.db")
     st_sc13 = Store(db_sc13)
     st_sc13.commit()
     st_sc13.close()
-    record_scenario(13, "Slow/Unavailable Persistence Destination", "Persistence destination decoupled via write-ahead logging.", True, "Buffered commits handled cleanly")
+    record_scenario(
+        13,
+        "Slow/Unavailable Persistence Destination",
+        "Persistence destination decoupled via write-ahead logging.",
+        True,
+        "Buffered commits handled cleanly",
+    )
 
     # SCENARIO 14: Repeated leader changes under sustained ingestion
     rapid_epochs = []
-    c_rapid1 = ConsensusCoordinator("node-01", cluster_nodes, lease_duration_sec=0.1, initial_epoch=restored_tok.epoch)
-    c_rapid2 = ConsensusCoordinator("node-02", cluster_nodes, lease_duration_sec=0.1, initial_epoch=restored_tok.epoch)
+    c_rapid1 = ConsensusCoordinator(
+        "node-01",
+        cluster_nodes,
+        lease_duration_sec=0.1,
+        initial_epoch=restored_tok.epoch,
+    )
+    c_rapid2 = ConsensusCoordinator(
+        "node-02",
+        cluster_nodes,
+        lease_duration_sec=0.1,
+        initial_epoch=restored_tok.epoch,
+    )
     for i in range(5):
         t_a = c_rapid1.request_leadership()
         fenced_writer.validate_write(t_a)
@@ -244,8 +350,16 @@ def run_phase11_fault_and_failover_campaign():
         fenced_writer.validate_write(t_b)
         rapid_epochs.append(t_b.epoch)
         c_rapid1.sync_epoch(t_b.epoch)
-    monotone = all(rapid_epochs[j] < rapid_epochs[j+1] for j in range(len(rapid_epochs)-1))
-    record_scenario(14, "Repeated Leader Changes Under Ingestion", "10 consecutive rapid leader failovers maintained strict epoch monotonicity.", monotone, f"Epoch sequence: {rapid_epochs}")
+    monotone = all(
+        rapid_epochs[j] < rapid_epochs[j + 1] for j in range(len(rapid_epochs) - 1)
+    )
+    record_scenario(
+        14,
+        "Repeated Leader Changes Under Ingestion",
+        "10 consecutive rapid leader failovers maintained strict epoch monotonicity.",
+        monotone,
+        f"Epoch sequence: {rapid_epochs}",
+    )
 
     # SCENARIO 15: Process restart during recovery or log replay
     wal_dir_sc15 = os.path.join(test_dir, "wal_sc15")
@@ -258,14 +372,24 @@ def run_phase11_fault_and_failover_campaign():
     log_sc15_reopened.close()
     ack_recovery_metrics["acknowledged_writes_tracked"] += 50
     ack_recovery_metrics["acknowledged_writes_recovered"] += 50
-    record_scenario(15, "Restart During Recovery / Replay", "IngestLog scan recovered exactly 50 framed records on restart.", replay_records == 50, f"Recovered offsets: {replay_records}")
+    record_scenario(
+        15,
+        "Restart During Recovery / Replay",
+        "IngestLog scan recovered exactly 50 framed records on restart.",
+        replay_records == 50,
+        f"Recovered offsets: {replay_records}",
+    )
 
-    out_faults = os.path.join(_REPO_ROOT, "audit", "phase11", "distributed_fault_results.json")
+    out_faults = os.path.join(
+        _REPO_ROOT, "audit", "phase11", "distributed_fault_results.json"
+    )
     with open(out_faults, "w", encoding="utf-8") as f:
         json.dump(fault_results, f, indent=2)
     print(f"\n[OK] Saved distributed fault results to: {out_faults}")
 
-    out_ack = os.path.join(_REPO_ROOT, "audit", "phase11", "acknowledged_write_recovery_results.json")
+    out_ack = os.path.join(
+        _REPO_ROOT, "audit", "phase11", "acknowledged_write_recovery_results.json"
+    )
     with open(out_ack, "w", encoding="utf-8") as f:
         json.dump(ack_recovery_metrics, f, indent=2)
     print(f"[OK] Saved acknowledged write recovery results to: {out_ack}")
@@ -310,7 +434,9 @@ def run_phase11_fault_and_failover_campaign():
         t_fence_end = time.perf_counter_ns()
 
         t_write_start = time.perf_counter_ns()
-        bench_log.append(RawEvent("FEED_B", {"trial": trial, "post_failover": True}, time.time()))
+        bench_log.append(
+            RawEvent("FEED_B", {"trial": trial, "post_failover": True}, time.time())
+        )
         t_write_end = time.perf_counter_ns()
 
         t_done = time.perf_counter()
@@ -365,12 +491,16 @@ def run_phase11_fault_and_failover_campaign():
         "verdict": "PASS — Complete failover lifecycle verified across 100 trials",
     }
 
-    out_samples = os.path.join(_REPO_ROOT, "audit", "phase11", "failover_raw_samples.json")
+    out_samples = os.path.join(
+        _REPO_ROOT, "audit", "phase11", "failover_raw_samples.json"
+    )
     with open(out_samples, "w", encoding="utf-8") as f:
         json.dump(raw_samples, f, indent=2)
     print(f"[OK] Saved 100 failover raw samples to: {out_samples}")
 
-    out_summary = os.path.join(_REPO_ROOT, "audit", "phase11", "failover_benchmark_results.json")
+    out_summary = os.path.join(
+        _REPO_ROOT, "audit", "phase11", "failover_benchmark_results.json"
+    )
     with open(out_summary, "w", encoding="utf-8") as f:
         json.dump(failover_summary, f, indent=2)
     print(f"[OK] Saved failover benchmark summary to: {out_summary}")

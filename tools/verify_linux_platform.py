@@ -29,26 +29,40 @@ os.environ["MDRAP_API_KEY_SALT"] = "linux_verification_salt_secret_123"
 
 
 def test_platform_info():
-    print(f"[Linux Test 1] OS: {platform.platform()} | Python: {sys.version.split()[0]} | Machine: {platform.machine()}")
-    assert "linux" in sys.platform.lower(), f"Expected Linux platform, got {sys.platform}"
+    print(
+        f"[Linux Test 1] OS: {platform.platform()} | Python: {sys.version.split()[0]} | Machine: {platform.machine()}"
+    )
+    assert "linux" in sys.platform.lower(), (
+        f"Expected Linux platform, got {sys.platform}"
+    )
     import mdrap
-    assert mdrap.__version__ == "6.0.8", f"Expected version 6.0.8, got {mdrap.__version__}"
+
+    assert mdrap.__version__ == "6.0.8", (
+        f"Expected version 6.0.8, got {mdrap.__version__}"
+    )
     print(f"[Linux Test 1] Version Metadata: {mdrap.__version__} (PASSED)")
 
 
 def test_native_fastpath():
     from mdrap.fastpath import HAS_FASTPATH
+
     print(f"[Linux Test 2] HAS_FASTPATH: {HAS_FASTPATH}")
-    assert HAS_FASTPATH is True, "Expected HAS_FASTPATH to be True on Linux with compiled .so"
+    assert HAS_FASTPATH is True, (
+        "Expected HAS_FASTPATH to be True on Linux with compiled .so"
+    )
     from mdrap.fastpath import FastQualityEngine
+
     engine = FastQualityEngine()
     print(f"[Linux Test 2] FastQualityEngine Native Bridge: ACTIVE (PASSED)")
 
 
-def _linux_consumer_worker(shm_name: str, expected_count: int, ready_evt: mp.Event, result_queue: mp.Queue):
+def _linux_consumer_worker(
+    shm_name: str, expected_count: int, ready_evt: mp.Event, result_queue: mp.Queue
+):
     """Consumer process reading from Linux /dev/shm."""
     try:
         from mdrap.shm import SHMReader
+
         reader = SHMReader(name=shm_name)
         ready_evt.set()
         received = 0
@@ -64,7 +78,9 @@ def _linux_consumer_worker(shm_name: str, expected_count: int, ready_evt: mp.Eve
             received += 1
             seq += 1
         reader.close()
-        result_queue.put({"status": "OK", "received": received, "torn_reads": torn_reads})
+        result_queue.put(
+            {"status": "OK", "received": received, "torn_reads": torn_reads}
+        )
     except Exception as exc:
         result_queue.put({"status": "ERROR", "error": str(exc)})
 
@@ -75,12 +91,15 @@ def test_posix_shm_multi_process():
     total_events = 2000
 
     from mdrap.shm import SHMWriter
+
     writer = SHMWriter(name=shm_name, slot_count=1024)
 
     ctx = mp.get_context("spawn")
     ready_evt = ctx.Event()
     res_q = ctx.Queue()
-    proc = ctx.Process(target=_linux_consumer_worker, args=(shm_name, total_events, ready_evt, res_q))
+    proc = ctx.Process(
+        target=_linux_consumer_worker, args=(shm_name, total_events, ready_evt, res_q)
+    )
     proc.start()
 
     ready_evt.wait(timeout=5.0)
@@ -109,9 +128,13 @@ def test_posix_shm_multi_process():
 
     res = res_q.get(timeout=2.0)
     assert res["status"] == "OK", f"Consumer failed: {res.get('error')}"
-    assert res["received"] == total_events, f"Expected {total_events}, got {res['received']}"
+    assert res["received"] == total_events, (
+        f"Expected {total_events}, got {res['received']}"
+    )
     assert res["torn_reads"] == 0, f"Expected 0 torn reads, got {res['torn_reads']}"
-    print(f"[Linux Test 3] Multi-Process POSIX /dev/shm: 100% Delivery ({total_events} events, 0 torn reads) (PASSED)")
+    print(
+        f"[Linux Test 3] Multi-Process POSIX /dev/shm: 100% Delivery ({total_events} events, 0 torn reads) (PASSED)"
+    )
 
 
 def test_tcp_streaming_daemon():
@@ -142,7 +165,9 @@ def test_tcp_streaming_daemon():
 
         assert len(ticks) == 50, f"Expected 50 ticks, got {len(ticks)}"
         client.close()
-        print(f"[Linux Test 4] TCP Daemon StreamClient: Successfully streamed 50 ticks (PASSED)")
+        print(
+            f"[Linux Test 4] TCP Daemon StreamClient: Successfully streamed 50 ticks (PASSED)"
+        )
     finally:
         daemon.stop()
 

@@ -81,12 +81,16 @@ class IndependentSidecarConsumer:
         self._threads: list[threading.Thread] = []
 
         if self.enable_shm:
-            t_shm = threading.Thread(target=self._shm_worker, daemon=True, name="sidecar-shm")
+            t_shm = threading.Thread(
+                target=self._shm_worker, daemon=True, name="sidecar-shm"
+            )
             t_shm.start()
             self._threads.append(t_shm)
 
         if self.enable_tcp:
-            t_tcp = threading.Thread(target=self._tcp_worker, daemon=True, name="sidecar-tcp")
+            t_tcp = threading.Thread(
+                target=self._tcp_worker, daemon=True, name="sidecar-tcp"
+            )
             t_tcp.start()
             self._threads.append(t_tcp)
 
@@ -244,6 +248,7 @@ class IndependentSidecarConsumer:
     def stats(self) -> dict[str, Any]:
         """Compute aggregate delivery and latency statistics."""
         with self.lock:
+
             def _calc_stats(lats: list[float]) -> dict[str, float]:
                 if not lats:
                     return {"p50": 0.0, "p95": 0.0, "p99": 0.0, "p999": 0.0, "max": 0.0}

@@ -12,8 +12,14 @@ import struct
 import tempfile
 import time
 import pytest
+
 try:
-    from mdrap.failover import FailoverNode, HeartbeatMessage, NodeState, StaleEpochError
+    from mdrap.failover import (
+        FailoverNode,
+        HeartbeatMessage,
+        NodeState,
+        StaleEpochError,
+    )
 except ImportError:
     FailoverNode = None
     HeartbeatMessage = None

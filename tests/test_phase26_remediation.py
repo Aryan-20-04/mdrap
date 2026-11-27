@@ -36,8 +36,17 @@ import time
 import pytest
 
 # Ensure mdrap and observer in sys.path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "external_sidecar", "mdrap_observer")))
+sys.path.insert(
+    0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src"))
+)
+sys.path.insert(
+    0,
+    os.path.abspath(
+        os.path.join(
+            os.path.dirname(__file__), "..", "external_sidecar", "mdrap_observer"
+        )
+    ),
+)
 
 from mdrap.latency import MonotonicLatencyTracker, StageLatencyMetric, ReservoirSampler
 from observer.state import ObserverState, VenueHealth, ChannelSequenceState
@@ -46,6 +55,7 @@ from observer.state import ObserverState, VenueHealth, ChannelSequenceState
 # ============================================================================
 # WORKSTREAM A & C: SEQUENCE & DETERMINISTIC EPOCH TESTS
 # ============================================================================
+
 
 def test_seq_initial_sequence_zero():
     """Verify sequence zero is accepted as a valid initial sequence number."""
@@ -145,8 +155,12 @@ def test_seq_delayed_packet_from_previous_epoch():
 def test_seq_explicit_epoch_transition():
     """Verify explicit epoch transitions reset baseline cleanly with 0 gaps."""
     v = VenueHealth(venue="KRAKEN")
-    v.update_sequence(1000, epoch_id="2026-11-21-session1", gateway_id="gw1", symbol="ETH-USD")
-    v.update_sequence(1, epoch_id="2026-11-21-session2", gateway_id="gw1", symbol="ETH-USD")
+    v.update_sequence(
+        1000, epoch_id="2026-11-21-session1", gateway_id="gw1", symbol="ETH-USD"
+    )
+    v.update_sequence(
+        1, epoch_id="2026-11-21-session2", gateway_id="gw1", symbol="ETH-USD"
+    )
 
     assert v.feed_resets == 1
     assert v.feed_gaps == 0
@@ -159,7 +173,9 @@ def test_seq_snapshot_followed_by_incremental_updates():
     v.update_sequence(50, epoch_id=1, gateway_id="gw1", symbol="BTC-USD")
 
     # Snapshot resync arrives with sequence 200
-    v.update_sequence(200, is_snapshot=True, epoch_id=1, gateway_id="gw1", symbol="BTC-USD")
+    v.update_sequence(
+        200, is_snapshot=True, epoch_id=1, gateway_id="gw1", symbol="BTC-USD"
+    )
     assert v.feed_snapshots == 1
     assert v.last_feed_seq == 200
     assert v.feed_gaps == 0
@@ -198,8 +214,12 @@ def test_seq_gateway_reconnect_without_venue_sequence_reset():
 
     # Gateway drops transport packets (seq jumps 10 -> 30)
     # Venue feed continues monotonically (100 -> 101)
-    state.process_event({"seq": 10, "feed_seq": 100, "venue": venue, "symbol": "BTC-USDT"})
-    state.process_event({"seq": 30, "feed_seq": 101, "venue": venue, "symbol": "BTC-USDT"})
+    state.process_event(
+        {"seq": 10, "feed_seq": 100, "venue": venue, "symbol": "BTC-USDT"}
+    )
+    state.process_event(
+        {"seq": 30, "feed_seq": 101, "venue": venue, "symbol": "BTC-USDT"}
+    )
 
     assert state.stream_health.gaps == 19
     assert state.health[venue].feed_gaps == 0
@@ -213,8 +233,18 @@ def test_seq_venue_sequence_reset_without_transport_reconnect():
 
     # Transport sequence: 1 -> 2
     # Venue sequence: 5000 (epoch 1) -> 1 (epoch 2)
-    state.process_event({"seq": 1, "feed_seq": 5000, "epoch_id": 1, "venue": venue, "symbol": "BTC-USDT"})
-    state.process_event({"seq": 2, "feed_seq": 1, "epoch_id": 2, "venue": venue, "symbol": "BTC-USDT"})
+    state.process_event(
+        {
+            "seq": 1,
+            "feed_seq": 5000,
+            "epoch_id": 1,
+            "venue": venue,
+            "symbol": "BTC-USDT",
+        }
+    )
+    state.process_event(
+        {"seq": 2, "feed_seq": 1, "epoch_id": 2, "venue": venue, "symbol": "BTC-USDT"}
+    )
 
     assert state.stream_health.gaps == 0
     assert state.health[venue].feed_resets == 1
@@ -291,6 +321,7 @@ def test_seq_interleaved_messages_from_different_symbols():
 # ============================================================================
 # WORKSTREAM B & C: LATENCY INVALID ACCOUNTING TESTS
 # ============================================================================
+
 
 def test_lat_inverted_ingress_boundary_increments_invalid_count():
     """Verify that inverted ingress boundary (t0 < t_ingest) increments invalid_count exactly once."""
@@ -373,8 +404,8 @@ def test_lat_missing_timestamps_do_not_increment_invalid_count():
     tracker = MonotonicLatencyTracker()
     event = {
         "ingest_ts_ns": 0,  # Missing
-        "t0_ns": 0,          # Missing
-        "broadcast_ts_ns": 0,# Missing
+        "t0_ns": 0,  # Missing
+        "broadcast_ts_ns": 0,  # Missing
         "engine_ns": None,
     }
     res = tracker.record_event_latencies(event, t_recv_ns=1_000_000)
@@ -424,11 +455,13 @@ def test_lat_valid_measurements_satisfy_telescoping_identity():
     tracker = MonotonicLatencyTracker()
     event = {
         "ingest_ts_ns": 1_000_000_000,
-        "t0_ns": 1_000_020_000,         # ingress = 20 us
-        "broadcast_ts_ns": 1_000_050_000,# engine = 30 us
+        "t0_ns": 1_000_020_000,  # ingress = 20 us
+        "broadcast_ts_ns": 1_000_050_000,  # engine = 30 us
         "engine_ns": 30_000,
     }
-    res = tracker.record_event_latencies(event, t_recv_ns=1_000_090_000)  # transport = 40 us
+    res = tracker.record_event_latencies(
+        event, t_recv_ns=1_000_090_000
+    )  # transport = 40 us
 
     assert res["ingress_us"] == 20.0
     assert res["engine_us"] == 30.0
@@ -436,5 +469,7 @@ def test_lat_valid_measurements_satisfy_telescoping_identity():
     assert res["e2e_us"] == 90.0
 
     # Telescoping identity check
-    sum_components = round(res["ingress_us"] + res["engine_us"] + res["transport_us"], 2)
+    sum_components = round(
+        res["ingress_us"] + res["engine_us"] + res["transport_us"], 2
+    )
     assert sum_components == res["e2e_us"]

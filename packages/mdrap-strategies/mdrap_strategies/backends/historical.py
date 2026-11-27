@@ -103,11 +103,17 @@ class HistoricalSimulationBackend(ExecutionBackend):
         return order
 
     def cancel_order(self, order_id: str) -> bool:
-        return self.matching_engine.cancel_order(order_id, current_time=self.current_time)
+        return self.matching_engine.cancel_order(
+            order_id, current_time=self.current_time
+        )
 
     def on_market_event(self, event: Any) -> list[dict[str, Any]]:
         """Process incoming historical canonical event."""
-        ev_ts = getattr(event, "exchange_timestamp", None) or getattr(event, "receive_timestamp", None) or self.current_time
+        ev_ts = (
+            getattr(event, "exchange_timestamp", None)
+            or getattr(event, "receive_timestamp", None)
+            or self.current_time
+        )
         self.current_time = max(self.current_time, ev_ts)
         sym = getattr(event, "instrument_id", "AAPL")
         ev_type = str(getattr(event, "event_type", "QUOTE")).upper()
@@ -129,7 +135,9 @@ class HistoricalSimulationBackend(ExecutionBackend):
             px = getattr(event, "price", None)
             sz = getattr(event, "quantity", 100.0)
             if px is not None and sz is not None:
-                fills = self.matching_engine.process_market_trade(sym, px, sz, self.current_time)
+                fills = self.matching_engine.process_market_trade(
+                    sym, px, sz, self.current_time
+                )
 
         # Update cash, inventory, and risk state for every fill
         for fill in fills:
@@ -137,9 +145,9 @@ class HistoricalSimulationBackend(ExecutionBackend):
                 cost = fill["price"] * fill["quantity"]
                 fee = fill.get("fee", 0.0)
                 if fill["side"] == "BUY":
-                    self.cash -= (cost + fee)
+                    self.cash -= cost + fee
                 else:
-                    self.cash += (cost - fee)
+                    self.cash += cost - fee
 
                 self.risk_engine.update_position(
                     symbol=fill["symbol"],
@@ -159,13 +167,22 @@ class HistoricalSimulationBackend(ExecutionBackend):
 
     def get_equity(self) -> float:
         unrealized = sum(
-            qty * self.matching_engine._mid_prices.get(sym, self.risk_engine.avg_costs.get(sym, 100.0))
+            qty
+            * self.matching_engine._mid_prices.get(
+                sym, self.risk_engine.avg_costs.get(sym, 100.0)
+            )
             for sym, qty in self.risk_engine.positions.items()
         )
         return self.cash + unrealized
 
     def get_open_orders(self) -> list[SimulatedOrder]:
         return [
-            o for o in self.matching_engine.orders.values()
-            if o.status in (SimOrderStatus.ACCEPTED, SimOrderStatus.PENDING, SimOrderStatus.PARTIALLY_FILLED)
+            o
+            for o in self.matching_engine.orders.values()
+            if o.status
+            in (
+                SimOrderStatus.ACCEPTED,
+                SimOrderStatus.PENDING,
+                SimOrderStatus.PARTIALLY_FILLED,
+            )
         ]

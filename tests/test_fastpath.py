@@ -290,6 +290,7 @@ def test_multithreaded_fastpath_safety():
     assert not errors, f"Encountered concurrency errors in FastQualityEngine: {errors}"
 
 
+@pytest.mark.native
 def test_fastpath_evaluate_batch_scratch_reuse():
     """Verify FastQualityEngine.evaluate_batch reuses scratch buffers across multiple sizes."""
     eng = FastQualityEngine(thread_safe=True)
@@ -495,8 +496,18 @@ def test_split_sequence_domains_parity_and_gaps():
         (EventType.TRADE, 5000, QualityStatus.VALID, False),
         (EventType.QUOTE, 101, QualityStatus.VALID, False),
         (EventType.TRADE, 5001, QualityStatus.VALID, False),
-        (EventType.QUOTE, 103, QualityStatus.SUSPICIOUS, True),   # Genuine quote gap (102 skipped)
-        (EventType.TRADE, 5004, QualityStatus.SUSPICIOUS, True),  # Genuine trade gap (5002-5003 skipped)
+        (
+            EventType.QUOTE,
+            103,
+            QualityStatus.SUSPICIOUS,
+            True,
+        ),  # Genuine quote gap (102 skipped)
+        (
+            EventType.TRADE,
+            5004,
+            QualityStatus.SUSPICIOUS,
+            True,
+        ),  # Genuine trade gap (5002-5003 skipped)
     ]
     for idx, (etype, seq, exp_status, exp_gap) in enumerate(split_stream):
         r_py = py_split.evaluate(_mk(f"s-py-{idx}", etype, seq, inst="BTC/USD"))
@@ -511,4 +522,3 @@ def test_split_sequence_domains_parity_and_gaps():
     assert ac_cfg.for_instrument("BTC/USD").split_sequence_domains is True
     assert ac_cfg.for_instrument("ETH/USD").split_sequence_domains is True
     assert ac_cfg.for_instrument("AAPL").split_sequence_domains is False
-

@@ -27,6 +27,7 @@ from mdrap.quality import QualityEngine, QualityConfig, _RollingStats
 from mdrap.storage import Store
 from mdrap.bbo import BBOEngine, ConsolidatedBBO
 from mdrap.depth import ConsolidatedDepthEngine
+
 try:
     from mdrap.mbo import OrderBookMBO
 except ImportError:
@@ -38,6 +39,7 @@ from mdrap.analytics import (
     SpreadAnalyzer,
     VolatilityTracker,
 )
+
 try:
     from mdrap.flow_tracker import OrderFlowTracker, FlowCategory, AggressorSide
 except ImportError:

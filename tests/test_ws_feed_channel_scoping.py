@@ -9,8 +9,12 @@ def test_sequence_scope_channel_isolation():
     """Verify that multiple channels for the same symbol do not collide on sequence numbers."""
     feed = LiveCryptoFeed()
 
-    scope_trades = SequenceScope(venue="BINANCE", instrument="BTCUSDT", channel="TRADE", epoch=1)
-    scope_depth = SequenceScope(venue="BINANCE", instrument="BTCUSDT", channel="DEPTH", epoch=1)
+    scope_trades = SequenceScope(
+        venue="BINANCE", instrument="BTCUSDT", channel="TRADE", epoch=1
+    )
+    scope_depth = SequenceScope(
+        venue="BINANCE", instrument="BTCUSDT", channel="DEPTH", epoch=1
+    )
 
     assert scope_trades.key() != scope_depth.key()
     assert "TRADE" in scope_trades.key()

@@ -34,8 +34,12 @@ def test_fastpath_force_pure_python_behavior():
     """Verify FastQualityEngine(force_pure=True) completely disables native C and uses QualityEngine."""
     fqe_pure = FastQualityEngine(force_pure=True)
     assert not fqe_pure.is_native, "force_pure=True must set is_native=False"
-    assert fqe_pure._engine_ptr_c is None, "force_pure=True must not instantiate C engine"
-    assert fqe_pure._fallback_engine is not None, "force_pure=True must instantiate fallback QualityEngine"
+    assert fqe_pure._engine_ptr_c is None, (
+        "force_pure=True must not instantiate C engine"
+    )
+    assert fqe_pure._fallback_engine is not None, (
+        "force_pure=True must instantiate fallback QualityEngine"
+    )
     assert isinstance(fqe_pure._fallback_engine, QualityEngine)
 
     # Parity comparison with native engine
@@ -157,7 +161,18 @@ def test_denomination_aware_arbitrage_valuation():
 
 def test_tear_sheet_institutional_risk_metrics():
     """Verify Probabilistic Sharpe, Deflated Sharpe, Calmar, and CI calculations."""
-    returns = [0.001, 0.002, -0.0005, 0.0015, 0.0008, 0.0012, -0.0003, 0.0025, 0.0011, 0.0009]
+    returns = [
+        0.001,
+        0.002,
+        -0.0005,
+        0.0015,
+        0.0008,
+        0.0012,
+        -0.0003,
+        0.0025,
+        0.0011,
+        0.0009,
+    ]
     mean_ret = statistics.mean(returns)
     std_ret = statistics.pstdev(returns)
     ann_sr = (mean_ret / std_ret) * math.sqrt(252.0)

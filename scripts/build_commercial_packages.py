@@ -79,7 +79,11 @@ def main() -> int:
         print("[!] WARNING: packages/ or dist/ is NOT safely excluded in .gitignore!")
         return 1
 
-    companion_dirs = [d for d in PACKAGES_DIR.iterdir() if d.is_dir() and (d / "pyproject.toml").exists()]
+    companion_dirs = [
+        d
+        for d in PACKAGES_DIR.iterdir()
+        if d.is_dir() and (d / "pyproject.toml").exists()
+    ]
     print(f"[*] Found {len(companion_dirs)} companion packages to build:")
     for d in companion_dirs:
         print(f"    - {d.name}")
@@ -90,7 +94,9 @@ def main() -> int:
             built_count += 1
 
     print("\n" + "=" * 65)
-    print(f"[+] Commercial packaging complete: {built_count}/{len(companion_dirs)} wheels built.")
+    print(
+        f"[+] Commercial packaging complete: {built_count}/{len(companion_dirs)} wheels built."
+    )
     print(f"[+] Output directory: {DIST_DIR}")
     print("=" * 65)
     return 0

@@ -44,7 +44,7 @@ from scripts.restore import restore_database
 
 def run_operational_drills_campaign():
     print("=== MDRAP Phase 10 Operational Drills Campaign ===")
-    
+
     test_dir = os.path.join(_REPO_ROOT, "audit", "phase10", "drill_temp_data")
     if os.path.exists(test_dir):
         shutil.rmtree(test_dir, ignore_errors=True)
@@ -59,9 +59,13 @@ def run_operational_drills_campaign():
 
     # Drill 1: Operator Forced Failover (Graceful hand-off)
     print("\n[Drill 1] Operator Forced Failover...")
-    c1 = ConsensusCoordinator("node-01", ["node-01", "node-02", "node-03"], lease_duration_sec=0.2)
-    c2 = ConsensusCoordinator("node-02", ["node-01", "node-02", "node-03"], lease_duration_sec=0.2)
-    
+    c1 = ConsensusCoordinator(
+        "node-01", ["node-01", "node-02", "node-03"], lease_duration_sec=0.2
+    )
+    c2 = ConsensusCoordinator(
+        "node-02", ["node-01", "node-02", "node-03"], lease_duration_sec=0.2
+    )
+
     tok1 = c1.request_leadership()
     assert tok1.leader_id == "node-01"
     t0 = time.perf_counter()
@@ -87,7 +91,9 @@ def run_operational_drills_campaign():
     print("\n[Drill 2] Standby Replica Rolling Restart...")
     t0 = time.perf_counter()
     # Standby node-03 goes offline
-    c3 = ConsensusCoordinator("node-03", ["node-01", "node-02", "node-03"], lease_duration_sec=0.2)
+    c3 = ConsensusCoordinator(
+        "node-03", ["node-01", "node-02", "node-03"], lease_duration_sec=0.2
+    )
     # Primary node-02 remains unaffected and continues renewing lease
     tok2_renewed = c2.renew_lease()
     assert tok2_renewed.leader_id == "node-02"
@@ -108,7 +114,7 @@ def run_operational_drills_campaign():
     # Drill 3: Unplanned Primary Crash & Automatic Quorum Takeover
     print("\n[Drill 3] Unplanned Primary Crash & Takeover...")
     # c2 crashes without releasing lease. Node-03 detects silence after lease expiry
-    time.sleep(0.25) # Wait for lease expiry (200 ms)
+    time.sleep(0.25)  # Wait for lease expiry (200 ms)
     t0 = time.perf_counter()
     tok3 = c3.request_leadership()
     t_takeover_ms = (time.perf_counter() - t0) * 1000.0
@@ -127,11 +133,11 @@ def run_operational_drills_campaign():
     print("\n[Drill 4] Split-Brain Network Partition & Epoch Fencing...")
     # Simulated partition: c1 (isolated minority with epoch 1) attempts to write against fenced partition
     fenced_writer = FencedWALWriter("partition-eurusd-01")
-    fenced_writer.validate_write(tok3) # Active leader with epoch 3
+    fenced_writer.validate_write(tok3)  # Active leader with epoch 3
     t0 = time.perf_counter()
     rejected = False
     try:
-        fenced_writer.validate_write(tok1) # Stale writer with epoch 1
+        fenced_writer.validate_write(tok1)  # Stale writer with epoch 1
     except Exception:
         rejected = True
     t_fencing_us = (time.perf_counter() - t0) * 1_000_000.0
@@ -154,13 +160,17 @@ def run_operational_drills_campaign():
     for i in range(10):
         log.append(RawEvent("DRILL", {"seq": i, "val": 100 + i}, time.time()))
     log.close()
-    
+
     # Intentionally corrupt 1 frame in segment
-    seg_files = [f for f in os.listdir(wal_dir) if f.startswith("segment_") and f.endswith(".log")]
+    seg_files = [
+        f
+        for f in os.listdir(wal_dir)
+        if f.startswith("segment_") and f.endswith(".log")
+    ]
     seg_path = os.path.join(wal_dir, seg_files[0])
     with open(seg_path, "r+b") as f:
-        f.seek(32 + 28 + 20) # Middle of payload
-        f.write(b"\xFF\xFF")
+        f.seek(32 + 28 + 20)  # Middle of payload
+        f.write(b"\xff\xff")
 
     # 1. Recovery on startup: corrupted frame in middle is caught by IngestLogCorruptError
     corrupt_detected = False
@@ -195,7 +205,9 @@ def run_operational_drills_campaign():
         "stream_resumed": True,
         "status": "PASS",
     }
-    print(f"         Corrupt frame detected via CRC error. Forensics status: {audit_res.status}. Quarantined & resumed.")
+    print(
+        f"         Corrupt frame detected via CRC error. Forensics status: {audit_res.status}. Quarantined & resumed."
+    )
 
     # Drill 6: Emergency API Key Revocation Under Load
     print("\n[Drill 6] Emergency API Key Revocation Under Load...")
@@ -205,7 +217,7 @@ def run_operational_drills_campaign():
     ent = sec.register_api_key(client_id="compromised_algo_trader", role=Role.ADMIN)
     tok = ent.token
     assert sec.get_entitlement(tok).is_active is True
-    
+
     t0 = time.perf_counter()
     revoked = sec.revoke_api_key(tok)
     t_revoke_us = (time.perf_counter() - t0) * 1_000_000.0
@@ -227,7 +239,7 @@ def run_operational_drills_campaign():
     live_db = os.path.join(test_dir, "live_market.db")
     backup_db = os.path.join(test_dir, "backup_market.db")
     restored_db = os.path.join(test_dir, "restored_market.db")
-    
+
     st_live = Store(live_db)
     evs = [
         CanonicalEvent(
@@ -249,16 +261,22 @@ def run_operational_drills_campaign():
     st_live.commit()
 
     t0 = time.perf_counter()
-    bk_meta = backup_database(live_db, backup_db, checkpoint=True, verify_audit=True, compress=False)
+    bk_meta = backup_database(
+        live_db, backup_db, checkpoint=True, verify_audit=True, compress=False
+    )
     t_backup_ms = (time.perf_counter() - t0) * 1000.0
-    
+
     t0 = time.perf_counter()
-    rst_meta = restore_database(backup_db, restored_db, force=True, safety_backup=False, verify_audit=False)
+    rst_meta = restore_database(
+        backup_db, restored_db, force=True, safety_backup=False, verify_audit=False
+    )
     t_restore_ms = (time.perf_counter() - t0) * 1000.0
-    
+
     conn_live = sqlite3.connect(live_db)
     conn_rst = sqlite3.connect(restored_db)
-    live_count = conn_live.execute("SELECT COUNT(*) FROM canonical_events").fetchone()[0]
+    live_count = conn_live.execute("SELECT COUNT(*) FROM canonical_events").fetchone()[
+        0
+    ]
     rst_count = conn_rst.execute("SELECT COUNT(*) FROM canonical_events").fetchone()[0]
     conn_live.close()
     conn_rst.close()
@@ -274,9 +292,13 @@ def run_operational_drills_campaign():
         "integrity_verified": True,
         "status": "PASS",
     }
-    print(f"         Backup: {t_backup_ms:.2f} ms | Restore: {t_restore_ms:.2f} ms | 500/500 records verified.")
+    print(
+        f"         Backup: {t_backup_ms:.2f} ms | Restore: {t_restore_ms:.2f} ms | 500/500 records verified."
+    )
 
-    out_file = os.path.join(_REPO_ROOT, "audit", "phase10", "operational_drill_results.json")
+    out_file = os.path.join(
+        _REPO_ROOT, "audit", "phase10", "operational_drill_results.json"
+    )
     with open(out_file, "w", encoding="utf-8") as f:
         json.dump(results, f, indent=2)
     print(f"\n[OK] Saved operational drill results to: {out_file}")

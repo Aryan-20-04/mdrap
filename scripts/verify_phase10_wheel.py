@@ -15,7 +15,11 @@ import time
 from pathlib import Path
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-wheels = sorted(list((Path(_REPO_ROOT) / "dist").glob("mdrap_core-*.whl")), key=lambda p: p.stat().st_mtime, reverse=True)
+wheels = sorted(
+    list((Path(_REPO_ROOT) / "dist").glob("mdrap_core-*.whl")),
+    key=lambda p: p.stat().st_mtime,
+    reverse=True,
+)
 if not wheels:
     raise FileNotFoundError("No mdrap_core wheel found in dist/")
 wheel_path = wheels[0]
@@ -26,10 +30,21 @@ with tempfile.TemporaryDirectory(prefix="mdrap-install-verify-") as temp_dir:
 
     # 1. Install wheel into isolated target
     t0 = time.perf_counter()
-    res = subprocess.run([
-        sys.executable, "-m", "pip", "install", "--no-deps", "--no-cache-dir",
-        "--target", install_target, str(wheel_path)
-    ], capture_output=True, text=True)
+    res = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "--no-deps",
+            "--no-cache-dir",
+            "--target",
+            install_target,
+            str(wheel_path),
+        ],
+        capture_output=True,
+        text=True,
+    )
     install_duration = round(time.perf_counter() - t0, 3)
     if res.returncode != 0:
         raise RuntimeError(f"pip install failed: {res.stderr}")
@@ -53,9 +68,13 @@ with tempfile.TemporaryDirectory(prefix="mdrap-install-verify-") as temp_dir:
         "PATH": os.environ.get("PATH", ""),
         "PYTHONPATH": install_target,
     }
-    res_import = subprocess.run([
-        sys.executable, "-S", "-c", test_code
-    ], cwd=app_dir, env=test_env, capture_output=True, text=True)
+    res_import = subprocess.run(
+        [sys.executable, "-S", "-c", test_code],
+        cwd=app_dir,
+        env=test_env,
+        capture_output=True,
+        text=True,
+    )
     if res_import.returncode != 0:
         raise RuntimeError(f"Isolated import test failed: {res_import.stderr}")
 
@@ -72,7 +91,9 @@ with tempfile.TemporaryDirectory(prefix="mdrap-install-verify-") as temp_dir:
         "output": res_import.stdout.strip().splitlines(),
         "status": "PASS",
     }
-    out_file = os.path.join(_REPO_ROOT, "audit", "phase10", "package_install_validation.json")
+    out_file = os.path.join(
+        _REPO_ROOT, "audit", "phase10", "package_install_validation.json"
+    )
     with open(out_file, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
     print(f"[OK] Saved package installation validation to: {out_file}")

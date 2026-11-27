@@ -56,7 +56,9 @@ def test_rfc6962_canonical_test_vectors():
         subset = RFC6962_TEST_INPUTS[:count]
         tree = MerkleAuditTree(subset)
         expected = EXPECTED_RFC6962_ROOTS[count]
-        assert tree.root_hash == expected, f"Root mismatch at size {count}: {tree.root_hash} != {expected}"
+        assert tree.root_hash == expected, (
+            f"Root mismatch at size {count}: {tree.root_hash} != {expected}"
+        )
 
 
 def test_rfc6962_inclusion_proofs_all_subsets():
@@ -68,7 +70,9 @@ def test_rfc6962_inclusion_proofs_all_subsets():
             proof = tree.get_inclusion_proof(leaf_idx)
             assert proof.leaf_index == leaf_idx
             assert proof.root_hash == tree.root_hash
-            assert proof.verify() is True, f"Inclusion proof failed for leaf {leaf_idx} in tree size {count}"
+            assert proof.verify() is True, (
+                f"Inclusion proof failed for leaf {leaf_idx} in tree size {count}"
+            )
 
 
 def test_rfc6962_consistency_proofs_all_pairs():
@@ -81,7 +85,9 @@ def test_rfc6962_consistency_proofs_all_pairs():
             assert cons_proof.new_size == n
             assert cons_proof.old_root == EXPECTED_RFC6962_ROOTS[m]
             assert cons_proof.new_root == EXPECTED_RFC6962_ROOTS[n]
-            assert cons_proof.verify() is True, f"Consistency proof failed for m={m}, n={n}"
+            assert cons_proof.verify() is True, (
+                f"Consistency proof failed for m={m}, n={n}"
+            )
 
 
 def test_rfc6962_tamper_detection():
@@ -123,7 +129,9 @@ def test_rfc6962_tamper_detection():
 
 def test_timestamp_anchor_attestation():
     """Verify external timestamp anchoring and certificate cryptographic verification."""
-    anchor = TimestampAnchor(authority_id="MDRAP-TEST-AUTH-1", secret_key="super_secret_test_key")
+    anchor = TimestampAnchor(
+        authority_id="MDRAP-TEST-AUTH-1", secret_key="super_secret_test_key"
+    )
     tree = MerkleAuditTree(["trade_001", "trade_002", "trade_003"])
     cert = anchor.create_attestation(
         merkle_root=tree.root_hash,

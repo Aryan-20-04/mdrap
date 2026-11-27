@@ -540,7 +540,9 @@ def test_e13_snapshot_holds_lock_measurement():
         assert len(submit_latencies) > 0
         submit_latencies.sort()
         p99 = submit_latencies[int(len(submit_latencies) * 0.99)]
-        assert p99 < 150.0, f"Submit latency during snapshot exceeded target: {p99:.2f}ms"
+        assert p99 < 150.0, (
+            f"Submit latency during snapshot exceeded target: {p99:.2f}ms"
+        )
     finally:
         engine.close()
         shutil.rmtree(td, ignore_errors=True)

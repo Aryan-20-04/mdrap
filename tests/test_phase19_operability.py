@@ -10,7 +10,9 @@ from __future__ import annotations
 import os
 import sys
 import tempfile
+import threading
 import time
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 import pytest
 
@@ -22,43 +24,85 @@ from mdrap.models import RawEvent
 
 
 def test_ops_02_prometheus_audit_verification_non_blocking():
-    """Verify OPS-02: Scrapes complete with sub-millisecond latency even if audit check is slow."""
-    # Simulate a slow store whose full Merkle scan takes 100ms
-    mock_store = MagicMock()
+    """Verify OPS-02: render() dispatches slow audit checks to prometheus-audit-worker without blocking."""
+    verify_started = threading.Event()
+    release_verify = threading.Event()
+    verify_finished = threading.Event()
+    worker_threads: list[str] = []
 
-    def slow_verify():
-        time.sleep(0.1)
+    def blocked_verify():
+        worker_threads.append(threading.current_thread().name)
+        verify_started.set()
+        if not release_verify.wait(timeout=10.0):
+            raise TimeoutError(
+                "Safety watchdog expired waiting to release mock audit check"
+            )
+        verify_finished.set()
         return True, "Audit log verified", 1000
 
-    mock_store.verify_audit_integrity = slow_verify
-
-    state = MagicMock()
-    state.start_time = time.time() - 100.0
-    state.store = mock_store
-    state.pipeline = None
-    state.reliability = None
-    state.kafka_sink = None
+    store = SimpleNamespace(conflicts=0, verify_audit_integrity=blocked_verify)
+    state = SimpleNamespace(
+        start_time=time.time() - 100.0,
+        store=store,
+        engine=None,
+        pipeline=None,
+        watchdog=None,
+        reliability=None,
+        kafka_sink=None,
+        alert_engine=None,
+        quality_engine=None,
+    )
 
     exporter = PrometheusExporter(audit_check_interval_s=1.0)
+    caller_result: dict[str, object] = {}
+    caller_done = threading.Event()
 
-    # Scrape 1: triggers async background check and returns immediately in microseconds
-    t0 = time.perf_counter()
-    metrics_text = exporter.render(state)
-    elapsed = time.perf_counter() - t0
+    def invoke_render() -> None:
+        try:
+            caller_result["text"] = exporter.render(state)
+        except BaseException as exc:  # pragma: no cover - surfaced below
+            caller_result["exc"] = exc
+        finally:
+            caller_done.set()
 
-    assert elapsed < 0.05, f"render() blocked for {elapsed:.4f}s"
-    assert "mdrap_audit_verified_status 1" in metrics_text
+    caller_thread = threading.Thread(
+        target=invoke_render,
+        name="prometheus-scrape-caller",
+        daemon=True,
+    )
 
-    # Scrape 2 immediately: does not spawn another worker and returns immediately
-    t0 = time.perf_counter()
-    metrics_text_2 = exporter.render(state)
-    elapsed_2 = time.perf_counter() - t0
-    assert elapsed_2 < 0.01
+    try:
+        # Scrape 1: submits work to the pre-started worker and returns while verification stays blocked
+        caller_thread.start()
+        assert verify_started.wait(timeout=5.0), "Background audit worker did not start"
+        assert caller_done.wait(timeout=5.0), (
+            "render() caller blocked while verification waited"
+        )
+        assert "exc" not in caller_result, f"Caller raised: {caller_result.get('exc')}"
+        assert not verify_finished.is_set(), "Caller waited until slow audit completed"
+        assert worker_threads == ["prometheus-audit-worker"]
+        assert "mdrap_audit_verified_status 1" in str(caller_result["text"])
 
-    # Wait for the async worker to complete
-    time.sleep(0.15)
-    metrics_text_3 = exporter.render(state)
-    assert "mdrap_audit_verified_status 1" in metrics_text_3
+        # Scrape 2 immediately: does not spawn duplicate checks and completes while worker still waits
+        metrics_text_2 = exporter.render(state)
+        assert not verify_finished.is_set()
+        assert len(worker_threads) == 1
+        assert "mdrap_audit_verified_status 1" in metrics_text_2
+
+        # Release background worker and verify clean completion
+        release_verify.set()
+        assert verify_finished.wait(timeout=5.0), (
+            "Background audit worker did not finish"
+        )
+        metrics_text_3 = exporter.render(state)
+        assert "mdrap_audit_verified_status 1" in metrics_text_3
+        assert len(worker_threads) == 1
+    finally:
+        release_verify.set()
+        exporter.close()
+        caller_thread.join(timeout=5.0)
+        exporter._audit_worker_thread.join(timeout=5.0)
+        assert not exporter._audit_worker_thread.is_alive()
 
 
 def test_ops_02_prometheus_audit_verification_tamper_detection():

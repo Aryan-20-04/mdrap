@@ -149,6 +149,7 @@ def test_daemon_client_connect_and_broadcast(monkeypatch):
     finally:
         daemon.stop()
 
+
 def test_daemon_client_lifecycle_and_synchronization(monkeypatch):
     """Regression test verifying client connecting before/after readiness, sequencing, and clean shutdown."""
     monkeypatch.setenv("MDRAP_DEMO", "1")
@@ -171,7 +172,9 @@ def test_daemon_client_lifecycle_and_synchronization(monkeypatch):
 
     try:
         # 2. Client connect after readiness
-        client = StreamClient(host="127.0.0.1", port=port, auth_token="mdrap_demo_pro_key")
+        client = StreamClient(
+            host="127.0.0.1", port=port, auth_token="mdrap_demo_pro_key"
+        )
         client.connect()
 
         # 3. Multiple messages in sequence
@@ -182,7 +185,9 @@ def test_daemon_client_lifecycle_and_synchronization(monkeypatch):
         client.close()
 
         # 5. Connect fresh client, stream 2 ticks, then shutdown daemon while connected
-        client2 = StreamClient(host="127.0.0.1", port=port, auth_token="mdrap_demo_pro_key")
+        client2 = StreamClient(
+            host="127.0.0.1", port=port, auth_token="mdrap_demo_pro_key"
+        )
         client2.connect()
         stream_iter = client2.stream(symbol="ALL", limit=2)
         assert next(stream_iter) is not None

@@ -77,20 +77,22 @@ class TestDirectWireIngestion:
         # Nanoseconds since midnight (e.g. 10:00:00 AM)
         ts_bytes = (36_000_000_000_000).to_bytes(6, "big")
         body = STRUCT_A.pack(
-            1,                      # locate
-            42,                     # tracking / seq
-            ts_bytes,               # 6-byte ts
-            999999,                 # order_ref
-            b"B",                   # buy
-            500,                    # shares
-            b"MSFT    ",            # stock
+            1,  # locate
+            42,  # tracking / seq
+            ts_bytes,  # 6-byte ts
+            999999,  # order_ref
+            b"B",  # buy
+            500,  # shares
+            b"MSFT    ",  # stock
             int(300.50 * PRICE_FACTOR_ITCH),  # price fixed point
         )
         # Prepend 2-byte frame length (len(body) + 1 for type byte) and type byte b'A'
         frame_len = len(body) + 1
         itch_wire = frame_len.to_bytes(2, "big") + MSG_ADD_ORDER + body
 
-        raw = RawEvent(source="NASDAQ", payload={}, wire=itch_wire, session_id="ITCH_SESS")
+        raw = RawEvent(
+            source="NASDAQ", payload={}, wire=itch_wire, session_id="ITCH_SESS"
+        )
         canonical = gw.normalize(raw)
 
         assert isinstance(canonical, CanonicalEvent)
@@ -125,7 +127,13 @@ class TestDirectWireIngestion:
                 broadcast_ts=1700000000.52,
                 engine_us=1.0,
             )
-            raw = RawEvent(source="CME", payload={}, wire=wire_bytes, raw_id="RAW_555", session_id="S55")
+            raw = RawEvent(
+                source="CME",
+                payload={},
+                wire=wire_bytes,
+                raw_id="RAW_555",
+                session_id="S55",
+            )
 
             offset = log.append(raw)
             log.flush()

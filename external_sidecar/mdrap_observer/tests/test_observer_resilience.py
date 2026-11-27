@@ -3,10 +3,13 @@
 import asyncio
 import json
 import os
+import struct
 import sys
 import threading
 import time
 import pytest
+
+from mdrap.shm import SHMWriter
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -26,7 +29,9 @@ class DummyStreamingServer:
 
     async def start(self):
         self._running = True
-        self.server = await asyncio.start_server(self._handle_client, self.host, self.port)
+        self.server = await asyncio.start_server(
+            self._handle_client, self.host, self.port
+        )
 
     async def _handle_client(self, reader, writer):
         try:
@@ -74,6 +79,7 @@ class DummyStreamingServer:
 
 def test_client_reconnection_and_restart():
     """Verify consumer reconnects after server disconnection and resumes consumption."""
+
     async def _run():
         port = 19877
         events = []
@@ -81,7 +87,9 @@ def test_client_reconnection_and_restart():
         def on_event(evt):
             events.append(evt)
 
-        client = ObserverClient(mode="tcp", host="127.0.0.1", port=port, on_event_callback=on_event)
+        client = ObserverClient(
+            mode="tcp", host="127.0.0.1", port=port, on_event_callback=on_event
+        )
         client.start()
 
         # Step 1: Server not running yet; client waits without crashing
@@ -117,6 +125,7 @@ def test_client_reconnection_and_restart():
 
 def test_client_malformed_event_resilience():
     """Verify malformed non-JSON frames do not terminate consumer or corrupt message count."""
+
     async def _run():
         port = 19878
         events = []
@@ -127,7 +136,9 @@ def test_client_malformed_event_resilience():
         server = DummyStreamingServer(port=port, inject_malformed=True)
         await server.start()
 
-        client = ObserverClient(mode="tcp", host="127.0.0.1", port=port, on_event_callback=on_event)
+        client = ObserverClient(
+            mode="tcp", host="127.0.0.1", port=port, on_event_callback=on_event
+        )
         client.start()
 
         await asyncio.sleep(0.8)
@@ -142,3 +153,72 @@ def test_client_malformed_event_resilience():
         client.stop()
 
     asyncio.run(_run())
+
+
+def test_shm_client_stale_heartbeat_recovery_and_interruptible_stop():
+    """Verify SHM ObserverClient detects frozen heartbeat, recovers on restart, and stops rapidly."""
+    ring_name = f"test_res_shm_{os.getpid()}_{time.time_ns()}"
+    writer1 = SHMWriter(name=ring_name, slot_count=64)
+    events = []
+
+    client = ObserverClient(
+        mode="shm",
+        ring_name=ring_name,
+        on_event_callback=events.append,
+        shm_writer_dead_timeout=0.25,
+    )
+    client.start()
+
+    writer2 = None
+    try:
+        deadline = time.monotonic() + 2.0
+        while not client.connected and time.monotonic() < deadline:
+            time.sleep(0.02)
+        assert client.connected
+
+        writer1.write_tick(
+            seq=1, symbol="BTCUSDT", source="BINANCE", price=65000.0, size=1.0
+        )
+        deadline = time.monotonic() + 2.0
+        while len(events) < 1 and time.monotonic() < deadline:
+            time.sleep(0.02)
+        assert len(events) == 1
+
+        # Simulate frozen/crashed publisher heartbeat without unlink
+        struct.pack_into("<d", writer1.shm.buf, 64, time.time() - 5.0)
+
+        deadline = time.monotonic() + 2.0
+        while client.connected and time.monotonic() < deadline:
+            time.sleep(0.02)
+        assert not client.connected
+        assert client.reconnect_count >= 1
+
+        # Restart publisher -> client reconnects and consumes new epoch ticks
+        writer1.close()
+        writer2 = SHMWriter(name=ring_name, slot_count=64)
+        writer2.write_tick(
+            seq=1, symbol="BTCUSDT", source="DATABENTO", price=66000.0, size=1.0
+        )
+
+        deadline = time.monotonic() + 3.0
+        while len(events) < 2 and time.monotonic() < deadline:
+            time.sleep(0.02)
+        assert len(events) == 2
+        assert events[1]["source"] == "DATABENTO"
+        assert events[1]["price"] == 66000.0
+
+        # Close writer2 and ensure stop() interrupts exponential backoff promptly
+        writer2.close()
+        writer2 = None
+        deadline = time.monotonic() + 2.0
+        while client.connected and time.monotonic() < deadline:
+            time.sleep(0.02)
+
+        t0 = time.perf_counter()
+        client.stop()
+        assert (time.perf_counter() - t0) < 0.5
+    finally:
+        client.stop()
+        writer1.close()
+        if writer2 is not None:
+            writer2.close()

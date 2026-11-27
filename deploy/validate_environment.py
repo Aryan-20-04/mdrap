@@ -57,12 +57,20 @@ def check_sqlite_wal(data_dir: Path) -> tuple[bool, str]:
 
 def check_disk_space(data_dir: Path) -> tuple[bool, str]:
     try:
-        stat = shutil.disk_usage(str(data_dir if data_dir.exists() else data_dir.parent))
+        stat = shutil.disk_usage(
+            str(data_dir if data_dir.exists() else data_dir.parent)
+        )
         free_gb = stat.free / (1024**3)
         if free_gb < 1.0:
-            return False, f"Critically low disk space: {free_gb:.2f} GB free (Requires >= 1.0 GB)"
+            return (
+                False,
+                f"Critically low disk space: {free_gb:.2f} GB free (Requires >= 1.0 GB)",
+            )
         if free_gb < 5.0:
-            return True, f"Low disk space warning: {free_gb:.2f} GB free (Recommended >= 5.0 GB)"
+            return (
+                True,
+                f"Low disk space warning: {free_gb:.2f} GB free (Recommended >= 5.0 GB)",
+            )
         return True, f"Disk space adequate: {free_gb:.2f} GB free"
     except Exception as exc:
         return False, f"Disk space check error: {exc}"
@@ -71,11 +79,15 @@ def check_disk_space(data_dir: Path) -> tuple[bool, str]:
 def check_fastpath_status() -> tuple[bool, str]:
     try:
         from mdrap.quality import HAS_FASTPATH
+
         if HAS_FASTPATH:
             return True, "Native C SIMD/fastpath kernel ACTIVE"
         return True, "Pure-Python fallback kernel ACTIVE (100% semantic parity)"
     except ImportError:
-        return True, "MDRAP core import in progress (defaulting to pure-Python fallback)"
+        return (
+            True,
+            "MDRAP core import in progress (defaulting to pure-Python fallback)",
+        )
 
 
 def check_read_only_safety() -> tuple[bool, str]:
@@ -89,12 +101,17 @@ def check_read_only_safety() -> tuple[bool, str]:
     ]
     detected = [k for k in hazardous_keys if os.getenv(k)]
     if detected:
-        return False, f"SECURITY WARNING: Hazardous execution keys found in environment: {detected}"
+        return (
+            False,
+            f"SECURITY WARNING: Hazardous execution keys found in environment: {detected}",
+        )
     return True, "Verified: Zero execution credentials present in environment"
 
 
 def main():
-    parser = argparse.ArgumentParser(description="MDRAP Deployment Environment Validator")
+    parser = argparse.ArgumentParser(
+        description="MDRAP Deployment Environment Validator"
+    )
     parser.add_argument(
         "--data-dir",
         default=os.getenv("MDRAP_DATA_DIR", "data"),
@@ -133,9 +150,13 @@ def main():
     if not args.quiet:
         print("=" * 70)
         if all_passed:
-            print("  Environment validation successful. Host is ready for MDRAP sidecar.")
+            print(
+                "  Environment validation successful. Host is ready for MDRAP sidecar."
+            )
         else:
-            print("  PRE-FLIGHT VALIDATION FAILED. Address errors above before launching.")
+            print(
+                "  PRE-FLIGHT VALIDATION FAILED. Address errors above before launching."
+            )
         print("=" * 70)
 
     sys.exit(0 if all_passed else 1)

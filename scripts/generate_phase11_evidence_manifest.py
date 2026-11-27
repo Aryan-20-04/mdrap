@@ -11,10 +11,13 @@ from pathlib import Path
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 audit_dir = Path(_REPO_ROOT) / "audit" / "phase11"
 
-files = sorted([
-    f for f in audit_dir.iterdir()
-    if f.is_file() and f.name != "evidence_manifest.json"
-])
+files = sorted(
+    [
+        f
+        for f in audit_dir.iterdir()
+        if f.is_file() and f.name != "evidence_manifest.json"
+    ]
+)
 
 deliverables_catalog = [
     {

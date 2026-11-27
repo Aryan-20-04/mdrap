@@ -49,7 +49,7 @@ def run_queue_position_experiments(events: list[CanonicalEvent]) -> dict[str, An
     for q_depth in queue_depths:
         config = MatchingEngineConfig(network_latency_ms=1.0, matching_delay_ms=0.5)
         engine = RealisticMatchingEngine(config=config)
-        
+
         submitted_orders = 0
         filled_orders = 0
         total_touches = 0
@@ -77,9 +77,11 @@ def run_queue_position_experiments(events: list[CanonicalEvent]) -> dict[str, An
                 ord_obj = engine.orders[active_order_id]
                 if ord_obj.status == SimOrderStatus.FILLED:
                     filled_orders += 1
-                    fill_latencies_ms.append((ord_obj.fill_events[0]["timestamp"] - order_submit_ts) * 1000.0)
+                    fill_latencies_ms.append(
+                        (ord_obj.fill_events[0]["timestamp"] - order_submit_ts) * 1000.0
+                    )
                     active_order_id = None
-                elif current_time - order_submit_ts > 5.0: # 5 second timeout
+                elif current_time - order_submit_ts > 5.0:  # 5 second timeout
                     engine.cancel_order(active_order_id, current_time=current_time)
                     active_order_id = None
 
@@ -107,7 +109,11 @@ def run_queue_position_experiments(events: list[CanonicalEvent]) -> dict[str, An
             )
 
         fill_rate = (filled_orders / max(1, submitted_orders)) * 100.0
-        avg_fill_lat = (sum(fill_latencies_ms) / len(fill_latencies_ms)) if fill_latencies_ms else 0.0
+        avg_fill_lat = (
+            (sum(fill_latencies_ms) / len(fill_latencies_ms))
+            if fill_latencies_ms
+            else 0.0
+        )
 
         results[f"depth_{int(q_depth)}"] = {
             "queue_ahead_volume": q_depth,
@@ -124,7 +130,7 @@ def run_cancellation_race_experiments(events: list[CanonicalEvent]) -> dict[str,
     """
     Evaluates cancellation success rate vs fill in race conditions across latencies.
     """
-    latencies = [0.2, 1.0, 5.0, 10.0, 25.0] # in ms
+    latencies = [0.2, 1.0, 5.0, 10.0, 25.0]  # in ms
     results = {}
 
     for lat in latencies:
@@ -139,9 +145,14 @@ def run_cancellation_race_experiments(events: list[CanonicalEvent]) -> dict[str,
         for i in range(200):
             current_time += 0.050
             order_id = f"RACE_{lat}_{i}"
-            
+
             # Post resting order
-            engine.update_book("BTCUSDT", bids=[(100.0, 10.0)], asks=[(100.1, 10.0)], timestamp=current_time)
+            engine.update_book(
+                "BTCUSDT",
+                bids=[(100.0, 10.0)],
+                asks=[(100.1, 10.0)],
+                timestamp=current_time,
+            )
             ord_obj = engine.submit_order(
                 order_id=order_id,
                 symbol="BTCUSDT",
@@ -151,23 +162,23 @@ def run_cancellation_race_experiments(events: list[CanonicalEvent]) -> dict[str,
                 price=100.0,
                 current_time=current_time,
             )
-            
+
             # Fast forward time to when order is accepted
             current_time += (lat + 0.1) / 1000.0
             engine.process_time_slice(current_time)
 
             # Strategy decides to cancel because toxic trade is detected
             engine.cancel_order(order_id, current_time=current_time)
-            
+
             # Aggressive toxic trade arrives at exchange after 2.0ms
-            trade_arrival = current_time + 0.002 # 2ms after cancel was sent
+            trade_arrival = current_time + 0.002  # 2ms after cancel was sent
             engine.process_market_trade(
                 symbol="BTCUSDT",
                 trade_price=100.0,
                 trade_size=50.0,
                 timestamp=trade_arrival,
             )
-            
+
             # Advance past cancel arrival
             current_time += (lat / 1000.0) + 0.005
             engine.process_time_slice(current_time)
@@ -175,7 +186,10 @@ def run_cancellation_race_experiments(events: list[CanonicalEvent]) -> dict[str,
             races_conducted += 1
             if ord_obj.status == SimOrderStatus.CANCELLED:
                 cancels_won += 1
-            elif ord_obj.status in (SimOrderStatus.FILLED, SimOrderStatus.PARTIALLY_FILLED):
+            elif ord_obj.status in (
+                SimOrderStatus.FILLED,
+                SimOrderStatus.PARTIALLY_FILLED,
+            ):
                 fills_suffered += 1
 
         cancel_win_pct = (cancels_won / races_conducted) * 100.0
@@ -197,13 +211,13 @@ def run_adverse_selection_multi_horizon(events: list[CanonicalEvent]) -> dict[st
     """
     config = MatchingEngineConfig(network_latency_ms=1.0, matching_delay_ms=0.5)
     engine = RealisticMatchingEngine(config=config)
-    
+
     current_time = 1700000000.0
     horizons_ms = [10.0, 100.0, 1000.0, 5000.0, 30000.0]
 
     # Prepopulate price history
     for i, ev in enumerate(events):
-        current_time += 0.050 # 50ms per tick
+        current_time += 0.050  # 50ms per tick
         px = ev.price or (100.0 + (i % 20) * 0.02)
         engine.update_book(
             symbol="BTCUSDT",
@@ -234,10 +248,18 @@ def run_adverse_selection_multi_horizon(events: list[CanonicalEvent]) -> dict[st
             markout_summary[f"{int(h)}ms"] = {
                 "trades_analyzed": len(markouts),
                 "mean_markout_bps": round(mean_bps, 4),
-                "p25_markout_bps": round(sorted(bps_vals)[int(0.25 * len(bps_vals))], 4),
-                "p50_markout_bps": round(sorted(bps_vals)[int(0.50 * len(bps_vals))], 4),
-                "p75_markout_bps": round(sorted(bps_vals)[int(0.75 * len(bps_vals))], 4),
-                "adverse_ratio_pct": round(len([b for b in bps_vals if b < 0]) / len(bps_vals) * 100.0, 2),
+                "p25_markout_bps": round(
+                    sorted(bps_vals)[int(0.25 * len(bps_vals))], 4
+                ),
+                "p50_markout_bps": round(
+                    sorted(bps_vals)[int(0.50 * len(bps_vals))], 4
+                ),
+                "p75_markout_bps": round(
+                    sorted(bps_vals)[int(0.75 * len(bps_vals))], 4
+                ),
+                "adverse_ratio_pct": round(
+                    len([b for b in bps_vals if b < 0]) / len(bps_vals) * 100.0, 2
+                ),
             }
 
     return markout_summary
@@ -256,7 +278,10 @@ def main():
     canonical_events = []
     for item in sim.generate():
         r = item[0] if isinstance(item, tuple) else item
-        px = r.payload.get("price") or (r.payload.get("bid", 100.0) + r.payload.get("ask", 100.1)) / 2.0
+        px = (
+            r.payload.get("price")
+            or (r.payload.get("bid", 100.0) + r.payload.get("ask", 100.1)) / 2.0
+        )
         if not isinstance(px, (int, float)):
             px = 100.0
         canonical_events.append(
@@ -264,30 +289,44 @@ def main():
                 event_id=r.raw_id,
                 instrument_id=str(r.payload.get("instrument", "BTCUSDT")),
                 event_type=EventType.TRADE if "price" in r.payload else EventType.QUOTE,
-                exchange_timestamp=float(r.payload.get("exchange_ts", r.receive_timestamp)) if isinstance(r.payload.get("exchange_ts"), (int, float)) else r.receive_timestamp,
+                exchange_timestamp=float(
+                    r.payload.get("exchange_ts", r.receive_timestamp)
+                )
+                if isinstance(r.payload.get("exchange_ts"), (int, float))
+                else r.receive_timestamp,
                 receive_timestamp=r.receive_timestamp,
                 processing_timestamp=r.receive_timestamp + 0.0001,
                 source=r.source,
-                sequence_number=int(r.payload.get("sequence", 0)) if str(r.payload.get("sequence", "")).isdigit() else 0,
+                sequence_number=int(r.payload.get("sequence", 0))
+                if str(r.payload.get("sequence", "")).isdigit()
+                else 0,
                 price=float(px),
-                quantity=float(r.payload.get("quantity", 10.0)) if isinstance(r.payload.get("quantity"), (int, float)) else 10.0,
+                quantity=float(r.payload.get("quantity", 10.0))
+                if isinstance(r.payload.get("quantity"), (int, float))
+                else 10.0,
             )
         )
 
     print("\n[1/3] Running Queue-Position Depth vs Fill-Rate Experiments...")
     q_results = run_queue_position_experiments(canonical_events)
     for k, v in q_results.items():
-        print(f"  -> {k}: Fill Rate = {v['fill_rate_pct']}% | Avg Latency = {v['avg_fill_latency_ms']} ms")
+        print(
+            f"  -> {k}: Fill Rate = {v['fill_rate_pct']}% | Avg Latency = {v['avg_fill_latency_ms']} ms"
+        )
 
     print("\n[2/3] Running Cancellation vs Fill Latency Race Experiments...")
     race_results = run_cancellation_race_experiments(canonical_events)
     for k, v in race_results.items():
-        print(f"  -> {k}: Cancel Success = {v['cancel_success_rate_pct']}% | Fill Leakage = {v['fill_leakage_pct']}%")
+        print(
+            f"  -> {k}: Cancel Success = {v['cancel_success_rate_pct']}% | Fill Leakage = {v['fill_leakage_pct']}%"
+        )
 
     print("\n[3/3] Running Multi-Horizon Adverse Selection Markouts...")
     markout_results = run_adverse_selection_multi_horizon(canonical_events)
     for k, v in markout_results.items():
-        print(f"  -> {k}: Mean Markout = {v['mean_markout_bps']} bps | Adverse Ratio = {v['adverse_ratio_pct']}%")
+        print(
+            f"  -> {k}: Mean Markout = {v['mean_markout_bps']} bps | Adverse Ratio = {v['adverse_ratio_pct']}%"
+        )
 
     # Save to JSON
     telemetry = {

@@ -31,7 +31,9 @@ from mdrap.consensus import (
 
 
 def run_complete_failover_measurements(num_trials=10, lease_duration_sec=0.10):
-    print(f"=== MDRAP Phase 9 Complete End-to-End Failover Benchmark ({num_trials} trials) ===")
+    print(
+        f"=== MDRAP Phase 9 Complete End-to-End Failover Benchmark ({num_trials} trials) ==="
+    )
     nodes = ["node_primary", "node_standby", "node_arbiter"]
 
     complete_failover_times_ms = []
@@ -41,8 +43,12 @@ def run_complete_failover_measurements(num_trials=10, lease_duration_sec=0.10):
 
     for trial in range(num_trials):
         writer = FencedWALWriter(f"uat_partition_{trial}")
-        coord_p = ConsensusCoordinator("node_primary", nodes, lease_duration_sec=lease_duration_sec)
-        coord_s = ConsensusCoordinator("node_standby", nodes, lease_duration_sec=lease_duration_sec)
+        coord_p = ConsensusCoordinator(
+            "node_primary", nodes, lease_duration_sec=lease_duration_sec
+        )
+        coord_s = ConsensusCoordinator(
+            "node_standby", nodes, lease_duration_sec=lease_duration_sec
+        )
 
         # Primary establishes leadership at Epoch 1
         token_p = coord_p.request_leadership()
@@ -97,8 +103,12 @@ def run_complete_failover_measurements(num_trials=10, lease_duration_sec=0.10):
     p50_elect = election_times_us[int(n * 0.50)]
     p50_fence = fencing_rejection_times_us[int(n * 0.50)]
 
-    print(f"Complete Failover: p50 = {p50_total:6.2f} ms | p95 = {p95_total:6.2f} ms | p99 = {p99_total:6.2f} ms")
-    print(f"Breakdown: Detection={p50_detect:.1f}ms, Election={p50_elect:.1f}s, Stale Rejection={p50_fence:.1f}s")
+    print(
+        f"Complete Failover: p50 = {p50_total:6.2f} ms | p95 = {p95_total:6.2f} ms | p99 = {p99_total:6.2f} ms"
+    )
+    print(
+        f"Breakdown: Detection={p50_detect:.1f}ms, Election={p50_elect:.1f}s, Stale Rejection={p50_fence:.1f}s"
+    )
 
     benchmark_results = {
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),

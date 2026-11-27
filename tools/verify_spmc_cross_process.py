@@ -20,7 +20,9 @@ import statistics
 from typing import Any
 
 # Ensure project root in sys.path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
+sys.path.insert(
+    0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src"))
+)
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from mdrap.shm import (
@@ -49,7 +51,10 @@ def _producer_worker(
     try:
         writer = SHMWriter(name=shm_name, slot_count=slot_count)
     except Exception as exc:
-        print(f"[Producer {os.getpid()}] Failed to create SHMWriter: {exc}", file=sys.stderr)
+        print(
+            f"[Producer {os.getpid()}] Failed to create SHMWriter: {exc}",
+            file=sys.stderr,
+        )
         return
 
     sync_event.set()
@@ -106,12 +111,14 @@ def _fast_consumer_worker(
         reader = SHMReader(name=shm_name)
     except Exception as exc:
         ready_event.set()
-        result_queue.put({
-            "consumer_id": consumer_id,
-            "pid": os.getpid(),
-            "error": str(exc),
-            "ticks_read": 0,
-        })
+        result_queue.put(
+            {
+                "consumer_id": consumer_id,
+                "pid": os.getpid(),
+                "error": str(exc),
+                "ticks_read": 0,
+            }
+        )
         return
 
     ready_event.set()
@@ -126,9 +133,17 @@ def _fast_consumer_worker(
     curr_seq = 0
     t0 = time.time()
 
-    while (curr_seq < expected_ticks if allow_overrun_skipping else ticks_read < expected_ticks) and (time.time() - t0) < max_wait_s:
+    while (
+        curr_seq < expected_ticks
+        if allow_overrun_skipping
+        else ticks_read < expected_ticks
+    ) and (time.time() - t0) < max_wait_s:
         head = reader.read_latest_seq()
-        if allow_overrun_skipping and head > 0 and (head - curr_seq) > reader.slot_count:
+        if (
+            allow_overrun_skipping
+            and head > 0
+            and (head - curr_seq) > reader.slot_count
+        ):
             # Overrun skip forward
             reader.overrun_stats.total_laps += 1
             skipped = (head - reader.slot_count) - curr_seq
@@ -140,12 +155,20 @@ def _fast_consumer_worker(
             now_mono_ns = time.perf_counter_ns()
             if slot["seq"] != curr_seq:
                 seq_errors += 1
-            if not allow_overrun_skipping and last_seq >= 0 and slot["seq"] != last_seq + 1:
+            if (
+                not allow_overrun_skipping
+                and last_seq >= 0
+                and slot["seq"] != last_seq + 1
+            ):
                 seq_errors += 1
             last_seq = slot["seq"]
 
             # Torn read check
-            if slot["price"] is None or slot["price"] < 1000.0 or slot["price"] > 100000.0:
+            if (
+                slot["price"] is None
+                or slot["price"] < 1000.0
+                or slot["price"] > 100000.0
+            ):
                 torn_reads += 1
 
             # Latency
@@ -167,24 +190,36 @@ def _fast_consumer_worker(
     reader.close()
 
     p50 = statistics.median(latencies_us) if latencies_us else 0.0
-    p95 = statistics.quantiles(latencies_us, n=20)[18] if len(latencies_us) >= 20 else p50
-    p99 = statistics.quantiles(latencies_us, n=100)[98] if len(latencies_us) >= 100 else p95
-    p999 = statistics.quantiles(latencies_us, n=1000)[998] if len(latencies_us) >= 1000 else p99
+    p95 = (
+        statistics.quantiles(latencies_us, n=20)[18] if len(latencies_us) >= 20 else p50
+    )
+    p99 = (
+        statistics.quantiles(latencies_us, n=100)[98]
+        if len(latencies_us) >= 100
+        else p95
+    )
+    p999 = (
+        statistics.quantiles(latencies_us, n=1000)[998]
+        if len(latencies_us) >= 1000
+        else p99
+    )
 
-    result_queue.put({
-        "consumer_id": consumer_id,
-        "pid": os.getpid(),
-        "ticks_read": ticks_read,
-        "expected_ticks": expected_ticks,
-        "torn_reads": torn_reads,
-        "seq_errors": seq_errors,
-        "p50_us": round(p50, 2),
-        "p95_us": round(p95, 2),
-        "p99_us": round(p99, 2),
-        "p999_us": round(p999, 2),
-        "total_laps": reader.overrun_stats.total_laps,
-        "skipped_ticks": reader.overrun_stats.skipped_ticks,
-    })
+    result_queue.put(
+        {
+            "consumer_id": consumer_id,
+            "pid": os.getpid(),
+            "ticks_read": ticks_read,
+            "expected_ticks": expected_ticks,
+            "torn_reads": torn_reads,
+            "seq_errors": seq_errors,
+            "p50_us": round(p50, 2),
+            "p95_us": round(p95, 2),
+            "p99_us": round(p99, 2),
+            "p999_us": round(p999, 2),
+            "total_laps": reader.overrun_stats.total_laps,
+            "skipped_ticks": reader.overrun_stats.skipped_ticks,
+        }
+    )
 
 
 def _slow_consumer_worker(
@@ -229,13 +264,15 @@ def _slow_consumer_worker(
 
     reader.close()
 
-    result_queue.put({
-        "consumer_id": consumer_id,
-        "pid": os.getpid(),
-        "ticks_read": ticks_read,
-        "laps_detected": reader.overrun_stats.total_laps,
-        "skipped_ticks": reader.overrun_stats.skipped_ticks,
-    })
+    result_queue.put(
+        {
+            "consumer_id": consumer_id,
+            "pid": os.getpid(),
+            "ticks_read": ticks_read,
+            "laps_detected": reader.overrun_stats.total_laps,
+            "skipped_ticks": reader.overrun_stats.skipped_ticks,
+        }
+    )
 
 
 def run_spmc_cross_process_suite() -> dict[str, Any]:
@@ -250,7 +287,9 @@ def run_spmc_cross_process_suite() -> dict[str, Any]:
     slot_count = 16384  # Standard production ring buffer
     total_ticks = 10000
 
-    print(f"\n--- [SPMC Pillar 1] Test 1: Paced Cross-Process Concurrency (1 Producer + 4 Consumers, {total_ticks} ticks) ---")
+    print(
+        f"\n--- [SPMC Pillar 1] Test 1: Paced Cross-Process Concurrency (1 Producer + 4 Consumers, {total_ticks} ticks) ---"
+    )
     sync_event = mp.Event()
     start_producer_event = mp.Event()
     producer_done_event = mp.Event()
@@ -260,7 +299,17 @@ def run_spmc_cross_process_suite() -> dict[str, Any]:
     # Launch Producer paced at ~25,000 eps (0.00004s sleep per tick)
     prod_proc = mp.Process(
         target=_producer_worker,
-        args=(shm_name_concurrency, slot_count, total_ticks, 0, sync_event, start_producer_event, producer_done_event, consumers_done_event, 0.00004),
+        args=(
+            shm_name_concurrency,
+            slot_count,
+            total_ticks,
+            0,
+            sync_event,
+            start_producer_event,
+            producer_done_event,
+            consumers_done_event,
+            0.00004,
+        ),
     )
     prod_proc.start()
     sync_event.wait(timeout=5.0)
@@ -274,7 +323,16 @@ def run_spmc_cross_process_suite() -> dict[str, Any]:
         ready_events.append(r_ev)
         p = mp.Process(
             target=_fast_consumer_worker,
-            args=(shm_name_concurrency, c_id, total_ticks, result_queue, r_ev, start_consumer_event, False, 15.0),
+            args=(
+                shm_name_concurrency,
+                c_id,
+                total_ticks,
+                result_queue,
+                r_ev,
+                start_consumer_event,
+                False,
+                15.0,
+            ),
         )
         p.start()
         consumers.append(p)
@@ -314,15 +372,20 @@ def run_spmc_cross_process_suite() -> dict[str, Any]:
         "consumer_count": len(consumer_stats),
         "consumers": consumer_stats,
     }
-    print(f"Producer Throughput: {throughput_eps:,.1f} ticks/s across {len(consumer_stats)} consumers")
+    print(
+        f"Producer Throughput: {throughput_eps:,.1f} ticks/s across {len(consumer_stats)} consumers"
+    )
     for c in consumer_stats:
-        print(f"  Consumer {c['consumer_id']} (PID {c['pid']}): {c['ticks_read']}/{c['expected_ticks']} read, "
-              f"Torn Reads: {c['torn_reads']}, Seq Errors: {c['seq_errors']}, "
-              f"Latency: p50={c['p50_us']}μs, p95={c['p95_us']}μs, p99={c['p99_us']}μs, p99.9={c['p999_us']}μs")
+        print(
+            f"  Consumer {c['consumer_id']} (PID {c['pid']}): {c['ticks_read']}/{c['expected_ticks']} read, "
+            f"Torn Reads: {c['torn_reads']}, Seq Errors: {c['seq_errors']}, "
+            f"Latency: p50={c['p50_us']}μs, p95={c['p95_us']}μs, p99={c['p99_us']}μs, p99.9={c['p999_us']}μs"
+        )
 
     # Clean up SHM 1
     try:
         from multiprocessing.shared_memory import SharedMemory
+
         s = SharedMemory(name=shm_name_concurrency, create=False)
         s.close()
         s.unlink()
@@ -336,7 +399,9 @@ def run_spmc_cross_process_suite() -> dict[str, Any]:
     burst_slots = 1024  # Small 1024-slot buffer to force multiple wraparounds
     burst_ticks = 30000  # ~30 full ring-buffer wraparounds
 
-    print(f"\n--- [SPMC Pillar 1] Test 2: High-Throughput Wraparound Stress ({burst_ticks} ticks, {burst_slots} slots) ---")
+    print(
+        f"\n--- [SPMC Pillar 1] Test 2: High-Throughput Wraparound Stress ({burst_ticks} ticks, {burst_slots} slots) ---"
+    )
     b_sync = mp.Event()
     b_start_prod = mp.Event()
     b_prod_done = mp.Event()
@@ -348,14 +413,33 @@ def run_spmc_cross_process_suite() -> dict[str, Any]:
     # Consumer with overrun skipping enabled
     b_consumer = mp.Process(
         target=_fast_consumer_worker,
-        args=(shm_name_burst, 0, burst_ticks, b_queue, b_ready, b_start_cons, True, 10.0),
+        args=(
+            shm_name_burst,
+            0,
+            burst_ticks,
+            b_queue,
+            b_ready,
+            b_start_cons,
+            True,
+            10.0,
+        ),
     )
     b_consumer.start()
 
     # Producer writing at full unthrottled burst speed
     b_prod = mp.Process(
         target=_producer_worker,
-        args=(shm_name_burst, burst_slots, burst_ticks, 0, b_sync, b_start_prod, b_prod_done, b_cons_done, 0.0),
+        args=(
+            shm_name_burst,
+            burst_slots,
+            burst_ticks,
+            0,
+            b_sync,
+            b_start_prod,
+            b_prod_done,
+            b_cons_done,
+            0.0,
+        ),
     )
     b_prod.start()
     b_sync.wait(timeout=5.0)
@@ -385,9 +469,13 @@ def run_spmc_cross_process_suite() -> dict[str, Any]:
         "burst_throughput_eps": round(b_burst_eps, 1),
         "consumer_result": b_res,
     }
-    print(f"Burst Speed: {b_burst_eps:,.1f} ticks/s ({burst_ticks // burst_slots} wraparounds)")
-    print(f"Consumer Result: Read={b_res.get('ticks_read')}, Torn Reads={b_res.get('torn_reads')}, "
-          f"Laps={b_res.get('total_laps')}, Skipped={b_res.get('skipped_ticks')}")
+    print(
+        f"Burst Speed: {b_burst_eps:,.1f} ticks/s ({burst_ticks // burst_slots} wraparounds)"
+    )
+    print(
+        f"Consumer Result: Read={b_res.get('ticks_read')}, Torn Reads={b_res.get('torn_reads')}, "
+        f"Laps={b_res.get('total_laps')}, Skipped={b_res.get('skipped_ticks')}"
+    )
 
     try:
         s = SharedMemory(name=shm_name_burst, create=False)
@@ -400,7 +488,9 @@ def run_spmc_cross_process_suite() -> dict[str, Any]:
     # Test 3: Slow Consumer Lap Detection & Overrun Accounting
     # =========================================================================
     shm_name_slow = f"test_mdrap_spmc_slow_{base_id}"
-    print("\n--- [SPMC Pillar 1] Test 3: Slow Consumer Lap Detection & Overrun Accounting ---")
+    print(
+        "\n--- [SPMC Pillar 1] Test 3: Slow Consumer Lap Detection & Overrun Accounting ---"
+    )
     slow_sync = mp.Event()
     slow_start_prod = mp.Event()
     slow_prod_done = mp.Event()
@@ -411,7 +501,17 @@ def run_spmc_cross_process_suite() -> dict[str, Any]:
 
     slow_prod = mp.Process(
         target=_producer_worker,
-        args=(shm_name_slow, 1024, 10000, 0, slow_sync, slow_start_prod, slow_prod_done, slow_cons_done, 0.0),
+        args=(
+            shm_name_slow,
+            1024,
+            10000,
+            0,
+            slow_sync,
+            slow_start_prod,
+            slow_prod_done,
+            slow_cons_done,
+            0.0,
+        ),
     )
     slow_prod.start()
     slow_sync.wait(timeout=5.0)
@@ -436,8 +536,10 @@ def run_spmc_cross_process_suite() -> dict[str, Any]:
 
     slow_res = slow_queue.get(timeout=5.0) if not slow_queue.empty() else {}
     results["slow_consumer_test"] = slow_res
-    print(f"Slow Consumer Result: Laps Detected={slow_res.get('laps_detected', 0)}, "
-          f"Skipped Ticks={slow_res.get('skipped_ticks', 0)}, Read Ticks={slow_res.get('ticks_read', 0)}")
+    print(
+        f"Slow Consumer Result: Laps Detected={slow_res.get('laps_detected', 0)}, "
+        f"Skipped Ticks={slow_res.get('skipped_ticks', 0)}, Read Ticks={slow_res.get('ticks_read', 0)}"
+    )
 
     try:
         s = SharedMemory(name=shm_name_slow, create=False)
@@ -461,14 +563,33 @@ def run_spmc_cross_process_suite() -> dict[str, Any]:
 
     c_prod = mp.Process(
         target=_producer_worker,
-        args=(shm_name_crash, 4096, 10000, 0, crash_sync, crash_start_prod, crash_prod_done, crash_cons_done, 0.0002),
+        args=(
+            shm_name_crash,
+            4096,
+            10000,
+            0,
+            crash_sync,
+            crash_start_prod,
+            crash_prod_done,
+            crash_cons_done,
+            0.0002,
+        ),
     )
     c_prod.start()
     crash_sync.wait(timeout=5.0)
 
     c_doomed = mp.Process(
         target=_fast_consumer_worker,
-        args=(shm_name_crash, 101, 10000, crash_queue, crash_ready1, crash_start_cons1, True, 10.0),
+        args=(
+            shm_name_crash,
+            101,
+            10000,
+            crash_queue,
+            crash_ready1,
+            crash_start_cons1,
+            True,
+            10.0,
+        ),
     )
     c_doomed.start()
     crash_ready1.wait(timeout=5.0)
@@ -485,7 +606,16 @@ def run_spmc_cross_process_suite() -> dict[str, Any]:
     crash_start_cons2 = mp.Event()
     c_replacement = mp.Process(
         target=_fast_consumer_worker,
-        args=(shm_name_crash, 102, 2000, crash_queue, crash_ready2, crash_start_cons2, True, 10.0),
+        args=(
+            shm_name_crash,
+            102,
+            2000,
+            crash_queue,
+            crash_ready2,
+            crash_start_cons2,
+            True,
+            10.0,
+        ),
     )
     c_replacement.start()
     crash_ready2.wait(timeout=5.0)
@@ -501,8 +631,10 @@ def run_spmc_cross_process_suite() -> dict[str, Any]:
         "doomed_terminated": True,
         "replacement_result": rep_res,
     }
-    print(f"Replacement Consumer Result: Read={rep_res.get('ticks_read', 0)}, "
-          f"Torn Reads={rep_res.get('torn_reads', 0)}, Seq Errors={rep_res.get('seq_errors', 0)}")
+    print(
+        f"Replacement Consumer Result: Read={rep_res.get('ticks_read', 0)}, "
+        f"Torn Reads={rep_res.get('torn_reads', 0)}, Seq Errors={rep_res.get('seq_errors', 0)}"
+    )
 
     try:
         s = SharedMemory(name=shm_name_crash, create=False)
@@ -539,7 +671,9 @@ def run_spmc_cross_process_suite() -> dict[str, Any]:
             "detected_invalidation": not is_valid,
             "epoch_changed": initial_epoch != new_epoch,
         }
-        print(f"Initial Epoch: {initial_epoch}, Restart Epoch: {new_epoch}, Invalidated: {not is_valid}")
+        print(
+            f"Initial Epoch: {initial_epoch}, Restart Epoch: {new_epoch}, Invalidated: {not is_valid}"
+        )
     except Exception as exc:
         results["epoch_invalidation_test"] = {"error": str(exc)}
         print(f"Epoch Invalidation Error: {exc}")
@@ -560,4 +694,6 @@ if __name__ == "__main__":
     os.makedirs("benchmarks", exist_ok=True)
     with open("benchmarks/spmc_cross_process_results.json", "w") as f:
         json.dump(res, f, indent=2)
-    print("\n[SPMC Pillar 1] Results successfully saved to benchmarks/spmc_cross_process_results.json")
+    print(
+        "\n[SPMC Pillar 1] Results successfully saved to benchmarks/spmc_cross_process_results.json"
+    )

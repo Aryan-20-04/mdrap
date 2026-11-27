@@ -22,13 +22,17 @@ def test_multithreaded_queue_eviction_race_safety():
     """Verify that concurrent multi-feed worker threads do not crash on queue.Full (MDRAP-CONC-01)."""
     # Create feed manager with very small queue to force immediate saturation
     manager = WebSocketFeedManager(symbols=["BTC/USD"], max_queue_size=5)
-    
+
     # Fill the queue to capacity
     for i in range(5):
         manager._queue.put_nowait(
-            RawEvent(source=f"FEED_{i}", payload={"p": 100 + i}, receive_timestamp=time.time())
+            RawEvent(
+                source=f"FEED_{i}",
+                payload={"p": 100 + i},
+                receive_timestamp=time.time(),
+            )
         )
-    
+
     assert manager._queue.full()
 
     errors = []
@@ -75,7 +79,9 @@ def test_multithreaded_queue_eviction_race_safety():
         t.join(timeout=5.0)
 
     # Invariant: ZERO unhandled exceptions escaped the producers
-    assert len(errors) == 0, f"Producer threads encountered unhandled exceptions: {errors}"
+    assert len(errors) == 0, (
+        f"Producer threads encountered unhandled exceptions: {errors}"
+    )
     assert frames_pushed == 250
     assert manager._drop_count > 0, "Drops should have occurred under saturation"
 
@@ -115,7 +121,9 @@ async def test_cross_thread_broadcast_queue_full_safety():
         for k in range(num_events):
             event_data = {"instrument_id": "BTC-USD", "price": 50000.0 + k}
             # Directly call safe enqueue as call_soon_threadsafe does across threads
-            loop.call_soon_threadsafe(st._enqueue_subscriber_event, dummy_ws, sub_q, event_data)
+            loop.call_soon_threadsafe(
+                st._enqueue_subscriber_event, dummy_ws, sub_q, event_data
+            )
             time.sleep(0.005)
 
     t = threading.Thread(target=worker_broadcast, args=(5,))

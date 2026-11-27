@@ -135,10 +135,14 @@ class TestMultiChannelSupervisor:
         # Do not start worker so queue stays full
         # First 4 offers succeed
         for i in range(1, 5):
-            assert supervisor.submit("SATURATED_CH", _make_event("V", "SATURATED_CH", i))
+            assert supervisor.submit(
+                "SATURATED_CH", _make_event("V", "SATURATED_CH", i)
+            )
 
         # 5th offer rejected
-        assert not supervisor.submit("SATURATED_CH", _make_event("V", "SATURATED_CH", 5))
+        assert not supervisor.submit(
+            "SATURATED_CH", _make_event("V", "SATURATED_CH", 5)
+        )
 
         metrics = supervisor.aggregate_metrics()
         assert metrics["channels"]["SATURATED_CH"]["events_dropped"] == 1

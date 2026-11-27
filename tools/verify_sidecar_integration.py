@@ -25,7 +25,9 @@ import time
 from typing import Any
 
 # Ensure project root in sys.path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
+sys.path.insert(
+    0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src"))
+)
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 # Ensure required salt for SecurityManager in tests
@@ -167,7 +169,9 @@ def run_sidecar_integration_suite() -> dict[str, Any]:
         "expected_version": VERSION,
         "tested_invalid_version": 999,
     }
-    print(f"Version negotiation: Incompatible version 999 rejected with ValueError: {version_rejected}")
+    print(
+        f"Version negotiation: Incompatible version 999 rejected with ValueError: {version_rejected}"
+    )
 
     # =========================================================================
     # 3. Live Multi-Process Daemon Integration
@@ -213,7 +217,9 @@ def run_sidecar_integration_suite() -> dict[str, Any]:
         "seq_inconsistencies": seq_inconsistencies,
         "monotonic_verified": seq_inconsistencies == 0,
     }
-    print(f"StreamClient: Received {len(received_events)} events with {seq_inconsistencies} sequence breaks.")
+    print(
+        f"StreamClient: Received {len(received_events)} events with {seq_inconsistencies} sequence breaks."
+    )
 
     # --- Test 3B: Bounded Communication & Replay Limits ---
     print("Testing Bounded Communication (Replay Limits)...")
@@ -224,7 +230,9 @@ def run_sidecar_integration_suite() -> dict[str, Any]:
     replay_resp = client._recv_json_line(q_sock)
     q_sock.close()
 
-    replay_bounded = replay_resp.get("status") == "ERROR" and "INVALID_RANGE" in replay_resp.get("error", "")
+    replay_bounded = replay_resp.get(
+        "status"
+    ) == "ERROR" and "INVALID_RANGE" in replay_resp.get("error", "")
     results["bounded_communication"] = {
         "oversized_replay_rejected": replay_bounded,
         "response": replay_resp,
@@ -266,13 +274,15 @@ def run_sidecar_integration_suite() -> dict[str, Any]:
     ping_sock.sendall(b"PING\n")
     ping_resp = ping_sock.recv(1024)
     ping_sock.close()
-    daemon_healthy_after_fuzz = (ping_resp == b"PONG\n")
+    daemon_healthy_after_fuzz = ping_resp == b"PONG\n"
 
     results["malformed_message_handling"] = {
         "fuzz_probes_sent": len(malformed_tests),
         "daemon_survived_fuzz": daemon_healthy_after_fuzz,
     }
-    print(f"Daemon Malformed Message Fuzz: Core Ingestion Healthy = {daemon_healthy_after_fuzz}")
+    print(
+        f"Daemon Malformed Message Fuzz: Core Ingestion Healthy = {daemon_healthy_after_fuzz}"
+    )
 
     # --- Test 3D: Consumer Crash Isolation ---
     print("Testing Consumer Crash Isolation (Abrupt Client Disconnect)...")
@@ -301,7 +311,9 @@ def run_sidecar_integration_suite() -> dict[str, Any]:
         "daemon_process_alive": daemon_proc.is_alive(),
         "unaffected_normal_consumer": normal_event.get("type") == "TICK",
     }
-    print(f"Consumer Isolation: Daemon unaffected by client hard-RST: {normal_event.get('type') == 'TICK'}")
+    print(
+        f"Consumer Isolation: Daemon unaffected by client hard-RST: {normal_event.get('type') == 'TICK'}"
+    )
 
     # Stop daemon process cleanly
     stop_ev.set()
@@ -327,4 +339,6 @@ if __name__ == "__main__":
     os.makedirs("benchmarks", exist_ok=True)
     with open("benchmarks/sidecar_integration_results.json", "w") as f:
         json.dump(res, f, indent=2)
-    print("\n[Sidecar Pillar 2] Results saved to benchmarks/sidecar_integration_results.json")
+    print(
+        "\n[Sidecar Pillar 2] Results saved to benchmarks/sidecar_integration_results.json"
+    )

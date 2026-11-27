@@ -90,7 +90,7 @@ def run_crash_recovery_drill() -> dict[str, Any]:
         # Phase 3: Reopen (Recovery 2) and verify total offset count
         log3 = IngestLog(tmpdir, fsync_policy="never")
         recovered_offset = log3._next_offset
-        
+
         # Read back all frames
         read_frames = list(log3.iter_from(0))
         log3.close()
@@ -99,7 +99,8 @@ def run_crash_recovery_drill() -> dict[str, Any]:
             "total_frames_written": total_frames,
             "recovered_next_offset": recovered_offset,
             "frames_read_back": len(read_frames),
-            "recovery_exact": recovered_offset == total_frames and len(read_frames) == total_frames,
+            "recovery_exact": recovered_offset == total_frames
+            and len(read_frames) == total_frames,
         }
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
@@ -133,8 +134,8 @@ def run_corruption_resilience_drill() -> dict[str, Any]:
 
         # Test Case 2: Byte flip in middle of file
         with open(target_file, "r+b") as f:
-            f.seek(500) # In the middle of an existing frame
-            f.write(b"\xFF\xFF\xFF\xFF")
+            f.seek(500)  # In the middle of an existing frame
+            f.write(b"\xff\xff\xff\xff")
 
         middle_corrupt_caught = False
         try:
@@ -146,7 +147,8 @@ def run_corruption_resilience_drill() -> dict[str, Any]:
             "torn_tail_auto_truncated": torn_recovered_frames == 100,
             "torn_frames_detected_count": corrupted_frames_detected,
             "middle_file_corruption_caught": middle_corrupt_caught,
-            "integrity_drill_passed": torn_recovered_frames == 100 and middle_corrupt_caught,
+            "integrity_drill_passed": torn_recovered_frames == 100
+            and middle_corrupt_caught,
         }
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
@@ -160,18 +162,28 @@ def main():
     print("\n[1/3] Benchmarking IngestLog Write Throughput across Fsync Policies...")
     fsync_results = run_fsync_policy_benchmarks()
     for k, v in fsync_results.items():
-        print(f"  -> Policy '{k}': Throughput = {v['throughput_eps']} EPS | Latency = {v['mean_latency_us']} us")
+        print(
+            f"  -> Policy '{k}': Throughput = {v['throughput_eps']} EPS | Latency = {v['mean_latency_us']} us"
+        )
 
     print("\n[2/3] Executing Deterministic Crash Recovery Drill...")
     crash_results = run_crash_recovery_drill()
-    print(f"  -> Written: {crash_results['total_frames_written']} | Recovered: {crash_results['recovered_next_offset']}")
+    print(
+        f"  -> Written: {crash_results['total_frames_written']} | Recovered: {crash_results['recovered_next_offset']}"
+    )
     print(f"  -> Exact State Reconstruction: {crash_results['recovery_exact']}")
 
     print("\n[3/3] Executing IngestLog Corruption & Torn-Write Drill...")
     corrupt_results = run_corruption_resilience_drill()
-    print(f"  -> Torn Tail Auto-Truncated: {corrupt_results['torn_tail_auto_truncated']} ({corrupt_results['torn_frames_detected_count']} torn frame caught)")
-    print(f"  -> Middle-of-File Corruption Caught: {corrupt_results['middle_file_corruption_caught']}")
-    print(f"  -> Overall Integrity Drill Passed: {corrupt_results['integrity_drill_passed']}")
+    print(
+        f"  -> Torn Tail Auto-Truncated: {corrupt_results['torn_tail_auto_truncated']} ({corrupt_results['torn_frames_detected_count']} torn frame caught)"
+    )
+    print(
+        f"  -> Middle-of-File Corruption Caught: {corrupt_results['middle_file_corruption_caught']}"
+    )
+    print(
+        f"  -> Overall Integrity Drill Passed: {corrupt_results['integrity_drill_passed']}"
+    )
 
     telemetry = {
         "timestamp": time.time(),

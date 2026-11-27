@@ -34,6 +34,7 @@ from mdrap.itch import (
     ITCHMessage,
     ITCHOrderBookTracker,
 )
+
 try:
     from mdrap.flow_tracker import (
         OrderFlowTracker,

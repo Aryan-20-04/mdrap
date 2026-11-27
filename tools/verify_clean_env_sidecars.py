@@ -16,7 +16,11 @@ import subprocess
 import sys
 import time
 
-PYTHON_EXE = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".clean_venv", "Scripts", "python.exe"))
+PYTHON_EXE = os.path.abspath(
+    os.path.join(
+        os.path.dirname(__file__), "..", ".clean_venv", "Scripts", "python.exe"
+    )
+)
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 os.environ["MDRAP_API_KEY_SALT"] = "clean_venv_verification_salt_123"
 
@@ -37,6 +41,7 @@ def test_clean_import():
 def _producer_proc(shm_name: str, stop_evt: mp.Event):
     """Produces ticks into shared memory for the SHM consumer example."""
     from mdrap.shm import SHMWriter
+
     writer = SHMWriter(name=shm_name, slot_count=1024)
     seq = 1
     try:
@@ -78,7 +83,9 @@ def test_shm_consumer_example():
             "-c",
             "import sys, os; sys.path.insert(0, 'src'); from examples.sidecar_shm_consumer import SidecarSHMConsumer; c = SidecarSHMConsumer('mdrap_feed'); c.run(max_events=50)",
         ]
-        res = subprocess.run(cmd, cwd=ROOT_DIR, capture_output=True, text=True, timeout=10.0)
+        res = subprocess.run(
+            cmd, cwd=ROOT_DIR, capture_output=True, text=True, timeout=10.0
+        )
         assert res.returncode == 0, f"SHM sidecar consumer failed: {res.stderr}"
         assert "events" in res.stdout, f"Unexpected output: {res.stdout}"
         print(f"[Clean Venv Test 2] SHM Sidecar Consumer Example: VERIFIED (PASSED)")
@@ -109,10 +116,14 @@ def test_socket_consumer_example():
             "-c",
             f"import sys, os; sys.path.insert(0, 'src'); from examples.sidecar_socket_consumer import SidecarSocketConsumer; c = SidecarSocketConsumer(host='127.0.0.1', port={port}); c.run(max_events=25)",
         ]
-        res = subprocess.run(cmd, cwd=ROOT_DIR, capture_output=True, text=True, timeout=10.0)
+        res = subprocess.run(
+            cmd, cwd=ROOT_DIR, capture_output=True, text=True, timeout=10.0
+        )
         assert res.returncode == 0, f"Socket sidecar consumer failed: {res.stderr}"
         assert "events" in res.stdout, f"Unexpected output: {res.stdout}"
-        print(f"[Clean Venv Test 3] TCP Socket Sidecar Consumer Example: VERIFIED (PASSED)")
+        print(
+            f"[Clean Venv Test 3] TCP Socket Sidecar Consumer Example: VERIFIED (PASSED)"
+        )
     finally:
         daemon.stop()
 

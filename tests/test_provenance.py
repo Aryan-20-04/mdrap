@@ -32,7 +32,9 @@ from mdrap.provenance import (
 from mdrap.storage import Store
 
 
-def _sample_event(event_id: str = "evt-001", symbol: str = "BTCUSDT") -> tuple[RawEvent, CanonicalEvent]:
+def _sample_event(
+    event_id: str = "evt-001", symbol: str = "BTCUSDT"
+) -> tuple[RawEvent, CanonicalEvent]:
     raw = RawEvent(
         source="BINANCE",
         payload={"s": symbol, "p": "50000.0", "q": "1.5", "t": 1700000000000},
@@ -115,7 +117,10 @@ def test_provenance_happy_path_memory_and_store():
             assert prov2.durability_status == ProvenanceDurabilityState.DURABLE.value
             ev2 = tracker_disk.export_evidence("evt-101")
             assert ev2["verification_status"] == "VERIFIED_TAMPER_EVIDENT"
-            assert ev2["integrity"]["persistence_state"] == ProvenanceDurabilityState.DURABLE.value
+            assert (
+                ev2["integrity"]["persistence_state"]
+                == ProvenanceDurabilityState.DURABLE.value
+            )
         finally:
             tracker_disk.close()
             store_disk.close()
@@ -142,7 +147,10 @@ def test_provenance_fault_injection_transient_database_lock():
     # Evidence status must be DEGRADED while uncommitted
     ev = tracker.export_evidence("evt-lock-01")
     assert ev["verification_status"] == "DEGRADED_FAILED_RECOVERABLE"
-    assert ev["integrity"]["persistence_state"] == ProvenanceDurabilityState.FAILED_RECOVERABLE.value
+    assert (
+        ev["integrity"]["persistence_state"]
+        == ProvenanceDurabilityState.FAILED_RECOVERABLE.value
+    )
 
     # Flush while still locked
     recovered = tracker.flush_pending_retries()
@@ -177,7 +185,9 @@ def test_provenance_fault_injection_unrecoverable_error():
     assert tracker.failed_unrecoverable_count == 1
     assert tracker.dropped_provenance_count == 1
     assert len(tracker._pending_retry) == 0
-    assert prov.durability_status == ProvenanceDurabilityState.FAILED_UNRECOVERABLE.value
+    assert (
+        prov.durability_status == ProvenanceDurabilityState.FAILED_UNRECOVERABLE.value
+    )
 
     ev = tracker.export_evidence("evt-fatal-01")
     assert ev["verification_status"] == "DEGRADED_FAILED_UNRECOVERABLE"

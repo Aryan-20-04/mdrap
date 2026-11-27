@@ -111,13 +111,9 @@ def check_benchmark_sync() -> bool:
     with open(honest_json, "r", encoding="utf-8") as f:
         honest_data = json.load(f)
 
-    c_kernel_eps = int(
-        stage_data["scheduling_execution"]["native_c_kernel"]["eps"]
-    )
+    c_kernel_eps = int(stage_data["scheduling_execution"]["native_c_kernel"]["eps"])
     python_p50 = honest_data["engine_step"]["latencies_us"]["p50"]
-    fanout_10_eps = int(
-        honest_data["fanout"]["10_clients"]["publish_throughput_eps"]
-    )
+    fanout_10_eps = int(honest_data["fanout"]["10_clients"]["publish_throughput_eps"])
 
     readme_text = (_REPO_ROOT / "README.md").read_text(encoding="utf-8")
 
@@ -183,8 +179,12 @@ def check_relative_links() -> bool:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="MDRAP Documentation Verification Guardrail")
-    parser.add_argument("--skip-tests", action="store_true", help="Skip running doc-tests")
+    parser = argparse.ArgumentParser(
+        description="MDRAP Documentation Verification Guardrail"
+    )
+    parser.add_argument(
+        "--skip-tests", action="store_true", help="Skip running doc-tests"
+    )
     args = parser.parse_args()
 
     print("==========================================")

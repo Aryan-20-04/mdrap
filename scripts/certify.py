@@ -32,9 +32,7 @@ from mdrap.engine import Engine
 
 def _run_cmd(cmd: list[str]) -> tuple[bool, str]:
     try:
-        res = subprocess.run(
-            cmd, cwd=_ROOT, capture_output=True, text=True, timeout=60
-        )
+        res = subprocess.run(cmd, cwd=_ROOT, capture_output=True, text=True, timeout=60)
         return (res.returncode == 0, res.stdout + res.stderr)
     except Exception as exc:
         return (False, str(exc))
@@ -43,7 +41,7 @@ def _run_cmd(cmd: list[str]) -> tuple[bool, str]:
 def generate_system_certificate(secret_key: str | None = None) -> dict:
     cert_id = f"CERT-MDRAP-{int(time.time())}-{os.getpid()}"
     ts_utc = datetime.now(timezone.utc).isoformat()
-    
+
     # 1. System & Environment Telemetry
     env_info = {
         "platform": platform.platform(),
@@ -52,16 +50,18 @@ def generate_system_certificate(secret_key: str | None = None) -> dict:
         "python_compiler": platform.python_compiler(),
         "architecture": platform.architecture()[0],
     }
-    
+
     # Git Commit Lineage
     ok, git_sha = _run_cmd(["git", "rev-parse", "HEAD"])
     commit_sha = git_sha.strip() if ok else "unversioned"
 
     print("=" * 70)
-    print(f"MDRAP INSTITUTIONAL COMPLIANCE & OPERATIONAL CERTIFICATION (v{__version__})")
+    print(
+        f"MDRAP INSTITUTIONAL COMPLIANCE & OPERATIONAL CERTIFICATION (v{__version__})"
+    )
     print(f"Commit: {commit_sha[:12]} | Host: {platform.node()}")
     print("=" * 70)
-    
+
     # Gate 1: Doc-Tests & Link Verifications
     print("\n[Gate 1/5] Running Documentation Guardrail & Doc-Tests...")
     ok_docs, docs_out = _run_cmd([sys.executable, "tools/check_docs.py"])
@@ -73,6 +73,7 @@ def generate_system_certificate(secret_key: str | None = None) -> dict:
     # Gate 2: Security & Fail-Closed Boundaries
     print("\n[Gate 2/5] Verifying Security Boundaries & Cryptographic Salts...")
     from mdrap.security import SecurityManager, Role
+
     os.environ["MDRAP_API_KEY_SALT"] = "cert_ephemeral_salt_valid_2026"
     sec = SecurityManager()
     adm_tok = "mdrap_live_adm_cert_validation_key_123"
@@ -81,28 +82,47 @@ def generate_system_certificate(secret_key: str | None = None) -> dict:
     sec.register_feed_secret("CERT_FEED", "preshared_feed_secret_998")
     sig = sec.sign_payload("CERT_FEED", {"symbol": "BTC/USDT", "bid": 65000.0})
     assert sec.verify_payload("CERT_FEED", {"symbol": "BTC/USDT", "bid": 65000.0}, sig)
-    assert not sec.verify_payload("CERT_FEED", {"symbol": "BTC/USDT", "bid": 65001.0}, sig)
+    assert not sec.verify_payload(
+        "CERT_FEED", {"symbol": "BTC/USDT", "bid": 65001.0}, sig
+    )
     print("  -> PASS (Constant-time HMAC-SHA256 & Salted RBAC enforced)")
 
     # Gate 3: SBE Differential Fuzzing
-    print("\n[Gate 3/5] Executing Differential Parser Fuzzing (1,000 randomized frames)...")
-    ok_fuzz, fuzz_out = _run_cmd([sys.executable, "fuzz/fuzz_differential.py", "--iterations", "1000"])
+    print(
+        "\n[Gate 3/5] Executing Differential Parser Fuzzing (1,000 randomized frames)..."
+    )
+    ok_fuzz, fuzz_out = _run_cmd(
+        [sys.executable, "fuzz/fuzz_differential.py", "--iterations", "1000"]
+    )
     assert ok_fuzz, f"Fuzzing failed: {fuzz_out}"
     print("  -> PASS (1,000 fuzz iterations: zero crashes, zero memory faults)")
 
     # Gate 4: Regulatory Conformance (MiFID II RTS 25 & SEC 605/606)
-    print("\n[Gate 4/5] Testing Regulatory Conformance (MiFID II PTP & SEC 605/606 TCA)...")
-    ok_reg, reg_out = _run_cmd([sys.executable, "-m", "pytest", "tests/test_clock_ptp.py", "tests/test_tca.py", "-q"])
+    print(
+        "\n[Gate 4/5] Testing Regulatory Conformance (MiFID II PTP & SEC 605/606 TCA)..."
+    )
+    ok_reg, reg_out = _run_cmd(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "tests/test_clock_ptp.py",
+            "tests/test_tca.py",
+            "-q",
+        ]
+    )
     assert ok_reg, f"Regulatory tests failed: {reg_out}"
     print("  -> PASS (PTP IEEE 1588 nanosecond clock sync & execution TCA verified)")
 
     # Gate 5: Microsecond Engine Determinism & Latency Benchmark
-    print("\n[Gate 5/5] Running Deterministic Fold Latency Benchmark (10,000 events)...")
+    print(
+        "\n[Gate 5/5] Running Deterministic Fold Latency Benchmark (10,000 events)..."
+    )
     clock = MonotonicClock()
     engine = Engine(clock=clock)
     n_events = 10_000
     latencies_ns: list[int] = []
-    
+
     for i in range(n_events):
         raw = RawEvent(
             source="EXCHANGE_TEST",
@@ -114,7 +134,7 @@ def generate_system_certificate(secret_key: str | None = None) -> dict:
                 "sequence": i + 1,
                 "bid": 65000.0 + (i % 20) * 0.1,
                 "ask": 65000.5 + (i % 20) * 0.1,
-            }
+            },
         )
         t0 = clock.now_ns()
         dec = engine.submit(raw)
@@ -126,15 +146,26 @@ def generate_system_certificate(secret_key: str | None = None) -> dict:
     p95_us = round(latencies_ns[int(n_events * 0.95)] / 1000.0, 2)
     p99_us = round(latencies_ns[int(n_events * 0.99)] / 1000.0, 2)
     p999_us = round(latencies_ns[int(n_events * 0.999)] / 1000.0, 2)
-    print(f"  -> PASS (p50: {p50_us}us | p95: {p95_us}us | p99: {p99_us}us | p99.9: {p999_us}us)")
+    print(
+        f"  -> PASS (p50: {p50_us}us | p95: {p95_us}us | p99: {p99_us}us | p99.9: {p999_us}us)"
+    )
 
     from mdrap.fastpath import is_available, has_native_shm
+
     c_available = is_available()
-    c_status = "ACTIVE (Vectorized Native C DLL)" if c_available else "FALLBACK (Pure Python Parity)"
+    c_status = (
+        "ACTIVE (Vectorized Native C DLL)"
+        if c_available
+        else "FALLBACK (Pure Python Parity)"
+    )
 
     # 3. Assemble Immutable Certificate Body
-    key = (secret_key or os.environ.get("MDRAP_AUDIT_SECRET_KEY") or "mdrap_institutional_root_authority_2026").encode("utf-8")
-    
+    key = (
+        secret_key
+        or os.environ.get("MDRAP_AUDIT_SECRET_KEY")
+        or "mdrap_institutional_root_authority_2026"
+    ).encode("utf-8")
+
     body = {
         "certificate_id": cert_id,
         "issued_at_utc": ts_utc,
@@ -163,22 +194,22 @@ def generate_system_certificate(secret_key: str | None = None) -> dict:
             "cat_nls_traceability": "COMPLIANT (immutable cryptographic Merkle lineage)",
         },
     }
-    
+
     statement = json.dumps(body, sort_keys=True).encode("utf-8")
     signature = hmac.new(key, statement, hashlib.sha256).hexdigest()
-    
+
     certificate = {
         **body,
         "attestation_signature": {
             "algorithm": "HMAC-SHA256",
             "signature": signature,
-        }
+        },
     }
-    
+
     # Write JSON certificate
     cert_path_json = _ROOT / "MDRAP_SYSTEM_CERTIFICATE.json"
     cert_path_json.write_text(json.dumps(certificate, indent=2), encoding="utf-8")
-    
+
     # Write Markdown Certificate
     cert_path_md = _ROOT / "MDRAP_SYSTEM_CERTIFICATE.md"
     md_content = f"""# MDRAP Institutional Operational & Security Certificate
@@ -192,9 +223,9 @@ def generate_system_certificate(secret_key: str | None = None) -> dict:
 ---
 
 ## 1. System & Runtime Environment
-- **Host Platform:** `{env_info['platform']}`
-- **Processor:** `{env_info['processor']}`
-- **CPython Runtime:** `{env_info['python_version']}` ({env_info['architecture']})
+- **Host Platform:** `{env_info["platform"]}`
+- **Processor:** `{env_info["processor"]}`
+- **CPython Runtime:** `{env_info["python_version"]}` ({env_info["architecture"]})
 - **Engine Hot Path:** `{c_status}`
 
 ---
@@ -225,7 +256,7 @@ def generate_system_certificate(secret_key: str | None = None) -> dict:
 - **FINRA CAT:** Immutable Merkle-hashed transaction lineage.
 """
     cert_path_md.write_text(md_content, encoding="utf-8")
-    
+
     print("\n" + "=" * 70)
     print(f"[SUCCESS] Certificate Generated Successfully!")
     print(f"  -> JSON: {cert_path_json}")

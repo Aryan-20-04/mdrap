@@ -63,6 +63,7 @@ from mdrap.protocol import (
     pack_depth_frame,
     MAGIC,
 )
+
 try:
     from mdrap.pcap import MoldUDP64Dissector, MOLDUDP64_HEADER_STRUCT
 except ImportError:

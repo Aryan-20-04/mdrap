@@ -60,8 +60,12 @@ def run_phase11_operational_drills():
 
     # Drill 1: Operator Forced Failover (Graceful hand-off)
     print("\n[Drill 1] Operator Forced Failover...")
-    c1 = ConsensusCoordinator("node-01", ["node-01", "node-02", "node-03"], lease_duration_sec=0.2)
-    c2 = ConsensusCoordinator("node-02", ["node-01", "node-02", "node-03"], lease_duration_sec=0.2)
+    c1 = ConsensusCoordinator(
+        "node-01", ["node-01", "node-02", "node-03"], lease_duration_sec=0.2
+    )
+    c2 = ConsensusCoordinator(
+        "node-02", ["node-01", "node-02", "node-03"], lease_duration_sec=0.2
+    )
 
     tok1 = c1.request_leadership()
     assert tok1.leader_id == "node-01"
@@ -86,7 +90,9 @@ def run_phase11_operational_drills():
     # Drill 2: Standby Replica Rolling Restart
     print("\n[Drill 2] Standby Replica Rolling Restart...")
     t0 = time.perf_counter()
-    c3 = ConsensusCoordinator("node-03", ["node-01", "node-02", "node-03"], lease_duration_sec=0.2)
+    c3 = ConsensusCoordinator(
+        "node-03", ["node-01", "node-02", "node-03"], lease_duration_sec=0.2
+    )
     tok2_renewed = c2.renew_lease()
     assert tok2_renewed.leader_id == "node-02"
     c3.sync_epoch(tok2_renewed.epoch)
@@ -150,11 +156,15 @@ def run_phase11_operational_drills():
         log.append(RawEvent("DRILL", {"seq": i, "val": 100 + i}, time.time()))
     log.close()
 
-    seg_files = [f for f in os.listdir(wal_dir) if f.startswith("segment_") and f.endswith(".log")]
+    seg_files = [
+        f
+        for f in os.listdir(wal_dir)
+        if f.startswith("segment_") and f.endswith(".log")
+    ]
     seg_path = os.path.join(wal_dir, seg_files[0])
     with open(seg_path, "r+b") as f:
         f.seek(32 + 28 + 20)
-        f.write(b"\xFF\xFF")
+        f.write(b"\xff\xff")
 
     corrupt_detected = False
     try:
@@ -185,7 +195,9 @@ def run_phase11_operational_drills():
         "stream_resumed": True,
         "status": "PASS",
     }
-    print(f"         Corrupt frame detected via CRC error. Forensics status: {audit_res.status}. Quarantined & resumed.")
+    print(
+        f"         Corrupt frame detected via CRC error. Forensics status: {audit_res.status}. Quarantined & resumed."
+    )
 
     # Drill 6: Emergency API Key Revocation Under Load
     print("\n[Drill 6] Emergency API Key Revocation Under Load...")
@@ -238,16 +250,22 @@ def run_phase11_operational_drills():
     st_live.commit()
 
     t0 = time.perf_counter()
-    bk_meta = backup_database(live_db, backup_db, checkpoint=True, verify_audit=True, compress=False)
+    bk_meta = backup_database(
+        live_db, backup_db, checkpoint=True, verify_audit=True, compress=False
+    )
     t_backup_ms = (time.perf_counter() - t0) * 1000.0
 
     t0 = time.perf_counter()
-    rst_meta = restore_database(backup_db, restored_db, force=True, safety_backup=False, verify_audit=False)
+    rst_meta = restore_database(
+        backup_db, restored_db, force=True, safety_backup=False, verify_audit=False
+    )
     t_restore_ms = (time.perf_counter() - t0) * 1000.0
 
     conn_live = sqlite3.connect(live_db)
     conn_rst = sqlite3.connect(restored_db)
-    live_count = conn_live.execute("SELECT COUNT(*) FROM canonical_events").fetchone()[0]
+    live_count = conn_live.execute("SELECT COUNT(*) FROM canonical_events").fetchone()[
+        0
+    ]
     rst_count = conn_rst.execute("SELECT COUNT(*) FROM canonical_events").fetchone()[0]
     conn_live.close()
     conn_rst.close()
@@ -263,9 +281,13 @@ def run_phase11_operational_drills():
         "integrity_verified": True,
         "status": "PASS",
     }
-    print(f"         Backup: {t_backup_ms:.2f} ms | Restore: {t_restore_ms:.2f} ms | 500/500 records verified.")
+    print(
+        f"         Backup: {t_backup_ms:.2f} ms | Restore: {t_restore_ms:.2f} ms | 500/500 records verified."
+    )
 
-    out_file = os.path.join(_REPO_ROOT, "audit", "phase11", "operational_drill_results.json")
+    out_file = os.path.join(
+        _REPO_ROOT, "audit", "phase11", "operational_drill_results.json"
+    )
     with open(out_file, "w", encoding="utf-8") as f:
         json.dump(results, f, indent=2)
     print(f"\n[OK] Saved operational drill results to: {out_file}")

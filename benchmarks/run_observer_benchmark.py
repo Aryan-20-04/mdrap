@@ -15,7 +15,14 @@ import time
 from typing import Any, Dict, List
 
 # Ensure paths
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "external_sidecar", "mdrap_observer")))
+sys.path.insert(
+    0,
+    os.path.abspath(
+        os.path.join(
+            os.path.dirname(__file__), "..", "external_sidecar", "mdrap_observer"
+        )
+    ),
+)
 from observer.state import ObserverState, VENUES, CORE_ASSETS
 from observer.exporter import ObserverExporter
 
@@ -23,6 +30,7 @@ from observer.exporter import ObserverExporter
 def get_rss_mb() -> float:
     try:
         import psutil
+
         return psutil.Process(os.getpid()).memory_info().rss / (1024 * 1024)
     except Exception:
         return 0.0
@@ -32,7 +40,7 @@ def benchmark_observer_state_processing(num_events: int = 100_000) -> Dict[str, 
     state = ObserverState()
     venues = VENUES
     symbols = ["BTCUSDT", "BTC-USD", "ETHUSDT", "ETH-USD"]
-    
+
     # Pre-generate synthetic events
     events = []
     for i in range(1, num_events + 1):
@@ -40,21 +48,23 @@ def benchmark_observer_state_processing(num_events: int = 100_000) -> Dict[str, 
         symbol = symbols[i % len(symbols)]
         base_price = 65000.0 if "BTC" in symbol else 3400.0
         p = base_price + (i % 200) * 0.25
-        events.append({
-            "type": "TICK",
-            "seq": i,
-            "feed_seq": (i // len(venues)) + 1,
-            "venue": venue,
-            "source": venue,
-            "sym": symbol,
-            "p": p,
-            "q": 1.25,
-            "bid": p - 0.5,
-            "ask": p + 0.5,
-            "bid_size": 5.0,
-            "ask_size": 4.0,
-            "ts": time.time(),
-        })
+        events.append(
+            {
+                "type": "TICK",
+                "seq": i,
+                "feed_seq": (i // len(venues)) + 1,
+                "venue": venue,
+                "source": venue,
+                "sym": symbol,
+                "p": p,
+                "q": 1.25,
+                "bid": p - 0.5,
+                "ask": p + 0.5,
+                "bid_size": 5.0,
+                "ask_size": 4.0,
+                "ts": time.time(),
+            }
+        )
 
     rss_start = get_rss_mb()
     t_cpu_start = time.process_time()
@@ -98,15 +108,21 @@ def benchmark_observer_state_processing(num_events: int = 100_000) -> Dict[str, 
             "active_symbols": len(state.quotes),
             "total_stream_gaps": state.stream_health.gaps,
             "total_feed_gaps": sum(v.feed_gaps for v in state.health.values()),
-            "total_feed_duplicates": sum(v.feed_duplicates for v in state.health.values()),
-            "total_feed_out_of_order": sum(v.feed_out_of_order for v in state.health.values()),
-        }
+            "total_feed_duplicates": sum(
+                v.feed_duplicates for v in state.health.values()
+            ),
+            "total_feed_out_of_order": sum(
+                v.feed_out_of_order for v in state.health.values()
+            ),
+        },
     }
 
 
 def benchmark_observer_exporter(num_records: int = 50_000) -> Dict[str, Any]:
     tmpdir = tempfile.mkdtemp(prefix="obs_bench_exp_")
-    exporter = ObserverExporter(output_dir=tmpdir, flush_interval_s=0.2, queue_size=100000)
+    exporter = ObserverExporter(
+        output_dir=tmpdir, flush_interval_s=0.2, queue_size=100000
+    )
     exporter.start()
 
     rss_start = get_rss_mb()
@@ -140,7 +156,11 @@ def benchmark_observer_exporter(num_records: int = 50_000) -> Dict[str, Any]:
     rss_end = get_rss_mb()
 
     # Measure file sizes
-    events_sz = os.path.getsize(exporter.events_file) if os.path.exists(exporter.events_file) else 0
+    events_sz = (
+        os.path.getsize(exporter.events_file)
+        if os.path.exists(exporter.events_file)
+        else 0
+    )
 
     shutil.rmtree(tmpdir, ignore_errors=True)
 
@@ -154,13 +174,15 @@ def benchmark_observer_exporter(num_records: int = 50_000) -> Dict[str, Any]:
         "dropped_records": exporter.dropped_records,
         "write_errors": exporter.write_errors,
         "file_size_bytes": events_sz,
-        "avg_bytes_per_record": round(events_sz / num_records, 1) if num_records > 0 else 0,
+        "avg_bytes_per_record": round(events_sz / num_records, 1)
+        if num_records > 0
+        else 0,
         "cpu_time_s": round(t_cpu, 3),
         "rss_mb": {
             "start": round(rss_start, 2),
             "end": round(rss_end, 2),
             "growth": round(rss_end - rss_start, 2),
-        }
+        },
     }
 
 
@@ -207,26 +229,48 @@ def main():
         "python": sys.version,
     }
 
-    print("\n[1/3] Benchmarking Observer In-Memory State Engine (5 venues x 4 assets)...")
+    print(
+        "\n[1/3] Benchmarking Observer In-Memory State Engine (5 venues x 4 assets)..."
+    )
     state_res = benchmark_observer_state_processing(100_000)
     results["state_processing"] = state_res
-    print(f"  Processed {state_res['num_events']:,} events in {state_res['elapsed_s']:.3f}s: {state_res['throughput_eps']:,.1f} EPS")
-    print(f"  Latency: p50={state_res['latency_us']['p50']:.1f}us | p95={state_res['latency_us']['p95']:.1f}us | p99={state_res['latency_us']['p99']:.1f}us | max={state_res['latency_us']['max']:.1f}us")
-    print(f"  Memory Growth: {state_res['rss_mb']['growth']:.2f} MB | CPU: {state_res['cpu_time_s']:.2f}s")
+    print(
+        f"  Processed {state_res['num_events']:,} events in {state_res['elapsed_s']:.3f}s: {state_res['throughput_eps']:,.1f} EPS"
+    )
+    print(
+        f"  Latency: p50={state_res['latency_us']['p50']:.1f}us | p95={state_res['latency_us']['p95']:.1f}us | p99={state_res['latency_us']['p99']:.1f}us | max={state_res['latency_us']['max']:.1f}us"
+    )
+    print(
+        f"  Memory Growth: {state_res['rss_mb']['growth']:.2f} MB | CPU: {state_res['cpu_time_s']:.2f}s"
+    )
 
-    print("\n[2/3] Benchmarking Observer Async Exporter (JSONL serialization & flush)...")
+    print(
+        "\n[2/3] Benchmarking Observer Async Exporter (JSONL serialization & flush)..."
+    )
     exp_res = benchmark_observer_exporter(50_000)
     results["exporter"] = exp_res
-    print(f"  Enqueue Rate:    {exp_res['enqueue_eps']:>10,.1f} records/sec ({exp_res['enqueue_elapsed_s']:.3f}s)")
-    print(f"  Disk Drain Rate: {exp_res['drain_throughput_eps']:>10,.1f} records/sec ({exp_res['total_flush_elapsed_s']:.3f}s)")
-    print(f"  Written: {exp_res['events_written']:,} | Dropped: {exp_res['dropped_records']} | Errors: {exp_res['write_errors']}")
-    print(f"  File Size: {exp_res['file_size_bytes'] / (1024*1024):.2f} MB ({exp_res['avg_bytes_per_record']} bytes/record)")
+    print(
+        f"  Enqueue Rate:    {exp_res['enqueue_eps']:>10,.1f} records/sec ({exp_res['enqueue_elapsed_s']:.3f}s)"
+    )
+    print(
+        f"  Disk Drain Rate: {exp_res['drain_throughput_eps']:>10,.1f} records/sec ({exp_res['total_flush_elapsed_s']:.3f}s)"
+    )
+    print(
+        f"  Written: {exp_res['events_written']:,} | Dropped: {exp_res['dropped_records']} | Errors: {exp_res['write_errors']}"
+    )
+    print(
+        f"  File Size: {exp_res['file_size_bytes'] / (1024 * 1024):.2f} MB ({exp_res['avg_bytes_per_record']} bytes/record)"
+    )
 
     print("\n[3/3] Benchmarking Queue Saturation & Drop Accounting...")
     sat_res = benchmark_queue_saturation()
     results["queue_saturation"] = sat_res
-    print(f"  Burst: {sat_res['burst_count']:,} -> Written: {sat_res['events_written']:,} | Dropped: {sat_res['dropped_records']:,}")
-    print(f"  Drop Accounting Accurate: {sat_res['accounting_accurate']} (Sum: {sat_res['sum_accounted']:,})")
+    print(
+        f"  Burst: {sat_res['burst_count']:,} -> Written: {sat_res['events_written']:,} | Dropped: {sat_res['dropped_records']:,}"
+    )
+    print(
+        f"  Drop Accounting Accurate: {sat_res['accounting_accurate']} (Sum: {sat_res['sum_accounted']:,})"
+    )
 
     out_file = os.path.join("audit", "benchmark", "raw", "observer_benchmark.json")
     with open(out_file, "w") as fp:

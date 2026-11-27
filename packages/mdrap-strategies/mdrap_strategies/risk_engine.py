@@ -44,8 +44,12 @@ class StrictRiskLimits:
     price_collar_bps: float = 50.0  # 50 bps max deviation from mid (0.50%)
     max_drawdown_pct: float = 5.0  # 5.0% maximum portfolio drawdown kill-switch
     max_quote_age_s: float = 5.0  # Stale market data quote expiration threshold
-    per_symbol_notional_cap: float = 500_000.0  # Max notional allocated to any single symbol
-    per_venue_notional_cap: float = 750_000.0  # Max notional allocated to any single venue
+    per_symbol_notional_cap: float = (
+        500_000.0  # Max notional allocated to any single symbol
+    )
+    per_venue_notional_cap: float = (
+        750_000.0  # Max notional allocated to any single venue
+    )
     allow_short: bool = True  # Enable/disable short selling
     idempotency_window_s: float = 60.0  # Duplicate order check window
 
@@ -122,13 +126,22 @@ class InstitutionalRiskEngine:
             self.peak_equity = current_equity
 
         if self.peak_equity > 0:
-            drawdown_pct = ((self.peak_equity - current_equity) / self.peak_equity) * 100.0
+            drawdown_pct = (
+                (self.peak_equity - current_equity) / self.peak_equity
+            ) * 100.0
             if drawdown_pct >= self.limits.max_drawdown_pct:
                 self.activate_kill_switch(
                     f"Max portfolio drawdown breached: {drawdown_pct:.2f}% >= {self.limits.max_drawdown_pct:.2f}%"
                 )
 
-    def update_position(self, symbol: str, fill_qty: float, fill_price: float, side: str, venue: str = "DEFAULT") -> None:
+    def update_position(
+        self,
+        symbol: str,
+        fill_qty: float,
+        fill_price: float,
+        side: str,
+        venue: str = "DEFAULT",
+    ) -> None:
         """Update inventory and average cost following an executed fill."""
         cur_qty = self.positions.get(symbol, 0.0)
         cur_cost = self.avg_costs.get(symbol, 0.0)
@@ -148,7 +161,9 @@ class InstitutionalRiskEngine:
             self.avg_costs[symbol] = fill_price
 
         self.positions[symbol] = new_qty
-        self.venue_exposures[venue] = self.venue_exposures.get(venue, 0.0) + (fill_qty * fill_price)
+        self.venue_exposures[venue] = self.venue_exposures.get(venue, 0.0) + (
+            fill_qty * fill_price
+        )
         self.persist_state()
 
     def validate_order(
@@ -172,11 +187,16 @@ class InstitutionalRiskEngine:
 
         # Gate 1: Emergency Kill-Switch Check
         if self.kill_switch_active:
-            return self._reject("KILL_SWITCH", f"Kill-switch is ACTIVE: {self.kill_switch_reason}")
+            return self._reject(
+                "KILL_SWITCH", f"Kill-switch is ACTIVE: {self.kill_switch_reason}"
+            )
 
         # Gate 2: Positive & Valid Quantity
         if not math.isfinite(quantity) or quantity <= 0:
-            return self._reject("INVALID_QUANTITY", f"Order quantity {quantity} is non-positive or non-finite")
+            return self._reject(
+                "INVALID_QUANTITY",
+                f"Order quantity {quantity} is non-positive or non-finite",
+            )
 
         # Gate 3: Maximum Order Quantity (Fat-Finger Collar)
         if quantity > self.limits.max_order_qty:
@@ -196,7 +216,12 @@ class InstitutionalRiskEngine:
 
         # Gate 5: Price Deviation Collar for Limit Orders
         ref_price = price or prevailing_mid
-        if order_type.upper() == "LIMIT" and price is not None and prevailing_mid is not None and prevailing_mid > 0:
+        if (
+            order_type.upper() == "LIMIT"
+            and price is not None
+            and prevailing_mid is not None
+            and prevailing_mid > 0
+        ):
             dev_bps = abs(price - prevailing_mid) / prevailing_mid * 10_000.0
             if dev_bps > self.limits.price_collar_bps:
                 return self._reject(
@@ -220,7 +245,9 @@ class InstitutionalRiskEngine:
         projected_pos = current_pos + (quantity if side.upper() == "BUY" else -quantity)
 
         if not self.limits.allow_short and projected_pos < 0:
-            return self._reject("SHORT_SELLING_DISABLED", "Short selling is disabled by risk policy")
+            return self._reject(
+                "SHORT_SELLING_DISABLED", "Short selling is disabled by risk policy"
+            )
 
         if abs(projected_pos) > self.limits.max_position_qty:
             return self._reject(
@@ -246,7 +273,12 @@ class InstitutionalRiskEngine:
             )
 
         # Gate 10: Gross & Net Portfolio Exposure
-        gross_exp = sum(abs(q) * self.avg_costs.get(s, 100.0) for s, q in self.positions.items()) + order_notional
+        gross_exp = (
+            sum(
+                abs(q) * self.avg_costs.get(s, 100.0) for s, q in self.positions.items()
+            )
+            + order_notional
+        )
         if gross_exp > self.limits.max_gross_exposure_usd:
             return self._reject(
                 "GROSS_EXPOSURE",
@@ -256,7 +288,10 @@ class InstitutionalRiskEngine:
         # Gate 11: Idempotency & Duplicate Order Prevention
         if idempotency_key:
             last_seen = self._seen_orders.get(idempotency_key)
-            if last_seen is not None and (now - last_seen) < self.limits.idempotency_window_s:
+            if (
+                last_seen is not None
+                and (now - last_seen) < self.limits.idempotency_window_s
+            ):
                 return self._reject(
                     "DUPLICATE_ORDER",
                     f"Duplicate order submission rejected (idempotency token '{idempotency_key}' active)",
@@ -276,7 +311,9 @@ class InstitutionalRiskEngine:
         if not self.persistence_path:
             return
         try:
-            os.makedirs(os.path.dirname(os.path.abspath(self.persistence_path)), exist_ok=True)
+            os.makedirs(
+                os.path.dirname(os.path.abspath(self.persistence_path)), exist_ok=True
+            )
             payload = {
                 "peak_equity": self.peak_equity,
                 "current_equity": self.current_equity,
@@ -308,6 +345,9 @@ class InstitutionalRiskEngine:
             self.avg_costs = data.get("avg_costs", {})
             self.venue_exposures = data.get("venue_exposures", {})
             self.reject_counts = data.get("reject_counts", {})
-            logger.info("[risk_engine] Successfully restored risk state from %s", self.persistence_path)
+            logger.info(
+                "[risk_engine] Successfully restored risk state from %s",
+                self.persistence_path,
+            )
         except Exception as exc:
             logger.error("[risk_engine] Failed to load risk state: %s", exc)

@@ -19,10 +19,15 @@ from mdrap.quality import QualityEngine
 from mdrap.fastpath import FastQualityEngine, is_available as fastpath_is_available
 
 
+pytestmark = pytest.mark.native
+
+
 @pytest.fixture
 def engines():
     """Create paired Python and C engines with identical baseline state."""
-    assert fastpath_is_available(), "Native C fastpath extension must be compiled and available"
+    assert fastpath_is_available(), (
+        "Native C fastpath extension must be compiled and available"
+    )
     py_eng = QualityEngine()
     c_eng = FastQualityEngine()
     return py_eng, c_eng

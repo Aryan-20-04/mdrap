@@ -320,7 +320,12 @@ def test_cmd_service_parser_dispatch():
 
 
 def test_ticker_first_and_mnemonic_dispatch():
-    from mdrap.cli import KNOWN_SYMBOLS, MNEMONIC_MAP, QUICK_ACTIONS, render_command_palette
+    from mdrap.cli import (
+        KNOWN_SYMBOLS,
+        MNEMONIC_MAP,
+        QUICK_ACTIONS,
+        render_command_palette,
+    )
     from mdrap.term import Console
 
     # Verify symbol mappings
@@ -664,7 +669,9 @@ def test_incident_show_export_and_standalone_verify(tmp_path):
 
     # 4. Incident export
     evidence_file = str(tmp_path / "evidence.json")
-    args_export = parser.parse_args(["incident", "export", inc_id, "-o", evidence_file, "--db", db_file])
+    args_export = parser.parse_args(
+        ["incident", "export", inc_id, "-o", evidence_file, "--db", db_file]
+    )
     assert cmd_incident(args_export) == 0
     assert os.path.exists(evidence_file)
 
@@ -682,4 +689,3 @@ def test_incident_show_export_and_standalone_verify(tmp_path):
 
     args_verify_tampered = parser.parse_args(["verify", tampered_file])
     assert cmd_verify(args_verify_tampered) == 1
-

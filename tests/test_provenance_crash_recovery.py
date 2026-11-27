@@ -13,7 +13,7 @@ from mdrap.provenance import ProvenanceTracker
 def test_retry_is_recovered_after_process_termination(tmp_path):
     db_path = tmp_path / "crash-recovery.db"
     repo_root = Path(__file__).resolve().parents[1]
-    child = r'''
+    child = r"""
 import os, sqlite3, sys, time
 from mdrap.models import CanonicalEvent, EventType, QualityStatus, RawEvent
 from mdrap.provenance import ProvenanceTracker, create_provenance
@@ -29,7 +29,7 @@ canon = CanonicalEvent(event_id="crash-event-1", instrument_id="XYZ",
     quality_status=QualityStatus.VALID)
 tracker.record(create_provenance(raw, canon))
 os._exit(0)
-'''
+"""
     env = os.environ.copy()
     env["PYTHONIOENCODING"] = "utf-8"
     src_path = str(repo_root / "src")

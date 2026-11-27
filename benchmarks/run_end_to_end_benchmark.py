@@ -16,8 +16,17 @@ import time
 from typing import Any, Dict, List
 
 # Ensure src and observer in sys.path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "external_sidecar", "mdrap_observer")))
+sys.path.insert(
+    0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src"))
+)
+sys.path.insert(
+    0,
+    os.path.abspath(
+        os.path.join(
+            os.path.dirname(__file__), "..", "external_sidecar", "mdrap_observer"
+        )
+    ),
+)
 
 from mdrap.models import RawEvent
 from mdrap.service import MarketDataDaemon
@@ -29,14 +38,19 @@ from observer.state import ObserverState, VENUES
 def get_rss_mb() -> float:
     try:
         import psutil
+
         return psutil.Process(os.getpid()).memory_info().rss / (1024 * 1024)
     except Exception:
         return 0.0
 
 
-def run_e2e_benchmark(duration_s: float = 300.0, target_eps: float = 1000.0, mode: str = "tcp") -> Dict[str, Any]:
-    print(f"\n[E2E] Initializing End-to-End Benchmark: duration={duration_s}s, target_rate={target_eps} EPS, transport={mode.upper()}...")
-    
+def run_e2e_benchmark(
+    duration_s: float = 300.0, target_eps: float = 1000.0, mode: str = "tcp"
+) -> Dict[str, Any]:
+    print(
+        f"\n[E2E] Initializing End-to-End Benchmark: duration={duration_s}s, target_rate={target_eps} EPS, transport={mode.upper()}..."
+    )
+
     os.environ["MDRAP_API_KEY_SALT"] = "bench_salt_e2e_12345"
     os.environ["MDRAP_DEMO"] = "1"
 
@@ -44,7 +58,7 @@ def run_e2e_benchmark(duration_s: float = 300.0, target_eps: float = 1000.0, mod
     os.close(fd)
     export_dir = tempfile.mkdtemp(prefix="mdrap_e2e_export_")
 
-    ring_name = f"mdrap_e2e_ring_{int(time.time()*1000)%1000000}"
+    ring_name = f"mdrap_e2e_ring_{int(time.time() * 1000) % 1000000}"
 
     daemon = MarketDataDaemon(
         host="127.0.0.1",
@@ -60,7 +74,9 @@ def run_e2e_benchmark(duration_s: float = 300.0, target_eps: float = 1000.0, mod
     port = daemon.port
 
     state = ObserverState()
-    exporter = ObserverExporter(output_dir=export_dir, flush_interval_s=0.25, queue_size=50000)
+    exporter = ObserverExporter(
+        output_dir=export_dir, flush_interval_s=0.25, queue_size=50000
+    )
     exporter.start()
 
     latencies_us: List[float] = []
@@ -79,9 +95,13 @@ def run_e2e_benchmark(duration_s: float = 300.0, target_eps: float = 1000.0, mod
                 latencies_us.append(lat)
 
     if mode == "shm":
-        client = ObserverClient(mode="shm", ring_name=ring_name, on_event_callback=on_event)
+        client = ObserverClient(
+            mode="shm", ring_name=ring_name, on_event_callback=on_event
+        )
     else:
-        client = ObserverClient(mode="tcp", host="127.0.0.1", port=port, on_event_callback=on_event)
+        client = ObserverClient(
+            mode="tcp", host="127.0.0.1", port=port, on_event_callback=on_event
+        )
     client.start()
     time.sleep(0.3)
 
@@ -140,7 +160,9 @@ def run_e2e_benchmark(duration_s: float = 300.0, target_eps: float = 1000.0, mod
                 rss_samples.append(get_rss_mb())
                 timestamps.append(round(elapsed, 1))
                 last_sample_t = t_now
-                print(f"  [T+{int(elapsed)}s] Sent: {producer_sent:,} | Recv: {received_count:,} | RSS: {rss_samples[-1]:.1f} MB | Queue: {exporter._queue.qsize()}")
+                print(
+                    f"  [T+{int(elapsed)}s] Sent: {producer_sent:,} | Recv: {received_count:,} | RSS: {rss_samples[-1]:.1f} MB | Queue: {exporter._queue.qsize()}"
+                )
 
             next_batch_time += batch_interval
             sleep_s = next_batch_time - time.perf_counter()
@@ -212,7 +234,10 @@ def run_e2e_benchmark(duration_s: float = 300.0, target_eps: float = 1000.0, mod
             "peak": round(max(rss_samples), 2),
             "final": round(rss_end, 2),
             "net_growth": round(rss_end - rss_samples[0], 2),
-            "samples": [{"t_s": t, "rss_mb": round(m, 2)} for t, m in zip(timestamps, rss_samples)],
+            "samples": [
+                {"t_s": t, "rss_mb": round(m, 2)}
+                for t, m in zip(timestamps, rss_samples)
+            ],
         },
         "jsonl_audit": {
             "is_valid_json": jsonl_valid,
@@ -224,25 +249,46 @@ def run_e2e_benchmark(duration_s: float = 300.0, target_eps: float = 1000.0, mod
             "stream_resets": state.stream_health.resets,
             "feed_gaps": sum(v.feed_gaps for v in state.health.values()),
             "feed_duplicates": sum(v.feed_duplicates for v in state.health.values()),
-            "feed_out_of_order": sum(v.feed_out_of_order for v in state.health.values()),
-        }
+            "feed_out_of_order": sum(
+                v.feed_out_of_order for v in state.health.values()
+            ),
+        },
     }
 
 
 def main():
     parser = argparse.ArgumentParser(description="MDRAP End-to-End Pipeline Benchmark")
-    parser.add_argument("--duration", type=float, default=300.0, help="Test duration in seconds (default: 300.0)")
-    parser.add_argument("--rate", type=float, default=1000.0, help="Target ingestion rate in EPS (default: 1000.0)")
-    parser.add_argument("--mode", type=str, default="tcp", choices=["tcp", "shm"], help="Transport mode")
-    parser.add_argument("--out", type=str, default="audit/benchmark/raw/end_to_end_benchmark.json", help="Output JSON path")
+    parser.add_argument(
+        "--duration",
+        type=float,
+        default=300.0,
+        help="Test duration in seconds (default: 300.0)",
+    )
+    parser.add_argument(
+        "--rate",
+        type=float,
+        default=1000.0,
+        help="Target ingestion rate in EPS (default: 1000.0)",
+    )
+    parser.add_argument(
+        "--mode", type=str, default="tcp", choices=["tcp", "shm"], help="Transport mode"
+    )
+    parser.add_argument(
+        "--out",
+        type=str,
+        default="audit/benchmark/raw/end_to_end_benchmark.json",
+        help="Output JSON path",
+    )
     args = parser.parse_args()
 
     print("=" * 80)
     print(" MDRAP v6.0.8 End-to-End System Benchmark")
     print("=" * 80)
 
-    result = run_e2e_benchmark(duration_s=args.duration, target_eps=args.rate, mode=args.mode)
-    
+    result = run_e2e_benchmark(
+        duration_s=args.duration, target_eps=args.rate, mode=args.mode
+    )
+
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
     with open(args.out, "w") as fp:
         json.dump(result, fp, indent=2)
@@ -259,8 +305,12 @@ def main():
     print(f" Latency p95:        {result['latency_us']['p95']:.1f} us")
     print(f" Latency p99:        {result['latency_us']['p99']:.1f} us")
     print(f" Latency max:        {result['latency_us']['max']:.1f} us")
-    print(f" RSS Net Growth:     {result['rss_progression_mb']['net_growth']:.2f} MB (Peak: {result['rss_progression_mb']['peak']:.2f} MB)")
-    print(f" JSONL Valid:        {result['jsonl_audit']['is_valid_json']} ({result['jsonl_audit']['lines_verified']:,} lines)")
+    print(
+        f" RSS Net Growth:     {result['rss_progression_mb']['net_growth']:.2f} MB (Peak: {result['rss_progression_mb']['peak']:.2f} MB)"
+    )
+    print(
+        f" JSONL Valid:        {result['jsonl_audit']['is_valid_json']} ({result['jsonl_audit']['lines_verified']:,} lines)"
+    )
     print(f" Stream Gaps:        {result['sequence_domains']['stream_gaps']}")
     print(f" Feed Gaps:          {result['sequence_domains']['feed_gaps']}")
     print(f" Results Saved:      {args.out}")

@@ -214,7 +214,9 @@ def test_extended_buffer_window_expansion():
                 ask_price=140.5 + i,
                 bid_size=10.0,
                 ask_size=10.0,
-                quality_status=QualityStatus.VALID if i != 6 else QualityStatus.SUSPICIOUS,
+                quality_status=QualityStatus.VALID
+                if i != 6
+                else QualityStatus.SUSPICIOUS,
                 reasons=["SEQUENCE_GAP"] if i == 6 else [],
             )
             for i in range(13)

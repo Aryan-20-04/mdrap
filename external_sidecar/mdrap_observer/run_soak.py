@@ -24,6 +24,7 @@ def run_soak(duration_s: float = 30.0, target_eps: float = 1000.0) -> dict:
 
     try:
         import psutil
+
         proc = psutil.Process()
         proc.cpu_percent(interval=None)
     except Exception:
@@ -44,7 +45,11 @@ def run_soak(duration_s: float = 30.0, target_eps: float = 1000.0) -> dict:
     time.sleep(0.3)
     port = daemon.port
 
-    export_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "audit", "observer", "sample_exports"))
+    export_dir = os.path.abspath(
+        os.path.join(
+            os.path.dirname(__file__), "..", "..", "audit", "observer", "sample_exports"
+        )
+    )
     os.makedirs(export_dir, exist_ok=True)
 
     state = ObserverState(subscription_filter="ALL")
@@ -62,7 +67,9 @@ def run_soak(duration_s: float = 30.0, target_eps: float = 1000.0) -> dict:
         state.process_event(evt)
         exporter.record_event(evt)
 
-    client = ObserverClient(mode="tcp", host="127.0.0.1", port=port, on_event_callback=on_event)
+    client = ObserverClient(
+        mode="tcp", host="127.0.0.1", port=port, on_event_callback=on_event
+    )
     client.start()
 
     time.sleep(0.5)
@@ -99,7 +106,7 @@ def run_soak(duration_s: float = 30.0, target_eps: float = 1000.0) -> dict:
                 venue, sym, base_px, asset = all_pairs[seq % len(all_pairs)]
                 px_offset = (seq % 20 - 10) * 0.1
                 px = base_px + px_offset
-                is_trade = (seq % 5 == 0)
+                is_trade = seq % 5 == 0
 
                 venue_feed_seqs[venue] += 1
                 v_seq = venue_feed_seqs[venue]
@@ -138,39 +145,31 @@ def run_soak(duration_s: float = 30.0, target_eps: float = 1000.0) -> dict:
                 cur_rss = proc.memory_info().rss / (1024.0 * 1024.0) if proc else 0.0
                 cur_eps = state.get_throughput_eps()
                 elapsed_s = round(now_t - start_t, 1)
-                periodic_telemetry.append({
-                    "timestamp_s": elapsed_s,
-                    "events_sent": events_sent,
-                    "events_received": state.stream_health.events_received,
-                    "stream_gaps": state.stream_health.gaps,
-                    "rss_mb": round(cur_rss, 2),
-                    "eps": round(cur_eps, 1),
-                })
-                print(f"[{elapsed_s:5.1f}s] Sent: {events_sent:6d} | Recv: {state.stream_health.events_received:6d} | Stream Gaps: {state.stream_health.gaps} | RSS: {cur_rss:.1f} MB | EPS: {cur_eps:,.1f}")
+                periodic_telemetry.append(
+                    {
+                        "timestamp_s": elapsed_s,
+                        "events_sent": events_sent,
+                        "events_received": state.stream_health.events_received,
+                        "stream_gaps": state.stream_health.gaps,
+                        "rss_mb": round(cur_rss, 2),
+                        "eps": round(cur_eps, 1),
+                    }
+                )
+                print(
+                    f"[{elapsed_s:5.1f}s] Sent: {events_sent:6d} | Recv: {state.stream_health.events_received:6d} | Stream Gaps: {state.stream_health.gaps} | RSS: {cur_rss:.1f} MB | EPS: {cur_eps:,.1f}"
+                )
                 last_log_t = now_t
 
+            health_snap = state.snapshot_health()
+            exp_stats = exporter.snapshot_stats()
             snapshot = {
                 "uptime": time.time() - start_t,
-                "eps": state.get_throughput_eps(),
+                "eps": health_snap["eps"],
                 "rss_mb": state.get_rss_mb(),
-                "stream": {
-                    "events": state.stream_health.events_received,
-                    "gaps": state.stream_health.gaps,
-                    "duplicates": state.stream_health.duplicates,
-                    "out_of_order": state.stream_health.out_of_order,
-                },
-                "venues": {
-                    v: {
-                        "status": state.health[v].status,
-                        "feed_type": state.health[v].feed_type,
-                        "events": state.health[v].events_received,
-                        "feed_gaps": state.health[v].gaps,
-                        "duplicates": state.health[v].duplicates,
-                        "out_of_order": state.health[v].out_of_order,
-                        "reconnects": state.health[v].reconnects,
-                    }
-                    for v in state.health
-                },
+                "transport_reconnects": client.reconnect_count,
+                "stream": health_snap["stream"],
+                "venues": health_snap["venues"],
+                "exporter": exp_stats,
             }
             exporter.record_health(snapshot)
 
@@ -226,7 +225,9 @@ def run_soak(duration_s: float = 30.0, target_eps: float = 1000.0) -> dict:
         },
         "consumer": {
             "events_received": events_received,
-            "delivery_rate_pct": round((events_received / max(1, events_sent)) * 100.0, 2),
+            "delivery_rate_pct": round(
+                (events_received / max(1, events_sent)) * 100.0, 2
+            ),
             "effective_eps": round(events_received / total_time, 2),
             "filtered_events": state.stream_health.filtered_events,
             "actual_missing_events": events_sent - events_received,

@@ -104,7 +104,7 @@ def test_sidecar_persistence_durability_modes(tmp_path):
 
     # Inspect SQLite PRAGMA synchronous
     assert s_fast.conn.execute("PRAGMA synchronous;").fetchone()[0] == 0  # OFF
-    assert s_bal.conn.execute("PRAGMA synchronous;").fetchone()[0] == 1   # NORMAL
+    assert s_bal.conn.execute("PRAGMA synchronous;").fetchone()[0] == 1  # NORMAL
     assert s_comp.conn.execute("PRAGMA synchronous;").fetchone()[0] == 2  # FULL
 
     s_fast.close()

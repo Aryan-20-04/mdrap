@@ -4,15 +4,14 @@ import os
 import re
 import glob
 
+
 def run():
     mdrap_dir = os.path.join("src", "mdrap")
     mdrap_modules = set(
-        os.path.splitext(f)[0]
-        for f in os.listdir(mdrap_dir)
-        if f.endswith(".py")
+        os.path.splitext(f)[0] for f in os.listdir(mdrap_dir) if f.endswith(".py")
     )
 
-    pattern = re.compile(r'src/([a-zA-Z0-9_]+)\.py')
+    pattern = re.compile(r"src/([a-zA-Z0-9_]+)\.py")
 
     total_files = 0
     total_replacements = 0
@@ -37,7 +36,10 @@ def run():
             total_files += 1
             print(f"Updated {path}")
 
-    print(f"Completed: updated {total_replacements} references across {total_files} files.")
+    print(
+        f"Completed: updated {total_replacements} references across {total_files} files."
+    )
+
 
 if __name__ == "__main__":
     run()

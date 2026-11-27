@@ -36,8 +36,17 @@ import time
 from typing import Any, Dict, List, Tuple
 
 # Ensure paths
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "external_sidecar", "mdrap_observer")))
+sys.path.insert(
+    0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src"))
+)
+sys.path.insert(
+    0,
+    os.path.abspath(
+        os.path.join(
+            os.path.dirname(__file__), "..", "external_sidecar", "mdrap_observer"
+        )
+    ),
+)
 
 from mdrap.models import RawEvent
 from mdrap.service import MarketDataDaemon
@@ -49,6 +58,7 @@ from observer.state import ObserverState, VENUES
 def get_process_rss_mb() -> float:
     try:
         import psutil
+
         return psutil.Process(os.getpid()).memory_info().rss / (1024.0 * 1024.0)
     except Exception:
         return 0.0
@@ -57,7 +67,10 @@ def get_process_rss_mb() -> float:
 def get_git_commit() -> str:
     try:
         import subprocess
-        res = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=True)
+
+        res = subprocess.run(
+            ["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=True
+        )
         return res.stdout.strip()
     except Exception:
         return "51f99e8e18768860540b534297b02b507cefce05"
@@ -65,6 +78,7 @@ def get_git_commit() -> str:
 
 class ReservoirSampler:
     """Fixed-capacity reservoir sampler (Vitter's Algorithm R). O(K) space."""
+
     def __init__(self, capacity: int = 50000):
         self.capacity = capacity
         self.samples: List[float] = []
@@ -81,7 +95,14 @@ class ReservoirSampler:
 
     def percentiles(self) -> Dict[str, float]:
         if not self.samples:
-            return {"p50": 0.0, "p90": 0.0, "p95": 0.0, "p99": 0.0, "p99_9": 0.0, "max": 0.0}
+            return {
+                "p50": 0.0,
+                "p90": 0.0,
+                "p95": 0.0,
+                "p99": 0.0,
+                "p99_9": 0.0,
+                "max": 0.0,
+            }
         s = sorted(self.samples)
         n = len(s)
         return {
@@ -105,7 +126,7 @@ def run_two_hour_soak(
 ) -> Dict[str, Any]:
     print("=" * 80)
     print(f" MDRAP Phase 2.1: Two-Hour Memory-Bounded Soak Runner")
-    print(f" Target Duration: {duration_s:.1f}s ({duration_s/3600:.2f} hours)")
+    print(f" Target Duration: {duration_s:.1f}s ({duration_s / 3600:.2f} hours)")
     print(f" Ingestion Rate:  {target_eps:,.0f} EPS")
     print(f" Expected Events: {int(duration_s * target_eps):,}")
     print("=" * 80)
@@ -114,7 +135,7 @@ def run_two_hour_soak(
     export_parent = os.path.dirname(os.path.abspath(out_json_path))
     os.makedirs(export_parent, exist_ok=True)
     _, _, free_bytes = shutil.disk_usage(export_parent)
-    free_gb = free_bytes / (1024.0 ** 3)
+    free_gb = free_bytes / (1024.0**3)
     print(f"[PREFLIGHT] Free disk space at target location: {free_gb:.2f} GB")
     if free_gb < min_free_disk_gb:
         raise RuntimeError(
@@ -144,7 +165,9 @@ def run_two_hour_soak(
     print(f"[DAEMON] Running on 127.0.0.1:{port} (PID: {os.getpid()})")
 
     state = ObserverState()
-    exporter = ObserverExporter(output_dir=export_dir, flush_interval_s=0.25, queue_size=100000)
+    exporter = ObserverExporter(
+        output_dir=export_dir, flush_interval_s=0.25, queue_size=100000
+    )
     exporter.start()
 
     # O(1) Memory-Bounded Tracking Structures
@@ -226,7 +249,9 @@ def run_two_hour_soak(
                 reservoir.add(lat)
                 window_latencies.append(lat)
 
-    client = ObserverClient(mode="tcp", host="127.0.0.1", port=port, on_event_callback=on_event)
+    client = ObserverClient(
+        mode="tcp", host="127.0.0.1", port=port, on_event_callback=on_event
+    )
     client.start()
     time.sleep(0.3)
 
@@ -245,6 +270,7 @@ def run_two_hour_soak(
 
     try:
         import psutil
+
         proc = psutil.Process(os.getpid())
         proc.cpu_percent(interval=None)
     except Exception:
@@ -272,7 +298,9 @@ def run_two_hour_soak(
             "current_minute": current_minute,
             "producer_sent": producer_sent,
             "received_count": received_count,
-            "delivery_rate_pct": round((received_count / max(1, producer_sent)) * 100.0, 4),
+            "delivery_rate_pct": round(
+                (received_count / max(1, producer_sent)) * 100.0, 4
+            ),
             "rss_mb": round(curr_rss, 2),
             "peak_rss_mb": round(peak_rss, 2),
             "queue_depth_max": max_queue_depth_observed,
@@ -286,9 +314,13 @@ def run_two_hour_soak(
         with open(tmp_ckpt, "w", encoding="utf-8") as fp:
             json.dump(ckpt, fp, indent=2)
         os.replace(tmp_ckpt, checkpoint_path)
-        print(f"  [CHECKPOINT] Saved state at T+{elapsed_s:.1f}s ({len(minute_summaries)} windows) to {checkpoint_path}")
+        print(
+            f"  [CHECKPOINT] Saved state at T+{elapsed_s:.1f}s ({len(minute_summaries)} windows) to {checkpoint_path}"
+        )
 
-    print(f"[SOAK] Execution started. Monitoring in 60s windows with 300s checkpoints...")
+    print(
+        f"[SOAK] Execution started. Monitoring in 60s windows with 300s checkpoints..."
+    )
 
     try:
         while not interrupted:
@@ -298,15 +330,23 @@ def run_two_hour_soak(
                 break
 
             # Controlled link reset drill if configured
-            if interruption_at_s and elapsed >= interruption_at_s and not interruption_occurred:
-                print(f"\n  [INJECT] Inducing controlled TCP link reset at T+{elapsed:.1f}s...")
+            if (
+                interruption_at_s
+                and elapsed >= interruption_at_s
+                and not interruption_occurred
+            ):
+                print(
+                    f"\n  [INJECT] Inducing controlled TCP link reset at T+{elapsed:.1f}s..."
+                )
                 if client._current_client and client._current_client.sock:
                     try:
                         client._current_client.sock.close()
                     except Exception:
                         pass
                 interruption_occurred = True
-                print("  [INJECT] Client socket closed. Verifying automatic reconnect...")
+                print(
+                    "  [INJECT] Client socket closed. Verifying automatic reconnect..."
+                )
 
             # Inject batch
             for _ in range(batch_size):
@@ -356,7 +396,9 @@ def run_two_hour_soak(
                     "elapsed_s": round(elapsed, 1),
                     "events_sent": window_sent,
                     "events_received": window_received,
-                    "throughput_eps": round(window_received / max(0.001, w_duration), 1),
+                    "throughput_eps": round(
+                        window_received / max(0.001, w_duration), 1
+                    ),
                     "cpu_percent": round(cpu_pct, 1),
                     "rss_mb": round(rss_mb, 2),
                     "queue_depth_instant": exporter._queue.qsize(),
@@ -365,12 +407,24 @@ def run_two_hour_soak(
                     "write_errors": exporter.write_errors,
                     "reconnect_count": client.reconnect_count,
                     "latency_us": {
-                        "p50": round(window_latencies[int(wn * 0.50)], 2) if wn > 1 else 0.0,
-                        "p90": round(window_latencies[int(wn * 0.90)], 2) if wn > 1 else 0.0,
-                        "p95": round(window_latencies[int(wn * 0.95)], 2) if wn > 1 else 0.0,
-                        "p99": round(window_latencies[int(wn * 0.99)], 2) if wn > 1 else 0.0,
-                        "p99_9": round(window_latencies[int(wn * 0.999)], 2) if wn > 1 else 0.0,
-                        "max": round(window_latencies[-1], 2) if window_latencies else 0.0,
+                        "p50": round(window_latencies[int(wn * 0.50)], 2)
+                        if wn > 1
+                        else 0.0,
+                        "p90": round(window_latencies[int(wn * 0.90)], 2)
+                        if wn > 1
+                        else 0.0,
+                        "p95": round(window_latencies[int(wn * 0.95)], 2)
+                        if wn > 1
+                        else 0.0,
+                        "p99": round(window_latencies[int(wn * 0.99)], 2)
+                        if wn > 1
+                        else 0.0,
+                        "p99_9": round(window_latencies[int(wn * 0.999)], 2)
+                        if wn > 1
+                        else 0.0,
+                        "max": round(window_latencies[-1], 2)
+                        if window_latencies
+                        else 0.0,
                     },
                     "stream_gaps": state.stream_health.gaps,
                     "feed_gaps": sum(v.feed_gaps for v in state.health.values()),
@@ -424,30 +478,44 @@ def run_two_hour_soak(
         w_duration = max(0.001, t_total - (current_minute - 1) * 60.0)
         window_latencies.sort()
         wn = len(window_latencies) or 1
-        minute_summaries.append({
-            "minute": current_minute,
-            "elapsed_s": round(t_total, 1),
-            "events_sent": window_sent,
-            "events_received": window_received,
-            "throughput_eps": round(window_received / w_duration, 1),
-            "cpu_percent": round(proc.cpu_percent(interval=None) if proc else 0.0, 1),
-            "rss_mb": round(final_rss, 2),
-            "queue_depth_instant": exporter._queue.qsize(),
-            "queue_depth_max": max_queue_depth_observed,
-            "dropped_records": exporter.dropped_records,
-            "write_errors": exporter.write_errors,
-            "reconnect_count": client.reconnect_count,
-            "latency_us": {
-                "p50": round(window_latencies[int(wn * 0.50)], 2) if wn > 1 else 0.0,
-                "p90": round(window_latencies[int(wn * 0.90)], 2) if wn > 1 else 0.0,
-                "p95": round(window_latencies[int(wn * 0.95)], 2) if wn > 1 else 0.0,
-                "p99": round(window_latencies[int(wn * 0.99)], 2) if wn > 1 else 0.0,
-                "p99_9": round(window_latencies[int(wn * 0.999)], 2) if wn > 1 else 0.0,
-                "max": round(window_latencies[-1], 2) if window_latencies else 0.0,
-            },
-            "stream_gaps": state.stream_health.gaps,
-            "feed_gaps": sum(v.feed_gaps for v in state.health.values()),
-        })
+        minute_summaries.append(
+            {
+                "minute": current_minute,
+                "elapsed_s": round(t_total, 1),
+                "events_sent": window_sent,
+                "events_received": window_received,
+                "throughput_eps": round(window_received / w_duration, 1),
+                "cpu_percent": round(
+                    proc.cpu_percent(interval=None) if proc else 0.0, 1
+                ),
+                "rss_mb": round(final_rss, 2),
+                "queue_depth_instant": exporter._queue.qsize(),
+                "queue_depth_max": max_queue_depth_observed,
+                "dropped_records": exporter.dropped_records,
+                "write_errors": exporter.write_errors,
+                "reconnect_count": client.reconnect_count,
+                "latency_us": {
+                    "p50": round(window_latencies[int(wn * 0.50)], 2)
+                    if wn > 1
+                    else 0.0,
+                    "p90": round(window_latencies[int(wn * 0.90)], 2)
+                    if wn > 1
+                    else 0.0,
+                    "p95": round(window_latencies[int(wn * 0.95)], 2)
+                    if wn > 1
+                    else 0.0,
+                    "p99": round(window_latencies[int(wn * 0.99)], 2)
+                    if wn > 1
+                    else 0.0,
+                    "p99_9": round(window_latencies[int(wn * 0.999)], 2)
+                    if wn > 1
+                    else 0.0,
+                    "max": round(window_latencies[-1], 2) if window_latencies else 0.0,
+                },
+                "stream_gaps": state.stream_health.gaps,
+                "feed_gaps": sum(v.feed_gaps for v in state.health.values()),
+            }
+        )
 
     # Exact O(1) Mathematical Reconciliation Check
     reconciliation_matched = (
@@ -469,13 +537,15 @@ def run_two_hour_soak(
             m_end = chunk[-1]["rss_mb"]
             growth = m_end - m_start
             rate = growth / max(1, len(chunk))
-            memory_10min_trends.append({
-                "window": f"Min {chunk[0]['minute']} - Min {chunk[-1]['minute']}",
-                "start_rss_mb": m_start,
-                "end_rss_mb": m_end,
-                "net_change_mb": round(growth, 2),
-                "growth_rate_mb_per_min": round(rate, 3),
-            })
+            memory_10min_trends.append(
+                {
+                    "window": f"Min {chunk[0]['minute']} - Min {chunk[-1]['minute']}",
+                    "start_rss_mb": m_start,
+                    "end_rss_mb": m_end,
+                    "net_change_mb": round(growth, 2),
+                    "growth_rate_mb_per_min": round(rate, 3),
+                }
+            )
 
     # Latency drift: initial 10 windows vs final 10 windows
     n_mins = len(minute_summaries)
@@ -567,7 +637,9 @@ def run_two_hour_soak(
             "stream_duplicates": state.stream_health.duplicates,
             "feed_gaps": sum(v.feed_gaps for v in state.health.values()),
             "feed_duplicates": sum(v.feed_duplicates for v in state.health.values()),
-            "feed_out_of_order": sum(v.feed_out_of_order for v in state.health.values()),
+            "feed_out_of_order": sum(
+                v.feed_out_of_order for v in state.health.values()
+            ),
         },
         "queues_and_backpressure": {
             "max_queue_depth_observed": max_queue_depth_observed,
@@ -577,7 +649,9 @@ def run_two_hour_soak(
         "transport_reconnects": {
             "reconnect_count": client.reconnect_count,
             "interruption_injected": interruption_occurred,
-            "reconnected_cleanly": (client.reconnect_count > 0 if interruption_occurred else True),
+            "reconnected_cleanly": (
+                client.reconnect_count > 0 if interruption_occurred else True
+            ),
         },
         "latency_overall_us": reservoir.percentiles(),
         "latency_drift": latency_drift,
@@ -606,19 +680,29 @@ def run_two_hour_soak(
         out_sha256 = hashlib.sha256(fp.read()).hexdigest()
 
     print("\n" + "=" * 80)
-    print(f" Two-Hour Soak Assessment Completed {'(INTERRUPTED)' if interrupted else '(FULL)'}")
+    print(
+        f" Two-Hour Soak Assessment Completed {'(INTERRUPTED)' if interrupted else '(FULL)'}"
+    )
     print("=" * 80)
     print(f" Duration:           {results['duration_actual_s']:.1f} s")
     print(f" Events Sent:        {results['total_producer_events']:,}")
     print(f" Events Received:    {results['total_observer_events']:,}")
     print(f" Delivery Rate:      {results['delivery_rate_pct']:.4f}%")
-    print(f" Reconciliation:     {'MATCHED (100%)' if reconciliation_matched else 'MISMATCH'}")
+    print(
+        f" Reconciliation:     {'MATCHED (100%)' if reconciliation_matched else 'MISMATCH'}"
+    )
     print(f" Sequence Gaps:      {seq_gaps}")
     print(f" Latency p50:        {results['latency_overall_us']['p50']:.1f} us")
     print(f" Latency p99:        {results['latency_overall_us']['p99']:.1f} us")
-    print(f" Peak Working Set:   {results['memory_progression_mb']['peak']:.1f} MB (Final: {results['memory_progression_mb']['final']:.1f} MB)")
-    print(f" Max Queue Depth:    {results['queues_and_backpressure']['max_queue_depth_observed']}")
-    print(f" JSONL Valid:        {results['jsonl_audit']['is_valid_json']} ({results['jsonl_audit']['lines_verified']:,} lines)")
+    print(
+        f" Peak Working Set:   {results['memory_progression_mb']['peak']:.1f} MB (Final: {results['memory_progression_mb']['final']:.1f} MB)"
+    )
+    print(
+        f" Max Queue Depth:    {results['queues_and_backpressure']['max_queue_depth_observed']}"
+    )
+    print(
+        f" JSONL Valid:        {results['jsonl_audit']['is_valid_json']} ({results['jsonl_audit']['lines_verified']:,} lines)"
+    )
     print(f" Artifact SHA-256:   {out_sha256}")
     print(f" Saved To:           {out_json_path}")
     print("=" * 80)
@@ -627,13 +711,45 @@ def run_two_hour_soak(
 
 
 def main():
-    parser = argparse.ArgumentParser(description="MDRAP Phase 2.1 Two-Hour Soak Harness")
-    parser.add_argument("--duration", type=float, default=7200.0, help="Duration in seconds (default: 7200 = 2 hours)")
-    parser.add_argument("--rate", type=float, default=1000.0, help="Target ingestion rate EPS (default: 1000)")
-    parser.add_argument("--interruption-at", type=float, default=None, help="Inject controlled link reset at T+seconds")
-    parser.add_argument("--checkpoint-interval", type=float, default=300.0, help="Checkpoint interval in seconds (default: 300)")
-    parser.add_argument("--checkpoint-path", type=str, default="audit/benchmark/phase2/raw/checkpoint_2h.json", help="Checkpoint output path")
-    parser.add_argument("--out", type=str, default="audit/benchmark/phase2/raw/soak_2hour.json", help="Final output path")
+    parser = argparse.ArgumentParser(
+        description="MDRAP Phase 2.1 Two-Hour Soak Harness"
+    )
+    parser.add_argument(
+        "--duration",
+        type=float,
+        default=7200.0,
+        help="Duration in seconds (default: 7200 = 2 hours)",
+    )
+    parser.add_argument(
+        "--rate",
+        type=float,
+        default=1000.0,
+        help="Target ingestion rate EPS (default: 1000)",
+    )
+    parser.add_argument(
+        "--interruption-at",
+        type=float,
+        default=None,
+        help="Inject controlled link reset at T+seconds",
+    )
+    parser.add_argument(
+        "--checkpoint-interval",
+        type=float,
+        default=300.0,
+        help="Checkpoint interval in seconds (default: 300)",
+    )
+    parser.add_argument(
+        "--checkpoint-path",
+        type=str,
+        default="audit/benchmark/phase2/raw/checkpoint_2h.json",
+        help="Checkpoint output path",
+    )
+    parser.add_argument(
+        "--out",
+        type=str,
+        default="audit/benchmark/phase2/raw/soak_2hour.json",
+        help="Final output path",
+    )
     args = parser.parse_args()
 
     run_two_hour_soak(

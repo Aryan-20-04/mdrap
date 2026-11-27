@@ -43,7 +43,11 @@ from mdrap.alert_sinks import (
 from mdrap.api import create_app
 
 try:
-    from mdrap.kafka_sink import DurableKafkaSink, InMemoryKafkaProducer, KafkaSinkConfig
+    from mdrap.kafka_sink import (
+        DurableKafkaSink,
+        InMemoryKafkaProducer,
+        KafkaSinkConfig,
+    )
 except ImportError:
     DurableKafkaSink = None
     InMemoryKafkaProducer = None

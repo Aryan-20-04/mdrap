@@ -52,7 +52,9 @@ def run_benchmark_command(
 
     t0 = time.perf_counter()
     env = os.environ.copy()
-    env["MDRAP_API_KEY_SALT"] = env.get("MDRAP_API_KEY_SALT", "benchmark_salt_secret_123")
+    env["MDRAP_API_KEY_SALT"] = env.get(
+        "MDRAP_API_KEY_SALT", "benchmark_salt_secret_123"
+    )
     res = subprocess.run(
         cmd,
         cwd=cwd,
@@ -134,7 +136,9 @@ def aggregate_runs(runs: list[dict[str, Any]]) -> dict[str, Any]:
         "ingest_p50_us",
         "quality_p50_us",
         "reconcile_p50_us",
-        "enqueue_storage_p50_us" if "enqueue_storage_p50_us" in runs[0] else "enqueue_p50_us",
+        "enqueue_storage_p50_us"
+        if "enqueue_storage_p50_us" in runs[0]
+        else "enqueue_p50_us",
         "max_rss_mb",
     ]
     summary = {}
@@ -164,7 +168,9 @@ def run_alternating_pair(
     for i in range(1, n_runs + 1):
         # 1. Baseline
         b_label = f"baseline_{'c' if fastpath else 'py'}_run_{i}"
-        print(f"[{pair_name}] Iteration {i}/{n_runs} -> Baseline...", end="", flush=True)
+        print(
+            f"[{pair_name}] Iteration {i}/{n_runs} -> Baseline...", end="", flush=True
+        )
         b_res = run_benchmark_command(
             cwd=BASELINE_DIR,
             fastpath=fastpath,
@@ -173,11 +179,15 @@ def run_alternating_pair(
             label=b_label,
         )
         baseline_runs.append(b_res)
-        print(f" Done ({b_res['throughput_eps']:,.1f} eps, p50: {b_res['proc_p50_us']} μs)")
+        print(
+            f" Done ({b_res['throughput_eps']:,.1f} eps, p50: {b_res['proc_p50_us']} μs)"
+        )
 
         # 2. Hardened
         h_label = f"hardened_{'c' if fastpath else 'py'}_run_{i}"
-        print(f"[{pair_name}] Iteration {i}/{n_runs} -> Hardened...", end="", flush=True)
+        print(
+            f"[{pair_name}] Iteration {i}/{n_runs} -> Hardened...", end="", flush=True
+        )
         h_res = run_benchmark_command(
             cwd=ROOT_DIR,
             fastpath=fastpath,
@@ -186,14 +196,22 @@ def run_alternating_pair(
             label=h_label,
         )
         hardened_runs.append(h_res)
-        print(f" Done ({h_res['throughput_eps']:,.1f} eps, p50: {h_res['proc_p50_us']} μs)")
+        print(
+            f" Done ({h_res['throughput_eps']:,.1f} eps, p50: {h_res['proc_p50_us']} μs)"
+        )
 
     b_summary = aggregate_runs(baseline_runs)
     h_summary = aggregate_runs(hardened_runs)
 
     # Calculate Deltas
     deltas = {}
-    for metric in ["throughput_eps", "proc_p50_us", "proc_p95_us", "proc_p99_us", "benchmark_elapsed_s"]:
+    for metric in [
+        "throughput_eps",
+        "proc_p50_us",
+        "proc_p95_us",
+        "proc_p99_us",
+        "benchmark_elapsed_s",
+    ]:
         b_med = b_summary[metric]["median"]
         h_med = h_summary[metric]["median"]
         pct_change = ((h_med - b_med) / b_med * 100.0) if b_med > 0 else 0.0
@@ -259,7 +277,9 @@ def main():
         "pure_python_pair": py_results,
     }
 
-    out_path = os.path.join(ROOT_DIR, "benchmarks", "release_benchmarks_reproducibility.json")
+    out_path = os.path.join(
+        ROOT_DIR, "benchmarks", "release_benchmarks_reproducibility.json"
+    )
     with open(out_path, "w") as f:
         json.dump(output, f, indent=2)
 
@@ -270,11 +290,15 @@ def main():
 
     print("\n--- Summary: Native C Pair ---")
     for k, v in c_results["deltas"].items():
-        print(f"  {k}: Baseline {v['baseline_median']} -> Hardened {v['hardened_median']} ({v['delta_pct']:+.2f}%)")
+        print(
+            f"  {k}: Baseline {v['baseline_median']} -> Hardened {v['hardened_median']} ({v['delta_pct']:+.2f}%)"
+        )
 
     print("\n--- Summary: Pure Python Pair ---")
     for k, v in py_results["deltas"].items():
-        print(f"  {k}: Baseline {v['baseline_median']} -> Hardened {v['hardened_median']} ({v['delta_pct']:+.2f}%)")
+        print(
+            f"  {k}: Baseline {v['baseline_median']} -> Hardened {v['hardened_median']} ({v['delta_pct']:+.2f}%)"
+        )
 
 
 if __name__ == "__main__":

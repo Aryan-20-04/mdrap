@@ -26,12 +26,23 @@ __stability__ = "stable"
 
 logger = logging.getLogger("mdrap.fastpath")
 
+
+def _is_fastpath_disabled() -> bool:
+    return os.environ.get("MDRAP_DISABLE_FASTPATH", "").lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
 # Phase 3: Native C-API Extension Module
 _C_EXT = None
-try:
-    from . import _fastpath_c as _C_EXT
-except ImportError:
-    _C_EXT = None
+if not _is_fastpath_disabled():
+    try:
+        from . import _fastpath_c as _C_EXT
+    except ImportError:
+        _C_EXT = None
 
 # Pre-imported user rule evaluation hook to eliminate per-tick import overhead
 try:
@@ -215,12 +226,7 @@ class _CFastReplayRecord(ctypes.Structure):
 
 
 def _load_native_lib():
-    if os.environ.get("MDRAP_DISABLE_FASTPATH", "").lower() in (
-        "1",
-        "true",
-        "yes",
-        "on",
-    ):
+    if _is_fastpath_disabled():
         return None
     src_dir = os.path.dirname(os.path.abspath(__file__))
     candidates = []
@@ -2065,6 +2071,13 @@ def has_native_shm() -> bool:
     )
 
 
+def _shm_codecs():
+    """Lazily load shared SHM v3 source/symbol codecs without circular import."""
+    from .shm import decode_shm_source, encode_shm_source, encode_shm_symbol
+
+    return encode_shm_symbol, encode_shm_source, decode_shm_source
+
+
 def native_shm_read_slot(buf_ptr, slot_count: int, target_seq: int) -> dict | None:
     """Read an SHM slot using compiled native C acceleration in sub-30 nanoseconds."""
     if _C_EXT and hasattr(_C_EXT, "shm_read_slot_v3"):
@@ -2089,8 +2102,10 @@ def native_shm_read_slot(buf_ptr, slot_count: int, target_seq: int) -> dict | No
         )
         if res != 1:
             return None
-        sym = slot3.symbol.rstrip(b"\x00").decode("ascii", errors="replace")
-        src = slot3.source.rstrip(b"\x00").decode("ascii", errors="replace")
+        _, _, decode_src = _shm_codecs()
+        sym = slot3.symbol.split(b"\x00", 1)[0].decode("utf-8", errors="replace")
+        src_wire = slot3.source.split(b"\x00", 1)[0].decode("ascii", errors="replace")
+        src = decode_src(src_wire)
         status_map = {1: "VALID", 2: "SUSPICIOUS", 3: "INVALID"}
         px = slot3.price if (slot3.present & 0x01) else None
         sz = slot3.size if (slot3.present & 0x02) else None
@@ -2256,6 +2271,8 @@ def native_shm_write_tick(
                 )
                 == 1
             )
+        except ValueError:
+            raise
         except Exception as exc:
             logger.debug(
                 "[fastpath] C extension shm_write_tick_v3 failed: %s, falling back to ctypes",
@@ -2265,11 +2282,13 @@ def native_shm_write_tick(
     if not has_native_shm() or not hasattr(_NATIVE_LIB, "fastpath_shm_write_tick_v3"):
         return False
 
+    encode_sym, encode_src, _ = _shm_codecs()
+    sym_bytes = encode_sym(symbol)
+    encode_src(source)
+    canon_src_bytes = ("" if source is None else source).encode("ascii")
+
     raw_addr = get_buffer_address(buf_ptr)
     total_len = 128 + slot_count * 128
-
-    sym_bytes = (symbol or "").encode("ascii", errors="replace")[:16]
-    src_bytes = (source or "").encode("ascii", errors="replace")[:8]
 
     res = _NATIVE_LIB.fastpath_shm_write_tick_v3(
         ctypes.c_void_p(raw_addr),
@@ -2277,7 +2296,7 @@ def native_shm_write_tick(
         ctypes.c_uint32(slot_count),
         ctypes.c_uint64(seq),
         sym_bytes,
-        src_bytes,
+        canon_src_bytes,
         ctypes.c_double(price or 0.0),
         ctypes.c_double(size or 0.0),
         ctypes.c_double(bid or 0.0),
@@ -2292,6 +2311,14 @@ def native_shm_write_tick(
         ctypes.c_double(broadcast_ts or 0.0),
         ctypes.c_float(engine_us or 0.0),
     )
+    if res == -3:
+        raise ValueError(
+            f"SHM source {source!r} is invalid, uses reserved prefix '@MDRP', or exceeds 8-byte v3 limit"
+        )
+    if res == -4:
+        raise ValueError(
+            f"SHM symbol {symbol!r} is invalid UTF-8 or exceeds 16-byte v3 wire limit"
+        )
     return res == 1
 
 

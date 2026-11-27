@@ -1,15 +1,15 @@
 {
   "mdrap_version": "6.0.8",
-  "commit": "7492928",
-  "generated_at": "2026-11-23T20:52:03.635747+00:00",
+  "commit": "a62e2ac534ee9159189614e565529ae03a9285f8",
+  "generated_at": "2026-11-27T19:01:16.177469+00:00",
   "install_command": "pip install -e .",
   "test_counts": {
-    "passed": 1580,
-    "skipped": 25,
+    "passed": 1553,
+    "skipped": 32,
+    "deselected": 29,
     "failed": 0,
-    "errors": 0,
-    "total": 1605
+    "total": 1585
   },
-  "verified_claim": "1,500+ core test suite passed cleanly",
+  "verified_claim": "1,550+ core test suite passed cleanly",
   "scope": "Single-Node Process & IPC (Mode A)"
 }

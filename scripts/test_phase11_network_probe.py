@@ -55,13 +55,15 @@ def run_probe():
             resp = c.recv(1024)
             assert resp == b"PING"
         rtt_ms = (time.perf_counter() - t0) * 1000.0
-        network_tests.append({
-            "target_node": name,
-            "port": port,
-            "endpoint": f"127.0.0.1:{port}",
-            "tcp_connect": "SUCCESS",
-            "round_trip_ms": round(rtt_ms, 3),
-        })
+        network_tests.append(
+            {
+                "target_node": name,
+                "port": port,
+                "endpoint": f"127.0.0.1:{port}",
+                "tcp_connect": "SUCCESS",
+                "round_trip_ms": round(rtt_ms, 3),
+            }
+        )
 
     # Inter-node latency measurements
     inter_node_latencies = {}

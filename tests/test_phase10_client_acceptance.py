@@ -26,6 +26,7 @@ from mdrap.ingestlog import IngestLog
 from mdrap.adapters.binance import BinanceAdapter
 from mdrap.adapters.kraken import KrakenAdapter
 from mdrap.adapters.itch import ITCHAdapter
+
 try:
     from mdrap.cme import CMESBEDecoder, pack_cme_incremental_book
     from mdrap.eurex import EurexT7Decoder, pack_eurex_depth_message

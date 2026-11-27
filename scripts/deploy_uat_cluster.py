@@ -68,7 +68,9 @@ def run_uat_deployment_validation():
         results["topology"]["primary"]["port"] = daemon_pri.port
         results["topology"]["primary"]["db_path"] = primary_db
         assert daemon_pri.port > 0, "Primary daemon port must be assigned"
-        results["checks"].append({"name": "primary_startup", "status": "PASS", "port": daemon_pri.port})
+        results["checks"].append(
+            {"name": "primary_startup", "status": "PASS", "port": daemon_pri.port}
+        )
         print(f"[OK] Primary daemon started on port {daemon_pri.port}")
 
         # Step 2: Start Secondary Daemon
@@ -78,7 +80,9 @@ def run_uat_deployment_validation():
         results["topology"]["secondary"]["db_path"] = secondary_db
         assert daemon_sec.port > 0, "Secondary daemon port must be assigned"
         assert daemon_sec.port != daemon_pri.port, "Ports must be distinct"
-        results["checks"].append({"name": "secondary_startup", "status": "PASS", "port": daemon_sec.port})
+        results["checks"].append(
+            {"name": "secondary_startup", "status": "PASS", "port": daemon_sec.port}
+        )
         print(f"[OK] Secondary daemon started on port {daemon_sec.port}")
 
         # Step 3: Health check on Primary
@@ -120,7 +124,9 @@ def run_uat_deployment_validation():
                     os.remove(p)
                 except OSError:
                     pass
-        results["checks"].append({"name": "clean_shutdown_and_cleanup", "status": "PASS"})
+        results["checks"].append(
+            {"name": "clean_shutdown_and_cleanup", "status": "PASS"}
+        )
         print("[OK] UAT daemons stopped and temporary files cleaned up")
 
     out_path = os.path.join(

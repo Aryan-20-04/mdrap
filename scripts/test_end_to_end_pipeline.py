@@ -40,12 +40,12 @@ from mdrap.storage import Store
 
 def run_e2e_campaign():
     print("=== MDRAP Phase 9 End-to-End Pipeline & Forensic Integrity Verification ===")
-    
+
     test_dir = os.path.join(_REPO_ROOT, "audit", "phase9", "data_e2e")
     if os.path.exists(test_dir):
         shutil.rmtree(test_dir, ignore_errors=True)
     os.makedirs(test_dir, exist_ok=True)
-    
+
     db_path = os.path.join(test_dir, "market_data_uat.db")
     wal_dir = os.path.join(test_dir, "wal_logs")
     os.makedirs(wal_dir, exist_ok=True)
@@ -71,7 +71,7 @@ def run_e2e_campaign():
     valid_count = 0
     quarantine_count = 0
     now = time.time()
-    
+
     seq_map = {}
     print(f"Streaming {total_events} heterogeneous market events across 3 venues...")
     t0_pipe = time.perf_counter()
@@ -82,7 +82,7 @@ def run_e2e_campaign():
         key = (source, sym)
         seq_map[key] = seq_map.get(key, 0) + 1
         seq = seq_map[key]
-        
+
         # Inject deliberate anomalies for forensic verification
         if i == 50:
             # Negative price anomaly
@@ -130,7 +130,7 @@ def run_e2e_campaign():
             }
         else:
             # Valid standard quote or trade
-            is_quote = (i % 2 == 0)
+            is_quote = i % 2 == 0
             if is_quote:
                 mid = 180.0 + (i % 10) * 0.1
                 payload = {
@@ -170,11 +170,13 @@ def run_e2e_campaign():
                 valid_count += 1
             else:
                 quarantine_count += 1
-            
+
             # Broadcast to fanout consumers
             fanout.publish_event(
                 canonical.instrument_id,
-                f"{canonical.event_id}:{canonical.price}:{canonical.quality_status.value}".encode("utf-8"),
+                f"{canonical.event_id}:{canonical.price}:{canonical.quality_status.value}".encode(
+                    "utf-8"
+                ),
                 seq=seq,
             )
 
@@ -193,9 +195,15 @@ def run_e2e_campaign():
     fanout.stop()
 
     # Query SQLite verification
-    canonical_stored = store.read_conn.execute("SELECT COUNT(*) FROM canonical_events").fetchone()[0]
-    quarantine_stored = store.read_conn.execute("SELECT COUNT(*) FROM quarantine").fetchone()[0]
-    lineage_stored = store.read_conn.execute("SELECT COUNT(*) FROM lineage").fetchone()[0]
+    canonical_stored = store.read_conn.execute(
+        "SELECT COUNT(*) FROM canonical_events"
+    ).fetchone()[0]
+    quarantine_stored = store.read_conn.execute(
+        "SELECT COUNT(*) FROM quarantine"
+    ).fetchone()[0]
+    lineage_stored = store.read_conn.execute("SELECT COUNT(*) FROM lineage").fetchone()[
+        0
+    ]
     store.close()
 
     e2e_results = {
@@ -209,27 +217,39 @@ def run_e2e_campaign():
         "fanout_delivered_to_consumer": delivered_to_consumer,
         "pipeline_duration_seconds": round(pipeline_duration, 4),
         "pipeline_throughput_eps": round(total_events / pipeline_duration, 1),
-        "quality_gate_passed": (valid_count > 0 and quarantine_count >= 3 and delivered_to_consumer == total_events),
+        "quality_gate_passed": (
+            valid_count > 0
+            and quarantine_count >= 3
+            and delivered_to_consumer == total_events
+        ),
     }
 
-    out_e2e = os.path.join(_REPO_ROOT, "audit", "phase9", "end_to_end_test_results.json")
+    out_e2e = os.path.join(
+        _REPO_ROOT, "audit", "phase9", "end_to_end_test_results.json"
+    )
     with open(out_e2e, "w", encoding="utf-8") as f:
         json.dump(e2e_results, f, indent=2)
     print(f"[OK] Saved E2E test results to: {out_e2e}")
-    print(f"     Ingested: {total_events} | Valid: {valid_count} | Quarantine: {quarantine_count} | Fanout Delivered: {delivered_to_consumer}")
+    print(
+        f"     Ingested: {total_events} | Valid: {valid_count} | Quarantine: {quarantine_count} | Fanout Delivered: {delivered_to_consumer}"
+    )
 
     # 3. Forensic Historical Integrity Verification Campaign
-    print("\nExecuting Forensic Historical Integrity Campaign with HistoricalVerifier...")
+    print(
+        "\nExecuting Forensic Historical Integrity Campaign with HistoricalVerifier..."
+    )
     verifier = HistoricalVerifier()
     segments = ingest_log._list_segment_files()
     if not segments:
         raise RuntimeError("No IngestLog segment file produced during test!")
-    
+
     active_seg_path = segments[0][1]
-    
+
     # 3A. Valid WAL Segment Audit
     valid_audit = verifier.verify_ingestlog_segment(active_seg_path)
-    print(f"[Valid Segment Audit] Records: {valid_audit.records_scanned} | CRC Valid: {valid_audit.crc32_valid_count} | Status: {valid_audit.status}")
+    print(
+        f"[Valid Segment Audit] Records: {valid_audit.records_scanned} | CRC Valid: {valid_audit.crc32_valid_count} | Status: {valid_audit.status}"
+    )
     print(f"                      Merkle Root: {valid_audit.merkle_root}")
 
     # 3B. Corrupted Payload Mutation (Bit-Flip Tamper Detection)
@@ -242,7 +262,9 @@ def run_e2e_campaign():
         f_dst.write(data)
 
     corrupted_audit = verifier.verify_ingestlog_segment(corrupted_seg_path)
-    print(f"[Corrupted Segment Audit] Status: {corrupted_audit.status} | CRC Invalids: {corrupted_audit.crc32_invalid_count}")
+    print(
+        f"[Corrupted Segment Audit] Status: {corrupted_audit.status} | CRC Invalids: {corrupted_audit.crc32_invalid_count}"
+    )
 
     # 3C. Truncated Log Segment (Torn-Tail Detection)
     truncated_seg_path = os.path.join(test_dir, "segment_truncated.log")
@@ -252,11 +274,15 @@ def run_e2e_campaign():
         f_dst.write(data[: len(data) - 45])
 
     truncated_audit = verifier.verify_ingestlog_segment(truncated_seg_path)
-    print(f"[Truncated Segment Audit] Status: {truncated_audit.status} | Details: {truncated_audit.details}")
+    print(
+        f"[Truncated Segment Audit] Status: {truncated_audit.status} | Details: {truncated_audit.details}"
+    )
 
     # 3D. SQLite Store Verification
     sqlite_audit = verifier.verify_sqlite_store(db_path)
-    print(f"[SQLite Store Audit] Status: {sqlite_audit.status} | Records Scanned: {sqlite_audit.records_scanned}")
+    print(
+        f"[SQLite Store Audit] Status: {sqlite_audit.status} | Records Scanned: {sqlite_audit.records_scanned}"
+    )
 
     historical_results = {
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -264,12 +290,18 @@ def run_e2e_campaign():
         "corrupted_segment_audit": corrupted_audit.to_dict(),
         "truncated_segment_audit": truncated_audit.to_dict(),
         "sqlite_store_audit": sqlite_audit.to_dict(),
-        "tamper_detection_verified": (corrupted_audit.status == "FAIL" and corrupted_audit.crc32_invalid_count > 0),
+        "tamper_detection_verified": (
+            corrupted_audit.status == "FAIL" and corrupted_audit.crc32_invalid_count > 0
+        ),
         "torn_tail_detection_verified": (len(truncated_audit.details) > 0),
-        "merkle_provenance_verified": (valid_audit.merkle_root is not None and len(valid_audit.merkle_root) == 64),
+        "merkle_provenance_verified": (
+            valid_audit.merkle_root is not None and len(valid_audit.merkle_root) == 64
+        ),
     }
 
-    out_hist = os.path.join(_REPO_ROOT, "audit", "phase9", "historical_integrity_results.json")
+    out_hist = os.path.join(
+        _REPO_ROOT, "audit", "phase9", "historical_integrity_results.json"
+    )
     with open(out_hist, "w", encoding="utf-8") as f:
         json.dump(historical_results, f, indent=2)
     print(f"[OK] Saved historical integrity results to: {out_hist}")

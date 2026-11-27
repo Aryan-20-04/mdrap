@@ -131,9 +131,15 @@ class ApiKeyRotator:
         """Rotate existing key: expires old key after grace period and returns fresh key."""
         old_record = self.validate_token(old_token)
         if not old_record:
-            raise ValueError("Cannot rotate: provided old token is invalid or already expired/revoked")
+            raise ValueError(
+                "Cannot rotate: provided old token is invalid or already expired/revoked"
+            )
 
-        grace = grace_period_sec if grace_period_sec is not None else self.default_grace_period_sec
+        grace = (
+            grace_period_sec
+            if grace_period_sec is not None
+            else self.default_grace_period_sec
+        )
         now = time.time()
         old_record.expires_at = now
         old_record.grace_expires_at = now + grace

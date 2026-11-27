@@ -38,7 +38,9 @@ def _stateless_worker_task(events_batch: list[dict]) -> tuple[int, int, int]:
     suspicious = 0
     invalid = 0
     for p in events_batch:
-        raw = RawEvent(source="SRC_BENCH", payload=p, receive_timestamp=time.time(), raw_id="bench")
+        raw = RawEvent(
+            source="SRC_BENCH", payload=p, receive_timestamp=time.time(), raw_id="bench"
+        )
         try:
             norm = normalize(raw)
             dec = fq.evaluate(norm)
@@ -53,7 +55,9 @@ def _stateless_worker_task(events_batch: list[dict]) -> tuple[int, int, int]:
     return valid, suspicious, invalid
 
 
-def run_seqlock_contention_test(num_ticks: int = 50_000, num_readers: int = 4) -> dict[str, Any]:
+def run_seqlock_contention_test(
+    num_ticks: int = 50_000, num_readers: int = 4
+) -> dict[str, Any]:
     """
     Spawns concurrent readers while a high-throughput writer updates SHM v3 slots.
     Tests for torn reads, sequence mismatch, and retry count.
@@ -63,7 +67,7 @@ def run_seqlock_contention_test(num_ticks: int = 50_000, num_readers: int = 4) -
 
     shm_name = f"mdrap_seqlock_test_{os.getpid()}"
     writer = SHMWriter(name=shm_name, slot_count=4096)
-    
+
     stop_flag = threading.Event()
     reader_stats = [
         {"reads": 0, "retries": 0, "torn_reads_caught": 0, "corruptions": 0}
@@ -130,7 +134,9 @@ def run_seqlock_contention_test(num_ticks: int = 50_000, num_readers: int = 4) -
         "total_reader_reads": total_reads,
         "total_reader_retries": total_retries,
         "total_torn_reads_caught": total_corruptions,
-        "data_corruption_rate": 0.0 if total_corruptions == 0 else (total_corruptions / total_reads),
+        "data_corruption_rate": 0.0
+        if total_corruptions == 0
+        else (total_corruptions / total_reads),
         "seqlock_verified": total_corruptions == 0,
     }
 
@@ -179,7 +185,9 @@ def run_multicore_scaling_experiments() -> dict[str, Any]:
     base_eps = scaling_results["workers_1"]["throughput_eps"]
     for w in worker_counts:
         w_eps = scaling_results[f"workers_{w}"]["throughput_eps"]
-        scaling_results[f"workers_{w}"]["speedup"] = round(w_eps / max(1.0, base_eps), 2)
+        scaling_results[f"workers_{w}"]["speedup"] = round(
+            w_eps / max(1.0, base_eps), 2
+        )
 
     return scaling_results
 
@@ -192,13 +200,19 @@ def main():
     print("\n[1/2] Running Concurrent Seqlock Reader/Writer Contention Test...")
     seqlock_results = run_seqlock_contention_test(num_ticks=50_000, num_readers=4)
     print(f"  -> Writer Throughput: {seqlock_results['writer_throughput_eps']} EPS")
-    print(f"  -> Readers: {seqlock_results['concurrent_readers']} threads | Reads: {seqlock_results['total_reader_reads']}")
-    print(f"  -> Torn Reads / Data Corruptions: {seqlock_results['total_torn_reads_caught']} (Integrity: {seqlock_results['seqlock_verified']})")
+    print(
+        f"  -> Readers: {seqlock_results['concurrent_readers']} threads | Reads: {seqlock_results['total_reader_reads']}"
+    )
+    print(
+        f"  -> Torn Reads / Data Corruptions: {seqlock_results['total_torn_reads_caught']} (Integrity: {seqlock_results['seqlock_verified']})"
+    )
 
     print("\n[2/2] Running Multicore Scaling Experiments (1, 2, 4, 8 Workers)...")
     scaling_results = run_multicore_scaling_experiments()
     for k, v in scaling_results.items():
-        print(f"  -> {k}: Throughput = {v['throughput_eps']} EPS | Speedup = {v.get('speedup', 1.0)}x")
+        print(
+            f"  -> {k}: Throughput = {v['throughput_eps']} EPS | Speedup = {v.get('speedup', 1.0)}x"
+        )
 
     telemetry = {
         "timestamp": time.time(),

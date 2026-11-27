@@ -23,7 +23,9 @@ from mdrap.provenance import ProvenanceTracker, EventProvenance
 import hashlib
 
 
-def run_observation(duration_seconds: float = 15.0, db_path: str = "data/live_observation.db"):
+def run_observation(
+    duration_seconds: float = 15.0, db_path: str = "data/live_observation.db"
+):
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
     if os.path.exists(db_path):
         os.remove(db_path)
@@ -43,7 +45,9 @@ def run_observation(duration_seconds: float = 15.0, db_path: str = "data/live_ob
         stale_timeout_ms=10000.0,
     )
 
-    print(f"[{datetime.now(timezone.utc).isoformat()}] Starting live observation for {duration_seconds}s...")
+    print(
+        f"[{datetime.now(timezone.utc).isoformat()}] Starting live observation for {duration_seconds}s..."
+    )
     start_wall = time.time()
     start_ts_iso = datetime.now(timezone.utc).isoformat()
     feed_mgr.start()
@@ -86,10 +90,16 @@ def run_observation(duration_seconds: float = 15.0, db_path: str = "data/live_ob
         if eval_event is not None:
             canonical_event = eval_event
 
-        payload_bytes = json.dumps(raw_event.payload or {}, sort_keys=True).encode("utf-8")
+        payload_bytes = json.dumps(raw_event.payload or {}, sort_keys=True).encode(
+            "utf-8"
+        )
         payload_hash = hashlib.sha256(payload_bytes).hexdigest()
 
-        q_status_str = canonical_event.quality_status.value if hasattr(canonical_event.quality_status, "value") else str(canonical_event.quality_status)
+        q_status_str = (
+            canonical_event.quality_status.value
+            if hasattr(canonical_event.quality_status, "value")
+            else str(canonical_event.quality_status)
+        )
         prov_entry = EventProvenance(
             event_id=str(canonical_event.event_id),
             raw_id=str(raw_event.raw_id or canonical_event.event_id),
@@ -116,7 +126,11 @@ def run_observation(duration_seconds: float = 15.0, db_path: str = "data/live_ob
         latencies_us.append((t_proc_end - t_proc_start) * 1_000_000)
 
         # Track quality distribution
-        q_stat = canonical_event.quality_status.value if hasattr(canonical_event.quality_status, "value") else str(canonical_event.quality_status)
+        q_stat = (
+            canonical_event.quality_status.value
+            if hasattr(canonical_event.quality_status, "value")
+            else str(canonical_event.quality_status)
+        )
         quality_counts[q_stat] = quality_counts.get(q_stat, 0) + 1
 
         # Track cross-venue price divergence
@@ -133,13 +147,15 @@ def run_observation(duration_seconds: float = 15.0, db_path: str = "data/live_ob
                 cb_bid, cb_ask, _ = venues_active["COINBASE"]
                 kr_bid, kr_ask, _ = venues_active["KRAKEN"]
                 divergence = abs(cb_bid - kr_bid)
-                cross_venue_spreads.append({
-                    "instrument": inst,
-                    "coinbase_bid": cb_bid,
-                    "kraken_bid": kr_bid,
-                    "diff_usd": divergence,
-                    "diff_bps": (divergence / max(cb_bid, 1.0)) * 10000.0,
-                })
+                cross_venue_spreads.append(
+                    {
+                        "instrument": inst,
+                        "coinbase_bid": cb_bid,
+                        "kraken_bid": kr_bid,
+                        "diff_usd": divergence,
+                        "diff_bps": (divergence / max(cb_bid, 1.0)) * 10000.0,
+                    }
+                )
 
     feed_mgr.stop()
     end_wall = time.time()
@@ -153,6 +169,7 @@ def run_observation(duration_seconds: float = 15.0, db_path: str = "data/live_ob
 
     # Sort latencies for percentiles
     latencies_us.sort()
+
     def pctl(arr, q):
         if not arr:
             return 0.0
@@ -210,7 +227,7 @@ def run_observation(duration_seconds: float = 15.0, db_path: str = "data/live_ob
             "order_keys_configured": False,
             "private_endpoints_called": 0,
             "execution_routes_exposed": 0,
-        }
+        },
     }
 
     print(json.dumps(report, indent=2))

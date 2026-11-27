@@ -36,7 +36,9 @@ import time
 from typing import Any
 
 # Ensure project root in sys.path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
+sys.path.insert(
+    0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src"))
+)
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from mdrap.models import CanonicalEvent, EventType, QualityStatus, RawEvent
@@ -91,21 +93,27 @@ def _daemon_soak_worker(
             wal_size = os.path.getsize(wal_path) if os.path.exists(wal_path) else 0
 
             # Open handles count (Windows)
-            num_handles = proc.num_handles() if hasattr(proc, "num_handles") else len(proc.open_files())
+            num_handles = (
+                proc.num_handles()
+                if hasattr(proc, "num_handles")
+                else len(proc.open_files())
+            )
 
-            metrics_queue.put({
-                "ts": time.time(),
-                "pid": proc.pid,
-                "role": "core_daemon",
-                "cpu_pct": cpu_pct,
-                "rss_mb": round(mem_info.rss / (1024 * 1024), 2),
-                "num_handles": num_handles,
-                "total_broadcast": st.get("total_broadcast", 0),
-                "active_clients": st.get("active_clients", 0),
-                "ingestion_errors": st.get("ingestion_errors", 0),
-                "shm_errors": st.get("shm_errors", 0),
-                "wal_size_bytes": wal_size,
-            })
+            metrics_queue.put(
+                {
+                    "ts": time.time(),
+                    "pid": proc.pid,
+                    "role": "core_daemon",
+                    "cpu_pct": cpu_pct,
+                    "rss_mb": round(mem_info.rss / (1024 * 1024), 2),
+                    "num_handles": num_handles,
+                    "total_broadcast": st.get("total_broadcast", 0),
+                    "active_clients": st.get("active_clients", 0),
+                    "ingestion_errors": st.get("ingestion_errors", 0),
+                    "shm_errors": st.get("shm_errors", 0),
+                    "wal_size_bytes": wal_size,
+                }
+            )
     except Exception as exc:
         print(f"[Daemon PID {os.getpid()}] Fatal: {exc}", file=sys.stderr)
         ready_event.set()
@@ -160,23 +168,33 @@ def _shm_sidecar_worker(
         if now - last_report_ts >= 1.0:
             last_report_ts = now
             p50 = statistics.median(latencies_us[-500:]) if latencies_us else 0.0
-            p95 = statistics.quantiles(latencies_us[-500:], n=20)[18] if len(latencies_us) >= 20 else p50
-            p99 = statistics.quantiles(latencies_us[-500:], n=100)[98] if len(latencies_us) >= 100 else p95
+            p95 = (
+                statistics.quantiles(latencies_us[-500:], n=20)[18]
+                if len(latencies_us) >= 20
+                else p50
+            )
+            p99 = (
+                statistics.quantiles(latencies_us[-500:], n=100)[98]
+                if len(latencies_us) >= 100
+                else p95
+            )
             mem = proc.memory_info()
 
-            metrics_queue.put({
-                "ts": now,
-                "pid": proc.pid,
-                "role": "shm_sidecar",
-                "ticks_read": ticks_read,
-                "torn_reads": torn_reads,
-                "laps": reader.overrun_stats.total_laps,
-                "skipped_ticks": reader.overrun_stats.skipped_ticks,
-                "rss_mb": round(mem.rss / (1024 * 1024), 2),
-                "p50_lat_us": round(p50, 1),
-                "p95_lat_us": round(p95, 1),
-                "p99_lat_us": round(p99, 1),
-            })
+            metrics_queue.put(
+                {
+                    "ts": now,
+                    "pid": proc.pid,
+                    "role": "shm_sidecar",
+                    "ticks_read": ticks_read,
+                    "torn_reads": torn_reads,
+                    "laps": reader.overrun_stats.total_laps,
+                    "skipped_ticks": reader.overrun_stats.skipped_ticks,
+                    "rss_mb": round(mem.rss / (1024 * 1024), 2),
+                    "p50_lat_us": round(p50, 1),
+                    "p95_lat_us": round(p95, 1),
+                    "p99_lat_us": round(p99, 1),
+                }
+            )
 
     reader.close()
 
@@ -218,19 +236,29 @@ def _socket_sidecar_worker(
         now = time.time()
         if now - last_report_ts >= 1.0:
             last_report_ts = now
-            p50 = statistics.median(wire_latencies_us[-500:]) if wire_latencies_us else 0.0
-            p95 = statistics.quantiles(wire_latencies_us[-500:], n=20)[18] if len(wire_latencies_us) >= 20 else p50
+            p50 = (
+                statistics.median(wire_latencies_us[-500:])
+                if wire_latencies_us
+                else 0.0
+            )
+            p95 = (
+                statistics.quantiles(wire_latencies_us[-500:], n=20)[18]
+                if len(wire_latencies_us) >= 20
+                else p50
+            )
             mem = proc.memory_info()
 
-            metrics_queue.put({
-                "ts": now,
-                "pid": proc.pid,
-                "role": "socket_sidecar",
-                "events_read": events_read,
-                "rss_mb": round(mem.rss / (1024 * 1024), 2),
-                "wire_p50_us": round(p50, 1),
-                "wire_p95_us": round(p95, 1),
-            })
+            metrics_queue.put(
+                {
+                    "ts": now,
+                    "pid": proc.pid,
+                    "role": "socket_sidecar",
+                    "events_read": events_read,
+                    "rss_mb": round(mem.rss / (1024 * 1024), 2),
+                    "wire_p50_us": round(p50, 1),
+                    "wire_p95_us": round(p95, 1),
+                }
+            )
 
     if client and client.sock:
         client.sock.close()
@@ -243,9 +271,13 @@ def run_operational_soak(duration_s: float = 20.0) -> dict[str, Any]:
     shm_name = f"soak_shm_{base_id}"
     db_path = f"data/soak_{base_id}.db"
 
-    print(f"\n================================================================================")
+    print(
+        f"\n================================================================================"
+    )
     print(f"MDRAP 6.0.7: Multi-Process Operational Soak Test ({duration_s}s duration)")
-    print(f"================================================================================\n")
+    print(
+        f"================================================================================\n"
+    )
 
     ready_event = mp.Event()
     stop_event = mp.Event()
@@ -258,7 +290,9 @@ def run_operational_soak(duration_s: float = 20.0) -> dict[str, Any]:
     )
     daemon_proc.start()
     ready_event.wait(timeout=10.0)
-    print(f"[OK] Core MarketDataDaemon running (PID {daemon_proc.pid}, port {port}, SHM: {shm_name})")
+    print(
+        f"[OK] Core MarketDataDaemon running (PID {daemon_proc.pid}, port {port}, SHM: {shm_name})"
+    )
 
     # 2. Start Sidecar 1: SHM Streaming Reader
     shm_sidecar = mp.Process(
@@ -291,39 +325,59 @@ def run_operational_soak(duration_s: float = 20.0) -> dict[str, Any]:
             telemetry_samples.append(sample)
 
         # Injected Stress Event at t = 50%: Checkpoint invocation
-        if 8.0 <= elapsed <= 9.0 and "checkpoint_invoked" not in [c["type"] for c in chaos_events]:
-            print(f"  [Chaos @ {elapsed:.1f}s] Invoking PASSIVE and FULL WAL Checkpoint concurrently...")
+        if 8.0 <= elapsed <= 9.0 and "checkpoint_invoked" not in [
+            c["type"] for c in chaos_events
+        ]:
+            print(
+                f"  [Chaos @ {elapsed:.1f}s] Invoking PASSIVE and FULL WAL Checkpoint concurrently..."
+            )
             try:
                 temp_store = Store(db_path, durability="balanced")
                 ckpt_res = temp_store.wal_checkpoint("PASSIVE")
                 temp_store.close()
-                chaos_events.append({"type": "checkpoint_invoked", "res": ckpt_res, "ts": elapsed})
+                chaos_events.append(
+                    {"type": "checkpoint_invoked", "res": ckpt_res, "ts": elapsed}
+                )
             except Exception as e:
-                chaos_events.append({"type": "checkpoint_error", "error": str(e), "ts": elapsed})
+                chaos_events.append(
+                    {"type": "checkpoint_error", "error": str(e), "ts": elapsed}
+                )
 
         # Injected Stress Event at t = 75%: Hard kill and restart of Sidecar 2
-        if 13.0 <= elapsed <= 14.0 and "sidecar_restart" not in [c["type"] for c in chaos_events]:
-            print(f"  [Chaos @ {elapsed:.1f}s] Simulating hard kill (SIGTERM) of TCP Socket Sidecar (PID {sock_sidecar.pid})...")
+        if 13.0 <= elapsed <= 14.0 and "sidecar_restart" not in [
+            c["type"] for c in chaos_events
+        ]:
+            print(
+                f"  [Chaos @ {elapsed:.1f}s] Simulating hard kill (SIGTERM) of TCP Socket Sidecar (PID {sock_sidecar.pid})..."
+            )
             sock_sidecar.terminate()
             sock_sidecar.join(timeout=2.0)
-            chaos_events.append({"type": "sidecar_restart", "old_pid": sock_sidecar.pid, "ts": elapsed})
+            chaos_events.append(
+                {"type": "sidecar_restart", "old_pid": sock_sidecar.pid, "ts": elapsed}
+            )
             # Restart replacement sidecar
             sock_sidecar = mp.Process(
                 target=_socket_sidecar_worker,
                 args=(port, stop_event, metrics_queue),
             )
             sock_sidecar.start()
-            print(f"  [Chaos @ {elapsed:.1f}s] Replacement TCP Socket Sidecar started (PID {sock_sidecar.pid}).")
+            print(
+                f"  [Chaos @ {elapsed:.1f}s] Replacement TCP Socket Sidecar started (PID {sock_sidecar.pid})."
+            )
 
         time.sleep(1.0)
         # Print progress line
-        daemon_samples = [s for s in telemetry_samples if s.get("role") == "core_daemon"]
+        daemon_samples = [
+            s for s in telemetry_samples if s.get("role") == "core_daemon"
+        ]
         shm_samples = [s for s in telemetry_samples if s.get("role") == "shm_sidecar"]
         latest_d = daemon_samples[-1] if daemon_samples else {}
         latest_s = shm_samples[-1] if shm_samples else {}
-        print(f"  [{elapsed:4.1f}s] Core RSS: {latest_d.get('rss_mb', 0)}MB | CPU: {latest_d.get('cpu_pct', 0):4.1f}% | "
-              f"Broadcast: {latest_d.get('total_broadcast', 0):6d} | WAL: {latest_d.get('wal_size_bytes', 0):7d}B | "
-              f"SHM Read: {latest_s.get('ticks_read', 0):6d} | SHM p50: {latest_s.get('p50_lat_us', 0):5.1f}μs")
+        print(
+            f"  [{elapsed:4.1f}s] Core RSS: {latest_d.get('rss_mb', 0)}MB | CPU: {latest_d.get('cpu_pct', 0):4.1f}% | "
+            f"Broadcast: {latest_d.get('total_broadcast', 0):6d} | WAL: {latest_d.get('wal_size_bytes', 0):7d}B | "
+            f"SHM Read: {latest_s.get('ticks_read', 0):6d} | SHM p50: {latest_s.get('p50_lat_us', 0):5.1f}μs"
+        )
 
     # Teardown processes
     print("\nStopping soak processes...")
@@ -347,9 +401,21 @@ def run_operational_soak(duration_s: float = 20.0) -> dict[str, Any]:
 
     rss_values = [s["rss_mb"] for s in daemon_samples if "rss_mb" in s]
     cpu_values = [s["cpu_pct"] for s in daemon_samples if "cpu_pct" in s]
-    shm_lat_p50 = [s["p50_lat_us"] for s in shm_samples if "p50_lat_us" in s and s["p50_lat_us"] > 0]
-    shm_lat_p95 = [s["p95_lat_us"] for s in shm_samples if "p95_lat_us" in s and s["p95_lat_us"] > 0]
-    shm_lat_p99 = [s["p99_lat_us"] for s in shm_samples if "p99_lat_us" in s and s["p99_lat_us"] > 0]
+    shm_lat_p50 = [
+        s["p50_lat_us"]
+        for s in shm_samples
+        if "p50_lat_us" in s and s["p50_lat_us"] > 0
+    ]
+    shm_lat_p95 = [
+        s["p95_lat_us"]
+        for s in shm_samples
+        if "p95_lat_us" in s and s["p95_lat_us"] > 0
+    ]
+    shm_lat_p99 = [
+        s["p99_lat_us"]
+        for s in shm_samples
+        if "p99_lat_us" in s and s["p99_lat_us"] > 0
+    ]
 
     final_daemon = daemon_samples[-1] if daemon_samples else {}
     final_shm = shm_samples[-1] if shm_samples else {}
@@ -371,12 +437,20 @@ def run_operational_soak(duration_s: float = 20.0) -> dict[str, Any]:
             "start": rss_values[0] if rss_values else 0.0,
             "end": rss_values[-1] if rss_values else 0.0,
             "peak": max(rss_values) if rss_values else 0.0,
-            "memory_leak_detected": (rss_values[-1] - rss_values[0]) > 50.0 if len(rss_values) >= 2 else False,
+            "memory_leak_detected": (rss_values[-1] - rss_values[0]) > 50.0
+            if len(rss_values) >= 2
+            else False,
         },
         "delivery_latency_us": {
-            "p50_median": round(statistics.median(shm_lat_p50), 1) if shm_lat_p50 else 0.0,
-            "p95_median": round(statistics.median(shm_lat_p95), 1) if shm_lat_p95 else 0.0,
-            "p99_median": round(statistics.median(shm_lat_p99), 1) if shm_lat_p99 else 0.0,
+            "p50_median": round(statistics.median(shm_lat_p50), 1)
+            if shm_lat_p50
+            else 0.0,
+            "p95_median": round(statistics.median(shm_lat_p95), 1)
+            if shm_lat_p95
+            else 0.0,
+            "p99_median": round(statistics.median(shm_lat_p99), 1)
+            if shm_lat_p99
+            else 0.0,
         },
         "chaos_events": chaos_events,
         "wal_final_size_bytes": final_daemon.get("wal_size_bytes", 0),
@@ -392,6 +466,7 @@ def run_operational_soak(duration_s: float = 20.0) -> dict[str, Any]:
                 pass
     try:
         from multiprocessing.shared_memory import SharedMemory
+
         s = SharedMemory(name=shm_name, create=False)
         s.close()
         s.unlink()

@@ -34,7 +34,12 @@ def test_standalone_verifier_on_authentic_package():
     """Verify that a legitimate MDRAP evidence package passes standalone external verification."""
     raw = RawEvent(
         source="BINANCE",
-        payload={"instrument": "BTC/USDT", "bid": 65000.0, "ask": 65001.0, "event_type": "QUOTE"},
+        payload={
+            "instrument": "BTC/USDT",
+            "bid": 65000.0,
+            "ask": 65001.0,
+            "event_type": "QUOTE",
+        },
         receive_timestamp=1718000000.1,
         raw_id="raw-crypt-001",
         wire='{"b":65000.0,"a":65001.0,"s":"BTC/USDT"}',
@@ -81,7 +86,12 @@ def test_adversarial_payload_and_metadata_tampering():
     """Test adversarial bit modifications: wire payload, provider, and quality verdict."""
     raw = RawEvent(
         source="BINANCE",
-        payload={"instrument": "BTC/USDT", "bid": 65000.0, "ask": 65001.0, "event_type": "QUOTE"},
+        payload={
+            "instrument": "BTC/USDT",
+            "bid": 65000.0,
+            "ask": 65001.0,
+            "event_type": "QUOTE",
+        },
         receive_timestamp=1718000000.1,
         raw_id="raw-crypt-002",
         wire='{"b":65000.0,"a":65001.0}',
@@ -97,7 +107,9 @@ def test_adversarial_payload_and_metadata_tampering():
 
     # Attack 1: Alter raw wire payload by $1.00
     pkg_payload_tampered = copy.deepcopy(evidence_orig)
-    pkg_payload_tampered["raw_wire"] = '{"b":65001.0,"a":65001.0}'  # Modified 65000 -> 65001
+    pkg_payload_tampered["raw_wire"] = (
+        '{"b":65001.0,"a":65001.0}'  # Modified 65000 -> 65001
+    )
     valid_1, errors_1 = verify_evidence_package(pkg_payload_tampered)
     assert valid_1 is False
     assert any("PAYLOAD TAMPER DETECTED" in e for e in errors_1)
@@ -151,7 +163,9 @@ def test_dual_tamper_attack_neutralized_by_merkle_anchor():
     fake_leaves = list(leaves)
     fake_leaves[2] = forged_leaf
     fake_proof = MerkleAuditTree.generate_proof(fake_leaves, 2)
-    fake_proof_against_real_root = MerkleAuditTree.verify_proof(forged_leaf, fake_proof, merkle_root)
+    fake_proof_against_real_root = MerkleAuditTree.verify_proof(
+        forged_leaf, fake_proof, merkle_root
+    )
     assert fake_proof_against_real_root is False
 
 

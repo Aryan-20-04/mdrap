@@ -12,6 +12,7 @@ from mdrap.models import RawEvent, CanonicalEvent, EventType, QualityStatus
 def test_dlq_saturation_increments_dropped_counter():
     """A full retry queue rejects new events without silently evicting records."""
     tracker = ProvenanceTracker(max_records=100, max_pending_retries=3)
+
     def make_provenance(index):
         ev = CanonicalEvent(
             event_id=f"EVT-DLQ-TEST-{index}",

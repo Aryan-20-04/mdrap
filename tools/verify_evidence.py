@@ -78,7 +78,15 @@ def verify_evidence_package(evidence: Dict[str, Any]) -> Tuple[bool, List[str]]:
     errors: List[str] = []
 
     # 1. Schema check
-    req_fields = ["evidence_type", "event_id", "provider", "instrument", "timestamps", "quality", "integrity"]
+    req_fields = [
+        "evidence_type",
+        "event_id",
+        "provider",
+        "instrument",
+        "timestamps",
+        "quality",
+        "integrity",
+    ]
     for f in req_fields:
         if f not in evidence:
             errors.append(f"Missing required manifest field: '{f}'")
@@ -141,7 +149,9 @@ def main() -> int:
         description="MDRAP External Standalone Evidence Verifier (Spec §26)"
     )
     parser.add_argument("file", help="Path to exported JSON evidence package")
-    parser.add_argument("--quiet", action="store_true", help="Quiet output, exit code only")
+    parser.add_argument(
+        "--quiet", action="store_true", help="Quiet output, exit code only"
+    )
     args = parser.parse_args()
 
     try:
@@ -159,19 +169,32 @@ def main() -> int:
             print("==================================================================")
             print("✔ MDRAP INDEPENDENT CRYPTOGRAPHIC VERIFICATION: PASSED")
             print(f"Event ID:      {evidence.get('event_id')}")
-            print(f"Provider:      {evidence.get('provider')} | Instrument: {evidence.get('instrument')}")
+            print(
+                f"Provider:      {evidence.get('provider')} | Instrument: {evidence.get('instrument')}"
+            )
             print(f"Payload Digest: {evidence['integrity'].get('payload_sha256')}")
             print(f"Lineage Hash:   {evidence['integrity'].get('lineage_hash')}")
-            print("Status:        VERIFIED_TAMPER_EVIDENT (Zero Preimage / Match Confirmed)")
+            print(
+                "Status:        VERIFIED_TAMPER_EVIDENT (Zero Preimage / Match Confirmed)"
+            )
             print("==================================================================")
         return 0
     else:
         if not args.quiet:
-            print("==================================================================", file=sys.stderr)
-            print("✖ MDRAP INDEPENDENT CRYPTOGRAPHIC VERIFICATION: FAILED", file=sys.stderr)
+            print(
+                "==================================================================",
+                file=sys.stderr,
+            )
+            print(
+                "✖ MDRAP INDEPENDENT CRYPTOGRAPHIC VERIFICATION: FAILED",
+                file=sys.stderr,
+            )
             for err in errors:
                 print(f"  [TAMPER DETECTED] {err}", file=sys.stderr)
-            print("==================================================================", file=sys.stderr)
+            print(
+                "==================================================================",
+                file=sys.stderr,
+            )
         return 1
 
 

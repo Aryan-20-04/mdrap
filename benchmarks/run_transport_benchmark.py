@@ -16,7 +16,9 @@ import time
 from typing import Any, Dict, List
 
 # Ensure src in sys.path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
+sys.path.insert(
+    0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src"))
+)
 
 from mdrap.shm import SHMWriter, SHMReader
 
@@ -24,16 +26,19 @@ from mdrap.shm import SHMWriter, SHMReader
 def get_rss_mb() -> float:
     try:
         import psutil
+
         return psutil.Process(os.getpid()).memory_info().rss / (1024 * 1024)
     except Exception:
         return 0.0
 
 
-def benchmark_shm_scaling(num_events: int = 50_000, num_consumers: int = 1) -> Dict[str, Any]:
-    ring_name = f"mdrap_shm_bench_{num_consumers}_{int(time.time()*1000)%1000000}"
+def benchmark_shm_scaling(
+    num_events: int = 50_000, num_consumers: int = 1
+) -> Dict[str, Any]:
+    ring_name = f"mdrap_shm_bench_{num_consumers}_{int(time.time() * 1000) % 1000000}"
     slot_count = 65536  # Power of 2 ring
     writer = SHMWriter(ring_name, slot_count=slot_count)
-    
+
     rss_start = get_rss_mb()
     t_cpu_start = time.process_time()
 
@@ -69,7 +74,10 @@ def benchmark_shm_scaling(num_events: int = 50_000, num_consumers: int = 1) -> D
         consumer_latencies[cid] = latencies
         consumer_counts[cid] = count
 
-    threads = [threading.Thread(target=consumer_worker, args=(i,), daemon=True) for i in range(num_consumers)]
+    threads = [
+        threading.Thread(target=consumer_worker, args=(i,), daemon=True)
+        for i in range(num_consumers)
+    ]
     for t in threads:
         t.start()
 
@@ -97,7 +105,9 @@ def benchmark_shm_scaling(num_events: int = 50_000, num_consumers: int = 1) -> D
     # Wait for consumers to receive
     timeout = 10.0
     t_wait_start = time.perf_counter()
-    while any(c < num_events for c in consumer_counts) and (time.perf_counter() - t_wait_start < timeout):
+    while any(c < num_events for c in consumer_counts) and (
+        time.perf_counter() - t_wait_start < timeout
+    ):
         time.sleep(0.005)
 
     elapsed = time.perf_counter() - t0
@@ -120,7 +130,8 @@ def benchmark_shm_scaling(num_events: int = 50_000, num_consumers: int = 1) -> D
         "target_events": num_events,
         "received_events_per_consumer": consumer_counts,
         "total_deliveries": sum(consumer_counts),
-        "delivery_rate_pct": (sum(consumer_counts) / (num_events * num_consumers)) * 100.0,
+        "delivery_rate_pct": (sum(consumer_counts) / (num_events * num_consumers))
+        * 100.0,
         "elapsed_s": round(elapsed, 4),
         "throughput_eps": round((num_events * num_consumers) / elapsed, 1),
         "producer_eps": round(num_events / elapsed, 1),
@@ -141,7 +152,9 @@ def benchmark_shm_scaling(num_events: int = 50_000, num_consumers: int = 1) -> D
     }
 
 
-def benchmark_tcp_scaling(num_events: int = 50_000, num_consumers: int = 1) -> Dict[str, Any]:
+def benchmark_tcp_scaling(
+    num_events: int = 50_000, num_consumers: int = 1
+) -> Dict[str, Any]:
     server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     server_sock.bind(("127.0.0.1", 0))
@@ -169,7 +182,7 @@ def benchmark_tcp_scaling(num_events: int = 50_000, num_consumers: int = 1) -> D
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         s.connect(("127.0.0.1", port))
-        
+
         raw_buf = bytearray()
         latencies = []
         count = 0
@@ -241,7 +254,8 @@ def benchmark_tcp_scaling(num_events: int = 50_000, num_consumers: int = 1) -> D
         "target_events": num_events,
         "received_events_per_consumer": consumer_counts,
         "total_deliveries": sum(consumer_counts),
-        "delivery_rate_pct": (sum(consumer_counts) / (num_events * num_consumers)) * 100.0,
+        "delivery_rate_pct": (sum(consumer_counts) / (num_events * num_consumers))
+        * 100.0,
         "elapsed_s": round(elapsed, 4),
         "throughput_eps": round((num_events * num_consumers) / elapsed, 1),
         "producer_eps": round(num_events / elapsed, 1),
@@ -277,20 +291,36 @@ def main():
 
     events = 50_000
     for consumers in [1, 2, 4]:
-        print(f"\n--- Running SHM Benchmark with {consumers} consumer(s) [{events:,} events] ---")
+        print(
+            f"\n--- Running SHM Benchmark with {consumers} consumer(s) [{events:,} events] ---"
+        )
         shm_res = benchmark_shm_scaling(num_events=events, num_consumers=consumers)
         results["shm_scaling"][f"{consumers}_consumers"] = shm_res
-        print(f"  Throughput: {shm_res['throughput_eps']:>12,.1f} EPS (Producer: {shm_res['producer_eps']:,.1f} EPS)")
-        print(f"  Latency: p50={shm_res['latency_us']['p50']:.1f}us | p95={shm_res['latency_us']['p95']:.1f}us | p99={shm_res['latency_us']['p99']:.1f}us | p99.9={shm_res['latency_us']['p99_9']:.1f}us | max={shm_res['latency_us']['max']:.1f}us")
-        print(f"  Delivery: {shm_res['delivery_rate_pct']:.2f}% | CPU: {shm_res['cpu_time_s']:.2f}s | Net RSS: {shm_res['rss_mb']['growth']:.2f}MB")
+        print(
+            f"  Throughput: {shm_res['throughput_eps']:>12,.1f} EPS (Producer: {shm_res['producer_eps']:,.1f} EPS)"
+        )
+        print(
+            f"  Latency: p50={shm_res['latency_us']['p50']:.1f}us | p95={shm_res['latency_us']['p95']:.1f}us | p99={shm_res['latency_us']['p99']:.1f}us | p99.9={shm_res['latency_us']['p99_9']:.1f}us | max={shm_res['latency_us']['max']:.1f}us"
+        )
+        print(
+            f"  Delivery: {shm_res['delivery_rate_pct']:.2f}% | CPU: {shm_res['cpu_time_s']:.2f}s | Net RSS: {shm_res['rss_mb']['growth']:.2f}MB"
+        )
 
     for consumers in [1, 2, 4]:
-        print(f"\n--- Running TCP Benchmark with {consumers} consumer(s) [{events:,} events] ---")
+        print(
+            f"\n--- Running TCP Benchmark with {consumers} consumer(s) [{events:,} events] ---"
+        )
         tcp_res = benchmark_tcp_scaling(num_events=events, num_consumers=consumers)
         results["tcp_scaling"][f"{consumers}_consumers"] = tcp_res
-        print(f"  Throughput: {tcp_res['throughput_eps']:>12,.1f} EPS (Producer: {tcp_res['producer_eps']:,.1f} EPS)")
-        print(f"  Latency: p50={tcp_res['latency_us']['p50']:.1f}us | p95={tcp_res['latency_us']['p95']:.1f}us | p99={tcp_res['latency_us']['p99']:.1f}us | p99.9={tcp_res['latency_us']['p99_9']:.1f}us | max={tcp_res['latency_us']['max']:.1f}us")
-        print(f"  Delivery: {tcp_res['delivery_rate_pct']:.2f}% | CPU: {tcp_res['cpu_time_s']:.2f}s | Net RSS: {tcp_res['rss_mb']['growth']:.2f}MB")
+        print(
+            f"  Throughput: {tcp_res['throughput_eps']:>12,.1f} EPS (Producer: {tcp_res['producer_eps']:,.1f} EPS)"
+        )
+        print(
+            f"  Latency: p50={tcp_res['latency_us']['p50']:.1f}us | p95={tcp_res['latency_us']['p95']:.1f}us | p99={tcp_res['latency_us']['p99']:.1f}us | p99.9={tcp_res['latency_us']['p99_9']:.1f}us | max={tcp_res['latency_us']['max']:.1f}us"
+        )
+        print(
+            f"  Delivery: {tcp_res['delivery_rate_pct']:.2f}% | CPU: {tcp_res['cpu_time_s']:.2f}s | Net RSS: {tcp_res['rss_mb']['growth']:.2f}MB"
+        )
 
     out_file = os.path.join("audit", "benchmark", "raw", "transport_benchmark.json")
     with open(out_file, "w") as fp:

@@ -1,10 +1,11 @@
-﻿"""MDRAP Custom Venue & User Rule Extension Example.
+"""MDRAP Custom Venue & User Rule Extension Example.
 
 Demonstrates:
 1. Implementing the FeedAdapter protocol for a proprietary broker / dark pool.
 2. Registering user-defined quality rules in bit range 32..63.
 3. Ingesting and evaluating events with full lineage and quality tagging.
 """
+
 import sys
 import os
 
@@ -19,6 +20,7 @@ from mdrap.rules import register_rule, clear_user_rules
 from quality import QualityEngine
 from fastpath import FastQualityEngine, HAS_FASTPATH
 
+
 # Register a custom user rule (bit 32): Flag bid-ask spread > 5.0
 @register_rule(
     bit=32,
@@ -30,6 +32,7 @@ def check_wide_spread(ev: CanonicalEvent) -> bool:
     if ev.bid_price is not None and ev.ask_price is not None:
         return (ev.ask_price - ev.bid_price) > 5.0
     return False
+
 
 def main():
     print("=== MDRAP Custom Venue Extension Example ===")
@@ -62,6 +65,7 @@ def main():
     assert "CUSTOM_WIDE_SPREAD" in evaluated.reasons
     assert evaluated.quality_status == QualityStatus.SUSPICIOUS
     print("Success: Custom rule CUSTOM_WIDE_SPREAD triggered as expected!")
+
 
 if __name__ == "__main__":
     main()

@@ -107,11 +107,18 @@ class LivePaperTradingBackend(ExecutionBackend):
     def on_market_event(self, event: Any) -> list[dict[str, Any]]:
         now = time.time()
         sym = getattr(event, "instrument_id", None) or (
-            event.payload.get("instrument") if hasattr(event, "payload") and isinstance(event.payload, dict) else "BTC/USD"
+            event.payload.get("instrument")
+            if hasattr(event, "payload") and isinstance(event.payload, dict)
+            else "BTC/USD"
         )
-        ev_type = str(getattr(event, "event_type", None) or (
-            event.payload.get("event_type") if hasattr(event, "payload") and isinstance(event.payload, dict) else "QUOTE"
-        )).upper()
+        ev_type = str(
+            getattr(event, "event_type", None)
+            or (
+                event.payload.get("event_type")
+                if hasattr(event, "payload") and isinstance(event.payload, dict)
+                else "QUOTE"
+            )
+        ).upper()
 
         fills = []
 
@@ -119,10 +126,18 @@ class LivePaperTradingBackend(ExecutionBackend):
             bids = []
             asks = []
             # Check canonical or raw payload
-            b_px = getattr(event, "bid_price", None) or (event.payload.get("bid") if hasattr(event, "payload") else None)
-            a_px = getattr(event, "ask_price", None) or (event.payload.get("ask") if hasattr(event, "payload") else None)
-            b_sz = getattr(event, "bid_size", None) or (event.payload.get("bid_size") if hasattr(event, "payload") else 1.0)
-            a_sz = getattr(event, "ask_size", None) or (event.payload.get("ask_size") if hasattr(event, "payload") else 1.0)
+            b_px = getattr(event, "bid_price", None) or (
+                event.payload.get("bid") if hasattr(event, "payload") else None
+            )
+            a_px = getattr(event, "ask_price", None) or (
+                event.payload.get("ask") if hasattr(event, "payload") else None
+            )
+            b_sz = getattr(event, "bid_size", None) or (
+                event.payload.get("bid_size") if hasattr(event, "payload") else 1.0
+            )
+            a_sz = getattr(event, "ask_size", None) or (
+                event.payload.get("ask_size") if hasattr(event, "payload") else 1.0
+            )
 
             if b_px and b_sz:
                 bids.append((float(b_px), float(b_sz)))
@@ -134,19 +149,25 @@ class LivePaperTradingBackend(ExecutionBackend):
                 fills = self.matching_engine.process_time_slice(now)
 
         elif "TRADE" in ev_type:
-            px = getattr(event, "price", None) or (event.payload.get("price") if hasattr(event, "payload") else None)
-            sz = getattr(event, "quantity", None) or (event.payload.get("quantity") if hasattr(event, "payload") else 1.0)
+            px = getattr(event, "price", None) or (
+                event.payload.get("price") if hasattr(event, "payload") else None
+            )
+            sz = getattr(event, "quantity", None) or (
+                event.payload.get("quantity") if hasattr(event, "payload") else 1.0
+            )
             if px is not None and sz is not None:
-                fills = self.matching_engine.process_market_trade(sym, float(px), float(sz), now)
+                fills = self.matching_engine.process_market_trade(
+                    sym, float(px), float(sz), now
+                )
 
         for fill in fills:
             if fill.get("event") == "FILL":
                 cost = fill["price"] * fill["quantity"]
                 fee = fill.get("fee", 0.0)
                 if fill["side"] == "BUY":
-                    self.cash -= (cost + fee)
+                    self.cash -= cost + fee
                 else:
-                    self.cash += (cost - fee)
+                    self.cash += cost - fee
 
                 self.risk_engine.update_position(
                     symbol=fill["symbol"],
@@ -166,13 +187,22 @@ class LivePaperTradingBackend(ExecutionBackend):
 
     def get_equity(self) -> float:
         unrealized = sum(
-            qty * self.matching_engine._mid_prices.get(sym, self.risk_engine.avg_costs.get(sym, 100.0))
+            qty
+            * self.matching_engine._mid_prices.get(
+                sym, self.risk_engine.avg_costs.get(sym, 100.0)
+            )
             for sym, qty in self.risk_engine.positions.items()
         )
         return self.cash + unrealized
 
     def get_open_orders(self) -> list[SimulatedOrder]:
         return [
-            o for o in self.matching_engine.orders.values()
-            if o.status in (SimOrderStatus.ACCEPTED, SimOrderStatus.PENDING, SimOrderStatus.PARTIALLY_FILLED)
+            o
+            for o in self.matching_engine.orders.values()
+            if o.status
+            in (
+                SimOrderStatus.ACCEPTED,
+                SimOrderStatus.PENDING,
+                SimOrderStatus.PARTIALLY_FILLED,
+            )
         ]

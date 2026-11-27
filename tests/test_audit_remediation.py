@@ -1622,7 +1622,7 @@ def test_phase4_financial_microstructure_and_venues(tmp_path):
             db.observe(ev1)
             db.observe(ev2)
             agg_1m = db.aggregators["1m"]
-    
+
             # Bucket 0..60s has closed. Now send a late tick for t=30s (age = 40s < 120s revision window)
             ev_late = CanonicalEvent(
                 event_id="t_late",
@@ -1639,7 +1639,7 @@ def test_phase4_financial_microstructure_and_venues(tmp_path):
             db.observe(ev_late)
             assert agg_1m.late_ticks_revised == 1
             assert agg_1m.late_ticks_dropped == 0
-    
+
             # Now send a super-stale tick older than 120s revision window
             ev_ancient = CanonicalEvent(
                 event_id="t_ancient",
@@ -1655,14 +1655,14 @@ def test_phase4_financial_microstructure_and_venues(tmp_path):
             )
             db.observe(ev_ancient)
             assert agg_1m.late_ticks_dropped == 1
-    
+
             db.flush()
             bars = db.query_bars("CL-202005", "1m")
             # First bar (bucket 0) must reflect the late tick: low updated to -38.0, volume = 15.0
             bar0 = next(b for b in bars if b.bucket_start == 0.0)
             assert bar0.low == -38.0
             assert bar0.volume == 15.0
-    
+
     # 2. Negative Commodity Prices in BBO Engine (WTI Crude April 2020 scenario)
     bbo = BBOEngine()
     quote = CanonicalEvent(

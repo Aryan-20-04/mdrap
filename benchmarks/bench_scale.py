@@ -136,7 +136,9 @@ def print_report(report: dict[str, Any]) -> None:
     """Print clean ASCII table of benchmark results."""
     print("=" * 82)
     print(f" {report['suite']} ")
-    print(f" Timestamp: {report['timestamp']} | Events / scale: {report['events_per_scale']:,}")
+    print(
+        f" Timestamp: {report['timestamp']} | Events / scale: {report['events_per_scale']:,}"
+    )
     print("=" * 82)
     header = f"{'Universe':<12} {'Throughput':<16} {'p50 (µs)':<10} {'p95 (µs)':<10} {'p99 (µs)':<10} {'Max (µs)':<10} {'Mem (KB)':<10}"
     print(header)
@@ -153,7 +155,9 @@ def print_report(report: dict[str, Any]) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="MDRAP Scaled Universe Benchmark Harness")
+    parser = argparse.ArgumentParser(
+        description="MDRAP Scaled Universe Benchmark Harness"
+    )
     parser.add_argument(
         "-e",
         "--events",

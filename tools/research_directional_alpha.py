@@ -49,7 +49,7 @@ def run_directional_alpha_research(
     print("=" * 70, flush=True)
     print("MDRAP 6.0.5 — Directional Alpha Research", flush=True)
     print(f"Data Source: {cap_path}", flush=True)
-    print(f"Sampling Interval: {sample_interval_s*1000:.0f} ms", flush=True)
+    print(f"Sampling Interval: {sample_interval_s * 1000:.0f} ms", flush=True)
     print("=" * 70, flush=True)
 
     reconstructor = L2BookReconstructor()
@@ -79,7 +79,10 @@ def run_directional_alpha_research(
     first_wall_s: float | None = None
     last_wall_s: float = 0.0
 
-    print("Pass 1: Streaming frames, maintaining L2 order books & sampling signals...", flush=True)
+    print(
+        "Pass 1: Streaming frames, maintaining L2 order books & sampling signals...",
+        flush=True,
+    )
 
     for frame in stream_captured_frames(cap_path):
         count += 1
@@ -90,7 +93,10 @@ def run_directional_alpha_research(
 
         if count % 500000 == 0:
             elapsed_m = (wall_s - (first_wall_s or wall_s)) / 60.0
-            print(f"  Frame {count:7d} | Replay time: {elapsed_m:5.1f} min | Wall elapsed: {time.time()-t0:.1f}s | Samples: {len(samples)}", flush=True)
+            print(
+                f"  Frame {count:7d} | Replay time: {elapsed_m:5.1f} min | Wall elapsed: {time.time() - t0:.1f}s | Samples: {len(samples)}",
+                flush=True,
+            )
 
         events = reconstructor.process_frame(frame)
         if not events:
@@ -128,12 +134,22 @@ def run_directional_alpha_research(
                 # 1. Update OFI
                 if sym_key in prev_bbo:
                     p_b0, p_a0, q_b0, q_a0 = prev_bbo[sym_key]
-                    delta_b = bb_sz if bb_usd > p_b0 else ((bb_sz - q_b0) if bb_usd == p_b0 else -q_b0)
-                    delta_a = -ba_sz if ba_usd < p_a0 else ((ba_usd - q_a0) if ba_usd == p_a0 else q_a0)
+                    delta_b = (
+                        bb_sz
+                        if bb_usd > p_b0
+                        else ((bb_sz - q_b0) if bb_usd == p_b0 else -q_b0)
+                    )
+                    delta_a = (
+                        -ba_sz
+                        if ba_usd < p_a0
+                        else ((ba_usd - q_a0) if ba_usd == p_a0 else q_a0)
+                    )
                     raw_ofi = delta_b - delta_a
                     vol_delta = abs(delta_b) + abs(delta_a) + 1e-6
                     ofi_ema[sym_key] = 0.90 * ofi_ema[sym_key] + 0.10 * raw_ofi
-                    ofi_vol_ema[sym_key] = 0.90 * ofi_vol_ema[sym_key] + 0.10 * vol_delta
+                    ofi_vol_ema[sym_key] = (
+                        0.90 * ofi_vol_ema[sym_key] + 0.10 * vol_delta
+                    )
 
                 prev_bbo[sym_key] = (bb_usd, ba_usd, bb_sz, ba_sz)
 
@@ -157,19 +173,35 @@ def run_directional_alpha_research(
 
                     # Calculate signal features
                     # Signal 1: OFI
-                    s_ofi = ofi_ema[sym_key] / ofi_vol_ema[sym_key] if ofi_vol_ema[sym_key] > 0 else 0.0
+                    s_ofi = (
+                        ofi_ema[sym_key] / ofi_vol_ema[sym_key]
+                        if ofi_vol_ema[sym_key] > 0
+                        else 0.0
+                    )
                     s_ofi = max(-1.0, min(1.0, s_ofi))
 
                     # Signal 2: STI
-                    s_sti = sti_ema[sym_key] / sti_vol_ema[sym_key] if sti_vol_ema[sym_key] > 0 else 0.0
+                    s_sti = (
+                        sti_ema[sym_key] / sti_vol_ema[sym_key]
+                        if sti_vol_ema[sym_key] > 0
+                        else 0.0
+                    )
                     s_sti = max(-1.0, min(1.0, s_sti))
 
                     # Signal 3: Microprice Displacement (bps)
-                    micro_px = (ba_usd * bb_sz + bb_usd * ba_sz) / (bb_sz + ba_sz) if (bb_sz + ba_sz) > 0 else mid_usd
+                    micro_px = (
+                        (ba_usd * bb_sz + bb_usd * ba_sz) / (bb_sz + ba_sz)
+                        if (bb_sz + ba_sz) > 0
+                        else mid_usd
+                    )
                     s_micro = ((micro_px - mid_usd) / mid_usd) * 10000.0
 
                     # Signal 4: Depth Imbalance
-                    s_depth = (bb_sz - ba_sz) / (bb_sz + ba_sz) if (bb_sz + ba_sz) > 0 else 0.0
+                    s_depth = (
+                        (bb_sz - ba_sz) / (bb_sz + ba_sz)
+                        if (bb_sz + ba_sz) > 0
+                        else 0.0
+                    )
 
                     # Signal 5: Short-Term Momentum (100ms, 1s, 5s)
                     def get_past_mid(dt_sec: float) -> float:
@@ -182,9 +214,17 @@ def run_directional_alpha_research(
                     mid_1s = get_past_mid(1.0)
                     mid_5s = get_past_mid(5.0)
 
-                    s_mom_100ms = ((mid_usd - mid_100ms) / mid_100ms) * 10000.0 if mid_100ms > 0 else 0.0
-                    s_mom_1s = ((mid_usd - mid_1s) / mid_1s) * 10000.0 if mid_1s > 0 else 0.0
-                    s_mom_5s = ((mid_usd - mid_5s) / mid_5s) * 10000.0 if mid_5s > 0 else 0.0
+                    s_mom_100ms = (
+                        ((mid_usd - mid_100ms) / mid_100ms) * 10000.0
+                        if mid_100ms > 0
+                        else 0.0
+                    )
+                    s_mom_1s = (
+                        ((mid_usd - mid_1s) / mid_1s) * 10000.0 if mid_1s > 0 else 0.0
+                    )
+                    s_mom_5s = (
+                        ((mid_usd - mid_5s) / mid_5s) * 10000.0 if mid_5s > 0 else 0.0
+                    )
 
                     # Signal 6: EWMA Volatility (bps)
                     vol_bps = math.sqrt(ewma_var[sym_key]) * 10000.0
@@ -194,34 +234,45 @@ def run_directional_alpha_research(
                     r_side, r_count = trade_runs.get(sym_key, (0, 0))
                     s_runs = float(r_side * r_count)
 
-                    samples.append({
-                        "sym_key": sym_key,
-                        "venue": ev.venue,
-                        "instrument": ev.instrument,
-                        "partition": partition,
-                        "ts": ts,
-                        "mid": mid_usd,
-                        "half_spread_bps": half_spread_bps,
-                        "vol_bps": vol_bps,
-                        "s_ofi": s_ofi,
-                        "s_sti": s_sti,
-                        "s_micro": s_micro,
-                        "s_depth": s_depth,
-                        "s_mom_100ms": s_mom_100ms,
-                        "s_mom_1s": s_mom_1s,
-                        "s_mom_5s": s_mom_5s,
-                        "s_vol_mom": s_vol_mom,
-                        "s_runs": s_runs,
-                    })
+                    samples.append(
+                        {
+                            "sym_key": sym_key,
+                            "venue": ev.venue,
+                            "instrument": ev.instrument,
+                            "partition": partition,
+                            "ts": ts,
+                            "mid": mid_usd,
+                            "half_spread_bps": half_spread_bps,
+                            "vol_bps": vol_bps,
+                            "s_ofi": s_ofi,
+                            "s_sti": s_sti,
+                            "s_micro": s_micro,
+                            "s_depth": s_depth,
+                            "s_mom_100ms": s_mom_100ms,
+                            "s_mom_1s": s_mom_1s,
+                            "s_mom_5s": s_mom_5s,
+                            "s_vol_mom": s_vol_mom,
+                            "s_runs": s_runs,
+                        }
+                    )
 
-            elif ev.event_kind == "TRADE" and ev.price is not None and ev.quantity is not None and not ev.duplicate:
+            elif (
+                ev.event_kind == "TRADE"
+                and ev.price is not None
+                and ev.quantity is not None
+                and not ev.duplicate
+            ):
                 # Update STI
                 agg_sign = 0
                 if ev.aggressor_side:
                     agg_sign = 1 if ev.aggressor_side.value == "BUY" else -1
 
-                sti_ema[sym_key] = 0.90 * sti_ema[sym_key] + 0.10 * (agg_sign * ev.quantity)
-                sti_vol_ema[sym_key] = 0.90 * sti_vol_ema[sym_key] + 0.10 * (ev.quantity + 1e-6)
+                sti_ema[sym_key] = 0.90 * sti_ema[sym_key] + 0.10 * (
+                    agg_sign * ev.quantity
+                )
+                sti_vol_ema[sym_key] = 0.90 * sti_vol_ema[sym_key] + 0.10 * (
+                    ev.quantity + 1e-6
+                )
 
                 # Update Consecutive Runs
                 if agg_sign != 0:
@@ -231,11 +282,14 @@ def run_directional_alpha_research(
                     else:
                         trade_runs[sym_key] = (agg_sign, 1)
 
-    print(f"\nPass 1 Complete! Processed {count} frames in {time.time()-t0:.1f}s.")
+    print(f"\nPass 1 Complete! Processed {count} frames in {time.time() - t0:.1f}s.")
     print(f"Total Observation Samples Collected: {len(samples)}", flush=True)
 
     # Pass 2: Calculate future forward returns
-    print("\nPass 2: Computing forward returns at [100ms, 500ms, 1s, 5s, 10s] with 2.5ms latency...", flush=True)
+    print(
+        "\nPass 2: Computing forward returns at [100ms, 500ms, 1s, 5s, 10s] with 2.5ms latency...",
+        flush=True,
+    )
     horizons = [0.10, 0.50, 1.0, 5.0, 10.0]
     latency_s = 0.0025  # 2.5ms execution latency (2.0ms wire + 0.5ms engine)
 
@@ -252,13 +306,15 @@ def run_directional_alpha_research(
 
         # Forward prices
         for h in horizons:
-            h_key = f"ret_{int(h*1000)}ms"
+            h_key = f"ret_{int(h * 1000)}ms"
             idx_fwd = bisect.bisect_left(ts_arr, ts_now + latency_s + h)
             px_fwd = px_arr[idx_fwd] if idx_fwd < len(px_arr) else px_arr[-1]
             ret_bps = ((px_fwd - px_exec) / px_exec) * 10000.0 if px_exec > 0 else 0.0
             samp[h_key] = ret_bps
 
-    print("Pass 2 Complete! Running Statistical and Economic Validations...", flush=True)
+    print(
+        "Pass 2 Complete! Running Statistical and Economic Validations...", flush=True
+    )
 
     # Candidate signals list
     signal_keys = [
@@ -303,8 +359,8 @@ def run_directional_alpha_research(
 
             results["signals"][sig_name][part] = {}
             for h in horizons:
-                h_str = f"{int(h*1000)}ms"
-                ret_key = f"ret_{int(h*1000)}ms"
+                h_str = f"{int(h * 1000)}ms"
+                ret_key = f"ret_{int(h * 1000)}ms"
 
                 sig_vals = np.array([s[sig_key] for s in part_samples])
                 ret_vals = np.array([s[ret_key] for s in part_samples])
@@ -329,11 +385,19 @@ def run_directional_alpha_research(
                     dir_rets = np.sign(act_sig) * act_ret
                     mean_ret = float(np.mean(dir_rets))
                     std_ret = float(np.std(dir_rets))
-                    se_ret = std_ret / math.sqrt(len(dir_rets)) if len(dir_rets) > 0 else 0.0
+                    se_ret = (
+                        std_ret / math.sqrt(len(dir_rets)) if len(dir_rets) > 0 else 0.0
+                    )
                     ci95 = 1.96 * se_ret
                     t_stat = (mean_ret / se_ret) if se_ret > 0 else 0.0
                 else:
-                    hit_rate, mean_ret, ci95, t_stat, len_active = 50.0, 0.0, 0.0, 0.0, 0
+                    hit_rate, mean_ret, ci95, t_stat, len_active = (
+                        50.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0,
+                    )
 
                 results["signals"][sig_name][part][h_str] = {
                     "pearson_ic": round(float(pearson_ic), 4),
@@ -395,7 +459,9 @@ def run_directional_alpha_research(
 
                 res_dict[sig_name] = {
                     "triggers": int(len(active_idx)),
-                    "trigger_pct": round(len(active_idx) / len(holdout_samples) * 100.0, 2),
+                    "trigger_pct": round(
+                        len(active_idx) / len(holdout_samples) * 100.0, 2
+                    ),
                     "gross_return_bps": round(gross_mean, 4),
                     "half_spread_bps": round(mean_sp, 4),
                     "net_taker_standard_bps": round(net_taker_std, 4),
@@ -409,7 +475,11 @@ def run_directional_alpha_research(
     for venue in ("BINANCE", "COINBASE", "KRAKEN", "OKX", "BYBIT"):
         v_samples = [s for s in holdout_samples if s["venue"] == venue]
         results["exchange_eval"][venue] = {"samples": len(v_samples)}
-        for sig_key, sig_name, threshold in [("s_ofi", "OFI", 0.25), ("s_micro", "Microprice", 0.50), ("s_mom_1s", "Mom_1s", 1.0)]:
+        for sig_key, sig_name, threshold in [
+            ("s_ofi", "OFI", 0.25),
+            ("s_micro", "Microprice", 0.50),
+            ("s_mom_1s", "Mom_1s", 1.0),
+        ]:
             sig_vals = np.array([s[sig_key] for s in v_samples])
             ret_vals = np.array([s["ret_1000ms"] for s in v_samples])
             active_idx = np.where(np.abs(sig_vals) >= threshold)[0]
@@ -426,7 +496,11 @@ def run_directional_alpha_research(
     for inst in ("BTC/USD", "ETH/USD"):
         a_samples = [s for s in holdout_samples if s["instrument"] == inst]
         results["asset_eval"][inst] = {"samples": len(a_samples)}
-        for sig_key, sig_name, threshold in [("s_ofi", "OFI", 0.25), ("s_micro", "Microprice", 0.50), ("s_mom_1s", "Mom_1s", 1.0)]:
+        for sig_key, sig_name, threshold in [
+            ("s_ofi", "OFI", 0.25),
+            ("s_micro", "Microprice", 0.50),
+            ("s_mom_1s", "Mom_1s", 1.0),
+        ]:
             sig_vals = np.array([s[sig_key] for s in a_samples])
             ret_vals = np.array([s["ret_1000ms"] for s in a_samples])
             active_idx = np.where(np.abs(sig_vals) >= threshold)[0]
@@ -449,7 +523,11 @@ def run_directional_alpha_research(
     ]:
         r_samples = [s for s in holdout_samples if filter_fn(s)]
         results["regime_eval"][reg_name] = {"samples": len(r_samples)}
-        for sig_key, sig_name, threshold in [("s_ofi", "OFI", 0.25), ("s_micro", "Microprice", 0.50), ("s_mom_1s", "Mom_1s", 1.0)]:
+        for sig_key, sig_name, threshold in [
+            ("s_ofi", "OFI", 0.25),
+            ("s_micro", "Microprice", 0.50),
+            ("s_mom_1s", "Mom_1s", 1.0),
+        ]:
             sig_vals = np.array([s[sig_key] for s in r_samples])
             ret_vals = np.array([s["ret_1000ms"] for s in r_samples])
             active_idx = np.where(np.abs(sig_vals) >= threshold)[0]
@@ -471,9 +549,15 @@ def run_directional_alpha_research(
 
     # Print Holdout Scorecard
     print("\n" + "=" * 90, flush=True)
-    print("HOLDOUT OUT-OF-SAMPLE DIRECTIONAL ALPHA SCORECARD (1-Second Horizon)", flush=True)
+    print(
+        "HOLDOUT OUT-OF-SAMPLE DIRECTIONAL ALPHA SCORECARD (1-Second Horizon)",
+        flush=True,
+    )
     print("=" * 90, flush=True)
-    print(f"{'Signal':<32} | {'Spearman IC':<11} | {'Hit Rate':<9} | {'Gross (bps)':<11} | {'95% CI':<9} | {'Taker VIP':<10} | {'Maker Net':<10}", flush=True)
+    print(
+        f"{'Signal':<32} | {'Spearman IC':<11} | {'Hit Rate':<9} | {'Gross (bps)':<11} | {'95% CI':<9} | {'Taker VIP':<10} | {'Maker Net':<10}",
+        flush=True,
+    )
     print("-" * 90, flush=True)
 
     for _, sig_name, _ in signal_keys:

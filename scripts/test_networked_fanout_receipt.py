@@ -147,7 +147,18 @@ def run_networked_fanout_campaign():
         now = time.time()
 
         for seq in range(num_events):
-            raw = RawEvent("BENCH_FANOUT", {"instrument": "AAPL", "event_type": "TRADE", "price": 180.5, "quantity": 100, "exchange_ts": now, "sequence": seq}, now)
+            raw = RawEvent(
+                "BENCH_FANOUT",
+                {
+                    "instrument": "AAPL",
+                    "event_type": "TRADE",
+                    "price": 180.5,
+                    "quantity": 100,
+                    "exchange_ts": now,
+                    "sequence": seq,
+                },
+                now,
+            )
             t0 = time.perf_counter_ns()
             daemon._process_and_broadcast(raw)
             t1 = time.perf_counter_ns()
@@ -177,7 +188,9 @@ def run_networked_fanout_campaign():
         total_delivered = sum(received_counts)
         total_bytes_rx = sum(received_bytes)
         client_receipt_fps = total_delivered / total_time if total_time > 0 else 0
-        client_mbps = (total_bytes_rx / (1024 * 1024)) / total_time if total_time > 0 else 0
+        client_mbps = (
+            (total_bytes_rx / (1024 * 1024)) / total_time if total_time > 0 else 0
+        )
 
         pub_latencies_us.sort()
         n = len(pub_latencies_us)
@@ -194,7 +207,9 @@ def run_networked_fanout_campaign():
             "client_receipt_throughput_fps": round(client_receipt_fps, 1),
             "client_receipt_mbps": round(client_mbps, 2),
             "total_frames_received_by_clients": total_delivered,
-            "delivery_rate_percent": min(100.0, round((total_delivered / (num_events * n_clients)) * 100.0, 2)),
+            "delivery_rate_percent": min(
+                100.0, round((total_delivered / (num_events * n_clients)) * 100.0, 2)
+            ),
         }
 
         stress_results["tiers"][f"{n_clients}_clients"] = tier_metrics
@@ -212,7 +227,9 @@ def run_networked_fanout_campaign():
 
     # 2. NOISY-NEIGHBOR ISOLATION & RECONNECT TEST OVER REAL TCP
     print("\nRunning Noisy-Neighbor Real TCP Isolation Test (90 fast, 10 stalled)...")
-    daemon_noisy = MarketDataDaemon(host="127.0.0.1", port=0, db_path=db_path, enable_shm=False)
+    daemon_noisy = MarketDataDaemon(
+        host="127.0.0.1", port=0, db_path=db_path, enable_shm=False
+    )
     daemon_noisy.start(blocking=False)
     time.sleep(0.15)
     noisy_port = daemon_noisy.port
@@ -256,7 +273,18 @@ def run_networked_fanout_campaign():
 
     # Inject 2,500 events to exceed buffer (1000) + drop limit (1000)
     for seq in range(2500):
-        raw = RawEvent("FEED_A", {"instrument": "MSFT", "event_type": "TRADE", "price": 405.0, "quantity": 50, "exchange_ts": time.time(), "sequence": seq}, time.time())
+        raw = RawEvent(
+            "FEED_A",
+            {
+                "instrument": "MSFT",
+                "event_type": "TRADE",
+                "price": 405.0,
+                "quantity": 50,
+                "exchange_ts": time.time(),
+                "sequence": seq,
+            },
+            time.time(),
+        )
         daemon_noisy._process_and_broadcast(raw)
         if seq % 200 == 0:
             time.sleep(0.001)
@@ -282,14 +310,27 @@ def run_networked_fanout_campaign():
         "fast_client_max_received": max(fast_counts),
         "fast_clients_unaffected": min(fast_counts) > 2000,
     }
-    print(f"[Noisy Neighbor] Stalled Evictions: {evicted_count}/10 | Fast Clients Min: {min(fast_counts)}, Max: {max(fast_counts)}")
+    print(
+        f"[Noisy Neighbor] Stalled Evictions: {evicted_count}/10 | Fast Clients Min: {min(fast_counts)}, Max: {max(fast_counts)}"
+    )
 
     # 3. RECONNECTION TEST: Reconnect an evicted client
     print("\nRunning Client Reconnection and Resumption Test...")
     recon_sock = connect_and_subscribe(noisy_port)
     # Broadcast 50 new ticks
     for k in range(50):
-        raw = RawEvent("FEED_A", {"instrument": "NVDA", "event_type": "TRADE", "price": 125.0, "quantity": 10, "exchange_ts": time.time(), "sequence": k}, time.time())
+        raw = RawEvent(
+            "FEED_A",
+            {
+                "instrument": "NVDA",
+                "event_type": "TRADE",
+                "price": 125.0,
+                "quantity": 10,
+                "exchange_ts": time.time(),
+                "sequence": k,
+            },
+            time.time(),
+        )
         daemon_noisy._process_and_broadcast(raw)
 
     recon_received = 0
@@ -314,14 +355,18 @@ def run_networked_fanout_campaign():
         except OSError:
             pass
     daemon_noisy.stop()
-    print(f"[Reconnection] Reconnected client successfully received: {recon_received} ticks post-reconnect")
+    print(
+        f"[Reconnection] Reconnected client successfully received: {recon_received} ticks post-reconnect"
+    )
 
     # 4. SUSTAINED SOAK & RESOURCE UTILIZATION RUN (25,000 events)
     print("\nRunning Sustained Fan-Out Soak Run (25,000 events over TCP sockets)...")
     tracemalloc.start()
     mem_start = tracemalloc.get_traced_memory()[0]
 
-    daemon_soak = MarketDataDaemon(host="127.0.0.1", port=0, db_path=db_path, sim_speed_eps=0.0, enable_shm=False)
+    daemon_soak = MarketDataDaemon(
+        host="127.0.0.1", port=0, db_path=db_path, sim_speed_eps=0.0, enable_shm=False
+    )
     daemon_soak.start(blocking=False)
     time.sleep(0.15)
     soak_port = daemon_soak.port
@@ -359,7 +404,18 @@ def run_networked_fanout_campaign():
     soak_events_total = 25000
     t0_soak = time.perf_counter()
     for seq in range(soak_events_total):
-        raw = RawEvent("FEED_A", {"instrument": "GOOG", "event_type": "TRADE", "price": 175.0, "quantity": 10, "exchange_ts": time.time(), "sequence": seq}, time.time())
+        raw = RawEvent(
+            "FEED_A",
+            {
+                "instrument": "GOOG",
+                "event_type": "TRADE",
+                "price": 175.0,
+                "quantity": 10,
+                "exchange_ts": time.time(),
+                "sequence": seq,
+            },
+            time.time(),
+        )
         daemon_soak._process_and_broadcast(raw)
         if seq % 2000 == 0:
             time.sleep(0.005)
@@ -418,17 +474,23 @@ def run_networked_fanout_campaign():
 - **Eviction Threshold**: Unresponsive sockets are cleanly closed after drop threshold is reached, protecting active subscribers.
 """
 
-    out_stress = os.path.join(_REPO_ROOT, "audit", "phase10", "fanout_networked_stress_results.json")
+    out_stress = os.path.join(
+        _REPO_ROOT, "audit", "phase10", "fanout_networked_stress_results.json"
+    )
     with open(out_stress, "w", encoding="utf-8") as f:
         json.dump(stress_results, f, indent=2)
     print(f"\n[OK] Saved fanout networked stress results to: {out_stress}")
 
-    out_rcpt = os.path.join(_REPO_ROOT, "audit", "phase10", "fanout_client_receipt_results.json")
+    out_rcpt = os.path.join(
+        _REPO_ROOT, "audit", "phase10", "fanout_client_receipt_results.json"
+    )
     with open(out_rcpt, "w", encoding="utf-8") as f:
         json.dump(client_receipt_results, f, indent=2)
     print(f"[OK] Saved fanout client receipt results to: {out_rcpt}")
 
-    out_res = os.path.join(_REPO_ROOT, "audit", "phase10", "resource_utilization_results.json")
+    out_res = os.path.join(
+        _REPO_ROOT, "audit", "phase10", "resource_utilization_results.json"
+    )
     with open(out_res, "w", encoding="utf-8") as f:
         json.dump(resource_metrics, f, indent=2)
     print(f"[OK] Saved resource utilization results to: {out_res}")

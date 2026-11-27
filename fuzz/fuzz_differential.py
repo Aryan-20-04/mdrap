@@ -1,8 +1,9 @@
-﻿"""MDRAP Differential Fuzzer.
+"""MDRAP Differential Fuzzer.
 
 Feeds random and mutated byte buffers into Python and C SBE decoders and event evaluators
 to verify identical rejection/acceptance semantics, memory safety, and zero crashes.
 """
+
 import argparse
 import ctypes
 import os
@@ -43,7 +44,9 @@ class _CSbeTickPayload(ctypes.Structure):
 
 def run_sbe_differential_fuzz(iterations: int, seed: int = 42) -> int:
     rng = random.Random(seed)
-    print(f"[fuzz] Running {iterations} SBE differential fuzz iterations (seed={seed})...")
+    print(
+        f"[fuzz] Running {iterations} SBE differential fuzz iterations (seed={seed})..."
+    )
 
     if not HAS_FASTPATH or _NATIVE_LIB is None:
         print("[fuzz] Native C library not available; skipping C comparison.")
@@ -51,7 +54,11 @@ def run_sbe_differential_fuzz(iterations: int, seed: int = 42) -> int:
 
     c_payload = _CSbeTickPayload()
     c_unpack = _NATIVE_LIB.fastpath_sbe_unpack_tick
-    c_unpack.argtypes = [ctypes.c_char_p, ctypes.c_size_t, ctypes.POINTER(_CSbeTickPayload)]
+    c_unpack.argtypes = [
+        ctypes.c_char_p,
+        ctypes.c_size_t,
+        ctypes.POINTER(_CSbeTickPayload),
+    ]
     c_unpack.restype = ctypes.c_int32
 
     valid_matches = 0
@@ -104,17 +111,23 @@ def run_sbe_differential_fuzz(iterations: int, seed: int = 42) -> int:
         if py_accepted:
             valid_matches += 1
             # Verify parsed sequence number matches
-            assert py_res.seq == c_payload.seq, f"Seq mismatch: py={py_res.seq} != c={c_payload.seq}"
+            assert py_res.seq == c_payload.seq, (
+                f"Seq mismatch: py={py_res.seq} != c={c_payload.seq}"
+            )
         else:
             rejection_matches += 1
 
-    print(f"[fuzz] OK: {iterations} iterations passed (valid={valid_matches}, rejected={rejection_matches}).")
+    print(
+        f"[fuzz] OK: {iterations} iterations passed (valid={valid_matches}, rejected={rejection_matches})."
+    )
     return 0
 
 
 def main():
     parser = argparse.ArgumentParser(description="MDRAP Differential Fuzzer")
-    parser.add_argument("--iterations", type=int, default=10000, help="Number of fuzzing iterations")
+    parser.add_argument(
+        "--iterations", type=int, default=10000, help="Number of fuzzing iterations"
+    )
     parser.add_argument("--seed", type=int, default=42, help="RNG seed")
     args = parser.parse_args()
 

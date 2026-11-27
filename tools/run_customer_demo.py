@@ -43,9 +43,9 @@ from mdrap.security import MerkleAuditTree
 
 
 def print_step(num: int, title: str):
-    print(f"\n{'='*75}")
+    print(f"\n{'=' * 75}")
     print(f"  STEP {num:02d}: {title.upper()}")
-    print(f"{'='*75}")
+    print(f"{'=' * 75}")
 
 
 def run_demo(output_dir: str = "demo/output"):
@@ -58,7 +58,9 @@ def run_demo(output_dir: str = "demo/output"):
             pass
 
     print_step(1, "Initialize Read-Only Connectors (Coinbase & Kraken)")
-    print("[INFO] Connecting strictly to public WebSocket feeds (no order keys configured)...")
+    print(
+        "[INFO] Connecting strictly to public WebSocket feeds (no order keys configured)..."
+    )
     venues = ["COINBASE", "KRAKEN"]
     symbols = ["BTC-USD", "ETH-USD"]
     feed_mgr = WebSocketFeedManager(
@@ -91,7 +93,11 @@ def run_demo(output_dir: str = "demo/output"):
             # Persist provenance
             p_bytes = json.dumps(raw.payload or {}, sort_keys=True).encode("utf-8")
             p_hash = hashlib.sha256(p_bytes).hexdigest()
-            q_str = canonical.quality_status.value if hasattr(canonical.quality_status, "value") else str(canonical.quality_status)
+            q_str = (
+                canonical.quality_status.value
+                if hasattr(canonical.quality_status, "value")
+                else str(canonical.quality_status)
+            )
 
             prov_entry = EventProvenance(
                 event_id=str(canonical.event_id),
@@ -120,7 +126,9 @@ def run_demo(output_dir: str = "demo/output"):
     feed_mgr.stop()
     print(f"[OK] Ingested {len(live_events)} live events from Coinbase & Kraken.")
     for ev in live_events[:3]:
-        print(f"     -> {ev.source} {ev.instrument_id} Bid:{ev.bid_price} Ask:{ev.ask_price} TS:{ev.exchange_timestamp}")
+        print(
+            f"     -> {ev.source} {ev.instrument_id} Bid:{ev.bid_price} Ask:{ev.ask_price} TS:{ev.exchange_timestamp}"
+        )
 
     print_step(3, "Query Provider Telemetry & Freshness")
     stats = feed_mgr.stats()
@@ -132,18 +140,29 @@ def run_demo(output_dir: str = "demo/output"):
         stored_prov = store.get_provenance(sample_ev.event_id)
         if stored_prov:
             print(f"[PROVENANCE] Event ID: {stored_prov['event_id']}")
-            print(f"             Provider: {stored_prov['provider']} | Instrument: {stored_prov['instrument']}")
+            print(
+                f"             Provider: {stored_prov['provider']} | Instrument: {stored_prov['instrument']}"
+            )
             print(f"             Payload SHA-256: {stored_prov['payload_sha256']}")
             print(f"             Lineage Hash:    {stored_prov['lineage_hash']}")
             print("[OK] Event bound cryptographically to ingestion state.")
 
     print_step(5, "Controlled Sequence Gap Injection [SYNTHETIC TEST]")
-    print("[NOTICE] Injecting synthetic out-of-order sequence gap for demonstration purposes.")
+    print(
+        "[NOTICE] Injecting synthetic out-of-order sequence gap for demonstration purposes."
+    )
     print("         (Clearly distinguished from authentic exchange feed traffic).")
     # Base tick at seq 1000
     base_raw = RawEvent(
         source="COINBASE",
-        payload={"instrument": "BTC-USD", "event_type": "QUOTE", "bid": 73800.0, "ask": 73801.0, "sequence": 1000, "exchange_ts": time.time()},
+        payload={
+            "instrument": "BTC-USD",
+            "event_type": "QUOTE",
+            "bid": 73800.0,
+            "ask": 73801.0,
+            "sequence": 1000,
+            "exchange_ts": time.time(),
+        },
         receive_timestamp=time.time(),
         raw_id="demo-raw-base-1000",
     )
@@ -153,7 +172,14 @@ def run_demo(output_dir: str = "demo/output"):
     # Injected gap tick jumping sequence from 1000 to 1250 (gap of 250 packets)
     gap_raw = RawEvent(
         source="COINBASE",
-        payload={"instrument": "BTC-USD", "event_type": "QUOTE", "bid": 73805.0, "ask": 73806.0, "sequence": 1250, "exchange_ts": time.time()},
+        payload={
+            "instrument": "BTC-USD",
+            "event_type": "QUOTE",
+            "bid": 73805.0,
+            "ask": 73806.0,
+            "sequence": 1250,
+            "exchange_ts": time.time(),
+        },
         receive_timestamp=time.time(),
         raw_id="demo-raw-gap-1250",
     )
@@ -223,16 +249,24 @@ def run_demo(output_dir: str = "demo/output"):
     recovered_prov = store_reopened.get_provenance(eval_gap.event_id)
 
     assert recovered_inc is not None, "Failed to recover incident after restart"
-    assert recovered_prov is not None, "Failed to recover event provenance after restart"
-    print(f"[RECOVERED] Incident {recovered_inc.incident_id} verified from SQLite disk file.")
-    print(f"            Lineage Hash match: {recovered_prov['lineage_hash'] == gap_prov.lineage_hash}")
+    assert recovered_prov is not None, (
+        "Failed to recover event provenance after restart"
+    )
+    print(
+        f"[RECOVERED] Incident {recovered_inc.incident_id} verified from SQLite disk file."
+    )
+    print(
+        f"            Lineage Hash match: {recovered_prov['lineage_hash'] == gap_prov.lineage_hash}"
+    )
 
     print_step(10, "Deterministic Incident Replay Across Corridor")
     replayer = IncidentReplayEngine(db_path=db_path)
     replay_res = replayer.replay_incident(incident.incident_id, buffer_s=15.0)
     print(f"[REPLAY] Total Events in Corridor: {replay_res.events_replayed}")
     print(f"         Is Reproducible:          {replay_res.is_reproducible}")
-    print(f"         Determinism Digest:       {replay_res.replayed_state_hash[:32]}...")
+    print(
+        f"         Determinism Digest:       {replay_res.replayed_state_hash[:32]}..."
+    )
 
     print_step(11, "Export Evidence Package & Standalone Verification")
     evidence_package = {
@@ -267,12 +301,15 @@ def run_demo(output_dir: str = "demo/output"):
 
     # Invoke standalone verification utility
     from tools.verify_evidence import verify_evidence_package
+
     is_valid, errors = verify_evidence_package(evidence_package)
     print(f"[INDEPENDENT VERIFICATION] Cryptographic Proof Valid: {is_valid}")
     if errors:
         print(f"                           Errors: {errors}")
     assert is_valid, f"Evidence package verification failed: {errors}"
-    print("[OK] Standalone verifier confirmed 100% authenticity against external Merkle root.")
+    print(
+        "[OK] Standalone verifier confirmed 100% authenticity against external Merkle root."
+    )
 
     print_step(12, "Generate Formatted Incident Post-Mortem Report")
     report_md = f"""# MDRAP Incident Post-Mortem Report

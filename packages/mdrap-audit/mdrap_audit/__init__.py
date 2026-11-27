@@ -44,7 +44,9 @@ class InclusionProof:
 
     leaf_index: int
     leaf_hash: str
-    audit_path: list[tuple[str, str]] | list[str]  # list of (sibling_hash, direction) or list of sibling hashes
+    audit_path: (
+        list[tuple[str, str]] | list[str]
+    )  # list of (sibling_hash, direction) or list of sibling hashes
     root_hash: str
     tree_size: int = 0
 
@@ -68,7 +70,9 @@ class InclusionProof:
             return current == self.root_hash
 
         # RFC 6962 algorithm verification
-        tree_size = self.tree_size if self.tree_size > 0 else (1 << len(self.audit_path))
+        tree_size = (
+            self.tree_size if self.tree_size > 0 else (1 << len(self.audit_path))
+        )
         return MerkleAuditTree.verify_rfc6962_inclusion(
             leaf_index=self.leaf_index,
             tree_size=tree_size,
@@ -117,7 +121,9 @@ class MerkleAuditTree:
         if isinstance(record, bytes):
             return record
         if isinstance(record, dict):
-            return json.dumps(record, sort_keys=True, separators=(",", ":")).encode("utf-8")
+            return json.dumps(record, sort_keys=True, separators=(",", ":")).encode(
+                "utf-8"
+            )
         return str(record).encode("utf-8")
 
     @classmethod
@@ -152,7 +158,9 @@ class MerkleAuditTree:
         return sha256_bytes(b"\x01" + left + right)
 
     @classmethod
-    def compute_root(cls, leaf_data_list: Sequence[dict[str, Any] | str | bytes]) -> str:
+    def compute_root(
+        cls, leaf_data_list: Sequence[dict[str, Any] | str | bytes]
+    ) -> str:
         """Compute RFC 6962 root hash for a sequence of records."""
         if not leaf_data_list:
             return sha256_hex(b"")
@@ -181,7 +189,7 @@ class MerkleAuditTree:
         """Generate audit inclusion path for the specified leaf index."""
         n = len(self.raw_leaves)
         if leaf_index < 0 or leaf_index >= n:
-            raise IndexError(f"Leaf index {leaf_index} out of bounds (0..{n-1})")
+            raise IndexError(f"Leaf index {leaf_index} out of bounds (0..{n - 1})")
 
         # Directional audit path for compatibility with existing tests
         directional_path: list[tuple[str, str]] = []
@@ -217,7 +225,9 @@ class MerkleAuditTree:
         total_leaves = len(self.raw_leaves)
         target_n = n if n is not None else total_leaves
         if m < 1 or m > target_n or target_n > total_leaves:
-            raise ValueError(f"Invalid consistency proof parameters: m={m}, n={target_n}, total={total_leaves}")
+            raise ValueError(
+                f"Invalid consistency proof parameters: m={m}, n={target_n}, total={total_leaves}"
+            )
 
         leaves_subset = self.raw_leaves[:target_n]
 
@@ -229,9 +239,13 @@ class MerkleAuditTree:
                 return [self._compute_mth(sub_leaves)]
             k = _largest_power_of_two_less_than(size)
             if sub_m <= k:
-                return _subproof(sub_m, sub_leaves[:k], b) + [self._compute_mth(sub_leaves[k:])]
+                return _subproof(sub_m, sub_leaves[:k], b) + [
+                    self._compute_mth(sub_leaves[k:])
+                ]
             else:
-                return _subproof(sub_m - k, sub_leaves[k:], False) + [self._compute_mth(sub_leaves[:k])]
+                return _subproof(sub_m - k, sub_leaves[k:], False) + [
+                    self._compute_mth(sub_leaves[:k])
+                ]
 
         def _consistency_path(cons_m: int, cons_leaves: Sequence[bytes]) -> list[bytes]:
             size = len(cons_leaves)
@@ -239,9 +253,13 @@ class MerkleAuditTree:
                 return []
             k = _largest_power_of_two_less_than(size)
             if cons_m <= k:
-                return _subproof(cons_m, cons_leaves[:k], True) + [self._compute_mth(cons_leaves[k:])]
+                return _subproof(cons_m, cons_leaves[:k], True) + [
+                    self._compute_mth(cons_leaves[k:])
+                ]
             else:
-                return _subproof(cons_m - k, cons_leaves[k:], False) + [self._compute_mth(cons_leaves[:k])]
+                return _subproof(cons_m - k, cons_leaves[k:], False) + [
+                    self._compute_mth(cons_leaves[:k])
+                ]
 
         proof_bytes = _consistency_path(m, leaves_subset)
         proof_hex = [p.hex() for p in proof_bytes]
@@ -401,7 +419,9 @@ class TimestampAnchor:
         self.authority_id = authority_id
         resolved_key = secret_key or os.environ.get("MDRAP_AUDIT_SECRET_KEY")
         if not resolved_key:
-            raise ValueError("MDRAP_AUDIT_SECRET_KEY must be provided or set in environment")
+            raise ValueError(
+                "MDRAP_AUDIT_SECRET_KEY must be provided or set in environment"
+            )
         self.secret_key = resolved_key.encode("utf-8")
 
     def create_attestation(

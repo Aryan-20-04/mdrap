@@ -39,13 +39,17 @@ def _require_native_engine():
     if not engine.is_native or not native_extension:
         engine.close()
         if os.environ.get("MDRAP_REQUIRE_NATIVE") == "1":
-            pytest.fail("MDRAP_REQUIRE_NATIVE=1 but the compiled C extension is unavailable")
+            pytest.fail(
+                "MDRAP_REQUIRE_NATIVE=1 but the compiled C extension is unavailable"
+            )
         pytest.skip("Compiled C extension FastQualityEngine is unavailable")
     return engine
 
 
 @pytest.mark.parametrize("operation", ["evaluate", "batch", "reset"])
-def test_per_instance_close_waits_for_inflight_native_operations(operation, monkeypatch):
+def test_per_instance_close_waits_for_inflight_native_operations(
+    operation, monkeypatch
+):
     engine = _require_native_engine()
     entered = threading.Event()
     release = threading.Event()
@@ -64,15 +68,19 @@ def test_per_instance_close_waits_for_inflight_native_operations(operation, monk
     if original:
         monkeypatch.setattr(
             engine,
-            "_evaluate_unlocked" if operation == "evaluate" else "_evaluate_batch_unlocked",
+            "_evaluate_unlocked"
+            if operation == "evaluate"
+            else "_evaluate_batch_unlocked",
             delayed,
         )
     elif operation == "reset":
+
         class DelayedLock:
             def __enter__(self):
                 entered.set()
                 if not release.wait(5):
                     raise TimeoutError("test failed to release reset")
+
             def __exit__(self, *exc):
                 return False
 
@@ -176,7 +184,9 @@ def test_concurrent_evaluate_and_cleanup_race():
         count = 0
         while not stop_event.is_set() and count < 10000:
             try:
-                lib.fastpath_evaluate(threading.byref(ev) if hasattr(threading, "byref") else ev, res)
+                lib.fastpath_evaluate(
+                    threading.byref(ev) if hasattr(threading, "byref") else ev, res
+                )
             except Exception as e:
                 errors.append(e)
                 break
@@ -210,4 +220,6 @@ def test_concurrent_evaluate_and_cleanup_race():
     # Ensure clean state at end of test
     lib.fastpath_init(0.05, 6.0, 50)
 
-    assert len(errors) == 0, f"Encountered concurrency errors during evaluate vs cleanup: {errors}"
+    assert len(errors) == 0, (
+        f"Encountered concurrency errors during evaluate vs cleanup: {errors}"
+    )

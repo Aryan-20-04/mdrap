@@ -22,7 +22,9 @@ import time
 from typing import Any
 
 # Ensure mdrap package is importable if run from repo root
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
+sys.path.insert(
+    0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src"))
+)
 
 from mdrap.service import StreamClient
 
@@ -50,7 +52,9 @@ class SidecarSocketConsumer:
         backoff = initial_backoff
         for attempt in range(1, max_retries + 1):
             try:
-                print(f"[Sidecar-Socket] Connecting to {self.host}:{self.port} (attempt {attempt}/{max_retries})...")
+                print(
+                    f"[Sidecar-Socket] Connecting to {self.host}:{self.port} (attempt {attempt}/{max_retries})..."
+                )
                 self.client = StreamClient(
                     host=self.host,
                     port=self.port,
@@ -61,11 +65,15 @@ class SidecarSocketConsumer:
                 print(f"[Sidecar-Socket] Successfully connected and authenticated.")
                 return True
             except (ConnectionRefusedError, TimeoutError, OSError) as exc:
-                print(f"[Sidecar-Socket] Connection failed: {exc}. Retrying in {backoff:.1f}s...")
+                print(
+                    f"[Sidecar-Socket] Connection failed: {exc}. Retrying in {backoff:.1f}s..."
+                )
                 time.sleep(backoff)
                 backoff = min(backoff * 2.0, 5.0)
             except PermissionError as auth_exc:
-                print(f"[Sidecar-Socket] Authentication error: {auth_exc}. Check MDRAP_DAEMON_TOKEN.")
+                print(
+                    f"[Sidecar-Socket] Authentication error: {auth_exc}. Check MDRAP_DAEMON_TOKEN."
+                )
                 return False
         return False
 
@@ -83,12 +91,16 @@ class SidecarSocketConsumer:
             try:
                 # Query initial system status and health
                 status = self.client.get_status()
-                print(f"[Sidecar-Socket] Daemon Online | Ingestion Rate: {status.get('ingest_eps', 0):,.1f} eps | Broadcast Ticks: {status.get('broadcast_ticks', 0):,}")
+                print(
+                    f"[Sidecar-Socket] Daemon Online | Ingestion Rate: {status.get('ingest_eps', 0):,.1f} eps | Broadcast Ticks: {status.get('broadcast_ticks', 0):,}"
+                )
 
                 # Poll current L2 depth snapshot before streaming
                 btc_depth = self.client.get_depth("BTC/USD")
                 if btc_depth:
-                    print(f"[Sidecar-Socket] Initial BTC/USD L2 Depth Snapshot: Mid={btc_depth.get('mid')}, Spread={btc_depth.get('spread')}")
+                    print(
+                        f"[Sidecar-Socket] Initial BTC/USD L2 Depth Snapshot: Mid={btc_depth.get('mid')}, Spread={btc_depth.get('spread')}"
+                    )
 
                 # Stream live normalized market ticks
                 print(f"[Sidecar-Socket] Subscribing to stream '{self.symbol}'...")
@@ -104,7 +116,9 @@ class SidecarSocketConsumer:
                         break
 
             except (ConnectionResetError, BrokenPipeError, TimeoutError) as net_exc:
-                print(f"[Sidecar-Socket] Stream disconnected: {net_exc}. Reconnecting...")
+                print(
+                    f"[Sidecar-Socket] Stream disconnected: {net_exc}. Reconnecting..."
+                )
                 if self.client:
                     self.client.close()
                     self.client = None
@@ -115,13 +129,17 @@ class SidecarSocketConsumer:
 
         elapsed = time.perf_counter() - start_time
         eps = self.events_received / elapsed if elapsed > 0 else 0
-        print(f"\n[Sidecar-Socket] Processed {self.events_received:,} events in {elapsed:.3f}s ({eps:,.1f} eps)")
+        print(
+            f"\n[Sidecar-Socket] Processed {self.events_received:,} events in {elapsed:.3f}s ({eps:,.1f} eps)"
+        )
         self.close()
 
     def _on_tick(self, tick: dict[str, Any]) -> None:
         """Process incoming market tick."""
         if self.events_received % 1000 == 0:
-            print(f"[TCP TICK #{tick.get('seq')}] {tick.get('sym')} | Price: {tick.get('price')} | Status: {tick.get('status')} | Engine Latency: {tick.get('engine_us')} μs")
+            print(
+                f"[TCP TICK #{tick.get('seq')}] {tick.get('sym')} | Price: {tick.get('price')} | Status: {tick.get('status')} | Engine Latency: {tick.get('engine_us')} μs"
+            )
 
     def close(self) -> None:
         """Close connection and clean up resources."""

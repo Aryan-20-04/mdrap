@@ -130,15 +130,33 @@ def run_stage2_simulated_pipeline(events: int = 25000) -> dict:
     table.add_column("Specification / Benchmark", style="dim", justify="right")
 
     table.add_row("Events Ingested & Evaluated", f"{count:,}", "100.0% delivered")
-    table.add_row("Processing Wall Time", f"{elapsed:.3f} s", f"Throughput: {eps:,.1f} eps")
-    table.add_row("Native Hot Path Accelerator", f"{'ACTIVE (C11 DLL)' if HAS_FASTPATH else 'PYTHON FALLBACK'}", "Zero-copy ABI")
+    table.add_row(
+        "Processing Wall Time", f"{elapsed:.3f} s", f"Throughput: {eps:,.1f} eps"
+    )
+    table.add_row(
+        "Native Hot Path Accelerator",
+        f"{'ACTIVE (C11 DLL)' if HAS_FASTPATH else 'PYTHON FALLBACK'}",
+        "Zero-copy ABI",
+    )
     table.add_row("Evaluation Latency p50", f"{p50:.2f} µs", "< 5.0 µs SLA")
     table.add_row("Evaluation Latency p95", f"{p95:.2f} µs", "< 15.0 µs SLA")
     table.add_row("Evaluation Latency p99", f"{p99:.2f} µs", "< 30.0 µs SLA")
     table.add_row("Evaluation Latency p99.9", f"{p999:.2f} µs", "< 100.0 µs SLA")
-    table.add_row("VALID Events", f"{status_counts.get('VALID', 0):,} ({status_counts.get('VALID', 0)/count*100:.1f}%)", "Normal Order Flow")
-    table.add_row("SUSPICIOUS Events", f"{status_counts.get('SUSPICIOUS', 0):,} ({status_counts.get('SUSPICIOUS', 0)/count*100:.1f}%)", "Anomalies Quarantined")
-    table.add_row("INVALID Events", f"{status_counts.get('INVALID', 0):,} ({status_counts.get('INVALID', 0)/count*100:.1f}%)", "Crossed / Corrupt Dropped")
+    table.add_row(
+        "VALID Events",
+        f"{status_counts.get('VALID', 0):,} ({status_counts.get('VALID', 0) / count * 100:.1f}%)",
+        "Normal Order Flow",
+    )
+    table.add_row(
+        "SUSPICIOUS Events",
+        f"{status_counts.get('SUSPICIOUS', 0):,} ({status_counts.get('SUSPICIOUS', 0) / count * 100:.1f}%)",
+        "Anomalies Quarantined",
+    )
+    table.add_row(
+        "INVALID Events",
+        f"{status_counts.get('INVALID', 0):,} ({status_counts.get('INVALID', 0) / count * 100:.1f}%)",
+        "Crossed / Corrupt Dropped",
+    )
 
     console.print(table)
 
@@ -187,16 +205,26 @@ def run_stage3_live_market_ingress(symbols: list[str] | None = None) -> dict:
                 if raw:
                     canon = normalize(raw)
                     eval_res = fqe.evaluate(canon)
-                    live_quotes.append({
-                        "symbol": sym,
-                        "venue": v_name,
-                        "bid": eval_res.bid_price,
-                        "ask": eval_res.ask_price,
-                        "spread": (eval_res.ask_price - eval_res.bid_price) if (eval_res.ask_price and eval_res.bid_price) else 0.0,
-                        "spread_bps": ((eval_res.ask_price - eval_res.bid_price) / ((eval_res.ask_price + eval_res.bid_price) / 2.0) * 10_000) if (eval_res.ask_price and eval_res.bid_price) else 0.0,
-                        "quality": eval_res.quality_status.name,
-                        "latency_us": poll_lat_us,
-                    })
+                    live_quotes.append(
+                        {
+                            "symbol": sym,
+                            "venue": v_name,
+                            "bid": eval_res.bid_price,
+                            "ask": eval_res.ask_price,
+                            "spread": (eval_res.ask_price - eval_res.bid_price)
+                            if (eval_res.ask_price and eval_res.bid_price)
+                            else 0.0,
+                            "spread_bps": (
+                                (eval_res.ask_price - eval_res.bid_price)
+                                / ((eval_res.ask_price + eval_res.bid_price) / 2.0)
+                                * 10_000
+                            )
+                            if (eval_res.ask_price and eval_res.bid_price)
+                            else 0.0,
+                            "quality": eval_res.quality_status.name,
+                            "latency_us": poll_lat_us,
+                        }
+                    )
         else:
             t_poll_0 = time.perf_counter()
             raw = conn.fetch_equity_quote(sym)
@@ -204,16 +232,26 @@ def run_stage3_live_market_ingress(symbols: list[str] | None = None) -> dict:
             if raw:
                 canon = normalize(raw)
                 eval_res = fqe.evaluate(canon)
-                live_quotes.append({
-                    "symbol": sym,
-                    "venue": "US_EXCHANGE",
-                    "bid": eval_res.bid_price,
-                    "ask": eval_res.ask_price,
-                    "spread": (eval_res.ask_price - eval_res.bid_price) if (eval_res.ask_price and eval_res.bid_price) else 0.0,
-                    "spread_bps": ((eval_res.ask_price - eval_res.bid_price) / ((eval_res.ask_price + eval_res.bid_price) / 2.0) * 10_000) if (eval_res.ask_price and eval_res.bid_price) else 0.0,
-                    "quality": eval_res.quality_status.name,
-                    "latency_us": poll_lat_us,
-                })
+                live_quotes.append(
+                    {
+                        "symbol": sym,
+                        "venue": "US_EXCHANGE",
+                        "bid": eval_res.bid_price,
+                        "ask": eval_res.ask_price,
+                        "spread": (eval_res.ask_price - eval_res.bid_price)
+                        if (eval_res.ask_price and eval_res.bid_price)
+                        else 0.0,
+                        "spread_bps": (
+                            (eval_res.ask_price - eval_res.bid_price)
+                            / ((eval_res.ask_price + eval_res.bid_price) / 2.0)
+                            * 10_000
+                        )
+                        if (eval_res.ask_price and eval_res.bid_price)
+                        else 0.0,
+                        "quality": eval_res.quality_status.name,
+                        "latency_us": poll_lat_us,
+                    }
+                )
 
     table = Table(
         title="Live Multi-Venue Market Feed Telemetry",
@@ -229,10 +267,16 @@ def run_stage3_live_market_ingress(symbols: list[str] | None = None) -> dict:
     table.add_column("Wire Roundtrip", justify="right", style="magenta")
 
     for q in live_quotes:
-        st_color = "green" if q["quality"] == "VALID" else ("yellow" if q["quality"] == "SUSPICIOUS" else "red")
-        bid_str = f"${q['bid']:,.2f}" if q['bid'] else "-"
-        ask_str = f"${q['ask']:,.2f}" if q['ask'] else "-"
-        spread_str = f"${q['spread']:.2f} ({q['spread_bps']:.1f} bps)" if q['spread'] else "-"
+        st_color = (
+            "green"
+            if q["quality"] == "VALID"
+            else ("yellow" if q["quality"] == "SUSPICIOUS" else "red")
+        )
+        bid_str = f"${q['bid']:,.2f}" if q["bid"] else "-"
+        ask_str = f"${q['ask']:,.2f}" if q["ask"] else "-"
+        spread_str = (
+            f"${q['spread']:.2f} ({q['spread_bps']:.1f} bps)" if q["spread"] else "-"
+        )
         table.add_row(
             q["symbol"],
             q["venue"],
@@ -244,7 +288,9 @@ def run_stage3_live_market_ingress(symbols: list[str] | None = None) -> dict:
         )
 
     console.print(table)
-    console.print(f"[dim]Stage 3 live market ingress complete. Connected to {len(live_quotes)} active venue endpoints.[/dim]\n")
+    console.print(
+        f"[dim]Stage 3 live market ingress complete. Connected to {len(live_quotes)} active venue endpoints.[/dim]\n"
+    )
     return {"quotes": live_quotes}
 
 
@@ -284,7 +330,9 @@ def run_stage4_hft_execution() -> dict:
     whale_strat.on_start()
 
     # Feed realistic market simulator ticks to both strategies
-    cfg = SimulatorConfig(seed=42, num_events=1500, instruments=["AAPL"], sources=["FEEDX", "FEEDY"])
+    cfg = SimulatorConfig(
+        seed=42, num_events=1500, instruments=["AAPL"], sources=["FEEDX", "FEEDY"]
+    )
     sim = FeedSimulator(cfg)
     fqe = FastQualityEngine()
 
@@ -309,15 +357,19 @@ def run_stage4_hft_execution() -> dict:
             # Check institutional whale block print ($50k notional or >= 500 shares)
             notional = (eval_res.price or 0.0) * (eval_res.quantity or 0.0)
             if notional >= 50_000.0 or (eval_res.quantity and eval_res.quantity >= 500):
-                mid = whale_strat._current_mid.get(eval_res.instrument_id, eval_res.price or 100.0)
+                mid = whale_strat._current_mid.get(
+                    eval_res.instrument_id, eval_res.price or 100.0
+                )
                 side = "BUY" if (eval_res.price and eval_res.price >= mid) else "SELL"
-                whale_strat.on_whale({
-                    "instrument": eval_res.instrument_id,
-                    "price": eval_res.price,
-                    "quantity": eval_res.quantity,
-                    "notional": notional,
-                    "side": side,
-                })
+                whale_strat.on_whale(
+                    {
+                        "instrument": eval_res.instrument_id,
+                        "price": eval_res.price,
+                        "quantity": eval_res.quantity,
+                        "notional": notional,
+                        "side": side,
+                    }
+                )
 
     as_perf = as_strat.performance_summary()
     whale_perf = whale_strat.performance_summary()
@@ -391,16 +443,20 @@ def run_stage4_hft_execution() -> dict:
     console.print(table)
 
     # 4C. Live Market HFT Execution on Real-Time Quotes
-    console.print("\n[bold cyan]Executing Live Market HFT Orders Against Real-Time Binance BTC/USD Feed...[/bold cyan]")
+    console.print(
+        "\n[bold cyan]Executing Live Market HFT Orders Against Real-Time Binance BTC/USD Feed...[/bold cyan]"
+    )
     conn = LiveConnector(timeout=4.0)
     live_raw = conn.fetch_binance_quote("BTC/USD")
     if live_raw:
         live_canon = normalize(live_raw)
         live_canon = fqe.evaluate(live_canon)
-        live_as = AvellanedaStoikovStrategy(symbol="BTC/USD", quote_size=0.1, min_spread_bps=0.001)
+        live_as = AvellanedaStoikovStrategy(
+            symbol="BTC/USD", quote_size=0.1, min_spread_bps=0.001
+        )
         live_as.on_start()
         live_as.on_quote(live_canon)
-        
+
         # Post two-sided AS-MM quotes and match trade against the live order book
         if live_as.executor.orders:
             resting_order = live_as.executor.orders[0]
@@ -456,15 +512,32 @@ def run_stage4_hft_execution() -> dict:
             )
         console.print(blotter)
 
-    console.print(f"[dim]Stage 4 HFT execution session complete with zero risk limit violations.[/dim]\n")
+    console.print(
+        f"[dim]Stage 4 HFT execution session complete with zero risk limit violations.[/dim]\n"
+    )
     return {"as_perf": as_perf, "whale_perf": whale_perf}
 
 
 def main():
-    parser = argparse.ArgumentParser(description="MDRAP v5.1 Master Demonstration Suite")
-    parser.add_argument("--all", action="store_true", default=True, help="Run all 4 demonstration stages")
-    parser.add_argument("--stage", type=int, choices=[1, 2, 3, 4], help="Run a specific stage (1..4)")
-    parser.add_argument("-e", "--events", type=int, default=10000, help="Event count for benchmarks/simulation")
+    parser = argparse.ArgumentParser(
+        description="MDRAP v5.1 Master Demonstration Suite"
+    )
+    parser.add_argument(
+        "--all",
+        action="store_true",
+        default=True,
+        help="Run all 4 demonstration stages",
+    )
+    parser.add_argument(
+        "--stage", type=int, choices=[1, 2, 3, 4], help="Run a specific stage (1..4)"
+    )
+    parser.add_argument(
+        "-e",
+        "--events",
+        type=int,
+        default=10000,
+        help="Event count for benchmarks/simulation",
+    )
     args = parser.parse_args()
 
     console.print(

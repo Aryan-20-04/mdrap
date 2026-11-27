@@ -23,8 +23,17 @@ import time
 from typing import Any, Dict
 
 # Ensure src and observer in sys.path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "external_sidecar", "mdrap_observer")))
+sys.path.insert(
+    0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src"))
+)
+sys.path.insert(
+    0,
+    os.path.abspath(
+        os.path.join(
+            os.path.dirname(__file__), "..", "external_sidecar", "mdrap_observer"
+        )
+    ),
+)
 
 from mdrap.models import RawEvent
 from mdrap.service import MarketDataDaemon, StreamClient
@@ -37,7 +46,7 @@ def test_scenario_1_traffic_burst() -> Dict[str, Any]:
     """Scenario 1: Sudden traffic burst (25,000 events burst at full speed)."""
     fd, db_path = tempfile.mkstemp(suffix=".db")
     os.close(fd)
-    
+
     daemon = MarketDataDaemon(
         host="127.0.0.1",
         port=0,
@@ -50,11 +59,14 @@ def test_scenario_1_traffic_burst() -> Dict[str, Any]:
     time.sleep(0.2)
 
     received = 0
+
     def on_event(evt):
         nonlocal received
         received += 1
 
-    client = ObserverClient(mode="tcp", host="127.0.0.1", port=daemon.port, on_event_callback=on_event)
+    client = ObserverClient(
+        mode="tcp", host="127.0.0.1", port=daemon.port, on_event_callback=on_event
+    )
     client.start()
     time.sleep(0.2)
 
@@ -121,11 +133,14 @@ def test_scenario_2_slow_consumer_eviction() -> Dict[str, Any]:
 
     # 1. Healthy fast consumer
     healthy_received = 0
+
     def on_healthy(evt):
         nonlocal healthy_received
         healthy_received += 1
 
-    healthy_client = ObserverClient(mode="tcp", host="127.0.0.1", port=daemon.port, on_event_callback=on_healthy)
+    healthy_client = ObserverClient(
+        mode="tcp", host="127.0.0.1", port=daemon.port, on_event_callback=on_healthy
+    )
     healthy_client.start()
 
     # 2. Stalled consumer: connects, subscribes, but NEVER reads from socket
@@ -181,7 +196,9 @@ def test_scenario_2_slow_consumer_eviction() -> Dict[str, Any]:
         "healthy_client_received": healthy_received,
         "slow_client_evicted": slow_consumer_evicted,
         "healthy_client_isolated": (healthy_received > 2000),
-        "status": "PASS" if slow_consumer_evicted and healthy_received > 2000 else "FAIL",
+        "status": "PASS"
+        if slow_consumer_evicted and healthy_received > 2000
+        else "FAIL",
     }
 
 
@@ -213,7 +230,9 @@ def test_scenario_3_tcp_disconnect_reconnect() -> Dict[str, Any]:
         else:
             events_after += 1
 
-    client = ObserverClient(mode="tcp", host="127.0.0.1", port=port, on_event_callback=on_event)
+    client = ObserverClient(
+        mode="tcp", host="127.0.0.1", port=port, on_event_callback=on_event
+    )
     client.start()
     time.sleep(0.2)
 
@@ -222,7 +241,13 @@ def test_scenario_3_tcp_disconnect_reconnect() -> Dict[str, Any]:
         raw = RawEvent(
             source="BINANCE",
             receive_timestamp=time.time(),
-            payload={"instrument": "BTCUSDT", "event_type": "TICK", "price": 65000.0, "sequence": i, "exchange_ts": time.time()}
+            payload={
+                "instrument": "BTCUSDT",
+                "event_type": "TICK",
+                "price": 65000.0,
+                "sequence": i,
+                "exchange_ts": time.time(),
+            },
         )
         daemon._process_and_broadcast(raw)
 
@@ -243,7 +268,13 @@ def test_scenario_3_tcp_disconnect_reconnect() -> Dict[str, Any]:
         raw = RawEvent(
             source="BINANCE",
             receive_timestamp=time.time(),
-            payload={"instrument": "BTCUSDT", "event_type": "TICK", "price": 65000.0, "sequence": i, "exchange_ts": time.time()}
+            payload={
+                "instrument": "BTCUSDT",
+                "event_type": "TICK",
+                "price": 65000.0,
+                "sequence": i,
+                "exchange_ts": time.time(),
+            },
         )
         daemon._process_and_broadcast(raw)
 
@@ -278,16 +309,26 @@ def test_scenario_4_daemon_restart() -> Dict[str, Any]:
 
     fd1, db1 = tempfile.mkstemp(suffix=".db")
     os.close(fd1)
-    daemon1 = MarketDataDaemon(host="127.0.0.1", port=port, db_path=db1, use_live=False, enable_shm=False, sim_speed_eps=0.0)
+    daemon1 = MarketDataDaemon(
+        host="127.0.0.1",
+        port=port,
+        db_path=db1,
+        use_live=False,
+        enable_shm=False,
+        sim_speed_eps=0.0,
+    )
     daemon1.start(blocking=False)
     time.sleep(0.3)
 
     received_after_restart = 0
+
     def on_event(evt):
         nonlocal received_after_restart
         received_after_restart += 1
 
-    client = ObserverClient(mode="tcp", host="127.0.0.1", port=port, on_event_callback=on_event)
+    client = ObserverClient(
+        mode="tcp", host="127.0.0.1", port=port, on_event_callback=on_event
+    )
     client.start()
     time.sleep(0.3)
 
@@ -298,7 +339,14 @@ def test_scenario_4_daemon_restart() -> Dict[str, Any]:
     # Start daemon 2 on same port
     fd2, db2 = tempfile.mkstemp(suffix=".db")
     os.close(fd2)
-    daemon2 = MarketDataDaemon(host="127.0.0.1", port=port, db_path=db2, use_live=False, enable_shm=False, sim_speed_eps=0.0)
+    daemon2 = MarketDataDaemon(
+        host="127.0.0.1",
+        port=port,
+        db_path=db2,
+        use_live=False,
+        enable_shm=False,
+        sim_speed_eps=0.0,
+    )
     daemon2.start(blocking=False)
     time.sleep(1.0)  # Client backoff reconnection
 
@@ -307,7 +355,13 @@ def test_scenario_4_daemon_restart() -> Dict[str, Any]:
         raw = RawEvent(
             source="COINBASE",
             receive_timestamp=time.time(),
-            payload={"instrument": "BTC-USD", "event_type": "TICK", "price": 65000.0, "sequence": i, "exchange_ts": time.time()}
+            payload={
+                "instrument": "BTC-USD",
+                "event_type": "TICK",
+                "price": 65000.0,
+                "sequence": i,
+                "exchange_ts": time.time(),
+            },
         )
         daemon2._process_and_broadcast(raw)
 
@@ -333,13 +387,15 @@ def test_scenario_4_daemon_restart() -> Dict[str, Any]:
 
 def test_scenario_5_shm_wraparound_epoch() -> Dict[str, Any]:
     """Scenario 5: SHM ring wraparound & epoch reset handling."""
-    ring_name = f"test_fail_shm_{int(time.time()*1000)%1000000}"
+    ring_name = f"test_fail_shm_{int(time.time() * 1000) % 1000000}"
     slot_count = 64  # Small 64-slot ring
     writer = SHMWriter(name=ring_name, slot_count=slot_count)
 
     # Overwrite buffer with 200 ticks (wrapping around >3 times)
     for i in range(1, 201):
-        writer.write_tick(seq=i, symbol="BTCUSDT", source="BINANCE", price=65000.0 + i, size=1.0)
+        writer.write_tick(
+            seq=i, symbol="BTCUSDT", source="BINANCE", price=65000.0 + i, size=1.0
+        )
 
     reader = SHMReader(name=ring_name)
     initial_head = reader.read_latest_seq()
@@ -362,9 +418,13 @@ def test_scenario_5_shm_wraparound_epoch() -> Dict[str, Any]:
         "slot_count": slot_count,
         "ticks_written": 200,
         "overrun_slot_detected_none": (overwritten_slot is None),
-        "recent_slot_valid": (recent_slot is not None and recent_slot.get("seq") == initial_head),
+        "recent_slot_valid": (
+            recent_slot is not None and recent_slot.get("seq") == initial_head
+        ),
         "epoch_change_detected": (not epoch_valid_before_reattach),
-        "status": "PASS" if (overwritten_slot is None and recent_slot is not None) else "FAIL",
+        "status": "PASS"
+        if (overwritten_slot is None and recent_slot is not None)
+        else "FAIL",
     }
 
 
@@ -386,6 +446,7 @@ def test_scenario_6_exporter_io_failure() -> Dict[str, Any]:
         # Close handles or make read-only
         if os.path.exists(exporter.events_file):
             import stat
+
             os.chmod(exporter.events_file, stat.S_IREAD)
     except Exception:
         pass
@@ -400,6 +461,7 @@ def test_scenario_6_exporter_io_failure() -> Dict[str, Any]:
     try:
         if os.path.exists(exporter.events_file):
             import stat
+
             os.chmod(exporter.events_file, stat.S_IWRITE)
         shutil.rmtree(tmpdir, ignore_errors=True)
     except Exception:
@@ -428,36 +490,52 @@ def main():
         "scenarios": {},
     }
 
-    print("\n[1/6] Running Scenario 1: Sudden Traffic Burst Recovery (25,000 events)...")
+    print(
+        "\n[1/6] Running Scenario 1: Sudden Traffic Burst Recovery (25,000 events)..."
+    )
     s1 = test_scenario_1_traffic_burst()
     results["scenarios"]["scenario_1_burst"] = s1
-    print(f"  Burst Injected in {s1['burst_injection_s']:.3f}s ({s1['burst_injection_rate_eps']:,.1f} EPS)")
-    print(f"  Total Recovery Time: {s1['total_recovery_s']:.3f}s | Events Received: {s1['events_received']:,} | Status: {s1['status']}")
+    print(
+        f"  Burst Injected in {s1['burst_injection_s']:.3f}s ({s1['burst_injection_rate_eps']:,.1f} EPS)"
+    )
+    print(
+        f"  Total Recovery Time: {s1['total_recovery_s']:.3f}s | Events Received: {s1['events_received']:,} | Status: {s1['status']}"
+    )
 
     print("\n[2/6] Running Scenario 2: Slow Consumer Detection & Eviction...")
     s2 = test_scenario_2_slow_consumer_eviction()
     results["scenarios"]["scenario_2_slow_consumer"] = s2
-    print(f"  Slow Client Evicted: {s2['slow_client_evicted']} | Healthy Client Isolated: {s2['healthy_client_isolated']} | Status: {s2['status']}")
+    print(
+        f"  Slow Client Evicted: {s2['slow_client_evicted']} | Healthy Client Isolated: {s2['healthy_client_isolated']} | Status: {s2['status']}"
+    )
 
     print("\n[3/6] Running Scenario 3: TCP Disconnect & Reconnect Loop...")
     s3 = test_scenario_3_tcp_disconnect_reconnect()
     results["scenarios"]["scenario_3_disconnect_reconnect"] = s3
-    print(f"  Reconnected: {s3['reconnected_successfully']} | Reconnect Count: {s3['reconnect_count']} | Events After: {s3['events_after_reconnect']} | Status: {s3['status']}")
+    print(
+        f"  Reconnected: {s3['reconnected_successfully']} | Reconnect Count: {s3['reconnect_count']} | Events After: {s3['events_after_reconnect']} | Status: {s3['status']}"
+    )
 
     print("\n[4/6] Running Scenario 4: Daemon Crash & Restart Recovery...")
     s4 = test_scenario_4_daemon_restart()
     results["scenarios"]["scenario_4_daemon_restart"] = s4
-    print(f"  Restart Recovered: {s4['reconnect_successful']} | Events After: {s4['events_received_after_restart']} | Status: {s4['status']}")
+    print(
+        f"  Restart Recovered: {s4['reconnect_successful']} | Events After: {s4['events_received_after_restart']} | Status: {s4['status']}"
+    )
 
     print("\n[5/6] Running Scenario 5: SHM Ring Wraparound & Epoch Reset...")
     s5 = test_scenario_5_shm_wraparound_epoch()
     results["scenarios"]["scenario_5_shm_wraparound"] = s5
-    print(f"  Overrun Detected: {s5['overrun_slot_detected_none']} | Recent Slot Valid: {s5['recent_slot_valid']} | Epoch Change Detected: {s5['epoch_change_detected']} | Status: {s5['status']}")
+    print(
+        f"  Overrun Detected: {s5['overrun_slot_detected_none']} | Recent Slot Valid: {s5['recent_slot_valid']} | Epoch Change Detected: {s5['epoch_change_detected']} | Status: {s5['status']}"
+    )
 
     print("\n[6/6] Running Scenario 6: Exporter I/O Failure Resilience...")
     s6 = test_scenario_6_exporter_io_failure()
     results["scenarios"]["scenario_6_io_failure"] = s6
-    print(f"  Errors Recorded: {s6['write_errors_recorded']} | Survived Crash: {s6['survived_without_process_crash']} | Status: {s6['status']}")
+    print(
+        f"  Errors Recorded: {s6['write_errors_recorded']} | Survived Crash: {s6['survived_without_process_crash']} | Status: {s6['status']}"
+    )
 
     out_file = os.path.join("audit", "benchmark", "raw", "failure_tests.json")
     with open(out_file, "w") as fp:

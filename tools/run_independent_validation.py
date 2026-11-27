@@ -94,10 +94,24 @@ def run_regime_simulation(
 
     # Target strategies (Fixed-Spread Post-Only retained as ABANDONED / RESEARCH ONLY)
     strats: list[BaseShadowStrategy] = [
-        FixedSpreadMM(initial_capital=100_000.0, post_only=True, name="Fixed-Spread Post-Only [ABANDONED]"),
-        FixedSpreadMM(initial_capital=100_000.0, post_only=False, name="Fixed-Spread Baseline [ABANDONED]"),
-        InventorySkewMM(initial_capital=100_000.0, penalty_rate=0.04, name="Inventory-Skewed (pen=0.04)"),
-        AvellanedaStoikovMM(initial_capital=100_000.0, gamma=0.50, name="Avellaneda-Stoikov (γ=0.50)"),
+        FixedSpreadMM(
+            initial_capital=100_000.0,
+            post_only=True,
+            name="Fixed-Spread Post-Only [ABANDONED]",
+        ),
+        FixedSpreadMM(
+            initial_capital=100_000.0,
+            post_only=False,
+            name="Fixed-Spread Baseline [ABANDONED]",
+        ),
+        InventorySkewMM(
+            initial_capital=100_000.0,
+            penalty_rate=0.04,
+            name="Inventory-Skewed (pen=0.04)",
+        ),
+        AvellanedaStoikovMM(
+            initial_capital=100_000.0, gamma=0.50, name="Avellaneda-Stoikov (γ=0.50)"
+        ),
         NoTradeBaseline(initial_capital=100_000.0),
     ]
 
@@ -150,8 +164,12 @@ def run_regime_simulation(
                 bid_px = round((mid - half_spr) * fx_mult, 2)
                 ask_px = round((mid + half_spr) * fx_mult, 2)
                 is_btc = "BTC" in sym
-                bid_sz = round(rng.uniform(0.5, 3.5) if is_btc else rng.uniform(5.0, 35.0), 3)
-                ask_sz = round(rng.uniform(0.5, 3.5) if is_btc else rng.uniform(5.0, 35.0), 3)
+                bid_sz = round(
+                    rng.uniform(0.5, 3.5) if is_btc else rng.uniform(5.0, 35.0), 3
+                )
+                ask_sz = round(
+                    rng.uniform(0.5, 3.5) if is_btc else rng.uniform(5.0, 35.0), 3
+                )
 
                 q_scope = SequenceScope(
                     venue=venue,
@@ -210,7 +228,9 @@ def run_regime_simulation(
         # 3. Market prints (trades)
         for venue in active_venues:
             for sym in symbols:
-                if rng.random() < 0.45:  # 45% chance of trade print per venue-symbol step
+                if (
+                    rng.random() < 0.45
+                ):  # 45% chance of trade print per venue-symbol step
                     total_trades += 1
                     mid = mids[sym]
                     is_btc = "BTC" in sym
@@ -218,7 +238,9 @@ def run_regime_simulation(
                     side = "BUY" if rng.random() < 0.50 else "SELL"
                     half_spr = venue_spreads[venue][sym] / 2.0
                     tr_px = (mid + half_spr) if side == "BUY" else (mid - half_spr)
-                    tr_sz = round(rng.uniform(0.05, 0.40) if is_btc else rng.uniform(0.5, 4.0), 3)
+                    tr_sz = round(
+                        rng.uniform(0.05, 0.40) if is_btc else rng.uniform(0.5, 4.0), 3
+                    )
 
                     t_scope = SequenceScope(
                         venue=venue,
@@ -235,7 +257,9 @@ def run_regime_simulation(
                             trade_price=tr_px,
                             trade_size=tr_sz,
                             timestamp=cur_t + 0.005,
-                            aggressor_side=SimOrderSide.BUY if side == "BUY" else SimOrderSide.SELL,
+                            aggressor_side=SimOrderSide.BUY
+                            if side == "BUY"
+                            else SimOrderSide.SELL,
                         )
 
         # Sync fills every 5 steps (fast O(1) incremental sync without O(N) order map scan)
@@ -255,8 +279,10 @@ def run_regime_simulation(
         m = strat.metrics
         # Extract rejected Post-Only count
         po_rejected = sum(
-            1 for o in strat.engine.orders.values()
-            if o.status == SimOrderStatus.CANCELLED and o.reject_reason == "POST_ONLY_RESTRICTED"
+            1
+            for o in strat.engine.orders.values()
+            if o.status == SimOrderStatus.CANCELLED
+            and o.reject_reason == "POST_ONLY_RESTRICTED"
         )
         total_sub = len(strat.engine.orders)
         tot_fills = len(m.fill_ledger)
@@ -264,7 +290,11 @@ def run_regime_simulation(
         taker_fills = tot_fills - maker_fills
 
         unrealized = sum(
-            qty * (current_mids.get(sym, strat.avg_costs.get(sym, 0.0)) - strat.avg_costs.get(sym, 0.0))
+            qty
+            * (
+                current_mids.get(sym, strat.avg_costs.get(sym, 0.0))
+                - strat.avg_costs.get(sym, 0.0)
+            )
             for sym, qty in m.positions.items()
         )
         gross = m.realized_pnl + unrealized
@@ -284,7 +314,11 @@ def run_regime_simulation(
         # Adverse selection markouts (1s)
         try:
             m1s_list = strat.engine.compute_adverse_selection_markout(horizon_ms=1000.0)
-            m1s = sum(x["markout_bps"] for x in m1s_list) / len(m1s_list) if m1s_list else 0.0
+            m1s = (
+                sum(x["markout_bps"] for x in m1s_list) / len(m1s_list)
+                if m1s_list
+                else 0.0
+            )
         except Exception:
             m1s = 0.0
 
@@ -304,9 +338,16 @@ def run_regime_simulation(
         eq_curve = m.equity_curve
         sharpe = 0.0
         if len(eq_curve) > 10:
-            interval_step = max(1, len(eq_curve) // 16)  # ~16 intervals in 4 hours (15-min each)
-            sampled_eq = [eq_curve[i][1] for i in range(0, len(eq_curve), interval_step)]
-            returns = [(sampled_eq[i] - sampled_eq[i-1]) / sampled_eq[i-1] for i in range(1, len(sampled_eq))]
+            interval_step = max(
+                1, len(eq_curve) // 16
+            )  # ~16 intervals in 4 hours (15-min each)
+            sampled_eq = [
+                eq_curve[i][1] for i in range(0, len(eq_curve), interval_step)
+            ]
+            returns = [
+                (sampled_eq[i] - sampled_eq[i - 1]) / sampled_eq[i - 1]
+                for i in range(1, len(sampled_eq))
+            ]
             if returns:
                 mean_ret = sum(returns) / len(returns)
                 var_ret = sum((r - mean_ret) ** 2 for r in returns) / len(returns)
@@ -315,28 +356,32 @@ def run_regime_simulation(
                     # Annualize 15-minute Sharpe: sqrt(252 * 24 * 4) = sqrt(24192) ≈ 155.5
                     sharpe = (mean_ret / std_ret) * math.sqrt(24192.0)
 
-        results.append({
-            "regime": regime_name,
-            "strategy": strat.name,
-            "submitted": total_sub,
-            "po_rejected": po_rejected,
-            "fills": tot_fills,
-            "maker_fills": maker_fills,
-            "taker_fills": taker_fills,
-            "pct_maker": (maker_fills / tot_fills * 100.0) if tot_fills > 0 else 0.0,
-            "fill_pct": (tot_fills / total_sub * 100.0) if total_sub > 0 else 0.0,
-            "gross": gross,
-            "fees": fees,
-            "net": net,
-            "max_dd": max_dd,
-            "sharpe": sharpe,
-            "m1s": m1s,
-            "max_btc": max_btc,
-            "max_eth": max_eth,
-            "final_btc": m.positions["BTC/USD"],
-            "final_eth": m.positions["ETH/USD"],
-            "venue_fills": dict(venue_fills),
-        })
+        results.append(
+            {
+                "regime": regime_name,
+                "strategy": strat.name,
+                "submitted": total_sub,
+                "po_rejected": po_rejected,
+                "fills": tot_fills,
+                "maker_fills": maker_fills,
+                "taker_fills": taker_fills,
+                "pct_maker": (maker_fills / tot_fills * 100.0)
+                if tot_fills > 0
+                else 0.0,
+                "fill_pct": (tot_fills / total_sub * 100.0) if total_sub > 0 else 0.0,
+                "gross": gross,
+                "fees": fees,
+                "net": net,
+                "max_dd": max_dd,
+                "sharpe": sharpe,
+                "m1s": m1s,
+                "max_btc": max_btc,
+                "max_eth": max_eth,
+                "final_btc": m.positions["BTC/USD"],
+                "final_eth": m.positions["ETH/USD"],
+                "venue_fills": dict(venue_fills),
+            }
+        )
 
     return results, elapsed_s, total_quotes, total_trades, mids
 
@@ -394,7 +439,9 @@ def run_all_validation():
     t0_global = time.time()
 
     for r_cfg in regimes:
-        print(f"\n>>> Running Holdout Regime: {r_cfg['name']} (Seed={r_cfg['seed']})...")
+        print(
+            f"\n>>> Running Holdout Regime: {r_cfg['name']} (Seed={r_cfg['seed']})..."
+        )
         res, el_s, n_q, n_t, final_mids = run_regime_simulation(
             regime_name=r_cfg["name"],
             seed=r_cfg["seed"],
@@ -404,7 +451,9 @@ def run_all_validation():
             mean_reversion=r_cfg["mr"],
             total_seconds=14_400.0,
         )
-        print(f"    Completed in {el_s:.1f}s | Quotes: {n_q:,} | Trades: {n_t:,} | Final BTC: ${final_mids['BTC/USD']:,.2f}")
+        print(
+            f"    Completed in {el_s:.1f}s | Quotes: {n_q:,} | Trades: {n_t:,} | Final BTC: ${final_mids['BTC/USD']:,.2f}"
+        )
         for row in res:
             all_results.append(row)
 
@@ -417,8 +466,12 @@ def run_all_validation():
         r_name = r_cfg["name"]
         rows = [x for x in all_results if x["regime"] == r_name]
         print(f"\n### Regime: {r_name}")
-        print(f"| Strategy | Submitted | PO Rej | Fills | Maker:Taker | % Maker | Fill % | Gross PnL ($) | Fees ($) | Net PnL ($) | Max DD ($) | Markout 1s |")
-        print(f"| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |")
+        print(
+            f"| Strategy | Submitted | PO Rej | Fills | Maker:Taker | % Maker | Fill % | Gross PnL ($) | Fees ($) | Net PnL ($) | Max DD ($) | Markout 1s |"
+        )
+        print(
+            f"| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |"
+        )
         for row in rows:
             print(
                 f"| **{row['strategy']}** | {row['submitted']:,} | {row['po_rejected']:,} | {row['fills']:,} | "
@@ -430,9 +483,17 @@ def run_all_validation():
     print("\n" + "=" * 80)
     print("CROSS-REGIME AGGREGATE PERFORMANCE (ALL 5 HOLDOUT REGIMES COMBINED)")
     print("=" * 80)
-    strats = ["Fixed-Spread Post-Only [ABANDONED]", "Fixed-Spread Baseline [ABANDONED]", "Inventory-Skewed (pen=0.04)", "Avellaneda-Stoikov (γ=0.50)", "No-Trade Baseline"]
+    strats = [
+        "Fixed-Spread Post-Only [ABANDONED]",
+        "Fixed-Spread Baseline [ABANDONED]",
+        "Inventory-Skewed (pen=0.04)",
+        "Avellaneda-Stoikov (γ=0.50)",
+        "No-Trade Baseline",
+    ]
 
-    print(f"| Strategy | Regimes Profitable | Total Gross ($) | Total Fees ($) | Total Net PnL ($) | Avg Max DD ($) | Worst Max DD ($) | Avg % Maker |")
+    print(
+        f"| Strategy | Regimes Profitable | Total Gross ($) | Total Fees ($) | Total Net PnL ($) | Avg Max DD ($) | Worst Max DD ($) | Avg % Maker |"
+    )
     print(f"| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |")
     for s_name in strats:
         s_rows = [x for x in all_results if x["strategy"] == s_name]

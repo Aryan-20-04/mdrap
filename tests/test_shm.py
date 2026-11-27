@@ -271,7 +271,9 @@ def test_shm_portable_naming_normalization():
     assert normalize_shm_name(slashed) == "test_shm_slash"
 
     # Distinct long names produce distinct digests
-    long_name_b = "test_very_long_shm_name_exceeding_darwin_31_char_limit_by_a_lot_67890"
+    long_name_b = (
+        "test_very_long_shm_name_exceeding_darwin_31_char_limit_by_a_lot_67890"
+    )
     norm_b = normalize_shm_name(long_name_b)
     assert norm1 != norm_b
     assert len(norm_b) <= 30

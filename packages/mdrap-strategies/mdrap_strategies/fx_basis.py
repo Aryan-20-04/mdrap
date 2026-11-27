@@ -137,7 +137,9 @@ class DenominationAwareValuator:
         sell_usd = sell_price * sell_rate
 
         gross_spread_usd = sell_usd - buy_usd
-        gross_spread_bps = (gross_spread_usd / buy_usd * 10_000.0) if buy_usd > 0 else 0.0
+        gross_spread_bps = (
+            (gross_spread_usd / buy_usd * 10_000.0) if buy_usd > 0 else 0.0
+        )
 
         buy_fee_usd = buy_usd * (buy_taker_fee_bps / 10_000.0)
         sell_fee_usd = sell_usd * (sell_taker_fee_bps / 10_000.0)
@@ -152,7 +154,11 @@ class DenominationAwareValuator:
         reason = "PROFITABLE"
         if gross_spread_usd <= 0:
             reason = "NEGATIVE_GROSS_SPREAD"
-        elif buy_rate != sell_rate and (sell_price - buy_price > 0) and gross_spread_usd <= 0:
+        elif (
+            buy_rate != sell_rate
+            and (sell_price - buy_price > 0)
+            and gross_spread_usd <= 0
+        ):
             reason = "FX_BASIS_EROSION"
         elif not is_profitable:
             reason = "FEE_DRAG_UNPROFITABLE"

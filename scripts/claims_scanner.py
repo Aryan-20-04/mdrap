@@ -71,18 +71,25 @@ def audit_documentation(docs_dir: Path, readme_path: Path) -> list[dict]:
     for f in files_to_check:
         if not f.is_file():
             continue
-        if "CHANGELOG" in f.name or "media_" in f.name or "LICENSE" in f.name or "BASELINE" in f.name:
+        if (
+            "CHANGELOG" in f.name
+            or "media_" in f.name
+            or "LICENSE" in f.name
+            or "BASELINE" in f.name
+        ):
             continue
 
         violations = scan_file_for_superlatives(f)
         if violations:
             for line_no, matched, context in violations:
-                results.append({
-                    "file": str(f.relative_to(_REPO_ROOT)),
-                    "line": line_no,
-                    "matched": matched,
-                    "context": context,
-                })
+                results.append(
+                    {
+                        "file": str(f.relative_to(_REPO_ROOT)),
+                        "line": line_no,
+                        "matched": matched,
+                        "context": context,
+                    }
+                )
     return results
 
 
@@ -104,13 +111,21 @@ def verify_version_consistency(auth_version: str) -> tuple[bool, str]:
     if pyproject_path.exists():
         content = pyproject_path.read_text(encoding="utf-8")
         # dynamic version from mdrap._version is standard
-        if "attr = \"mdrap._version.__version__\"" not in content and f'version = "{auth_version}"' not in content:
-            return False, f"pyproject.toml does not reference mdrap._version ({auth_version})"
+        if (
+            'attr = "mdrap._version.__version__"' not in content
+            and f'version = "{auth_version}"' not in content
+        ):
+            return (
+                False,
+                f"pyproject.toml does not reference mdrap._version ({auth_version})",
+            )
 
     return True, f"Authoritative version {auth_version} verified"
 
 
-def verify_claims_manifest_provenance(auth_meta: dict[str, str] | None = None) -> tuple[bool, str]:
+def verify_claims_manifest_provenance(
+    auth_meta: dict[str, str] | None = None,
+) -> tuple[bool, str]:
     """Verify that audit/claims_manifest.json exists and is derived from verified evidence."""
     if auth_meta is None:
         auth_meta = get_authoritative_metadata()
@@ -124,7 +139,10 @@ def verify_claims_manifest_provenance(auth_meta: dict[str, str] | None = None) -
         # 1. Version check
         manifest_ver = data.get("mdrap_version")
         if manifest_ver != auth_meta["version"]:
-            return False, f"Manifest version mismatch: {manifest_ver} != {auth_meta['version']}"
+            return (
+                False,
+                f"Manifest version mismatch: {manifest_ver} != {auth_meta['version']}",
+            )
 
         # 2. Test counts check
         counts = data.get("test_counts", {})
@@ -142,9 +160,17 @@ def verify_claims_manifest_provenance(auth_meta: dict[str, str] | None = None) -
 
 
 def main():
-    parser = argparse.ArgumentParser(description="MDRAP Claims Governance & AST Scanner")
-    parser.add_argument("--check", action="store_true", help="Run in strict CI mode (exit 1 on violations)")
-    parser.add_argument("--verbose", "-v", action="store_true", help="Show verbose scan details")
+    parser = argparse.ArgumentParser(
+        description="MDRAP Claims Governance & AST Scanner"
+    )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Run in strict CI mode (exit 1 on violations)",
+    )
+    parser.add_argument(
+        "--verbose", "-v", action="store_true", help="Show verbose scan details"
+    )
     args = parser.parse_args()
 
     docs_dir = _REPO_ROOT / "docs"
@@ -152,7 +178,9 @@ def main():
 
     print("Running MDRAP Claims Governance Audit...")
     auth_meta = get_authoritative_metadata()
-    print(f"[*] Authoritative Release Metadata: v{auth_meta['version']} (commit: {auth_meta['commit']})")
+    print(
+        f"[*] Authoritative Release Metadata: v{auth_meta['version']} (commit: {auth_meta['commit']})"
+    )
 
     ver_ok, ver_msg = verify_version_consistency(auth_meta["version"])
     manifest_ok, manifest_msg = verify_claims_manifest_provenance(auth_meta)
@@ -172,7 +200,9 @@ def main():
         print(f"[PASS] Claims Manifest Invariant: {manifest_msg}")
 
     if violations:
-        print(f"\n[FAIL] Found {len(violations)} forbidden superlative(s) in documentation:")
+        print(
+            f"\n[FAIL] Found {len(violations)} forbidden superlative(s) in documentation:"
+        )
         for v in violations:
             print(f"  {v['file']}:{v['line']}: Forbidden phrase '{v['matched']}'")
             if args.verbose:
@@ -182,7 +212,9 @@ def main():
         print("[PASS] No forbidden superlatives found in documentation.")
 
     if has_error and args.check:
-        print("\nClaims governance check FAILED. Please rectify defects.", file=sys.stderr)
+        print(
+            "\nClaims governance check FAILED. Please rectify defects.", file=sys.stderr
+        )
         sys.exit(1)
 
     print("\nClaims governance check PASSED.")
