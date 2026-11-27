@@ -362,6 +362,7 @@ def test_decoupled_fault_isolation_reader_crash():
     writer.close()
 
 
+@pytest.mark.native
 @pytest.mark.skipif(not HAS_SHM, reason="SharedMemory not available")
 def test_native_fastpath_read_consistency():
     """Verify native C fastpath reader produces identical results to Python reader."""

@@ -11,11 +11,13 @@ Verifies:
 import json
 import os
 import struct
+import sys
 import tempfile
 import time
 import pytest
 from scripts.deploy_pilot import (
     execute_smoke_verification,
+    run_deployment_preflight,
     setup_deployment_environment,
     verify_prerequisites,
 )
@@ -23,20 +25,48 @@ from scripts.diagnostic_bundle import generate_diagnostic_bundle
 from mdrap.models import EventType, QualityStatus
 
 
-def test_deployment_preflight_automation(tmp_path):
-    """Deployment automation verifies prerequisites, creates directory tree, and executes smoke test."""
+def test_deployment_preflight_automation(tmp_path, capsys):
+    """Deployment automation verifies prerequisites, refuses Python < 3.11 cleanly, and runs smoke setup when eligible."""
     checks = verify_prerequisites()
-    assert checks["python_version_ge_3_11"] is True
     assert checks["64_bit_architecture"] is True
+    assert checks["python_version_ge_3_11"] is (sys.version_info >= (3, 11))
 
     base_dir = str(tmp_path / "pilot_stage")
-    paths = setup_deployment_environment(base_dir)
-    assert os.path.exists(paths["wal_dir"])
-    assert os.path.exists(paths["data_dir"])
-    assert os.path.exists(paths["logs_dir"])
+    if sys.version_info < (3, 11):
+        # Policy contract: deployment preflight must explicitly refuse Python 3.10 while core supports >=3.10
+        ok = run_deployment_preflight(base_dir)
+        captured = capsys.readouterr()
+        assert ok is False
+        assert "Prerequisite check 'python_version_ge_3_11': FAIL" in captured.out
+        assert "Fatal: prerequisite 'python_version_ge_3_11' failed." in captured.err
+        assert not os.path.exists(base_dir)
+    else:
+        paths = setup_deployment_environment(base_dir)
+        assert os.path.exists(paths["wal_dir"])
+        assert os.path.exists(paths["data_dir"])
+        assert os.path.exists(paths["logs_dir"])
 
-    smoke_ok = execute_smoke_verification(paths["wal_dir"])
-    assert smoke_ok is True
+        smoke_ok = execute_smoke_verification(paths["wal_dir"])
+        assert smoke_ok is True
+
+
+def test_deployment_preflight_python_version_contract(tmp_path, monkeypatch, capsys):
+    """Verify both Python 3.10 refusal and Python >= 3.11 smoke pass deterministically."""
+    # 1. Simulate Python 3.10 runtime -> explicit deployment refusal
+    monkeypatch.setattr(sys, "version_info", (3, 10, 12, "final", 0))
+    assert verify_prerequisites()["python_version_ge_3_11"] is False
+    stage_310 = str(tmp_path / "stage_310")
+    assert run_deployment_preflight(stage_310) is False
+    err_310 = capsys.readouterr().err
+    assert "Fatal: prerequisite 'python_version_ge_3_11' failed." in err_310
+    assert not os.path.exists(stage_310)
+
+    # 2. Simulate Python 3.11+ runtime -> setup & smoke pass
+    monkeypatch.setattr(sys, "version_info", (3, 11, 0, "final", 0))
+    assert verify_prerequisites()["python_version_ge_3_11"] is True
+    stage_311 = str(tmp_path / "stage_311")
+    assert run_deployment_preflight(stage_311) is True
+    assert os.path.exists(os.path.join(stage_311, "wal"))
 
 
 def test_diagnostic_bundle_generation_and_redaction(tmp_path):

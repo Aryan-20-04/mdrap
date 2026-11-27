@@ -127,3 +127,60 @@ def test_producer_restart_and_epoch_reset():
     assert state.stream_health.resets == 1
     assert state.stream_health.out_of_order == 0
     assert state.stream_health.gaps == 0
+
+
+def test_stream_out_of_order_and_duplicate_reject_quote_mutation_when_feed_seq_unavailable():
+    """Verify duplicate/out-of-order transport packets do not poison quotes when feed_seq is unavailable."""
+    state = ObserverState(subscription_filter="ALL")
+
+    state.process_event({
+        "type": "TICK",
+        "seq": 10,
+        "venue": "KRAKEN",
+        "symbol": "BTC-USD",
+        "bid": 60000.0,
+        "ask": 60002.0,
+    })
+    q = state.quotes["BTC-USD"]["KRAKEN"]
+    assert q.bid_price == 60000.0
+    assert q.ask_price == 60002.0
+
+    # Duplicate transport seq=10 with poisoned price
+    state.process_event({
+        "type": "TICK",
+        "seq": 10,
+        "venue": "KRAKEN",
+        "symbol": "BTC-USD",
+        "bid": 10000.0,
+        "ask": 10001.0,
+    })
+    assert state.stream_health.duplicates == 1
+    assert q.bid_price == 60000.0
+    assert q.ask_price == 60002.0
+
+    # Out-of-order transport seq=8 (< 10) with poisoned price
+    state.process_event({
+        "type": "TICK",
+        "seq": 8,
+        "venue": "KRAKEN",
+        "symbol": "BTC-USD",
+        "bid": 90000.0,
+        "ask": 90001.0,
+    })
+    assert state.stream_health.out_of_order == 1
+    assert state.stream_health.last_seq == 10  # Must not rewind
+    assert q.bid_price == 60000.0
+    assert q.ask_price == 60002.0
+
+    # Next continuous transport seq=11 updates quote cleanly without false gap
+    state.process_event({
+        "type": "TICK",
+        "seq": 11,
+        "venue": "KRAKEN",
+        "symbol": "BTC-USD",
+        "bid": 60001.0,
+        "ask": 60003.0,
+    })
+    assert state.stream_health.gaps == 0
+    assert q.bid_price == 60001.0
+    assert q.ask_price == 60003.0

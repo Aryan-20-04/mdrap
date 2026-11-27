@@ -332,11 +332,8 @@ static PyObject *py_shm_read_slot_v3(PyObject *self, PyObject *const *args, Py_s
         Py_RETURN_NONE;
     }
 
-    /* Format strings safely */
-    char sym_str[17] = {0};
-    memcpy(sym_str, slot.symbol, 16);
-    char src_str[9] = {0};
-    memcpy(src_str, slot.source, 8);
+    size_t sym_len = 0u;
+    while (sym_len < 16u && slot.symbol[sym_len] != '\0') ++sym_len;
 
     PyObject *st_val = val_unknown;
     if (slot.status == 1) st_val = val_valid;
@@ -346,23 +343,16 @@ static PyObject *py_shm_read_slot_v3(PyObject *self, PyObject *const *args, Py_s
     PyObject *dict = PyDict_New();
     if (!dict) return NULL;
 
-    #define SET_NEW_ITEM(k, v) do { PyObject *_val = (v); if (_val) { PyDict_SetItem(dict, (k), _val); Py_DECREF(_val); } } while (0)
+    #define SET_NEW_ITEM(k, v) do { PyObject *_val = (v); if (!_val) { Py_DECREF(dict); return NULL; } if (PyDict_SetItem(dict, (k), _val) < 0) { Py_DECREF(_val); Py_DECREF(dict); return NULL; } Py_DECREF(_val); } while (0)
 
     SET_NEW_ITEM(str_seq, PyLong_FromUnsignedLongLong(slot.commit_seq));
-    SET_NEW_ITEM(str_sym, PyUnicode_FromString(sym_str));
-    SET_NEW_ITEM(str_source, PyUnicode_FromString(src_str));
+    SET_NEW_ITEM(str_sym, PyUnicode_DecodeUTF8(slot.symbol, (Py_ssize_t)sym_len, "replace"));
     PyDict_SetItem(dict, str_status, st_val);
     PyDict_SetItem(dict, str_is_crossed, slot.is_crossed ? Py_True : Py_False);
     SET_NEW_ITEM(str_exchange_ts, PyFloat_FromDouble(slot.exchange_ts));
     SET_NEW_ITEM(str_ingest_ts, PyFloat_FromDouble(slot.ingest_ts));
     SET_NEW_ITEM(str_broadcast_ts, PyFloat_FromDouble(slot.broadcast_ts));
     SET_NEW_ITEM(str_engine_us, PyFloat_FromDouble((double)slot.engine_us));
-
-    if (slot.present & SHM3_PRESENT_PRICE) SET_NEW_ITEM(str_price, PyFloat_FromDouble(slot.price));
-    else PyDict_SetItem(dict, str_price, Py_None);
-
-    if (slot.present & SHM3_PRESENT_SIZE) SET_NEW_ITEM(str_size, PyFloat_FromDouble(slot.size));
-    else PyDict_SetItem(dict, str_size, Py_None);
 
     if (slot.present & SHM3_PRESENT_BID) SET_NEW_ITEM(str_bid, PyFloat_FromDouble(slot.bid));
     else PyDict_SetItem(dict, str_bid, Py_None);
@@ -378,25 +368,58 @@ static PyObject *py_shm_read_slot_v3(PyObject *self, PyObject *const *args, Py_s
 
     if (slot.event_type == 2) {
         PyDict_SetItem(dict, str_type, val_depth);
-        SET_NEW_ITEM(str_micro_price, PyFloat_FromDouble(slot.price));
-        SET_NEW_ITEM(str_ofi, PyFloat_FromDouble(slot.size));
+        if (slot.present & SHM3_PRESENT_PRICE) SET_NEW_ITEM(str_micro_price, PyFloat_FromDouble(slot.price));
+        else PyDict_SetItem(dict, str_micro_price, Py_None);
 
-        PyObject *bid_item = Py_BuildValue("[dds]", slot.bid, slot.bid_sz, "AGG");
-        if (!bid_item) { Py_DECREF(dict); return NULL; }
-        PyObject *bids_list = PyList_New(1);
-        if (!bids_list) { Py_DECREF(bid_item); Py_DECREF(dict); return NULL; }
-        PyList_SET_ITEM(bids_list, 0, bid_item);
-        PyDict_SetItem(dict, str_bids, bids_list);
-        Py_DECREF(bids_list);
+        if (slot.present & SHM3_PRESENT_SIZE) SET_NEW_ITEM(str_ofi, PyFloat_FromDouble(slot.size));
+        else PyDict_SetItem(dict, str_ofi, Py_None);
 
-        PyObject *ask_item = Py_BuildValue("[dds]", slot.ask, slot.ask_sz, "AGG");
-        if (!ask_item) { Py_DECREF(dict); return NULL; }
-        PyObject *asks_list = PyList_New(1);
-        if (!asks_list) { Py_DECREF(ask_item); Py_DECREF(dict); return NULL; }
-        PyList_SET_ITEM(asks_list, 0, ask_item);
-        PyDict_SetItem(dict, str_asks, asks_list);
-        Py_DECREF(asks_list);
+        if (slot.present & SHM3_PRESENT_BID) {
+            PyObject *bsz_obj = (slot.present & SHM3_PRESENT_BSZ) ? PyFloat_FromDouble(slot.bid_sz) : (Py_INCREF(Py_None), Py_None);
+            if (!bsz_obj) { Py_DECREF(dict); return NULL; }
+            PyObject *bid_item = Py_BuildValue("[dOs]", slot.bid, bsz_obj, "AGG");
+            Py_DECREF(bsz_obj);
+            if (!bid_item) { Py_DECREF(dict); return NULL; }
+            PyObject *bids_list = PyList_New(1);
+            if (!bids_list) { Py_DECREF(bid_item); Py_DECREF(dict); return NULL; }
+            PyList_SET_ITEM(bids_list, 0, bid_item);
+            PyDict_SetItem(dict, str_bids, bids_list);
+            Py_DECREF(bids_list);
+        } else {
+            PyObject *empty_bids = PyList_New(0);
+            if (!empty_bids) { Py_DECREF(dict); return NULL; }
+            PyDict_SetItem(dict, str_bids, empty_bids);
+            Py_DECREF(empty_bids);
+        }
+
+        if (slot.present & SHM3_PRESENT_ASK) {
+            PyObject *asz_obj = (slot.present & SHM3_PRESENT_ASZ) ? PyFloat_FromDouble(slot.ask_sz) : (Py_INCREF(Py_None), Py_None);
+            if (!asz_obj) { Py_DECREF(dict); return NULL; }
+            PyObject *ask_item = Py_BuildValue("[dOs]", slot.ask, asz_obj, "AGG");
+            Py_DECREF(asz_obj);
+            if (!ask_item) { Py_DECREF(dict); return NULL; }
+            PyObject *asks_list = PyList_New(1);
+            if (!asks_list) { Py_DECREF(ask_item); Py_DECREF(dict); return NULL; }
+            PyList_SET_ITEM(asks_list, 0, ask_item);
+            PyDict_SetItem(dict, str_asks, asks_list);
+            Py_DECREF(asks_list);
+        } else {
+            PyObject *empty_asks = PyList_New(0);
+            if (!empty_asks) { Py_DECREF(dict); return NULL; }
+            PyDict_SetItem(dict, str_asks, empty_asks);
+            Py_DECREF(empty_asks);
+        }
     } else {
+        size_t src_len = 0u;
+        const char *src_ptr = shm3_decode_source(slot.source, &src_len);
+        SET_NEW_ITEM(str_source, PyUnicode_DecodeUTF8(src_ptr, (Py_ssize_t)src_len, "replace"));
+
+        if (slot.present & SHM3_PRESENT_PRICE) SET_NEW_ITEM(str_price, PyFloat_FromDouble(slot.price));
+        else PyDict_SetItem(dict, str_price, Py_None);
+
+        if (slot.present & SHM3_PRESENT_SIZE) SET_NEW_ITEM(str_size, PyFloat_FromDouble(slot.size));
+        else PyDict_SetItem(dict, str_size, Py_None);
+
         PyDict_SetItem(dict, str_type, val_tick);
     }
 
@@ -420,21 +443,65 @@ static PyObject *py_shm_write_tick_v3(PyObject *self, PyObject *const *args, Py_
     uint64_t seq = PyLong_AsUnsignedLongLong(args[2]);
 
     const char *symbol = NULL;
-    PyObject *sym_bytes = NULL;
-    if (PyUnicode_Check(args[3])) {
-        sym_bytes = PyUnicode_AsUTF8String(args[3]);
-        if (sym_bytes) symbol = PyBytes_AsString(sym_bytes);
+    if (args[3] == Py_None) {
+        symbol = NULL;
+    } else if (PyUnicode_Check(args[3])) {
+        Py_ssize_t sym_n = 0;
+        symbol = PyUnicode_AsUTF8AndSize(args[3], &sym_n);
+        if (!symbol) {
+            PyBuffer_Release(&view);
+            PyErr_Clear();
+            PyErr_SetString(PyExc_ValueError, "SHM symbol must be valid UTF-8");
+            return NULL;
+        }
+        if (memchr(symbol, '\0', (size_t)sym_n) != NULL) {
+            PyBuffer_Release(&view);
+            PyErr_SetString(PyExc_ValueError, "SHM symbol must not contain embedded NUL bytes");
+            return NULL;
+        }
     } else if (PyBytes_Check(args[3])) {
-        symbol = PyBytes_AsString(args[3]);
+        Py_ssize_t sym_n = PyBytes_GET_SIZE(args[3]);
+        symbol = PyBytes_AS_STRING(args[3]);
+        if (memchr(symbol, '\0', (size_t)sym_n) != NULL) {
+            PyBuffer_Release(&view);
+            PyErr_SetString(PyExc_ValueError, "SHM symbol must not contain embedded NUL bytes");
+            return NULL;
+        }
+    } else {
+        PyBuffer_Release(&view);
+        PyErr_SetString(PyExc_ValueError, "SHM symbol must be str");
+        return NULL;
     }
 
     const char *source = NULL;
-    PyObject *src_bytes = NULL;
-    if (PyUnicode_Check(args[4])) {
-        src_bytes = PyUnicode_AsUTF8String(args[4]);
-        if (src_bytes) source = PyBytes_AsString(src_bytes);
+    if (args[4] == Py_None) {
+        source = NULL;
+    } else if (PyUnicode_Check(args[4])) {
+        Py_ssize_t src_n = 0;
+        source = PyUnicode_AsUTF8AndSize(args[4], &src_n);
+        if (!source) {
+            PyBuffer_Release(&view);
+            PyErr_Clear();
+            PyErr_SetString(PyExc_ValueError, "SHM source must be ASCII");
+            return NULL;
+        }
+        if (memchr(source, '\0', (size_t)src_n) != NULL) {
+            PyBuffer_Release(&view);
+            PyErr_SetString(PyExc_ValueError, "SHM source must not contain embedded NUL bytes");
+            return NULL;
+        }
     } else if (PyBytes_Check(args[4])) {
-        source = PyBytes_AsString(args[4]);
+        Py_ssize_t src_n = PyBytes_GET_SIZE(args[4]);
+        source = PyBytes_AS_STRING(args[4]);
+        if (memchr(source, '\0', (size_t)src_n) != NULL) {
+            PyBuffer_Release(&view);
+            PyErr_SetString(PyExc_ValueError, "SHM source must not contain embedded NUL bytes");
+            return NULL;
+        }
+    } else {
+        PyBuffer_Release(&view);
+        PyErr_SetString(PyExc_ValueError, "SHM source must be str");
+        return NULL;
     }
 
     double price = PyFloat_AsDouble(args[5]);
@@ -451,15 +518,35 @@ static PyObject *py_shm_write_tick_v3(PyObject *self, PyObject *const *args, Py_
     double bc_ts = PyFloat_AsDouble(args[16]);
     float eng_us = (float)PyFloat_AsDouble(args[17]);
 
+    if (PyErr_Occurred()) {
+        PyBuffer_Release(&view);
+        return NULL;
+    }
+
     int32_t res = fastpath_shm_write_tick_v3(
         (uint8_t *)view.buf, (size_t)view.len, slot_count, seq,
         symbol, source, price, size, bid, ask, bid_sz, ask_sz,
         status, is_crossed, present, ex_ts, in_ts, bc_ts, eng_us
     );
 
-    Py_XDECREF(sym_bytes);
-    Py_XDECREF(src_bytes);
     PyBuffer_Release(&view);
+
+    if (res == -3) {
+        PyErr_Format(
+            PyExc_ValueError,
+            "SHM source %R is invalid, uses reserved wire prefix '@MDRP', or exceeds 8-byte v3 limit",
+            args[4]
+        );
+        return NULL;
+    }
+    if (res == -4) {
+        PyErr_Format(
+            PyExc_ValueError,
+            "SHM symbol %R is invalid UTF-8 or exceeds 16-byte v3 wire limit",
+            args[3]
+        );
+        return NULL;
+    }
 
     return PyLong_FromLong(res);
 }

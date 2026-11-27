@@ -14,6 +14,8 @@ import pytest
 from mdrap.supervisor import PySpscRingQueue, SpscRingQueue
 from mdrap._fastpath_c import NativeSpscQueue
 
+pytestmark = pytest.mark.native
+
 
 class TestFastpathSpscAtomics:
     """Rigorous verification of ADR-005 Native C11 Atomic SPSC Queue."""

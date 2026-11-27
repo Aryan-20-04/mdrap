@@ -79,33 +79,48 @@ def test_cpp_consumer_sdk_execution():
     assert "Missing: 3" in result.stdout
 
 
-def test_java_consumer_sdk_execution():
-    """Verify standalone Java consumer execution runs and passes all invariants."""
+def test_java_consumer_sdk_execution(tmp_path):
+    """Verify standalone Java consumer compiles cleanly from sdk/java/src in an isolated dir and passes invariants."""
     import shutil
 
-    java_cp = os.path.abspath("sdk/java/build")
-    java_exe = shutil.which("java") or r"C:\Program Files\Java\jdk-20\bin\java.exe"
-    javac_exe = shutil.which("javac") or r"C:\Program Files\Java\jdk-20\bin\javac.exe"
+    java_exe = shutil.which("java") or (
+        r"C:\Program Files\Java\jdk-20\bin\java.exe" if sys.platform == "win32" else None
+    )
+    javac_exe = shutil.which("javac") or (
+        r"C:\Program Files\Java\jdk-20\bin\javac.exe" if sys.platform == "win32" else None
+    )
 
-    if not os.path.exists(java_exe) or not os.path.exists(javac_exe):
-        pytest.skip("Java JDK (javac/java) not found")
+    if not java_exe or not os.path.exists(java_exe) or not javac_exe or not os.path.exists(javac_exe):
+        raise RuntimeError(
+            f"Java JDK prerequisite missing (java={java_exe!r}, javac={javac_exe!r}); cannot verify Java SDK conformance"
+        )
 
-    if not os.path.exists(java_cp):
-        os.makedirs(java_cp, exist_ok=True)
-        java_sources = []
-        for root, _, files in os.walk("sdk/java/src"):
-            for f in files:
-                if f.endswith(".java"):
-                    java_sources.append(os.path.join(root, f))
-        subprocess.run([javac_exe, "-d", java_cp] + java_sources, check=True)
+    javac_ver = subprocess.run([javac_exe, "-version"], capture_output=True, text=True, check=True)
+    java_ver = subprocess.run([java_exe, "-version"], capture_output=True, text=True, check=True)
+    ver_info = (
+        f"javac={(javac_ver.stdout or javac_ver.stderr).strip()} | "
+        f"java={(java_ver.stdout or java_ver.stderr).strip()}"
+    )
+
+    # Always compile fresh into an isolated temp directory; never reuse pre-existing sdk/java/build bytecode
+    java_cp = tmp_path / "java_build"
+    java_cp.mkdir(parents=True, exist_ok=True)
+    java_sources = []
+    for root, _, files in os.walk("sdk/java/src"):
+        for f in sorted(files):
+            if f.endswith(".java"):
+                java_sources.append(os.path.join(root, f))
+    assert java_sources, "No Java source files found under sdk/java/src"
+
+    subprocess.run([javac_exe, "-d", str(java_cp)] + java_sources, check=True, capture_output=True, text=True)
 
     result = subprocess.run(
-        [java_exe, "-cp", java_cp, "com.mdrap.client.examples.ConsumerExample"],
+        [java_exe, "-cp", str(java_cp), "com.mdrap.client.examples.ConsumerExample"],
         capture_output=True,
         text=True,
         check=True,
     )
-    assert "All assertions passed successfully!" in result.stdout
-    assert "Consumed: 2" in result.stdout
-    assert "Gaps: 1" in result.stdout
-    assert "Missing: 4" in result.stdout
+    assert "All assertions passed successfully!" in result.stdout, f"{ver_info}\n{result.stdout}"
+    assert "Consumed: 2" in result.stdout, ver_info
+    assert "Gaps: 1" in result.stdout, ver_info
+    assert "Missing: 4" in result.stdout, ver_info

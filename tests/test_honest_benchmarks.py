@@ -57,9 +57,15 @@ def test_f01_benchmark_reproducibility():
 
     # 2. Identical Workload Setup: Pre-generate events outside the timing loop to isolate
     # engine.step() latency from RawEvent dataclass allocation and dictionary instantiation.
-    workload_size = 500
-    workload_events = [_make_raw(5000 + i) for i in range(workload_size)]
-    preheat_events = [_make_raw(9000 + i) for i in range(50)]
+    # Use Median-of-Batches (3 batches x 400 events = 1,200 events) for robust noise rejection
+    # against transient OS scheduler preemption spikes on shared virtual machine runners.
+    num_batches = 3
+    batch_size = 400
+    batches = [
+        [_make_raw(5000 + b * batch_size + i) for i in range(batch_size)]
+        for b in range(num_batches)
+    ]
+    preheat_events = [_make_raw(9000 + i) for i in range(100)]
 
     run_p50s = []
     run_p99s = []
@@ -71,27 +77,35 @@ def test_f01_benchmark_reproducibility():
         for ev in preheat_events:
             st_pre, _ = engine.step(st_pre, ev, clock, offset=ev.payload["sequence"])
 
-        # Fresh initial state ensures bit-for-bit identical workload execution across all runs
+        # Collect garbage before each run to ensure pymalloc pools start clean and recycled.
+        # Note: We do NOT call gc.disable() because engine.step() creates Transaction and Decision
+        # objects; disabling GC starves pymalloc pools and triggers synchronous OS kernel page-fault
+        # mmap/VirtualAlloc allocations during later runs, destroying timing reproducibility.
+        gc.collect()
+
         st = engine.create_initial_state()
-        latencies_us = []
+        batch_p50s = []
+        all_run_latencies = []
         decisions = []
 
-        # Isolate Garbage Collection pauses from micro-benchmark step timings
-        gc.collect()
-        gc.disable()
-        try:
-            for ev in workload_events:
+        for batch in batches:
+            batch_latencies = []
+            for ev in batch:
                 t0 = time.perf_counter_ns()
                 st, dec = engine.step(st, ev, clock, offset=ev.payload["sequence"])
                 t1 = time.perf_counter_ns()
-                latencies_us.append((t1 - t0) / 1000.0)
+                lat_us = (t1 - t0) / 1000.0
+                batch_latencies.append(lat_us)
+                all_run_latencies.append(lat_us)
                 decisions.append((dec.quality_status.value, tuple(dec.reasons)))
-        finally:
-            gc.enable()
 
-        latencies_us.sort()
-        run_p50s.append(percentile(latencies_us, 0.50))
-        run_p99s.append(percentile(latencies_us, 0.99))
+            batch_latencies.sort()
+            batch_p50s.append(percentile(batch_latencies, 0.50))
+
+        batch_p50s.sort()
+        all_run_latencies.sort()
+        run_p50s.append(percentile(batch_p50s, 0.50))
+        run_p99s.append(percentile(all_run_latencies, 0.99))
         run_decisions.append(decisions)
 
     engine.close()

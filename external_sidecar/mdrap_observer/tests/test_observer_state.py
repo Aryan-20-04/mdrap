@@ -2,6 +2,7 @@
 
 import os
 import sys
+import threading
 import time
 import pytest
 
@@ -18,16 +19,48 @@ from observer.state import (
 
 
 def test_normalize_asset_preserves_currency():
-    """Verify ticker normalization strictly separates USD from USDT."""
-    assert normalize_asset("BTCUSDT") == "BTC-USDT"
-    assert normalize_asset("BTC-USD") == "BTC-USD"
-    assert normalize_asset("XBT/USD") == "BTC-USD"
-    assert normalize_asset("ETHUSDT") == "ETH-USDT"
-    assert normalize_asset("ETH-USD") == "ETH-USD"
-    assert normalize_asset("BTC") == "BTC-USD"
-    assert normalize_asset("ETH") == "ETH-USD"
-    # Unmonitored symbol preserved as-is
-    assert normalize_asset("SOL-USD") == "SOL-USD"
+    """Verify ticker normalization strictly separates USD from USDT and rejects derivatives/wrapped tickers."""
+    # Canonical BTC-USDT variants
+    for sym in ("BTCUSDT", "BTC-USDT", "BTC/USDT", "BTC_USDT", "XBTUSDT", "XBT-USDT", "XBT/USDT", "XBT_USDT", "btcusdt"):
+        assert normalize_asset(sym) == "BTC-USDT", f"Expected BTC-USDT for {sym}"
+
+    # Canonical BTC-USD variants
+    for sym in ("BTC-USD", "BTC/USD", "BTC_USD", "BTCUSD", "XBT/USD", "XBT-USD", "XBT_USD", "XBTUSD", "BTC", "XBT", "xbt/usd"):
+        assert normalize_asset(sym) == "BTC-USD", f"Expected BTC-USD for {sym}"
+
+    # Canonical ETH-USDT and ETH-USD variants
+    for sym in ("ETHUSDT", "ETH-USDT", "ETH/USDT", "ETH_USDT", "eth-usdt"):
+        assert normalize_asset(sym) == "ETH-USDT", f"Expected ETH-USDT for {sym}"
+    for sym in ("ETH-USD", "ETH/USD", "ETH_USD", "ETHUSD", "ETH", "eth"):
+        assert normalize_asset(sym) == "ETH-USD", f"Expected ETH-USD for {sym}"
+
+    # Wrapped assets, derivatives, forks, and non-USD/USDT pairs must NOT be conflated
+    for non_core in (
+        "WBTC-USD",
+        "WBTCUSDT",
+        "BTCUSDT-PERP",
+        "BTC-USD-PERP",
+        "ETHW-USD",
+        "BTC-EUR",
+        "BTC-USDC",
+        "SOL-USD",
+    ):
+        assert normalize_asset(non_core) == non_core, f"Unexpected normalization for {non_core}"
+
+
+def test_non_core_wrapped_and_perp_symbols_do_not_pollute_core_books():
+    """Verify wrapped/perp/fiat-cross symbols do not mutate BTC-USD/BTC-USDT/ETH-USD books."""
+    state = ObserverState()
+    state.process_event({"venue": "COINBASE", "symbol": "BTC-USD", "bid": 60000.0, "ask": 60002.0, "feed_seq": 1})
+
+    for sym in ("WBTC-USD", "BTCUSDT-PERP", "ETHW-USD", "BTC-EUR", "SOL-USD"):
+        state.process_event({"venue": "COINBASE", "symbol": sym, "bid": 100.0, "ask": 101.0, "feed_seq": 1})
+
+    q_btc = state.quotes["BTC-USD"]["COINBASE"]
+    assert q_btc.bid_price == 60000.0
+    assert q_btc.ask_price == 60002.0
+    assert state.quotes["BTC-USDT"]["COINBASE"].bid_price == 0.0
+    assert state.quotes["ETH-USD"]["COINBASE"].bid_price == 0.0
 
 
 def test_micro_price_calculation():
@@ -200,9 +233,11 @@ def test_feed_sequence_integrity_gaps_duplicates_out_of_order():
     state.process_event({"venue": "DATABENTO", "symbol": "BTC-USD", "sequence": 9})
     assert state.health["DATABENTO"].out_of_order == 1
 
-    # Gap: 16 (gap of 16 - 9 - 1 = 6)
+    # Gap: 16 after accepted high-water 11 (delayed 9 must not rewind gap baseline; missing 12..15 -> gap of 4)
     state.process_event({"venue": "DATABENTO", "symbol": "BTC-USD", "sequence": 16})
-    assert state.health["DATABENTO"].gaps == 6
+    assert state.health["DATABENTO"].gaps == 4
+    assert state.health["DATABENTO"].last_feed_seq == 16
+    assert state.health["DATABENTO"].channels["default:BTC-USD"].max_accepted_seq == 16
 
 
 def test_stale_feed_detection():
@@ -240,3 +275,247 @@ def test_bounded_trades_tape():
     # Most recent trade at index 0
     assert state.trades["ETH-USD"][0].price == 3009.0
     assert state.trades["ETH-USD"][-1].price == 3005.0
+
+
+def test_stale_epoch_out_of_order_and_duplicate_do_not_poison_quotes_or_nbbo():
+    """Verify stale-epoch, out-of-order, and duplicate packets never mutate live quotes, NBBO, microprice, or trades."""
+    state = ObserverState()
+
+    # 1. Establish valid epoch 2 quotes on COINBASE and KRAKEN for BTC-USD
+    state.process_event({
+        "venue": "COINBASE",
+        "symbol": "BTC-USD",
+        "epoch_id": 2,
+        "feed_seq": 100,
+        "bid": 60000.0,
+        "bid_size": 3.0,
+        "ask": 60004.0,
+        "ask_size": 1.0,
+        "timestamp": 1000.0,
+    })
+    state.process_event({
+        "venue": "KRAKEN",
+        "symbol": "BTC-USD",
+        "epoch_id": 2,
+        "feed_seq": 50,
+        "bid": 59998.0,
+        "bid_size": 2.0,
+        "ask": 60003.0,
+        "ask_size": 4.0,
+        "timestamp": 1000.0,
+    })
+    # Record a valid trade at epoch 2, seq 101 on COINBASE
+    state.process_event({
+        "venue": "COINBASE",
+        "symbol": "BTC-USD",
+        "event_type": "TRADE",
+        "epoch_id": 2,
+        "feed_seq": 101,
+        "price": 60004.0,
+        "quantity": 0.5,
+        "timestamp": 1001.0,
+    })
+
+    cb_quote = state.quotes["BTC-USD"]["COINBASE"]
+    kr_quote = state.quotes["BTC-USD"]["KRAKEN"]
+    baseline_cb_micro = cb_quote.micro_price
+    baseline_nbbo = state.get_consolidated_nbbo("BTC-USD")
+    assert baseline_nbbo == (60000.0, 3.0, 60003.0, 4.0)
+    assert len(state.trades["BTC-USD"]) == 1
+
+    # 2. Submit stale epoch 1 quote with radically different prices/sizes (and stale snapshot)
+    state.process_event({
+        "venue": "COINBASE",
+        "symbol": "BTC-USD",
+        "epoch_id": 1,
+        "feed_seq": 999,
+        "bid": 10000.0,
+        "bid_size": 500.0,
+        "ask": 99000.0,
+        "ask_size": 500.0,
+        "timestamp": 2000.0,
+    })
+    state.process_event({
+        "venue": "COINBASE",
+        "symbol": "BTC-USD",
+        "epoch_id": 1,
+        "feed_seq": 1000,
+        "is_snapshot": True,
+        "bid": 12000.0,
+        "ask": 12001.0,
+        "timestamp": 2001.0,
+    })
+    assert state.health["COINBASE"].stale_epoch_packets == 2
+    assert cb_quote.bid_price == 60000.0
+    assert cb_quote.ask_price == 60004.0
+    assert cb_quote.bid_size == 3.0
+    assert cb_quote.ask_size == 1.0
+    assert cb_quote.last_update_ts == 1001.0
+    assert cb_quote.micro_price == baseline_cb_micro
+    assert state.get_consolidated_nbbo("BTC-USD") == baseline_nbbo
+
+    # 3. Submit lower feed_seq within epoch 2 (out-of-order)
+    state.process_event({
+        "venue": "COINBASE",
+        "symbol": "BTC-USD",
+        "epoch_id": 2,
+        "feed_seq": 95,
+        "bid": 75000.0,
+        "bid_size": 99.0,
+        "ask": 75005.0,
+        "ask_size": 99.0,
+        "timestamp": 2002.0,
+    })
+    assert state.health["COINBASE"].out_of_order == 1
+    assert state.health["COINBASE"].last_feed_seq == 101  # Must not rewind
+    assert cb_quote.bid_price == 60000.0
+    assert cb_quote.ask_price == 60004.0
+    assert state.get_consolidated_nbbo("BTC-USD") == baseline_nbbo
+
+    # 4. Submit duplicate feed_seq (both quote and trade)
+    state.process_event({
+        "venue": "COINBASE",
+        "symbol": "BTC-USD",
+        "event_type": "TRADE",
+        "epoch_id": 2,
+        "feed_seq": 101,
+        "price": 12345.0,
+        "quantity": 10.0,
+        "bid": 12344.0,
+        "ask": 12346.0,
+        "timestamp": 2003.0,
+    })
+    assert state.health["COINBASE"].duplicates == 1
+    assert len(state.trades["BTC-USD"]) == 1
+    assert state.trades["BTC-USD"][0].price == 60004.0
+    assert cb_quote.bid_price == 60000.0
+    assert state.get_consolidated_nbbo("BTC-USD") == baseline_nbbo
+
+    # 5. KRAKEN channel remains independent and unaffected; COINBASE accepts higher epoch 2 seq
+    state.process_event({
+        "venue": "KRAKEN",
+        "symbol": "BTC-USD",
+        "epoch_id": 2,
+        "feed_seq": 51,
+        "bid": 59999.0,
+        "bid_size": 2.5,
+        "ask": 60002.0,
+        "ask_size": 3.5,
+    })
+    assert kr_quote.bid_price == 59999.0
+    assert kr_quote.ask_price == 60002.0
+    assert state.health["KRAKEN"].stale_epoch_packets == 0
+    assert state.health["KRAKEN"].out_of_order == 0
+
+    state.process_event({
+        "venue": "COINBASE",
+        "symbol": "BTC-USD",
+        "epoch_id": 2,
+        "feed_seq": 102,
+        "bid": 60001.0,
+        "bid_size": 4.0,
+        "ask": 60005.0,
+        "ask_size": 2.0,
+    })
+    assert cb_quote.bid_price == 60001.0
+    assert cb_quote.ask_price == 60005.0
+    assert state.health["COINBASE"].last_feed_seq == 102
+    assert state.get_consolidated_nbbo("BTC-USD") == (60001.0, 4.0, 60002.0, 3.5)
+
+
+def test_explicit_zero_sizes_preserved_in_process_event():
+    """Verify explicit 0.0 bid_size/ask_size are preserved rather than replaced by default 1.0."""
+    state = ObserverState()
+    state.process_event({
+        "venue": "COINBASE",
+        "symbol": "BTC-USD",
+        "bid": 60000.0,
+        "bid_size": 0.0,
+        "ask": 60002.0,
+        "ask_size": 5.0,
+        "feed_seq": 1,
+    })
+    q = state.quotes["BTC-USD"]["COINBASE"]
+    assert q.bid_size == 0.0
+    assert q.ask_size == 5.0
+    # Micro-price with Q_bid=0, Q_ask=5 equals P_bid = 60000.0
+    assert q.micro_price == 60000.0
+
+    state.process_event({
+        "venue": "COINBASE",
+        "symbol": "BTC-USD",
+        "bid": 60000.0,
+        "bid_size": 0.0,
+        "ask": 60002.0,
+        "ask_size": 0.0,
+        "feed_seq": 2,
+    })
+    assert q.ask_size == 0.0
+    # Both sizes zero -> midpoint fallback 60001.0
+    assert q.micro_price == 60001.0
+
+
+def test_concurrent_ingestion_health_snapshots_throughput_and_channels():
+    """Workstream A: Stress concurrent process_event() against snapshot_health(), get_throughput_eps(), NBBO, and check_all_stale()."""
+    state = ObserverState(max_trades=50, stale_threshold_s=0.05)
+    errors: list[BaseException] = []
+    stop_flag = threading.Event()
+    total_ingested = 6000  # Exceeds _event_timestamps maxlen=5000 to stress deque rotation
+
+    def writer_worker():
+        try:
+            for i in range(1, total_ingested + 1):
+                gw = f"gw_{i % 60}"
+                sym = "BTCUSDT" if (i % 2 == 0) else f"ALT{i % 150}-USD"
+                state.process_event({
+                    "venue": "BINANCE",
+                    "symbol": sym,
+                    "gateway_id": gw,
+                    "event_type": "TRADE" if (i % 5 == 0) else "TICK",
+                    "price": 65000.0 + (i % 20),
+                    "bid": 64999.0 + (i % 20),
+                    "bid_size": 1.5,
+                    "ask": 65001.0 + (i % 20),
+                    "ask_size": 2.0,
+                    "feed_seq": i,
+                    "seq": i,
+                })
+        except BaseException as exc:
+            errors.append(exc)
+        finally:
+            stop_flag.set()
+
+    def reader_worker():
+        try:
+            while not stop_flag.is_set():
+                snap = state.snapshot_health()
+                dash = state.snapshot_dashboard_data()
+                eps = state.get_throughput_eps()
+                _ = state.get_consolidated_nbbo("BTC-USDT")
+                state.check_all_stale()
+                # Also exercise direct VenueHealth property snapshots concurrently
+                _ = state.health["BINANCE"].feed_gaps
+                assert eps >= 0.0
+                assert "BINANCE" in snap["venues"]
+                assert "BTC-USDT" in dash["nbbo"]
+        except BaseException as exc:
+            errors.append(exc)
+
+    w = threading.Thread(target=writer_worker)
+    r1 = threading.Thread(target=reader_worker)
+    r2 = threading.Thread(target=reader_worker)
+    w.start()
+    r1.start()
+    r2.start()
+    w.join(timeout=15.0)
+    stop_flag.set()
+    r1.join(timeout=5.0)
+    r2.join(timeout=5.0)
+
+    assert not errors, f"Concurrency errors encountered: {errors}"
+    final_snap = state.snapshot_health()
+    assert final_snap["venues"]["BINANCE"]["events"] == total_ingested
+    assert final_snap["stream"]["events"] == total_ingested
+    # Decoupled snapshot mutation check: mutating returned snapshot must not affect internal state
+    final_snap["venues"]["BINANCE"]["events"] = -999
+    assert state.health["BINANCE"].events_received == total_ingested

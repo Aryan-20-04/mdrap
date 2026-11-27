@@ -1,0 +1,10 @@
+# ==============================================================================
+# MDRAP Gate 8 Supply-Chain Security Scanner Toolchain (Isolated from Runtime)
+#
+# pip-audit pulls CacheControl[filecache] -> filelock, which is strictly a
+# scanner-toolchain dependency and is NOT shipped to MDRAP runtime, Observer,
+# or optional application consumers. Keeping it isolated preserves honest
+# separation while Gate 8 audits both requirements.txt and this manifest.
+# ==============================================================================
+
+pip-audit>=2.7.0,<3.0.0

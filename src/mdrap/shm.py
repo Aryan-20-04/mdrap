@@ -173,20 +173,165 @@ EVENT_TYPE_DEPTH = 2
 STATUS_MAP_REV = {"UNKNOWN": 0, "VALID": 1, "SUSPICIOUS": 2, "INVALID": 3}
 STATUS_MAP_FWD = {0: "UNKNOWN", 1: "VALID", 2: "SUSPICIOUS", 3: "INVALID"}
 
-# Bounded caching for hot-path ASCII byte-padding and string decoding
+# ---------------------------------------------------------------------------
+# SHM v3 Canonical Source Registry (8-byte wire field preservation)
+# ---------------------------------------------------------------------------
+# SHM v3 fixed 128-byte slot layout allocates an 8-byte ASCII `source` field.
+# Sources <= 8 ASCII bytes (not starting with "@MDRP") are written verbatim.
+# Registered >8-byte canonical sources map deterministically to reserved 8-char
+# printable ASCII tokens ("@MDRP001", ...), preserving HEADER_SIZE==128,
+# SLOT_SIZE==128, VERSION==3, and 100% parity between C fastpath and Python.
+SHM_SOURCE_WIRE_LIMIT = 8
+SHM_SOURCE_RESERVED_PREFIX = "@MDRP"
+
+CANONICAL_SOURCE_TO_WIRE_V3: dict[str, str] = {
+    "DATABENTO": "@MDRP001",
+    "COINBASE_PRO": "@MDRP002",
+    "NASDAQ_ITCH": "@MDRP003",
+    "NASDAQ_ITCH50": "@MDRP004",
+    "NYMEX_FUTURES": "@MDRP005",
+    "OPRA_CHICAGO": "@MDRP006",
+    "FEED_ROTATING": "@MDRP007",
+    "PRIMARY_FEED": "@MDRP008",
+    "STANDBY_FEED": "@MDRP009",
+    "DATABENTO-GLBX": "@MDRP010",
+    "EXCHANGE_A": "@MDRP011",
+    "EXCHANGE_FEED": "@MDRP012",
+    "EXCHANGE_SOAK": "@MDRP013",
+    "FEED_ADVERSARIAL": "@MDRP014",
+    "FEED_BID_ONLY": "@MDRP015",
+    "FEED_BURST": "@MDRP016",
+    "FEED_CHAOS": "@MDRP017",
+    "FEED_EXCHANGE": "@MDRP018",
+    "FEED_HMAC": "@MDRP019",
+    "FEED_LEADER": "@MDRP020",
+    "FEED_SHARED": "@MDRP021",
+    "FEED_TEST": "@MDRP022",
+    "AUDIT_FEED": "@MDRP023",
+    "BURST_FEED": "@MDRP024",
+    "CLEAN_FEED": "@MDRP025",
+    "FAULT_FEED": "@MDRP026",
+    "LIVE_FEED": "@MDRP027",
+    "MALFORMED_FEED": "@MDRP028",
+    "METAMORPHIC_FEED": "@MDRP029",
+    "SECURE_FEED": "@MDRP030",
+    "SLOW_FEED": "@MDRP031",
+    "TEST_FEED": "@MDRP032",
+    "TEST_EXCHANGE": "@MDRP033",
+    "TEST_EXCH": "@MDRP034",
+    "TEST_VENUE": "@MDRP035",
+    "HOOK_VENUE": "@MDRP036",
+    "UNKNOWN_EXCHANGE": "@MDRP037",
+    "SIMULATOR": "@MDRP038",
+    "REPLAY_SIM": "@MDRP039",
+    "LOCAL_DAEMON": "@MDRP040",
+    "GATEWAY_RECV": "@MDRP041",
+    "POLYGON-AGG": "@MDRP042",
+    "POLYGON-FINRA_TRF": "@MDRP043",
+    "POLYGON-NASDAQ": "@MDRP044",
+    "POLYGON_EQUITIES": "@MDRP045",
+    "POLYGON_EXCHANGE_MAP": "@MDRP046",
+    "CLOCK_REPRO": "@MDRP047",
+    "CRASH_REPRO": "@MDRP048",
+    "CRASH_TEST": "@MDRP049",
+    "POISON_REPRO": "@MDRP050",
+    "NON_DICT_REPRO": "@MDRP051",
+    "SHM_FEED_1": "@MDRP052",
+    "PUBLISHER_MAP": "@MDRP053",
+    "HOST_SYS_CLOCK": "@MDRP054",
+    "MDRAP_PROVENANCE_RETRY": "@MDRP055",
+    "SECURITY_REJECT": "@MDRP056",
+    "ALLOWED_VENUES": "@MDRP057",
+    "EQUITIES (SIM)": "@MDRP058",
+    "CRYPTO (SIM)": "@MDRP059",
+    "DIFF_TEST": "@MDRP060",
+    "POST_TEST": "@MDRP061",
+}
+WIRE_TO_CANONICAL_SOURCE_V3: dict[str, str] = {
+    wire: canon for canon, wire in CANONICAL_SOURCE_TO_WIRE_V3.items()
+}
+
+
+def encode_shm_source(source: str | None) -> str:
+    """
+    Encode a canonical source string into an 8-byte v3 wire token.
+
+    - Rejects literal inputs starting with '@MDRP' to prevent spoofing/collisions.
+    - Maps registered >8-byte canonical sources via CANONICAL_SOURCE_TO_WIRE_V3.
+    - Passes <=8-byte ASCII sources through unchanged.
+    - Raises ValueError for unregistered >8-byte or non-ASCII sources.
+    """
+    src = "" if source is None else source
+    if not isinstance(src, str):
+        raise ValueError(f"SHM source must be str, got {type(source).__name__}")
+    if src.startswith(SHM_SOURCE_RESERVED_PREFIX):
+        raise ValueError(
+            f"SHM source {src!r} uses reserved wire prefix {SHM_SOURCE_RESERVED_PREFIX!r}"
+        )
+    mapped = CANONICAL_SOURCE_TO_WIRE_V3.get(src)
+    if mapped is not None:
+        return mapped
+    try:
+        raw = src.encode("ascii")
+    except UnicodeEncodeError as exc:
+        raise ValueError(f"SHM source must be ASCII, got {src!r}") from exc
+    if len(raw) > SHM_SOURCE_WIRE_LIMIT:
+        raise ValueError(
+            f"Unregistered SHM source {src!r} ({len(raw)} bytes) exceeds "
+            f"{SHM_SOURCE_WIRE_LIMIT}-byte v3 wire limit"
+        )
+    return src
+
+
+SHM_SYMBOL_WIRE_LIMIT = 16
+
+
+def encode_shm_symbol(symbol: str | None) -> bytes:
+    """
+    Encode a symbol string into a fixed <=16-byte UTF-8 v3 wire buffer.
+
+    Never splits a multi-byte UTF-8 code point and rejects symbols whose
+    lossless UTF-8 representation exceeds 16 bytes (or contains NUL/surrogates).
+    """
+    sym = "" if symbol is None else symbol
+    if not isinstance(sym, str):
+        raise ValueError(f"SHM symbol must be str, got {type(symbol).__name__}")
+    if "\x00" in sym:
+        raise ValueError("SHM symbol must not contain embedded NUL bytes")
+    try:
+        raw = sym.encode("utf-8")
+    except UnicodeEncodeError as exc:
+        raise ValueError(f"SHM symbol must be valid UTF-8, got {sym!r}") from exc
+    if len(raw) > SHM_SYMBOL_WIRE_LIMIT:
+        raise ValueError(
+            f"SHM symbol {sym!r} ({len(raw)} UTF-8 bytes) exceeds "
+            f"{SHM_SYMBOL_WIRE_LIMIT}-byte v3 wire limit"
+        )
+    return raw
+
+
+def decode_shm_source(wire_source: str) -> str:
+    """Decode an 8-byte v3 wire source token back to its canonical source string."""
+    if not wire_source:
+        return ""
+    return WIRE_TO_CANONICAL_SOURCE_V3.get(wire_source, wire_source)
+
+# Bounded caching for hot-path symbol/source byte-padding and string decoding
 _FAST_ENCODE_CACHE: dict[tuple[str, str], tuple[bytes, bytes, int]] = {}
 _BYTE_DECODE_CACHE: dict[bytes, str] = {}
+_UTF8_DECODE_CACHE: dict[bytes, str] = {}
 
 
-def _fast_encode_sym_src(symbol: str, source: str) -> tuple[bytes, bytes, int]:
-    pair = (symbol, source)
+def _fast_encode_sym_src(symbol: str | None, source: str) -> tuple[bytes, bytes, int]:
+    sym_key = "" if symbol is None else symbol
+    pair = (sym_key, source)
     cached = _FAST_ENCODE_CACHE.get(pair)
     if cached is not None:
         return cached
-    sym_b = (symbol or "").encode("ascii", errors="replace")
+    sym_b = encode_shm_symbol(symbol)
     src_b = (source or "").encode("ascii", errors="replace")
-    trunc = (1 if len(sym_b) > 16 else 0) | (2 if len(src_b) > 8 else 0)
-    sym_bytes = sym_b[:16].ljust(16, b"\x00")
+    trunc = 2 if len(src_b) > 8 else 0
+    sym_bytes = sym_b.ljust(SHM_SYMBOL_WIRE_LIMIT, b"\x00")
     src_bytes = src_b[:8].ljust(8, b"\x00")
     res = (sym_bytes, src_bytes, trunc)
     if len(_FAST_ENCODE_CACHE) < 2048:
@@ -194,11 +339,21 @@ def _fast_encode_sym_src(symbol: str, source: str) -> tuple[bytes, bytes, int]:
     return res
 
 
+def _fast_decode_utf8(b: bytes) -> str:
+    cached = _UTF8_DECODE_CACHE.get(b)
+    if cached is not None:
+        return cached
+    s = b.split(b"\x00", 1)[0].decode("utf-8", errors="replace")
+    if len(_UTF8_DECODE_CACHE) < 2048:
+        _UTF8_DECODE_CACHE[b] = s
+    return s
+
+
 def _fast_decode_ascii(b: bytes) -> str:
     cached = _BYTE_DECODE_CACHE.get(b)
     if cached is not None:
         return cached
-    s = b.rstrip(b"\x00").decode("ascii", errors="replace")
+    s = b.split(b"\x00", 1)[0].decode("ascii", errors="replace")
     if len(_BYTE_DECODE_CACHE) < 2048:
         _BYTE_DECODE_CACHE[b] = s
     return s
@@ -239,7 +394,7 @@ class SHMWriter:
         self.mask = slot_count - 1
         self.total_size = HEADER_SIZE + (slot_count * SLOT_SIZE)
         self.shm: SharedMemory | None = None
-        self.epoch_id = secrets.randbits(64)
+        self.epoch_id = secrets.randbits(64) or 1
         self._head_seq = 0
         self._dropped_ticks = 0
         self._last_heartbeat = 0.0
@@ -259,6 +414,10 @@ class SHMWriter:
                 self.shm = SharedMemory(
                     name=self.name, create=True, size=self.total_size
                 )
+            else:
+                # Immediately poison epoch_id=0 and reset head=0 before clearing slots
+                # so concurrently attaching readers see an in-progress reset rather than stale data.
+                struct.pack_into("<QQ", self.shm.buf, 16, 0, 0)
 
         shm_file = f"/dev/shm/{self.name}"
         if os.path.exists(shm_file):
@@ -272,6 +431,13 @@ class SHMWriter:
             struct.pack_into(
                 "<Q", self.shm.buf, HEADER_SIZE + (i * SLOT_SIZE), UNCOMMITTED
             )
+
+        # Initialize Cache Line 2 (Heartbeat Line) before exposing MAGIC/epoch_id
+        # so attaching readers never observe a valid header with a zero heartbeat.
+        pad44 = b"\x00" * 44
+        now = time.time()
+        HEADER_LINE2_STRUCT.pack_into(self.shm.buf, 64, now, 0, 0, pad44)
+        self._last_heartbeat = now
 
         # Initialize Cache Line 1 (Writer Hot Line)
         pad32 = b"\x00" * 32
@@ -287,12 +453,6 @@ class SHMWriter:
             0,
             pad32,
         )
-
-        # Initialize Cache Line 2 (Heartbeat Line)
-        pad44 = b"\x00" * 44
-        now = time.time()
-        HEADER_LINE2_STRUCT.pack_into(self.shm.buf, 64, now, 0, 0, pad44)
-        self._last_heartbeat = now
         self.watermark_pct = DEFAULT_SHM_WATERMARK_PCT
         self.watermark_slots = int(self.slot_count * self.watermark_pct)
         self._reader_cursors: dict[str | int, int] = {}
@@ -374,6 +534,10 @@ class SHMWriter:
         if not self.shm:
             return
 
+        wire_source = encode_shm_source(source)
+        canon_source = "" if source is None else source
+        sym_bytes, src_bytes, trunc = _fast_encode_sym_src(symbol, wire_source)
+
         # Native acquire/release atomic publication fast path
         write_fn = (
             getattr(fastpath, "native_shm_write_tick", None) if fastpath else None
@@ -385,7 +549,7 @@ class SHMWriter:
                     self.slot_count,
                     seq,
                     symbol,
-                    source,
+                    canon_source,
                     price,
                     size,
                     bid,
@@ -404,6 +568,8 @@ class SHMWriter:
                     if (seq & 0x1FF) == 0 or (now - self._last_heartbeat) >= 0.1:
                         self.update_heartbeat()
                     return
+            except ValueError:
+                raise
             except Exception as exc:
                 logger.debug("[shm] Native write fallback: %s", exc)
 
@@ -411,7 +577,6 @@ class SHMWriter:
         offset = HEADER_SIZE + (slot_idx * SLOT_SIZE)
 
         st_code = STATUS_MAP_REV.get(status, 0)
-        sym_bytes, src_bytes, trunc = _fast_encode_sym_src(symbol, source)
 
         present = 0
         if price is not None:
@@ -645,6 +810,9 @@ class SHMReader:
         if len(self.shm.buf) < HEADER_SIZE + (slot_cnt * SLOT_SIZE):
             self.close()
             raise ValueError("Buffer truncated for declared slot count")
+        if epoch_id == 0:
+            self.close()
+            raise ValueError("SHM segment epoch is 0 (uninitialized or closing)")
 
         self.slot_size = slot_sz
         self.slot_count = slot_cnt
@@ -654,6 +822,7 @@ class SHMReader:
         self.watermark_slots = int(self.slot_count * self.watermark_pct)
         self.overrun_stats = SHMOverrunStats()
         self._last_epoch_probe = time.time()
+        self._reattach_start_seq = 0
         self.state = ReaderState.ATTACHED
 
     def is_watermark_warning_set(self) -> bool:
@@ -710,8 +879,17 @@ class SHMReader:
             magic, ver, slot_sz, slot_cnt, reserved, epoch_id, head_seq, _ = (
                 HEADER_LINE1_STRUCT.unpack_from(self.shm.buf, 0)
             )
-            if magic != MAGIC or ver != VERSION:
+            if (
+                magic != MAGIC
+                or ver != VERSION
+                or slot_sz != SLOT_SIZE
+                or slot_cnt < 2
+                or (slot_cnt & (slot_cnt - 1)) != 0
+                or len(self.shm.buf) < HEADER_SIZE + (slot_cnt * SLOT_SIZE)
+                or epoch_id == 0
+            ):
                 self.close()
+                self.state = ReaderState.INVALIDATED
                 return False
 
             self.slot_size = slot_sz
@@ -721,12 +899,53 @@ class SHMReader:
             self.watermark_pct = DEFAULT_SHM_WATERMARK_PCT
             self.watermark_slots = int(self.slot_count * self.watermark_pct)
             self._last_epoch_probe = time.time()
+            self._reattach_start_seq = self.earliest_available_seq(record_overrun=True)
             self.state = ReaderState.ATTACHED
             return True
         except Exception as exc:
             logger.debug("[shm] Failed to reattach to %s: %s", self.name, exc)
             self.state = ReaderState.INVALIDATED
             return False
+
+    def _find_first_committed_seq(self, start: int, head: int) -> int:
+        """Advance past leading UNCOMMITTED slots (e.g. when writer started at seq=1)."""
+        if not self.shm or head <= start:
+            return start
+        limit = min(head, start + self.slot_count)
+        seq = start
+        while seq < limit:
+            slot_idx = seq & self.mask
+            offset = HEADER_SIZE + (slot_idx * SLOT_SIZE)
+            c = struct.unpack_from("<Q", self.shm.buf, offset)[0]
+            if c == seq:
+                return seq
+            if c != UNCOMMITTED:
+                return seq
+            seq += 1
+        return start
+
+    def earliest_available_seq(self, record_overrun: bool = False) -> int:
+        """
+        Return the earliest retained committed sequence in the ring buffer.
+
+        - When head == 0: returns 0 (no ticks published yet).
+        - When head > 0: computes oldest_ring_seq = max(0, head - slot_count)
+          and advances past leading UNCOMMITTED slots (e.g. writer starting at seq=1).
+        - When record_overrun=True and head > slot_count: accounts for the
+          overwritten unavailable sequence range in self.overrun_stats.
+        """
+        if not self.shm:
+            return 0
+        head = struct.unpack_from("<Q", self.shm.buf, 24)[0]
+        if head == 0:
+            return 0
+        oldest_ring_seq = max(0, head - self.slot_count)
+        if oldest_ring_seq > 0 and record_overrun:
+            self.overrun_stats.total_laps += 1
+            self.overrun_stats.skipped_ticks += oldest_ring_seq
+            self.overrun_stats.last_lap_seq = oldest_ring_seq - 1
+            self.overrun_stats.last_lap_ts = time.time()
+        return self._find_first_committed_seq(oldest_ring_seq, head)
 
     def check_epoch_valid(self, force_probe: bool = False) -> bool:
         """
@@ -817,6 +1036,8 @@ class SHMReader:
             try:
                 native_item = read_fn(self.shm.buf, self.slot_count, seq)
                 if native_item is not None:
+                    if "source" in native_item:
+                        native_item["source"] = decode_shm_source(native_item["source"])
                     return native_item
             except Exception as exc:
                 logger.debug("[shm] Native slot read fallback: %s", exc)
@@ -860,8 +1081,8 @@ class SHMReader:
             pad3,
         ) = payload
 
-        sym = _fast_decode_ascii(sym_bytes)
-        src = _fast_decode_ascii(src_bytes)
+        sym = _fast_decode_utf8(sym_bytes)
+        src = decode_shm_source(_fast_decode_ascii(src_bytes))
 
         price = p if (present & SHM3_PRESENT_PRICE) else None
         size = sz if (present & SHM3_PRESENT_SIZE) else None
@@ -946,7 +1167,7 @@ class SHMReader:
         if not self.check_epoch_valid(force_probe=False):
             old_epoch = self.epoch_id
             if self._reattach() and self.epoch_id != old_epoch and self.epoch_id != 0:
-                curr_seq = self.read_latest_seq()
+                curr_seq = self._reattach_start_seq
                 yield {
                     "type": "EPOCH_CHANGE",
                     "old_epoch": old_epoch,
@@ -956,19 +1177,35 @@ class SHMReader:
                 return
 
         while True:
+            if not self.shm or self.state == ReaderState.DETACHED:
+                return
+
             # Fast in-memory epoch check (nanoseconds, zero syscalls)
             try:
                 current_epoch = struct.unpack_from("<Q", self.shm.buf, 16)[0]
                 if current_epoch != 0 and current_epoch != self.epoch_id:
-                    old_epoch = self.epoch_id
-                    self.epoch_id = current_epoch
-                    curr_seq = 0
-                    yield {
-                        "type": "EPOCH_CHANGE",
-                        "old_epoch": old_epoch,
-                        "new_epoch": self.epoch_id,
-                    }
-                    continue
+                    magic, ver, slot_sz, slot_cnt, _, _, _, _ = (
+                        HEADER_LINE1_STRUCT.unpack_from(self.shm.buf, 0)
+                    )
+                    if (
+                        magic == MAGIC
+                        and ver == VERSION
+                        and slot_sz == SLOT_SIZE
+                        and slot_cnt >= 2
+                        and (slot_cnt & (slot_cnt - 1)) == 0
+                    ):
+                        old_epoch = self.epoch_id
+                        self.slot_size = slot_sz
+                        self.slot_count = slot_cnt
+                        self.mask = slot_cnt - 1
+                        self.epoch_id = current_epoch
+                        curr_seq = self.earliest_available_seq(record_overrun=True)
+                        yield {
+                            "type": "EPOCH_CHANGE",
+                            "old_epoch": old_epoch,
+                            "new_epoch": self.epoch_id,
+                        }
+                        continue
             except Exception as exc:
                 logger.debug("[shm] Error reading current epoch: %s", exc)
 
@@ -976,7 +1213,10 @@ class SHMReader:
             # Overrun check
             if head > 0 and head > curr_seq and (head - curr_seq) > self.slot_count:
                 skipped = (head - self.slot_count) - curr_seq
+                self.overrun_stats.total_laps += 1
                 self.overrun_stats.skipped_ticks += max(0, skipped)
+                self.overrun_stats.last_lap_seq = (head - self.slot_count) - 1
+                self.overrun_stats.last_lap_ts = time.time()
                 curr_seq = head - self.slot_count
 
             item = self.read_slot(curr_seq)
@@ -990,6 +1230,14 @@ class SHMReader:
                 if max_events and count >= max_events:
                     return
                 continue
+
+            # If starting at seq=0 while writer started at seq=1 (slot 0 never committed),
+            # advance to the first committed slot so initial ticks are never missed.
+            if curr_seq == 0 and head > 1:
+                resolved = self._find_first_committed_seq(curr_seq, head)
+                if resolved > curr_seq:
+                    curr_seq = resolved
+                    continue
 
             # When caught up with writer or spinning, verify writer liveness & external epoch validity
             if spin_count == 0 or (spin_count & 0x3F) == 0:
@@ -1013,7 +1261,7 @@ class SHMReader:
                         and self.epoch_id != old_epoch
                         and self.epoch_id != 0
                     ):
-                        curr_seq = self.read_latest_seq()
+                        curr_seq = self._reattach_start_seq
                         yield {
                             "type": "EPOCH_CHANGE",
                             "old_epoch": old_epoch,

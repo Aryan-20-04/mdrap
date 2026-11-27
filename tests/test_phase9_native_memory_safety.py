@@ -19,6 +19,7 @@ from mdrap.models import CanonicalEvent, EventType, QualityStatus, Reason
 from mdrap.sbe import HEADER_STRUCT, TEMPLATE_TICK, SBE_SCHEMA_ID, SBE_SCHEMA_VERSION
 
 
+@pytest.mark.native
 def test_native_c_library_loaded():
     """Verify that native C accelerator is compiled and successfully loaded."""
     if not HAS_FASTPATH or _NATIVE_LIB is None:
@@ -29,6 +30,7 @@ def test_native_c_library_loaded():
     assert _NATIVE_LIB is not None
 
 
+@pytest.mark.native
 def test_sbe_bounds_checking_truncated_and_corrupt():
     """Verify C SBE decoder handles arbitrary truncated or corrupt buffers safely without crashing."""
     if not HAS_FASTPATH or _NATIVE_LIB is None:

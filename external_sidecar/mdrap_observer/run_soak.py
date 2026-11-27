@@ -149,28 +149,16 @@ def run_soak(duration_s: float = 30.0, target_eps: float = 1000.0) -> dict:
                 print(f"[{elapsed_s:5.1f}s] Sent: {events_sent:6d} | Recv: {state.stream_health.events_received:6d} | Stream Gaps: {state.stream_health.gaps} | RSS: {cur_rss:.1f} MB | EPS: {cur_eps:,.1f}")
                 last_log_t = now_t
 
+            health_snap = state.snapshot_health()
+            exp_stats = exporter.snapshot_stats()
             snapshot = {
                 "uptime": time.time() - start_t,
-                "eps": state.get_throughput_eps(),
+                "eps": health_snap["eps"],
                 "rss_mb": state.get_rss_mb(),
-                "stream": {
-                    "events": state.stream_health.events_received,
-                    "gaps": state.stream_health.gaps,
-                    "duplicates": state.stream_health.duplicates,
-                    "out_of_order": state.stream_health.out_of_order,
-                },
-                "venues": {
-                    v: {
-                        "status": state.health[v].status,
-                        "feed_type": state.health[v].feed_type,
-                        "events": state.health[v].events_received,
-                        "feed_gaps": state.health[v].gaps,
-                        "duplicates": state.health[v].duplicates,
-                        "out_of_order": state.health[v].out_of_order,
-                        "reconnects": state.health[v].reconnects,
-                    }
-                    for v in state.health
-                },
+                "transport_reconnects": client.reconnect_count,
+                "stream": health_snap["stream"],
+                "venues": health_snap["venues"],
+                "exporter": exp_stats,
             }
             exporter.record_health(snapshot)
 

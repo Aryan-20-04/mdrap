@@ -1513,6 +1513,158 @@ static inline int shm3_geometry_ok(const uint8_t *buf, size_t len, uint32_t slot
     return 1;
 }
 
+typedef struct {
+    const char *canonical;
+    size_t canon_len;
+    const char wire[8];
+} Shm3SourceMapEntry;
+
+static const Shm3SourceMapEntry SHM3_SOURCE_MAP[] = {
+    {"DATABENTO", 9u, "@MDRP001"},
+    {"COINBASE_PRO", 12u, "@MDRP002"},
+    {"NASDAQ_ITCH", 11u, "@MDRP003"},
+    {"NASDAQ_ITCH50", 13u, "@MDRP004"},
+    {"NYMEX_FUTURES", 13u, "@MDRP005"},
+    {"OPRA_CHICAGO", 12u, "@MDRP006"},
+    {"FEED_ROTATING", 13u, "@MDRP007"},
+    {"PRIMARY_FEED", 12u, "@MDRP008"},
+    {"STANDBY_FEED", 12u, "@MDRP009"},
+    {"DATABENTO-GLBX", 14u, "@MDRP010"},
+    {"EXCHANGE_A", 10u, "@MDRP011"},
+    {"EXCHANGE_FEED", 13u, "@MDRP012"},
+    {"EXCHANGE_SOAK", 13u, "@MDRP013"},
+    {"FEED_ADVERSARIAL", 16u, "@MDRP014"},
+    {"FEED_BID_ONLY", 13u, "@MDRP015"},
+    {"FEED_BURST", 10u, "@MDRP016"},
+    {"FEED_CHAOS", 10u, "@MDRP017"},
+    {"FEED_EXCHANGE", 13u, "@MDRP018"},
+    {"FEED_HMAC", 9u, "@MDRP019"},
+    {"FEED_LEADER", 11u, "@MDRP020"},
+    {"FEED_SHARED", 11u, "@MDRP021"},
+    {"FEED_TEST", 9u, "@MDRP022"},
+    {"AUDIT_FEED", 10u, "@MDRP023"},
+    {"BURST_FEED", 10u, "@MDRP024"},
+    {"CLEAN_FEED", 10u, "@MDRP025"},
+    {"FAULT_FEED", 10u, "@MDRP026"},
+    {"LIVE_FEED", 9u, "@MDRP027"},
+    {"MALFORMED_FEED", 14u, "@MDRP028"},
+    {"METAMORPHIC_FEED", 16u, "@MDRP029"},
+    {"SECURE_FEED", 11u, "@MDRP030"},
+    {"SLOW_FEED", 9u, "@MDRP031"},
+    {"TEST_FEED", 9u, "@MDRP032"},
+    {"TEST_EXCHANGE", 13u, "@MDRP033"},
+    {"TEST_EXCH", 9u, "@MDRP034"},
+    {"TEST_VENUE", 10u, "@MDRP035"},
+    {"HOOK_VENUE", 10u, "@MDRP036"},
+    {"UNKNOWN_EXCHANGE", 16u, "@MDRP037"},
+    {"SIMULATOR", 9u, "@MDRP038"},
+    {"REPLAY_SIM", 10u, "@MDRP039"},
+    {"LOCAL_DAEMON", 12u, "@MDRP040"},
+    {"GATEWAY_RECV", 12u, "@MDRP041"},
+    {"POLYGON-AGG", 11u, "@MDRP042"},
+    {"POLYGON-FINRA_TRF", 17u, "@MDRP043"},
+    {"POLYGON-NASDAQ", 14u, "@MDRP044"},
+    {"POLYGON_EQUITIES", 16u, "@MDRP045"},
+    {"POLYGON_EXCHANGE_MAP", 20u, "@MDRP046"},
+    {"CLOCK_REPRO", 11u, "@MDRP047"},
+    {"CRASH_REPRO", 11u, "@MDRP048"},
+    {"CRASH_TEST", 10u, "@MDRP049"},
+    {"POISON_REPRO", 12u, "@MDRP050"},
+    {"NON_DICT_REPRO", 14u, "@MDRP051"},
+    {"SHM_FEED_1", 10u, "@MDRP052"},
+    {"PUBLISHER_MAP", 13u, "@MDRP053"},
+    {"HOST_SYS_CLOCK", 14u, "@MDRP054"},
+    {"MDRAP_PROVENANCE_RETRY", 22u, "@MDRP055"},
+    {"SECURITY_REJECT", 15u, "@MDRP056"},
+    {"ALLOWED_VENUES", 14u, "@MDRP057"},
+    {"EQUITIES (SIM)", 14u, "@MDRP058"},
+    {"CRYPTO (SIM)", 12u, "@MDRP059"},
+    {"DIFF_TEST", 9u, "@MDRP060"},
+    {"POST_TEST", 9u, "@MDRP061"},
+};
+#define SHM3_SOURCE_MAP_LEN (sizeof(SHM3_SOURCE_MAP) / sizeof(SHM3_SOURCE_MAP[0]))
+
+static int shm3_valid_utf8_len(const char *s, size_t max_bytes, size_t *out_len) {
+    if (!s || s[0] == '\0') {
+        *out_len = 0u;
+        return 1;
+    }
+    const unsigned char *p = (const unsigned char *)s;
+    size_t i = 0u;
+    while (p[i] != 0u) {
+        if (i >= max_bytes) return 0;
+        unsigned char c = p[i];
+        if (c < 0x80u) {
+            i += 1u;
+        } else if ((c & 0xE0u) == 0xC0u) {
+            if (c < 0xC2u || i + 1u >= max_bytes || p[i + 1u] == 0u) return 0;
+            unsigned char c1 = p[i + 1u];
+            if ((c1 & 0xC0u) != 0x80u) return 0;
+            i += 2u;
+        } else if ((c & 0xF0u) == 0xE0u) {
+            if (i + 2u >= max_bytes || p[i + 1u] == 0u || p[i + 2u] == 0u) return 0;
+            unsigned char c1 = p[i + 1u], c2 = p[i + 2u];
+            if ((c1 & 0xC0u) != 0x80u || (c2 & 0xC0u) != 0x80u) return 0;
+            if (c == 0xE0u && c1 < 0xA0u) return 0; /* overlong */
+            if (c == 0xEDu && c1 >= 0xA0u) return 0; /* surrogate */
+            i += 3u;
+        } else if ((c & 0xF8u) == 0xF0u) {
+            if (c > 0xF4u || i + 3u >= max_bytes || p[i + 1u] == 0u || p[i + 2u] == 0u || p[i + 3u] == 0u) return 0;
+            unsigned char c1 = p[i + 1u], c2 = p[i + 2u], c3 = p[i + 3u];
+            if ((c1 & 0xC0u) != 0x80u || (c2 & 0xC0u) != 0x80u || (c3 & 0xC0u) != 0x80u) return 0;
+            if (c == 0xF0u && c1 < 0x90u) return 0; /* overlong */
+            if (c == 0xF4u && c1 > 0x8Fu) return 0; /* > U+10FFFF */
+            i += 4u;
+        } else {
+            return 0;
+        }
+        if (i > max_bytes) return 0;
+    }
+    *out_len = i;
+    return 1;
+}
+
+static int shm3_encode_source(const char *src, char out_wire[8]) {
+    memset(out_wire, 0, 8u);
+    if (!src || src[0] == '\0') return 1;
+
+    size_t len = 0u;
+    const unsigned char *p = (const unsigned char *)src;
+    while (p[len] != 0u) {
+        if (p[len] >= 0x80u) return -3; /* non-ASCII rejected */
+        if (len >= 64u) return -3;
+        len++;
+    }
+    if (len >= 5u && memcmp(src, "@MDRP", 5u) == 0) {
+        return -3; /* reserved wire prefix rejected to prevent spoofing */
+    }
+    for (size_t i = 0u; i < SHM3_SOURCE_MAP_LEN; ++i) {
+        if (len == SHM3_SOURCE_MAP[i].canon_len &&
+            memcmp(src, SHM3_SOURCE_MAP[i].canonical, len) == 0) {
+            memcpy(out_wire, SHM3_SOURCE_MAP[i].wire, 8u);
+            return 1;
+        }
+    }
+    if (len > 8u) return -3; /* unregistered >8-byte source rejected */
+    memcpy(out_wire, src, len);
+    return 1;
+}
+
+static const char *shm3_decode_source(const char wire[8], size_t *out_len) {
+    size_t n = 0u;
+    while (n < 8u && wire[n] != '\0') ++n;
+    if (n == 8u && memcmp(wire, "@MDRP", 5u) == 0) {
+        for (size_t i = 0u; i < SHM3_SOURCE_MAP_LEN; ++i) {
+            if (memcmp(wire, SHM3_SOURCE_MAP[i].wire, 8u) == 0) {
+                *out_len = SHM3_SOURCE_MAP[i].canon_len;
+                return SHM3_SOURCE_MAP[i].canonical;
+            }
+        }
+    }
+    *out_len = n;
+    return wire;
+}
+
 EXPORT int32_t fastpath_shm_init_v3(uint8_t *buf, size_t len, uint32_t slot_count, uint64_t epoch) {
     if (!shm3_geometry_ok(buf, len, slot_count)) return 0;
     memset(buf, 0, (size_t)SHM3_HDR_SIZE + (size_t)slot_count * SHM3_SLOT_SIZE);
@@ -1535,6 +1687,12 @@ EXPORT int32_t fastpath_shm_write_tick_v3(
     double exchange_ts, double ingest_ts, double broadcast_ts, float engine_us
 ) {
     if (!shm3_geometry_ok(buf, len, slot_count)) return 0;
+
+    size_t sym_len = 0u;
+    if (symbol && !shm3_valid_utf8_len(symbol, 16u, &sym_len)) return -4;
+    char wire_src[8];
+    if (shm3_encode_source(source, wire_src) != 1) return -3;
+
     const uint64_t head = MD_LOAD_RLX_U64(buf + SHM3_OFF_HEAD);      /* single producer: we own head */
     if (seq != head) return -2;                                      /* must publish contiguous sequence numbers */
 
@@ -1547,8 +1705,8 @@ EXPORT int32_t fastpath_shm_write_tick_v3(
     tmp.exchange_ts = exchange_ts; tmp.ingest_ts = ingest_ts; tmp.broadcast_ts = broadcast_ts;
     tmp.engine_us = engine_us;
     tmp.price = price; tmp.size = size; tmp.bid = bid; tmp.ask = ask; tmp.bid_sz = bid_sz; tmp.ask_sz = ask_sz;
-    if (symbol) { size_t n = md_strnlen(symbol, 64); if (n > 16u) tmp.trunc |= 1u; memcpy(tmp.symbol, symbol, n > 16u ? 16u : n); }
-    if (source) { size_t n = md_strnlen(source, 64); if (n > 8u)  tmp.trunc |= 2u; memcpy(tmp.source, source, n > 8u ? 8u : n); }
+    if (sym_len > 0u) memcpy(tmp.symbol, symbol, sym_len);
+    memcpy(tmp.source, wire_src, 8u);
 
     uint8_t *slot = buf + SHM3_HDR_SIZE + (size_t)(seq & (slot_count - 1u)) * SHM3_SLOT_SIZE;
     uint64_t src[16];

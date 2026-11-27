@@ -290,6 +290,7 @@ def test_multithreaded_fastpath_safety():
     assert not errors, f"Encountered concurrency errors in FastQualityEngine: {errors}"
 
 
+@pytest.mark.native
 def test_fastpath_evaluate_batch_scratch_reuse():
     """Verify FastQualityEngine.evaluate_batch reuses scratch buffers across multiple sizes."""
     eng = FastQualityEngine(thread_safe=True)

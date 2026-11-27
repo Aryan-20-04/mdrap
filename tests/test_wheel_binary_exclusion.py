@@ -22,7 +22,6 @@ def test_pure_wheel_contains_no_compiled_binaries(tmp_path):
             "-m",
             "build",
             "--wheel",
-            "--no-isolation",
             "--outdir",
             str(wheel_dir),
         ],

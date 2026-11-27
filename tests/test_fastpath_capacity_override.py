@@ -18,6 +18,8 @@ from mdrap.quality import QualityConfig, QualityEngine
 import mdrap.fastpath as fp
 from mdrap.fastpath import FastQualityEngine
 
+pytestmark = pytest.mark.native
+
 
 def _generate_events(
     n_instr: int, n_src: int, n: int = 5000, seed: int = 42

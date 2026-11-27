@@ -264,20 +264,112 @@ def gate_security_and_audit_tests():
     )
 
 
-def gate_dependency_vulnerability_scan():
-    """Gate 8: Supply Chain & Dependency CVE Audit (pip-audit)."""
-    audit_json = _ARTIFACT_DIR / "DEPENDENCY_AUDIT.json"
+def _run_pip_audit_manifest(
+    manifest_name: str,
+    scanner_version: str,
+    artifact_dir: Path,
+) -> tuple[dict, list[dict], int, str, str]:
+    """Execute pip-audit on a manifest using an isolated temporary JSON report."""
+    nonce = f"{os.getpid()}_{time.time_ns()}"
+    tmp_json = artifact_dir / f".DEPENDENCY_AUDIT.{manifest_name.replace('.', '_')}.{nonce}.tmp"
     cmd = [
         sys.executable,
         "-m",
         "pip_audit",
         "-r",
-        "requirements.txt",
+        manifest_name,
         "-f",
         "json",
         "-o",
-        str(audit_json),
+        str(tmp_json),
     ]
+    try:
+        res = subprocess.run(
+            cmd,
+            cwd=str(_REPO_ROOT),
+            capture_output=True,
+            text=True,
+        )
+        if res.returncode not in (0, 1):
+            raise RuntimeError(
+                f"Supply chain security audit execution failure (unexpected scanner exit code {res.returncode}):\n"
+                f"  Interpreter: {sys.executable}\n"
+                f"  Command: {' '.join(cmd)}\n"
+                f"  Stderr: {res.stderr.strip()}\n"
+                f"  Stdout: {res.stdout.strip()}"
+            )
+
+        if not tmp_json.exists() or tmp_json.stat().st_size == 0:
+            raise RuntimeError(
+                f"Supply chain security audit execution failure (fresh audit output JSON missing or empty):\n"
+                f"  Expected Path: {tmp_json}\n"
+                f"  Exit code: {res.returncode}\n"
+                f"  Stderr: {res.stderr.strip()}\n"
+                f"  Stdout: {res.stdout.strip()}"
+            )
+
+        try:
+            raw_text = tmp_json.read_text(encoding="utf-8")
+            data = json.loads(raw_text)
+        except Exception as exc:
+            raise RuntimeError(
+                f"Supply chain security audit execution failure (corrupt JSON output): {exc}\n"
+                f"  Exit code: {res.returncode}\n"
+                f"  Stderr: {res.stderr.strip()}"
+            ) from exc
+
+        if not isinstance(data, dict) or not isinstance(data.get("dependencies"), list):
+            raise RuntimeError(
+                "Supply chain security audit execution failure (incomplete JSON schema: missing 'dependencies' list)"
+            )
+
+        deps = data["dependencies"]
+        vulnerabilities = []
+        for d in deps:
+            if not isinstance(d, dict):
+                raise RuntimeError(
+                    "Supply chain security audit execution failure (malformed dependency entry in JSON)"
+                )
+            for v in d.get("vulns", []):
+                vulnerabilities.append(
+                    {
+                        "package": d.get("name"),
+                        "version": d.get("version"),
+                        "id": v.get("id"),
+                        "fix_versions": v.get("fix_versions", []),
+                        "description": v.get("description", ""),
+                    }
+                )
+
+        if res.returncode == 1 and len(vulnerabilities) == 0:
+            raise RuntimeError(
+                f"Supply chain security audit execution failure (pip-audit exited 1 without vulnerability findings in fresh JSON output):\n"
+                f"  Command: {' '.join(cmd)}\n"
+                f"  Stderr: {res.stderr.strip()}\n"
+                f"  Stdout: {res.stdout.strip()}"
+            )
+
+        data["scanner"] = {
+            "name": "pip-audit",
+            "version": scanner_version,
+            "interpreter": sys.executable,
+            "python_version": f"{sys.version_info[0]}.{sys.version_info[1]}.{sys.version_info[2]}",
+            "scanned_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "input": manifest_name,
+            "exit_code": res.returncode,
+        }
+        return data, vulnerabilities, res.returncode, res.stdout.strip(), res.stderr.strip()
+    finally:
+        try:
+            if tmp_json.exists():
+                tmp_json.unlink()
+        except OSError:
+            pass
+
+
+def gate_dependency_vulnerability_scan():
+    """Gate 8: Supply Chain & Dependency CVE Audit (pip-audit)."""
+    audit_json = _ARTIFACT_DIR / "DEPENDENCY_AUDIT.json"
 
     # Verify scanner availability before executing
     version_cmd = [sys.executable, "-m", "pip_audit", "--version"]
@@ -300,69 +392,73 @@ def gate_dependency_vulnerability_scan():
 
     scanner_version = ver_res.stdout.strip() or ver_res.stderr.strip()
 
-    # Execute pip-audit scan
-    res = subprocess.run(
-        cmd,
-        cwd=str(_REPO_ROOT),
-        capture_output=True,
-        text=True,
-    )
-
-    # Outcome C: Execution / Infrastructure failure during audit
-    if res.returncode not in (0, 1):
-        err_msg = (
-            f"Supply chain security audit execution failure (unexpected scanner exit code {res.returncode}):\n"
-            f"  Interpreter: {sys.executable}\n"
-            f"  Command: {' '.join(cmd)}\n"
-            f"  Stderr: {res.stderr.strip()}\n"
-            f"  Stdout: {res.stdout.strip()}"
-        )
-        print(f"\n[ERROR] Gate 8: {err_msg}")
-        raise RuntimeError(err_msg)
-
-    # Check output JSON
-    if not audit_json.exists():
-        err_msg = (
-            f"Supply chain security audit execution failure (audit output JSON missing):\n"
-            f"  Path: {audit_json}\n"
-            f"  Stderr: {res.stderr.strip()}"
-        )
-        print(f"\n[ERROR] Gate 8: {err_msg}")
-        raise RuntimeError(err_msg)
-
     try:
-        data = json.loads(audit_json.read_text(encoding="utf-8"))
-    except Exception as exc:
-        err_msg = f"Supply chain security audit execution failure (corrupt JSON output): {exc}"
-        print(f"\n[ERROR] Gate 8: {err_msg}")
-        raise RuntimeError(err_msg)
+        data, vulnerabilities, _, _, _ = _run_pip_audit_manifest(
+            "requirements.txt", scanner_version, _ARTIFACT_DIR
+        )
+    except RuntimeError as exc:
+        print(f"\n[ERROR] Gate 8: {exc}")
+        raise
 
-    # Enrich audit artifact with metadata
-    data["scanner"] = {
-        "name": "pip-audit",
-        "version": scanner_version,
-        "interpreter": sys.executable,
-        "scanned_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-        "input": "requirements.txt",
-    }
-    audit_json.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    # Optionally audit the isolated security-scanner toolchain manifest when present,
+    # keeping scanner-only packages transparently documented without concealing CVEs.
+    audit_tool_manifest = _REPO_ROOT / "requirements-audit.txt"
+    audit_tool_findings: list[dict] = []
+    unexpected_tool_vulns: list[dict] = []
+    if audit_tool_manifest.is_file():
+        try:
+            tool_data, tool_vulns, tool_rc, tool_out, tool_err = _run_pip_audit_manifest(
+                "requirements-audit.txt", scanner_version, _ARTIFACT_DIR
+            )
+            audit_tool_findings = tool_vulns
+            data["audit_tool_environment"] = {
+                "manifest": "requirements-audit.txt",
+                "dependencies_scanned": len(tool_data.get("dependencies", [])),
+                "vulnerability_count": len(tool_vulns),
+                "vulnerabilities": tool_vulns,
+                "exit_code": tool_rc,
+                "stdout": tool_out,
+                "stderr": tool_err,
+                "shipped_to_runtime": False,
+                "policy": (
+                    "Scanner-only dependency exposure (e.g. CacheControl[filecache] -> filelock==4.1.0 "
+                    "on Python <3.11 where upstream fix 4.2.1+ requires Python >=3.11) is tracked here "
+                    "separately from requirements.txt; shipped/app/test CVEs remain hard gate failures."
+                ),
+            }
+            for tv in tool_vulns:
+                pkg = (tv.get("package") or "").lower()
+                is_py310_filelock = (
+                    pkg == "filelock"
+                    and sys.version_info < (3, 11)
+                    and tv.get("version") == "4.1.0"
+                )
+                if not is_py310_filelock or os.environ.get("MDRAP_STRICT_AUDIT_TOOL") == "1":
+                    unexpected_tool_vulns.append(tv)
+        except RuntimeError as exc:
+            data["audit_tool_environment"] = {
+                "manifest": "requirements-audit.txt",
+                "error": str(exc),
+                "shipped_to_runtime": False,
+            }
+            unexpected_tool_vulns.append({"package": "audit-tool", "version": "unknown", "id": str(exc), "fix_versions": []})
+
+    # Atomically persist fresh report ONLY from this run's validated temporary output
+    stage_json = _ARTIFACT_DIR / f".DEPENDENCY_AUDIT.stage.{os.getpid()}.{time.time_ns()}.tmp"
+    try:
+        stage_json.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        os.replace(stage_json, audit_json)
+    finally:
+        if stage_json.exists():
+            try:
+                stage_json.unlink()
+            except OSError:
+                pass
 
     deps = data.get("dependencies", [])
-    vulnerabilities = []
-    for d in deps:
-        for v in d.get("vulns", []):
-            vulnerabilities.append(
-                {
-                    "package": d.get("name"),
-                    "version": d.get("version"),
-                    "id": v.get("id"),
-                    "fix_versions": v.get("fix_versions", []),
-                    "description": v.get("description", ""),
-                }
-            )
 
-    # Outcome B: Vulnerabilities detected
-    if len(vulnerabilities) > 0 or res.returncode == 1:
+    # Outcome B: Vulnerabilities detected in shipped/optional/dev manifest
+    if len(vulnerabilities) > 0:
         print(
             f"\n[VULNERABILITY DETECTED] Gate 8: Found {len(vulnerabilities)} vulnerabilities in dependencies:"
         )
@@ -379,7 +475,20 @@ def gate_dependency_vulnerability_scan():
             f"pip-audit found {len(vulnerabilities)} known vulnerabilities in dependencies"
         )
 
-    # Outcome A: Clean audit, 0 vulnerabilities
+    if unexpected_tool_vulns:
+        raise RuntimeError(
+            f"pip-audit found {len(unexpected_tool_vulns)} unexempted vulnerabilities/errors in audit-tool manifest"
+        )
+
+    if audit_tool_findings:
+        print(
+            f"[!] Gate 8 Audit-Tool Advisory Note (NOT shipped to runtime/consumers): "
+            f"{len(audit_tool_findings)} scanner-only findings in requirements-audit.txt "
+            f"(filelock==4.1.0 via pip-audit on Python {sys.version_info[0]}.{sys.version_info[1]}; "
+            f"upstream fix 4.2.1+ requires Python >=3.11)."
+        )
+
+    # Outcome A: Clean audit of shipped/optional/dev dependencies
     print(
         f"[*] Supply chain audit clean ({scanner_version}): {len(deps)} dependencies scanned, 0 vulnerabilities found"
     )

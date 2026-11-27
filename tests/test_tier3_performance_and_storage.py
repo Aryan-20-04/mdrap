@@ -135,6 +135,7 @@ def test_sparse_wal_multi_segment_rotation_and_purge():
         log.close()
 
 
+@pytest.mark.native
 def test_fastpath_capacity_overflow_diagnostics(caplog):
     """Verify FastQualityEngine capacity configuration, stats telemetry, and overflow warnings."""
     engine = FastQualityEngine()

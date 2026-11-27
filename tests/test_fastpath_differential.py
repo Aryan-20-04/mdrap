@@ -19,6 +19,9 @@ from mdrap.quality import QualityEngine
 from mdrap.fastpath import FastQualityEngine, is_available as fastpath_is_available
 
 
+pytestmark = pytest.mark.native
+
+
 @pytest.fixture
 def engines():
     """Create paired Python and C engines with identical baseline state."""

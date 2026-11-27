@@ -135,18 +135,45 @@ def test_scenario_7_delayed_packet_from_previous_connection_epoch():
 
 
 def test_scenario_8_interleaved_events_from_two_connections():
-    """Scenario 8: Interleaved events from two redundant gateways/connections.
-    Gateway A is at 1000, Gateway B is at 100.
-    HEURISTIC LIMITATION: State machine alternates between out_of_order and massive gaps.
-    """
-    v = VenueHealth(venue="BINANCE")
-    v.update_sequence(1000)  # From Gateway A
-    v.update_sequence(100)   # From Gateway B (100 < 1000, not <= 1) -> out_of_order
-    assert v.feed_out_of_order == 1
-    assert v.last_feed_seq == 100
+    """Scenario 8: Interleaved events across a shared unscoped channel vs explicit gateway_id.
 
-    v.update_sequence(1001)  # From Gateway A (1001 > 100 + 1) -> false gap of 900!
-    assert v.feed_gaps == 900
+    Historical heuristic limitation (pre-Phase 4): on an unscoped single channel,
+    1000 -> 100 -> 1001 rewound last_feed_seq to 100 and reported 900 phantom gaps.
+    Current verified architecture:
+      1. Gateway isolation is NOT automatic: ObserverState only scopes channels by
+         `gateway_id` when upstream payloads explicitly provide `gateway_id`/`channel_id`/`channel`
+         (TCP `MarketDataDaemon` falls back to `raw.source`, and SHM v3 has no `gateway_id` field).
+         Thus untagged dual connections (and Scenario 8's unscoped `VenueHealth` call) still
+         share `default:ALL` and treat the lower stream (`100`) as OUT_OF_ORDER.
+      2. With F-01 fixed, `OUT_OF_ORDER` packet `100` no longer rewinds `last_feed_seq` or
+         `max_accepted_seq`, so subsequent `1001` resumes from high-water `1000` with `0` phantom gaps.
+      3. Only when upstream explicitly assigns distinct `gateway_id` values (`gw_a` vs `gw_b`)
+         do interleaved connections receive separate `ChannelSequenceState` instances.
+    """
+    # 1. Shared unscoped channel (gateway_id=None, symbol=None -> "default:ALL"):
+    # interleaving limitation still rejects 100 as OUT_OF_ORDER, but F-01 prevents phantom gaps.
+    v = VenueHealth(venue="BINANCE")
+    v.update_sequence(1000)  # High-water established at 1000
+    v.update_sequence(100)   # Lower sequence on shared channel -> OUT_OF_ORDER without rewind
+    assert v.feed_out_of_order == 1
+    assert v.last_feed_seq == 1000
+    assert v.channels["default:ALL"].max_accepted_seq == 1000
+
+    v.update_sequence(1001)  # Continuous after 1000 -> zero phantom feed gaps
+    assert v.feed_gaps == 0
+    assert v.last_feed_seq == 1001
+    assert v.channels["default:ALL"].max_accepted_seq == 1001
+
+    # 2. Explicit upstream gateway_id metadata routes into distinct channel trackers
+    v_scoped = VenueHealth(venue="BINANCE")
+    v_scoped.update_sequence(1000, gateway_id="gw_a", symbol="BTC-USDT")
+    v_scoped.update_sequence(100, gateway_id="gw_b", symbol="BTC-USDT")
+    v_scoped.update_sequence(1001, gateway_id="gw_a", symbol="BTC-USDT")
+
+    assert v_scoped.feed_out_of_order == 0
+    assert v_scoped.feed_gaps == 0
+    assert v_scoped.channels["gw_a:BTC-USDT"].max_accepted_seq == 1001
+    assert v_scoped.channels["gw_b:BTC-USDT"].max_accepted_seq == 100
 
 
 def test_scenario_9_venue_sequence_reset_with_continuous_transport():
