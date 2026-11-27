@@ -4,7 +4,9 @@ Verify tombstone persistence across process restart.
 Writes tombstones to a SQLite table, closes the store, reopens it,
 and verifies tombstone records survive restart.
 """
+
 import sys, os, json, time, sqlite3
+
 sys.path.insert(0, "src")
 
 from mdrap.storage import Store
@@ -64,16 +66,18 @@ store = Store(DB_PATH)
 
 tombstone_rows = []
 for t in mgr.get_tombstones():
-    tombstone_rows.append({
-        "raw_id": t.raw_id,
-        "source": t.source,
-        "instrument": t.payload.get("instrument", ""),
-        "drop_reason": t.payload.get("drop_reason", "BACKPRESSURE_DROP"),
-        "drop_count": t.payload.get("drop_count", 0),
-        "evicted_raw_id": t.payload.get("evicted_raw_id"),
-        "receive_ts": t.receive_timestamp,
-        "payload_json": json.dumps(t.payload),
-    })
+    tombstone_rows.append(
+        {
+            "raw_id": t.raw_id,
+            "source": t.source,
+            "instrument": t.payload.get("instrument", ""),
+            "drop_reason": t.payload.get("drop_reason", "BACKPRESSURE_DROP"),
+            "drop_count": t.payload.get("drop_count", 0),
+            "evicted_raw_id": t.payload.get("evicted_raw_id"),
+            "receive_ts": t.receive_timestamp,
+            "payload_json": json.dumps(t.payload),
+        }
+    )
 
 # Persist using quarantine batch (tombstones are non-canonical events - use lineage table)
 # Store in audit_log (available in schema) with tag
@@ -91,18 +95,27 @@ try:
             created_at REAL NOT NULL
         )
     """)
-    store.conn.executemany("""
+    store.conn.executemany(
+        """
         INSERT OR IGNORE INTO drop_tombstones
         (raw_id, source, instrument, drop_reason, drop_count, evicted_raw_id, receive_ts, payload_json, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, [
-        (
-            r["raw_id"], r["source"], r["instrument"], r["drop_reason"],
-            r["drop_count"], r["evicted_raw_id"], r["receive_ts"],
-            r["payload_json"], time.time()
-        )
-        for r in tombstone_rows
-    ])
+    """,
+        [
+            (
+                r["raw_id"],
+                r["source"],
+                r["instrument"],
+                r["drop_reason"],
+                r["drop_count"],
+                r["evicted_raw_id"],
+                r["receive_ts"],
+                r["payload_json"],
+                time.time(),
+            )
+            for r in tombstone_rows
+        ],
+    )
     store.commit()
     persisted = store.conn.execute("SELECT count(*) FROM drop_tombstones").fetchone()[0]
     print(f"  Persisted {persisted} tombstones to SQLite")
@@ -119,8 +132,12 @@ store2 = Store(DB_PATH)
 
 integrity = store2.conn.execute("PRAGMA integrity_check").fetchone()[0]
 recovered = store2.conn.execute("SELECT count(*) FROM drop_tombstones").fetchone()[0]
-recovered_drops = store2.conn.execute("SELECT MAX(drop_count) FROM drop_tombstones").fetchone()[0]
-recovered_venues = store2.conn.execute("SELECT source, count(*) FROM drop_tombstones GROUP BY source").fetchall()
+recovered_drops = store2.conn.execute(
+    "SELECT MAX(drop_count) FROM drop_tombstones"
+).fetchone()[0]
+recovered_venues = store2.conn.execute(
+    "SELECT source, count(*) FROM drop_tombstones GROUP BY source"
+).fetchall()
 
 print(f"  PRAGMA integrity_check: {integrity}")
 print(f"  Recovered tombstones: {recovered}")

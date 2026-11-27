@@ -34,7 +34,9 @@ def test_ops_02_prometheus_audit_verification_non_blocking():
         worker_threads.append(threading.current_thread().name)
         verify_started.set()
         if not release_verify.wait(timeout=10.0):
-            raise TimeoutError("Safety watchdog expired waiting to release mock audit check")
+            raise TimeoutError(
+                "Safety watchdog expired waiting to release mock audit check"
+            )
         verify_finished.set()
         return True, "Audit log verified", 1000
 
@@ -73,7 +75,9 @@ def test_ops_02_prometheus_audit_verification_non_blocking():
         # Scrape 1: submits work to the pre-started worker and returns while verification stays blocked
         caller_thread.start()
         assert verify_started.wait(timeout=5.0), "Background audit worker did not start"
-        assert caller_done.wait(timeout=5.0), "render() caller blocked while verification waited"
+        assert caller_done.wait(timeout=5.0), (
+            "render() caller blocked while verification waited"
+        )
         assert "exc" not in caller_result, f"Caller raised: {caller_result.get('exc')}"
         assert not verify_finished.is_set(), "Caller waited until slow audit completed"
         assert worker_threads == ["prometheus-audit-worker"]
@@ -87,7 +91,9 @@ def test_ops_02_prometheus_audit_verification_non_blocking():
 
         # Release background worker and verify clean completion
         release_verify.set()
-        assert verify_finished.wait(timeout=5.0), "Background audit worker did not finish"
+        assert verify_finished.wait(timeout=5.0), (
+            "Background audit worker did not finish"
+        )
         metrics_text_3 = exporter.render(state)
         assert "mdrap_audit_verified_status 1" in metrics_text_3
         assert len(worker_threads) == 1

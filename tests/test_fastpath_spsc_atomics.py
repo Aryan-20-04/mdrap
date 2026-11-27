@@ -122,6 +122,7 @@ class TestFastpathSpscAtomics:
 
         obj = MonitoredObject()
         import sys
+
         initial_refs = sys.getrefcount(obj)
 
         assert q.offer(obj)
@@ -137,8 +138,10 @@ class TestFastpathSpscAtomics:
 
     def test_dealloc_with_unpolled_items(self):
         """Verify queue garbage collection cleans up unpolled items without leaking."""
+
         class Disposable:
             freed = 0
+
             def __del__(self):
                 Disposable.freed += 1
 
@@ -150,7 +153,9 @@ class TestFastpathSpscAtomics:
         del q
         gc.collect()
 
-        assert Disposable.freed == 50, f"Expected 50 freed objects, got {Disposable.freed}"
+        assert Disposable.freed == 50, (
+            f"Expected 50 freed objects, got {Disposable.freed}"
+        )
 
     def test_dual_path_fallback_parity(self, monkeypatch):
         """Verify MDRAP_DISABLE_FASTPATH=1 cleanly falls back to pure Python."""

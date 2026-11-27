@@ -8,23 +8,35 @@ import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from observer.state import ChannelSequenceState, ObserverState, SequenceDisposition, VenueHealth, VenueQuote
+from observer.state import (
+    ChannelSequenceState,
+    ObserverState,
+    SequenceDisposition,
+    VenueHealth,
+    VenueQuote,
+)
 
 
 def test_crossed_book_detection():
     """Verify inverted books (bid > ask) and locked books (bid == ask) are flagged."""
     # Normal book
-    q_normal = VenueQuote(venue="BINANCE", symbol="BTC-USDT", bid_price=60000.0, ask_price=60001.0)
+    q_normal = VenueQuote(
+        venue="BINANCE", symbol="BTC-USDT", bid_price=60000.0, ask_price=60001.0
+    )
     assert not q_normal.is_crossed
     assert q_normal.spread == 1.0
 
     # Locked book (bid == ask)
-    q_locked = VenueQuote(venue="BINANCE", symbol="BTC-USDT", bid_price=60000.0, ask_price=60000.0)
+    q_locked = VenueQuote(
+        venue="BINANCE", symbol="BTC-USDT", bid_price=60000.0, ask_price=60000.0
+    )
     assert q_locked.is_crossed
     assert q_locked.spread == 0.0
 
     # Inverted / crossed book (bid > ask)
-    q_crossed = VenueQuote(venue="BINANCE", symbol="BTC-USDT", bid_price=60005.0, ask_price=60000.0)
+    q_crossed = VenueQuote(
+        venue="BINANCE", symbol="BTC-USDT", bid_price=60005.0, ask_price=60000.0
+    )
     assert q_crossed.is_crossed
     assert q_crossed.spread == -5.0
 
@@ -67,25 +79,31 @@ def test_corrupted_and_missing_payload_fields():
     state.process_event({"symbol": "BTC-USD", "price": 60000.0})
 
     # Unrecognized venue
-    state.process_event({"venue": "UNKNOWN_EXCHANGE", "symbol": "BTC-USD", "price": 60000.0})
+    state.process_event(
+        {"venue": "UNKNOWN_EXCHANGE", "symbol": "BTC-USD", "price": 60000.0}
+    )
 
     # Non-numeric string prices and sequences
-    state.process_event({
-        "venue": "BINANCE",
-        "symbol": "BTCUSDT",
-        "bid": "not_a_float",
-        "ask": None,
-        "sequence": "invalid_int",
-    })
+    state.process_event(
+        {
+            "venue": "BINANCE",
+            "symbol": "BTCUSDT",
+            "bid": "not_a_float",
+            "ask": None,
+            "sequence": "invalid_int",
+        }
+    )
 
     # Negative price values
-    state.process_event({
-        "venue": "KRAKEN",
-        "symbol": "BTC-USD",
-        "bid": -100.0,
-        "ask": -50.0,
-        "sequence": 1,
-    })
+    state.process_event(
+        {
+            "venue": "KRAKEN",
+            "symbol": "BTC-USD",
+            "bid": -100.0,
+            "ask": -50.0,
+            "sequence": 1,
+        }
+    )
 
     # Health must still track the event received from valid venue
     assert state.health["BINANCE"].events_received >= 1
@@ -206,16 +224,18 @@ def test_micro_price_negative_and_non_finite_guards():
 def test_atomic_rejection_of_invalid_numeric_inputs(bad_payload):
     """Verify NaN, +/-inf, negative, boolean, and unparseable market numerics never mutate quotes or trades."""
     state = ObserverState()
-    state.process_event({
-        "venue": "COINBASE",
-        "symbol": "BTC-USD",
-        "bid": 60000.0,
-        "bid_size": 2.0,
-        "ask": 60002.0,
-        "ask_size": 3.0,
-        "feed_seq": 1,
-        "timestamp": 1000.0,
-    })
+    state.process_event(
+        {
+            "venue": "COINBASE",
+            "symbol": "BTC-USD",
+            "bid": 60000.0,
+            "bid_size": 2.0,
+            "ask": 60002.0,
+            "ask_size": 3.0,
+            "feed_seq": 1,
+            "timestamp": 1000.0,
+        }
+    )
 
     evt = {
         "venue": "COINBASE",
@@ -240,25 +260,29 @@ def test_atomic_rejection_of_invalid_numeric_inputs(bad_payload):
 def test_partial_updates_and_large_finite_values():
     """Verify partial None-side updates preserve counterpart and large finite values (1e12) succeed."""
     state = ObserverState()
-    state.process_event({
-        "venue": "BINANCE",
-        "symbol": "BTCUSDT",
-        "bid": 60000.0,
-        "bid_size": 2.0,
-        "ask": 60002.0,
-        "ask_size": 3.0,
-        "feed_seq": 1,
-    })
+    state.process_event(
+        {
+            "venue": "BINANCE",
+            "symbol": "BTCUSDT",
+            "bid": 60000.0,
+            "bid_size": 2.0,
+            "ask": 60002.0,
+            "ask_size": 3.0,
+            "feed_seq": 1,
+        }
+    )
 
     # Partial update: bid=None (absent), ask updated
-    state.process_event({
-        "venue": "BINANCE",
-        "symbol": "BTCUSDT",
-        "bid": None,
-        "ask": 60005.0,
-        "ask_size": 4.0,
-        "feed_seq": 2,
-    })
+    state.process_event(
+        {
+            "venue": "BINANCE",
+            "symbol": "BTCUSDT",
+            "bid": None,
+            "ask": 60005.0,
+            "ask_size": 4.0,
+            "feed_seq": 2,
+        }
+    )
     q = state.quotes["BTC-USDT"]["BINANCE"]
     assert q.bid_price == 60000.0
     assert q.bid_size == 2.0
@@ -266,15 +290,17 @@ def test_partial_updates_and_large_finite_values():
     assert q.ask_size == 4.0
 
     # Very large finite values accepted
-    state.process_event({
-        "venue": "BINANCE",
-        "symbol": "BTCUSDT",
-        "bid": 1e12,
-        "bid_size": 1e12,
-        "ask": 1e12 + 2.0,
-        "ask_size": 1e12,
-        "feed_seq": 3,
-    })
+    state.process_event(
+        {
+            "venue": "BINANCE",
+            "symbol": "BTCUSDT",
+            "bid": 1e12,
+            "bid_size": 1e12,
+            "ask": 1e12 + 2.0,
+            "ask_size": 1e12,
+            "feed_seq": 3,
+        }
+    )
     assert q.bid_price == 1e12
     assert q.ask_price == 1e12 + 2.0
     assert state.health["BINANCE"].invalid_numeric_events == 0
@@ -283,36 +309,42 @@ def test_partial_updates_and_large_finite_values():
 def test_stale_epoch_and_snapshot_with_feed_seq_none_rejected():
     """Workstream B: Stale-epoch packets and snapshots with feed_seq=None cannot bypass epoch validation."""
     state = ObserverState()
-    state.process_event({
-        "venue": "COINBASE",
-        "symbol": "BTC-USD",
-        "epoch_id": 2,
-        "feed_seq": 100,
-        "bid": 60000.0,
-        "bid_size": 2.0,
-        "ask": 60005.0,
-        "ask_size": 3.0,
-    })
+    state.process_event(
+        {
+            "venue": "COINBASE",
+            "symbol": "BTC-USD",
+            "epoch_id": 2,
+            "feed_seq": 100,
+            "bid": 60000.0,
+            "bid_size": 2.0,
+            "ask": 60005.0,
+            "ask_size": 3.0,
+        }
+    )
     q = state.quotes["BTC-USD"]["COINBASE"]
     nbbo_before = state.get_consolidated_nbbo("BTC-USD")
 
     # Stale epoch 1 with feed_seq=None
-    state.process_event({
-        "venue": "COINBASE",
-        "symbol": "BTC-USD",
-        "epoch_id": 1,
-        "bid": 1000.0,
-        "ask": 1001.0,
-    })
+    state.process_event(
+        {
+            "venue": "COINBASE",
+            "symbol": "BTC-USD",
+            "epoch_id": 1,
+            "bid": 1000.0,
+            "ask": 1001.0,
+        }
+    )
     # Stale epoch 1 snapshot with feed_seq=None
-    state.process_event({
-        "venue": "COINBASE",
-        "symbol": "BTC-USD",
-        "epoch_id": 1,
-        "is_snapshot": True,
-        "bid": 2000.0,
-        "ask": 2001.0,
-    })
+    state.process_event(
+        {
+            "venue": "COINBASE",
+            "symbol": "BTC-USD",
+            "epoch_id": 1,
+            "is_snapshot": True,
+            "bid": 2000.0,
+            "ask": 2001.0,
+        }
+    )
 
     assert state.health["COINBASE"].stale_epoch_packets == 2
     assert q.bid_price == 60000.0
@@ -323,30 +355,34 @@ def test_stale_epoch_and_snapshot_with_feed_seq_none_rejected():
 def test_invalid_numeric_and_rejected_packets_cannot_poison_epoch_or_revive_stale():
     """Workstream B: Invalid numerics (incl. bad timestamp) and rejected packets preserve STALE status and epoch."""
     state = ObserverState(stale_threshold_s=0.05)
-    state.process_event({
-        "venue": "COINBASE",
-        "symbol": "BTC-USD",
-        "epoch_id": 2,
-        "feed_seq": 10,
-        "bid": 60000.0,
-        "bid_size": 2.0,
-        "ask": 60004.0,
-        "ask_size": 2.0,
-    })
+    state.process_event(
+        {
+            "venue": "COINBASE",
+            "symbol": "BTC-USD",
+            "epoch_id": 2,
+            "feed_seq": 10,
+            "bid": 60000.0,
+            "bid_size": 2.0,
+            "ask": 60004.0,
+            "ask_size": 2.0,
+        }
+    )
     time.sleep(0.08)
     state.check_all_stale()
     assert state.health["COINBASE"].status == "STALE"
     stale_ts = state.health["COINBASE"].last_seen_ts
 
     # 1. Invalid market numeric carrying newer epoch_id=99 -> must NOT advance epoch or revive STALE
-    state.process_event({
-        "venue": "COINBASE",
-        "symbol": "BTC-USD",
-        "epoch_id": 99,
-        "feed_seq": 1,
-        "bid": float("nan"),
-        "ask": 60005.0,
-    })
+    state.process_event(
+        {
+            "venue": "COINBASE",
+            "symbol": "BTC-USD",
+            "epoch_id": 99,
+            "feed_seq": 1,
+            "bid": float("nan"),
+            "ask": 60005.0,
+        }
+    )
     assert state.health["COINBASE"].status == "STALE"
     assert state.health["COINBASE"].last_seen_ts == stale_ts
     assert state.health["COINBASE"].invalid_numeric_events == 1
@@ -354,49 +390,57 @@ def test_invalid_numeric_and_rejected_packets_cannot_poison_epoch_or_revive_stal
     assert state.health["COINBASE"].last_feed_seq == 10
 
     # 2. Invalid timestamp carrying valid bid -> must reject atomically
-    state.process_event({
-        "venue": "COINBASE",
-        "symbol": "BTC-USD",
-        "epoch_id": 2,
-        "feed_seq": 11,
-        "bid": 61000.0,
-        "ask": 61002.0,
-        "timestamp": float("nan"),
-    })
+    state.process_event(
+        {
+            "venue": "COINBASE",
+            "symbol": "BTC-USD",
+            "epoch_id": 2,
+            "feed_seq": 11,
+            "bid": 61000.0,
+            "ask": 61002.0,
+            "timestamp": float("nan"),
+        }
+    )
     assert state.health["COINBASE"].invalid_numeric_events == 2
     assert state.quotes["BTC-USD"]["COINBASE"].bid_price == 60000.0
     assert state.health["COINBASE"].status == "STALE"
 
     # 3. Rejected STALE_EPOCH and OUT_OF_ORDER packets must keep STALE status and last_seen_ts
-    state.process_event({
-        "venue": "COINBASE",
-        "symbol": "BTC-USD",
-        "epoch_id": 1,
-        "feed_seq": 5,
-        "bid": 50000.0,
-        "ask": 50001.0,
-    })
-    state.process_event({
-        "venue": "COINBASE",
-        "symbol": "BTC-USD",
-        "epoch_id": 2,
-        "feed_seq": 9,
-        "bid": 50000.0,
-        "ask": 50001.0,
-    })
+    state.process_event(
+        {
+            "venue": "COINBASE",
+            "symbol": "BTC-USD",
+            "epoch_id": 1,
+            "feed_seq": 5,
+            "bid": 50000.0,
+            "ask": 50001.0,
+        }
+    )
+    state.process_event(
+        {
+            "venue": "COINBASE",
+            "symbol": "BTC-USD",
+            "epoch_id": 2,
+            "feed_seq": 9,
+            "bid": 50000.0,
+            "ask": 50001.0,
+        }
+    )
     assert state.health["COINBASE"].status == "STALE"
     assert state.health["COINBASE"].last_seen_ts == stale_ts
     assert state.quotes["BTC-USD"]["COINBASE"].bid_price == 60000.0
 
     # 4. Subsequent valid epoch 2 event succeeds cleanly
-    state.process_event({
-        "venue": "COINBASE",
-        "symbol": "BTC-USD",
-        "epoch_id": 2,
-        "feed_seq": 11,
-        "bid": 60010.0,
-        "ask": 60012.0,
-    })
+    state.process_event(
+        {
+            "venue": "COINBASE",
+            "symbol": "BTC-USD",
+            "epoch_id": 2,
+            "feed_seq": 11,
+            "bid": 60010.0,
+            "ask": 60012.0,
+        }
+    )
     assert state.health["COINBASE"].status == "CONNECTED"
     assert state.quotes["BTC-USD"]["COINBASE"].bid_price == 60010.0
     assert state.quotes["BTC-USD"]["COINBASE"].ask_price == 60012.0
@@ -407,70 +451,84 @@ def test_unscoped_rewind_epoch_scoped_seq1_and_alias_channel_isolation():
     state = ObserverState()
 
     # 1. Unscoped 100 -> 50 -> 51 must keep 50 and 51 rejected
-    state.process_event({
-        "venue": "BINANCE",
-        "symbol": "BTCUSDT",
-        "feed_seq": 100,
-        "bid": 65000.0,
-        "ask": 65002.0,
-    })
-    state.process_event({
-        "venue": "BINANCE",
-        "symbol": "BTCUSDT",
-        "feed_seq": 50,
-        "bid": 10000.0,
-        "ask": 10002.0,
-    })
-    state.process_event({
-        "venue": "BINANCE",
-        "symbol": "BTCUSDT",
-        "feed_seq": 51,
-        "bid": 10001.0,
-        "ask": 10003.0,
-    })
+    state.process_event(
+        {
+            "venue": "BINANCE",
+            "symbol": "BTCUSDT",
+            "feed_seq": 100,
+            "bid": 65000.0,
+            "ask": 65002.0,
+        }
+    )
+    state.process_event(
+        {
+            "venue": "BINANCE",
+            "symbol": "BTCUSDT",
+            "feed_seq": 50,
+            "bid": 10000.0,
+            "ask": 10002.0,
+        }
+    )
+    state.process_event(
+        {
+            "venue": "BINANCE",
+            "symbol": "BTCUSDT",
+            "feed_seq": 51,
+            "bid": 10001.0,
+            "ask": 10003.0,
+        }
+    )
     b_quote = state.quotes["BTC-USDT"]["BINANCE"]
     assert state.health["BINANCE"].out_of_order == 2
     assert b_quote.bid_price == 65000.0
     assert b_quote.ask_price == 65002.0
 
     # Valid seq 101 resumes normal updates
-    state.process_event({
-        "venue": "BINANCE",
-        "symbol": "BTCUSDT",
-        "feed_seq": 101,
-        "bid": 65005.0,
-        "ask": 65007.0,
-    })
+    state.process_event(
+        {
+            "venue": "BINANCE",
+            "symbol": "BTCUSDT",
+            "feed_seq": 101,
+            "bid": 65005.0,
+            "ask": 65007.0,
+        }
+    )
     assert b_quote.bid_price == 65005.0
     assert state.health["BINANCE"].gaps == 0
     assert state.health["BINANCE"].last_feed_seq == 101
 
     # 2. Epoch-scoped channel + alias symbols (XBT/USD vs XBT-USD) + unscoped seq=1
-    state.process_event({
-        "venue": "KRAKEN",
-        "symbol": "XBT/USD",
-        "epoch_id": 2,
-        "feed_seq": 100,
-        "bid": 60000.0,
-        "ask": 60004.0,
-    })
+    state.process_event(
+        {
+            "venue": "KRAKEN",
+            "symbol": "XBT/USD",
+            "epoch_id": 2,
+            "feed_seq": 100,
+            "bid": 60000.0,
+            "ask": 60004.0,
+        }
+    )
     # Unscoped seq=1 arrives on epoch-scoped channel -> must NOT trigger DEGRADED_UNSCOPED_RESET
-    state.process_event({
-        "venue": "KRAKEN",
-        "symbol": "XBT/USD",
-        "feed_seq": 1,
-        "bid": 1000.0,
-        "ask": 1001.0,
-    })
+    state.process_event(
+        {
+            "venue": "KRAKEN",
+            "symbol": "XBT/USD",
+            "feed_seq": 1,
+            "bid": 1000.0,
+            "ask": 1001.0,
+        }
+    )
     # Stale epoch on alias XBT-USD -> hits same normalized default:BTC-USD channel and rejects
-    state.process_event({
-        "venue": "KRAKEN",
-        "symbol": "XBT-USD",
-        "epoch_id": 1,
-        "feed_seq": 1,
-        "bid": 2000.0,
-        "ask": 2001.0,
-    })
+    state.process_event(
+        {
+            "venue": "KRAKEN",
+            "symbol": "XBT-USD",
+            "epoch_id": 1,
+            "feed_seq": 1,
+            "bid": 2000.0,
+            "ask": 2001.0,
+        }
+    )
     k_quote = state.quotes["BTC-USD"]["KRAKEN"]
     assert k_quote.bid_price == 60000.0
     assert k_quote.ask_price == 60004.0
@@ -485,19 +543,53 @@ def test_negative_feed_seq_mid_price_overflow_and_normalized_subscription_filter
     from observer.state import VenueQuote
 
     # Overflow-safe mid_price
-    q_ext = VenueQuote(venue="BINANCE", symbol="BTC-USDT", bid_price=1e308, ask_price=1e308, bid_size=1.0, ask_size=1.0)
+    q_ext = VenueQuote(
+        venue="BINANCE",
+        symbol="BTC-USDT",
+        bid_price=1e308,
+        ask_price=1e308,
+        bid_size=1.0,
+        ask_size=1.0,
+    )
     assert math.isfinite(q_ext.mid_price)
     assert q_ext.mid_price == 1e308
 
     # Negative feed_seq initializes once and detects duplicates
     st = ObserverState(subscription_filter="BTC-USDT")
-    st.process_event({"venue": "BINANCE", "symbol": "BTCUSDT", "seq": 1, "feed_seq": -5, "bid": 60000.0, "ask": 60001.0})
-    st.process_event({"venue": "BINANCE", "symbol": "BTCUSDT", "seq": 2, "feed_seq": -5, "bid": 50000.0, "ask": 50001.0})
+    st.process_event(
+        {
+            "venue": "BINANCE",
+            "symbol": "BTCUSDT",
+            "seq": 1,
+            "feed_seq": -5,
+            "bid": 60000.0,
+            "ask": 60001.0,
+        }
+    )
+    st.process_event(
+        {
+            "venue": "BINANCE",
+            "symbol": "BTCUSDT",
+            "seq": 2,
+            "feed_seq": -5,
+            "bid": 50000.0,
+            "ask": 50001.0,
+        }
+    )
     assert st.health["BINANCE"].duplicates == 1
     assert st.quotes["BTC-USDT"]["BINANCE"].bid_price == 60000.0
 
     # Normalized subscription_filter="BTC-USDT" matches "BTCUSDT" transport gap (seq 2 -> seq 4 = gap 1)
-    st.process_event({"venue": "BINANCE", "symbol": "BTCUSDT", "seq": 4, "feed_seq": -4, "bid": 60002.0, "ask": 60003.0})
+    st.process_event(
+        {
+            "venue": "BINANCE",
+            "symbol": "BTCUSDT",
+            "seq": 4,
+            "feed_seq": -4,
+            "bid": 60002.0,
+            "ask": 60003.0,
+        }
+    )
     assert st.stream_health.gaps == 1
     assert st.stream_health.filtered_events == 0
 
@@ -555,7 +647,9 @@ def test_f01_genuine_gaps_epoch_scoped_and_unavailable_sequences():
     assert v.last_feed_seq == 105
 
     # 3. Epoch-scoped continuity, OOO, and genuine gaps: 100 -> 50 -> 101 -> 104 -> 1 OOO, 2 gaps
-    ch_ep = ChannelSequenceState(channel_key="gw1:ETH-USD", gateway_id="gw1", symbol="ETH-USD")
+    ch_ep = ChannelSequenceState(
+        channel_key="gw1:ETH-USD", gateway_id="gw1", symbol="ETH-USD"
+    )
     assert ch_ep.update(100, epoch_id=1) == SequenceDisposition.ACCEPTED
     assert ch_ep.update(50, epoch_id=1) == SequenceDisposition.OUT_OF_ORDER
     assert ch_ep.update(101, epoch_id=1) == SequenceDisposition.ACCEPTED
@@ -600,7 +694,9 @@ def test_f03_repeated_delayed_out_of_order_classified_as_duplicate():
     assert ch.last_observed_seq == 101
 
     # 2. Epoch-scoped repeated delayed packet + high-water duplicate after OOO: 100 -> 50 -> 50 -> 100 -> 101
-    ch_ep = ChannelSequenceState(channel_key="gw1:BTC-USD", gateway_id="gw1", symbol="BTC-USD")
+    ch_ep = ChannelSequenceState(
+        channel_key="gw1:BTC-USD", gateway_id="gw1", symbol="BTC-USD"
+    )
     assert ch_ep.update(100, epoch_id=2) == SequenceDisposition.ACCEPTED
     assert ch_ep.update(50, epoch_id=2) == SequenceDisposition.OUT_OF_ORDER
     assert ch_ep.update(50, epoch_id=2) == SequenceDisposition.DUPLICATE
@@ -614,10 +710,42 @@ def test_f03_repeated_delayed_out_of_order_classified_as_duplicate():
 
     # 3. End-to-end ObserverState market quote protection across 100 -> 50 -> 50 -> 101
     st = ObserverState()
-    st.process_event({"venue": "DATABENTO", "symbol": "BTC-USD", "feed_seq": 100, "bid": 65000.0, "ask": 65002.0})
-    st.process_event({"venue": "DATABENTO", "symbol": "BTC-USD", "feed_seq": 50, "bid": 10000.0, "ask": 10001.0})
-    st.process_event({"venue": "DATABENTO", "symbol": "BTC-USD", "feed_seq": 50, "bid": 10002.0, "ask": 10003.0})
-    st.process_event({"venue": "DATABENTO", "symbol": "BTC-USD", "feed_seq": 101, "bid": 65005.0, "ask": 65007.0})
+    st.process_event(
+        {
+            "venue": "DATABENTO",
+            "symbol": "BTC-USD",
+            "feed_seq": 100,
+            "bid": 65000.0,
+            "ask": 65002.0,
+        }
+    )
+    st.process_event(
+        {
+            "venue": "DATABENTO",
+            "symbol": "BTC-USD",
+            "feed_seq": 50,
+            "bid": 10000.0,
+            "ask": 10001.0,
+        }
+    )
+    st.process_event(
+        {
+            "venue": "DATABENTO",
+            "symbol": "BTC-USD",
+            "feed_seq": 50,
+            "bid": 10002.0,
+            "ask": 10003.0,
+        }
+    )
+    st.process_event(
+        {
+            "venue": "DATABENTO",
+            "symbol": "BTC-USD",
+            "feed_seq": 101,
+            "bid": 65005.0,
+            "ask": 65007.0,
+        }
+    )
 
     q = st.quotes["BTC-USD"]["DATABENTO"]
     assert q.bid_price == 65005.0
@@ -702,7 +830,9 @@ def test_f03_nonconsecutive_delayed_duplicate_and_window_eviction():
     ch_rst = ChannelSequenceState(channel_key="default:BTC-USD")
     assert ch_rst.update(1) == SequenceDisposition.ACCEPTED
     assert ch_rst.update(50) == SequenceDisposition.ACCEPTED
-    assert ((ch_rst._seen_bitmap >> 49) & 1) == 1  # seq 1 is still in the 4096-bit window
+    assert (
+        (ch_rst._seen_bitmap >> 49) & 1
+    ) == 1  # seq 1 is still in the 4096-bit window
     assert ch_rst.update(1) == SequenceDisposition.ACCEPTED
     assert ch_rst.feed_resets == 1
     assert ch_rst.degraded_resets == 1
@@ -713,7 +843,9 @@ def test_f03_nonconsecutive_delayed_duplicate_and_window_eviction():
     assert ch_rst.feed_duplicates == 1
 
     # Epoch transition + snapshot reset clear old bitmap; stale epoch does not corrupt active bitmap
-    ch_ep = ChannelSequenceState(channel_key="gw1:BTC-USD", gateway_id="gw1", symbol="BTC-USD")
+    ch_ep = ChannelSequenceState(
+        channel_key="gw1:BTC-USD", gateway_id="gw1", symbol="BTC-USD"
+    )
     assert ch_ep.update(1, epoch_id=1) == SequenceDisposition.ACCEPTED
     assert ch_ep.update(100, epoch_id=1) == SequenceDisposition.ACCEPTED
     assert ch_ep.update(50, epoch_id=1) == SequenceDisposition.OUT_OF_ORDER
@@ -730,7 +862,9 @@ def test_f03_nonconsecutive_delayed_duplicate_and_window_eviction():
     assert ch_ep.update(40, epoch_id=2) == SequenceDisposition.OUT_OF_ORDER
 
     # Snapshot resets window cleanly
-    assert ch_ep.update(10, epoch_id=2, is_snapshot=True) == SequenceDisposition.ACCEPTED
+    assert (
+        ch_ep.update(10, epoch_id=2, is_snapshot=True) == SequenceDisposition.ACCEPTED
+    )
     assert ch_ep._seen_bitmap == 1
     assert ch_ep.update(5, epoch_id=2) == SequenceDisposition.OUT_OF_ORDER
 
@@ -749,7 +883,6 @@ def test_f03_nonconsecutive_delayed_duplicate_and_window_eviction():
     assert ch_zero.feed_gaps == 0
 
 
-
 def test_channelsequencestate_positional_constructor_compatibility():
     """Regression: positional constructor must preserve original field order.
 
@@ -764,7 +897,9 @@ def test_channelsequencestate_positional_constructor_compatibility():
     params = list(sig.parameters.keys())
 
     # Original field order preserved: feed_gaps at positional index 6 (0-based)
-    assert params.index("feed_gaps") == 6, f"feed_gaps at {params.index('feed_gaps')}, expected 6"
+    assert params.index("feed_gaps") == 6, (
+        f"feed_gaps at {params.index('feed_gaps')}, expected 6"
+    )
 
     # New fields come after continuity_state (the last original field)
     continuity_idx = params.index("continuity_state")
@@ -789,9 +924,15 @@ def test_channelsequencestate_positional_constructor_compatibility():
 
     # Positional construction: 7th positional arg is feed_gaps
     ch = ChannelSequenceState("test", None, None, None, 100, 100, 5)
-    assert ch.feed_gaps == 5, f"7th positional arg should be feed_gaps=5, got {ch.feed_gaps}"
-    assert ch.last_observed_seq == -1, f"last_observed_seq should default to -1, got {ch.last_observed_seq}"
-    assert ch._seen_bitmap == 0, f"_seen_bitmap should default to 0, got {ch._seen_bitmap}"
+    assert ch.feed_gaps == 5, (
+        f"7th positional arg should be feed_gaps=5, got {ch.feed_gaps}"
+    )
+    assert ch.last_observed_seq == -1, (
+        f"last_observed_seq should default to -1, got {ch.last_observed_seq}"
+    )
+    assert ch._seen_bitmap == 0, (
+        f"_seen_bitmap should default to 0, got {ch._seen_bitmap}"
+    )
 
     # Keyword construction still works
     ch2 = ChannelSequenceState("test2", last_observed_seq=42)
@@ -882,7 +1023,9 @@ def test_legacy_sequence_zero_semantics_and_precedence():
     assert ch_e.feed_resets == 1
 
     # F. Epoch-scoped seq == 0 also preserves legacy contract: 0 -> 0 is DUPLICATE, 100 -> 0 -> 50 -> 0 is OUT_OF_ORDER
-    ch_ep = ChannelSequenceState(channel_key="gw1:BTC-USD", gateway_id="gw1", symbol="BTC-USD")
+    ch_ep = ChannelSequenceState(
+        channel_key="gw1:BTC-USD", gateway_id="gw1", symbol="BTC-USD"
+    )
     assert ch_ep.update(0, epoch_id=1) == SequenceDisposition.ACCEPTED
     assert ch_ep.update(0, epoch_id=1) == SequenceDisposition.DUPLICATE
     assert ch_ep.update(100, epoch_id=2) == SequenceDisposition.ACCEPTED

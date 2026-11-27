@@ -123,7 +123,6 @@ def test_cli_live_and_research(parser, tmp_path):
     _run_cmd(parser, ["export", "AAPL", "--csv", "-o", csv_path])
 
 
-
 def test_polygon_feed_parsers():
     import mdrap.polygon_feed as polygon_feed
 

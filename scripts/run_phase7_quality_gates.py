@@ -34,7 +34,11 @@ def run_stage(gate_id: str, name: str, command: list[str]) -> Dict[str, Any]:
     env = os.environ.copy()
     src_dir = os.path.join(ROOT_DIR, "src")
     existing_pythonpath = env.get("PYTHONPATH", "")
-    env["PYTHONPATH"] = f"{src_dir}{os.pathsep}{existing_pythonpath}" if existing_pythonpath else src_dir
+    env["PYTHONPATH"] = (
+        f"{src_dir}{os.pathsep}{existing_pythonpath}"
+        if existing_pythonpath
+        else src_dir
+    )
 
     res = subprocess.run(command, cwd=ROOT_DIR, capture_output=True, text=True, env=env)
     duration = round(time.perf_counter() - t0, 3)
@@ -65,17 +69,34 @@ def main() -> None:
         (
             "QG-01",
             "static_code_syntax",
-            [sys.executable, "-m", "py_compile", "src/historical_verifier.py", "src/partition.py"],
+            [
+                sys.executable,
+                "-m",
+                "py_compile",
+                "src/historical_verifier.py",
+                "src/partition.py",
+            ],
         ),
         (
             "QG-02",
             "type_contract_check",
-            [sys.executable, "-c", "import mdrap; import mdrap.partition; import mdrap.historical_verifier; print('Imports valid')"],
+            [
+                sys.executable,
+                "-c",
+                "import mdrap; import mdrap.partition; import mdrap.historical_verifier; print('Imports valid')",
+            ],
         ),
         (
             "QG-03",
             "core_regression_suite",
-            [sys.executable, "-m", "pytest", "tests/test_phase6_scaling.py", "tests/test_phase5_pilot.py", "-q"],
+            [
+                sys.executable,
+                "-m",
+                "pytest",
+                "tests/test_phase6_scaling.py",
+                "tests/test_phase5_pilot.py",
+                "-q",
+            ],
         ),
         (
             "QG-04",
@@ -85,7 +106,13 @@ def main() -> None:
         (
             "QG-05",
             "fault_injection_matrix",
-            [sys.executable, "-m", "pytest", "tests/test_phase7_fault_injection.py", "-q"],
+            [
+                sys.executable,
+                "-m",
+                "pytest",
+                "tests/test_phase7_fault_injection.py",
+                "-q",
+            ],
         ),
         (
             "QG-06",
@@ -118,7 +145,9 @@ def main() -> None:
         json.dump(report, f, indent=2)
 
     print("=" * 70)
-    print(f"Quality Gates Result: {report['pipeline_status']} ({report['passed_gates']}/{report['total_gates']} passed)")
+    print(
+        f"Quality Gates Result: {report['pipeline_status']} ({report['passed_gates']}/{report['total_gates']} passed)"
+    )
     print(f"Report saved to: {report_path}")
     print("=" * 70)
 

@@ -41,6 +41,7 @@ def test_pure_wheel_contains_no_compiled_binaries(tmp_path):
         )
 
     from mdrap._version import __version__
+
     wheels = sorted(wheel_dir.glob("mdrap_core-*.whl"))
     assert len(wheels) == 1, f"Expected one fresh core wheel, found {wheels}"
     latest_wheel = wheels[0]

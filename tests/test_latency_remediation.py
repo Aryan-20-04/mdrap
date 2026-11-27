@@ -96,17 +96,24 @@ def test_reservoir_sampler_uniform_capacity_and_percentiles():
     assert 8000.0 <= pcts["p90"] <= 9800.0
     # p99 should be ~9900 (+/- 200)
     assert 9200.0 <= pcts["p99"] <= 10000.0
-    assert pcts["p50"] < pcts["p90"] < pcts["p95"] < pcts["p99"] <= pcts["p99_9"] <= pcts["sampled_max"]
+    assert (
+        pcts["p50"]
+        < pcts["p90"]
+        < pcts["p95"]
+        < pcts["p99"]
+        <= pcts["p99_9"]
+        <= pcts["sampled_max"]
+    )
 
 
 def test_monotonic_latency_tracker_all_four_stages():
     """Verify that MonotonicLatencyTracker accurately computes all 4 stages."""
     tracker = MonotonicLatencyTracker(reservoir_capacity=100)
 
-    t_ingest_ns = 1_000_000_000       # T = 1.000000 s
-    t0_ns = 1_000_050_000             # Ingress: 50 us (50,000 ns)
-    t_bcast_ns = 1_000_200_000        # Engine: 150 us (150,000 ns)
-    t_recv_ns = 1_000_500_000         # Transport: 300 us (300,000 ns)
+    t_ingest_ns = 1_000_000_000  # T = 1.000000 s
+    t0_ns = 1_000_050_000  # Ingress: 50 us (50,000 ns)
+    t_bcast_ns = 1_000_200_000  # Engine: 150 us (150,000 ns)
+    t_recv_ns = 1_000_500_000  # Transport: 300 us (300,000 ns)
     # Total E2E: 500 us (500,000 ns)
 
     event = {

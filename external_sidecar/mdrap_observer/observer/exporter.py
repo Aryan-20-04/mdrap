@@ -45,8 +45,14 @@ class ObserverExporter:
         queue_size: int = 10000,
         fsync_on_flush: bool = False,
     ):
-        if isinstance(queue_size, bool) or not isinstance(queue_size, int) or queue_size <= 0:
-            raise ValueError(f"queue_size must be a positive integer (> 0), got {queue_size!r}")
+        if (
+            isinstance(queue_size, bool)
+            or not isinstance(queue_size, int)
+            or queue_size <= 0
+        ):
+            raise ValueError(
+                f"queue_size must be a positive integer (> 0), got {queue_size!r}"
+            )
         if (
             isinstance(flush_interval_s, bool)
             or not isinstance(flush_interval_s, (int, float))
@@ -88,8 +94,12 @@ class ObserverExporter:
 
         os.makedirs(self.output_dir, exist_ok=True)
         self.session_id = int(time.time())
-        self.events_file = os.path.join(self.output_dir, f"events_{self.session_id}.jsonl")
-        self.health_file = os.path.join(self.output_dir, f"health_{self.session_id}.jsonl")
+        self.events_file = os.path.join(
+            self.output_dir, f"events_{self.session_id}.jsonl"
+        )
+        self.health_file = os.path.join(
+            self.output_dir, f"health_{self.session_id}.jsonl"
+        )
 
     @property
     def submitted_records(self) -> int:
@@ -200,7 +210,9 @@ class ObserverExporter:
             or not isinstance(timeout_s, (int, float))
             or timeout_s < 0.0
         ):
-            raise ValueError(f"timeout_s must be non-negative or None, got {timeout_s!r}")
+            raise ValueError(
+                f"timeout_s must be non-negative or None, got {timeout_s!r}"
+            )
 
         with self._lifecycle_lock:
             self.running = False

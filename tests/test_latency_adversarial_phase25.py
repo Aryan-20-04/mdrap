@@ -157,6 +157,7 @@ def test_injected_extreme_outliers_early_middle_late():
 
 def test_reservoir_reproducibility_under_controlled_seed():
     """Verify deterministic reservoir sampling when random seed is controlled."""
+
     def run_reservoir(seed_val):
         random.seed(seed_val)
         sampler = ReservoirSampler(capacity=100)
@@ -188,9 +189,9 @@ def test_e2e_telescoping_identity_and_accounting():
     """
     tracker = MonotonicLatencyTracker()
     t_ingest_ns = 1_000_000_000
-    t0_ns = 1_000_010_000         # ingress: 10,000 ns
-    t_bcast_ns = 1_000_035_000    # engine: 25,000 ns
-    t_recv_ns = 1_000_050_000     # transport: 15,000 ns
+    t0_ns = 1_000_010_000  # ingress: 10,000 ns
+    t_bcast_ns = 1_000_035_000  # engine: 25,000 ns
+    t_recv_ns = 1_000_050_000  # transport: 15,000 ns
     engine_ns = t_bcast_ns - t0_ns
 
     event = {
@@ -207,7 +208,10 @@ def test_e2e_telescoping_identity_and_accounting():
     assert res["e2e_us"] == 50.0
 
     # Telescoping check: 10 + 25 + 15 == 50
-    assert round(res["ingress_us"] + res["engine_us"] + res["transport_us"], 2) == res["e2e_us"]
+    assert (
+        round(res["ingress_us"] + res["engine_us"] + res["transport_us"], 2)
+        == res["e2e_us"]
+    )
 
 
 def test_record_event_latencies_omits_unrecorded_when_timestamps_invert():

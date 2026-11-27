@@ -45,7 +45,12 @@ def test_queue_saturation_zero_silent_drops_tombstoning():
     for i in range(120):
         raw = RawEvent(
             source="BINANCE",
-            payload={"instrument": "BTC/USD", "bid": 65000.0, "ask": 65001.0, "sequence": i},
+            payload={
+                "instrument": "BTC/USD",
+                "bid": 65000.0,
+                "ask": 65001.0,
+                "sequence": i,
+            },
             receive_timestamp=now + i * 0.001,
             raw_id=f"flood-{i}",
         )
@@ -54,7 +59,9 @@ def test_queue_saturation_zero_silent_drops_tombstoning():
                 evicted = mgr._queue.get_nowait()
                 mgr._drop_count += 1
                 mgr._drop_counts["BINANCE"] += 1
-                tombstone = mgr._create_drop_tombstone("BINANCE", "BTC/USD", evicted=evicted)
+                tombstone = mgr._create_drop_tombstone(
+                    "BINANCE", "BTC/USD", evicted=evicted
+                )
                 with mgr._tombstone_lock:
                     mgr._tombstones.append(tombstone)
             except queue.Empty:
@@ -77,7 +84,14 @@ def test_duplicate_burst_and_out_of_order_resilience():
     ev1 = normalize(
         RawEvent(
             source="KRAKEN",
-            payload={"instrument": "ETH/USD", "event_type": "QUOTE", "bid": 3000.0, "ask": 3001.0, "sequence": 500, "exchange_ts": t_now},
+            payload={
+                "instrument": "ETH/USD",
+                "event_type": "QUOTE",
+                "bid": 3000.0,
+                "ask": 3001.0,
+                "sequence": 500,
+                "exchange_ts": t_now,
+            },
             receive_timestamp=t_now,
             raw_id="dup-1",
         )
@@ -89,7 +103,14 @@ def test_duplicate_burst_and_out_of_order_resilience():
     ev2_dup = normalize(
         RawEvent(
             source="KRAKEN",
-            payload={"instrument": "ETH/USD", "event_type": "QUOTE", "bid": 3000.0, "ask": 3001.0, "sequence": 500, "exchange_ts": t_now},
+            payload={
+                "instrument": "ETH/USD",
+                "event_type": "QUOTE",
+                "bid": 3000.0,
+                "ask": 3001.0,
+                "sequence": 500,
+                "exchange_ts": t_now,
+            },
             receive_timestamp=t_now + 0.001,
             raw_id="dup-2",
         )
@@ -102,7 +123,14 @@ def test_duplicate_burst_and_out_of_order_resilience():
     ev3_late = normalize(
         RawEvent(
             source="KRAKEN",
-            payload={"instrument": "ETH/USD", "event_type": "QUOTE", "bid": 2999.0, "ask": 3000.0, "sequence": 499, "exchange_ts": t_now - 0.050},
+            payload={
+                "instrument": "ETH/USD",
+                "event_type": "QUOTE",
+                "bid": 2999.0,
+                "ask": 3000.0,
+                "sequence": 499,
+                "exchange_ts": t_now - 0.050,
+            },
             receive_timestamp=t_now + 0.002,
             raw_id="dup-3",
         )
@@ -116,8 +144,11 @@ def test_duplicate_burst_and_out_of_order_resilience():
 def test_watchdog_silence_detection_and_fast_recovery():
     """Verify watchdog silence detection latency when a feed stops emitting frames."""
     from types import SimpleNamespace
+
     rel = ReliabilityTracker()
-    watchdog = SourceWatchdog(reliability=rel, silence_threshold_s=0.200)  # 200ms threshold
+    watchdog = SourceWatchdog(
+        reliability=rel, silence_threshold_s=0.200
+    )  # 200ms threshold
 
     t0 = 1000.0
     # Feed is active
@@ -145,28 +176,43 @@ def test_wal_torn_tail_crash_recovery_resilience():
         os.makedirs(log_dir, exist_ok=True)
 
         # Write 5 valid frames into WAL
-        with IngestLog(log_dir, max_segment_bytes=64 * 1024, fsync_policy="always") as wal:
+        with IngestLog(
+            log_dir, max_segment_bytes=64 * 1024, fsync_policy="always"
+        ) as wal:
             for i in range(5):
                 wal.append(
                     RawEvent(
                         source="BINANCE",
-                        payload={"instrument": "BTC/USD", "bid": 60000.0 + i, "ask": 60001.0, "sequence": 100 + i},
+                        payload={
+                            "instrument": "BTC/USD",
+                            "bid": 60000.0 + i,
+                            "ask": 60001.0,
+                            "sequence": 100 + i,
+                        },
                         receive_timestamp=time.time(),
                         raw_id=f"wal-frame-{i}",
                     )
                 )
 
         # Intentionally inject a torn, partial write at the end of the segment file
-        segment_files = sorted([os.path.join(log_dir, f) for f in os.listdir(log_dir) if f.endswith(".log")])
+        segment_files = sorted(
+            [
+                os.path.join(log_dir, f)
+                for f in os.listdir(log_dir)
+                if f.endswith(".log")
+            ]
+        )
         assert len(segment_files) >= 1
         active_seg = segment_files[-1]
 
         # Append 14 corrupted bytes (half a frame header)
         with open(active_seg, "ab") as f:
-            f.write(b"\xAA\x55\x00\x02\xDE\xAD\xBE\xEF\x00\x00\x00\x10\x12\x34")
+            f.write(b"\xaa\x55\x00\x02\xde\xad\xbe\xef\x00\x00\x00\x10\x12\x34")
 
         # Reopen IngestLog and verify recovery
-        with IngestLog(log_dir, max_segment_bytes=64 * 1024, fsync_policy="always") as wal_recovered:
+        with IngestLog(
+            log_dir, max_segment_bytes=64 * 1024, fsync_policy="always"
+        ) as wal_recovered:
             recovered_records = list(wal_recovered.iter_from(0))
             # Exactly the 5 legitimate frames must be recovered; the torn 14 bytes safely truncated
             assert len(recovered_records) == 5

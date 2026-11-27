@@ -25,6 +25,7 @@ from mdrap.ingestlog import (
     FRAME_HEADER_SIZE,
     FRAME_MAGIC,
 )
+
 try:
     from mdrap.partition import (
         ConsumerFanoutManager,

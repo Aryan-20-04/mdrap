@@ -22,7 +22,9 @@ from mdrap.models import EventType, QualityStatus
 from mdrap.quality import QualityEngine
 
 
-def run_event_trace(num_events: int = 2500, out_path: str = "audit/phase4/event_trace_results.json"):
+def run_event_trace(
+    num_events: int = 2500, out_path: str = "audit/phase4/event_trace_results.json"
+):
     temp_dir = tempfile.mkdtemp(prefix="mdrap_trace_")
     wal_dir = os.path.join(temp_dir, "wal")
     os.makedirs(wal_dir, exist_ok=True)
@@ -33,31 +35,37 @@ def run_event_trace(num_events: int = 2500, out_path: str = "audit/phase4/event_
         for i in range(1, num_events + 1):
             if i == 500:
                 # Intentional negative price anomaly to verify rule enforcement
-                frames.append({
-                    "seq": i,
-                    "sym": "AAPL",
-                    "px": -10.0,
-                    "sz": 50.0,
-                    "type": "TRADE",
-                })
+                frames.append(
+                    {
+                        "seq": i,
+                        "sym": "AAPL",
+                        "px": -10.0,
+                        "sz": 50.0,
+                        "type": "TRADE",
+                    }
+                )
             elif i % 10 == 0:
                 # Quote
-                frames.append({
-                    "seq": i,
-                    "sym": "AAPL",
-                    "bid": 150.0 + (i % 20) * 0.01,
-                    "ask": 150.05 + (i % 20) * 0.01,
-                    "type": "QUOTE",
-                })
+                frames.append(
+                    {
+                        "seq": i,
+                        "sym": "AAPL",
+                        "bid": 150.0 + (i % 20) * 0.01,
+                        "ask": 150.05 + (i % 20) * 0.01,
+                        "type": "QUOTE",
+                    }
+                )
             else:
                 # Normal trade
-                frames.append({
-                    "seq": i,
-                    "sym": "AAPL",
-                    "px": 150.02 + (i % 20) * 0.005,
-                    "sz": 100.0,
-                    "type": "TRADE",
-                })
+                frames.append(
+                    {
+                        "seq": i,
+                        "sym": "AAPL",
+                        "px": 150.02 + (i % 20) * 0.005,
+                        "sz": 100.0,
+                        "type": "TRADE",
+                    }
+                )
 
         adapter = ReplayFeedAdapter(
             FeedAdapterConfig(venue="NASDAQ", feed_id="ITCH_DIRECT"),
@@ -67,7 +75,7 @@ def run_event_trace(num_events: int = 2500, out_path: str = "audit/phase4/event_
 
         quality_engine = QualityEngine()
         ingest_log = IngestLog(log_dir=wal_dir, max_segment_bytes=10 * 1024 * 1024)
-    
+
         t0 = time.perf_counter()
         processed_count = 0
         valid_count = 0
@@ -104,7 +112,9 @@ def run_event_trace(num_events: int = 2500, out_path: str = "audit/phase4/event_
                 canon.price or 0.0,
                 canon.quantity or 0.0,
                 1 if canon.event_type == EventType.TRADE else 2,
-                0 if eval_res.quality_status == QualityStatus.VALID else (1 if eval_res.quality_status == QualityStatus.SUSPICIOUS else 2),
+                0
+                if eval_res.quality_status == QualityStatus.VALID
+                else (1 if eval_res.quality_status == QualityStatus.SUSPICIOUS else 2),
                 b"\x00" * 8,
             )
             sbe_frames_bytes += len(sbe)
@@ -148,7 +158,9 @@ def run_event_trace(num_events: int = 2500, out_path: str = "audit/phase4/event_
                 "wal_records_replayed": replayed_count,
                 "metered_events_recorded": metered_total,
                 "elapsed_seconds": round(elapsed, 4),
-                "events_per_second": round(processed_count / elapsed if elapsed > 0 else 0, 2),
+                "events_per_second": round(
+                    processed_count / elapsed if elapsed > 0 else 0, 2
+                ),
             },
             "invariants_verified": {
                 "zero_event_loss": processed_count == num_events,
@@ -166,7 +178,9 @@ def run_event_trace(num_events: int = 2500, out_path: str = "audit/phase4/event_
         with open(out_path, "w", encoding="utf-8") as f:
             json.dump(report, f, indent=2)
 
-        print(f"Trace completed successfully: {processed_count} events in {elapsed:.3f}s. Results written to {out_path}.")
+        print(
+            f"Trace completed successfully: {processed_count} events in {elapsed:.3f}s. Results written to {out_path}."
+        )
         return report
 
     finally:

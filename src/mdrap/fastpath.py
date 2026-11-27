@@ -26,6 +26,7 @@ __stability__ = "stable"
 
 logger = logging.getLogger("mdrap.fastpath")
 
+
 def _is_fastpath_disabled() -> bool:
     return os.environ.get("MDRAP_DISABLE_FASTPATH", "").lower() in (
         "1",

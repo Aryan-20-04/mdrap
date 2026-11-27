@@ -12,7 +12,9 @@ import sys
 import pytest
 
 # Ensure mdrap and observer in sys.path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "src")))
+sys.path.insert(
+    0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "src"))
+)
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from observer.state import VenueHealth, StreamHealth, ObserverState
@@ -154,7 +156,9 @@ def test_scenario_8_interleaved_events_from_two_connections():
     # interleaving limitation still rejects 100 as OUT_OF_ORDER, but F-01 prevents phantom gaps.
     v = VenueHealth(venue="BINANCE")
     v.update_sequence(1000)  # High-water established at 1000
-    v.update_sequence(100)   # Lower sequence on shared channel -> OUT_OF_ORDER without rewind
+    v.update_sequence(
+        100
+    )  # Lower sequence on shared channel -> OUT_OF_ORDER without rewind
     assert v.feed_out_of_order == 1
     assert v.last_feed_seq == 1000
     assert v.channels["default:ALL"].max_accepted_seq == 1000
@@ -182,9 +186,27 @@ def test_scenario_9_venue_sequence_reset_with_continuous_transport():
     """
     state = ObserverState(subscription_filter="ALL")
     # Event 1: Transport seq 1, Venue seq 5000
-    state.process_event({"seq": 1, "feed_seq": 5000, "source": "BINANCE", "sym": "BTC-USDT", "type": "TICK", "price": 60000.0})
+    state.process_event(
+        {
+            "seq": 1,
+            "feed_seq": 5000,
+            "source": "BINANCE",
+            "sym": "BTC-USDT",
+            "type": "TICK",
+            "price": 60000.0,
+        }
+    )
     # Event 2: Transport seq 2, Venue seq 1 (venue reset)
-    state.process_event({"seq": 2, "feed_seq": 1, "source": "BINANCE", "sym": "BTC-USDT", "type": "TICK", "price": 60001.0})
+    state.process_event(
+        {
+            "seq": 2,
+            "feed_seq": 1,
+            "source": "BINANCE",
+            "sym": "BTC-USDT",
+            "type": "TICK",
+            "price": 60001.0,
+        }
+    )
 
     assert state.stream_health.gaps == 0
     assert state.health["BINANCE"].feed_resets == 1
@@ -197,8 +219,26 @@ def test_scenario_10_transport_reconnection_without_venue_reset():
     Expected: Transport gaps == 39, Venue gaps == 0.
     """
     state = ObserverState(subscription_filter="ALL")
-    state.process_event({"seq": 10, "feed_seq": 1000, "source": "BINANCE", "sym": "BTC-USDT", "type": "TICK", "price": 60000.0})
-    state.process_event({"seq": 50, "feed_seq": 1001, "source": "BINANCE", "sym": "BTC-USDT", "type": "TICK", "price": 60001.0})
+    state.process_event(
+        {
+            "seq": 10,
+            "feed_seq": 1000,
+            "source": "BINANCE",
+            "sym": "BTC-USDT",
+            "type": "TICK",
+            "price": 60000.0,
+        }
+    )
+    state.process_event(
+        {
+            "seq": 50,
+            "feed_seq": 1001,
+            "source": "BINANCE",
+            "sym": "BTC-USDT",
+            "type": "TICK",
+            "price": 60001.0,
+        }
+    )
 
     # Transport gap: 50 - 10 - 1 = 39
     assert state.stream_health.gaps == 39

@@ -139,8 +139,12 @@ def test_observer_multiple_concurrent_consumers():
     c1_events = []
     c2_events = []
 
-    c1 = ObserverClient(mode="shm", ring_name=ring_name, on_event_callback=lambda e: c1_events.append(e))
-    c2 = ObserverClient(mode="shm", ring_name=ring_name, on_event_callback=lambda e: c2_events.append(e))
+    c1 = ObserverClient(
+        mode="shm", ring_name=ring_name, on_event_callback=lambda e: c1_events.append(e)
+    )
+    c2 = ObserverClient(
+        mode="shm", ring_name=ring_name, on_event_callback=lambda e: c2_events.append(e)
+    )
 
     c1.start()
     c2.start()
@@ -192,7 +196,9 @@ def test_observer_shm_dead_writer_no_busy_spin():
     try:
         assert _wait_until(lambda: client.connected, timeout=2.0)
         for i in range(1, 6):
-            writer.write_tick(seq=i, symbol="BTCUSDT", source="BINANCE", price=65000.0 + i, size=1.0)
+            writer.write_tick(
+                seq=i, symbol="BTCUSDT", source="BINANCE", price=65000.0 + i, size=1.0
+            )
         assert _wait_until(lambda: len(received) == 5, timeout=2.0)
 
         # Close writer while client is actively consuming
@@ -211,13 +217,17 @@ def test_observer_shm_dead_writer_no_busy_spin():
 
         assert wall_delta >= 0.6
         assert not client.connected
-        assert cpu_delta < 0.15, f"Dead-writer busy-spin detected: cpu_delta={cpu_delta:.4f}s in {wall_delta:.4f}s"
+        assert cpu_delta < 0.15, (
+            f"Dead-writer busy-spin detected: cpu_delta={cpu_delta:.4f}s in {wall_delta:.4f}s"
+        )
 
         # stop() must wake backoff immediately (well under 2.0s max backoff)
         t_stop0 = time.perf_counter()
         client.stop()
         stop_elapsed = time.perf_counter() - t_stop0
-        assert stop_elapsed < 0.5, f"client.stop() blocked during backoff: {stop_elapsed:.3f}s"
+        assert stop_elapsed < 0.5, (
+            f"client.stop() blocked during backoff: {stop_elapsed:.3f}s"
+        )
     finally:
         client.stop()
         writer.close()
@@ -251,14 +261,18 @@ def test_observer_shm_restart_fully_retained_backlog():
     try:
         assert _wait_until(lambda: client.connected, timeout=2.0)
         for i in range(1, 6):
-            writer1.write_tick(seq=i, symbol="BTCUSDT", source="BINANCE", price=60000.0 + i, size=1.0)
+            writer1.write_tick(
+                seq=i, symbol="BTCUSDT", source="BINANCE", price=60000.0 + i, size=1.0
+            )
         assert _wait_until(lambda: len(received) == 5, timeout=2.0)
 
         # Restart publisher and pre-write 10 ticks on epoch 2 before client reattaches
         writer1.close()
         writer2 = SHMWriter(name=ring_name, slot_count=64)
         for i in range(1, 11):
-            writer2.write_tick(seq=i, symbol="BTCUSDT", source="BINANCE", price=70000.0 + i, size=1.0)
+            writer2.write_tick(
+                seq=i, symbol="BTCUSDT", source="BINANCE", price=70000.0 + i, size=1.0
+            )
 
         assert _wait_until(lambda: len(received) == 15, timeout=3.0)
         epoch2_prices = [e["price"] for e in received[5:]]
@@ -294,7 +308,9 @@ def test_observer_shm_restart_partially_overwritten_backlog():
     writer2 = None
     try:
         assert _wait_until(lambda: client.connected, timeout=2.0)
-        writer1.write_tick(seq=1, symbol="ETHUSDT", source="KRAKEN", price=3000.0, size=1.0)
+        writer1.write_tick(
+            seq=1, symbol="ETHUSDT", source="KRAKEN", price=3000.0, size=1.0
+        )
         assert _wait_until(lambda: len(received) == 1, timeout=2.0)
 
         # Close writer1 and wait until client sees disconnect so writer2 writes 25 ticks before attach
@@ -303,7 +319,9 @@ def test_observer_shm_restart_partially_overwritten_backlog():
 
         writer2 = SHMWriter(name=ring_name, slot_count=16)
         for i in range(1, 26):
-            writer2.write_tick(seq=i, symbol="ETHUSDT", source="KRAKEN", price=4000.0 + i, size=1.0)
+            writer2.write_tick(
+                seq=i, symbol="ETHUSDT", source="KRAKEN", price=4000.0 + i, size=1.0
+            )
 
         # Retained ring window for head=26, slot_count=16 is seqs 10..25 (16 ticks)
         assert _wait_until(lambda: len(received) == 17, timeout=3.0)
@@ -334,16 +352,20 @@ def test_observer_shm_restart_empty_epoch_then_ticks():
     writer2 = None
     try:
         assert _wait_until(lambda: client.connected, timeout=2.0)
-        writer1.write_tick(seq=1, symbol="BTCUSDT", source="BINANCE", price=61000.0, size=1.0)
+        writer1.write_tick(
+            seq=1, symbol="BTCUSDT", source="BINANCE", price=61000.0, size=1.0
+        )
         assert _wait_until(lambda: len(received) == 1, timeout=2.0)
 
         writer1.close()
         writer2 = SHMWriter(name=ring_name, slot_count=64)
         # Wait until client is attached to writer2 while head == 0
         assert _wait_until(
-            lambda: client.connected
-            and client._current_reader is not None
-            and client._current_reader.epoch_id == writer2.epoch_id,
+            lambda: (
+                client.connected
+                and client._current_reader is not None
+                and client._current_reader.epoch_id == writer2.epoch_id
+            ),
             timeout=2.0,
         )
         time.sleep(0.25)
@@ -352,11 +374,19 @@ def test_observer_shm_restart_empty_epoch_then_ticks():
 
         # Subsequent ticks starting at seq=1 must all arrive cleanly
         for i in range(1, 6):
-            writer2.write_tick(seq=i, symbol="BTCUSDT", source="BINANCE", price=62000.0 + i, size=1.0)
+            writer2.write_tick(
+                seq=i, symbol="BTCUSDT", source="BINANCE", price=62000.0 + i, size=1.0
+            )
 
         assert _wait_until(lambda: len(received) == 6, timeout=2.0)
         assert [e["seq"] for e in received[1:]] == [1, 2, 3, 4, 5]
-        assert [e["price"] for e in received[1:]] == [62001.0, 62002.0, 62003.0, 62004.0, 62005.0]
+        assert [e["price"] for e in received[1:]] == [
+            62001.0,
+            62002.0,
+            62003.0,
+            62004.0,
+            62005.0,
+        ]
     finally:
         client.stop()
         writer1.close()
@@ -382,21 +412,27 @@ def test_observer_shm_multiple_consecutive_epoch_transitions():
     try:
         assert _wait_until(lambda: client.connected, timeout=2.0)
         for i in range(1, 4):
-            writer1.write_tick(seq=i, symbol="BTCUSDT", source="BINANCE", price=1000.0 + i, size=1.0)
+            writer1.write_tick(
+                seq=i, symbol="BTCUSDT", source="BINANCE", price=1000.0 + i, size=1.0
+            )
         assert _wait_until(lambda: len(received) == 3, timeout=2.0)
 
         # Transition 1 -> 2
         writer1.close()
         writer2 = SHMWriter(name=ring_name, slot_count=64)
         for i in range(1, 5):
-            writer2.write_tick(seq=i, symbol="BTCUSDT", source="BINANCE", price=2000.0 + i, size=1.0)
+            writer2.write_tick(
+                seq=i, symbol="BTCUSDT", source="BINANCE", price=2000.0 + i, size=1.0
+            )
         assert _wait_until(lambda: len(received) == 7, timeout=3.0)
 
         # Transition 2 -> 3
         writer2.close()
         writer3 = SHMWriter(name=ring_name, slot_count=64)
         for i in range(1, 6):
-            writer3.write_tick(seq=i, symbol="BTCUSDT", source="BINANCE", price=3000.0 + i, size=1.0)
+            writer3.write_tick(
+                seq=i, symbol="BTCUSDT", source="BINANCE", price=3000.0 + i, size=1.0
+            )
         assert _wait_until(lambda: len(received) == 12, timeout=3.0)
 
         assert [e["price"] for e in received] == (
@@ -434,7 +470,9 @@ def test_observer_shm_reader_races_writer_startup():
         # Now start writer and immediately publish ticks starting at seq=1
         writer = SHMWriter(name=ring_name, slot_count=64)
         for i in range(1, 11):
-            writer.write_tick(seq=i, symbol="BTCUSDT", source="DATABENTO", price=65000.0 + i, size=1.0)
+            writer.write_tick(
+                seq=i, symbol="BTCUSDT", source="DATABENTO", price=65000.0 + i, size=1.0
+            )
 
         assert _wait_until(lambda: len(received) == 10, timeout=3.0)
         assert client.connected
@@ -452,7 +490,9 @@ def test_observer_shm_reader_races_writer_startup():
 
 
 @pytest.mark.parametrize("disable_fastpath", [False, True])
-def test_observer_shm_10000_events_five_venues_databento_parity(monkeypatch, disable_fastpath):
+def test_observer_shm_10000_events_five_venues_databento_parity(
+    monkeypatch, disable_fastpath
+):
     """10,000 events across 5 venues preserve exact DATABENTO identity, 0 gaps, and fastpath parity."""
     if disable_fastpath:
         monkeypatch.setattr(shm_mod, "fastpath", None)
@@ -525,16 +565,28 @@ def test_shm_source_rejects_unregistered_and_reserved_prefix():
     reader = SHMReader(name=ring_name)
     try:
         with pytest.raises(ValueError, match="exceeds 8-byte"):
-            writer.write_tick(seq=1, symbol="BTCUSDT", source="UNKNOWN_LONG_SOURCE", price=100.0, size=1.0)
+            writer.write_tick(
+                seq=1,
+                symbol="BTCUSDT",
+                source="UNKNOWN_LONG_SOURCE",
+                price=100.0,
+                size=1.0,
+            )
 
         with pytest.raises(ValueError, match="reserved wire prefix"):
-            writer.write_tick(seq=2, symbol="BTCUSDT", source="@MDRP001", price=100.0, size=1.0)
+            writer.write_tick(
+                seq=2, symbol="BTCUSDT", source="@MDRP001", price=100.0, size=1.0
+            )
 
         with pytest.raises(ValueError, match="reserved wire prefix"):
-            writer.write_tick(seq=3, symbol="BTCUSDT", source="@MDRPXYZ", price=100.0, size=1.0)
+            writer.write_tick(
+                seq=3, symbol="BTCUSDT", source="@MDRPXYZ", price=100.0, size=1.0
+            )
 
         # Registered >8-byte source round-trips accurately
-        writer.write_tick(seq=4, symbol="BTCUSDT", source="DATABENTO", price=65000.0, size=1.0)
+        writer.write_tick(
+            seq=4, symbol="BTCUSDT", source="DATABENTO", price=65000.0, size=1.0
+        )
         slot = reader.read_slot(4)
         assert slot is not None
         assert slot["source"] == "DATABENTO"
@@ -572,7 +624,9 @@ def test_shm_v3_layout_and_all_registered_sources_parity(monkeypatch):
         with monkeypatch.context() as mp:
             mp.setattr(shm_mod, "fastpath", None)
             for idx, src in enumerate(canonical_sources):
-                w_py.write_tick(seq=idx, symbol="BTC-USD", source=src, price=100.0 + idx, size=1.0)
+                w_py.write_tick(
+                    seq=idx, symbol="BTC-USD", source=src, price=100.0 + idx, size=1.0
+                )
                 item = r_py.read_slot(idx)
                 assert item is not None
                 assert item["source"] == src
@@ -587,7 +641,13 @@ def test_shm_v3_layout_and_all_registered_sources_parity(monkeypatch):
         try:
             for idx, src in enumerate(canonical_sources):
                 ok = fp_mod.native_shm_write_tick(
-                    w_c.shm.buf, slot_count, idx, "BTC-USD", src, price=200.0 + idx, size=2.0
+                    w_c.shm.buf,
+                    slot_count,
+                    idx,
+                    "BTC-USD",
+                    src,
+                    price=200.0 + idx,
+                    size=2.0,
                 )
                 assert ok is True
                 item_ext = fp_mod.native_shm_read_slot(r_c.shm.buf, slot_count, idx)
@@ -595,25 +655,44 @@ def test_shm_v3_layout_and_all_registered_sources_parity(monkeypatch):
                 assert item_ext["source"] == src
 
                 # Force ctypes path (bypass _C_EXT on read) when native DLL is loaded
-                if fp_mod._NATIVE_LIB and hasattr(fp_mod._NATIVE_LIB, "fastpath_shm_read_slot_v3"):
+                if fp_mod._NATIVE_LIB and hasattr(
+                    fp_mod._NATIVE_LIB, "fastpath_shm_read_slot_v3"
+                ):
                     with monkeypatch.context() as mp:
                         mp.setattr(fp_mod, "_C_EXT", None)
-                        item_ct = fp_mod.native_shm_read_slot(r_c.shm.buf, slot_count, idx)
+                        item_ct = fp_mod.native_shm_read_slot(
+                            r_c.shm.buf, slot_count, idx
+                        )
                         assert item_ct == item_ext
         finally:
             r_c.close()
             w_c.close()
 
         # Also test ctypes native_shm_write_tick directly with _C_EXT disabled when native DLL is loaded
-        if fp_mod._NATIVE_LIB and hasattr(fp_mod._NATIVE_LIB, "fastpath_shm_write_tick_v3"):
+        if fp_mod._NATIVE_LIB and hasattr(
+            fp_mod._NATIVE_LIB, "fastpath_shm_write_tick_v3"
+        ):
             ring_ct = f"test_ws_c_ctypes_w_{os.getpid()}_{time.time_ns()}"
             w_ct, r_ct = _init_raw_v3_ring(ring_ct, slot_count=slot_count)
             try:
                 with monkeypatch.context() as mp:
                     mp.setattr(fp_mod, "_C_EXT", None)
-                    for idx, src in enumerate(["DATABENTO", "EQUITIES (SIM)", "CRYPTO (SIM)", "POLYGON-FINRA_TRF"]):
+                    for idx, src in enumerate(
+                        [
+                            "DATABENTO",
+                            "EQUITIES (SIM)",
+                            "CRYPTO (SIM)",
+                            "POLYGON-FINRA_TRF",
+                        ]
+                    ):
                         ok = fp_mod.native_shm_write_tick(
-                            w_ct.shm.buf, slot_count, idx, "ETH-USD", src, price=300.0 + idx, size=1.0
+                            w_ct.shm.buf,
+                            slot_count,
+                            idx,
+                            "ETH-USD",
+                            src,
+                            price=300.0 + idx,
+                            size=1.0,
                         )
                         assert ok is True
                         got = r_ct.read_slot(idx)
@@ -635,27 +714,55 @@ def test_shm_v3_direct_native_rejects_spoof_and_unknown_sources(monkeypatch):
     try:
         for bad in bad_sources:
             with pytest.raises(ValueError):
-                writer.write_tick(seq=0, symbol="BTC-USD", source=bad, price=100.0, size=1.0)
+                writer.write_tick(
+                    seq=0, symbol="BTC-USD", source=bad, price=100.0, size=1.0
+                )
             if fp_mod.has_native_shm():
                 with pytest.raises(ValueError):
                     fp_mod.native_shm_write_tick(
                         writer.shm.buf, 64, 0, "BTC-USD", bad, price=100.0, size=1.0
                     )
-                if fp_mod._NATIVE_LIB and hasattr(fp_mod._NATIVE_LIB, "fastpath_shm_write_tick_v3"):
+                if fp_mod._NATIVE_LIB and hasattr(
+                    fp_mod._NATIVE_LIB, "fastpath_shm_write_tick_v3"
+                ):
                     with monkeypatch.context() as mp:
                         mp.setattr(fp_mod, "_C_EXT", None)
                         with pytest.raises(ValueError):
                             fp_mod.native_shm_write_tick(
-                                writer.shm.buf, 64, 0, "BTC-USD", bad, price=100.0, size=1.0
+                                writer.shm.buf,
+                                64,
+                                0,
+                                "BTC-USD",
+                                bad,
+                                price=100.0,
+                                size=1.0,
                             )
                 if fp_mod._C_EXT and hasattr(fp_mod._C_EXT, "shm_write_tick_v3"):
                     with pytest.raises(ValueError):
                         fp_mod._C_EXT.shm_write_tick_v3(
-                            writer.shm.buf, 64, 0, "BTC-USD", bad,
-                            100.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1, 0, 0x03, 1.0, 1.0, 1.0, 1.0
+                            writer.shm.buf,
+                            64,
+                            0,
+                            "BTC-USD",
+                            bad,
+                            100.0,
+                            1.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            1,
+                            0,
+                            0x03,
+                            1.0,
+                            1.0,
+                            1.0,
+                            1.0,
                         )
         # Direct C DLL checks (must return -3 without touching head=0)
-        if fp_mod._NATIVE_LIB and hasattr(fp_mod._NATIVE_LIB, "fastpath_shm_write_tick_v3"):
+        if fp_mod._NATIVE_LIB and hasattr(
+            fp_mod._NATIVE_LIB, "fastpath_shm_write_tick_v3"
+        ):
             raw_addr = fp_mod.get_buffer_address(writer.shm.buf)
             rc = fp_mod._NATIVE_LIB.fastpath_shm_write_tick_v3(
                 ctypes.c_void_p(raw_addr),
@@ -664,8 +771,19 @@ def test_shm_v3_direct_native_rejects_spoof_and_unknown_sources(monkeypatch):
                 ctypes.c_uint64(0),
                 b"BTC-USD",
                 b"UNKNOWN_LONG_SOURCE",
-                100.0, 1.0, 0.0, 0.0, 0.0, 0.0,
-                1, 0, 0x03, 1.0, 1.0, 1.0, 1.0,
+                100.0,
+                1.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                1,
+                0,
+                0x03,
+                1.0,
+                1.0,
+                1.0,
+                1.0,
             )
             assert rc == -3
             assert reader.read_latest_seq() == 0
@@ -722,9 +840,23 @@ def test_shm_v3_depth_key_parity_python_c_ext_and_ctypes(monkeypatch):
 
         assert py0 is not None and py1 is not None
         assert set(py0.keys()) == {
-            "type", "seq", "sym", "micro_price", "ofi", "bid", "ask",
-            "bid_size", "ask_size", "bids", "asks", "is_crossed",
-            "status", "exchange_ts", "ingest_ts", "broadcast_ts", "engine_us",
+            "type",
+            "seq",
+            "sym",
+            "micro_price",
+            "ofi",
+            "bid",
+            "ask",
+            "bid_size",
+            "ask_size",
+            "bids",
+            "asks",
+            "is_crossed",
+            "status",
+            "exchange_ts",
+            "ingest_ts",
+            "broadcast_ts",
+            "engine_us",
         }
         assert "source" not in py0
         assert "price" not in py0
@@ -743,7 +875,9 @@ def test_shm_v3_depth_key_parity_python_c_ext_and_ctypes(monkeypatch):
             assert c0 == py0
             assert c1 == py1
 
-            if fp_mod._NATIVE_LIB and hasattr(fp_mod._NATIVE_LIB, "fastpath_shm_read_slot_v3"):
+            if fp_mod._NATIVE_LIB and hasattr(
+                fp_mod._NATIVE_LIB, "fastpath_shm_read_slot_v3"
+            ):
                 with monkeypatch.context() as mp:
                     mp.setattr(fp_mod, "_C_EXT", None)
                     ct0 = fp_mod.native_shm_read_slot(reader.shm.buf, 64, 0)
@@ -763,21 +897,33 @@ def test_shm_v3_symbol_utf8_boundary_and_capacity_parity(monkeypatch):
     ring_name = f"test_ws_c_utf8_{os.getpid()}_{time.time_ns()}"
     writer, reader = _init_raw_v3_ring(ring_name, slot_count=64)
     try:
-        valid_syms = ["BTC\u20ac", "\u20ac\u20ac\u20ac\u20ac\u20acA", "ETH-\u20bf"]  # 6B, 16B, 7B UTF-8
+        valid_syms = [
+            "BTC\u20ac",
+            "\u20ac\u20ac\u20ac\u20ac\u20acA",
+            "ETH-\u20bf",
+        ]  # 6B, 16B, 7B UTF-8
         seq = 0
         for sym in valid_syms:
             with monkeypatch.context() as mp:
                 mp.setattr(shm_mod, "fastpath", None)
-                writer.write_tick(seq=seq, symbol=sym, source="BINANCE", price=10.0, size=1.0)
+                writer.write_tick(
+                    seq=seq, symbol=sym, source="BINANCE", price=10.0, size=1.0
+                )
                 py_evt = reader.read_slot(seq)
                 assert py_evt is not None
                 assert py_evt["sym"] == sym
             if fp_mod.has_native_shm():
                 c_evt = fp_mod.native_shm_read_slot(reader.shm.buf, 64, seq)
                 assert c_evt is not None and c_evt["sym"] == sym
-                writer.write_tick(seq=seq + 1, symbol=sym, source="DATABENTO", price=11.0, size=1.0)
+                writer.write_tick(
+                    seq=seq + 1, symbol=sym, source="DATABENTO", price=11.0, size=1.0
+                )
                 n_evt = reader.read_slot(seq + 1)
-                assert n_evt is not None and n_evt["sym"] == sym and n_evt["source"] == "DATABENTO"
+                assert (
+                    n_evt is not None
+                    and n_evt["sym"] == sym
+                    and n_evt["source"] == "DATABENTO"
+                )
                 seq += 2
             else:
                 seq += 1
@@ -786,34 +932,65 @@ def test_shm_v3_symbol_utf8_boundary_and_capacity_parity(monkeypatch):
         bad_syms = ["A" * 14 + "\u20ac", "VERYLONGSYMBOL_OVER_16", "BAD\x00SYM"]
         for bad_sym in bad_syms:
             with pytest.raises(ValueError):
-                writer.write_tick(seq=seq, symbol=bad_sym, source="BINANCE", price=10.0, size=1.0)
+                writer.write_tick(
+                    seq=seq, symbol=bad_sym, source="BINANCE", price=10.0, size=1.0
+                )
             with pytest.raises(ValueError):
                 writer.write_depth(
-                    seq=seq, symbol=bad_sym, best_bid=1.0, best_ask=2.0,
-                    bid_size=1.0, ask_size=1.0, micro_price=1.5, ofi=0.0,
-                    is_crossed=False, exchange_ts=1.0, ingest_ts=1.0,
-                    broadcast_ts=1.0, engine_us=1.0,
+                    seq=seq,
+                    symbol=bad_sym,
+                    best_bid=1.0,
+                    best_ask=2.0,
+                    bid_size=1.0,
+                    ask_size=1.0,
+                    micro_price=1.5,
+                    ofi=0.0,
+                    is_crossed=False,
+                    exchange_ts=1.0,
+                    ingest_ts=1.0,
+                    broadcast_ts=1.0,
+                    engine_us=1.0,
                 )
             if fp_mod.has_native_shm():
                 with pytest.raises(ValueError):
                     fp_mod.native_shm_write_tick(
-                        writer.shm.buf, 64, seq, bad_sym, "BINANCE", price=10.0, size=1.0
+                        writer.shm.buf,
+                        64,
+                        seq,
+                        bad_sym,
+                        "BINANCE",
+                        price=10.0,
+                        size=1.0,
                     )
 
         # Corrupt raw slot with truncated multi-byte UTF-8 sequence must still include 'sym' key cleanly
         corrupt_offset = HEADER_SIZE + ((seq & 63) * SLOT_SIZE)
         struct.pack_into("<Q", writer.shm.buf, corrupt_offset, seq)
         struct.pack_into("<BB", writer.shm.buf, corrupt_offset + 8, 1, 1)  # TICK, VALID
-        struct.pack_into("<16s8s", writer.shm.buf, corrupt_offset + 96, b"TRUNC\xe2\x82".ljust(16, b"\x00"), b"BINANCE\x00")
+        struct.pack_into(
+            "<16s8s",
+            writer.shm.buf,
+            corrupt_offset + 96,
+            b"TRUNC\xe2\x82".ljust(16, b"\x00"),
+            b"BINANCE\x00",
+        )
         struct.pack_into("<Q", writer.shm.buf, 24, seq + 1)
 
         with monkeypatch.context() as mp:
             mp.setattr(shm_mod, "fastpath", None)
             py_corrupt = reader.read_slot(seq)
-        assert py_corrupt is not None and "sym" in py_corrupt and isinstance(py_corrupt["sym"], str)
+        assert (
+            py_corrupt is not None
+            and "sym" in py_corrupt
+            and isinstance(py_corrupt["sym"], str)
+        )
         if fp_mod.has_native_shm():
             c_corrupt = fp_mod.native_shm_read_slot(reader.shm.buf, 64, seq)
-            assert c_corrupt is not None and "sym" in c_corrupt and isinstance(c_corrupt["sym"], str)
+            assert (
+                c_corrupt is not None
+                and "sym" in c_corrupt
+                and isinstance(c_corrupt["sym"], str)
+            )
             assert c_corrupt["sym"] == py_corrupt["sym"]
     finally:
         reader.close()

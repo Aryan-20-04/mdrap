@@ -63,7 +63,9 @@ def test_pilot_readiness_end_to_end_lifecycle():
         )
         canon_1 = normalize(raw_binance_1)
         q_res_1 = q_engine.evaluate(canon_1)
-        prov_1 = create_provenance(raw_binance_1, canon_1, channel="ORDERBOOK_L1", data_mode="LIVE")
+        prov_1 = create_provenance(
+            raw_binance_1, canon_1, channel="ORDERBOOK_L1", data_mode="LIVE"
+        )
         prov_tracker.record(prov_1)
 
         # Step 3: Feed 2 (COINBASE) - Sequence Gap anomaly
@@ -106,7 +108,9 @@ def test_pilot_readiness_end_to_end_lifecycle():
         assert q_res_gap is not None
         assert "SEQUENCE_GAP" in q_res_gap.reasons
 
-        prov_gap = create_provenance(raw_coinbase_gap, canon_gap, channel="ORDERBOOK_L1", data_mode="LIVE")
+        prov_gap = create_provenance(
+            raw_coinbase_gap, canon_gap, channel="ORDERBOOK_L1", data_mode="LIVE"
+        )
         prov_tracker.record(prov_gap)
 
         # Step 4: Record Data Quality Incident
@@ -138,7 +142,9 @@ def test_pilot_readiness_end_to_end_lifecycle():
         )
         canon_2 = normalize(raw_binance_2)
         q_engine.evaluate(canon_2)
-        prov_2 = create_provenance(raw_binance_2, canon_2, channel="ORDERBOOK_L1", data_mode="LIVE")
+        prov_2 = create_provenance(
+            raw_binance_2, canon_2, channel="ORDERBOOK_L1", data_mode="LIVE"
+        )
         prov_tracker.record(prov_2)
 
         # Write canonical batch to store

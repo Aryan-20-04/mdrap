@@ -58,7 +58,7 @@ class SoakMetrics:
         self.total_raw_ingested = 0
         self.total_processed = 0
         self.total_committed = 0
-        self.total_wire_frames = 0   # processed + backpressure drops
+        self.total_wire_frames = 0  # processed + backpressure drops
 
         self.venue_counts: dict[str, int] = {v: 0 for v in venues}
         self.venue_quotes: dict[str, int] = {v: 0 for v in venues}
@@ -104,7 +104,9 @@ class SoakMetrics:
         if len(self.processing_latencies_us) < 100_000:
             self.processing_latencies_us.append(lat_us)
         elif int(time.perf_counter() * 1e6) % 7 == 0:
-            self.processing_latencies_us[int(time.perf_counter() * 1e6) % 100_000] = lat_us
+            self.processing_latencies_us[int(time.perf_counter() * 1e6) % 100_000] = (
+                lat_us
+            )
 
 
 def persist_tombstones(store: Store, feed_mgr: WebSocketFeedManager) -> int:
@@ -126,24 +128,27 @@ def persist_tombstones(store: Store, feed_mgr: WebSocketFeedManager) -> int:
                 created_at REAL NOT NULL
             )
         """)
-        store.conn.executemany("""
+        store.conn.executemany(
+            """
             INSERT OR IGNORE INTO drop_tombstones
             (raw_id, source, instrument, drop_reason, drop_count, evicted_raw_id, receive_ts, payload_json, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, [
-            (
-                t.raw_id,
-                t.source,
-                t.payload.get("instrument", ""),
-                t.payload.get("drop_reason", "BACKPRESSURE_DROP"),
-                t.payload.get("drop_count", 0),
-                t.payload.get("evicted_raw_id"),
-                t.receive_timestamp,
-                json.dumps(t.payload),
-                time.time(),
-            )
-            for t in tombstones
-        ])
+        """,
+            [
+                (
+                    t.raw_id,
+                    t.source,
+                    t.payload.get("instrument", ""),
+                    t.payload.get("drop_reason", "BACKPRESSURE_DROP"),
+                    t.payload.get("drop_count", 0),
+                    t.payload.get("evicted_raw_id"),
+                    t.receive_timestamp,
+                    json.dumps(t.payload),
+                    time.time(),
+                )
+                for t in tombstones
+            ],
+        )
         store.conn.commit()
         count = store.conn.execute("SELECT count(*) FROM drop_tombstones").fetchone()[0]
         return count
@@ -208,7 +213,11 @@ def run_soak_2h(
     logger.info("Engine: %s", engine_type)
     logger.info("Venues: %s", ", ".join(venues))
     logger.info("Instruments: %s", ", ".join(symbols))
-    logger.info("Queue Capacity: %d | Max Tombstones: %d", max_queue_size, feed_mgr.max_tombstones)
+    logger.info(
+        "Queue Capacity: %d | Max Tombstones: %d",
+        max_queue_size,
+        feed_mgr.max_tombstones,
+    )
     logger.info("Chaos disconnects at: %s", chaos_times)
     logger.info("Slow-consumer bursts at: %s", burst_times)
     logger.info("Database: %s", db_path)
@@ -225,10 +234,14 @@ def run_soak_2h(
     last_tombstone_persist = time.time()
     last_compaction = time.time()
 
-    def record_and_buffer(canonical: CanonicalEvent, raw_event: RawEvent | None = None) -> None:
+    def record_and_buffer(
+        canonical: CanonicalEvent, raw_event: RawEvent | None = None
+    ) -> None:
         metrics.total_processed += 1
         venue = canonical.source.upper()
-        is_trade = canonical.event_type == EventType.TRADE or (raw_event and raw_event.payload.get("event_type") == "TRADE")
+        is_trade = canonical.event_type == EventType.TRADE or (
+            raw_event and raw_event.payload.get("event_type") == "TRADE"
+        )
         if is_trade:
             metrics.venue_trades[venue] = metrics.venue_trades.get(venue, 0) + 1
         else:
@@ -247,8 +260,12 @@ def run_soak_2h(
                 d = metrics.venue_reasons[venue]
                 d[r] = d.get(r, 0) + 1
 
-        ex_ts = canonical.exchange_timestamp or (raw_event and raw_event.payload.get("exchange_ts"))
-        recv_ts = canonical.receive_timestamp or (raw_event and raw_event.receive_timestamp)
+        ex_ts = canonical.exchange_timestamp or (
+            raw_event and raw_event.payload.get("exchange_ts")
+        )
+        recv_ts = canonical.receive_timestamp or (
+            raw_event and raw_event.receive_timestamp
+        )
         if ex_ts and recv_ts and ex_ts > 0 and recv_ts >= ex_ts:
             wire_ms = (recv_ts - ex_ts) * 1000.0
             if 0.0 <= wire_ms <= 30000.0:
@@ -262,11 +279,16 @@ def run_soak_2h(
                 metrics.kraken_book_checks += 1
                 if bid >= ask:
                     metrics.kraken_crossed_quotes += 1
-                    logger.error("[KRAKEN VIOLATION] Crossed quote: Bid=%.2f >= Ask=%.2f", bid, ask)
+                    logger.error(
+                        "[KRAKEN VIOLATION] Crossed quote: Bid=%.2f >= Ask=%.2f",
+                        bid,
+                        ask,
+                    )
                 if bid <= 0.0 or ask <= 0.0:
                     metrics.kraken_inverted_spreads += 1
-                if (canonical.bid_size is not None and canonical.bid_size <= 0.0) or \
-                   (canonical.ask_size is not None and canonical.ask_size <= 0.0):
+                if (canonical.bid_size is not None and canonical.bid_size <= 0.0) or (
+                    canonical.ask_size is not None and canonical.ask_size <= 0.0
+                ):
                     metrics.kraken_zero_sizes += 1
                 spread_bps = ((ask - bid) / max(bid, 1.0)) * 10000.0
                 if len(metrics.kraken_spread_bps) < 50000:
@@ -278,7 +300,9 @@ def run_soak_2h(
             metrics.sampled_channel_events += 1
             if canonical.sequence_number is None:
                 metrics.sampled_channel_seq_none += 1
-            if canonical.reasons and any(r in ("SEQUENCE_GAP", "OUT_OF_ORDER") for r in canonical.reasons):
+            if canonical.reasons and any(
+                r in ("SEQUENCE_GAP", "OUT_OF_ORDER") for r in canonical.reasons
+            ):
                 metrics.sampled_channel_false_gaps += 1
 
         batch_buffer.append(canonical)
@@ -304,25 +328,35 @@ def run_soak_2h(
                     chaos_pending.discard(ct)
                     logger.info("[CHAOS] Injecting disconnect at t=%.1fs...", elapsed)
                     stats_b = feed_mgr.stats()
-                    reconnects_before = {v: stats_b.get(v, {}).get("reconnects", 0) for v in venues}
+                    reconnects_before = {
+                        v: stats_b.get(v, {}).get("reconnects", 0) for v in venues
+                    }
                     cb_closed = feed_mgr.inject_disconnect("COINBASE", "BTC/USD")
                     bn_closed = feed_mgr.inject_disconnect("BINANCE", "BTC/USD")
                     time.sleep(5.0)
                     stats_a = feed_mgr.stats()
-                    reconnects_after = {v: stats_a.get(v, {}).get("reconnects", 0) for v in venues}
+                    reconnects_after = {
+                        v: stats_a.get(v, {}).get("reconnects", 0) for v in venues
+                    }
                     chaos_ev = {
                         "timestamp": datetime.now(timezone.utc).isoformat(),
                         "elapsed_s": elapsed,
                         "sockets_closed": cb_closed + bn_closed,
                         "reconnects_before": reconnects_before,
                         "reconnects_after": reconnects_after,
-                        "cb_reconnected": reconnects_after.get("COINBASE", 0) > reconnects_before.get("COINBASE", 0),
-                        "bn_reconnected": reconnects_after.get("BINANCE", 0) > reconnects_before.get("BINANCE", 0),
+                        "cb_reconnected": reconnects_after.get("COINBASE", 0)
+                        > reconnects_before.get("COINBASE", 0),
+                        "bn_reconnected": reconnects_after.get("BINANCE", 0)
+                        > reconnects_before.get("BINANCE", 0),
                     }
                     metrics.chaos_events.append(chaos_ev)
-                    logger.info("[CHAOS] Done. COINBASE: %d->%d, BINANCE: %d->%d",
-                                reconnects_before["COINBASE"], reconnects_after["COINBASE"],
-                                reconnects_before["BINANCE"], reconnects_after["BINANCE"])
+                    logger.info(
+                        "[CHAOS] Done. COINBASE: %d->%d, BINANCE: %d->%d",
+                        reconnects_before["COINBASE"],
+                        reconnects_after["COINBASE"],
+                        reconnects_before["BINANCE"],
+                        reconnects_after["BINANCE"],
+                    )
                     break
 
             # -----------------------------------------------------------------
@@ -331,7 +365,9 @@ def run_soak_2h(
             for bt in sorted(burst_pending):
                 if elapsed >= bt:
                     burst_pending.discard(bt)
-                    logger.info("[BURST] Pausing ingestion for 15s at t=%.1fs...", elapsed)
+                    logger.info(
+                        "[BURST] Pausing ingestion for 15s at t=%.1fs...", elapsed
+                    )
                     q_before = feed_mgr._queue.qsize()
                     drops_before = feed_mgr._drop_count
                     time.sleep(15.0)
@@ -350,8 +386,14 @@ def run_soak_2h(
                         "queue_max": feed_mgr.max_queue_size,
                     }
                     metrics.slow_consumer_events.append(burst_ev)
-                    logger.info("[BURST] Done. Queue: %d->%d, Drops: %d->%d, Tombstones: %d",
-                                q_before, q_after, drops_before, drops_after, tbs)
+                    logger.info(
+                        "[BURST] Done. Queue: %d->%d, Drops: %d->%d, Tombstones: %d",
+                        q_before,
+                        q_after,
+                        drops_before,
+                        drops_after,
+                        tbs,
+                    )
                     break
 
             # -----------------------------------------------------------------
@@ -385,7 +427,9 @@ def run_soak_2h(
             # -----------------------------------------------------------------
             # Batch Flush to SQLite (every 500 events or 1 second)
             # -----------------------------------------------------------------
-            if len(batch_buffer) >= 500 or (now - last_batch_flush >= 1.0 and batch_buffer):
+            if len(batch_buffer) >= 500 or (
+                now - last_batch_flush >= 1.0 and batch_buffer
+            ):
                 store.write_canonical_batch(batch_buffer)
                 store.commit()
                 metrics.total_committed += len(batch_buffer)
@@ -417,9 +461,13 @@ def run_soak_2h(
             if now - last_compaction >= 1800.0:
                 try:
                     store.conn.execute("PRAGMA wal_checkpoint(TRUNCATE);")
-                    logger.info("[COMPACTION] WAL truncated at t=%.0fs. DB size: %.1f MB",
-                                elapsed,
-                                (os.path.getsize(db_path) if os.path.exists(db_path) else 0) / 1024 / 1024)
+                    logger.info(
+                        "[COMPACTION] WAL truncated at t=%.0fs. DB size: %.1f MB",
+                        elapsed,
+                        (os.path.getsize(db_path) if os.path.exists(db_path) else 0)
+                        / 1024
+                        / 1024,
+                    )
                 except Exception:
                     pass
                 last_compaction = now
@@ -436,15 +484,28 @@ def run_soak_2h(
 
                 cpu_pct = process.cpu_percent(interval=None)
                 rss_mib = process.memory_info().rss / (1024.0 * 1024.0)
-                db_mb = (os.path.getsize(db_path) if os.path.exists(db_path) else 0) / (1024.0 * 1024.0)
+                db_mb = (os.path.getsize(db_path) if os.path.exists(db_path) else 0) / (
+                    1024.0 * 1024.0
+                )
                 wal_p = f"{db_path}-wal"
-                wal_mb = (os.path.getsize(wal_p) if os.path.exists(wal_p) else 0) / (1024.0 * 1024.0)
+                wal_mb = (os.path.getsize(wal_p) if os.path.exists(wal_p) else 0) / (
+                    1024.0 * 1024.0
+                )
 
-                metrics.system_samples.append((elapsed, cpu_pct, rss_mib, db_mb, wal_mb, eps))
+                metrics.system_samples.append(
+                    (elapsed, cpu_pct, rss_mib, db_mb, wal_mb, eps)
+                )
 
                 logger.info(
                     "[TELEMETRY %5.0fs/%5.0fs] Events: %d | Rate: %5.1f eps | CPU: %4.1f%% | RSS: %5.1f MiB | DB: %5.1f MB (WAL: %4.1f MB)",
-                    elapsed, duration_s, metrics.total_processed, eps, cpu_pct, rss_mib, db_mb, wal_mb
+                    elapsed,
+                    duration_s,
+                    metrics.total_processed,
+                    eps,
+                    cpu_pct,
+                    rss_mib,
+                    db_mb,
+                    wal_mb,
                 )
 
                 # Safety guardrails
@@ -452,7 +513,9 @@ def run_soak_2h(
                     logger.critical("[RESOURCE ALERT] RSS > 1500 MiB! Stopping safely.")
                     break
                 if (db_mb + wal_mb) > 1200.0:
-                    logger.critical("[RESOURCE ALERT] Storage > 1200 MB! Stopping safely.")
+                    logger.critical(
+                        "[RESOURCE ALERT] Storage > 1200 MB! Stopping safely."
+                    )
                     break
 
     finally:
@@ -490,26 +553,42 @@ def run_soak_2h(
     logger.info("Verifying database integrity...")
     integrity_rows = store.conn.execute("PRAGMA integrity_check;").fetchall()
     integrity_ok = integrity_rows == [("ok",)]
-    db_row_count = store.conn.execute("SELECT count(*) FROM canonical_events;").fetchone()[0]
+    db_row_count = store.conn.execute(
+        "SELECT count(*) FROM canonical_events;"
+    ).fetchone()[0]
     try:
-        tombstone_db_count = store.conn.execute("SELECT count(*) FROM drop_tombstones;").fetchone()[0]
+        tombstone_db_count = store.conn.execute(
+            "SELECT count(*) FROM drop_tombstones;"
+        ).fetchone()[0]
     except Exception:
         tombstone_db_count = 0
     store.close()
 
     # Restart recovery test
     store2 = Store(db_path)
-    restart_row_count = store2.conn.execute("SELECT count(*) FROM canonical_events;").fetchone()[0]
+    restart_row_count = store2.conn.execute(
+        "SELECT count(*) FROM canonical_events;"
+    ).fetchone()[0]
     try:
-        restart_tombstone_count = store2.conn.execute("SELECT count(*) FROM drop_tombstones;").fetchone()[0]
+        restart_tombstone_count = store2.conn.execute(
+            "SELECT count(*) FROM drop_tombstones;"
+        ).fetchone()[0]
     except Exception:
         restart_tombstone_count = 0
     store2.close()
 
-    db_final_mb = (os.path.getsize(db_path) if os.path.exists(db_path) else 0) / (1024.0 * 1024.0)
+    db_final_mb = (os.path.getsize(db_path) if os.path.exists(db_path) else 0) / (
+        1024.0 * 1024.0
+    )
 
-    logger.info("Integrity: %s | Rows: %d | Restart: %d | Tombstones: %d | DB: %.2f MB",
-                integrity_ok, db_row_count, restart_row_count, tombstone_db_count, db_final_mb)
+    logger.info(
+        "Integrity: %s | Rows: %d | Restart: %d | Tombstones: %d | DB: %.2f MB",
+        integrity_ok,
+        db_row_count,
+        restart_row_count,
+        tombstone_db_count,
+        db_final_mb,
+    )
 
     # -----------------------------------------------------------------
     # Generate Report
@@ -583,7 +662,7 @@ def generate_report(
         f"**Environment**: Windows 11 / Python 3.13.1  ",
         f"**Engine Architecture**: `{engine_type}`  ",
         f"**Persistence Tier**: SQLite WAL Mode — Batched Commits + Tombstone Persistence  ",
-        f"**Test Window**: `{start_wall_iso}` → `{end_wall_iso}` ({total_duration_s:.1f}s / {total_duration_s/3600.0:.2f} hours)  ",
+        f"**Test Window**: `{start_wall_iso}` → `{end_wall_iso}` ({total_duration_s:.1f}s / {total_duration_s / 3600.0:.2f} hours)  ",
         f"**Active Feeds**: 5 Venues (`{', '.join(metrics.venues)}`) × 2 Instruments (`{', '.join(metrics.symbols)}`)  ",
         "",
         "---",
@@ -596,7 +675,7 @@ def generate_report(
         "",
         "| Metric | Result | Benchmark | Verdict |",
         "| :--- | :--- | :--- | :--- |",
-        f"| **Test Duration** | **{total_duration_s:.1f}s ({total_duration_s/3600.0:.2f}h)** | ≥ 7,200s | {verdict(total_duration_s >= 7000)} |",
+        f"| **Test Duration** | **{total_duration_s:.1f}s ({total_duration_s / 3600.0:.2f}h)** | ≥ 7,200s | {verdict(total_duration_s >= 7000)} |",
         f"| **Wire Frames Received** | **{metrics.total_wire_frames:,}** | > 500,000 | {verdict(metrics.total_wire_frames >= 500000)} |",
         f"| **Events Processed** | **{total_events:,}** | > 500,000 | {verdict(total_events >= 500000)} |",
         f"| **Average Throughput** | **{avg_eps:.1f} eps** | > 50 eps | {verdict(avg_eps >= 50.0)} |",
@@ -669,36 +748,40 @@ def generate_report(
         val = metrics.venue_valid.get(v, 0)
         susp_total = metrics.venue_suspicious.get(v, 0)
         susp_pct = susp_total / max(tot, 1) * 100.0
-        lines.append(f"| **{v}** | {tot:,} | {dup:,} | {ooo:,} | {stale:,} | {val:,} | **{susp_pct:.1f}%** |")
+        lines.append(
+            f"| **{v}** | {tot:,} | {dup:,} | {ooo:,} | {stale:,} | {val:,} | **{susp_pct:.1f}%** |"
+        )
 
-    lines.extend([
-        "",
-        "---",
-        "",
-        "## 3. Per-Venue Event Accounting & Reconciliation",
-        "",
-        "Full accounting of every event that entered the MDRAP pipeline — including wire frames that could not",
-        "be processed due to backpressure queue saturation.",
-        "",
-        f"| Account | Count | Notes |",
-        f"| :--- | :--- | :--- |",
-        f"| Wire frames received | {metrics.total_wire_frames:,} | Processed + backpressure drops |",
-        f"| Events processed | {total_events:,} | Gateway normalize + quality evaluate |",
-        f"| Backpressure drops | {feed_drop_count:,} | Bounded queue; all recorded as tombstones |",
-        f"| Events committed to DB | {db_row_count:,} | Canonical events persisted via WAL |",
-        f"| Tombstones persisted to DB | {tombstone_db_count:,} | drop_tombstones table |",
-        f"| DB integrity check | {'ok' if integrity_ok else 'FAIL'} | PRAGMA integrity_check |",
-        f"| Canonical rows after restart | {restart_row_count:,} | Cold reconnect verification |",
-        f"| Tombstones after restart | {restart_tombstone_count:,} | Tombstones survive restart |",
-        f"| Accounting balance | {total_events + feed_drop_count == metrics.total_wire_frames} | processed + drops == wire |",
-        "",
-        "---",
-        "",
-        "## 4. Per-Venue Ingestion Breakdown",
-        "",
-        "| Venue | Total | Quotes | Trades | Valid | Suspicious | Invalid | Valid % |",
-        "| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |",
-    ])
+    lines.extend(
+        [
+            "",
+            "---",
+            "",
+            "## 3. Per-Venue Event Accounting & Reconciliation",
+            "",
+            "Full accounting of every event that entered the MDRAP pipeline — including wire frames that could not",
+            "be processed due to backpressure queue saturation.",
+            "",
+            f"| Account | Count | Notes |",
+            f"| :--- | :--- | :--- |",
+            f"| Wire frames received | {metrics.total_wire_frames:,} | Processed + backpressure drops |",
+            f"| Events processed | {total_events:,} | Gateway normalize + quality evaluate |",
+            f"| Backpressure drops | {feed_drop_count:,} | Bounded queue; all recorded as tombstones |",
+            f"| Events committed to DB | {db_row_count:,} | Canonical events persisted via WAL |",
+            f"| Tombstones persisted to DB | {tombstone_db_count:,} | drop_tombstones table |",
+            f"| DB integrity check | {'ok' if integrity_ok else 'FAIL'} | PRAGMA integrity_check |",
+            f"| Canonical rows after restart | {restart_row_count:,} | Cold reconnect verification |",
+            f"| Tombstones after restart | {restart_tombstone_count:,} | Tombstones survive restart |",
+            f"| Accounting balance | {total_events + feed_drop_count == metrics.total_wire_frames} | processed + drops == wire |",
+            "",
+            "---",
+            "",
+            "## 4. Per-Venue Ingestion Breakdown",
+            "",
+            "| Venue | Total | Quotes | Trades | Valid | Suspicious | Invalid | Valid % |",
+            "| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |",
+        ]
+    )
 
     for v in metrics.venues:
         tot = metrics.venue_counts.get(v, 0)
@@ -708,106 +791,126 @@ def generate_report(
         sus = metrics.venue_suspicious.get(v, 0)
         inv = metrics.venue_invalid.get(v, 0)
         v_pct = val / max(tot, 1) * 100.0
-        lines.append(f"| **{v}** | {tot:,} | {q:,} | {t:,} | {val:,} | {sus:,} | {inv:,} | **{v_pct:.2f}%** |")
+        lines.append(
+            f"| **{v}** | {tot:,} | {q:,} | {t:,} | {val:,} | {sus:,} | {inv:,} | **{v_pct:.2f}%** |"
+        )
 
-    lines.extend([
-        "",
-        "---",
-        "",
-        "## 5. Processing Latency Distribution",
-        "",
-        f"- **Median (p50)**: `{proc_p50:.2f} µs`",
-        f"- **95th Percentile**: `{proc_p95:.2f} µs`",
-        f"- **99th Percentile**: `{proc_p99:.2f} µs`",
-        f"- **99.9th Percentile**: `{proc_p999:.2f} µs`",
-        f"- **Sample Count**: `{len(metrics.processing_latencies_us):,}`",
-        "",
-        "---",
-        "",
-        "## 6. Wire Latency & Quote Freshness",
-        "",
-        "| Venue | p50 (ms) | p95 (ms) | p99 (ms) | Max (ms) | Samples |",
-        "| :--- | :--- | :--- | :--- | :--- | :--- |",
-    ])
+    lines.extend(
+        [
+            "",
+            "---",
+            "",
+            "## 5. Processing Latency Distribution",
+            "",
+            f"- **Median (p50)**: `{proc_p50:.2f} µs`",
+            f"- **95th Percentile**: `{proc_p95:.2f} µs`",
+            f"- **99th Percentile**: `{proc_p99:.2f} µs`",
+            f"- **99.9th Percentile**: `{proc_p999:.2f} µs`",
+            f"- **Sample Count**: `{len(metrics.processing_latencies_us):,}`",
+            "",
+            "---",
+            "",
+            "## 6. Wire Latency & Quote Freshness",
+            "",
+            "| Venue | p50 (ms) | p95 (ms) | p99 (ms) | Max (ms) | Samples |",
+            "| :--- | :--- | :--- | :--- | :--- | :--- |",
+        ]
+    )
 
     for v in metrics.venues:
         w = metrics.wire_latencies_ms.get(v, [])
         if w:
-            lines.append(f"| **{v}** | {percentile(w,50):.1f} | {percentile(w,95):.1f} | {percentile(w,99):.1f} | {max(w):.1f} | {len(w):,} |")
+            lines.append(
+                f"| **{v}** | {percentile(w, 50):.1f} | {percentile(w, 95):.1f} | {percentile(w, 99):.1f} | {max(w):.1f} | {len(w):,} |"
+            )
         else:
             lines.append(f"| **{v}** | N/A | N/A | N/A | N/A | 0 |")
 
     sp_note = ""
     if metrics.kraken_spread_bps:
-        sp_note = f" Median spread: `{percentile(metrics.kraken_spread_bps,50):.3f} bps` (p95: `{percentile(metrics.kraken_spread_bps,95):.2f} bps`)"
+        sp_note = f" Median spread: `{percentile(metrics.kraken_spread_bps, 50):.3f} bps` (p95: `{percentile(metrics.kraken_spread_bps, 95):.2f} bps`)"
 
-    lines.extend([
-        "",
-        "---",
-        "",
-        "## 7. Kraken Orderbook Reconstruction & Invariants",
-        "",
-        f"- **BBO Quotes Verified**: `{metrics.kraken_book_checks:,}`",
-        f"- **Crossed Quotes (bid ≥ ask)**: **`{metrics.kraken_crossed_quotes}`** *(0 for entire run)*",
-        f"- **Inverted Spreads (bid ≤ 0 or ask ≤ 0)**: **`{metrics.kraken_inverted_spreads}`**",
-        f"- **Zero-Size Quotes**: **`{metrics.kraken_zero_sizes}`**",
-        f"-{sp_note if sp_note else ' Spread statistics: insufficient data'}",
-        "",
-        "---",
-        "",
-        "## 8. Chaos & Resilience Testing",
-        "",
-        f"### 8.1 Controlled Disconnects ({len(metrics.chaos_events)} events)",
-        "",
-    ])
+    lines.extend(
+        [
+            "",
+            "---",
+            "",
+            "## 7. Kraken Orderbook Reconstruction & Invariants",
+            "",
+            f"- **BBO Quotes Verified**: `{metrics.kraken_book_checks:,}`",
+            f"- **Crossed Quotes (bid ≥ ask)**: **`{metrics.kraken_crossed_quotes}`** *(0 for entire run)*",
+            f"- **Inverted Spreads (bid ≤ 0 or ask ≤ 0)**: **`{metrics.kraken_inverted_spreads}`**",
+            f"- **Zero-Size Quotes**: **`{metrics.kraken_zero_sizes}`**",
+            f"-{sp_note if sp_note else ' Spread statistics: insufficient data'}",
+            "",
+            "---",
+            "",
+            "## 8. Chaos & Resilience Testing",
+            "",
+            f"### 8.1 Controlled Disconnects ({len(metrics.chaos_events)} events)",
+            "",
+        ]
+    )
 
     if metrics.chaos_events:
         for i, ce in enumerate(metrics.chaos_events, 1):
-            lines.extend([
-                f"**Disconnect #{i}** at `{ce['timestamp']}` (elapsed: `{ce['elapsed_s']:.1f}s`)",
-                f"- Sockets terminated: `{ce['sockets_closed']}`",
-                f"- COINBASE reconnected: `{ce['cb_reconnected']}`",
-                f"- BINANCE reconnected: `{ce['bn_reconnected']}`",
-                "",
-            ])
+            lines.extend(
+                [
+                    f"**Disconnect #{i}** at `{ce['timestamp']}` (elapsed: `{ce['elapsed_s']:.1f}s`)",
+                    f"- Sockets terminated: `{ce['sockets_closed']}`",
+                    f"- COINBASE reconnected: `{ce['cb_reconnected']}`",
+                    f"- BINANCE reconnected: `{ce['bn_reconnected']}`",
+                    "",
+                ]
+            )
     else:
         lines.append("*(No chaos events fired — duration too short or disabled)*")
 
-    lines.extend([
-        f"### 8.2 Slow Consumer Bursts ({len(metrics.slow_consumer_events)} events)",
-        "",
-    ])
+    lines.extend(
+        [
+            f"### 8.2 Slow Consumer Bursts ({len(metrics.slow_consumer_events)} events)",
+            "",
+        ]
+    )
 
     if metrics.slow_consumer_events:
-        total_drops_all_bursts = sum(e["drops_triggered"] for e in metrics.slow_consumer_events)
+        total_drops_all_bursts = sum(
+            e["drops_triggered"] for e in metrics.slow_consumer_events
+        )
         for i, se in enumerate(metrics.slow_consumer_events, 1):
-            lines.extend([
-                f"**Burst #{i}** at `{se['timestamp']}` (elapsed: `{se['elapsed_s']:.1f}s`)",
-                f"- Pause: `{se['pause_s']:.0f}s`, Queue peak: `{se['q_peak']}/{se['queue_max']}`, Drops triggered: `{se['drops_triggered']:,}`",
-                f"- Tombstones captured: `{se['tombstones']:,}` (all accounted, zero silent loss)",
-                "",
-            ])
-        lines.append(f"- **Total drops across all burst events**: `{total_drops_all_bursts:,}`")
+            lines.extend(
+                [
+                    f"**Burst #{i}** at `{se['timestamp']}` (elapsed: `{se['elapsed_s']:.1f}s`)",
+                    f"- Pause: `{se['pause_s']:.0f}s`, Queue peak: `{se['q_peak']}/{se['queue_max']}`, Drops triggered: `{se['drops_triggered']:,}`",
+                    f"- Tombstones captured: `{se['tombstones']:,}` (all accounted, zero silent loss)",
+                    "",
+                ]
+            )
+        lines.append(
+            f"- **Total drops across all burst events**: `{total_drops_all_bursts:,}`"
+        )
     else:
         lines.append("*(No burst events fired — duration too short or disabled)*")
 
-    lines.extend([
-        "",
-        "---",
-        "",
-        "## 9. Resource Utilization & Storage",
-        "",
-        f"- **Average CPU**: `{avg_cpu:.1f}%` (Peak: `{peak_cpu:.1f}%`)",
-        f"- **Average RSS Memory**: `{avg_rss:.1f} MiB` (Peak: `{peak_rss:.1f} MiB`)",
-        f"- **Final Database File**: `{db_final_mb:.2f} MB`",
-        f"- **Storage Growth Rate**: `{db_final_mb / (total_duration_s / 3600.0):.1f} MB/hour`",
-        f"- **Telemetry Samples**: `{len(metrics.system_samples)}`",
-        "",
-        "---",
-        "",
-        "## 10. Final Verdict",
-        "",
-    ])
+    lines.extend(
+        [
+            "",
+            "---",
+            "",
+            "## 9. Resource Utilization & Storage",
+            "",
+            f"- **Average CPU**: `{avg_cpu:.1f}%` (Peak: `{peak_cpu:.1f}%`)",
+            f"- **Average RSS Memory**: `{avg_rss:.1f} MiB` (Peak: `{peak_rss:.1f} MiB`)",
+            f"- **Final Database File**: `{db_final_mb:.2f} MB`",
+            f"- **Storage Growth Rate**: `{db_final_mb / (total_duration_s / 3600.0):.1f} MB/hour`",
+            f"- **Telemetry Samples**: `{len(metrics.system_samples)}`",
+            "",
+            "---",
+            "",
+            "## 10. Final Verdict",
+            "",
+        ]
+    )
 
     all_pass = (
         total_events >= 500000
@@ -833,28 +936,30 @@ def generate_report(
     else:
         verdict_str = "## ❌ FAIL — Critical acceptance criteria not met"
 
-    lines.extend([
-        verdict_str,
-        "",
-        "**All verified acceptance criteria:**",
-        f"1. **No unexplained INVALID events**: 0 INVALID across {total_events:,} processed events.",
-        f"2. **No unexplained sequence gaps**: 0 false sequence gaps on sampled channels.",
-        f"3. **Correct orderbook reconstruction**: Kraken {metrics.kraken_book_checks:,} BBO checks, 0 crossed quotes.",
-        f"4. **No silent event loss**: {feed_drop_count:,} backpressure drops accounted via {tombstone_db_count:,} tombstones.",
-        f"5. **Tombstone restart recovery**: {restart_tombstone_count:,}/{tombstone_db_count:,} tombstones recovered.",
-        f"6. **Stable memory**: Peak RSS {peak_rss:.1f} MiB (target < 1,000 MiB).",
-        f"7. **Bounded storage**: Final DB {db_final_mb:.2f} MB (target < 1,200 MB).",
-        f"8. **Persistence durability**: {restart_row_count:,}/{db_row_count:,} canonical rows recovered after restart.",
-        f"9. **All feeds operational or auto-recovered**: Automatic reconnection verified.",
-        "",
-        "**Suspicious events are explained:**",
-        "- BINANCE DUPLICATE/OUT_OF_ORDER: Burst trades with identical fields + cross-channel timestamp jitter.",
-        "- KRAKEN DUPLICATE/OUT_OF_ORDER/STALE: Independent bid/ask level update timing + resting level age.",
-        "- Zero events are misclassified; thresholds have NOT been lowered to improve statistics.",
-        "",
-        f"**Authorized for shadow trading deployment: {'YES' if all_pass or conditional else 'NO'}**",
-        "",
-    ])
+    lines.extend(
+        [
+            verdict_str,
+            "",
+            "**All verified acceptance criteria:**",
+            f"1. **No unexplained INVALID events**: 0 INVALID across {total_events:,} processed events.",
+            f"2. **No unexplained sequence gaps**: 0 false sequence gaps on sampled channels.",
+            f"3. **Correct orderbook reconstruction**: Kraken {metrics.kraken_book_checks:,} BBO checks, 0 crossed quotes.",
+            f"4. **No silent event loss**: {feed_drop_count:,} backpressure drops accounted via {tombstone_db_count:,} tombstones.",
+            f"5. **Tombstone restart recovery**: {restart_tombstone_count:,}/{tombstone_db_count:,} tombstones recovered.",
+            f"6. **Stable memory**: Peak RSS {peak_rss:.1f} MiB (target < 1,000 MiB).",
+            f"7. **Bounded storage**: Final DB {db_final_mb:.2f} MB (target < 1,200 MB).",
+            f"8. **Persistence durability**: {restart_row_count:,}/{db_row_count:,} canonical rows recovered after restart.",
+            f"9. **All feeds operational or auto-recovered**: Automatic reconnection verified.",
+            "",
+            "**Suspicious events are explained:**",
+            "- BINANCE DUPLICATE/OUT_OF_ORDER: Burst trades with identical fields + cross-channel timestamp jitter.",
+            "- KRAKEN DUPLICATE/OUT_OF_ORDER/STALE: Independent bid/ask level update timing + resting level age.",
+            "- Zero events are misclassified; thresholds have NOT been lowered to improve statistics.",
+            "",
+            f"**Authorized for shadow trading deployment: {'YES' if all_pass or conditional else 'NO'}**",
+            "",
+        ]
+    )
 
     with open(output_path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")
@@ -863,14 +968,20 @@ def generate_report(
 
 
 def main():
-    parser = argparse.ArgumentParser(description="MDRAP 6.0.2 Two-Hour Live Feed Soak Test")
+    parser = argparse.ArgumentParser(
+        description="MDRAP 6.0.2 Two-Hour Live Feed Soak Test"
+    )
     parser.add_argument("--duration", type=float, default=7200.0)
     parser.add_argument("--db-path", default="data/soak_test_2hour.db")
     parser.add_argument("--queue-size", type=int, default=2000)
-    parser.add_argument("--venues", nargs="+", default=["BINANCE", "COINBASE", "KRAKEN", "OKX", "BYBIT"])
+    parser.add_argument(
+        "--venues", nargs="+", default=["BINANCE", "COINBASE", "KRAKEN", "OKX", "BYBIT"]
+    )
     parser.add_argument("--symbols", nargs="+", default=["BTC/USD", "ETH/USD"])
     parser.add_argument("--chaos-times", nargs="+", type=float, default=[600.0, 3600.0])
-    parser.add_argument("--burst-times", nargs="+", type=float, default=[1200.0, 5400.0])
+    parser.add_argument(
+        "--burst-times", nargs="+", type=float, default=[1200.0, 5400.0]
+    )
     parser.add_argument("--report", default="audit/v6.0.2/LIVE_SOAK_RESULTS.md")
     args = parser.parse_args()
 

@@ -211,12 +211,16 @@ def test_stale_history_capacity_32_deep_burst():
         # Send 30 distinct stale packets (seq 101 to 130, all d >= 64)
         for s in range(101, 131):
             r = eng.evaluate(_make_canonical(s, ts=101.0))
-            assert r.quality_status == QualityStatus.SUSPICIOUS, f"Failed on {eng_name} at seq {s}"
+            assert r.quality_status == QualityStatus.SUSPICIOUS, (
+                f"Failed on {eng_name} at seq {s}"
+            )
             assert Reason.OUT_OF_ORDER.value in r.reasons
 
         # Retransmit seq 105 -> must be recognized as DUPLICATE because capacity is 32 (not 4!)
         r_dup = eng.evaluate(_make_canonical(105, ts=102.0))
-        assert r_dup.quality_status == QualityStatus.INVALID, f"Failed on {eng_name}: burst retention failed"
+        assert r_dup.quality_status == QualityStatus.INVALID, (
+            f"Failed on {eng_name}: burst retention failed"
+        )
         assert Reason.DUPLICATE.value in r_dup.reasons
 
 

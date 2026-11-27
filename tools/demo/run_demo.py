@@ -52,9 +52,9 @@ from tools.verify_evidence import verify_evidence_package
 
 
 def banner(step: int, title: str, mode_label: str):
-    print(f"\n{'='*78}")
+    print(f"\n{'=' * 78}")
     print(f"  STEP {step:02d}: {title.upper()}  [{mode_label}]")
-    print(f"{'='*78}")
+    print(f"{'=' * 78}")
 
 
 def pause_if_interactive(interactive: bool):
@@ -83,7 +83,9 @@ def run_local_demo(output_dir: Path, interactive: bool = False) -> bool:
     banner(1, "Initialize Dual Market-Data Sources", mode_label)
     print("  [SOURCE 1] SYNTHETIC_BINANCE (BTC-USD Spot Stream)")
     print("  [SOURCE 2] SYNTHETIC_COINBASE (BTC-USD Spot Stream)")
-    print("  [STATUS] Passive read-only sidecar active. Zero order execution capability.")
+    print(
+        "  [STATUS] Passive read-only sidecar active. Zero order execution capability."
+    )
     pause_if_interactive(interactive)
 
     # 2. Stream incoming market-data events
@@ -111,12 +113,14 @@ def run_local_demo(output_dir: Path, interactive: bool = False) -> bool:
                 "sequence": item["sequence"],
             },
             receive_timestamp=item["receive_ts"],
-            raw_id=f"demo-raw-{i+1}",
+            raw_id=f"demo-raw-{i + 1}",
             wire=item["raw_wire"],
         )
         canon = gateway.normalize(raw)
         quality.evaluate(canon)
-        prov = create_provenance(raw, canon, data_mode="SIMULATION", durability_status="COMMITTED_WAL")
+        prov = create_provenance(
+            raw, canon, data_mode="SIMULATION", durability_status="COMMITTED_WAL"
+        )
         tracker.record(prov)
         store.write_canonical_batch([canon])
 
@@ -153,7 +157,9 @@ def run_local_demo(output_dir: Path, interactive: bool = False) -> bool:
     # 4. Sequence tracking
     banner(4, "Cross-Venue Sequence Number Tracking", mode_label)
     print("  SYNTHETIC_BINANCE: Sequences [1001, 1002, 1003] -> Monotonic Increment OK")
-    print("  SYNTHETIC_COINBASE: Sequences [501, 502, 503]    -> Monotonic Increment OK")
+    print(
+        "  SYNTHETIC_COINBASE: Sequences [501, 502, 503]    -> Monotonic Increment OK"
+    )
     pause_if_interactive(interactive)
 
     # 5. Cryptographic event provenance
@@ -164,14 +170,20 @@ def run_local_demo(output_dir: Path, interactive: bool = False) -> bool:
     print(f"  Raw ID:          {sample_prov.raw_id}")
     print(f"  Payload SHA-256: {sample_prov.payload_sha256}")
     print(f"  Lineage Hash:    {sample_prov.lineage_hash}")
-    print("  [CONFIRMED] Wire frame bound cryptographically to canonical ingestion state.")
+    print(
+        "  [CONFIRMED] Wire frame bound cryptographically to canonical ingestion state."
+    )
     pause_if_interactive(interactive)
 
     # 6. Apply 15-rule deterministic quality engine
     banner(6, "15-Rule Deterministic Quality Engine Evaluation", mode_label)
     print("  Active Quality Rules: InvertedSpread, PriceJump, StaleTick, ClockDrift,")
-    print("                        SequenceGap, DuplicateEvent, ZeroVolume, SBEBounds...")
-    print(f"  Baseline Events Evaluated: {len(canonical_events)} | Rejected: 0 | Status: VALID")
+    print(
+        "                        SequenceGap, DuplicateEvent, ZeroVolume, SBEBounds..."
+    )
+    print(
+        f"  Baseline Events Evaluated: {len(canonical_events)} | Rejected: 0 | Status: VALID"
+    )
     pause_if_interactive(interactive)
 
     # 7. Introduce controlled sequence gap anomaly
@@ -200,7 +212,9 @@ def run_local_demo(output_dir: Path, interactive: bool = False) -> bool:
         canon_gap.reasons.append(Reason.SEQUENCE_GAP)
         canon_gap.quality_status = QualityStatus.SUSPICIOUS
 
-    prov_gap = create_provenance(raw_gap, canon_gap, data_mode="SIMULATION", durability_status="COMMITTED_WAL")
+    prov_gap = create_provenance(
+        raw_gap, canon_gap, data_mode="SIMULATION", durability_status="COMMITTED_WAL"
+    )
     tracker.record(prov_gap)
     store.write_canonical_batch([canon_gap])
     raw_events.append(raw_gap)
@@ -209,13 +223,17 @@ def run_local_demo(output_dir: Path, interactive: bool = False) -> bool:
 
     print(f"  Detected Discontinuity: Sequence jumped 1003 -> 1250 (246 dropped ticks)")
     print(f"  Quality Status:         {canon_gap.quality_status.name}")
-    print(f"  Quality Reasons:        {[r.name if hasattr(r, 'name') else str(r) for r in canon_gap.reasons]}")
+    print(
+        f"  Quality Reasons:        {[r.name if hasattr(r, 'name') else str(r) for r in canon_gap.reasons]}"
+    )
     pause_if_interactive(interactive)
 
     # 8. Quarantine anomaly
     banner(8, "Anomaly Quarantine & Routing Isolation", mode_label)
     print(f"  Event {canon_gap.event_id} flagged as {canon_gap.quality_status.name}.")
-    print("  Downstream trading logic alerted: routing isolated to protect execution algorithms.")
+    print(
+        "  Downstream trading logic alerted: routing isolated to protect execution algorithms."
+    )
     pause_if_interactive(interactive)
 
     # 9. Create persistent data-quality incident
@@ -265,9 +283,13 @@ def run_local_demo(output_dir: Path, interactive: bool = False) -> bool:
     recovered_prov = store_recovered.get_provenance(canon_gap.event_id)
 
     assert recovered_inc is not None, "Failed to recover incident after restart"
-    assert recovered_prov is not None, "Failed to recover event provenance after restart"
+    assert recovered_prov is not None, (
+        "Failed to recover event provenance after restart"
+    )
     print(f"  Recovered Incident ID: {recovered_inc.incident_id}")
-    print(f"  Lineage Hash Match:    {recovered_prov['lineage_hash'] == prov_gap.lineage_hash}")
+    print(
+        f"  Lineage Hash Match:    {recovered_prov['lineage_hash'] == prov_gap.lineage_hash}"
+    )
     print(f"  Database WAL State:    CLEAN / CONSISTENT")
     pause_if_interactive(interactive)
 
@@ -277,7 +299,9 @@ def run_local_demo(output_dir: Path, interactive: bool = False) -> bool:
     replay_res = replay_engine.replay_incident(inc_id, buffer_s=15.0)
 
     print(f"  Events in Corridor:    {replay_res.events_replayed}")
-    print(f"  Replay Determinism:    {'100% REPRODUCIBLE' if replay_res.is_reproducible else 'DIVERGENT'}")
+    print(
+        f"  Replay Determinism:    {'100% REPRODUCIBLE' if replay_res.is_reproducible else 'DIVERGENT'}"
+    )
     print(f"  Replay State Digest:   {replay_res.replayed_state_hash}")
     print(f"  Reproduced Anomalies:  {replay_res.reproduced_anomalies}")
     pause_if_interactive(interactive)
@@ -376,11 +400,14 @@ def run_live_demo(output_dir: Path, interactive: bool = False) -> bool:
     banner(1, "Connect to Public Exchange Feeds", mode_label)
     print("  [NOTICE] Connecting strictly to public ticker/depth WebSocket feeds.")
     print("  [SECURITY] Zero trading credentials or API keys required.")
-    print("  [VENUES] Coinbase (wss://ws-feed.exchange.coinbase.com), Kraken (wss://ws.kraken.com)")
+    print(
+        "  [VENUES] Coinbase (wss://ws-feed.exchange.coinbase.com), Kraken (wss://ws.kraken.com)"
+    )
 
     # Execute existing live observation tool
     try:
         from tools.run_customer_demo import run_demo as execute_live_demo
+
         execute_live_demo(output_dir=str(output_dir))
         return True
     except Exception as exc:

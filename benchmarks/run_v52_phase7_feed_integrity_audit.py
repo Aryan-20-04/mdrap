@@ -37,34 +37,56 @@ def run_cross_venue_basis_audit() -> dict[str, Any]:
     """
     # Sample snapshot based on historical recorded data
     venue_data = {
-        "COINBASE": {"pair": "BTC-USD", "bid": 64210.50, "ask": 64211.50, "taker_bps": 6.0},
-        "KRAKEN":   {"pair": "BTC-USD", "bid": 64208.00, "ask": 64212.00, "taker_bps": 10.0},
-        "BINANCE":  {"pair": "BTC-USDT", "bid": 64285.00, "ask": 64286.00, "taker_bps": 5.0},
-        "OKX":      {"pair": "BTC-USDT", "bid": 64284.50, "ask": 64285.50, "taker_bps": 5.0},
-        "BYBIT":    {"pair": "BTC-USDT", "bid": 64285.20, "ask": 64286.20, "taker_bps": 6.0},
+        "COINBASE": {
+            "pair": "BTC-USD",
+            "bid": 64210.50,
+            "ask": 64211.50,
+            "taker_bps": 6.0,
+        },
+        "KRAKEN": {
+            "pair": "BTC-USD",
+            "bid": 64208.00,
+            "ask": 64212.00,
+            "taker_bps": 10.0,
+        },
+        "BINANCE": {
+            "pair": "BTC-USDT",
+            "bid": 64285.00,
+            "ask": 64286.00,
+            "taker_bps": 5.0,
+        },
+        "OKX": {"pair": "BTC-USDT", "bid": 64284.50, "ask": 64285.50, "taker_bps": 5.0},
+        "BYBIT": {
+            "pair": "BTC-USDT",
+            "bid": 64285.20,
+            "ask": 64286.20,
+            "taker_bps": 6.0,
+        },
     }
 
     # Apparent Cross-Venue Spread (Buy Coinbase, Sell Binance)
     buy_venue = "COINBASE"
     sell_venue = "BINANCE"
-    buy_px = venue_data[buy_venue]["ask"]   # 64,211.50 USD
-    sell_px = venue_data[sell_venue]["bid"] # 64,285.00 USDT
+    buy_px = venue_data[buy_venue]["ask"]  # 64,211.50 USD
+    sell_px = venue_data[sell_venue]["bid"]  # 64,285.00 USDT
 
-    gross_spread_usd = sell_px - buy_px # $73.50 (Apparent Arbitrage)
-    gross_spread_bps = (gross_spread_usd / buy_px) * 10_000.0 # ~11.44 bps
+    gross_spread_usd = sell_px - buy_px  # $73.50 (Apparent Arbitrage)
+    gross_spread_bps = (gross_spread_usd / buy_px) * 10_000.0  # ~11.44 bps
 
     # Real-world Execution Cost Breakdown
-    taker_fee_buy = buy_px * (venue_data[buy_venue]["taker_bps"] / 10_000.0) # $38.53
-    taker_fee_sell = sell_px * (venue_data[sell_venue]["taker_bps"] / 10_000.0) # $32.14
-    total_taker_fees = taker_fee_buy + taker_fee_sell # $70.67
+    taker_fee_buy = buy_px * (venue_data[buy_venue]["taker_bps"] / 10_000.0)  # $38.53
+    taker_fee_sell = sell_px * (
+        venue_data[sell_venue]["taker_bps"] / 10_000.0
+    )  # $32.14
+    total_taker_fees = taker_fee_buy + taker_fee_sell  # $70.67
 
     # Tether (USDT/USD) Basis Adjustment: USDT trading at $0.9990
     usdt_usd_rate = 0.9990
-    sell_px_converted_usd = sell_px * usdt_usd_rate # $64,220.715 USD
-    real_basis_spread_usd = sell_px_converted_usd - buy_px # $9.215 USD
+    sell_px_converted_usd = sell_px * usdt_usd_rate  # $64,220.715 USD
+    real_basis_spread_usd = sell_px_converted_usd - buy_px  # $9.215 USD
 
     # Net Economic Alpha
-    net_pnl_usd = real_basis_spread_usd - total_taker_fees # -$61.455 (LOSS!)
+    net_pnl_usd = real_basis_spread_usd - total_taker_fees  # -$61.455 (LOSS!)
     net_pnl_bps = (net_pnl_usd / buy_px) * 10_000.0
 
     return {
@@ -100,38 +122,86 @@ def run_feed_fault_injection_drill() -> dict[str, Any]:
         # 1. Clean Baseline
         {
             "name": "CLEAN_TICK",
-            "payload": {"instrument": "BTCUSDT", "sequence": 100, "exchange_ts": clock_now, "bid": 100.0, "ask": 100.1, "bid_size": 10.0, "ask_size": 10.0},
+            "payload": {
+                "instrument": "BTCUSDT",
+                "sequence": 100,
+                "exchange_ts": clock_now,
+                "bid": 100.0,
+                "ask": 100.1,
+                "bid_size": 10.0,
+                "ask_size": 10.0,
+            },
             "expected_status": QualityStatus.VALID,
         },
         # 2. Sequence Gap (seq jumps from 100 to 105)
         {
             "name": "SEQUENCE_GAP",
-            "payload": {"instrument": "BTCUSDT", "sequence": 105, "exchange_ts": clock_now + 0.01, "bid": 100.0, "ask": 100.1, "bid_size": 10.0, "ask_size": 10.0},
-            "expected_status": QualityStatus.SUSPICIOUS, # or INVALID depending on policy
+            "payload": {
+                "instrument": "BTCUSDT",
+                "sequence": 105,
+                "exchange_ts": clock_now + 0.01,
+                "bid": 100.0,
+                "ask": 100.1,
+                "bid_size": 10.0,
+                "ask_size": 10.0,
+            },
+            "expected_status": QualityStatus.SUSPICIOUS,  # or INVALID depending on policy
         },
         # 3. Crossed Quote (bid 100.5 > ask 100.1)
         {
             "name": "CROSSED_QUOTE",
-            "payload": {"instrument": "BTCUSDT", "sequence": 106, "exchange_ts": clock_now + 0.02, "bid": 100.5, "ask": 100.1, "bid_size": 10.0, "ask_size": 10.0},
+            "payload": {
+                "instrument": "BTCUSDT",
+                "sequence": 106,
+                "exchange_ts": clock_now + 0.02,
+                "bid": 100.5,
+                "ask": 100.1,
+                "bid_size": 10.0,
+                "ask_size": 10.0,
+            },
             "expected_status": QualityStatus.INVALID,
         },
         # 4. Price Spike (+50% jump)
         {
             "name": "PRICE_ANOMALY",
-            "payload": {"instrument": "BTCUSDT", "sequence": 107, "exchange_ts": clock_now + 0.03, "bid": 150.0, "ask": 150.1, "bid_size": 10.0, "ask_size": 10.0},
+            "payload": {
+                "instrument": "BTCUSDT",
+                "sequence": 107,
+                "exchange_ts": clock_now + 0.03,
+                "bid": 150.0,
+                "ask": 150.1,
+                "bid_size": 10.0,
+                "ask_size": 10.0,
+            },
             "expected_status": QualityStatus.SUSPICIOUS,
         },
         # 5. Stale Timestamp (3600s in the past)
         {
             "name": "STALE_TIMESTAMP",
-            "payload": {"instrument": "BTCUSDT", "sequence": 108, "exchange_ts": clock_now - 3600.0, "bid": 100.0, "ask": 100.1, "bid_size": 10.0, "ask_size": 10.0},
+            "payload": {
+                "instrument": "BTCUSDT",
+                "sequence": 108,
+                "exchange_ts": clock_now - 3600.0,
+                "bid": 100.0,
+                "ask": 100.1,
+                "bid_size": 10.0,
+                "ask_size": 10.0,
+            },
             "expected_status": QualityStatus.INVALID,
         },
         # 6. Session Reset (seq resets to 1 after disconnect)
         {
             "name": "SESSION_RESET",
-            "payload": {"instrument": "BTCUSDT", "sequence": 1, "exchange_ts": clock_now + 0.05, "bid": 100.0, "ask": 100.1, "bid_size": 10.0, "ask_size": 10.0},
-            "expected_status": QualityStatus.INVALID, # Detected as out-of-order sequence regression
+            "payload": {
+                "instrument": "BTCUSDT",
+                "sequence": 1,
+                "exchange_ts": clock_now + 0.05,
+                "bid": 100.0,
+                "ask": 100.1,
+                "bid_size": 10.0,
+                "ask_size": 10.0,
+            },
+            "expected_status": QualityStatus.INVALID,  # Detected as out-of-order sequence regression
         },
     ]
 
@@ -150,17 +220,19 @@ def run_feed_fault_injection_drill() -> dict[str, Any]:
         dec = engine.evaluate(norm)
 
         # In MDRAP, severity must match or be non-downgraded
-        status_matches = (dec.quality_status == tc["expected_status"])
+        status_matches = dec.quality_status == tc["expected_status"]
         if status_matches:
             passed_tests += 1
 
-        drill_results.append({
-            "test_case": tc["name"],
-            "expected_status": str(tc["expected_status"]),
-            "actual_status": str(dec.quality_status),
-            "reasons": [str(r) for r in dec.reasons],
-            "passed": status_matches,
-        })
+        drill_results.append(
+            {
+                "test_case": tc["name"],
+                "expected_status": str(tc["expected_status"]),
+                "actual_status": str(dec.quality_status),
+                "reasons": [str(r) for r in dec.reasons],
+                "passed": status_matches,
+            }
+        )
 
     return {
         "total_test_cases": len(test_cases),
@@ -175,18 +247,28 @@ def main():
     print("MDRAP v5.2 PHASE 7: FEED INFRASTRUCTURE & DATA INTEGRITY AUDIT")
     print("=" * 80)
 
-    print("\n[1/2] Conducting Forensic Audit of Cross-Venue Spread (BTC-USD vs BTC-USDT)...")
+    print(
+        "\n[1/2] Conducting Forensic Audit of Cross-Venue Spread (BTC-USD vs BTC-USDT)..."
+    )
     basis_results = run_cross_venue_basis_audit()
-    print(f"  -> Apparent Gross Spread:   ${basis_results['apparent_gross_spread_usd']} ({basis_results['apparent_gross_spread_bps']} bps)")
+    print(
+        f"  -> Apparent Gross Spread:   ${basis_results['apparent_gross_spread_usd']} ({basis_results['apparent_gross_spread_bps']} bps)"
+    )
     print(f"  -> Total Taker Fees:        ${basis_results['taker_fees_paid_usd']}")
-    print(f"  -> Real Currency Spread:    ${basis_results['real_currency_adjusted_spread_usd']}")
-    print(f"  -> Net Executable PnL:      ${basis_results['net_executable_pnl_usd']} ({basis_results['net_executable_pnl_bps']} bps)")
+    print(
+        f"  -> Real Currency Spread:    ${basis_results['real_currency_adjusted_spread_usd']}"
+    )
+    print(
+        f"  -> Net Executable PnL:      ${basis_results['net_executable_pnl_usd']} ({basis_results['net_executable_pnl_bps']} bps)"
+    )
     print(f"  -> Truly Executable:        {basis_results['is_executable_arbitrage']}")
 
     print("\n[2/2] Executing Feed Resilience & Fault Injection Drill...")
     fault_results = run_feed_fault_injection_drill()
     for d in fault_results["drill_details"]:
-        print(f"  -> {d['test_case']}: Expected {d['expected_status']} | Got {d['actual_status']} (Passed: {d['passed']})")
+        print(
+            f"  -> {d['test_case']}: Expected {d['expected_status']} | Got {d['actual_status']} (Passed: {d['passed']})"
+        )
 
     telemetry = {
         "timestamp": time.time(),

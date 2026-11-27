@@ -84,19 +84,32 @@ def test_java_consumer_sdk_execution(tmp_path):
     import shutil
 
     java_exe = shutil.which("java") or (
-        r"C:\Program Files\Java\jdk-20\bin\java.exe" if sys.platform == "win32" else None
+        r"C:\Program Files\Java\jdk-20\bin\java.exe"
+        if sys.platform == "win32"
+        else None
     )
     javac_exe = shutil.which("javac") or (
-        r"C:\Program Files\Java\jdk-20\bin\javac.exe" if sys.platform == "win32" else None
+        r"C:\Program Files\Java\jdk-20\bin\javac.exe"
+        if sys.platform == "win32"
+        else None
     )
 
-    if not java_exe or not os.path.exists(java_exe) or not javac_exe or not os.path.exists(javac_exe):
+    if (
+        not java_exe
+        or not os.path.exists(java_exe)
+        or not javac_exe
+        or not os.path.exists(javac_exe)
+    ):
         raise RuntimeError(
             f"Java JDK prerequisite missing (java={java_exe!r}, javac={javac_exe!r}); cannot verify Java SDK conformance"
         )
 
-    javac_ver = subprocess.run([javac_exe, "-version"], capture_output=True, text=True, check=True)
-    java_ver = subprocess.run([java_exe, "-version"], capture_output=True, text=True, check=True)
+    javac_ver = subprocess.run(
+        [javac_exe, "-version"], capture_output=True, text=True, check=True
+    )
+    java_ver = subprocess.run(
+        [java_exe, "-version"], capture_output=True, text=True, check=True
+    )
     ver_info = (
         f"javac={(javac_ver.stdout or javac_ver.stderr).strip()} | "
         f"java={(java_ver.stdout or java_ver.stderr).strip()}"
@@ -112,7 +125,12 @@ def test_java_consumer_sdk_execution(tmp_path):
                 java_sources.append(os.path.join(root, f))
     assert java_sources, "No Java source files found under sdk/java/src"
 
-    subprocess.run([javac_exe, "-d", str(java_cp)] + java_sources, check=True, capture_output=True, text=True)
+    subprocess.run(
+        [javac_exe, "-d", str(java_cp)] + java_sources,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
 
     result = subprocess.run(
         [java_exe, "-cp", str(java_cp), "com.mdrap.client.examples.ConsumerExample"],
@@ -120,7 +138,9 @@ def test_java_consumer_sdk_execution(tmp_path):
         text=True,
         check=True,
     )
-    assert "All assertions passed successfully!" in result.stdout, f"{ver_info}\n{result.stdout}"
+    assert "All assertions passed successfully!" in result.stdout, (
+        f"{ver_info}\n{result.stdout}"
+    )
     assert "Consumed: 2" in result.stdout, ver_info
     assert "Gaps: 1" in result.stdout, ver_info
     assert "Missing: 4" in result.stdout, ver_info

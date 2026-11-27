@@ -38,7 +38,9 @@ from mdrap.quality import QualityEngine
 # I (uint32 sym_id), H (uint16 venue_id), H (uint16 src_id),
 # B (uint8 quality_status), B (uint8 flags), H (uint16 reason_mask), 12s (reserved 12B)
 RECORD_V1_STRUCT = struct.Struct("<QqqqqIHHBBH12s")
-assert RECORD_V1_STRUCT.size == 64, f"CanonicalRecordV1 must be 64 bytes, got {RECORD_V1_STRUCT.size}"
+assert RECORD_V1_STRUCT.size == 64, (
+    f"CanonicalRecordV1 must be 64 bytes, got {RECORD_V1_STRUCT.size}"
+)
 
 REASON_BITS = {
     Reason.SCHEMA_VIOLATION.value: (1 << 0),
@@ -139,148 +141,515 @@ def generate_vectors(
 
     # 3. Structural Violations on Trades (61 to 85)
     t += 0.01
-    add(instrument="AAPL", event_type="TRADE", ex_ts=t, recv_ts=t + 0.001, seq=61, price=None, qty=10.0)
-    add(instrument="AAPL", event_type="TRADE", ex_ts=t, recv_ts=t + 0.001, seq=62, price=0.0, qty=10.0)
-    add(instrument="AAPL", event_type="TRADE", ex_ts=t, recv_ts=t + 0.001, seq=63, price=-10.0, qty=10.0)
-    add(instrument="AAPL", event_type="TRADE", ex_ts=t, recv_ts=t + 0.001, seq=64, price=float("nan"), qty=10.0)
-    add(instrument="AAPL", event_type="TRADE", ex_ts=t, recv_ts=t + 0.001, seq=65, price=float("inf"), qty=10.0)
-    add(instrument="AAPL", event_type="TRADE", ex_ts=t, recv_ts=t + 0.001, seq=66, price=150.0, qty=None)
-    add(instrument="AAPL", event_type="TRADE", ex_ts=t, recv_ts=t + 0.001, seq=67, price=150.0, qty=0.0)
-    add(instrument="AAPL", event_type="TRADE", ex_ts=t, recv_ts=t + 0.001, seq=68, price=150.0, qty=-1.0)
-    add(instrument="AAPL", event_type="TRADE", ex_ts=t, recv_ts=t + 0.001, seq=69, price=150.0, qty=float("nan"))
-    add(instrument="AAPL", event_type="TRADE", ex_ts=t, recv_ts=t + 0.001, seq=70, price=150.0, qty=float("inf"))
+    add(
+        instrument="AAPL",
+        event_type="TRADE",
+        ex_ts=t,
+        recv_ts=t + 0.001,
+        seq=61,
+        price=None,
+        qty=10.0,
+    )
+    add(
+        instrument="AAPL",
+        event_type="TRADE",
+        ex_ts=t,
+        recv_ts=t + 0.001,
+        seq=62,
+        price=0.0,
+        qty=10.0,
+    )
+    add(
+        instrument="AAPL",
+        event_type="TRADE",
+        ex_ts=t,
+        recv_ts=t + 0.001,
+        seq=63,
+        price=-10.0,
+        qty=10.0,
+    )
+    add(
+        instrument="AAPL",
+        event_type="TRADE",
+        ex_ts=t,
+        recv_ts=t + 0.001,
+        seq=64,
+        price=float("nan"),
+        qty=10.0,
+    )
+    add(
+        instrument="AAPL",
+        event_type="TRADE",
+        ex_ts=t,
+        recv_ts=t + 0.001,
+        seq=65,
+        price=float("inf"),
+        qty=10.0,
+    )
+    add(
+        instrument="AAPL",
+        event_type="TRADE",
+        ex_ts=t,
+        recv_ts=t + 0.001,
+        seq=66,
+        price=150.0,
+        qty=None,
+    )
+    add(
+        instrument="AAPL",
+        event_type="TRADE",
+        ex_ts=t,
+        recv_ts=t + 0.001,
+        seq=67,
+        price=150.0,
+        qty=0.0,
+    )
+    add(
+        instrument="AAPL",
+        event_type="TRADE",
+        ex_ts=t,
+        recv_ts=t + 0.001,
+        seq=68,
+        price=150.0,
+        qty=-1.0,
+    )
+    add(
+        instrument="AAPL",
+        event_type="TRADE",
+        ex_ts=t,
+        recv_ts=t + 0.001,
+        seq=69,
+        price=150.0,
+        qty=float("nan"),
+    )
+    add(
+        instrument="AAPL",
+        event_type="TRADE",
+        ex_ts=t,
+        recv_ts=t + 0.001,
+        seq=70,
+        price=150.0,
+        qty=float("inf"),
+    )
 
     for i in range(71, 86):
         t += 0.01
-        add(instrument="AAPL", event_type="TRADE", ex_ts=t, recv_ts=t + 0.001, seq=i, price=150.01, qty=10.0)
+        add(
+            instrument="AAPL",
+            event_type="TRADE",
+            ex_ts=t,
+            recv_ts=t + 0.001,
+            seq=i,
+            price=150.01,
+            qty=10.0,
+        )
 
     # 4. Structural Violations on Quotes (86 to 110)
     t += 0.01
-    add(instrument="AAPL", event_type="QUOTE", ex_ts=t, recv_ts=t + 0.001, seq=86, bid=None, ask=None)
-    add(instrument="AAPL", event_type="QUOTE", ex_ts=t, recv_ts=t + 0.001, seq=87, bid=150.0, ask=150.1, bid_sz=0.0)
-    add(instrument="AAPL", event_type="QUOTE", ex_ts=t, recv_ts=t + 0.001, seq=88, bid=150.0, ask=150.1, ask_sz=-1.0)
-    add(instrument="AAPL", event_type="QUOTE", ex_ts=t, recv_ts=t + 0.001, seq=89, bid=float("nan"), ask=150.1)
-    add(instrument="AAPL", event_type="QUOTE", ex_ts=t, recv_ts=t + 0.001, seq=90, bid=150.0, ask=float("inf"))
+    add(
+        instrument="AAPL",
+        event_type="QUOTE",
+        ex_ts=t,
+        recv_ts=t + 0.001,
+        seq=86,
+        bid=None,
+        ask=None,
+    )
+    add(
+        instrument="AAPL",
+        event_type="QUOTE",
+        ex_ts=t,
+        recv_ts=t + 0.001,
+        seq=87,
+        bid=150.0,
+        ask=150.1,
+        bid_sz=0.0,
+    )
+    add(
+        instrument="AAPL",
+        event_type="QUOTE",
+        ex_ts=t,
+        recv_ts=t + 0.001,
+        seq=88,
+        bid=150.0,
+        ask=150.1,
+        ask_sz=-1.0,
+    )
+    add(
+        instrument="AAPL",
+        event_type="QUOTE",
+        ex_ts=t,
+        recv_ts=t + 0.001,
+        seq=89,
+        bid=float("nan"),
+        ask=150.1,
+    )
+    add(
+        instrument="AAPL",
+        event_type="QUOTE",
+        ex_ts=t,
+        recv_ts=t + 0.001,
+        seq=90,
+        bid=150.0,
+        ask=float("inf"),
+    )
 
     for i in range(91, 111):
         t += 0.01
-        add(instrument="AAPL", event_type="QUOTE", ex_ts=t, recv_ts=t + 0.001, seq=i, bid=150.01, ask=150.06, bid_sz=10.0, ask_sz=10.0)
+        add(
+            instrument="AAPL",
+            event_type="QUOTE",
+            ex_ts=t,
+            recv_ts=t + 0.001,
+            seq=i,
+            bid=150.01,
+            ask=150.06,
+            bid_sz=10.0,
+            ask_sz=10.0,
+        )
 
     # 5. Crossed Quotes (111 to 130)
     for i in range(111, 121):
         t += 0.01
-        add(instrument="AAPL", event_type="QUOTE", ex_ts=t, recv_ts=t + 0.001, seq=i, bid=150.10 + i * 0.01, ask=150.00, bid_sz=10.0, ask_sz=10.0)
+        add(
+            instrument="AAPL",
+            event_type="QUOTE",
+            ex_ts=t,
+            recv_ts=t + 0.001,
+            seq=i,
+            bid=150.10 + i * 0.01,
+            ask=150.00,
+            bid_sz=10.0,
+            ask_sz=10.0,
+        )
 
     for i in range(121, 131):
         t += 0.01
-        add(instrument="AAPL", event_type="QUOTE", ex_ts=t, recv_ts=t + 0.001, seq=i, bid=150.05, ask=150.05, bid_sz=10.0, ask_sz=10.0)
+        add(
+            instrument="AAPL",
+            event_type="QUOTE",
+            ex_ts=t,
+            recv_ts=t + 0.001,
+            seq=i,
+            bid=150.05,
+            ask=150.05,
+            bid_sz=10.0,
+            ask_sz=10.0,
+        )
 
     # 6. Timestamp Anomalies: Staleness & Implausible Skew (131 to 160)
     for i in range(131, 146):
         t += 0.01
-        add(instrument="AAPL", event_type="TRADE", ex_ts=t - 2.0, recv_ts=t, seq=i, price=150.02, qty=10.0)
+        add(
+            instrument="AAPL",
+            event_type="TRADE",
+            ex_ts=t - 2.0,
+            recv_ts=t,
+            seq=i,
+            price=150.02,
+            qty=10.0,
+        )
 
     for i in range(146, 161):
         t += 0.01
-        add(instrument="AAPL", event_type="TRADE", ex_ts=t + 5.0, recv_ts=t, seq=i, price=150.02, qty=10.0)
+        add(
+            instrument="AAPL",
+            event_type="TRADE",
+            ex_ts=t + 5.0,
+            recv_ts=t,
+            seq=i,
+            price=150.02,
+            qty=10.0,
+        )
 
     # 7. Sequence Anomalies: Gaps, Duplicates, Out-of-Order (161 to 210)
     t += 0.01
-    add(instrument="AAPL", event_type="TRADE", ex_ts=t, recv_ts=t + 0.001, seq=161, price=150.03, qty=10.0)
+    add(
+        instrument="AAPL",
+        event_type="TRADE",
+        ex_ts=t,
+        recv_ts=t + 0.001,
+        seq=161,
+        price=150.03,
+        qty=10.0,
+    )
 
     t += 0.01
-    add(instrument="AAPL", event_type="TRADE", ex_ts=t, recv_ts=t + 0.001, seq=175, price=150.03, qty=10.0)
+    add(
+        instrument="AAPL",
+        event_type="TRADE",
+        ex_ts=t,
+        recv_ts=t + 0.001,
+        seq=175,
+        price=150.03,
+        qty=10.0,
+    )
 
     for i in range(163, 171):
         t += 0.01
-        add(instrument="AAPL", event_type="TRADE", ex_ts=t, recv_ts=t + 0.001, seq=175, price=150.03, qty=10.0)
+        add(
+            instrument="AAPL",
+            event_type="TRADE",
+            ex_ts=t,
+            recv_ts=t + 0.001,
+            seq=175,
+            price=150.03,
+            qty=10.0,
+        )
 
     for i, s in enumerate(range(162, 172)):
         t += 0.01
-        add(instrument="AAPL", event_type="TRADE", ex_ts=t, recv_ts=t + 0.001, seq=s, price=150.03, qty=10.0)
+        add(
+            instrument="AAPL",
+            event_type="TRADE",
+            ex_ts=t,
+            recv_ts=t + 0.001,
+            seq=s,
+            price=150.03,
+            qty=10.0,
+        )
 
     t += 0.01
-    add(instrument="AAPL", event_type="TRADE", ex_ts=t, recv_ts=t + 0.001, seq=165, price=150.03, qty=10.0)
+    add(
+        instrument="AAPL",
+        event_type="TRADE",
+        ex_ts=t,
+        recv_ts=t + 0.001,
+        seq=165,
+        price=150.03,
+        qty=10.0,
+    )
 
     for s in range(182, 211):
         t += 0.01
-        add(instrument="AAPL", event_type="TRADE", ex_ts=t, recv_ts=t + 0.001, seq=s, price=150.04, qty=10.0)
+        add(
+            instrument="AAPL",
+            event_type="TRADE",
+            ex_ts=t,
+            recv_ts=t + 0.001,
+            seq=s,
+            price=150.04,
+            qty=10.0,
+        )
 
     # 8. Price Anomalies & Regime Shift (211 to 250)
     for i in range(211, 216):
         t += 0.01
-        add(instrument="AAPL", event_type="TRADE", ex_ts=t, recv_ts=t + 0.001, seq=i, price=180.0, qty=10.0)
+        add(
+            instrument="AAPL",
+            event_type="TRADE",
+            ex_ts=t,
+            recv_ts=t + 0.001,
+            seq=i,
+            price=180.0,
+            qty=10.0,
+        )
 
     for i in range(216, 221):
         t += 0.01
-        add(instrument="AAPL", event_type="TRADE", ex_ts=t, recv_ts=t + 0.001, seq=i, price=150.04, qty=10.0)
+        add(
+            instrument="AAPL",
+            event_type="TRADE",
+            ex_ts=t,
+            recv_ts=t + 0.001,
+            seq=i,
+            price=150.04,
+            qty=10.0,
+        )
 
     for i in range(221, 233):
         t += 0.01
-        add(instrument="AAPL", event_type="TRADE", ex_ts=t, recv_ts=t + 0.001, seq=i, price=170.0, qty=10.0)
+        add(
+            instrument="AAPL",
+            event_type="TRADE",
+            ex_ts=t,
+            recv_ts=t + 0.001,
+            seq=i,
+            price=170.0,
+            qty=10.0,
+        )
 
     for i in range(233, 251):
         t += 0.01
-        add(instrument="AAPL", event_type="TRADE", ex_ts=t, recv_ts=t + 0.001, seq=i, price=170.02, qty=10.0)
+        add(
+            instrument="AAPL",
+            event_type="TRADE",
+            ex_ts=t,
+            recv_ts=t + 0.001,
+            seq=i,
+            price=170.02,
+            qty=10.0,
+        )
 
     # 9. Multi-source Isolation (251 to 300)
     for s in range(1, 26):
         t += 0.01
-        add(source="FEEDX", instrument="AAPL", event_type="TRADE", ex_ts=t, recv_ts=t + 0.001, seq=250 + s, price=170.05, qty=5.0)
-        add(source="FEEDY", instrument="MSFT", event_type="TRADE", ex_ts=t, recv_ts=t + 0.001, seq=s, price=300.0 + (s % 3) * 0.1, qty=25.0)
+        add(
+            source="FEEDX",
+            instrument="AAPL",
+            event_type="TRADE",
+            ex_ts=t,
+            recv_ts=t + 0.001,
+            seq=250 + s,
+            price=170.05,
+            qty=5.0,
+        )
+        add(
+            source="FEEDY",
+            instrument="MSFT",
+            event_type="TRADE",
+            ex_ts=t,
+            recv_ts=t + 0.001,
+            seq=s,
+            price=300.0 + (s % 3) * 0.1,
+            qty=25.0,
+        )
 
     # 10. Combined Violations (301 to 350)
     for i in range(301, 311):
         t += 0.01
-        add(instrument="AAPL", event_type="QUOTE", ex_ts=t - 1.0, recv_ts=t, seq=280 + i, bid=175.0, ask=170.0, bid_sz=10.0, ask_sz=10.0)
+        add(
+            instrument="AAPL",
+            event_type="QUOTE",
+            ex_ts=t - 1.0,
+            recv_ts=t,
+            seq=280 + i,
+            bid=175.0,
+            ask=170.0,
+            bid_sz=10.0,
+            ask_sz=10.0,
+        )
 
     for i in range(311, 321):
         t += 0.01
-        add(instrument="AAPL", event_type="TRADE", ex_ts=t - 1.0, recv_ts=t, seq=600 + i, price=170.0, qty=10.0)
+        add(
+            instrument="AAPL",
+            event_type="TRADE",
+            ex_ts=t - 1.0,
+            recv_ts=t,
+            seq=600 + i,
+            price=170.0,
+            qty=10.0,
+        )
 
     for i in range(321, 331):
         t += 0.01
-        add(instrument="AAPL", event_type="TRADE", ex_ts=t + 10.0, recv_ts=t, seq=700 + i, price=250.0, qty=10.0)
+        add(
+            instrument="AAPL",
+            event_type="TRADE",
+            ex_ts=t + 10.0,
+            recv_ts=t,
+            seq=700 + i,
+            price=250.0,
+            qty=10.0,
+        )
 
     for i in range(331, 351):
         t += 0.01
-        add(instrument="AAPL", event_type="TRADE", ex_ts=t, recv_ts=t + 0.001, seq=None, price=170.0 + (i % 4) * 0.05, qty=15.0)
+        add(
+            instrument="AAPL",
+            event_type="TRADE",
+            ex_ts=t,
+            recv_ts=t + 0.001,
+            seq=None,
+            price=170.0 + (i % 4) * 0.05,
+            qty=15.0,
+        )
 
     # 11. Section 11: Duplicate Bursts (351 to 365)
     for i in range(351, 366):
         t += 0.01
         # Repeatedly send identical sequence 800
-        add(instrument="AAPL", event_type="TRADE", ex_ts=t, recv_ts=t + 0.001, seq=800, price=170.10, qty=10.0)
+        add(
+            instrument="AAPL",
+            event_type="TRADE",
+            ex_ts=t,
+            recv_ts=t + 0.001,
+            seq=800,
+            price=170.10,
+            qty=10.0,
+        )
 
     # 12. Section 12: Massive Sequence Gap (366 to 375)
     t += 0.01
-    add(instrument="AAPL", event_type="TRADE", ex_ts=t, recv_ts=t + 0.001, seq=50000, price=170.15, qty=10.0)
+    add(
+        instrument="AAPL",
+        event_type="TRADE",
+        ex_ts=t,
+        recv_ts=t + 0.001,
+        seq=50000,
+        price=170.15,
+        qty=10.0,
+    )
     for s in range(50001, 50010):
         t += 0.01
-        add(instrument="AAPL", event_type="TRADE", ex_ts=t, recv_ts=t + 0.001, seq=s, price=170.15, qty=10.0)
+        add(
+            instrument="AAPL",
+            event_type="TRADE",
+            ex_ts=t,
+            recv_ts=t + 0.001,
+            seq=s,
+            price=170.15,
+            qty=10.0,
+        )
 
     # 13. Section 13: High-Volatility Outlier Price Spikes (376 to 385)
     for i in range(376, 386):
         t += 0.01
-        add(instrument="AAPL", event_type="TRADE", ex_ts=t, recv_ts=t + 0.001, seq=50009 + (i - 375), price=240.0 + i, qty=5.0)
+        add(
+            instrument="AAPL",
+            event_type="TRADE",
+            ex_ts=t,
+            recv_ts=t + 0.001,
+            seq=50009 + (i - 375),
+            price=240.0 + i,
+            qty=5.0,
+        )
 
     # 14. Section 14: Inverted Spread Crossed Quotes (386 to 395)
     for i in range(386, 396):
         t += 0.01
-        add(instrument="AAPL", event_type="QUOTE", ex_ts=t, recv_ts=t + 0.001, seq=50020 + (i - 385), bid=180.0, ask=160.0, bid_sz=20.0, ask_sz=20.0)
+        add(
+            instrument="AAPL",
+            event_type="QUOTE",
+            ex_ts=t,
+            recv_ts=t + 0.001,
+            seq=50020 + (i - 385),
+            bid=180.0,
+            ask=160.0,
+            bid_sz=20.0,
+            ask_sz=20.0,
+        )
 
     # 15. Section 15: Extreme Staleness (396 to 405)
     for i in range(396, 406):
         t += 0.01
         # 120 seconds old
-        add(instrument="AAPL", event_type="TRADE", ex_ts=t - 120.0, recv_ts=t, seq=50035 + (i - 395), price=170.20, qty=10.0)
+        add(
+            instrument="AAPL",
+            event_type="TRADE",
+            ex_ts=t - 120.0,
+            recv_ts=t,
+            seq=50035 + (i - 395),
+            price=170.20,
+            qty=10.0,
+        )
 
     # 16. Section 16: Multi-Symbol Side Dictionary Scaling (406 to 420)
     symbols = ["GOOGL", "AMZN", "NVDA", "TSLA", "META"]
     for i, sym in enumerate(symbols):
         for step in range(3):
             t += 0.01
-            add(source="FEEDZ", instrument=sym, event_type="TRADE", ex_ts=t, recv_ts=t + 0.001, seq=100 + step, price=200.0 + i * 50.0, qty=10.0)
+            add(
+                source="FEEDZ",
+                instrument=sym,
+                event_type="TRADE",
+                ex_ts=t,
+                recv_ts=t + 0.001,
+                seq=100 + step,
+                price=200.0 + i * 50.0,
+                qty=10.0,
+            )
 
     # -------------------------------------------------------------------------
     # Oracle Evaluation: Compute Ground-Truth Verdicts & Binary Encoding
@@ -354,8 +723,14 @@ def generate_vectors(
         bid_ticks = _to_ticks(v["bid_price"])
         ask_ticks = _to_ticks(v["ask_price"])
 
-        is_crossed = bool(v["bid_price"] is not None and v["ask_price"] is not None and v["bid_price"] >= v["ask_price"])
-        flags = (0x01 if is_crossed else 0x00) | (0x04 if ev_type == EventType.QUOTE else 0x00)
+        is_crossed = bool(
+            v["bid_price"] is not None
+            and v["ask_price"] is not None
+            and v["bid_price"] >= v["ask_price"]
+        )
+        flags = (0x01 if is_crossed else 0x00) | (
+            0x04 if ev_type == EventType.QUOTE else 0x00
+        )
 
         raw_record = RECORD_V1_STRUCT.pack(
             seq,

@@ -13,9 +13,7 @@ _spec.loader.exec_module(_module)
 
 if __name__ == "__main__":
     out_target = (
-        sys.argv[1]
-        if len(sys.argv) > 1 and not sys.argv[1].startswith("-")
-        else None
+        sys.argv[1] if len(sys.argv) > 1 and not sys.argv[1].startswith("-") else None
     )
     ok1 = _module.build(target_dir=out_target, quiet=False)
     ok2 = _module.build_core(target_dir=out_target, quiet=False)

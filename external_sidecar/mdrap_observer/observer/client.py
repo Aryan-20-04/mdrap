@@ -49,7 +49,9 @@ class ObserverClient:
     def start(self) -> None:
         self._stop_event.clear()
         self.running = True
-        self._thread = threading.Thread(target=self._run_loop, daemon=True, name="ObserverIngressWorker")
+        self._thread = threading.Thread(
+            target=self._run_loop, daemon=True, name="ObserverIngressWorker"
+        )
         self._thread.start()
 
     def stop(self) -> None:
@@ -151,7 +153,9 @@ class ObserverClient:
                             new_epoch = evt.get("new_epoch") or reader.epoch_id
                             last_epoch_id = new_epoch
                             last_seq = None
-                            start_seq = reader.earliest_available_seq(record_overrun=False)
+                            start_seq = reader.earliest_available_seq(
+                                record_overrun=False
+                            )
                             _sync_overrun()
                             if not initial_connect:
                                 self.reconnect_count += 1
@@ -238,14 +242,18 @@ class ObserverClient:
                 self.connected = False
                 if not initial_connect:
                     self.reconnect_count += 1
-                logger.debug(f"TCP connection failed ({e}). Reconnecting in {backoff:.1f}s...")
+                logger.debug(
+                    f"TCP connection failed ({e}). Reconnecting in {backoff:.1f}s..."
+                )
                 self._stop_event.wait(backoff)
                 backoff = min(3.0, backoff * 1.5)
             except Exception as e:
                 self.connected = False
                 if not initial_connect:
                     self.reconnect_count += 1
-                logger.warning(f"Unexpected TCP error: {e}. Retrying in {backoff:.1f}s...")
+                logger.warning(
+                    f"Unexpected TCP error: {e}. Retrying in {backoff:.1f}s..."
+                )
                 self._stop_event.wait(backoff)
                 backoff = min(3.0, backoff * 1.5)
             finally:

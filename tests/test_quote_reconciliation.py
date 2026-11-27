@@ -159,8 +159,12 @@ def test_quote_reconciliation_tie_breaking_spread_and_depth():
 
     # FEED_1: spread 2.0 (50000 to 50002)
     # FEED_2: spread 1.0 (50000 to 50001) -> tighter spread wins!
-    q1 = _make_quote("FEED_1", bid_price=50000.0, ask_price=50002.0, bid_size=10.0, ask_size=10.0)
-    q2 = _make_quote("FEED_2", bid_price=50000.0, ask_price=50001.0, bid_size=5.0, ask_size=5.0)
+    q1 = _make_quote(
+        "FEED_1", bid_price=50000.0, ask_price=50002.0, bid_size=10.0, ask_size=10.0
+    )
+    q2 = _make_quote(
+        "FEED_2", bid_price=50000.0, ask_price=50001.0, bid_size=5.0, ask_size=5.0
+    )
 
     reconciler.reconcile(q1)
     dec = reconciler.reconcile(q2)
@@ -168,7 +172,9 @@ def test_quote_reconciliation_tie_breaking_spread_and_depth():
     assert dec.chosen_source == "FEED_2"
 
     # Now compare FEED_2 with FEED_3 having same spread (1.0), but FEED_3 has larger depth (100 vs 10)
-    q3 = _make_quote("FEED_3", bid_price=50000.0, ask_price=50001.0, bid_size=50.0, ask_size=50.0)
+    q3 = _make_quote(
+        "FEED_3", bid_price=50000.0, ask_price=50001.0, bid_size=50.0, ask_size=50.0
+    )
     dec3 = reconciler.reconcile(q3)
     assert dec3 is not None
     assert dec3.chosen_source == "FEED_3"

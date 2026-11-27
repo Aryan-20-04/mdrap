@@ -34,7 +34,7 @@ os.environ.setdefault("MDRAP_DAEMON_TOKEN", "staging_admin_token_phase10")
 
 def run_deployment_and_connectivity_validation():
     print("=== MDRAP Phase 10 Networked Staging Deployment & Connectivity ===")
-    
+
     cluster_dir = os.path.join(_REPO_ROOT, "audit", "phase10", "staging_cluster_data")
     if os.path.exists(cluster_dir):
         shutil.rmtree(cluster_dir, ignore_errors=True)
@@ -108,27 +108,37 @@ def run_deployment_and_connectivity_validation():
             client.close()
 
             assert "OK" in resp, f"Health check failed on {nid}: {resp}"
-            dep_validation["readiness_checks"].append({
-                "node_id": nid,
-                "port": daemon.port,
-                "check": "HEALTH",
-                "rtt_ms": rtt_ms,
-                "status": "PASS",
-            })
-            conn_results["network_tests"].append({
-                "target_node": nid,
-                "port": daemon.port,
-                "endpoint": f"127.0.0.1:{daemon.port}",
-                "tcp_connect": "SUCCESS",
-                "round_trip_ms": rtt_ms,
-            })
+            dep_validation["readiness_checks"].append(
+                {
+                    "node_id": nid,
+                    "port": daemon.port,
+                    "check": "HEALTH",
+                    "rtt_ms": rtt_ms,
+                    "status": "PASS",
+                }
+            )
+            conn_results["network_tests"].append(
+                {
+                    "target_node": nid,
+                    "port": daemon.port,
+                    "endpoint": f"127.0.0.1:{daemon.port}",
+                    "tcp_connect": "SUCCESS",
+                    "round_trip_ms": rtt_ms,
+                }
+            )
             print(f"[OK] {nid} health probe passed (RTT: {rtt_ms} ms)")
 
         # 3. Inter-Node Consensus Mesh Verification (N=3, Quorum=2)
         node_ids = [c["node_id"] for c in node_configs]
-        coord_01 = ConsensusCoordinator(node_id="node-01", cluster_nodes=node_ids, lease_duration_sec=0.5)
-        coord_02 = ConsensusCoordinator(node_id="node-02", cluster_nodes=node_ids, lease_duration_sec=0.5)
-        coord_03 = ConsensusCoordinator(node_id="node-03", cluster_nodes=node_ids, lease_duration_sec=0.5)
+        coord_01 = ConsensusCoordinator(
+            node_id="node-01", cluster_nodes=node_ids, lease_duration_sec=0.5
+        )
+        coord_02 = ConsensusCoordinator(
+            node_id="node-02", cluster_nodes=node_ids, lease_duration_sec=0.5
+        )
+        coord_03 = ConsensusCoordinator(
+            node_id="node-03", cluster_nodes=node_ids, lease_duration_sec=0.5
+        )
 
         # Node-01 requests leadership
         token = coord_01.request_leadership()
@@ -143,7 +153,9 @@ def run_deployment_and_connectivity_validation():
             "quorum_achieved": True,
             "status": "PASS",
         }
-        print(f"[OK] 3-Node Quorum consensus initialized: Leader={token.leader_id}, Epoch={token.epoch}")
+        print(
+            f"[OK] 3-Node Quorum consensus initialized: Leader={token.leader_id}, Epoch={token.epoch}"
+        )
 
         # Record inter-node round trips
         conn_results["inter_node_latencies_ms"] = {
@@ -170,7 +182,9 @@ def run_deployment_and_connectivity_validation():
         json.dump(dep_validation, f, indent=2)
     print(f"[OK] Saved deployment validation results to: {out_dep}")
 
-    out_conn = os.path.join(_REPO_ROOT, "audit", "phase10", "network_connectivity_results.json")
+    out_conn = os.path.join(
+        _REPO_ROOT, "audit", "phase10", "network_connectivity_results.json"
+    )
     with open(out_conn, "w", encoding="utf-8") as f:
         json.dump(conn_results, f, indent=2)
     print(f"[OK] Saved network connectivity results to: {out_conn}")

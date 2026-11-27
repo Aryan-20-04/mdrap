@@ -16,6 +16,7 @@ try:
     from rich.panel import Panel
     from rich.table import Table
     from rich.text import Text
+
     HAS_RICH = True
 except ImportError:
     HAS_RICH = False
@@ -46,7 +47,9 @@ class ObserverDashboard:
         if hasattr(self.exporter, "snapshot_stats"):
             st = self.exporter.snapshot_stats()
             return int(st.get("write_errors", 0)), int(st.get("dropped_records", 0))
-        return int(getattr(self.exporter, "write_errors", 0)), int(getattr(self.exporter, "dropped_records", 0))
+        return int(getattr(self.exporter, "write_errors", 0)), int(
+            getattr(self.exporter, "dropped_records", 0)
+        )
 
     def render(self) -> None:
         if HAS_RICH and self.console:
@@ -64,8 +67,12 @@ class ObserverDashboard:
         venues_snap = snap["venues"]
         total_invalid = sum(v["invalid_numeric_events"] for v in venues_snap.values())
         total_stale_epoch = sum(v["stale_epoch_packets"] for v in venues_snap.values())
-        total_dups = stream["duplicates"] + sum(v["duplicates"] for v in venues_snap.values())
-        total_ooo = stream["out_of_order"] + sum(v["out_of_order"] for v in venues_snap.values())
+        total_dups = stream["duplicates"] + sum(
+            v["duplicates"] for v in venues_snap.values()
+        )
+        total_ooo = stream["out_of_order"] + sum(
+            v["out_of_order"] for v in venues_snap.values()
+        )
         exp_errs, exp_drops = self._get_exporter_telemetry()
 
         # 1. Header & Summary Stats
@@ -86,14 +93,18 @@ class ObserverDashboard:
         if self.exporter is not None:
             header_text.append(
                 f"• Export Err/Drop: {exp_errs}/{exp_drops} ",
-                style="bold green" if (exp_errs == 0 and exp_drops == 0) else "bold red",
+                style="bold green"
+                if (exp_errs == 0 and exp_drops == 0)
+                else "bold red",
             )
         header_text.append(f"• Memory RSS: {rss:.1f} MiB", style="bold magenta")
 
         summary_panel = Panel(header_text, box=ROUNDED, border_style="cyan")
 
         # 2. Consolidated NBBO Table
-        nbbo_table = Table(title="Consolidated Best Bid & Offer (NBBO)", box=ROUNDED, expand=True)
+        nbbo_table = Table(
+            title="Consolidated Best Bid & Offer (NBBO)", box=ROUNDED, expand=True
+        )
         nbbo_table.add_column("Asset", style="bold yellow", justify="left")
         nbbo_table.add_column("Best Bid", style="bold green", justify="right")
         nbbo_table.add_column("Bid Size", style="dim", justify="right")
@@ -105,7 +116,9 @@ class ObserverDashboard:
         for asset in CORE_ASSETS:
             bid, b_sz, ask, a_sz = snap["nbbo"][asset]
             mid = (bid + ask) / 2.0 if bid > 0 and ask > 0 else max(bid, ask)
-            spread_bps = ((ask - bid) / mid * 10000.0) if bid > 0 and ask >= bid else 0.0
+            spread_bps = (
+                ((ask - bid) / mid * 10000.0) if bid > 0 and ask >= bid else 0.0
+            )
             nbbo_table.add_row(
                 asset,
                 f"${bid:,.2f}" if bid > 0 else "—",
@@ -117,7 +130,9 @@ class ObserverDashboard:
             )
 
         # 3. 5-Venue Matrix Table
-        venue_table = Table(title="5-Venue Feed Integrity & Depth Matrix", box=ROUNDED, expand=True)
+        venue_table = Table(
+            title="5-Venue Feed Integrity & Depth Matrix", box=ROUNDED, expand=True
+        )
         venue_table.add_column("Venue", style="bold cyan")
         venue_table.add_column("Status", justify="center")
         venue_table.add_column("Asset", justify="center")
@@ -133,7 +148,9 @@ class ObserverDashboard:
             vh = venues_snap[v]
             status_style = _venue_status_style(vh["status"])
             status_badge = f"[{status_style}]{vh['status']}[/{status_style}]"
-            age_s = f"{now - vh['last_seen_ts']:.1f}s" if vh["last_seen_ts"] > 0 else "—"
+            age_s = (
+                f"{now - vh['last_seen_ts']:.1f}s" if vh["last_seen_ts"] > 0 else "—"
+            )
 
             for i, asset in enumerate(CORE_ASSETS):
                 bid_px, ask_px, spread_bps = snap["quotes"][asset][v]
@@ -145,15 +162,30 @@ class ObserverDashboard:
                 stat_col = status_badge if i == 0 else ""
                 evt_col = f"{vh['events']:,}" if i == 0 else ""
                 gap_col = f"{vh['gaps']}" if i == 0 else ""
-                err_col = f"{vh['invalid_numeric_events']}/{vh['stale_epoch_packets']}" if i == 0 else ""
+                err_col = (
+                    f"{vh['invalid_numeric_events']}/{vh['stale_epoch_packets']}"
+                    if i == 0
+                    else ""
+                )
                 age_col = age_s if i == 0 else ""
 
                 venue_table.add_row(
-                    venue_col, stat_col, asset, bid_str, ask_str, spr_str, evt_col, gap_col, err_col, age_col
+                    venue_col,
+                    stat_col,
+                    asset,
+                    bid_str,
+                    ask_str,
+                    spr_str,
+                    evt_col,
+                    gap_col,
+                    err_col,
+                    age_col,
                 )
 
         # 4. Recent Trades Tape (Lee-Ready heuristic estimate)
-        trade_table = Table(title="Recent Trades (Lee-Ready Heuristic)", box=ROUNDED, expand=True)
+        trade_table = Table(
+            title="Recent Trades (Lee-Ready Heuristic)", box=ROUNDED, expand=True
+        )
         trade_table.add_column("Time", style="dim")
         trade_table.add_column("Venue", style="cyan")
         trade_table.add_column("Asset", style="yellow")
@@ -195,8 +227,12 @@ class ObserverDashboard:
         venues_snap = snap["venues"]
         total_invalid = sum(v["invalid_numeric_events"] for v in venues_snap.values())
         total_stale_epoch = sum(v["stale_epoch_packets"] for v in venues_snap.values())
-        total_dups = stream["duplicates"] + sum(v["duplicates"] for v in venues_snap.values())
-        total_ooo = stream["out_of_order"] + sum(v["out_of_order"] for v in venues_snap.values())
+        total_dups = stream["duplicates"] + sum(
+            v["duplicates"] for v in venues_snap.values()
+        )
+        total_ooo = stream["out_of_order"] + sum(
+            v["out_of_order"] for v in venues_snap.values()
+        )
         exp_errs, exp_drops = self._get_exporter_telemetry()
 
         os.system("cls" if os.name == "nt" else "clear")
@@ -218,7 +254,9 @@ class ObserverDashboard:
         print("\n--- VENUES ---")
         for v in VENUES:
             vh = venues_snap[v]
-            age_s = f"{now - vh['last_seen_ts']:.1f}s" if vh["last_seen_ts"] > 0 else "—"
+            age_s = (
+                f"{now - vh['last_seen_ts']:.1f}s" if vh["last_seen_ts"] > 0 else "—"
+            )
             status_disp = "STALE (!)" if vh["status"] == "STALE" else vh["status"]
             print(
                 f" {v:10s} | Status: {status_disp:12s} | Events: {vh['events']:7d}"

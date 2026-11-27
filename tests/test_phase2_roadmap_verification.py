@@ -38,6 +38,7 @@ from mdrap.itch import (
     ITCHMessage,
     ITCHOrderBookTracker,
 )
+
 try:
     from mdrap.gateway_tcp import TCPGatewayServer
 except ImportError:

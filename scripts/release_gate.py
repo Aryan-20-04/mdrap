@@ -75,7 +75,9 @@ def run_gate(
 
 def gate_rules_sync():
     res = subprocess.run(
-        [sys.executable, "tools/gen_reasons.py", "--check"], cwd=_REPO_ROOT, env=_get_env()
+        [sys.executable, "tools/gen_reasons.py", "--check"],
+        cwd=_REPO_ROOT,
+        env=_get_env(),
     )
     if res.returncode != 0:
         raise RuntimeError("rules.def single-source-of-truth parity check failed")

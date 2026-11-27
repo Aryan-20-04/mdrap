@@ -104,7 +104,9 @@ class ExecutionTearSheet:
             "avg_holding_time_s": round(self.avg_holding_time_s, 2),
             "portfolio_turnover_usd": round(self.portfolio_turnover_usd, 2),
             "peak_inventory": round(self.peak_inventory, 2),
-            "avg_adverse_selection_100ms_bps": round(self.avg_adverse_selection_100ms_bps, 2),
+            "avg_adverse_selection_100ms_bps": round(
+                self.avg_adverse_selection_100ms_bps, 2
+            ),
             "total_orders_submitted": self.total_orders_submitted,
             "orders_filled": self.orders_filled,
             "orders_partially_filled": self.orders_partially_filled,
@@ -174,7 +176,9 @@ def compute_deflated_sharpe_ratio(
         )
     euler_mascheroni = 0.5772156649
     log_k = max(1e-4, math.log(n_trials))
-    expected_max_sr = math.sqrt(2.0 * log_k) * (1.0 - (euler_mascheroni / (2.0 * log_k)))
+    expected_max_sr = math.sqrt(2.0 * log_k) * (
+        1.0 - (euler_mascheroni / (2.0 * log_k))
+    )
     return compute_probabilistic_sharpe_ratio(
         observed_sharpe, expected_max_sr, n_samples, skewness, kurtosis
     )
@@ -205,7 +209,10 @@ def compute_sharpe_confidence_interval(
         var_term = 1e-6
     sigma_sr = math.sqrt(var_term / (n_samples - 1.0))
     z_crit = 1.95996  # 95% two-sided
-    return (round(sharpe - (z_crit * sigma_sr), 4), round(sharpe + (z_crit * sigma_sr), 4))
+    return (
+        round(sharpe - (z_crit * sigma_sr), 4),
+        round(sharpe + (z_crit * sigma_sr), 4),
+    )
 
 
 def generate_tear_sheet(
@@ -239,11 +246,19 @@ def generate_tear_sheet(
     win_count = len(win_trades)
     loss_count = len(loss_trades)
     total_trades = len(trade_ledger)
-    win_rate = (win_count / (win_count + loss_count) * 100.0) if (win_count + loss_count) > 0 else 0.0
+    win_rate = (
+        (win_count / (win_count + loss_count) * 100.0)
+        if (win_count + loss_count) > 0
+        else 0.0
+    )
 
     gross_profit = sum(win_trades)
     gross_loss = abs(sum(loss_trades))
-    profit_factor = (gross_profit / gross_loss) if gross_loss > 0 else (gross_profit if gross_profit > 0 else 1.0)
+    profit_factor = (
+        (gross_profit / gross_loss)
+        if gross_loss > 0
+        else (gross_profit if gross_profit > 0 else 1.0)
+    )
 
     # Drawdown calculation
     peak_eq = initial_capital
@@ -280,7 +295,11 @@ def generate_tear_sheet(
         if downside_returns:
             downside_var = sum(r**2 for r in downside_returns) / len(downside_returns)
             downside_std = math.sqrt(max(1e-10, downside_var))
-            sortino = (mean_ret / downside_std) * math.sqrt(252.0) if downside_std > 0 else 0.0
+            sortino = (
+                (mean_ret / downside_std) * math.sqrt(252.0)
+                if downside_std > 0
+                else 0.0
+            )
         else:
             sortino = sharpe
 
@@ -324,10 +343,20 @@ def generate_tear_sheet(
 
     # Order lifecycle counts
     tot_orders = len(orders)
-    filled_orders = sum(1 for o in orders if getattr(o, "status", None) and str(o.status).endswith("FILLED"))
-    part_filled = sum(1 for o in orders if getattr(o, "status", None) and "PARTIAL" in str(o.status))
-    cancelled = sum(1 for o in orders if getattr(o, "status", None) and "CANCELLED" in str(o.status))
-    rejected = sum(1 for o in orders if getattr(o, "status", None) and "REJECTED" in str(o.status))
+    filled_orders = sum(
+        1
+        for o in orders
+        if getattr(o, "status", None) and str(o.status).endswith("FILLED")
+    )
+    part_filled = sum(
+        1 for o in orders if getattr(o, "status", None) and "PARTIAL" in str(o.status)
+    )
+    cancelled = sum(
+        1 for o in orders if getattr(o, "status", None) and "CANCELLED" in str(o.status)
+    )
+    rejected = sum(
+        1 for o in orders if getattr(o, "status", None) and "REJECTED" in str(o.status)
+    )
 
     fill_ratio = (filled_orders / tot_orders * 100.0) if tot_orders > 0 else 0.0
     cancel_ratio = (cancelled / tot_orders * 100.0) if tot_orders > 0 else 0.0

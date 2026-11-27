@@ -23,13 +23,17 @@ def build_health_snapshot(
 ) -> dict[str, Any]:
     """Construct periodic health snapshot atomically with stream, venue, and exporter telemetry."""
     state_snap = state.snapshot_health()
-    exp_stats = exporter.snapshot_stats() if hasattr(exporter, "snapshot_stats") else {
-        "events_written": exporter.events_written,
-        "health_written": exporter.health_written,
-        "dropped_records": exporter.dropped_records,
-        "write_errors": exporter.write_errors,
-        "queue_size": exporter._queue.qsize(),
-    }
+    exp_stats = (
+        exporter.snapshot_stats()
+        if hasattr(exporter, "snapshot_stats")
+        else {
+            "events_written": exporter.events_written,
+            "health_written": exporter.health_written,
+            "dropped_records": exporter.dropped_records,
+            "write_errors": exporter.write_errors,
+            "queue_size": exporter._queue.qsize(),
+        }
+    )
     snap: dict[str, Any] = {
         "uptime": time.time() - start_time,
         "eps": state_snap["eps"],
@@ -55,19 +59,61 @@ def main(argv: Optional[list[str]] = None) -> int:
         prog="mdrap-observer",
         description="MDRAP Observer: Real-time Multi-Venue Read-Only Market Data Cockpit",
     )
-    parser.add_argument("--mode", choices=["tcp", "shm"], default="tcp", help="Transport mode (default: tcp)")
-    parser.add_argument("--host", type=str, default="127.0.0.1", help="MDRAP daemon host (default: 127.0.0.1)")
-    parser.add_argument("--port", type=int, default=9000, help="MDRAP daemon port (default: 9000)")
-    parser.add_argument("--ring", type=str, default="mdrap_canonical_ring", help="Shared memory ring buffer name")
-    parser.add_argument("--export", type=str, default="./observer_exports", help="JSONL export directory")
-    parser.add_argument("--refresh", type=float, default=0.5, help="Dashboard refresh rate in seconds")
-    parser.add_argument("--duration", type=float, default=0.0, help="Run duration in seconds (0 = run indefinitely)")
-    parser.add_argument("--stale-threshold", type=float, default=3.0, help="Venue inactivity stale threshold in seconds")
-    parser.add_argument("--no-ui", action="store_true", help="Run headlessly without rendering terminal UI")
+    parser.add_argument(
+        "--mode",
+        choices=["tcp", "shm"],
+        default="tcp",
+        help="Transport mode (default: tcp)",
+    )
+    parser.add_argument(
+        "--host",
+        type=str,
+        default="127.0.0.1",
+        help="MDRAP daemon host (default: 127.0.0.1)",
+    )
+    parser.add_argument(
+        "--port", type=int, default=9000, help="MDRAP daemon port (default: 9000)"
+    )
+    parser.add_argument(
+        "--ring",
+        type=str,
+        default="mdrap_canonical_ring",
+        help="Shared memory ring buffer name",
+    )
+    parser.add_argument(
+        "--export",
+        type=str,
+        default="./observer_exports",
+        help="JSONL export directory",
+    )
+    parser.add_argument(
+        "--refresh", type=float, default=0.5, help="Dashboard refresh rate in seconds"
+    )
+    parser.add_argument(
+        "--duration",
+        type=float,
+        default=0.0,
+        help="Run duration in seconds (0 = run indefinitely)",
+    )
+    parser.add_argument(
+        "--stale-threshold",
+        type=float,
+        default=3.0,
+        help="Venue inactivity stale threshold in seconds",
+    )
+    parser.add_argument(
+        "--no-ui",
+        action="store_true",
+        help="Run headlessly without rendering terminal UI",
+    )
 
     args = parser.parse_args(argv)
 
-    state = ObserverState() if args.stale_threshold == 3.0 else ObserverState(stale_threshold_s=args.stale_threshold)
+    state = (
+        ObserverState()
+        if args.stale_threshold == 3.0
+        else ObserverState(stale_threshold_s=args.stale_threshold)
+    )
     exporter = ObserverExporter(output_dir=args.export)
     dashboard = ObserverDashboard(state=state, mode=args.mode, exporter=exporter)
 
@@ -116,7 +162,10 @@ def main(argv: Optional[list[str]] = None) -> int:
             time.sleep(args.refresh)
 
     finally:
-        if prev_sigint is not None and threading.current_thread() is threading.main_thread():
+        if (
+            prev_sigint is not None
+            and threading.current_thread() is threading.main_thread()
+        ):
             signal.signal(signal.SIGINT, prev_sigint)
         client.stop()
         stop_result = exporter.stop()

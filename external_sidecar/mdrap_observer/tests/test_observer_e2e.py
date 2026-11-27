@@ -51,7 +51,9 @@ def test_observer_e2e_with_mdrap_daemon(monkeypatch):
         state.process_event(evt)
         exporter.record_event(evt)
 
-    client = ObserverClient(mode="tcp", host="127.0.0.1", port=port, on_event_callback=on_event)
+    client = ObserverClient(
+        mode="tcp", host="127.0.0.1", port=port, on_event_callback=on_event
+    )
     client.start()
 
     try:
@@ -129,6 +131,7 @@ def test_observer_e2e_with_mdrap_daemon(monkeypatch):
             except OSError:
                 pass
         import shutil
+
         shutil.rmtree(tmpdir, ignore_errors=True)
 
 
@@ -246,7 +249,14 @@ def test_cli_health_snapshot_and_stale_transition(monkeypatch):
 
         assert len(records) >= 3
 
-        expected_stream_keys = {"events", "gaps", "duplicates", "out_of_order", "resets", "filtered_events"}
+        expected_stream_keys = {
+            "events",
+            "gaps",
+            "duplicates",
+            "out_of_order",
+            "resets",
+            "filtered_events",
+        }
         expected_venue_keys = {
             "status",
             "feed_type",

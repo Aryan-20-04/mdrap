@@ -271,7 +271,10 @@ def _run_pip_audit_manifest(
 ) -> tuple[dict, list[dict], int, str, str]:
     """Execute pip-audit on a manifest using an isolated temporary JSON report."""
     nonce = f"{os.getpid()}_{time.time_ns()}"
-    tmp_json = artifact_dir / f".DEPENDENCY_AUDIT.{manifest_name.replace('.', '_')}.{nonce}.tmp"
+    tmp_json = (
+        artifact_dir
+        / f".DEPENDENCY_AUDIT.{manifest_name.replace('.', '_')}.{nonce}.tmp"
+    )
     cmd = [
         sys.executable,
         "-m",
@@ -358,7 +361,13 @@ def _run_pip_audit_manifest(
             "input": manifest_name,
             "exit_code": res.returncode,
         }
-        return data, vulnerabilities, res.returncode, res.stdout.strip(), res.stderr.strip()
+        return (
+            data,
+            vulnerabilities,
+            res.returncode,
+            res.stdout.strip(),
+            res.stderr.strip(),
+        )
     finally:
         try:
             if tmp_json.exists():
@@ -407,8 +416,10 @@ def gate_dependency_vulnerability_scan():
     unexpected_tool_vulns: list[dict] = []
     if audit_tool_manifest.is_file():
         try:
-            tool_data, tool_vulns, tool_rc, tool_out, tool_err = _run_pip_audit_manifest(
-                "requirements-audit.txt", scanner_version, _ARTIFACT_DIR
+            tool_data, tool_vulns, tool_rc, tool_out, tool_err = (
+                _run_pip_audit_manifest(
+                    "requirements-audit.txt", scanner_version, _ARTIFACT_DIR
+                )
             )
             audit_tool_findings = tool_vulns
             data["audit_tool_environment"] = {
@@ -433,7 +444,10 @@ def gate_dependency_vulnerability_scan():
                     and sys.version_info < (3, 11)
                     and tv.get("version") == "4.1.0"
                 )
-                if not is_py310_filelock or os.environ.get("MDRAP_STRICT_AUDIT_TOOL") == "1":
+                if (
+                    not is_py310_filelock
+                    or os.environ.get("MDRAP_STRICT_AUDIT_TOOL") == "1"
+                ):
                     unexpected_tool_vulns.append(tv)
         except RuntimeError as exc:
             data["audit_tool_environment"] = {
@@ -441,10 +455,19 @@ def gate_dependency_vulnerability_scan():
                 "error": str(exc),
                 "shipped_to_runtime": False,
             }
-            unexpected_tool_vulns.append({"package": "audit-tool", "version": "unknown", "id": str(exc), "fix_versions": []})
+            unexpected_tool_vulns.append(
+                {
+                    "package": "audit-tool",
+                    "version": "unknown",
+                    "id": str(exc),
+                    "fix_versions": [],
+                }
+            )
 
     # Atomically persist fresh report ONLY from this run's validated temporary output
-    stage_json = _ARTIFACT_DIR / f".DEPENDENCY_AUDIT.stage.{os.getpid()}.{time.time_ns()}.tmp"
+    stage_json = (
+        _ARTIFACT_DIR / f".DEPENDENCY_AUDIT.stage.{os.getpid()}.{time.time_ns()}.tmp"
+    )
     try:
         stage_json.write_text(json.dumps(data, indent=2), encoding="utf-8")
         os.replace(stage_json, audit_json)

@@ -53,7 +53,9 @@ def execute_smoke_verification(wal_dir: str) -> bool:
     try:
         adapter = ReplayFeedAdapter(
             FeedAdapterConfig(venue="SMOKE_NASDAQ", feed_id="SMOKE_CH1"),
-            frames=[{"seq": 1, "sym": "SPY", "px": 500.0, "sz": 100.0, "type": "TRADE"}],
+            frames=[
+                {"seq": 1, "sym": "SPY", "px": 500.0, "sz": 100.0, "type": "TRADE"}
+            ],
         )
         adapter.connect()
         quality = QualityEngine()

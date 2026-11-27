@@ -39,7 +39,11 @@ def run_differential_parity_audit(num_events: int = 10_000) -> dict[str, Any]:
 
     # 2. Pure Python Engine (simulated by disabling fastpath flag or using pure python routines)
     # We force pure Python execution by monkeypatching HAS_FASTPATH to False on a second instance
-    py_engine = FastQualityEngine(force_pure_python=True) if hasattr(FastQualityEngine, "force_pure_python") else None
+    py_engine = (
+        FastQualityEngine(force_pure_python=True)
+        if hasattr(FastQualityEngine, "force_pure_python")
+        else None
+    )
     if py_engine is None:
         # Fallback: create an instance and remove its native handles
         py_engine = FastQualityEngine()
@@ -51,7 +55,7 @@ def run_differential_parity_audit(num_events: int = 10_000) -> dict[str, Any]:
 
     matches = 0
     mismatches = []
-    
+
     current_time = 1700000000.0
 
     for i in range(num_events):
@@ -94,7 +98,12 @@ def run_differential_parity_audit(num_events: int = 10_000) -> dict[str, Any]:
             payload["exchange_ts"] = current_time - 3600.0
             fault_type = "STALE"
 
-        raw = RawEvent(source=src, payload=payload, receive_timestamp=current_time, raw_id=f"raw_{i}")
+        raw = RawEvent(
+            source=src,
+            payload=payload,
+            receive_timestamp=current_time,
+            raw_id=f"raw_{i}",
+        )
         try:
             norm = normalize(raw)
             c_dec = c_engine.evaluate(norm)
@@ -106,14 +115,16 @@ def run_differential_parity_audit(num_events: int = 10_000) -> dict[str, Any]:
             if c_status == py_status:
                 matches += 1
             else:
-                mismatches.append({
-                    "event_index": i,
-                    "fault_type": fault_type,
-                    "native_status": str(c_status),
-                    "python_status": str(py_status),
-                    "native_reasons": [str(r) for r in c_dec.reasons],
-                    "python_reasons": [str(r) for r in py_dec.reasons],
-                })
+                mismatches.append(
+                    {
+                        "event_index": i,
+                        "fault_type": fault_type,
+                        "native_status": str(c_status),
+                        "python_status": str(py_status),
+                        "native_reasons": [str(r) for r in c_dec.reasons],
+                        "python_reasons": [str(r) for r in py_dec.reasons],
+                    }
+                )
         except Exception as exc:
             if i < 3:
                 print(f"[DEBUG PARITY EXCEPTION]: {exc}")
@@ -232,7 +243,9 @@ def run_sbe_vs_json_benchmark(num_frames: int = 50_000) -> dict[str, Any]:
         "json_load_throughput_eps": round(num_frames / json_load_s, 1),
         "json_combined_throughput_eps": round(json_eps, 1),
         "sbe_speedup_factor": round(sbe_eps / max(1.0, json_eps), 2),
-        "bandwidth_savings_pct": round((1.0 - len(sbe_bytes) / len(json_str.encode("utf-8"))) * 100.0, 2),
+        "bandwidth_savings_pct": round(
+            (1.0 - len(sbe_bytes) / len(json_str.encode("utf-8"))) * 100.0, 2
+        ),
     }
 
 
@@ -256,21 +269,37 @@ def main():
     print("MDRAP v5.2 PHASE 5: NATIVE HOT-PATH, SBE & PARITY AUDIT")
     print("=" * 80)
 
-    print("\n[1/3] Running Native C vs Pure Python Parity Verification (10,000 events)...")
+    print(
+        "\n[1/3] Running Native C vs Pure Python Parity Verification (10,000 events)..."
+    )
     parity_results = run_differential_parity_audit(num_events=10_000)
-    print(f"  -> Tested: {parity_results['total_events_tested']} events | Matches: {parity_results['matches']}")
-    print(f"  -> Parity: {parity_results['parity_percentage']}% (100% Bit-Exact: {parity_results['is_100pct_parity']})")
+    print(
+        f"  -> Tested: {parity_results['total_events_tested']} events | Matches: {parity_results['matches']}"
+    )
+    print(
+        f"  -> Parity: {parity_results['parity_percentage']}% (100% Bit-Exact: {parity_results['is_100pct_parity']})"
+    )
 
     print("\n[2/3] Running SBE Binary Framing vs JSON Deserialization Benchmark...")
     sbe_results = run_sbe_vs_json_benchmark(num_frames=50_000)
-    print(f"  -> SBE Combined:  {sbe_results['sbe_combined_throughput_eps']} EPS ({sbe_results['sbe_frame_bytes']} bytes)")
-    print(f"  -> JSON Combined: {sbe_results['json_combined_throughput_eps']} EPS ({sbe_results['json_frame_bytes']} bytes)")
-    print(f"  -> Speedup:       {sbe_results['sbe_speedup_factor']}x faster | Bandwidth Savings: {sbe_results['bandwidth_savings_pct']}%")
+    print(
+        f"  -> SBE Combined:  {sbe_results['sbe_combined_throughput_eps']} EPS ({sbe_results['sbe_frame_bytes']} bytes)"
+    )
+    print(
+        f"  -> JSON Combined: {sbe_results['json_combined_throughput_eps']} EPS ({sbe_results['json_frame_bytes']} bytes)"
+    )
+    print(
+        f"  -> Speedup:       {sbe_results['sbe_speedup_factor']}x faster | Bandwidth Savings: {sbe_results['bandwidth_savings_pct']}%"
+    )
 
     print("\n[3/3] Running NASDAQ TotalView-ITCH 5.0 Binary Parsing Benchmark...")
     itch_results = run_itch_parser_benchmark(num_messages=50_000)
-    print(f"  -> ITCH Parsed:   {itch_results['messages_parsed']} msgs in {itch_results['duration_s']}s")
-    print(f"  -> Throughput:    {itch_results['throughput_eps']} EPS (Mean Latency: {itch_results['mean_latency_us']} us)")
+    print(
+        f"  -> ITCH Parsed:   {itch_results['messages_parsed']} msgs in {itch_results['duration_s']}s"
+    )
+    print(
+        f"  -> Throughput:    {itch_results['throughput_eps']} EPS (Mean Latency: {itch_results['mean_latency_us']} us)"
+    )
 
     telemetry = {
         "timestamp": time.time(),

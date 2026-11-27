@@ -22,7 +22,9 @@ import time
 from typing import Any
 
 # Ensure project root in sys.path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
+sys.path.insert(
+    0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src"))
+)
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from mdrap.models import CanonicalEvent, EventType, QualityStatus
@@ -98,15 +100,29 @@ def profile_durability_modes(db_dir: str) -> dict[str, Any]:
             "durability": mode,
             "total_events": batch_size * num_batches,
             "executemany_p50_us": round(statistics.median(exec_times_us), 1),
-            "executemany_p95_us": round(statistics.quantiles(exec_times_us, n=20)[18], 1),
-            "executemany_p99_us": round(statistics.quantiles(exec_times_us, n=100)[98], 1) if len(exec_times_us) >= 100 else round(max(exec_times_us), 1),
+            "executemany_p95_us": round(
+                statistics.quantiles(exec_times_us, n=20)[18], 1
+            ),
+            "executemany_p99_us": round(
+                statistics.quantiles(exec_times_us, n=100)[98], 1
+            )
+            if len(exec_times_us) >= 100
+            else round(max(exec_times_us), 1),
             "commit_p50_us": round(statistics.median(commit_times_us), 1),
             "commit_p95_us": round(statistics.quantiles(commit_times_us, n=20)[18], 1),
-            "commit_p99_us": round(statistics.quantiles(commit_times_us, n=100)[98], 1) if len(commit_times_us) >= 100 else round(max(commit_times_us), 1),
+            "commit_p99_us": round(statistics.quantiles(commit_times_us, n=100)[98], 1)
+            if len(commit_times_us) >= 100
+            else round(max(commit_times_us), 1),
             "commit_max_us": round(max(commit_times_us), 1),
             "total_p50_us": round(statistics.median(total_batch_times_us), 1),
-            "total_p95_us": round(statistics.quantiles(total_batch_times_us, n=20)[18], 1),
-            "total_p99_us": round(statistics.quantiles(total_batch_times_us, n=100)[98], 1) if len(total_batch_times_us) >= 100 else round(max(total_batch_times_us), 1),
+            "total_p95_us": round(
+                statistics.quantiles(total_batch_times_us, n=20)[18], 1
+            ),
+            "total_p99_us": round(
+                statistics.quantiles(total_batch_times_us, n=100)[98], 1
+            )
+            if len(total_batch_times_us) >= 100
+            else round(max(total_batch_times_us), 1),
             "db_size_bytes": db_size,
             "wal_size_bytes": wal_size,
         }
@@ -176,10 +192,18 @@ def test_concurrent_reader_writer(db_path: str) -> dict[str, Any]:
         "total_queries_executed": sum(read_counts),
         "total_query_errors": sum(read_errors),
         "zero_lock_contention": sum(read_errors) == 0,
-        "query_p50_us": round(statistics.median(read_latencies_us), 1) if read_latencies_us else 0.0,
-        "query_p95_us": round(statistics.quantiles(read_latencies_us, n=20)[18], 1) if len(read_latencies_us) >= 20 else 0.0,
-        "writer_p50_us": round(statistics.median(write_latencies_us), 1) if write_latencies_us else 0.0,
-        "writer_p95_us": round(statistics.quantiles(write_latencies_us, n=20)[18], 1) if len(write_latencies_us) >= 20 else 0.0,
+        "query_p50_us": round(statistics.median(read_latencies_us), 1)
+        if read_latencies_us
+        else 0.0,
+        "query_p95_us": round(statistics.quantiles(read_latencies_us, n=20)[18], 1)
+        if len(read_latencies_us) >= 20
+        else 0.0,
+        "writer_p50_us": round(statistics.median(write_latencies_us), 1)
+        if write_latencies_us
+        else 0.0,
+        "writer_p95_us": round(statistics.quantiles(write_latencies_us, n=20)[18], 1)
+        if len(write_latencies_us) >= 20
+        else 0.0,
     }
 
 
@@ -218,9 +242,13 @@ def test_long_running_transaction_and_truncate(db_path: str) -> dict[str, Any]:
     reader_conn.close()
 
     # Now execute TRUNCATE checkpoint
-    wal_before_truncate = os.path.getsize(db_path + "-wal") if os.path.exists(db_path + "-wal") else 0
+    wal_before_truncate = (
+        os.path.getsize(db_path + "-wal") if os.path.exists(db_path + "-wal") else 0
+    )
     ckpt_truncate = store.wal_checkpoint("TRUNCATE")
-    wal_after_truncate = os.path.getsize(db_path + "-wal") if os.path.exists(db_path + "-wal") else 0
+    wal_after_truncate = (
+        os.path.getsize(db_path + "-wal") if os.path.exists(db_path + "-wal") else 0
+    )
 
     store.close()
 
@@ -276,33 +304,53 @@ def run_persistence_investigation() -> dict[str, Any]:
     os.makedirs(test_dir, exist_ok=True)
     results: dict[str, Any] = {}
 
-    print("\n--- [Persistence Pillar 3] 1. Profiling Durability Tiers & Root-Cause of 14.52ms p99 Commit ---")
+    print(
+        "\n--- [Persistence Pillar 3] 1. Profiling Durability Tiers & Root-Cause of 14.52ms p99 Commit ---"
+    )
     dur_results = profile_durability_modes(test_dir)
     results["durability_tiers"] = dur_results
     for mode, data in dur_results.items():
-        print(f"Mode: {mode.upper():10s} | Commit Latency: p50={data['commit_p50_us']}μs, "
-              f"p95={data['commit_p95_us']}μs, p99={data['commit_p99_us']}μs, Max={data['commit_max_us']}μs | "
-              f"Batch Total: p50={data['total_p50_us']}μs, p95={data['total_p95_us']}μs")
+        print(
+            f"Mode: {mode.upper():10s} | Commit Latency: p50={data['commit_p50_us']}μs, "
+            f"p95={data['commit_p95_us']}μs, p99={data['commit_p99_us']}μs, Max={data['commit_max_us']}μs | "
+            f"Batch Total: p50={data['total_p50_us']}μs, p95={data['total_p95_us']}μs"
+        )
 
-    print("\n--- [Persistence Pillar 3] 2. Concurrent Reader / Writer Lock Contention ---")
-    rw_results = test_concurrent_reader_writer(os.path.join(test_dir, "test_rw_concurrency.db"))
+    print(
+        "\n--- [Persistence Pillar 3] 2. Concurrent Reader / Writer Lock Contention ---"
+    )
+    rw_results = test_concurrent_reader_writer(
+        os.path.join(test_dir, "test_rw_concurrency.db")
+    )
     results["concurrent_reader_writer"] = rw_results
-    print(f"Executed {rw_results['total_queries_executed']} queries across 3 concurrent reader threads "
-          f"during {rw_results['total_writes']} writes. Errors: {rw_results['total_query_errors']}. "
-          f"Query p50={rw_results['query_p50_us']}μs, Writer p50={rw_results['writer_p50_us']}μs.")
+    print(
+        f"Executed {rw_results['total_queries_executed']} queries across 3 concurrent reader threads "
+        f"during {rw_results['total_writes']} writes. Errors: {rw_results['total_query_errors']}. "
+        f"Query p50={rw_results['query_p50_us']}μs, Writer p50={rw_results['writer_p50_us']}μs."
+    )
 
-    print("\n--- [Persistence Pillar 3] 3. Long-Running Reader Snapshot Isolation & Truncate ---")
-    snap_results = test_long_running_transaction_and_truncate(os.path.join(test_dir, "test_snapshot.db"))
+    print(
+        "\n--- [Persistence Pillar 3] 3. Long-Running Reader Snapshot Isolation & Truncate ---"
+    )
+    snap_results = test_long_running_transaction_and_truncate(
+        os.path.join(test_dir, "test_snapshot.db")
+    )
     results["snapshot_isolation_truncate"] = snap_results
-    print(f"Snapshot Isolation: {snap_results['snapshot_isolation_verified']} "
-          f"(Initial={snap_results['initial_reader_count']}, In-TX={snap_results['snapshot_isolated_count']}). "
-          f"WAL size: {snap_results['wal_size_before_truncate_bytes']} bytes -> {snap_results['wal_size_after_truncate_bytes']} bytes (Truncated to zero: {snap_results['truncated_to_zero']}).")
+    print(
+        f"Snapshot Isolation: {snap_results['snapshot_isolation_verified']} "
+        f"(Initial={snap_results['initial_reader_count']}, In-TX={snap_results['snapshot_isolated_count']}). "
+        f"WAL size: {snap_results['wal_size_before_truncate_bytes']} bytes -> {snap_results['wal_size_after_truncate_bytes']} bytes (Truncated to zero: {snap_results['truncated_to_zero']})."
+    )
 
     print("\n--- [Persistence Pillar 3] 4. Abrupt Termination Crash Recovery ---")
-    crash_results = test_abrupt_shutdown_recovery(os.path.join(test_dir, "test_crash_recovery.db"))
+    crash_results = test_abrupt_shutdown_recovery(
+        os.path.join(test_dir, "test_crash_recovery.db")
+    )
     results["abrupt_shutdown_recovery"] = crash_results
-    print(f"Recovered {crash_results['recovered_events']}/{crash_results['expected_events']} events "
-          f"in {crash_results['recovery_time_us']}μs. Zero Data Loss = {crash_results['zero_data_loss']}.")
+    print(
+        f"Recovered {crash_results['recovered_events']}/{crash_results['expected_events']} events "
+        f"in {crash_results['recovery_time_us']}μs. Zero Data Loss = {crash_results['zero_data_loss']}."
+    )
 
     return results
 
@@ -312,4 +360,6 @@ if __name__ == "__main__":
     os.makedirs("benchmarks", exist_ok=True)
     with open("benchmarks/persistence_investigation_results.json", "w") as f:
         json.dump(res, f, indent=2)
-    print("\n[Persistence Pillar 3] Results saved to benchmarks/persistence_investigation_results.json")
+    print(
+        "\n[Persistence Pillar 3] Results saved to benchmarks/persistence_investigation_results.json"
+    )

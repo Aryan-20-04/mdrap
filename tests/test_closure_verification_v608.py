@@ -69,17 +69,21 @@ def test_shm_monotonic_sequence_separation():
 
 def test_config_loader_explicit_path_missing_raises():
     """Verify that an explicitly specified nonexistent configuration path is never silently ignored."""
-    with pytest.raises(FileNotFoundError, match="Explicitly specified configuration file not found"):
+    with pytest.raises(
+        FileNotFoundError, match="Explicitly specified configuration file not found"
+    ):
         load_config(path="definitely_non_existent_config_file_98765.toml")
 
 
 def test_config_loader_missing_tomli_raises_on_explicit_file(tmp_path):
     """Verify that if TOML parsing is unavailable (Python < 3.11 without tomli), explicit config raises ImportError."""
     fake_cfg = tmp_path / "custom.toml"
-    fake_cfg.write_text('[defaults]\nstaleness_threshold_s = 0.1\n', encoding="utf-8")
+    fake_cfg.write_text("[defaults]\nstaleness_threshold_s = 0.1\n", encoding="utf-8")
 
     with patch("mdrap.config_loader.tomllib", None):
-        with pytest.raises(ImportError, match="tomli is required to parse TOML configuration files"):
+        with pytest.raises(
+            ImportError, match="tomli is required to parse TOML configuration files"
+        ):
             load_config(path=str(fake_cfg))
 
 
@@ -105,7 +109,10 @@ def test_shm_reader_zero_handle_leak_windows():
     kernel32.GetCurrentProcess.restype = ctypes.c_void_p
     hProcess = kernel32.GetCurrentProcess()
     h_count = wintypes.DWORD()
-    kernel32.GetProcessHandleCount.argtypes = [ctypes.c_void_p, ctypes.POINTER(wintypes.DWORD)]
+    kernel32.GetProcessHandleCount.argtypes = [
+        ctypes.c_void_p,
+        ctypes.POINTER(wintypes.DWORD),
+    ]
 
     def get_handles() -> int:
         kernel32.GetProcessHandleCount(hProcess, ctypes.byref(h_count))
@@ -121,6 +128,7 @@ def test_shm_reader_zero_handle_leak_windows():
     r_warm.close()
 
     import gc
+
     gc.collect()
     h_baseline = get_handles()
 
@@ -135,4 +143,6 @@ def test_shm_reader_zero_handle_leak_windows():
     h_final = get_handles()
     writer.close()
 
-    assert abs(h_final - h_baseline) <= 1, f"Handle leak detected: baseline={h_baseline}, final={h_final}"
+    assert abs(h_final - h_baseline) <= 1, (
+        f"Handle leak detected: baseline={h_baseline}, final={h_final}"
+    )

@@ -12,7 +12,9 @@ import sys
 import time
 
 # Ensure project root in sys.path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
+sys.path.insert(
+    0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src"))
+)
 
 from mdrap.sbe import pack_sbe_tick, unpack_sbe_tick  # noqa: E402
 from mdrap.itch import ITCHParser, ITCHSyntheticGenerator  # noqa: E402
@@ -156,24 +158,36 @@ def main():
 
     print("\n[1/3] Benchmarking Simple Binary Encoding (SBE) vs JSON Decoding...")
     sbe_res = benchmark_sbe_vs_json(100_000)
-    print(f"  SBE Binary Unpack:   {sbe_res['sbe_eps']:>10,.1f} EPS  ({sbe_res['sbe_ns']:.1f} ns/msg)")
-    print(f"  JSON Text Loads:     {sbe_res['json_eps']:>10,.1f} EPS  ({sbe_res['json_ns']:.1f} ns/msg)")
+    print(
+        f"  SBE Binary Unpack:   {sbe_res['sbe_eps']:>10,.1f} EPS  ({sbe_res['sbe_ns']:.1f} ns/msg)"
+    )
+    print(
+        f"  JSON Text Loads:     {sbe_res['json_eps']:>10,.1f} EPS  ({sbe_res['json_ns']:.1f} ns/msg)"
+    )
     print(f"  SBE Acceleration:    {sbe_res['speedup']:.2f}x speedup over JSON")
 
     print("\n[2/3] Benchmarking NASDAQ ITCH 5.0 Binary Wire Parser...")
     itch_res = benchmark_itch_parser(100_000)
-    print(f"  Parsed {itch_res['messages']:,} messages in {itch_res['elapsed_s']:.3f}s: {itch_res['throughput_eps']:,.1f} msg/sec ({itch_res['avg_ns']:.1f} ns/msg)")
+    print(
+        f"  Parsed {itch_res['messages']:,} messages in {itch_res['elapsed_s']:.3f}s: {itch_res['throughput_eps']:,.1f} msg/sec ({itch_res['avg_ns']:.1f} ns/msg)"
+    )
 
     print("\n[3/3] Benchmarking Zero-Copy Seqlock Shared Memory (SHM v3) IPC...")
     shm_res = benchmark_shm_ipc(50_000)
     print(f"  Throughput: {shm_res['throughput_ops']:,.1f} write+read roundtrips/sec")
-    print(f"  p50 Latency: {shm_res['p50_ns']:.1f} ns | p95: {shm_res['p95_ns']:.1f} ns | p99: {shm_res['p99_ns']:.1f} ns | p99.9: {shm_res['p99_9_ns']:.1f} ns")
+    print(
+        f"  p50 Latency: {shm_res['p50_ns']:.1f} ns | p95: {shm_res['p95_ns']:.1f} ns | p99: {shm_res['p99_ns']:.1f} ns | p99.9: {shm_res['p99_9_ns']:.1f} ns"
+    )
 
     print("\n" + "=" * 78)
     print(" Transport & Memory Summary")
     print("=" * 78)
-    print(f" SBE Wire Decoding:              {sbe_res['sbe_eps']:>12,.1f} EPS  ({sbe_res['sbe_ns']:.1f} ns)")
-    print(f" ITCH Protocol Parser:           {itch_res['throughput_eps']:>12,.1f} msg/sec ({itch_res['avg_ns']:.1f} ns)")
+    print(
+        f" SBE Wire Decoding:              {sbe_res['sbe_eps']:>12,.1f} EPS  ({sbe_res['sbe_ns']:.1f} ns)"
+    )
+    print(
+        f" ITCH Protocol Parser:           {itch_res['throughput_eps']:>12,.1f} msg/sec ({itch_res['avg_ns']:.1f} ns)"
+    )
     print(f" SHM v3 IPC Publish-to-Read p50: {shm_res['p50_ns']:>12.1f} ns")
     print(f" SHM v3 IPC Publish-to-Read p99: {shm_res['p99_ns']:>12.1f} ns")
     print("=" * 78)

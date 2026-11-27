@@ -29,7 +29,9 @@ class DummyStreamingServer:
 
     async def start(self):
         self._running = True
-        self.server = await asyncio.start_server(self._handle_client, self.host, self.port)
+        self.server = await asyncio.start_server(
+            self._handle_client, self.host, self.port
+        )
 
     async def _handle_client(self, reader, writer):
         try:
@@ -77,6 +79,7 @@ class DummyStreamingServer:
 
 def test_client_reconnection_and_restart():
     """Verify consumer reconnects after server disconnection and resumes consumption."""
+
     async def _run():
         port = 19877
         events = []
@@ -84,7 +87,9 @@ def test_client_reconnection_and_restart():
         def on_event(evt):
             events.append(evt)
 
-        client = ObserverClient(mode="tcp", host="127.0.0.1", port=port, on_event_callback=on_event)
+        client = ObserverClient(
+            mode="tcp", host="127.0.0.1", port=port, on_event_callback=on_event
+        )
         client.start()
 
         # Step 1: Server not running yet; client waits without crashing
@@ -120,6 +125,7 @@ def test_client_reconnection_and_restart():
 
 def test_client_malformed_event_resilience():
     """Verify malformed non-JSON frames do not terminate consumer or corrupt message count."""
+
     async def _run():
         port = 19878
         events = []
@@ -130,7 +136,9 @@ def test_client_malformed_event_resilience():
         server = DummyStreamingServer(port=port, inject_malformed=True)
         await server.start()
 
-        client = ObserverClient(mode="tcp", host="127.0.0.1", port=port, on_event_callback=on_event)
+        client = ObserverClient(
+            mode="tcp", host="127.0.0.1", port=port, on_event_callback=on_event
+        )
         client.start()
 
         await asyncio.sleep(0.8)
@@ -168,7 +176,9 @@ def test_shm_client_stale_heartbeat_recovery_and_interruptible_stop():
             time.sleep(0.02)
         assert client.connected
 
-        writer1.write_tick(seq=1, symbol="BTCUSDT", source="BINANCE", price=65000.0, size=1.0)
+        writer1.write_tick(
+            seq=1, symbol="BTCUSDT", source="BINANCE", price=65000.0, size=1.0
+        )
         deadline = time.monotonic() + 2.0
         while len(events) < 1 and time.monotonic() < deadline:
             time.sleep(0.02)
@@ -186,7 +196,9 @@ def test_shm_client_stale_heartbeat_recovery_and_interruptible_stop():
         # Restart publisher -> client reconnects and consumes new epoch ticks
         writer1.close()
         writer2 = SHMWriter(name=ring_name, slot_count=64)
-        writer2.write_tick(seq=1, symbol="BTCUSDT", source="DATABENTO", price=66000.0, size=1.0)
+        writer2.write_tick(
+            seq=1, symbol="BTCUSDT", source="DATABENTO", price=66000.0, size=1.0
+        )
 
         deadline = time.monotonic() + 3.0
         while len(events) < 2 and time.monotonic() < deadline:

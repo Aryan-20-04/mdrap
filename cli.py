@@ -3,6 +3,7 @@ MDRAP CLI Entry Point Shim
 Forwards execution to mdrap.cli so that direct execution (`python cli.py`)
 and package execution (`from cli import main`) work seamlessly.
 """
+
 import sys
 import os
 import importlib
@@ -16,4 +17,3 @@ sys.modules[__name__] = _module
 
 if __name__ == "__main__":
     _module.main()
-

@@ -62,7 +62,11 @@ def generate_diagnostic_bundle(
     # 2. IngestLog WAL Summary
     wal_info: Dict[str, Any] = {"status": "NOT_CONFIGURED"}
     if wal_dir and os.path.exists(wal_dir):
-        seg_files = [f for f in os.listdir(wal_dir) if f.startswith("segment_") and f.endswith(".log")]
+        seg_files = [
+            f
+            for f in os.listdir(wal_dir)
+            if f.startswith("segment_") and f.endswith(".log")
+        ]
         total_size = sum(os.path.getsize(os.path.join(wal_dir, f)) for f in seg_files)
         wal_info = {
             "path": wal_dir,
@@ -113,4 +117,6 @@ if __name__ == "__main__":
     data = generate_diagnostic_bundle(output_path=out)
     print(f"[+] Diagnostic bundle generated at: {out}")
     print(f"    Commit: {data['build_info']['git_commit']}")
-    print(f"    OS: {data['platform_info']['os']} {data['platform_info']['architecture']}")
+    print(
+        f"    OS: {data['platform_info']['os']} {data['platform_info']['architecture']}"
+    )

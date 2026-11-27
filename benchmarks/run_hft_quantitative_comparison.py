@@ -121,14 +121,18 @@ def run_strategy_simulation(
             b_sz = evt.bid_size or 50.0
             a_sz = evt.ask_size or 50.0
             current_mid = (b_px + a_px) / 2.0
-            matching.update_book(symbol, bids=[(b_px, b_sz)], asks=[(a_px, a_sz)], timestamp=t_now)
+            matching.update_book(
+                symbol, bids=[(b_px, b_sz)], asks=[(a_px, a_sz)], timestamp=t_now
+            )
             matching.process_time_slice(t_now)
 
         elif evt.event_type == EventType.TRADE:
             tr_px = evt.price or current_mid
             tr_sz = evt.quantity or 10.0
             current_mid = tr_px
-            matching.process_market_trade(symbol, trade_price=tr_px, trade_size=tr_sz, timestamp=t_now)
+            matching.process_market_trade(
+                symbol, trade_price=tr_px, trade_size=tr_sz, timestamp=t_now
+            )
 
         # 2. Check and record fills (process only NEW entries in trade ledger)
         ledger = matching.get_ledger()
@@ -143,9 +147,9 @@ def run_strategy_simulation(
                 fee = fill["fee"]
                 cash -= fee
                 if side == "BUY":
-                    cash -= (sz * px)
+                    cash -= sz * px
                 else:
-                    cash += (sz * px)
+                    cash += sz * px
                 risk.update_position(symbol, fill_qty=sz, fill_price=px, side=side)
                 # Update portfolio equity
                 unrealized = sum(
@@ -173,13 +177,21 @@ def run_strategy_simulation(
                 order_id_counter += 1
                 oid = f"BnH-{order_id_counter}"
                 v_res = risk.validate_order(
-                    symbol=symbol, side="BUY", order_type="MARKET", quantity=200.0,
-                    price=current_mid, prevailing_mid=current_mid
+                    symbol=symbol,
+                    side="BUY",
+                    order_type="MARKET",
+                    quantity=200.0,
+                    price=current_mid,
+                    prevailing_mid=current_mid,
                 )
                 if v_res.passed:
                     ord_obj = matching.submit_order(
-                        order_id=oid, symbol=symbol, side=SimOrderSide.BUY,
-                        order_type=SimOrderType.MARKET, quantity=200.0, current_time=t_now
+                        order_id=oid,
+                        symbol=symbol,
+                        side=SimOrderSide.BUY,
+                        order_type=SimOrderType.MARKET,
+                        quantity=200.0,
+                        current_time=t_now,
                     )
                     open_orders[oid] = ord_obj
                     orders_submitted += 1
@@ -189,7 +201,10 @@ def run_strategy_simulation(
             if evt.event_type == EventType.QUOTE:
                 # Cancel old quotes
                 for old_oid in list(open_orders.keys()):
-                    if open_orders[old_oid].status in (SimOrderStatus.ACCEPTED, SimOrderStatus.PENDING):
+                    if open_orders[old_oid].status in (
+                        SimOrderStatus.ACCEPTED,
+                        SimOrderStatus.PENDING,
+                    ):
                         matching.cancel_order(old_oid, current_time=t_now)
                         open_orders.pop(old_oid, None)
 
@@ -205,37 +220,65 @@ def run_strategy_simulation(
                     time_remaining=t_rem,
                 )
 
-                spread_mult = 1.5 if evt.quality_status == QualityStatus.SUSPICIOUS else 1.0
-                bid_px = round(as_quotes.reservation_price - (as_quotes.optimal_half_spread * spread_mult), 2)
-                ask_px = round(as_quotes.reservation_price + (as_quotes.optimal_half_spread * spread_mult), 2)
+                spread_mult = (
+                    1.5 if evt.quality_status == QualityStatus.SUSPICIOUS else 1.0
+                )
+                bid_px = round(
+                    as_quotes.reservation_price
+                    - (as_quotes.optimal_half_spread * spread_mult),
+                    2,
+                )
+                ask_px = round(
+                    as_quotes.reservation_price
+                    + (as_quotes.optimal_half_spread * spread_mult),
+                    2,
+                )
 
                 # Check collar distance
                 if abs(bid_px - current_mid) / current_mid * 10_000.0 <= 150.0:
                     v_bid = risk.validate_order(
-                        symbol=symbol, side="BUY", order_type="LIMIT", quantity=25.0,
-                        price=bid_px, prevailing_mid=current_mid
+                        symbol=symbol,
+                        side="BUY",
+                        order_type="LIMIT",
+                        quantity=25.0,
+                        price=bid_px,
+                        prevailing_mid=current_mid,
                     )
                     if v_bid.passed:
                         order_id_counter += 1
                         b_id = f"AS-BID-{order_id_counter}"
                         o_b = matching.submit_order(
-                            order_id=b_id, symbol=symbol, side=SimOrderSide.BUY,
-                            order_type=SimOrderType.LIMIT, quantity=25.0, price=bid_px, current_time=t_now
+                            order_id=b_id,
+                            symbol=symbol,
+                            side=SimOrderSide.BUY,
+                            order_type=SimOrderType.LIMIT,
+                            quantity=25.0,
+                            price=bid_px,
+                            current_time=t_now,
                         )
                         open_orders[b_id] = o_b
                         orders_submitted += 1
 
                 if abs(ask_px - current_mid) / current_mid * 10_000.0 <= 150.0:
                     v_ask = risk.validate_order(
-                        symbol=symbol, side="SELL", order_type="LIMIT", quantity=25.0,
-                        price=ask_px, prevailing_mid=current_mid
+                        symbol=symbol,
+                        side="SELL",
+                        order_type="LIMIT",
+                        quantity=25.0,
+                        price=ask_px,
+                        prevailing_mid=current_mid,
                     )
                     if v_ask.passed:
                         order_id_counter += 1
                         a_id = f"AS-ASK-{order_id_counter}"
                         o_a = matching.submit_order(
-                            order_id=a_id, symbol=symbol, side=SimOrderSide.SELL,
-                            order_type=SimOrderType.LIMIT, quantity=25.0, price=ask_px, current_time=t_now
+                            order_id=a_id,
+                            symbol=symbol,
+                            side=SimOrderSide.SELL,
+                            order_type=SimOrderType.LIMIT,
+                            quantity=25.0,
+                            price=ask_px,
+                            current_time=t_now,
                         )
                         open_orders[a_id] = o_a
                         orders_submitted += 1
@@ -243,7 +286,10 @@ def run_strategy_simulation(
         elif strategy_type == "SIMPLE_MM":
             if evt.event_type == EventType.QUOTE:
                 for old_oid in list(open_orders.keys()):
-                    if open_orders[old_oid].status in (SimOrderStatus.ACCEPTED, SimOrderStatus.PENDING):
+                    if open_orders[old_oid].status in (
+                        SimOrderStatus.ACCEPTED,
+                        SimOrderStatus.PENDING,
+                    ):
                         matching.cancel_order(old_oid, current_time=t_now)
                         open_orders.pop(old_oid, None)
 
@@ -252,19 +298,49 @@ def run_strategy_simulation(
                 bid_px = round(current_mid - half_spread, 2)
                 ask_px = round(current_mid + half_spread, 2)
 
-                v_bid = risk.validate_order(symbol=symbol, side="BUY", order_type="LIMIT", quantity=25.0, price=bid_px, prevailing_mid=current_mid)
+                v_bid = risk.validate_order(
+                    symbol=symbol,
+                    side="BUY",
+                    order_type="LIMIT",
+                    quantity=25.0,
+                    price=bid_px,
+                    prevailing_mid=current_mid,
+                )
                 if v_bid.passed:
                     order_id_counter += 1
                     b_id = f"SMM-BID-{order_id_counter}"
-                    o_b = matching.submit_order(order_id=b_id, symbol=symbol, side=SimOrderSide.BUY, order_type=SimOrderType.LIMIT, quantity=25.0, price=bid_px, current_time=t_now)
+                    o_b = matching.submit_order(
+                        order_id=b_id,
+                        symbol=symbol,
+                        side=SimOrderSide.BUY,
+                        order_type=SimOrderType.LIMIT,
+                        quantity=25.0,
+                        price=bid_px,
+                        current_time=t_now,
+                    )
                     open_orders[b_id] = o_b
                     orders_submitted += 1
 
-                v_ask = risk.validate_order(symbol=symbol, side="SELL", order_type="LIMIT", quantity=25.0, price=ask_px, prevailing_mid=current_mid)
+                v_ask = risk.validate_order(
+                    symbol=symbol,
+                    side="SELL",
+                    order_type="LIMIT",
+                    quantity=25.0,
+                    price=ask_px,
+                    prevailing_mid=current_mid,
+                )
                 if v_ask.passed:
                     order_id_counter += 1
                     a_id = f"SMM-ASK-{order_id_counter}"
-                    o_a = matching.submit_order(order_id=a_id, symbol=symbol, side=SimOrderSide.SELL, order_type=SimOrderType.LIMIT, quantity=25.0, price=ask_px, current_time=t_now)
+                    o_a = matching.submit_order(
+                        order_id=a_id,
+                        symbol=symbol,
+                        side=SimOrderSide.SELL,
+                        order_type=SimOrderType.LIMIT,
+                        quantity=25.0,
+                        price=ask_px,
+                        current_time=t_now,
+                    )
                     open_orders[a_id] = o_a
                     orders_submitted += 1
 
@@ -275,20 +351,34 @@ def run_strategy_simulation(
                 notional = px * sz
                 if notional >= 50_000.0 or sz >= 400.0:
                     side_aggressor = classify_trade_lee_ready(
-                        trade_price=px, prev_trade_price=prev_trade_px,
-                        bid_price=current_mid - 0.05, ask_price=current_mid + 0.05
+                        trade_price=px,
+                        prev_trade_price=prev_trade_px,
+                        bid_price=current_mid - 0.05,
+                        ask_price=current_mid + 0.05,
                     )
-                    sim_side = SimOrderSide.BUY if side_aggressor == "BUY" else SimOrderSide.SELL
+                    sim_side = (
+                        SimOrderSide.BUY
+                        if side_aggressor == "BUY"
+                        else SimOrderSide.SELL
+                    )
                     v_res = risk.validate_order(
-                        symbol=symbol, side=sim_side.value, order_type="MARKET",
-                        quantity=50.0, price=px, prevailing_mid=current_mid
+                        symbol=symbol,
+                        side=sim_side.value,
+                        order_type="MARKET",
+                        quantity=50.0,
+                        price=px,
+                        prevailing_mid=current_mid,
                     )
                     if v_res.passed:
                         order_id_counter += 1
                         w_id = f"WHALE-{order_id_counter}"
                         ord_obj = matching.submit_order(
-                            order_id=w_id, symbol=symbol, side=sim_side,
-                            order_type=SimOrderType.MARKET, quantity=50.0, current_time=t_now
+                            order_id=w_id,
+                            symbol=symbol,
+                            side=sim_side,
+                            order_type=SimOrderType.MARKET,
+                            quantity=50.0,
+                            current_time=t_now,
                         )
                         open_orders[w_id] = ord_obj
                         orders_submitted += 1
@@ -296,17 +386,27 @@ def run_strategy_simulation(
 
         elif strategy_type == "RANDOM_SIGNAL":
             if rng.random() < 0.05:
-                side_choice = SimOrderSide.BUY if rng.random() < 0.5 else SimOrderSide.SELL
+                side_choice = (
+                    SimOrderSide.BUY if rng.random() < 0.5 else SimOrderSide.SELL
+                )
                 v_res = risk.validate_order(
-                    symbol=symbol, side=side_choice.value, order_type="MARKET",
-                    quantity=20.0, price=current_mid, prevailing_mid=current_mid
+                    symbol=symbol,
+                    side=side_choice.value,
+                    order_type="MARKET",
+                    quantity=20.0,
+                    price=current_mid,
+                    prevailing_mid=current_mid,
                 )
                 if v_res.passed:
                     order_id_counter += 1
                     r_id = f"RND-{order_id_counter}"
                     ord_obj = matching.submit_order(
-                        order_id=r_id, symbol=symbol, side=side_choice,
-                        order_type=SimOrderType.MARKET, quantity=20.0, current_time=t_now
+                        order_id=r_id,
+                        symbol=symbol,
+                        side=side_choice,
+                        order_type=SimOrderType.MARKET,
+                        quantity=20.0,
+                        current_time=t_now,
                     )
                     open_orders[r_id] = ord_obj
                     orders_submitted += 1
@@ -332,7 +432,9 @@ def run_strategy_simulation(
 
 def run_scaling_benchmark_worker(events_per_worker: int) -> float:
     """Worker task for multi-worker scaling benchmark."""
-    cfg = SimulatorConfig(seed=42, num_events=events_per_worker, instruments=["AAPL", "MSFT"])
+    cfg = SimulatorConfig(
+        seed=42, num_events=events_per_worker, instruments=["AAPL", "MSFT"]
+    )
     sim = FeedSimulator(cfg)
     fqe = FastQualityEngine()
     count = 0
@@ -348,7 +450,9 @@ def run_scaling_benchmark_worker(events_per_worker: int) -> float:
     return count / elapsed if elapsed > 0 else 0.0
 
 
-def run_multi_worker_benchmark(worker_counts: list[int] = [1, 2, 4, 8]) -> dict[int, dict[str, float]]:
+def run_multi_worker_benchmark(
+    worker_counts: list[int] = [1, 2, 4, 8],
+) -> dict[int, dict[str, float]]:
     """Benchmarks pipeline throughput scaling across 1, 2, 4, and 8 worker processes."""
     results = {}
     events_per_worker = 10_000
@@ -362,7 +466,9 @@ def run_multi_worker_benchmark(worker_counts: list[int] = [1, 2, 4, 8]) -> dict[
             throughput = rate
         else:
             with multiprocessing.Pool(processes=n_workers) as pool:
-                rates = pool.map(run_scaling_benchmark_worker, [events_per_worker] * n_workers)
+                rates = pool.map(
+                    run_scaling_benchmark_worker, [events_per_worker] * n_workers
+                )
             elapsed = time.perf_counter() - t0
             total_events = events_per_worker * n_workers
             throughput = total_events / elapsed if elapsed > 0 else 0.0
@@ -374,7 +480,9 @@ def run_multi_worker_benchmark(worker_counts: list[int] = [1, 2, 4, 8]) -> dict[
             "elapsed_seconds": round(elapsed, 3),
             "throughput_eps": round(throughput, 1),
             "latency_us": round(latency_us, 2),
-            "speedup": round(throughput / results[1]["throughput_eps"], 2) if 1 in results else 1.0,
+            "speedup": round(throughput / results[1]["throughput_eps"], 2)
+            if 1 in results
+            else 1.0,
         }
     return results
 
@@ -386,7 +494,11 @@ def main():
 
     # 1. Generate realistic dataset (5,000 market events)
     print("\n[1/3] Generating deterministic market event dataset (N = 5,000)...")
-    sim = FeedSimulator(SimulatorConfig(seed=42, num_events=5000, instruments=["AAPL"], sources=["FEEDX", "FEEDY"]))
+    sim = FeedSimulator(
+        SimulatorConfig(
+            seed=42, num_events=5000, instruments=["AAPL"], sources=["FEEDX", "FEEDY"]
+        )
+    )
     events: list[CanonicalEvent] = []
     fqe = FastQualityEngine()
     for raw, _ in sim.generate():
@@ -402,7 +514,9 @@ def main():
     split_idx = int(len(events) * 0.60)
     is_events = events[:split_idx]
     oos_events = events[split_idx:]
-    print(f"Data split: In-Sample = {len(is_events):,} events (60%), Out-of-Sample = {len(oos_events):,} events (40%)")
+    print(
+        f"Data split: In-Sample = {len(is_events):,} events (60%), Out-of-Sample = {len(oos_events):,} events (40%)"
+    )
 
     strategies = [
         "AS_MM",
@@ -415,7 +529,9 @@ def main():
 
     all_results = {"in_sample": {}, "out_of_sample": {}, "full_sample": {}}
 
-    print("\n[2/3] Simulating all 6 strategies under realistic matching & institutional risk gates...")
+    print(
+        "\n[2/3] Simulating all 6 strategies under realistic matching & institutional risk gates..."
+    )
     for strat in strategies:
         print(f"  -> Running {strat}...")
         ts_full = run_strategy_simulation(strat, events)
@@ -428,7 +544,9 @@ def main():
 
     # Print summary table
     print("\n" + "=" * 105)
-    print(f"{'Strategy / Model':<22} | {'Gross PnL':>10} | {'Fees Paid':>10} | {'Net PnL':>10} | {'Sharpe':>7} | {'MaxDD %':>8} | {'Win Rate':>8} | {'Trades':>6}")
+    print(
+        f"{'Strategy / Model':<22} | {'Gross PnL':>10} | {'Fees Paid':>10} | {'Net PnL':>10} | {'Sharpe':>7} | {'MaxDD %':>8} | {'Win Rate':>8} | {'Trades':>6}"
+    )
     print("-" * 105)
     for strat in strategies:
         res = all_results["full_sample"][strat]
@@ -442,10 +560,14 @@ def main():
     print("\n[3/3] Running multi-worker concurrency benchmark (1, 2, 4, 8 workers)...")
     scaling_res = run_multi_worker_benchmark([1, 2, 4, 8])
     print("\n" + "=" * 80)
-    print(f"{'Workers':<10} | {'Total Events':>14} | {'Elapsed (s)':>12} | {'Throughput (EPS)':>18} | {'Speedup':>10}")
+    print(
+        f"{'Workers':<10} | {'Total Events':>14} | {'Elapsed (s)':>12} | {'Throughput (EPS)':>18} | {'Speedup':>10}"
+    )
     print("-" * 80)
     for w, r in scaling_res.items():
-        print(f"{w:<10} | {r['total_events']:>14,} | {r['elapsed_seconds']:>12.3f} | {r['throughput_eps']:>18,.1f} | {r['speedup']:>9.2f}x")
+        print(
+            f"{w:<10} | {r['total_events']:>14,} | {r['elapsed_seconds']:>12.3f} | {r['throughput_eps']:>18,.1f} | {r['speedup']:>9.2f}x"
+        )
     print("=" * 80)
 
     # Save to JSON
@@ -453,11 +575,15 @@ def main():
     output_dir.mkdir(parents=True, exist_ok=True)
     out_file = output_dir / "quantitative_strategy_evaluation.json"
     with open(out_file, "w", encoding="utf-8") as f:
-        json.dump({
-            "timestamp": time.time(),
-            "strategies": all_results,
-            "scaling": scaling_res,
-        }, f, indent=2)
+        json.dump(
+            {
+                "timestamp": time.time(),
+                "strategies": all_results,
+                "scaling": scaling_res,
+            },
+            f,
+            indent=2,
+        )
     print(f"\nSaved evaluation results to {out_file}")
 
 

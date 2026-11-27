@@ -316,6 +316,7 @@ def decode_shm_source(wire_source: str) -> str:
         return ""
     return WIRE_TO_CANONICAL_SOURCE_V3.get(wire_source, wire_source)
 
+
 # Bounded caching for hot-path symbol/source byte-padding and string decoding
 _FAST_ENCODE_CACHE: dict[tuple[str, str], tuple[bytes, bytes, int]] = {}
 _BYTE_DECODE_CACHE: dict[bytes, str] = {}

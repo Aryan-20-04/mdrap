@@ -23,6 +23,7 @@ import pytest
 from mdrap.models import CanonicalEvent, EventType, QualityStatus, Reason, RawEvent
 from mdrap.gateway import normalize
 from mdrap.quality import QualityEngine
+
 try:
     from mdrap.partition import SymbolPartitioner, ConsumerFanoutManager, ShardConfig
 except ImportError:

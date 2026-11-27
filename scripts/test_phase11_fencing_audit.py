@@ -39,13 +39,15 @@ def run_fencing_audit():
     interception_latencies_us = []
 
     def record(scen_num: int, title: str, desc: str, passed: bool, outcome: str):
-        scenarios.append({
-            "scenario_id": f"SCEN-{scen_num:02d}",
-            "title": title,
-            "description": desc,
-            "passed": passed,
-            "outcome": outcome,
-        })
+        scenarios.append(
+            {
+                "scenario_id": f"SCEN-{scen_num:02d}",
+                "title": title,
+                "description": desc,
+                "passed": passed,
+                "outcome": outcome,
+            }
+        )
         status_str = "PASS" if passed else "FAIL"
         print(f"[{status_str}] Scenario {scen_num:02d}: {title} -> {outcome}")
 
@@ -70,7 +72,9 @@ def run_fencing_audit():
         "Former leader alive after losing quorum",
         "Leader partitioned from peers loses quorum, cannot renew lease, and write attempt fails.",
         s1_passed,
-        "QuorumLossError on renew + FencingTokenError on expired write attempt" if s1_passed else "Failed to fence"
+        "QuorumLossError on renew + FencingTokenError on expired write attempt"
+        if s1_passed
+        else "Failed to fence",
     )
 
     # SCENARIO 2: Former leader isolated from new leader but with destination access
@@ -81,7 +85,9 @@ def run_fencing_audit():
     t0 = time.perf_counter()
     s2_passed = False
     try:
-        writer.validate_write(tok1)  # Stale tok1 (epoch 1) against writer with highest epoch 2
+        writer.validate_write(
+            tok1
+        )  # Stale tok1 (epoch 1) against writer with highest epoch 2
     except FencingTokenError:
         lat_us = (time.perf_counter() - t0) * 1e6
         interception_latencies_us.append(lat_us)
@@ -91,7 +97,9 @@ def run_fencing_audit():
         "Former leader isolated from new leader with destination access",
         "Old leader attempts direct write to shared persistence; intercepted by FencedWALWriter.",
         s2_passed,
-        f"Intercepted in {interception_latencies_us[-1]:.2f} us" if s2_passed else "Stale write leaked"
+        f"Intercepted in {interception_latencies_us[-1]:.2f} us"
+        if s2_passed
+        else "Stale write leaked",
     )
 
     # SCENARIO 3: Old leader reconnects after new leader commits
@@ -113,12 +121,16 @@ def run_fencing_audit():
         "Old leader reconnects after new leader commits",
         "Reconnected zombie leader attempts write after multiple newer epoch commits.",
         s3_passed,
-        f"FencingTokenError raised (epoch 1 < 3, lat={interception_latencies_us[-1]:.2f} us)" if s3_passed else "Leaked"
+        f"FencingTokenError raised (epoch 1 < 3, lat={interception_latencies_us[-1]:.2f} us)"
+        if s3_passed
+        else "Leaked",
     )
 
     # SCENARIO 4: Old leader restarts with stale local state
     c1_restarted = ConsensusCoordinator("node-01", cluster_nodes, initial_epoch=1)
-    t_restarted = EpochToken(epoch=1, leader_id="node-01", issued_ts=time.time(), lease_duration_sec=1.0)
+    t_restarted = EpochToken(
+        epoch=1, leader_id="node-01", issued_ts=time.time(), lease_duration_sec=1.0
+    )
     t0 = time.perf_counter()
     s4_passed = False
     try:
@@ -132,13 +144,19 @@ def run_fencing_audit():
         "Old leader restarts with stale local state",
         "Node boots with cold/stale epoch state and immediately attempts write before resync.",
         s4_passed,
-        f"Intercepted: epoch 1 < active epoch {writer.highest_epoch}" if s4_passed else "Leaked"
+        f"Intercepted: epoch 1 < active epoch {writer.highest_epoch}"
+        if s4_passed
+        else "Leaked",
     )
 
     # SCENARIO 5: Two leaders attempt concurrent commits
     writer_c5 = FencedWALWriter("partition-c5")
-    tok_a = EpochToken(epoch=2, leader_id="node-01", issued_ts=time.time(), lease_duration_sec=1.0)
-    tok_b = EpochToken(epoch=3, leader_id="node-02", issued_ts=time.time(), lease_duration_sec=1.0)
+    tok_a = EpochToken(
+        epoch=2, leader_id="node-01", issued_ts=time.time(), lease_duration_sec=1.0
+    )
+    tok_b = EpochToken(
+        epoch=3, leader_id="node-02", issued_ts=time.time(), lease_duration_sec=1.0
+    )
     writer_c5.validate_write(tok_b)  # Epoch 3 commits first
     t0 = time.perf_counter()
     s5_passed = False
@@ -153,13 +171,17 @@ def run_fencing_audit():
         "Two leaders attempt concurrent commits",
         "Race between competing leaders resolved by strict monotonic highest epoch advance.",
         s5_passed,
-        "Lower epoch rejected deterministically" if s5_passed else "Race collision"
+        "Lower epoch rejected deterministically" if s5_passed else "Race collision",
     )
 
     # SCENARIO 6: Delayed message arrives after epoch transition
     writer_c6 = FencedWALWriter("partition-c6")
-    tok_prev = EpochToken(epoch=10, leader_id="node-01", issued_ts=time.time(), lease_duration_sec=1.0)
-    tok_curr = EpochToken(epoch=11, leader_id="node-02", issued_ts=time.time(), lease_duration_sec=1.0)
+    tok_prev = EpochToken(
+        epoch=10, leader_id="node-01", issued_ts=time.time(), lease_duration_sec=1.0
+    )
+    tok_curr = EpochToken(
+        epoch=11, leader_id="node-02", issued_ts=time.time(), lease_duration_sec=1.0
+    )
     writer_c6.validate_write(tok_curr)
     t0 = time.perf_counter()
     s6_passed = False
@@ -174,12 +196,19 @@ def run_fencing_audit():
         "Delayed message arrives after epoch transition",
         "Out-of-order in-flight payload stamped with preceding epoch arrives at storage.",
         s6_passed,
-        f"Epoch fence intercepted delayed frame in {interception_latencies_us[-1]:.2f} us" if s6_passed else "Accepted stale"
+        f"Epoch fence intercepted delayed frame in {interception_latencies_us[-1]:.2f} us"
+        if s6_passed
+        else "Accepted stale",
     )
 
     # SCENARIO 7: Write begins before fencing, reaches persistence after fencing
     writer_c7 = FencedWALWriter("partition-c7")
-    tok_in_flight = EpochToken(epoch=5, leader_id="node-01", issued_ts=time.time() - 0.2, lease_duration_sec=0.1)
+    tok_in_flight = EpochToken(
+        epoch=5,
+        leader_id="node-01",
+        issued_ts=time.time() - 0.2,
+        lease_duration_sec=0.1,
+    )
     # The lease duration was 0.1s, and 0.2s elapsed -> expired while in flight
     t0 = time.perf_counter()
     s7_passed = False
@@ -195,7 +224,9 @@ def run_fencing_audit():
         "Write begins before fencing, reaches persistence after fencing",
         "In-flight transit delay causes token expiration prior to persistence barrier arrival.",
         s7_passed,
-        f"Lease expiration detected at fence gate in {interception_latencies_us[-1]:.2f} us" if s7_passed else "Expired write committed"
+        f"Lease expiration detected at fence gate in {interception_latencies_us[-1]:.2f} us"
+        if s7_passed
+        else "Expired write committed",
     )
 
     # SCENARIO 8: Durable backend restarts independently
@@ -203,7 +234,9 @@ def run_fencing_audit():
     writer_restarted = FencedWALWriter("partition-c8")
     # Simulate loading highest known epoch from WAL header or checkpoint DB
     writer_restarted._highest_epoch_seen = checkpoint_epoch
-    tok_stale_reboot = EpochToken(epoch=14, leader_id="node-01", issued_ts=time.time(), lease_duration_sec=1.0)
+    tok_stale_reboot = EpochToken(
+        epoch=14, leader_id="node-01", issued_ts=time.time(), lease_duration_sec=1.0
+    )
     t0 = time.perf_counter()
     s8_passed = False
     try:
@@ -217,7 +250,9 @@ def run_fencing_audit():
         "Durable backend restarts independently",
         "Persistence gate restores epoch state from checkpoint; rejects stale pre-restart tokens.",
         s8_passed,
-        f"Recovered fence state preserved; stale write rejected in {interception_latencies_us[-1]:.2f} us" if s8_passed else "State lost"
+        f"Recovered fence state preserved; stale write rejected in {interception_latencies_us[-1]:.2f} us"
+        if s8_passed
+        else "State lost",
     )
 
     # SCENARIO 9: Replication fails during leadership transition
@@ -233,7 +268,9 @@ def run_fencing_audit():
         "Replication fails during leadership transition",
         "Candidate node unable to contact majority peers cannot acquire leadership.",
         s9_passed,
-        "QuorumLossError raised; zero leadership tokens issued" if s9_passed else "Split-brain leader elected"
+        "QuorumLossError raised; zero leadership tokens issued"
+        if s9_passed
+        else "Split-brain leader elected",
     )
 
     # SCENARIO 10: Minority partition attempts write acknowledgement
@@ -249,11 +286,17 @@ def run_fencing_audit():
         "Minority partition attempts write acknowledgement",
         "Partitioned minority member attempts write ACK; blocked by lease abdication.",
         s10_passed,
-        "Leadership abdicated; lease invalidated" if s10_passed else "Minority write committed"
+        "Leadership abdicated; lease invalidated"
+        if s10_passed
+        else "Minority write committed",
     )
 
     all_passed = all(s["passed"] for s in scenarios)
-    mean_lat_us = sum(interception_latencies_us) / len(interception_latencies_us) if interception_latencies_us else 0.0
+    mean_lat_us = (
+        sum(interception_latencies_us) / len(interception_latencies_us)
+        if interception_latencies_us
+        else 0.0
+    )
 
     results = {
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -265,17 +308,25 @@ def run_fencing_audit():
         "stale_write_interception_latencies_us": {
             "count": len(interception_latencies_us),
             "mean_us": round(mean_lat_us, 2),
-            "min_us": round(min(interception_latencies_us), 2) if interception_latencies_us else 0.0,
-            "max_us": round(max(interception_latencies_us), 2) if interception_latencies_us else 0.0,
+            "min_us": round(min(interception_latencies_us), 2)
+            if interception_latencies_us
+            else 0.0,
+            "max_us": round(max(interception_latencies_us), 2)
+            if interception_latencies_us
+            else 0.0,
         },
         "scenarios": scenarios,
     }
 
-    out_file = os.path.join(_REPO_ROOT, "audit", "phase11", "consensus_and_fencing_results.json")
+    out_file = os.path.join(
+        _REPO_ROOT, "audit", "phase11", "consensus_and_fencing_results.json"
+    )
     with open(out_file, "w", encoding="utf-8") as f:
         json.dump(results, f, indent=2)
 
-    print(f"\nAudit complete. Emitted {out_file} (Verdict: {results['verdict']}, Mean interception: {mean_lat_us:.2f} us)")
+    print(
+        f"\nAudit complete. Emitted {out_file} (Verdict: {results['verdict']}, Mean interception: {mean_lat_us:.2f} us)"
+    )
     return results
 
 

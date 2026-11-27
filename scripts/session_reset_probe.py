@@ -25,12 +25,19 @@ def run_session_probe() -> dict[str, int]:
     results = {}
 
     # 1. Strict Policy (Baseline)
-    engine_strict = Engine(staleness_threshold_s=10.0, clock=clock, session_policy="strict")
+    engine_strict = Engine(
+        staleness_threshold_s=10.0, clock=clock, session_policy="strict"
+    )
     # Day 1: 200 sequential events
     day1_events = [
         RawEvent(
             source="NASDAQ",
-            payload={"instrument": "AAPL", "event_type": "TRADE", "price": 150.0 + i * 0.01, "sequence": i},
+            payload={
+                "instrument": "AAPL",
+                "event_type": "TRADE",
+                "price": 150.0 + i * 0.01,
+                "sequence": i,
+            },
             receive_timestamp=1700000000.0 + i,
         )
         for i in range(1, 201)
@@ -41,22 +48,36 @@ def run_session_probe() -> dict[str, int]:
     day2_events = [
         RawEvent(
             source="NASDAQ",
-            payload={"instrument": "AAPL", "event_type": "TRADE", "price": 152.0 + i * 0.01, "sequence": i},
+            payload={
+                "instrument": "AAPL",
+                "event_type": "TRADE",
+                "price": 152.0 + i * 0.01,
+                "sequence": i,
+            },
             receive_timestamp=1700000000.0 + 86400 + i,
         )
         for i in range(1, 201)
     ]
     decisions_strict = engine_strict.submit(day2_events)
-    alarms_strict = sum(1 for d in decisions_strict if d.quality_status != QualityStatus.VALID)
+    alarms_strict = sum(
+        1 for d in decisions_strict if d.quality_status != QualityStatus.VALID
+    )
     results["strict_alarms"] = alarms_strict
 
     # 2. Session Marker Policy
-    engine_marker = Engine(staleness_threshold_s=10.0, clock=clock, session_policy="session_marker")
+    engine_marker = Engine(
+        staleness_threshold_s=10.0, clock=clock, session_policy="session_marker"
+    )
     day1_marker = [
         RawEvent(
             source="NASDAQ",
             session_id="DAY_1",
-            payload={"instrument": "AAPL", "event_type": "TRADE", "price": 150.0 + i * 0.01, "sequence": i},
+            payload={
+                "instrument": "AAPL",
+                "event_type": "TRADE",
+                "price": 150.0 + i * 0.01,
+                "sequence": i,
+            },
             receive_timestamp=1700000000.0 + i,
         )
         for i in range(1, 201)
@@ -67,20 +88,31 @@ def run_session_probe() -> dict[str, int]:
         RawEvent(
             source="NASDAQ",
             session_id="DAY_2",
-            payload={"instrument": "AAPL", "event_type": "TRADE", "price": 152.0 + i * 0.01, "sequence": i},
+            payload={
+                "instrument": "AAPL",
+                "event_type": "TRADE",
+                "price": 152.0 + i * 0.01,
+                "sequence": i,
+            },
             receive_timestamp=1700000000.0 + 86400 + i,
         )
         for i in range(1, 201)
     ]
     decisions_marker = engine_marker.submit(day2_marker)
-    alarms_marker = sum(1 for d in decisions_marker if d.quality_status != QualityStatus.VALID)
+    alarms_marker = sum(
+        1 for d in decisions_marker if d.quality_status != QualityStatus.VALID
+    )
     results["session_marker_alarms"] = alarms_marker
 
     # 3. Auto-Detect Policy
-    engine_auto = Engine(staleness_threshold_s=10.0, clock=clock, session_policy="auto_detect")
+    engine_auto = Engine(
+        staleness_threshold_s=10.0, clock=clock, session_policy="auto_detect"
+    )
     engine_auto.submit(day1_events)
     decisions_auto = engine_auto.submit(day2_events)
-    alarms_auto = sum(1 for d in decisions_auto if d.quality_status != QualityStatus.VALID)
+    alarms_auto = sum(
+        1 for d in decisions_auto if d.quality_status != QualityStatus.VALID
+    )
     results["auto_detect_alarms"] = alarms_auto
 
     return results
@@ -91,15 +123,24 @@ def main():
     print("MDRAP Session Reset & Sequence Epoch Probe (Item A2)")
     print("=" * 60)
     results = run_session_probe()
-    print(f"1. Strict Policy (SOD resets flagged):      {results['strict_alarms']} alarms")
-    print(f"2. Session Marker Policy (epoch advanced): {results['session_marker_alarms']} alarms (Target: 0)")
-    print(f"3. Auto-Detect Policy (overnight jump):    {results['auto_detect_alarms']} alarms (Target: 0)")
+    print(
+        f"1. Strict Policy (SOD resets flagged):      {results['strict_alarms']} alarms"
+    )
+    print(
+        f"2. Session Marker Policy (epoch advanced): {results['session_marker_alarms']} alarms (Target: 0)"
+    )
+    print(
+        f"3. Auto-Detect Policy (overnight jump):    {results['auto_detect_alarms']} alarms (Target: 0)"
+    )
 
     if results["session_marker_alarms"] == 0 and results["auto_detect_alarms"] == 0:
         print("\n[PASS] Session reset epoch policies achieved 0 false alarms.")
         sys.exit(0)
     else:
-        print("\n[FAIL] Session reset epoch policies generated unexpected alarms.", file=sys.stderr)
+        print(
+            "\n[FAIL] Session reset epoch policies generated unexpected alarms.",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
 

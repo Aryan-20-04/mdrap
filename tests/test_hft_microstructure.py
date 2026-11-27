@@ -51,8 +51,14 @@ def test_avellaneda_stoikov_inventory_skew():
     )
     assert res_neutral.reservation_price == mid
     assert res_neutral.optimal_half_spread > 0
-    assert pytest.approx(res_neutral.bid_quote, 0.01) == mid - res_neutral.optimal_half_spread
-    assert pytest.approx(res_neutral.ask_quote, 0.01) == mid + res_neutral.optimal_half_spread
+    assert (
+        pytest.approx(res_neutral.bid_quote, 0.01)
+        == mid - res_neutral.optimal_half_spread
+    )
+    assert (
+        pytest.approx(res_neutral.ask_quote, 0.01)
+        == mid + res_neutral.optimal_half_spread
+    )
 
     # Long inventory (q = 10.0) -> reservation price must skew downward
     res_long = compute_avellaneda_stoikov(
@@ -102,17 +108,23 @@ def test_micro_price_volume_weighting():
     bid = 100.0
     ask = 100.2
     # Symmetric book: micro-price equals simple mid (100.10)
-    mp_sym = compute_micro_price(best_bid=bid, best_ask=ask, bid_size=10.0, ask_size=10.0)
+    mp_sym = compute_micro_price(
+        best_bid=bid, best_ask=ask, bid_size=10.0, ask_size=10.0
+    )
     assert pytest.approx(mp_sym, 0.001) == 100.10
 
     # Heavy bid queue (bid_size=90, ask_size=10)
     # micro-price = (90 * 100.2 + 10 * 100.0) / 100 = 100.18 (skewed towards ask)
-    mp_bid_heavy = compute_micro_price(best_bid=bid, best_ask=ask, bid_size=90.0, ask_size=10.0)
+    mp_bid_heavy = compute_micro_price(
+        best_bid=bid, best_ask=ask, bid_size=90.0, ask_size=10.0
+    )
     assert pytest.approx(mp_bid_heavy, 0.001) == 100.18
     assert mp_bid_heavy > 100.10
 
     # Heavy ask queue (bid_size=10, ask_size=90)
-    mp_ask_heavy = compute_micro_price(best_bid=bid, best_ask=ask, bid_size=10.0, ask_size=90.0)
+    mp_ask_heavy = compute_micro_price(
+        best_bid=bid, best_ask=ask, bid_size=10.0, ask_size=90.0
+    )
     assert pytest.approx(mp_ask_heavy, 0.001) == 100.02
     assert mp_ask_heavy < 100.10
 
@@ -160,16 +172,36 @@ def test_lee_ready_classification():
     ask = 100.2
 
     # Trade above mid -> Buyer initiated
-    assert classify_trade_lee_ready(trade_price=100.15, prev_trade_price=100.1, bid_price=bid, ask_price=ask) == "BUY"
+    assert (
+        classify_trade_lee_ready(
+            trade_price=100.15, prev_trade_price=100.1, bid_price=bid, ask_price=ask
+        )
+        == "BUY"
+    )
 
     # Trade below mid -> Seller initiated
-    assert classify_trade_lee_ready(trade_price=100.05, prev_trade_price=100.1, bid_price=bid, ask_price=ask) == "SELL"
+    assert (
+        classify_trade_lee_ready(
+            trade_price=100.05, prev_trade_price=100.1, bid_price=bid, ask_price=ask
+        )
+        == "SELL"
+    )
 
     # Trade exactly at mid -> fallback to tick rule
     # Up-tick (price > prev_price) -> Buyer initiated
-    assert classify_trade_lee_ready(trade_price=100.1, prev_trade_price=100.05, bid_price=bid, ask_price=ask) == "BUY"
+    assert (
+        classify_trade_lee_ready(
+            trade_price=100.1, prev_trade_price=100.05, bid_price=bid, ask_price=ask
+        )
+        == "BUY"
+    )
     # Down-tick (price < prev_price) -> Seller initiated
-    assert classify_trade_lee_ready(trade_price=100.1, prev_trade_price=100.15, bid_price=bid, ask_price=ask) == "SELL"
+    assert (
+        classify_trade_lee_ready(
+            trade_price=100.1, prev_trade_price=100.15, bid_price=bid, ask_price=ask
+        )
+        == "SELL"
+    )
 
 
 def test_signal_predictive_power_statistics():

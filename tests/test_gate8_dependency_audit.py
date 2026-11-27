@@ -102,7 +102,9 @@ def test_gate8_vulnerabilities_detected(monkeypatch, tmp_path):
             )
         out_path = Path(cmd[cmd.index("-o") + 1])
         out_path.write_text(json.dumps(vuln_data), encoding="utf-8")
-        return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="Found 1 known vulnerability")
+        return subprocess.CompletedProcess(
+            cmd, 1, stdout="", stderr="Found 1 known vulnerability"
+        )
 
     monkeypatch.setattr(subprocess, "run", fake_run)
     monkeypatch.setattr("scripts.check._ARTIFACT_DIR", tmp_path)
@@ -159,8 +161,12 @@ def test_gate8_interrupted_scan_and_stale_report_rejected(monkeypatch, tmp_path)
     # Case 1: pip-audit exits 1 without writing -o temp output (e.g. resolution failure / SIGINT)
     def fake_aborted(cmd, *args, **kwargs):
         if "--version" in cmd:
-            return subprocess.CompletedProcess(cmd, 0, stdout="pip-audit 2.10.1\n", stderr="")
-        return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="ResolutionError: conflicted")
+            return subprocess.CompletedProcess(
+                cmd, 0, stdout="pip-audit 2.10.1\n", stderr=""
+            )
+        return subprocess.CompletedProcess(
+            cmd, 1, stdout="", stderr="ResolutionError: conflicted"
+        )
 
     monkeypatch.setattr(subprocess, "run", fake_aborted)
     monkeypatch.setattr("scripts.check._ARTIFACT_DIR", tmp_path)
@@ -169,15 +175,22 @@ def test_gate8_interrupted_scan_and_stale_report_rejected(monkeypatch, tmp_path)
         gate_dependency_vulnerability_scan()
     assert "fresh audit output JSON missing or empty" in str(exc_info.value)
     assert "found 0 known vulnerabilities" not in str(exc_info.value)
-    assert json.loads(stale_audit.read_text(encoding="utf-8"))["scanner"]["scanned_at"] == "2020-01-01T00:00:00+00:00"
+    assert (
+        json.loads(stale_audit.read_text(encoding="utf-8"))["scanner"]["scanned_at"]
+        == "2020-01-01T00:00:00+00:00"
+    )
 
     # Case 2: pip-audit exits 1 and writes 0-vuln JSON (nonzero exit mismatch) -> execution failure, not clean
     def fake_rc1_empty_vulns(cmd, *args, **kwargs):
         if "--version" in cmd:
-            return subprocess.CompletedProcess(cmd, 0, stdout="pip-audit 2.10.1\n", stderr="")
+            return subprocess.CompletedProcess(
+                cmd, 0, stdout="pip-audit 2.10.1\n", stderr=""
+            )
         out_path = Path(cmd[cmd.index("-o") + 1])
         out_path.write_text(json.dumps({"dependencies": []}), encoding="utf-8")
-        return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="Internal audit abort")
+        return subprocess.CompletedProcess(
+            cmd, 1, stdout="", stderr="Internal audit abort"
+        )
 
     monkeypatch.setattr(subprocess, "run", fake_rc1_empty_vulns)
     with pytest.raises(RuntimeError) as exc_info2:
@@ -185,14 +198,20 @@ def test_gate8_interrupted_scan_and_stale_report_rejected(monkeypatch, tmp_path)
     assert "exited 1 without vulnerability findings" in str(exc_info2.value)
 
 
-def test_gate8_malformed_json_rejected_and_preserves_prior_report(monkeypatch, tmp_path):
+def test_gate8_malformed_json_rejected_and_preserves_prior_report(
+    monkeypatch, tmp_path
+):
     """Malformed JSON output from pip-audit must raise execution failure without corrupting prior report."""
     prior = tmp_path / "DEPENDENCY_AUDIT.json"
-    prior.write_text(json.dumps({"dependencies": [], "sentinel": True}), encoding="utf-8")
+    prior.write_text(
+        json.dumps({"dependencies": [], "sentinel": True}), encoding="utf-8"
+    )
 
     def fake_corrupt(cmd, *args, **kwargs):
         if "--version" in cmd:
-            return subprocess.CompletedProcess(cmd, 0, stdout="pip-audit 2.10.1\n", stderr="")
+            return subprocess.CompletedProcess(
+                cmd, 0, stdout="pip-audit 2.10.1\n", stderr=""
+            )
         out_path = Path(cmd[cmd.index("-o") + 1])
         out_path.write_text("{corrupt truncated json", encoding="utf-8")
         return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
@@ -206,27 +225,49 @@ def test_gate8_malformed_json_rejected_and_preserves_prior_report(monkeypatch, t
     assert json.loads(prior.read_text(encoding="utf-8"))["sentinel"] is True
 
 
-def test_gate8_isolated_audit_tool_policy_distinguishes_py310_filelock(monkeypatch, tmp_path):
+def test_gate8_isolated_audit_tool_policy_distinguishes_py310_filelock(
+    monkeypatch, tmp_path
+):
     """Clean requirements.txt + scanner-only filelock==4.1.0 advisory on <3.11 is recorded transparently."""
     fake_audit_json = tmp_path / "DEPENDENCY_AUDIT.json"
 
     def fake_run(cmd, *args, **kwargs):
         if "--version" in cmd:
-            return subprocess.CompletedProcess(cmd, 0, stdout="pip-audit 2.10.1\n", stderr="")
+            return subprocess.CompletedProcess(
+                cmd, 0, stdout="pip-audit 2.10.1\n", stderr=""
+            )
         out_path = Path(cmd[cmd.index("-o") + 1])
         manifest = cmd[cmd.index("-r") + 1]
         if manifest == "requirements-audit.txt":
-            out_path.write_text(json.dumps({
-                "dependencies": [{
-                    "name": "filelock",
-                    "version": "4.1.0",
-                    "vulns": [{"id": "CVE-2026-112906", "fix_versions": ["4.2.1"], "description": "fl"}],
-                }]
-            }), encoding="utf-8")
-            return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="Found 1 known vulnerability")
-        out_path.write_text(json.dumps({
-            "dependencies": [{"name": "rich", "version": "13.9.4", "vulns": []}]
-        }), encoding="utf-8")
+            out_path.write_text(
+                json.dumps(
+                    {
+                        "dependencies": [
+                            {
+                                "name": "filelock",
+                                "version": "4.1.0",
+                                "vulns": [
+                                    {
+                                        "id": "CVE-2026-112906",
+                                        "fix_versions": ["4.2.1"],
+                                        "description": "fl",
+                                    }
+                                ],
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            return subprocess.CompletedProcess(
+                cmd, 1, stdout="", stderr="Found 1 known vulnerability"
+            )
+        out_path.write_text(
+            json.dumps(
+                {"dependencies": [{"name": "rich", "version": "13.9.4", "vulns": []}]}
+            ),
+            encoding="utf-8",
+        )
         return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
     monkeypatch.setattr(subprocess, "run", fake_run)
@@ -239,7 +280,9 @@ def test_gate8_isolated_audit_tool_policy_distinguishes_py310_filelock(monkeypat
     assert saved["audit_tool_environment"]["manifest"] == "requirements-audit.txt"
     assert saved["audit_tool_environment"]["shipped_to_runtime"] is False
     assert saved["audit_tool_environment"]["vulnerability_count"] == 1
-    assert saved["audit_tool_environment"]["vulnerabilities"][0]["id"] == "CVE-2026-112906"
+    assert (
+        saved["audit_tool_environment"]["vulnerabilities"][0]["id"] == "CVE-2026-112906"
+    )
 
 
 def test_gate8_real_execution():
@@ -253,4 +296,6 @@ def test_gate8_real_execution():
     assert data["scanner"]["name"] == "pip-audit"
     assert data["scanner"]["input"] == "requirements.txt"
     assert "dependencies" in data
-    assert all((d.get("name") or "").lower() != "filelock" for d in data["dependencies"])
+    assert all(
+        (d.get("name") or "").lower() != "filelock" for d in data["dependencies"]
+    )

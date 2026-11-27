@@ -57,7 +57,9 @@ def test_ws_provider_telemetry_watchdog_fields():
 
 def test_ws_feed_manager_telemetry_reporting():
     """Verify WebSocketFeedManager populates telemetry with watchdog fields."""
-    mgr = WebSocketFeedManager(symbols=["BTC/USD"], venues=["BINANCE", "KRAKEN"], stale_timeout_ms=5000.0)
+    mgr = WebSocketFeedManager(
+        symbols=["BTC/USD"], venues=["BINANCE", "KRAKEN"], stale_timeout_ms=5000.0
+    )
     telem = mgr.get_provider_telemetry()
     assert "BINANCE" in telem
     assert "KRAKEN" in telem
@@ -141,6 +143,7 @@ def test_venue_book_state_top_levels_heap_equivalence():
     book = VenueBookState(venue="BINANCE", instrument="BTC/USD")
     # Populate 100 bid and ask price levels
     import random
+
     rng = random.Random(42)
     for _ in range(100):
         bp = round(rng.uniform(60000.0, 65000.0), 2)
@@ -150,7 +153,9 @@ def test_venue_book_state_top_levels_heap_equivalence():
 
     # Test depths smaller than, equal to, and larger than book size
     for depth in (5, 25, 50, 100, 150):
-        expected_bids = sorted(book.bids.items(), key=lambda kv: kv[0], reverse=True)[:depth]
+        expected_bids = sorted(book.bids.items(), key=lambda kv: kv[0], reverse=True)[
+            :depth
+        ]
         expected_asks = sorted(book.asks.items(), key=lambda kv: kv[0])[:depth]
         actual_bids, actual_asks = book.top_levels(depth=depth)
         assert actual_bids == expected_bids
@@ -184,7 +189,10 @@ def test_normalized_replay_event_slots_and_provenance():
 def test_no_deployment_governance_invariants():
     """Verify NO DEPLOYMENT decision is enforced across strategies and backends."""
     from mdrap_strategies.backends.base import ExecutionBackend
-    from mdrap_strategies.backends.testnet import ExchangeTestnetBackend, SecurityViolationError
+    from mdrap_strategies.backends.testnet import (
+        ExchangeTestnetBackend,
+        SecurityViolationError,
+    )
     from mdrap_strategies.risk_engine import InstitutionalRiskEngine
 
     risk_engine = InstitutionalRiskEngine()
@@ -197,6 +205,7 @@ def test_no_deployment_governance_invariants():
 
     # Verify shadow trading registry statuses
     from tools.run_shadow_trading import STRATEGY_REGISTRY
+
     assert STRATEGY_REGISTRY["Fixed-Spread Post-Only"] == "ABANDONED"
     assert STRATEGY_REGISTRY["Avellaneda-Stoikov"] == "RESEARCH ONLY"
     assert STRATEGY_REGISTRY["Inventory-Skewed"] == "RESEARCH ONLY"

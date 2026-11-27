@@ -64,7 +64,11 @@ class ExchangeTestnetBackend(ExecutionBackend):
         # Safety Audit: verify endpoint is strictly a sanctioned testnet
         parsed = urllib.parse.urlparse(self.base_url)
         host = parsed.netloc.lower()
-        if host not in self.ALLOWED_TESTNET_HOSTS and "testnet" not in host and "sandbox" not in host:
+        if (
+            host not in self.ALLOWED_TESTNET_HOSTS
+            and "testnet" not in host
+            and "sandbox" not in host
+        ):
             raise SecurityViolationError(
                 f"FATAL: Production URL '{self.base_url}' detected in testnet backend! "
                 f"ExchangeTestnetBackend only permits verified testnet/sandbox hosts."
@@ -167,7 +171,9 @@ class ExchangeTestnetBackend(ExecutionBackend):
         try:
             signed_body = self._sign_payload(params)
             parsed = urllib.parse.urlparse(self.base_url)
-            conn = http.client.HTTPSConnection(parsed.netloc, context=self._ctx, timeout=5.0)
+            conn = http.client.HTTPSConnection(
+                parsed.netloc, context=self._ctx, timeout=5.0
+            )
             headers = {
                 "X-MBX-APIKEY": self.api_key,
                 "Content-Type": "application/x-www-form-urlencoded",
@@ -205,7 +211,9 @@ class ExchangeTestnetBackend(ExecutionBackend):
         try:
             signed_body = self._sign_payload(params)
             parsed = urllib.parse.urlparse(self.base_url)
-            conn = http.client.HTTPSConnection(parsed.netloc, context=self._ctx, timeout=5.0)
+            conn = http.client.HTTPSConnection(
+                parsed.netloc, context=self._ctx, timeout=5.0
+            )
             headers = {
                 "X-MBX-APIKEY": self.api_key,
                 "Content-Type": "application/x-www-form-urlencoded",
@@ -226,7 +234,11 @@ class ExchangeTestnetBackend(ExecutionBackend):
         return self.cash
 
     def get_status(self) -> dict[str, Any]:
-        masked_key = (self.api_key[:4] + "***" + self.api_key[-4:]) if len(self.api_key) > 8 else "***"
+        masked_key = (
+            (self.api_key[:4] + "***" + self.api_key[-4:])
+            if len(self.api_key) > 8
+            else "***"
+        )
         return {
             "name": self.name,
             "is_running": self.is_running,

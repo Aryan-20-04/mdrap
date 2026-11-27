@@ -25,15 +25,17 @@ from mdrap.provenance import ProvenanceTracker, create_provenance
 from mdrap.quality import QualityEngine
 from mdrap.fastpath import HAS_FASTPATH, FastQualityEngine
 
+
 def benchmark_sqlite_readers():
     print("[1/4] Benchmarking SQLite concurrent readers...")
     import gc, shutil
+
     results = {}
     tmpdir = tempfile.mkdtemp()
     try:
         db_path = os.path.join(tmpdir, "bench.db")
         store = Store(path=db_path)
-        
+
         # Populate with 2,000 canonical events
         events = [
             CanonicalEvent(
@@ -48,19 +50,19 @@ def benchmark_sqlite_readers():
                 bid_size=100.0,
                 ask_size=200.0,
                 quality_status=QualityStatus.VALID,
-                source="FEED-1"
+                source="FEED-1",
             )
             for i in range(2000)
         ]
         store.write_canonical_batch(events)
         store.commit()
-        
+
         # Test concurrent reader threads: 1, 2, 4, 8, 16
         for n_threads in [1, 2, 4, 8, 16]:
             queries_per_thread = 50
             total_queries = n_threads * queries_per_thread
             latencies = []
-            
+
             def reader_worker():
                 t_lat = []
                 for _ in range(queries_per_thread):
@@ -68,7 +70,7 @@ def benchmark_sqlite_readers():
                     # Perform query_events
                     res = store.query_events(instrument_id="AAPL", limit=20)
                     t1 = time.perf_counter()
-                    t_lat.append((t1 - t0) * 1000.0) # ms
+                    t_lat.append((t1 - t0) * 1000.0)  # ms
                 return t_lat
 
             t_start = time.perf_counter()
@@ -91,16 +93,22 @@ def benchmark_sqlite_readers():
                 "qps": round(qps, 2),
                 "latency_p50_ms": round(p50, 3),
                 "latency_p95_ms": round(p95, 3),
-                "latency_p99_ms": round(p99, 3)
+                "latency_p99_ms": round(p99, 3),
             }
         store.close()
+
         # Clean up thread-local reader connections across threads before exiting
         def cleanup_worker():
-            if hasattr(store, "_local_readers") and hasattr(store._local_readers, "conn"):
+            if hasattr(store, "_local_readers") and hasattr(
+                store._local_readers, "conn"
+            ):
                 if store._local_readers.conn:
-                    try: store._local_readers.conn.close()
-                    except Exception: pass
+                    try:
+                        store._local_readers.conn.close()
+                    except Exception:
+                        pass
                     store._local_readers.conn = None
+
         with ThreadPoolExecutor(max_workers=16) as executor:
             list(executor.map(lambda _: cleanup_worker(), range(16)))
     finally:
@@ -108,12 +116,13 @@ def benchmark_sqlite_readers():
         shutil.rmtree(tmpdir, ignore_errors=True)
     return results
 
+
 def benchmark_engine_parity():
     print("[2/4] Benchmarking QualityEngine vs Native C Fastpath...")
     results = {
         "has_native_fastpath": HAS_FASTPATH,
         "python_engine": {},
-        "fast_engine": {}
+        "fast_engine": {},
     }
 
     test_events = [
@@ -129,7 +138,7 @@ def benchmark_engine_parity():
             bid_size=500.0,
             ask_size=600.0,
             quality_status=QualityStatus.VALID,
-            source="FEED-1"
+            source="FEED-1",
         )
         for i in range(10000)
     ]
@@ -144,7 +153,7 @@ def benchmark_engine_parity():
         "count": len(test_events),
         "total_time_sec": round(t_py, 4),
         "events_per_sec": round(len(test_events) / t_py, 2),
-        "mean_latency_us": round((t_py / len(test_events)) * 1_000_000, 2)
+        "mean_latency_us": round((t_py / len(test_events)) * 1_000_000, 2),
     }
 
     # Benchmark FastQualityEngine
@@ -158,12 +167,13 @@ def benchmark_engine_parity():
             "count": len(test_events),
             "total_time_sec": round(t_fast, 4),
             "events_per_sec": round(len(test_events) / t_fast, 2),
-            "mean_latency_us": round((t_fast / len(test_events)) * 1_000_000, 2)
+            "mean_latency_us": round((t_fast / len(test_events)) * 1_000_000, 2),
         }
     except Exception as e:
         results["fast_engine"] = {"error": str(e)}
 
     return results
+
 
 def audit_provenance_and_dlq():
     print("[3/4] Auditing ProvenanceTracker latency and DLQ overflow...")
@@ -185,7 +195,7 @@ def audit_provenance_and_dlq():
             bid_size=100.0,
             ask_size=200.0,
             quality_status=QualityStatus.VALID,
-            source="FEED-1"
+            source="FEED-1",
         )
         raw = RawEvent(source="FEED-1", payload={"data": 123})
 
@@ -195,31 +205,33 @@ def audit_provenance_and_dlq():
             prov = create_provenance(raw, ev, f"trans_{i}")
             tracker.record(prov)
         t_rec = time.perf_counter() - t0
-        
+
         # Test DLQ overflow: fill 10,050 items into _pending_retry (maxlen=10000)
         err = sqlite3.OperationalError("database is locked")
         for _ in range(10050):
             tracker._handle_persistence_failure(prov, err)
-        
+
         results["record_100_latency_sec"] = round(t_rec, 4)
         results["record_latency_mean_ms"] = round((t_rec / 100) * 1000.0, 3)
         results["dlq_len"] = len(tracker._pending_retry)
         results["dlq_maxlen"] = tracker._pending_retry.maxlen
         results["dropped_counter_after_overflow"] = tracker.dropped_provenance_count
-        results["dropped_counter_missed_discards"] = 10050 - tracker.dropped_provenance_count - tracker._pending_retry.maxlen
+        results["dropped_counter_missed_discards"] = (
+            10050 - tracker.dropped_provenance_count - tracker._pending_retry.maxlen
+        )
         tracker.close()
     finally:
         import gc, shutil
+
         gc.collect()
         shutil.rmtree(tmpdir, ignore_errors=True)
-        
+
     return results
+
 
 def audit_wheel_packaging():
     print("[4/4] Auditing PEP 427 wheel packaging contents...")
-    results = {
-        "wheels_found": []
-    }
+    results = {"wheels_found": []}
     dist_dir = "dist"
     if os.path.exists(dist_dir):
         for fname in os.listdir(dist_dir):
@@ -230,13 +242,18 @@ def audit_wheel_packaging():
                     for name in z.namelist():
                         if name.endswith((".dll", ".so", ".pyd", ".dylib")):
                             binaries.append(name)
-                results["wheels_found"].append({
-                    "filename": fname,
-                    "binaries_present": binaries,
-                    "is_pure_python_tag": "py3-none-any" in fname,
-                    "violates_pep427": ("py3-none-any" in fname and len(binaries) > 0)
-                })
+                results["wheels_found"].append(
+                    {
+                        "filename": fname,
+                        "binaries_present": binaries,
+                        "is_pure_python_tag": "py3-none-any" in fname,
+                        "violates_pep427": (
+                            "py3-none-any" in fname and len(binaries) > 0
+                        ),
+                    }
+                )
     return results
+
 
 if __name__ == "__main__":
     output = {}
@@ -262,4 +279,6 @@ if __name__ == "__main__":
 
     with open("audit/v6.0.0/raw/forensic_benchmarks.json", "w", encoding="utf-8") as f:
         json.dump(output, f, indent=2)
-    print("Forensic benchmark data written to audit/v6.0.0/raw/forensic_benchmarks.json")
+    print(
+        "Forensic benchmark data written to audit/v6.0.0/raw/forensic_benchmarks.json"
+    )

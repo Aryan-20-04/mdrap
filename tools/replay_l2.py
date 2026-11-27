@@ -82,6 +82,7 @@ def _parse_iso_ts(val: str | None) -> float | None:
 def _get_rss_mb() -> float:
     """Return current process RSS in MiB on Windows (or 0.0 on fallback)."""
     try:
+
         class PROCESS_MEMORY_COUNTERS(ctypes.Structure):
             _fields_ = [
                 ("cb", wintypes.DWORD),
@@ -99,7 +100,10 @@ def _get_rss_mb() -> float:
         counters = PROCESS_MEMORY_COUNTERS()
         counters.cb = ctypes.sizeof(counters)
         hproc = ctypes.windll.kernel32.GetCurrentProcess()
-        fn = getattr(ctypes.windll.kernel32, "K32GetProcessMemoryInfo", None) or ctypes.windll.psapi.GetProcessMemoryInfo
+        fn = (
+            getattr(ctypes.windll.kernel32, "K32GetProcessMemoryInfo", None)
+            or ctypes.windll.psapi.GetProcessMemoryInfo
+        )
         fn.argtypes = [wintypes.HANDLE, ctypes.c_void_p, wintypes.DWORD]
         fn.restype = wintypes.BOOL
         if fn(hproc, ctypes.byref(counters), counters.cb):
@@ -120,7 +124,15 @@ def _pct(samples_ns: list[int], pct: float) -> float:
 
 def _latency_summary(samples_ns: list[int]) -> dict[str, float]:
     if not samples_ns:
-        return {"count": 0, "p50": 0.0, "p95": 0.0, "p99": 0.0, "p99_9": 0.0, "mean": 0.0, "max": 0.0}
+        return {
+            "count": 0,
+            "p50": 0.0,
+            "p95": 0.0,
+            "p99": 0.0,
+            "p99_9": 0.0,
+            "mean": 0.0,
+            "max": 0.0,
+        }
     s = sorted(samples_ns)
     n = len(s)
 
@@ -142,6 +154,7 @@ def _latency_summary(samples_ns: list[int]) -> dict[str, float]:
 # ===========================================================================
 # 1. Bounded Live Sub-Second WebSocket Capture (5 Venues x BTC & ETH)
 # ===========================================================================
+
 
 def _fetch_binance_rest_snapshot(symbol: str, limit: int = 50) -> dict[str, Any]:
     url = f"https://api.binance.com/api/v3/depth?symbol={symbol}&limit={limit}"
@@ -203,24 +216,32 @@ async def capture_live_ws(
         epoch = 0
         while not stop_event.is_set():
             try:
-                async with websockets.connect(url, open_timeout=10, ping_interval=20, max_size=2**22) as ws:
+                async with websockets.connect(
+                    url, open_timeout=10, ping_interval=20, max_size=2**22
+                ) as ws:
                     # Fetch initial REST snapshots after WS is open so deltas buffer cleanly
                     async def _fetch_snaps(ep: int) -> None:
                         await asyncio.sleep(0.35)
                         for bsym, csym in sym_map.items():
                             try:
-                                snap = await asyncio.to_thread(_fetch_binance_rest_snapshot, bsym, 50)
-                                enqueue({
-                                    "venue": "BINANCE",
-                                    "instrument": csym,
-                                    "channel": "depth_snapshot",
-                                    "epoch": ep,
-                                    "recv_mono_ns": time.perf_counter_ns(),
-                                    "recv_wall_s": time.time(),
-                                    "wire": snap,
-                                })
+                                snap = await asyncio.to_thread(
+                                    _fetch_binance_rest_snapshot, bsym, 50
+                                )
+                                enqueue(
+                                    {
+                                        "venue": "BINANCE",
+                                        "instrument": csym,
+                                        "channel": "depth_snapshot",
+                                        "epoch": ep,
+                                        "recv_mono_ns": time.perf_counter_ns(),
+                                        "recv_wall_s": time.time(),
+                                        "wire": snap,
+                                    }
+                                )
                             except Exception as exc:
-                                capture_meta["venue_errors"]["BINANCE"].append(f"rest_snap_{bsym}:{exc!r}")
+                                capture_meta["venue_errors"]["BINANCE"].append(
+                                    f"rest_snap_{bsym}:{exc!r}"
+                                )
 
                     snap_task = asyncio.create_task(_fetch_snaps(epoch))
                     try:
@@ -238,16 +259,22 @@ async def capture_live_ws(
                             if not csym:
                                 continue
                             etype = data.get("e", "")
-                            ch = "depth" if etype == "depthUpdate" else ("trade" if etype == "trade" else etype)
-                            enqueue({
-                                "venue": "BINANCE",
-                                "instrument": csym,
-                                "channel": ch,
-                                "epoch": epoch,
-                                "recv_mono_ns": mono_ns,
-                                "recv_wall_s": wall_s,
-                                "wire": data,
-                            })
+                            ch = (
+                                "depth"
+                                if etype == "depthUpdate"
+                                else ("trade" if etype == "trade" else etype)
+                            )
+                            enqueue(
+                                {
+                                    "venue": "BINANCE",
+                                    "instrument": csym,
+                                    "channel": ch,
+                                    "epoch": epoch,
+                                    "recv_mono_ns": mono_ns,
+                                    "recv_wall_s": wall_s,
+                                    "wire": data,
+                                }
+                            )
                     finally:
                         snap_task.cancel()
             except Exception as exc:
@@ -262,12 +289,18 @@ async def capture_live_ws(
         epoch = 0
         while not stop_event.is_set():
             try:
-                async with websockets.connect(url, open_timeout=10, ping_interval=20, max_size=2**23) as ws:
-                    await ws.send(json.dumps({
-                        "type": "subscribe",
-                        "product_ids": ["BTC-USD", "ETH-USD"],
-                        "channels": ["level2_batch", "matches"],
-                    }))
+                async with websockets.connect(
+                    url, open_timeout=10, ping_interval=20, max_size=2**23
+                ) as ws:
+                    await ws.send(
+                        json.dumps(
+                            {
+                                "type": "subscribe",
+                                "product_ids": ["BTC-USD", "ETH-USD"],
+                                "channels": ["level2_batch", "matches"],
+                            }
+                        )
+                    )
                     while not stop_event.is_set():
                         try:
                             raw = await asyncio.wait_for(ws.recv(), timeout=1.0)
@@ -292,15 +325,17 @@ async def capture_live_ws(
                                 "asks": msg.get("asks", [])[:50],
                             }
                         ch = "depth" if mtype in ("snapshot", "l2update") else "trade"
-                        enqueue({
-                            "venue": "COINBASE",
-                            "instrument": csym,
-                            "channel": ch,
-                            "epoch": epoch,
-                            "recv_mono_ns": mono_ns,
-                            "recv_wall_s": wall_s,
-                            "wire": msg,
-                        })
+                        enqueue(
+                            {
+                                "venue": "COINBASE",
+                                "instrument": csym,
+                                "channel": ch,
+                                "epoch": epoch,
+                                "recv_mono_ns": mono_ns,
+                                "recv_wall_s": wall_s,
+                                "wire": msg,
+                            }
+                        )
             except Exception as exc:
                 if not stop_event.is_set():
                     capture_meta["venue_errors"]["COINBASE"].append(repr(exc))
@@ -315,17 +350,27 @@ async def capture_live_ws(
         t_start = time.monotonic()
         while not stop_event.is_set():
             try:
-                async with websockets.connect(url, open_timeout=10, ping_interval=20, max_size=2**22) as ws:
-                    await ws.send(json.dumps({
-                        "event": "subscribe",
-                        "pair": ["XBT/USD", "ETH/USD"],
-                        "subscription": {"name": "book", "depth": 10},
-                    }))
-                    await ws.send(json.dumps({
-                        "event": "subscribe",
-                        "pair": ["XBT/USD", "ETH/USD"],
-                        "subscription": {"name": "trade"},
-                    }))
+                async with websockets.connect(
+                    url, open_timeout=10, ping_interval=20, max_size=2**22
+                ) as ws:
+                    await ws.send(
+                        json.dumps(
+                            {
+                                "event": "subscribe",
+                                "pair": ["XBT/USD", "ETH/USD"],
+                                "subscription": {"name": "book", "depth": 10},
+                            }
+                        )
+                    )
+                    await ws.send(
+                        json.dumps(
+                            {
+                                "event": "subscribe",
+                                "pair": ["XBT/USD", "ETH/USD"],
+                                "subscription": {"name": "trade"},
+                            }
+                        )
+                    )
                     while not stop_event.is_set():
                         # Controlled live reconnect + resync drill
                         if (
@@ -336,23 +381,30 @@ async def capture_live_ws(
                             reconnected = True
                             mono_ns = time.perf_counter_ns()
                             wall_s = time.time()
-                            capture_meta["reconnect_events"].append({
-                                "venue": "KRAKEN",
-                                "from_epoch": epoch,
-                                "to_epoch": epoch + 1,
-                                "wall_s": wall_s,
-                                "reason": "controlled_live_resync_test",
-                            })
-                            for csym in ("BTC/USD", "ETH/USD"):
-                                enqueue({
+                            capture_meta["reconnect_events"].append(
+                                {
                                     "venue": "KRAKEN",
-                                    "instrument": csym,
-                                    "channel": "control",
-                                    "epoch": epoch,
-                                    "recv_mono_ns": mono_ns,
-                                    "recv_wall_s": wall_s,
-                                    "wire": {"event": "reconnect", "next_epoch": epoch + 1},
-                                })
+                                    "from_epoch": epoch,
+                                    "to_epoch": epoch + 1,
+                                    "wall_s": wall_s,
+                                    "reason": "controlled_live_resync_test",
+                                }
+                            )
+                            for csym in ("BTC/USD", "ETH/USD"):
+                                enqueue(
+                                    {
+                                        "venue": "KRAKEN",
+                                        "instrument": csym,
+                                        "channel": "control",
+                                        "epoch": epoch,
+                                        "recv_mono_ns": mono_ns,
+                                        "recv_wall_s": wall_s,
+                                        "wire": {
+                                            "event": "reconnect",
+                                            "next_epoch": epoch + 1,
+                                        },
+                                    }
+                                )
                             epoch += 1
                             break  # close WS and reconnect cleanly
 
@@ -370,16 +422,22 @@ async def capture_live_ws(
                         if not csym:
                             continue
                         ch_name = str(msg[-2])
-                        ch = "depth" if ch_name.startswith("book") else ("trade" if ch_name == "trade" else ch_name)
-                        enqueue({
-                            "venue": "KRAKEN",
-                            "instrument": csym,
-                            "channel": ch,
-                            "epoch": epoch,
-                            "recv_mono_ns": mono_ns,
-                            "recv_wall_s": wall_s,
-                            "wire": msg,
-                        })
+                        ch = (
+                            "depth"
+                            if ch_name.startswith("book")
+                            else ("trade" if ch_name == "trade" else ch_name)
+                        )
+                        enqueue(
+                            {
+                                "venue": "KRAKEN",
+                                "instrument": csym,
+                                "channel": ch,
+                                "epoch": epoch,
+                                "recv_mono_ns": mono_ns,
+                                "recv_wall_s": wall_s,
+                                "wire": msg,
+                            }
+                        )
             except Exception as exc:
                 if not stop_event.is_set():
                     capture_meta["venue_errors"]["KRAKEN"].append(repr(exc))
@@ -392,16 +450,22 @@ async def capture_live_ws(
         epoch = 0
         while not stop_event.is_set():
             try:
-                async with websockets.connect(url, open_timeout=10, ping_interval=20, max_size=2**23) as ws:
-                    await ws.send(json.dumps({
-                        "op": "subscribe",
-                        "args": [
-                            {"channel": "books", "instId": "BTC-USDT"},
-                            {"channel": "books", "instId": "ETH-USDT"},
-                            {"channel": "trades", "instId": "BTC-USDT"},
-                            {"channel": "trades", "instId": "ETH-USDT"},
-                        ],
-                    }))
+                async with websockets.connect(
+                    url, open_timeout=10, ping_interval=20, max_size=2**23
+                ) as ws:
+                    await ws.send(
+                        json.dumps(
+                            {
+                                "op": "subscribe",
+                                "args": [
+                                    {"channel": "books", "instId": "BTC-USDT"},
+                                    {"channel": "books", "instId": "ETH-USDT"},
+                                    {"channel": "trades", "instId": "BTC-USDT"},
+                                    {"channel": "trades", "instId": "ETH-USDT"},
+                                ],
+                            }
+                        )
+                    )
                     while not stop_event.is_set():
                         try:
                             raw = await asyncio.wait_for(ws.recv(), timeout=1.0)
@@ -419,15 +483,17 @@ async def capture_live_ws(
                         if not csym:
                             continue
                         ch = "depth" if arg.get("channel") == "books" else "trade"
-                        enqueue({
-                            "venue": "OKX",
-                            "instrument": csym,
-                            "channel": ch,
-                            "epoch": epoch,
-                            "recv_mono_ns": mono_ns,
-                            "recv_wall_s": wall_s,
-                            "wire": msg,
-                        })
+                        enqueue(
+                            {
+                                "venue": "OKX",
+                                "instrument": csym,
+                                "channel": ch,
+                                "epoch": epoch,
+                                "recv_mono_ns": mono_ns,
+                                "recv_wall_s": wall_s,
+                                "wire": msg,
+                            }
+                        )
             except Exception as exc:
                 if not stop_event.is_set():
                     capture_meta["venue_errors"]["OKX"].append(repr(exc))
@@ -440,16 +506,22 @@ async def capture_live_ws(
         epoch = 0
         while not stop_event.is_set():
             try:
-                async with websockets.connect(url, open_timeout=10, ping_interval=20, max_size=2**22) as ws:
-                    await ws.send(json.dumps({
-                        "op": "subscribe",
-                        "args": [
-                            "orderbook.50.BTCUSDT",
-                            "orderbook.50.ETHUSDT",
-                            "publicTrade.BTCUSDT",
-                            "publicTrade.ETHUSDT",
-                        ],
-                    }))
+                async with websockets.connect(
+                    url, open_timeout=10, ping_interval=20, max_size=2**22
+                ) as ws:
+                    await ws.send(
+                        json.dumps(
+                            {
+                                "op": "subscribe",
+                                "args": [
+                                    "orderbook.50.BTCUSDT",
+                                    "orderbook.50.ETHUSDT",
+                                    "publicTrade.BTCUSDT",
+                                    "publicTrade.ETHUSDT",
+                                ],
+                            }
+                        )
+                    )
                     while not stop_event.is_set():
                         try:
                             raw = await asyncio.wait_for(ws.recv(), timeout=1.0)
@@ -467,15 +539,17 @@ async def capture_live_ws(
                         if not csym:
                             continue
                         ch = "depth" if topic.startswith("orderbook") else "trade"
-                        enqueue({
-                            "venue": "BYBIT",
-                            "instrument": csym,
-                            "channel": ch,
-                            "epoch": epoch,
-                            "recv_mono_ns": mono_ns,
-                            "recv_wall_s": wall_s,
-                            "wire": msg,
-                        })
+                        enqueue(
+                            {
+                                "venue": "BYBIT",
+                                "instrument": csym,
+                                "channel": ch,
+                                "epoch": epoch,
+                                "recv_mono_ns": mono_ns,
+                                "recv_wall_s": wall_s,
+                                "wire": msg,
+                            }
+                        )
             except Exception as exc:
                 if not stop_event.is_set():
                     capture_meta["venue_errors"]["BYBIT"].append(repr(exc))
@@ -512,7 +586,9 @@ async def capture_live_ws(
 
     t0 = time.monotonic()
     last_log = t0
-    while (time.monotonic() - t0) < duration_s and capture_meta["frames_written"] < max_frames:
+    while (time.monotonic() - t0) < duration_s and capture_meta[
+        "frames_written"
+    ] < max_frames:
         await asyncio.sleep(0.5)
         now = time.monotonic()
         if now - last_log >= 60.0:
@@ -520,7 +596,11 @@ async def capture_live_ws(
             frames_now = capture_meta["frames_written"]
             eps = frames_now / elapsed if elapsed > 0 else 0
             qsz = queue.qsize()
-            fsize_mb = (os.path.getsize(out_path) / (1024 * 1024)) if os.path.exists(out_path) else 0.0
+            fsize_mb = (
+                (os.path.getsize(out_path) / (1024 * 1024))
+                if os.path.exists(out_path)
+                else 0.0
+            )
             rss_mb = _get_rss_mb()
             print(
                 f"[CAPTURE PROGRESS] elapsed={elapsed:.0f}s/{duration_s:.0f}s | "
@@ -536,7 +616,9 @@ async def capture_live_ws(
 
     capture_meta["ended_wall_s"] = time.time()
     capture_meta["elapsed_s"] = round(time.monotonic() - t0, 3)
-    capture_meta["file_size_bytes"] = os.path.getsize(out_path) if os.path.exists(out_path) else 0
+    capture_meta["file_size_bytes"] = (
+        os.path.getsize(out_path) if os.path.exists(out_path) else 0
+    )
     capture_meta["per_venue_frames"] = dict(capture_meta["per_venue_frames"])
     capture_meta["venue_errors"] = dict(capture_meta["venue_errors"])
     return capture_meta
@@ -546,12 +628,14 @@ async def capture_live_ws(
 # 2. Exchange-Specific L2 Order Book Reconstructor (with CRC32 & Seq Checks)
 # ===========================================================================
 
+
 def compute_kraken_crc32(
     asks_raw: dict[float, tuple[str, str]],
     bids_raw: dict[float, tuple[str, str]],
     depth: int = 10,
 ) -> int:
     """Official Kraken book-10 CRC32 checksum over top-10 asks + top-10 bids."""
+
     def _clean(s: str) -> str:
         return s.replace(".", "").lstrip("0")
 
@@ -638,14 +722,18 @@ class VenueBookState:
         self.binance_synced = False
         self.resyncs += 1
 
-    def best_bid_ask(self) -> tuple[float | None, float | None, float | None, float | None]:
+    def best_bid_ask(
+        self,
+    ) -> tuple[float | None, float | None, float | None, float | None]:
         if not self.bids or not self.asks:
             return None, None, None, None
         bb = max(self.bids.keys())
         ba = min(self.asks.keys())
         return bb, ba, self.bids[bb], self.asks[ba]
 
-    def top_levels(self, depth: int = 25) -> tuple[list[tuple[float, float]], list[tuple[float, float]]]:
+    def top_levels(
+        self, depth: int = 25
+    ) -> tuple[list[tuple[float, float]], list[tuple[float, float]]]:
         if len(self.bids) <= depth:
             top_b = sorted(self.bids.items(), key=lambda kv: kv[0], reverse=True)
         else:
@@ -673,7 +761,7 @@ class VenueBookState:
 class NormalizedReplayEvent:
     venue: str
     instrument: str
-    event_kind: str          # "BOOK_SNAPSHOT", "BOOK_DELTA", "TRADE", "CONTROL"
+    event_kind: str  # "BOOK_SNAPSHOT", "BOOK_DELTA", "TRADE", "CONTROL"
     exchange_ts: float
     recv_mono_ns: int
     recv_wall_s: float
@@ -698,10 +786,12 @@ class L2BookReconstructor:
 
     def __init__(self) -> None:
         self.books: dict[tuple[str, str], VenueBookState] = {}
-        self.seen_trade_ids: dict[tuple[str, str], collections.deque[str]] = collections.defaultdict(
-            lambda: collections.deque(maxlen=20_000)
+        self.seen_trade_ids: dict[tuple[str, str], collections.deque[str]] = (
+            collections.defaultdict(lambda: collections.deque(maxlen=20_000))
         )
-        self.seen_trade_sets: dict[tuple[str, str], set[str]] = collections.defaultdict(set)
+        self.seen_trade_sets: dict[tuple[str, str], set[str]] = collections.defaultdict(
+            set
+        )
         self.last_trade_seq: dict[tuple[str, str], int] = {}
         self.trade_seq_gaps: dict[tuple[str, str], int] = collections.Counter()
         self.trade_duplicates: dict[tuple[str, str], int] = collections.Counter()
@@ -787,11 +877,18 @@ class L2BookReconstructor:
         if ch == "control":
             next_ep = int(wire.get("next_epoch", epoch + 1))
             book.reset(next_ep)
-            return [NormalizedReplayEvent(
-                venue=venue, instrument=inst, event_kind="CONTROL",
-                exchange_ts=wall_s, recv_mono_ns=mono_ns, recv_wall_s=wall_s,
-                epoch=next_ep, venue_seq=None,
-            )]
+            return [
+                NormalizedReplayEvent(
+                    venue=venue,
+                    instrument=inst,
+                    event_kind="CONTROL",
+                    exchange_ts=wall_s,
+                    recv_mono_ns=mono_ns,
+                    recv_wall_s=wall_s,
+                    epoch=next_ep,
+                    venue_seq=None,
+                )
+            ]
 
         if not book.initialized:
             book.epoch = epoch
@@ -826,12 +923,22 @@ class L2BookReconstructor:
                 book.binance_buffer.clear()
                 _, issue = book.check_integrity()
                 tb, ta = book.top_levels(25)
-                return [NormalizedReplayEvent(
-                    venue=venue, instrument=inst, event_kind="BOOK_SNAPSHOT",
-                    exchange_ts=wall_s, recv_mono_ns=mono_ns, recv_wall_s=wall_s,
-                    epoch=epoch, venue_seq=book.last_update_id,
-                    bids=tb, asks=ta, sequence_gap=gap_any, book_integrity_issue=issue,
-                )]
+                return [
+                    NormalizedReplayEvent(
+                        venue=venue,
+                        instrument=inst,
+                        event_kind="BOOK_SNAPSHOT",
+                        exchange_ts=wall_s,
+                        recv_mono_ns=mono_ns,
+                        recv_wall_s=wall_s,
+                        epoch=epoch,
+                        venue_seq=book.last_update_id,
+                        bids=tb,
+                        asks=ta,
+                        sequence_gap=gap_any,
+                        book_integrity_issue=issue,
+                    )
+                ]
             if ch == "depth":
                 ex_ts = float(wire["E"]) / 1000.0 if "E" in wire else wall_s
                 if not book.initialized:
@@ -845,16 +952,27 @@ class L2BookReconstructor:
                 book.last_exchange_ts = max(book.last_exchange_ts or ex_ts, ex_ts)
                 prev_u = book.last_update_id
                 gap = self._apply_binance_delta(book, wire)
-                dup = (int(wire["u"]) <= (prev_u or -1))
+                dup = int(wire["u"]) <= (prev_u or -1)
                 _, issue = book.check_integrity()
                 tb, ta = book.top_levels(25)
-                return [NormalizedReplayEvent(
-                    venue=venue, instrument=inst, event_kind="BOOK_DELTA",
-                    exchange_ts=ex_ts, recv_mono_ns=mono_ns, recv_wall_s=wall_s,
-                    epoch=epoch, venue_seq=int(wire["u"]),
-                    bids=tb, asks=ta, sequence_gap=gap, duplicate=dup,
-                    out_of_order=ooo, book_integrity_issue=issue,
-                )]
+                return [
+                    NormalizedReplayEvent(
+                        venue=venue,
+                        instrument=inst,
+                        event_kind="BOOK_DELTA",
+                        exchange_ts=ex_ts,
+                        recv_mono_ns=mono_ns,
+                        recv_wall_s=wall_s,
+                        epoch=epoch,
+                        venue_seq=int(wire["u"]),
+                        bids=tb,
+                        asks=ta,
+                        sequence_gap=gap,
+                        duplicate=dup,
+                        out_of_order=ooo,
+                        book_integrity_issue=issue,
+                    )
+                ]
             if ch == "trade":
                 ex_ts = float(wire.get("T") or wire.get("E")) / 1000.0
                 tid = str(wire.get("t"))
@@ -868,16 +986,28 @@ class L2BookReconstructor:
                 # Binance m=True => buyer is maker => SELLER is aggressor
                 is_buyer_maker = wire.get("m")
                 agg = (
-                    SimOrderSide.SELL if is_buyer_maker is True
+                    SimOrderSide.SELL
+                    if is_buyer_maker is True
                     else (SimOrderSide.BUY if is_buyer_maker is False else None)
                 )
-                return [NormalizedReplayEvent(
-                    venue=venue, instrument=inst, event_kind="TRADE",
-                    exchange_ts=ex_ts, recv_mono_ns=mono_ns, recv_wall_s=wall_s,
-                    epoch=epoch, venue_seq=int(wire["t"]) if "t" in wire else None,
-                    trade_id=tid, price=float(wire["p"]), quantity=float(wire["q"]),
-                    aggressor_side=agg, duplicate=dup, out_of_order=ooo,
-                )]
+                return [
+                    NormalizedReplayEvent(
+                        venue=venue,
+                        instrument=inst,
+                        event_kind="TRADE",
+                        exchange_ts=ex_ts,
+                        recv_mono_ns=mono_ns,
+                        recv_wall_s=wall_s,
+                        epoch=epoch,
+                        venue_seq=int(wire["t"]) if "t" in wire else None,
+                        trade_id=tid,
+                        price=float(wire["p"]),
+                        quantity=float(wire["q"]),
+                        aggressor_side=agg,
+                        duplicate=dup,
+                        out_of_order=ooo,
+                    )
+                ]
 
         # ----- COINBASE -----
         elif venue == "COINBASE":
@@ -901,11 +1031,21 @@ class L2BookReconstructor:
                 book.snapshots_applied += 1
                 _, issue = book.check_integrity()
                 tb, ta = book.top_levels(25)
-                return [NormalizedReplayEvent(
-                    venue=venue, instrument=inst, event_kind="BOOK_SNAPSHOT",
-                    exchange_ts=wall_s, recv_mono_ns=mono_ns, recv_wall_s=wall_s,
-                    epoch=epoch, venue_seq=None, bids=tb, asks=ta, book_integrity_issue=issue,
-                )]
+                return [
+                    NormalizedReplayEvent(
+                        venue=venue,
+                        instrument=inst,
+                        event_kind="BOOK_SNAPSHOT",
+                        exchange_ts=wall_s,
+                        recv_mono_ns=mono_ns,
+                        recv_wall_s=wall_s,
+                        epoch=epoch,
+                        venue_seq=None,
+                        bids=tb,
+                        asks=ta,
+                        book_integrity_issue=issue,
+                    )
+                ]
             if mtype == "l2update":
                 if not book.initialized:
                     return []
@@ -934,17 +1074,29 @@ class L2BookReconstructor:
                 book.deltas_applied += 1
                 _, issue = book.check_integrity()
                 tb, ta = book.top_levels(25)
-                return [NormalizedReplayEvent(
-                    venue=venue, instrument=inst, event_kind="BOOK_DELTA",
-                    exchange_ts=ex_ts, recv_mono_ns=mono_ns, recv_wall_s=wall_s,
-                    epoch=epoch, venue_seq=None, bids=tb, asks=ta,
-                    out_of_order=ooo, book_integrity_issue=issue,
-                )]
+                return [
+                    NormalizedReplayEvent(
+                        venue=venue,
+                        instrument=inst,
+                        event_kind="BOOK_DELTA",
+                        exchange_ts=ex_ts,
+                        recv_mono_ns=mono_ns,
+                        recv_wall_s=wall_s,
+                        epoch=epoch,
+                        venue_seq=None,
+                        bids=tb,
+                        asks=ta,
+                        out_of_order=ooo,
+                        book_integrity_issue=issue,
+                    )
+                ]
             if mtype in ("match", "last_match"):
                 ex_ts = _parse_iso_ts(wire.get("time")) or wall_s
                 tid = str(wire.get("trade_id"))
                 dup = self._record_trade_id((venue, inst), tid)
-                seq = int(wire["sequence"]) if wire.get("sequence") is not None else None
+                seq = (
+                    int(wire["sequence"]) if wire.get("sequence") is not None else None
+                )
                 gap = False
                 if seq is not None:
                     prev_s = self.last_trade_seq.get((venue, inst))
@@ -956,16 +1108,28 @@ class L2BookReconstructor:
                 # Coinbase 'side' is the MAKER side: side=='sell' => aggressive BUY; side=='buy' => aggressive SELL
                 maker_side = wire.get("side")
                 agg = (
-                    SimOrderSide.BUY if maker_side == "sell"
+                    SimOrderSide.BUY
+                    if maker_side == "sell"
                     else (SimOrderSide.SELL if maker_side == "buy" else None)
                 )
-                return [NormalizedReplayEvent(
-                    venue=venue, instrument=inst, event_kind="TRADE",
-                    exchange_ts=ex_ts, recv_mono_ns=mono_ns, recv_wall_s=wall_s,
-                    epoch=epoch, venue_seq=seq, trade_id=tid,
-                    price=float(wire["price"]), quantity=float(wire["size"]),
-                    aggressor_side=agg, duplicate=dup, sequence_gap=gap,
-                )]
+                return [
+                    NormalizedReplayEvent(
+                        venue=venue,
+                        instrument=inst,
+                        event_kind="TRADE",
+                        exchange_ts=ex_ts,
+                        recv_mono_ns=mono_ns,
+                        recv_wall_s=wall_s,
+                        epoch=epoch,
+                        venue_seq=seq,
+                        trade_id=tid,
+                        price=float(wire["price"]),
+                        quantity=float(wire["size"]),
+                        aggressor_side=agg,
+                        duplicate=dup,
+                        sequence_gap=gap,
+                    )
+                ]
 
         # ----- KRAKEN -----
         elif venue == "KRAKEN":
@@ -1000,11 +1164,21 @@ class L2BookReconstructor:
                     book.last_exchange_ts = ex_ts
                     _, issue = book.check_integrity()
                     tb, ta = book.top_levels(10)
-                    return [NormalizedReplayEvent(
-                        venue=venue, instrument=inst, event_kind="BOOK_SNAPSHOT",
-                        exchange_ts=ex_ts, recv_mono_ns=mono_ns, recv_wall_s=wall_s,
-                        epoch=epoch, venue_seq=None, bids=tb, asks=ta, book_integrity_issue=issue,
-                    )]
+                    return [
+                        NormalizedReplayEvent(
+                            venue=venue,
+                            instrument=inst,
+                            event_kind="BOOK_SNAPSHOT",
+                            exchange_ts=ex_ts,
+                            recv_mono_ns=mono_ns,
+                            recv_wall_s=wall_s,
+                            epoch=epoch,
+                            venue_seq=None,
+                            bids=tb,
+                            asks=ta,
+                            book_integrity_issue=issue,
+                        )
+                    ]
                 else:
                     if not book.initialized:
                         return []
@@ -1047,7 +1221,10 @@ class L2BookReconstructor:
                     book.deltas_applied += 1
                     ex_ts = max(ts_list) if ts_list else wall_s
                     ooo = False
-                    if book.last_exchange_ts is not None and ex_ts < book.last_exchange_ts:
+                    if (
+                        book.last_exchange_ts is not None
+                        and ex_ts < book.last_exchange_ts
+                    ):
                         # Republished levels carry their original timestamp; only flag if no fresh ts
                         pass
                     book.last_exchange_ts = max(book.last_exchange_ts or ex_ts, ex_ts)
@@ -1055,8 +1232,10 @@ class L2BookReconstructor:
                     cs_ok: bool | None = None
                     if checksum_val is not None:
                         book.checksum_checked += 1
-                        calc = compute_kraken_crc32(book.asks_raw, book.bids_raw, depth=10)
-                        cs_ok = (calc == int(checksum_val))
+                        calc = compute_kraken_crc32(
+                            book.asks_raw, book.bids_raw, depth=10
+                        )
+                        cs_ok = calc == int(checksum_val)
                         if cs_ok:
                             book.checksum_passed += 1
                         else:
@@ -1064,12 +1243,23 @@ class L2BookReconstructor:
 
                     _, issue = book.check_integrity()
                     tb, ta = book.top_levels(10)
-                    return [NormalizedReplayEvent(
-                        venue=venue, instrument=inst, event_kind="BOOK_DELTA",
-                        exchange_ts=ex_ts, recv_mono_ns=mono_ns, recv_wall_s=wall_s,
-                        epoch=epoch, venue_seq=None, bids=tb, asks=ta,
-                        checksum_ok=cs_ok, out_of_order=ooo, book_integrity_issue=issue,
-                    )]
+                    return [
+                        NormalizedReplayEvent(
+                            venue=venue,
+                            instrument=inst,
+                            event_kind="BOOK_DELTA",
+                            exchange_ts=ex_ts,
+                            recv_mono_ns=mono_ns,
+                            recv_wall_s=wall_s,
+                            epoch=epoch,
+                            venue_seq=None,
+                            bids=tb,
+                            asks=ta,
+                            checksum_ok=cs_ok,
+                            out_of_order=ooo,
+                            book_integrity_issue=issue,
+                        )
+                    ]
             if ch == "trade" and isinstance(wire, list) and isinstance(wire[1], list):
                 out_evs: list[NormalizedReplayEvent] = []
                 for idx, row in enumerate(wire[1]):
@@ -1077,13 +1267,27 @@ class L2BookReconstructor:
                     vol = float(row[1])
                     ex_ts = float(row[2])
                     side_c = str(row[3])
-                    agg = SimOrderSide.BUY if side_c == "b" else (SimOrderSide.SELL if side_c == "s" else None)
-                    out_evs.append(NormalizedReplayEvent(
-                        venue=venue, instrument=inst, event_kind="TRADE",
-                        exchange_ts=ex_ts, recv_mono_ns=mono_ns, recv_wall_s=wall_s,
-                        epoch=epoch, venue_seq=None, trade_id=f"krk-{ex_ts:.6f}-{idx}",
-                        price=px, quantity=vol, aggressor_side=agg,
-                    ))
+                    agg = (
+                        SimOrderSide.BUY
+                        if side_c == "b"
+                        else (SimOrderSide.SELL if side_c == "s" else None)
+                    )
+                    out_evs.append(
+                        NormalizedReplayEvent(
+                            venue=venue,
+                            instrument=inst,
+                            event_kind="TRADE",
+                            exchange_ts=ex_ts,
+                            recv_mono_ns=mono_ns,
+                            recv_wall_s=wall_s,
+                            epoch=epoch,
+                            venue_seq=None,
+                            trade_id=f"krk-{ex_ts:.6f}-{idx}",
+                            price=px,
+                            quantity=vol,
+                            aggressor_side=agg,
+                        )
+                    )
                 return out_evs
 
         # ----- OKX -----
@@ -1096,7 +1300,11 @@ class L2BookReconstructor:
                 item = items[0]
                 ex_ts = float(item["ts"]) / 1000.0 if item.get("ts") else wall_s
                 seq_id = int(item["seqId"]) if item.get("seqId") is not None else None
-                prev_seq_id = int(item["prevSeqId"]) if item.get("prevSeqId") is not None else None
+                prev_seq_id = (
+                    int(item["prevSeqId"])
+                    if item.get("prevSeqId") is not None
+                    else None
+                )
                 checksum_raw = item.get("checksum")
 
                 if action == "snapshot":
@@ -1124,20 +1332,32 @@ class L2BookReconstructor:
                             book.checksum_zero_sentinel += 1
                         else:
                             book.checksum_checked += 1
-                            calc = compute_okx_crc32(book.bids_raw, book.asks_raw, depth=25)
-                            cs_ok = (calc == int(checksum_raw))
+                            calc = compute_okx_crc32(
+                                book.bids_raw, book.asks_raw, depth=25
+                            )
+                            cs_ok = calc == int(checksum_raw)
                             if cs_ok:
                                 book.checksum_passed += 1
                             else:
                                 book.checksum_failed += 1
                     _, issue = book.check_integrity()
                     tb, ta = book.top_levels(25)
-                    return [NormalizedReplayEvent(
-                        venue=venue, instrument=inst, event_kind="BOOK_SNAPSHOT",
-                        exchange_ts=ex_ts, recv_mono_ns=mono_ns, recv_wall_s=wall_s,
-                        epoch=epoch, venue_seq=seq_id, bids=tb, asks=ta,
-                        checksum_ok=cs_ok, book_integrity_issue=issue,
-                    )]
+                    return [
+                        NormalizedReplayEvent(
+                            venue=venue,
+                            instrument=inst,
+                            event_kind="BOOK_SNAPSHOT",
+                            exchange_ts=ex_ts,
+                            recv_mono_ns=mono_ns,
+                            recv_wall_s=wall_s,
+                            epoch=epoch,
+                            venue_seq=seq_id,
+                            bids=tb,
+                            asks=ta,
+                            checksum_ok=cs_ok,
+                            book_integrity_issue=issue,
+                        )
+                    ]
                 elif action == "update":
                     if not book.initialized:
                         return []
@@ -1151,7 +1371,11 @@ class L2BookReconstructor:
                         elif seq_id < book.last_seq_id:
                             book.out_of_order += 1
                             ooo = True
-                        elif prev_seq_id is not None and prev_seq_id != -1 and prev_seq_id != book.last_seq_id:
+                        elif (
+                            prev_seq_id is not None
+                            and prev_seq_id != -1
+                            and prev_seq_id != book.last_seq_id
+                        ):
                             book.sequence_gaps += 1
                             gap = True
                     for row in item.get("bids", []):
@@ -1173,7 +1397,10 @@ class L2BookReconstructor:
                     if seq_id is not None:
                         book.last_seq_id = seq_id
                     book.deltas_applied += 1
-                    if book.last_exchange_ts is not None and ex_ts < book.last_exchange_ts:
+                    if (
+                        book.last_exchange_ts is not None
+                        and ex_ts < book.last_exchange_ts
+                    ):
                         book.out_of_order += 1
                         ooo = True
                     book.last_exchange_ts = max(book.last_exchange_ts or ex_ts, ex_ts)
@@ -1184,21 +1411,35 @@ class L2BookReconstructor:
                             book.checksum_zero_sentinel += 1
                         else:
                             book.checksum_checked += 1
-                            calc = compute_okx_crc32(book.bids_raw, book.asks_raw, depth=25)
-                            cs_ok = (calc == int(checksum_raw))
+                            calc = compute_okx_crc32(
+                                book.bids_raw, book.asks_raw, depth=25
+                            )
+                            cs_ok = calc == int(checksum_raw)
                             if cs_ok:
                                 book.checksum_passed += 1
                             else:
                                 book.checksum_failed += 1
                     _, issue = book.check_integrity()
                     tb, ta = book.top_levels(25)
-                    return [NormalizedReplayEvent(
-                        venue=venue, instrument=inst, event_kind="BOOK_DELTA",
-                        exchange_ts=ex_ts, recv_mono_ns=mono_ns, recv_wall_s=wall_s,
-                        epoch=epoch, venue_seq=seq_id, bids=tb, asks=ta,
-                        checksum_ok=cs_ok, sequence_gap=gap, duplicate=dup,
-                        out_of_order=ooo, book_integrity_issue=issue,
-                    )]
+                    return [
+                        NormalizedReplayEvent(
+                            venue=venue,
+                            instrument=inst,
+                            event_kind="BOOK_DELTA",
+                            exchange_ts=ex_ts,
+                            recv_mono_ns=mono_ns,
+                            recv_wall_s=wall_s,
+                            epoch=epoch,
+                            venue_seq=seq_id,
+                            bids=tb,
+                            asks=ta,
+                            checksum_ok=cs_ok,
+                            sequence_gap=gap,
+                            duplicate=dup,
+                            out_of_order=ooo,
+                            book_integrity_issue=issue,
+                        )
+                    ]
             if ch == "trade":
                 out_evs = []
                 for item in wire.get("data", []):
@@ -1206,14 +1447,28 @@ class L2BookReconstructor:
                     tid = str(item.get("tradeId"))
                     dup = self._record_trade_id((venue, inst), tid)
                     s_raw = str(item.get("side", "")).lower()
-                    agg = SimOrderSide.BUY if s_raw == "buy" else (SimOrderSide.SELL if s_raw == "sell" else None)
-                    out_evs.append(NormalizedReplayEvent(
-                        venue=venue, instrument=inst, event_kind="TRADE",
-                        exchange_ts=ex_ts, recv_mono_ns=mono_ns, recv_wall_s=wall_s,
-                        epoch=epoch, venue_seq=int(tid) if tid.isdigit() else None,
-                        trade_id=tid, price=float(item["px"]), quantity=float(item["sz"]),
-                        aggressor_side=agg, duplicate=dup,
-                    ))
+                    agg = (
+                        SimOrderSide.BUY
+                        if s_raw == "buy"
+                        else (SimOrderSide.SELL if s_raw == "sell" else None)
+                    )
+                    out_evs.append(
+                        NormalizedReplayEvent(
+                            venue=venue,
+                            instrument=inst,
+                            event_kind="TRADE",
+                            exchange_ts=ex_ts,
+                            recv_mono_ns=mono_ns,
+                            recv_wall_s=wall_s,
+                            epoch=epoch,
+                            venue_seq=int(tid) if tid.isdigit() else None,
+                            trade_id=tid,
+                            price=float(item["px"]),
+                            quantity=float(item["sz"]),
+                            aggressor_side=agg,
+                            duplicate=dup,
+                        )
+                    )
                 return out_evs
 
         # ----- BYBIT -----
@@ -1221,7 +1476,9 @@ class L2BookReconstructor:
             if ch == "depth":
                 mtype = wire.get("type", "")
                 data = wire.get("data", {})
-                ex_ts = float(wire.get("cts") or wire.get("ts") or wall_s * 1000.0) / 1000.0
+                ex_ts = (
+                    float(wire.get("cts") or wire.get("ts") or wall_s * 1000.0) / 1000.0
+                )
                 u_val = int(data["u"]) if data.get("u") is not None else None
                 seq_val = int(data["seq"]) if data.get("seq") is not None else None
 
@@ -1249,11 +1506,21 @@ class L2BookReconstructor:
                     book.last_exchange_ts = ex_ts
                     _, issue = book.check_integrity()
                     tb, ta = book.top_levels(25)
-                    return [NormalizedReplayEvent(
-                        venue=venue, instrument=inst, event_kind="BOOK_SNAPSHOT",
-                        exchange_ts=ex_ts, recv_mono_ns=mono_ns, recv_wall_s=wall_s,
-                        epoch=epoch, venue_seq=u_val, bids=tb, asks=ta, book_integrity_issue=issue,
-                    )]
+                    return [
+                        NormalizedReplayEvent(
+                            venue=venue,
+                            instrument=inst,
+                            event_kind="BOOK_SNAPSHOT",
+                            exchange_ts=ex_ts,
+                            recv_mono_ns=mono_ns,
+                            recv_wall_s=wall_s,
+                            epoch=epoch,
+                            venue_seq=u_val,
+                            bids=tb,
+                            asks=ta,
+                            book_integrity_issue=issue,
+                        )
+                    ]
                 elif mtype == "delta":
                     if not book.initialized:
                         return []
@@ -1291,18 +1558,33 @@ class L2BookReconstructor:
                     if seq_val is not None:
                         book.last_seq_id = seq_val
                     book.deltas_applied += 1
-                    if book.last_exchange_ts is not None and ex_ts < book.last_exchange_ts:
+                    if (
+                        book.last_exchange_ts is not None
+                        and ex_ts < book.last_exchange_ts
+                    ):
                         book.out_of_order += 1
                         ooo = True
                     book.last_exchange_ts = max(book.last_exchange_ts or ex_ts, ex_ts)
                     _, issue = book.check_integrity()
                     tb, ta = book.top_levels(25)
-                    return [NormalizedReplayEvent(
-                        venue=venue, instrument=inst, event_kind="BOOK_DELTA",
-                        exchange_ts=ex_ts, recv_mono_ns=mono_ns, recv_wall_s=wall_s,
-                        epoch=epoch, venue_seq=u_val, bids=tb, asks=ta,
-                        sequence_gap=gap, duplicate=dup, out_of_order=ooo, book_integrity_issue=issue,
-                    )]
+                    return [
+                        NormalizedReplayEvent(
+                            venue=venue,
+                            instrument=inst,
+                            event_kind="BOOK_DELTA",
+                            exchange_ts=ex_ts,
+                            recv_mono_ns=mono_ns,
+                            recv_wall_s=wall_s,
+                            epoch=epoch,
+                            venue_seq=u_val,
+                            bids=tb,
+                            asks=ta,
+                            sequence_gap=gap,
+                            duplicate=dup,
+                            out_of_order=ooo,
+                            book_integrity_issue=issue,
+                        )
+                    ]
             if ch == "trade":
                 out_evs = []
                 for item in wire.get("data", []):
@@ -1310,14 +1592,28 @@ class L2BookReconstructor:
                     tid = str(item.get("i"))
                     dup = self._record_trade_id((venue, inst), tid)
                     s_raw = str(item.get("S", "")).lower()
-                    agg = SimOrderSide.BUY if s_raw == "buy" else (SimOrderSide.SELL if s_raw == "sell" else None)
-                    out_evs.append(NormalizedReplayEvent(
-                        venue=venue, instrument=inst, event_kind="TRADE",
-                        exchange_ts=ex_ts, recv_mono_ns=mono_ns, recv_wall_s=wall_s,
-                        epoch=epoch, venue_seq=None, trade_id=tid,
-                        price=float(item["p"]), quantity=float(item["v"]),
-                        aggressor_side=agg, duplicate=dup,
-                    ))
+                    agg = (
+                        SimOrderSide.BUY
+                        if s_raw == "buy"
+                        else (SimOrderSide.SELL if s_raw == "sell" else None)
+                    )
+                    out_evs.append(
+                        NormalizedReplayEvent(
+                            venue=venue,
+                            instrument=inst,
+                            event_kind="TRADE",
+                            exchange_ts=ex_ts,
+                            recv_mono_ns=mono_ns,
+                            recv_wall_s=wall_s,
+                            epoch=epoch,
+                            venue_seq=None,
+                            trade_id=tid,
+                            price=float(item["p"]),
+                            quantity=float(item["v"]),
+                            aggressor_side=agg,
+                            duplicate=dup,
+                        )
+                    )
                 return out_evs
 
         return []
@@ -1326,6 +1622,7 @@ class L2BookReconstructor:
 # ===========================================================================
 # 3. Full Replay + Parity + Determinism + Execution Accuracy Validation
 # ===========================================================================
+
 
 def stream_captured_frames(jsonl_gz_path: str):
     """Stream recorded wire frames line-by-line from gzip JSONL with O(1) memory."""
@@ -1426,9 +1723,19 @@ def run_l2_replay_pass(
     event_kind_counts: dict[str, int] = collections.Counter()
     per_venue_stats: dict[str, dict[str, Any]] = {}
     aggressor_alignment = collections.defaultdict(
-        lambda: {"total": 0, "buy": 0, "sell": 0, "unknown": 0, "aligned_with_bbo": 0, "inside_spread": 0, "opposite_bbo": 0}
+        lambda: {
+            "total": 0,
+            "buy": 0,
+            "sell": 0,
+            "unknown": 0,
+            "aligned_with_bbo": 0,
+            "inside_spread": 0,
+            "opposite_bbo": 0,
+        }
     )
-    spread_samples_bps: dict[tuple[str, str], list[float]] = collections.defaultdict(list)
+    spread_samples_bps: dict[tuple[str, str], list[float]] = collections.defaultdict(
+        list
+    )
     inter_event_ms: dict[tuple[str, str], list[float]] = collections.defaultdict(list)
     last_ex_ts_stream: dict[tuple[str, str], float] = {}
     clock_skew_ms: dict[str, list[float]] = collections.defaultdict(list)
@@ -1470,7 +1777,9 @@ def run_l2_replay_pass(
     active_probe_orders: dict[str, set[str]] = collections.defaultdict(set)
     probe_fifo_pairs: list[tuple[str, str]] = []  # (first_id, second_id)
     probe_cancel_ids: set[str] = set()
-    probe_submitted_mids: dict[str, dict[str, tuple[float, float]]] = collections.defaultdict(dict)  # sym -> {oid: (dec_mid, arr_ts)}
+    probe_submitted_mids: dict[str, dict[str, tuple[float, float]]] = (
+        collections.defaultdict(dict)
+    )  # sym -> {oid: (dec_mid, arr_ts)}
     probe_sweep_done: set[str] = set()
     ord_counter = 0
 
@@ -1498,7 +1807,9 @@ def run_l2_replay_pass(
                 dt_ms = (ev.exchange_ts - last_ex_ts_stream[stream_key]) * 1000.0
                 if 0.0 <= dt_ms < 60_000.0 and len(inter_event_ms[stream_key]) < 50_000:
                     inter_event_ms[stream_key].append(dt_ms)
-            last_ex_ts_stream[stream_key] = max(last_ex_ts_stream.get(stream_key, ev.exchange_ts), ev.exchange_ts)
+            last_ex_ts_stream[stream_key] = max(
+                last_ex_ts_stream.get(stream_key, ev.exchange_ts), ev.exchange_ts
+            )
 
             # Exchange vs local wall clock skew
             skew = (ev.recv_wall_s - ev.exchange_ts) * 1000.0
@@ -1506,9 +1817,14 @@ def run_l2_replay_pass(
                 clock_skew_ms[ev.venue].append(skew)
 
             # SequenceScope per (venue, instrument, channel, epoch)
-            ch_domain = "quote" if ev.event_kind in ("BOOK_SNAPSHOT", "BOOK_DELTA") else "trade"
+            ch_domain = (
+                "quote" if ev.event_kind in ("BOOK_SNAPSHOT", "BOOK_DELTA") else "trade"
+            )
             scope = SequenceScope(
-                venue=ev.venue, instrument=ev.instrument, channel=ch_domain, epoch=ev.epoch
+                venue=ev.venue,
+                instrument=ev.instrument,
+                channel=ch_domain,
+                epoch=ev.epoch,
             )
             sc_key = scope.key()
             seq_counters[sc_key] += 1
@@ -1518,8 +1834,14 @@ def run_l2_replay_pass(
             if ev.event_kind in ("BOOK_SNAPSHOT", "BOOK_DELTA") and ev.bids and ev.asks:
                 bb_px, bb_sz = ev.bids[0]
                 ba_px, ba_sz = ev.asks[0]
-                if bb_px > 0 and ba_px > bb_px and len(spread_samples_bps[stream_key]) < 50_000:
-                    spread_samples_bps[stream_key].append(((ba_px - bb_px) / ((ba_px + bb_px) / 2.0)) * 10_000.0)
+                if (
+                    bb_px > 0
+                    and ba_px > bb_px
+                    and len(spread_samples_bps[stream_key]) < 50_000
+                ):
+                    spread_samples_bps[stream_key].append(
+                        ((ba_px - bb_px) / ((ba_px + bb_px) / 2.0)) * 10_000.0
+                    )
                 raw_payload: dict[str, Any] = {
                     "instrument": ev.instrument,
                     "event_type": "QUOTE",
@@ -1533,7 +1855,11 @@ def run_l2_replay_pass(
                     "bid_size": bb_sz,
                     "ask_size": ba_sz,
                 }
-            elif ev.event_kind == "TRADE" and ev.price is not None and ev.quantity is not None:
+            elif (
+                ev.event_kind == "TRADE"
+                and ev.price is not None
+                and ev.quantity is not None
+            ):
                 raw_payload = {
                     "instrument": ev.instrument,
                     "event_type": "TRADE",
@@ -1590,7 +1916,9 @@ def run_l2_replay_pass(
                 if run_execution_probes and ev.book_integrity_issue is None:
                     probe_engine.update_book(sym_key, ev.bids, ev.asks, ev.exchange_ts)
                     slice_fills = probe_engine.process_time_slice(ev.exchange_ts)
-                    in_flight_now = len(probe_engine._in_flight_orders) + len(probe_engine._in_flight_cancels)
+                    in_flight_now = len(probe_engine._in_flight_orders) + len(
+                        probe_engine._in_flight_cancels
+                    )
                     if in_flight_now > probe_metrics["peak_in_flight_depth"]:
                         probe_metrics["peak_in_flight_depth"] = in_flight_now
 
@@ -1602,7 +1930,9 @@ def run_l2_replay_pass(
                         if ev.exchange_ts >= arr_ts:
                             drift_bps = abs(mid_now - dec_mid) / dec_mid * 10_000.0
                             if len(probe_metrics["arrival_mid_drifts_bps"]) < 50_000:
-                                probe_metrics["arrival_mid_drifts_bps"].append(drift_bps)
+                                probe_metrics["arrival_mid_drifts_bps"].append(
+                                    drift_bps
+                                )
                             sym_pending_mids.pop(oid, None)
                         elif ev.exchange_ts - arr_ts > 10.0:
                             sym_pending_mids.pop(oid, None)
@@ -1622,14 +1952,20 @@ def run_l2_replay_pass(
                                 SimOrderStatus.ACCEPTED,
                                 SimOrderStatus.PARTIALLY_FILLED,
                             ):
-                                probe_engine.cancel_order(prev_oid, current_time=ev.exchange_ts)
+                                probe_engine.cancel_order(
+                                    prev_oid, current_time=ev.exchange_ts
+                                )
                                 probe_metrics["cancel_probes_submitted"] += 1
                                 probe_cancel_ids.add(prev_oid)
 
                         ord_counter += 1
                         oid = f"po-{ord_counter}"
                         # Alternate bid and ask at prevailing top-of-book
-                        side = SimOrderSide.BUY if (cnt % (probe_stride * 2) == p_offset) else SimOrderSide.SELL
+                        side = (
+                            SimOrderSide.BUY
+                            if (cnt % (probe_stride * 2) == p_offset)
+                            else SimOrderSide.SELL
+                        )
                         px = bb_px if side == SimOrderSide.BUY else ba_px
                         qty = 0.01 if "BTC" in ev.instrument else 0.1
                         ord_obj = probe_engine.submit_order(
@@ -1647,11 +1983,16 @@ def run_l2_replay_pass(
                         probe_metrics["post_only_passive_submitted"] += 1
                         probe_active_po[sym_key] = oid
                         active_probe_orders[sym_key].add(oid)
-                        probe_submitted_mids[sym_key][oid] = (mid_now, ord_obj.arrival_timestamp)
+                        probe_submitted_mids[sym_key][oid] = (
+                            mid_now,
+                            ord_obj.arrival_timestamp,
+                        )
 
                         # Every 4th PO order, also submit an immediate cancel 0.5ms later (cancel-before-arrival race!)
                         if ord_counter % 8 == 0:
-                            probe_engine.cancel_order(oid, current_time=ev.exchange_ts + 0.0005)
+                            probe_engine.cancel_order(
+                                oid, current_time=ev.exchange_ts + 0.0005
+                            )
                             probe_metrics["cancel_probes_submitted"] += 1
                             probe_cancel_ids.add(oid)
 
@@ -1661,7 +2002,11 @@ def run_l2_replay_pass(
                     if cnt % (probe_stride * 2) == p_cross_offset:
                         ord_counter += 1
                         coid = f"po-cross-{ord_counter}"
-                        cside = SimOrderSide.BUY if (cnt % (probe_stride * 4) == p_cross_offset) else SimOrderSide.SELL
+                        cside = (
+                            SimOrderSide.BUY
+                            if (cnt % (probe_stride * 4) == p_cross_offset)
+                            else SimOrderSide.SELL
+                        )
                         cpx = ba_px if cside == SimOrderSide.BUY else bb_px
                         cqty = 0.01 if "BTC" in ev.instrument else 0.1
                         probe_engine.submit_order(
@@ -1687,13 +2032,25 @@ def run_l2_replay_pass(
                         id2 = f"fifoB-{ord_counter}"
                         qty = 0.005 if "BTC" in ev.instrument else 0.05
                         probe_engine.submit_order(
-                            id1, sym_key, SimOrderSide.BUY, SimOrderType.LIMIT,
-                            qty, bb_px, current_time=ev.exchange_ts, post_only=True,
+                            id1,
+                            sym_key,
+                            SimOrderSide.BUY,
+                            SimOrderType.LIMIT,
+                            qty,
+                            bb_px,
+                            current_time=ev.exchange_ts,
+                            post_only=True,
                             signal_reason="L2_PROBE_FIFO_1",
                         )
                         probe_engine.submit_order(
-                            id2, sym_key, SimOrderSide.BUY, SimOrderType.LIMIT,
-                            qty, bb_px, current_time=ev.exchange_ts + 0.0001, post_only=True,
+                            id2,
+                            sym_key,
+                            SimOrderSide.BUY,
+                            SimOrderType.LIMIT,
+                            qty,
+                            bb_px,
+                            current_time=ev.exchange_ts + 0.0001,
+                            post_only=True,
                             signal_reason="L2_PROBE_FIFO_2",
                         )
                         probe_fifo_pairs.append((id1, id2))
@@ -1702,7 +2059,11 @@ def run_l2_replay_pass(
                         probe_metrics["fifo_pairs_submitted"] += 1
 
                     # Probe 3: Multi-level L2 book sweep (once per venue/instrument after book has depth >= 5)
-                    if sym_key not in probe_sweep_done and cnt >= 20 and len(ev.asks) >= 5:
+                    if (
+                        sym_key not in probe_sweep_done
+                        and cnt >= 20
+                        and len(ev.asks) >= 5
+                    ):
                         probe_sweep_done.add(sym_key)
                         # Size sweep to walk ~3 levels of genuine recorded ask depth
                         depth_3 = sum(sz for _, sz in ev.asks[:3])
@@ -1714,37 +2075,53 @@ def run_l2_replay_pass(
                             MatchingEngineConfig(
                                 network_latency_ms=0.0,
                                 matching_delay_ms=0.0,
-                                fee_schedule=FeeSchedule(maker_fee_bps=1.0, taker_fee_bps=6.0),
+                                fee_schedule=FeeSchedule(
+                                    maker_fee_bps=1.0, taker_fee_bps=6.0
+                                ),
                                 require_aggressor_side=True,
                             )
                         )
                         sw_eng.update_book(sym_key, ev.bids, ev.asks, ev.exchange_ts)
                         sw_eng.submit_order(
-                            sw_id, sym_key, SimOrderSide.BUY, SimOrderType.MARKET,
-                            sweep_qty, None, current_time=ev.exchange_ts,
+                            sw_id,
+                            sym_key,
+                            SimOrderSide.BUY,
+                            SimOrderType.MARKET,
+                            sweep_qty,
+                            None,
+                            current_time=ev.exchange_ts,
                         )
                         sw_events = sw_eng.process_time_slice(ev.exchange_ts + 0.001)
                         sw_fills = [f for f in sw_events if f.get("event") == "FILL"]
                         if sw_fills:
                             filled_tot = sum(f["quantity"] for f in sw_fills)
-                            vwap = sum(f["price"] * f["quantity"] for f in sw_fills) / filled_tot
+                            vwap = (
+                                sum(f["price"] * f["quantity"] for f in sw_fills)
+                                / filled_tot
+                            )
                             slip_bps = ((vwap - ba_px) / ba_px) * 10_000.0
                             levels_hit = len({f["price"] for f in sw_fills})
                             probe_metrics["sweeps_executed"] += 1
                             if levels_hit >= 2:
                                 probe_metrics["sweeps_multi_level"] += 1
-                            probe_metrics["sweep_records"].append({
-                                "stream": sym_key,
-                                "book_levels_avail": len(ev.asks),
-                                "requested_qty": round(sweep_qty, 6),
-                                "filled_qty": round(filled_tot, 6),
-                                "levels_swept": levels_hit,
-                                "best_ask": ba_px,
-                                "vwap": round(vwap, 4),
-                                "slippage_bps": round(slip_bps, 3),
-                            })
+                            probe_metrics["sweep_records"].append(
+                                {
+                                    "stream": sym_key,
+                                    "book_levels_avail": len(ev.asks),
+                                    "requested_qty": round(sweep_qty, 6),
+                                    "filled_qty": round(filled_tot, 6),
+                                    "levels_swept": levels_hit,
+                                    "best_ask": ba_px,
+                                    "vwap": round(vwap, 4),
+                                    "slippage_bps": round(slip_bps, 3),
+                                }
+                            )
 
-            elif ev.event_kind == "TRADE" and ev.price is not None and ev.quantity is not None:
+            elif (
+                ev.event_kind == "TRADE"
+                and ev.price is not None
+                and ev.quantity is not None
+            ):
                 # Validate aggressor-side alignment against prevailing reconstructed BBO
                 book = reconstructor.get_book(ev.venue, ev.instrument)
                 bb, ba, _, _ = book.best_bid_ask()
@@ -1756,7 +2133,12 @@ def run_l2_replay_pass(
                     aa["sell"] += 1
                 else:
                     aa["unknown"] += 1
-                if bb is not None and ba is not None and bb < ba and ev.aggressor_side is not None:
+                if (
+                    bb is not None
+                    and ba is not None
+                    and bb < ba
+                    and ev.aggressor_side is not None
+                ):
                     if ev.aggressor_side == SimOrderSide.BUY:
                         if ev.price >= ba - 1e-8:
                             aa["aligned_with_bbo"] += 1
@@ -1790,13 +2172,22 @@ def run_l2_replay_pass(
                     # Snapshot ONLY active resting/in-flight orders for this symbol (O(active), not O(all))
                     sym_active = active_probe_orders[sym_key]
                     pre_queue_ahead: dict[str, tuple[float, int, SimOrderStatus]] = {}
-                    terminal = (SimOrderStatus.FILLED, SimOrderStatus.CANCELLED, SimOrderStatus.REJECTED, SimOrderStatus.EXPIRED)
+                    terminal = (
+                        SimOrderStatus.FILLED,
+                        SimOrderStatus.CANCELLED,
+                        SimOrderStatus.REJECTED,
+                        SimOrderStatus.EXPIRED,
+                    )
                     for oid in list(sym_active):
                         o = probe_engine.orders[oid]
                         if o.status in terminal:
                             sym_active.discard(oid)
                         else:
-                            pre_queue_ahead[oid] = (o.queue_ahead_qty, o.touch_count, o.status)
+                            pre_queue_ahead[oid] = (
+                                o.queue_ahead_qty,
+                                o.touch_count,
+                                o.status,
+                            )
                     fills = probe_engine.process_market_trade(
                         symbol=sym_key,
                         trade_price=ev.price,
@@ -1814,7 +2205,11 @@ def run_l2_replay_pass(
                                 probe_metrics["post_only_maker_fills"] += 1
                             else:
                                 probe_metrics["post_only_taker_fills"] += 1
-                        if oid in probe_cancel_ids and ord_obj.cancel_arrival_ts > 0 and fl["timestamp"] >= ord_obj.cancel_arrival_ts:
+                        if (
+                            oid in probe_cancel_ids
+                            and ord_obj.cancel_arrival_ts > 0
+                            and fl["timestamp"] >= ord_obj.cancel_arrival_ts
+                        ):
                             probe_metrics["post_cancel_zombie_fills"] += 1
                         pre_info = pre_queue_ahead.get(oid)
                         if pre_info and pre_info[0] > ev.quantity + 1e-9:
@@ -1826,7 +2221,11 @@ def run_l2_replay_pass(
                     # Count touches that respected queue_ahead (touched without immediate fill)
                     for oid, (pre_qa, pre_tc, pre_st) in pre_queue_ahead.items():
                         o = probe_engine.orders[oid]
-                        if o.touch_count > pre_tc and o.filled_quantity == 0.0 and pre_qa > 0.0:
+                        if (
+                            o.touch_count > pre_tc
+                            and o.filled_quantity == 0.0
+                            and pre_qa > 0.0
+                        ):
                             probe_metrics["touches_observed_while_queued"] += 1
 
                     # Periodic strict-aggressor negative test (aggressor_side=None must yield 0 fills)
@@ -1862,7 +2261,10 @@ def run_l2_replay_pass(
                     probe_metrics["post_only_passive_accepted"] += 1
                     probe_metrics["post_only_accepted"] += 1
             if oid in probe_cancel_ids and o.status == SimOrderStatus.CANCELLED:
-                if o.filled_quantity == 0.0 and o.arrival_timestamp >= o.cancel_arrival_ts > 0:
+                if (
+                    o.filled_quantity == 0.0
+                    and o.arrival_timestamp >= o.cancel_arrival_ts > 0
+                ):
                     probe_metrics["cancel_before_arrival_cancelled"] += 1
                 elif o.filled_quantity > 0.0:
                     probe_metrics["cancel_after_partial_blocked_later_fills"] += 1
@@ -1872,35 +2274,53 @@ def run_l2_replay_pass(
             o2 = probe_engine.orders.get(id2)
             if not o1 or not o2:
                 continue
-            if o1.status == SimOrderStatus.REJECTED or o2.status == SimOrderStatus.REJECTED:
+            if (
+                o1.status == SimOrderStatus.REJECTED
+                or o2.status == SimOrderStatus.REJECTED
+            ):
                 continue
             # FIFO invariant: o2 cannot have filled_quantity > 0 while o1 still has remaining_quantity > 0
             # (unless o1 was filled first and o2 got remainder, in which case o1.remaining_quantity == 0)
             if o2.filled_quantity > 1e-9 and o1.remaining_quantity > 1e-6:
                 probe_metrics["fifo_order_violations"] += 1
-            if o1.filled_quantity > 1e-9 and (o2.filled_quantity == 0.0 or (o1.fill_events and o2.fill_events and o1.fill_events[0]["timestamp"] <= o2.fill_events[0]["timestamp"])):
+            if o1.filled_quantity > 1e-9 and (
+                o2.filled_quantity == 0.0
+                or (
+                    o1.fill_events
+                    and o2.fill_events
+                    and o1.fill_events[0]["timestamp"] <= o2.fill_events[0]["timestamp"]
+                )
+            ):
                 probe_metrics["fifo_first_filled_before_second"] += 1
 
         # Verify every maker fill in ledger carries L2_ESTIMATED label
         maker_fills_all = [f for f in probe_engine.get_ledger() if f["is_maker"]]
         probe_metrics["total_probe_fills"] = len(probe_engine.get_ledger())
         probe_metrics["maker_fills_tagged_l2_estimated"] = sum(
-            1 for f in maker_fills_all if f.get("queue_priority_model") == "L2_ESTIMATED"
+            1
+            for f in maker_fills_all
+            if f.get("queue_priority_model") == "L2_ESTIMATED"
         )
-        probe_metrics["skipped_no_aggressor_trades"] = probe_engine.skipped_no_aggressor_trades
+        probe_metrics["skipped_no_aggressor_trades"] = (
+            probe_engine.skipped_no_aggressor_trades
+        )
         drifts = probe_metrics["arrival_mid_drifts_bps"]
         probe_metrics["arrival_mid_drift_summary_bps"] = {
             "count": len(drifts),
-            "nonzero_drift_pct": round(100.0 * sum(1 for d in drifts if d > 1e-9) / len(drifts), 2) if drifts else 0.0,
+            "nonzero_drift_pct": round(
+                100.0 * sum(1 for d in drifts if d > 1e-9) / len(drifts), 2
+            )
+            if drifts
+            else 0.0,
             "mean": round(statistics.mean(drifts), 4) if drifts else 0.0,
-            "p95": round(sorted(drifts)[int(0.95 * (len(drifts) - 1))], 4) if drifts else 0.0,
+            "p95": round(sorted(drifts)[int(0.95 * (len(drifts) - 1))], 4)
+            if drifts
+            else 0.0,
             "max": round(max(drifts), 4) if drifts else 0.0,
         }
         del probe_metrics["arrival_mid_drifts_bps"]
 
-        digest.update(
-            json.dumps(probe_engine.get_ledger(), sort_keys=True).encode()
-        )
+        digest.update(json.dumps(probe_engine.get_ledger(), sort_keys=True).encode())
 
     wall_elapsed = time.perf_counter() - wall_start
     cpu_elapsed = time.process_time() - cpu_start
@@ -1936,7 +2356,9 @@ def run_l2_replay_pass(
             "final_bid_levels": len(bk.bids),
             "final_ask_levels": len(bk.asks),
             "median_spread_bps": round(statistics.median(sp), 3) if sp else None,
-            "p95_spread_bps": round(sorted(sp)[int(0.95 * (len(sp) - 1))], 3) if sp else None,
+            "p95_spread_bps": round(sorted(sp)[int(0.95 * (len(sp) - 1))], 3)
+            if sp
+            else None,
             "median_inter_event_ms": round(statistics.median(ie), 2) if ie else None,
             "trade_duplicates": reconstructor.trade_duplicates.get((v, inst), 0),
             "trade_ooo": reconstructor.trade_ooo.get((v, inst), 0),
@@ -1948,7 +2370,8 @@ def run_l2_replay_pass(
             "median_ms": round(statistics.median(vals), 2),
             "p95_ms": round(sorted(vals)[int(0.95 * (len(vals) - 1))], 2),
         }
-        for v, vals in sorted(clock_skew_ms.items()) if vals
+        for v, vals in sorted(clock_skew_ms.items())
+        if vals
     }
 
     return {
@@ -1957,7 +2380,9 @@ def run_l2_replay_pass(
         "event_kind_counts": dict(event_kind_counts),
         "wall_elapsed_s": round(wall_elapsed, 4),
         "cpu_elapsed_s": round(cpu_elapsed, 4),
-        "events_per_sec": round(normalized_total / wall_elapsed, 1) if wall_elapsed > 0 else 0.0,
+        "events_per_sec": round(normalized_total / wall_elapsed, 1)
+        if wall_elapsed > 0
+        else 0.0,
         "peak_heap_mb": round(peak_heap_bytes / (1024.0 * 1024.0), 2),
         "rss_start_mb": round(rss_start_mb, 2),
         "rss_end_mb": round(rss_end_mb, 2),
@@ -1973,7 +2398,9 @@ def run_l2_replay_pass(
         "notrade_fills": len(notrade_engine.get_ledger()),
         "notrade_skipped_no_aggressor": notrade_engine.skipped_no_aggressor_trades,
         "book_reconstruction": book_summaries,
-        "aggressor_alignment": {k: dict(v) for k, v in sorted(aggressor_alignment.items())},
+        "aggressor_alignment": {
+            k: dict(v) for k, v in sorted(aggressor_alignment.items())
+        },
         "clock_skew_ms": clock_skew_summary,
         "execution_probes": probe_metrics,
         "determinism_sha256": digest.hexdigest(),
@@ -1989,12 +2416,20 @@ def run_fault_injection_checks(frames: list[dict[str, Any]]) -> dict[str, Any]:
     results: dict[str, Any] = {}
 
     # 1. Sequence gap injection on Binance depth updates
-    bin_btc = [f for f in frames if f["venue"] == "BINANCE" and f["instrument"] == "BTC/USD" and f["channel"] in ("depth_snapshot", "depth")][:30]
+    bin_btc = [
+        f
+        for f in frames
+        if f["venue"] == "BINANCE"
+        and f["instrument"] == "BTC/USD"
+        and f["channel"] in ("depth_snapshot", "depth")
+    ][:30]
     if len(bin_btc) >= 10:
         # Remove one depth delta right after snapshot
-        snap_idx = next((i for i, f in enumerate(bin_btc) if f["channel"] == "depth_snapshot"), None)
+        snap_idx = next(
+            (i for i, f in enumerate(bin_btc) if f["channel"] == "depth_snapshot"), None
+        )
         if snap_idx is not None and snap_idx + 3 < len(bin_btc):
-            gapped = bin_btc[:snap_idx + 2] + bin_btc[snap_idx + 3:]
+            gapped = bin_btc[: snap_idx + 2] + bin_btc[snap_idx + 3 :]
             rec = L2BookReconstructor()
             for f in gapped:
                 rec.process_frame(f)
@@ -2002,7 +2437,13 @@ def run_fault_injection_checks(frames: list[dict[str, Any]]) -> dict[str, Any]:
             results["binance_sequence_gap_detected"] = bk.sequence_gaps >= 1
 
     # 2. OKX sequence gap & checksum failure injection
-    okx_btc = [f for f in frames if f["venue"] == "OKX" and f["instrument"] == "BTC/USD" and f["channel"] == "depth"][:25]
+    okx_btc = [
+        f
+        for f in frames
+        if f["venue"] == "OKX"
+        and f["instrument"] == "BTC/USD"
+        and f["channel"] == "depth"
+    ][:25]
     if len(okx_btc) >= 5:
         gapped_okx = [okx_btc[0]] + okx_btc[2:]
         rec = L2BookReconstructor()
@@ -2010,10 +2451,18 @@ def run_fault_injection_checks(frames: list[dict[str, Any]]) -> dict[str, Any]:
             rec.process_frame(f)
         bk = rec.get_book("OKX", "BTC/USD")
         results["okx_sequence_gap_detected"] = bk.sequence_gaps >= 1
-        results["okx_corrupted_checksum_detected"] = bk.checksum_failed >= 1 or bk.sequence_gaps >= 1
+        results["okx_corrupted_checksum_detected"] = (
+            bk.checksum_failed >= 1 or bk.sequence_gaps >= 1
+        )
 
     # 3. Duplicate trade & duplicate delta injection
-    bin_trades = [f for f in frames if f["venue"] == "BINANCE" and f["instrument"] == "BTC/USD" and f["channel"] == "trade"][:10]
+    bin_trades = [
+        f
+        for f in frames
+        if f["venue"] == "BINANCE"
+        and f["instrument"] == "BTC/USD"
+        and f["channel"] == "trade"
+    ][:10]
     if len(bin_trades) >= 3:
         duped = [bin_trades[0], bin_trades[0], bin_trades[1]]
         rec = L2BookReconstructor()
@@ -2023,7 +2472,13 @@ def run_fault_injection_checks(frames: list[dict[str, Any]]) -> dict[str, Any]:
         results["duplicate_trade_detected"] = sum(1 for e in evs if e.duplicate) == 1
 
     # 4. Out-of-order Bybit delta injection
-    bybit_btc = [f for f in frames if f["venue"] == "BYBIT" and f["instrument"] == "BTC/USD" and f["channel"] == "depth"][:15]
+    bybit_btc = [
+        f
+        for f in frames
+        if f["venue"] == "BYBIT"
+        and f["instrument"] == "BTC/USD"
+        and f["channel"] == "depth"
+    ][:15]
     if len(bybit_btc) >= 5:
         swapped = list(bybit_btc)
         swapped[2], swapped[3] = swapped[3], swapped[2]
@@ -2034,7 +2489,13 @@ def run_fault_injection_checks(frames: list[dict[str, Any]]) -> dict[str, Any]:
         results["out_of_order_delta_detected"] = bk.out_of_order >= 1
 
     # 5. Kraken reconnect & resync checksum recovery (live control + full epoch-bump resync replay)
-    krk_btc = [f for f in frames if f["venue"] == "KRAKEN" and f["instrument"] == "BTC/USD" and f["channel"] in ("depth", "control")]
+    krk_btc = [
+        f
+        for f in frames
+        if f["venue"] == "KRAKEN"
+        and f["instrument"] == "BTC/USD"
+        and f["channel"] in ("depth", "control")
+    ]
     if krk_btc:
         rec = L2BookReconstructor()
         for f in krk_btc:
@@ -2048,12 +2509,17 @@ def run_fault_injection_checks(frames: list[dict[str, Any]]) -> dict[str, Any]:
         depth_only = [f for f in krk_btc if f["channel"] == "depth"]
         if len(depth_only) >= 40:
             spliced = list(depth_only[:20])
-            spliced.append({
-                "venue": "KRAKEN", "instrument": "BTC/USD", "channel": "control", "epoch": 0,
-                "recv_mono_ns": depth_only[19]["recv_mono_ns"] + 1000,
-                "recv_wall_s": depth_only[19]["recv_wall_s"] + 0.001,
-                "wire": {"event": "reconnect", "next_epoch": 1},
-            })
+            spliced.append(
+                {
+                    "venue": "KRAKEN",
+                    "instrument": "BTC/USD",
+                    "channel": "control",
+                    "epoch": 0,
+                    "recv_mono_ns": depth_only[19]["recv_mono_ns"] + 1000,
+                    "recv_wall_s": depth_only[19]["recv_wall_s"] + 0.001,
+                    "wire": {"event": "reconnect", "next_epoch": 1},
+                }
+            )
             for f in depth_only[:20]:
                 f2 = dict(f)
                 f2["epoch"] = 1
@@ -2063,7 +2529,10 @@ def run_fault_injection_checks(frames: list[dict[str, Any]]) -> dict[str, Any]:
                 rec2.process_frame(f)
             bk2 = rec2.get_book("KRAKEN", "BTC/USD")
             results["kraken_resync_recovery_verified"] = (
-                bk2.resyncs == 1 and bk2.snapshots_applied == 2 and bk2.checksum_failed == 0 and bk2.checksum_passed >= 30
+                bk2.resyncs == 1
+                and bk2.snapshots_applied == 2
+                and bk2.checksum_failed == 0
+                and bk2.checksum_passed >= 30
             )
 
     return results
@@ -2091,9 +2560,19 @@ def run_strategy_simulation(
 
     valuator = DenominationAwareValuator()
     strats = [
-        FixedSpreadMM(initial_capital=100_000.0, post_only=True, name="Fixed-Spread Post-Only [ABANDONED]"),
-        InventorySkewMM(initial_capital=100_000.0, penalty_rate=0.04, name="Inventory-Skewed (pen=0.04)"),
-        AvellanedaStoikovMM(initial_capital=100_000.0, gamma=0.50, name="Avellaneda-Stoikov (γ=0.50)"),
+        FixedSpreadMM(
+            initial_capital=100_000.0,
+            post_only=True,
+            name="Fixed-Spread Post-Only [ABANDONED]",
+        ),
+        InventorySkewMM(
+            initial_capital=100_000.0,
+            penalty_rate=0.04,
+            name="Inventory-Skewed (pen=0.04)",
+        ),
+        AvellanedaStoikovMM(
+            initial_capital=100_000.0, gamma=0.50, name="Avellaneda-Stoikov (γ=0.50)"
+        ),
         NoTradeBaseline(initial_capital=100_000.0),
     ]
 
@@ -2146,7 +2625,12 @@ def run_strategy_simulation(
                     )
                     strat.engine.process_time_slice(ev.exchange_ts)
 
-            elif ev.event_kind == "TRADE" and ev.price is not None and ev.quantity is not None and not ev.duplicate:
+            elif (
+                ev.event_kind == "TRADE"
+                and ev.price is not None
+                and ev.quantity is not None
+                and not ev.duplicate
+            ):
                 tr_px_usd = ev.price * fx_mult
                 for strat in strats:
                     strat.engine.process_market_trade(
@@ -2172,7 +2656,9 @@ def run_strategy_simulation(
         gross_pnl = net_pnl + m.total_fees_paid
         tot_fills = m.maker_fills + m.taker_fills
         maker_pct = (m.maker_fills / tot_fills * 100.0) if tot_fills > 0 else 0.0
-        fill_prob = (tot_fills / m.orders_submitted * 100.0) if m.orders_submitted > 0 else 0.0
+        fill_prob = (
+            (tot_fills / m.orders_submitted * 100.0) if m.orders_submitted > 0 else 0.0
+        )
 
         peak_eq = strat.initial_capital
         max_dd_usd = 0.0
@@ -2189,7 +2675,9 @@ def run_strategy_simulation(
 
         results[strat.name] = {
             "name": strat.name,
-            "status": "ABANDONED / RESEARCH ONLY" if "ABANDONED" in strat.name else "VALIDATED",
+            "status": "ABANDONED / RESEARCH ONLY"
+            if "ABANDONED" in strat.name
+            else "VALIDATED",
             "orders_submitted": m.orders_submitted,
             "orders_rejected": m.orders_rejected,
             "total_fills": tot_fills,
@@ -2208,7 +2696,9 @@ def run_strategy_simulation(
             "peak_inventory_eth": round(m.peak_inventory.get("ETH/USD", 0.0), 6),
             "final_position_btc": round(m.positions.get("BTC/USD", 0.0), 6),
             "final_position_eth": round(m.positions.get("ETH/USD", 0.0), 6),
-            "mean_slippage_bps": round(statistics.mean(m.slippage_bps), 3) if m.slippage_bps else 0.0,
+            "mean_slippage_bps": round(statistics.mean(m.slippage_bps), 3)
+            if m.slippage_bps
+            else 0.0,
             "venue_executions": dict(m.venue_execution_records),
         }
 
@@ -2221,24 +2711,76 @@ def run_strategy_simulation(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="MDRAP 6.0.4 Sub-Second L2 Capture & Replay Validation")
-    parser.add_argument("--capture-secs", type=float, default=7200.0, help="Live WS capture duration in seconds")
-    parser.add_argument("--max-frames", type=int, default=15_000_000, help="Maximum frames to capture")
-    parser.add_argument("--capture-file", type=str, default="audit/v6.0.4/l2_capture_2hour.jsonl.gz", help="Path to gzip JSONL capture")
-    parser.add_argument("--skip-capture", action="store_true", help="Replay existing capture file without re-capturing")
-    parser.add_argument("--summary-out", type=str, default="audit/v6.0.4/replay_summary_2hour.json", help="Path to write full JSON summary")
-    parser.add_argument("--strategy-out", type=str, default="audit/v6.0.4/strategy_sim_validation.json", help="Path to write strategy simulation summary")
-    parser.add_argument("--probe-stride", type=int, default=200, help="Stride interval for execution probe orders")
-    parser.add_argument("--enable-tracemalloc", action="store_true", help="Enable tracemalloc heap tracking during Pass 1")
+    parser = argparse.ArgumentParser(
+        description="MDRAP 6.0.4 Sub-Second L2 Capture & Replay Validation"
+    )
+    parser.add_argument(
+        "--capture-secs",
+        type=float,
+        default=7200.0,
+        help="Live WS capture duration in seconds",
+    )
+    parser.add_argument(
+        "--max-frames", type=int, default=15_000_000, help="Maximum frames to capture"
+    )
+    parser.add_argument(
+        "--capture-file",
+        type=str,
+        default="audit/v6.0.4/l2_capture_2hour.jsonl.gz",
+        help="Path to gzip JSONL capture",
+    )
+    parser.add_argument(
+        "--skip-capture",
+        action="store_true",
+        help="Replay existing capture file without re-capturing",
+    )
+    parser.add_argument(
+        "--summary-out",
+        type=str,
+        default="audit/v6.0.4/replay_summary_2hour.json",
+        help="Path to write full JSON summary",
+    )
+    parser.add_argument(
+        "--strategy-out",
+        type=str,
+        default="audit/v6.0.4/strategy_sim_validation.json",
+        help="Path to write strategy simulation summary",
+    )
+    parser.add_argument(
+        "--probe-stride",
+        type=int,
+        default=200,
+        help="Stride interval for execution probe orders",
+    )
+    parser.add_argument(
+        "--enable-tracemalloc",
+        action="store_true",
+        help="Enable tracemalloc heap tracking during Pass 1",
+    )
     args = parser.parse_args()
 
-    cap_path = os.path.join(_ROOT, args.capture_file) if not os.path.isabs(args.capture_file) else args.capture_file
-    sum_path = os.path.join(_ROOT, args.summary_out) if not os.path.isabs(args.summary_out) else args.summary_out
-    strat_path = os.path.join(_ROOT, args.strategy_out) if not os.path.isabs(args.strategy_out) else args.strategy_out
+    cap_path = (
+        os.path.join(_ROOT, args.capture_file)
+        if not os.path.isabs(args.capture_file)
+        else args.capture_file
+    )
+    sum_path = (
+        os.path.join(_ROOT, args.summary_out)
+        if not os.path.isabs(args.summary_out)
+        else args.summary_out
+    )
+    strat_path = (
+        os.path.join(_ROOT, args.strategy_out)
+        if not os.path.isabs(args.strategy_out)
+        else args.strategy_out
+    )
 
     capture_meta: dict[str, Any] | None = None
     if not args.skip_capture:
-        print(f"[1/5] Capturing live sub-second L2 WS streams (5 venues x BTC & ETH) for {args.capture_secs:.0f}s ...", flush=True)
+        print(
+            f"[1/5] Capturing live sub-second L2 WS streams (5 venues x BTC & ETH) for {args.capture_secs:.0f}s ...",
+            flush=True,
+        )
         capture_meta = asyncio.run(
             capture_live_ws(
                 out_path=cap_path,
@@ -2255,9 +2797,16 @@ def main() -> None:
             flush=True,
         )
 
-    print(f"[2/5] Running clean No-Trade performance pass (C fastpath, no tracemalloc, no probes) ...", flush=True)
+    print(
+        f"[2/5] Running clean No-Trade performance pass (C fastpath, no tracemalloc, no probes) ...",
+        flush=True,
+    )
     perf_notrade = run_l2_replay_pass(
-        cap_path, check_py_c_parity=False, run_execution_probes=False, enable_tracemalloc=False, probe_stride=args.probe_stride
+        cap_path,
+        check_py_c_parity=False,
+        run_execution_probes=False,
+        enable_tracemalloc=False,
+        probe_stride=args.probe_stride,
     )
     print(
         f"      No-Trade Perf: {perf_notrade['normalized_events']} events in {perf_notrade['wall_elapsed_s']}s "
@@ -2267,9 +2816,24 @@ def main() -> None:
         flush=True,
     )
 
-    print(f"[3/5] Running Pass 1 & Pass 2 deterministic L2 replay (C vs Pure-Python parity + execution probes, probe_stride={args.probe_stride}) ...", flush=True)
-    pass1 = run_l2_replay_pass(cap_path, check_py_c_parity=True, run_execution_probes=True, enable_tracemalloc=args.enable_tracemalloc, probe_stride=args.probe_stride)
-    pass2 = run_l2_replay_pass(cap_path, check_py_c_parity=False, run_execution_probes=True, enable_tracemalloc=False, probe_stride=args.probe_stride)
+    print(
+        f"[3/5] Running Pass 1 & Pass 2 deterministic L2 replay (C vs Pure-Python parity + execution probes, probe_stride={args.probe_stride}) ...",
+        flush=True,
+    )
+    pass1 = run_l2_replay_pass(
+        cap_path,
+        check_py_c_parity=True,
+        run_execution_probes=True,
+        enable_tracemalloc=args.enable_tracemalloc,
+        probe_stride=args.probe_stride,
+    )
+    pass2 = run_l2_replay_pass(
+        cap_path,
+        check_py_c_parity=False,
+        run_execution_probes=True,
+        enable_tracemalloc=False,
+        probe_stride=args.probe_stride,
+    )
     deterministic = pass1["determinism_sha256"] == pass2["determinism_sha256"]
 
     print(
@@ -2284,15 +2848,23 @@ def main() -> None:
         flush=True,
     )
 
-    print("[4/5] Running fault-injection replay integrity suite on recorded L2 data ...", flush=True)
+    print(
+        "[4/5] Running fault-injection replay integrity suite on recorded L2 data ...",
+        flush=True,
+    )
     sample_frames = read_sample_frames(cap_path, n=2000)
     faults = run_fault_injection_checks(sample_frames)
     print(f"      Fault checks: {faults}", flush=True)
 
-    print("[5/5] Running 4-strategy simulation workload across recorded L2 stream ...", flush=True)
+    print(
+        "[5/5] Running 4-strategy simulation workload across recorded L2 stream ...",
+        flush=True,
+    )
     strat_results = run_strategy_simulation(cap_path, strat_path)
     for sname, sres in strat_results.items():
-        print(f"      {sname}: orders={sres['orders_submitted']} fills={sres['total_fills']} ({sres['maker_fill_pct']}% maker) net_pnl=${sres['net_pnl_usd']:.2f}")
+        print(
+            f"      {sname}: orders={sres['orders_submitted']} fills={sres['total_fills']} ({sres['maker_fill_pct']}% maker) net_pnl=${sres['net_pnl_usd']:.2f}"
+        )
 
     summary = {
         "capture": capture_meta,

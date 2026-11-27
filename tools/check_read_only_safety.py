@@ -58,7 +58,10 @@ class ReadOnlySecurityAuditor(ast.NodeVisitor):
         name_lower = node.name.lower()
         if name_lower in FORBIDDEN_EXECUTION_NAMES:
             self.violations.append(
-                (node.lineno, f"Forbidden order routing function definition: '{node.name}'")
+                (
+                    node.lineno,
+                    f"Forbidden order routing function definition: '{node.name}'",
+                )
             )
         self.generic_visit(node)
 
@@ -100,7 +103,9 @@ def audit_source_tree(src_dir: str = "src/mdrap") -> Tuple[int, List[str]]:
 
 
 def main() -> int:
-    src_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src", "mdrap"))
+    src_dir = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "..", "src", "mdrap")
+    )
     if not os.path.exists(src_dir):
         src_dir = "src/mdrap"
 
@@ -113,15 +118,22 @@ def main() -> int:
 
     print(f"Files audited: {files_scanned}")
     if not violations:
-        print("✔ PASS: Zero order routing, execution, or private trade endpoints detected.")
-        print("✔ CONFIRMED: Subsystem operates in 100% passive, read-only sidecar mode.")
+        print(
+            "✔ PASS: Zero order routing, execution, or private trade endpoints detected."
+        )
+        print(
+            "✔ CONFIRMED: Subsystem operates in 100% passive, read-only sidecar mode."
+        )
         print("==================================================================")
         return 0
     else:
         print(f"✖ FAIL: {len(violations)} safety violations detected:", file=sys.stderr)
         for v in violations:
             print(f"  [CRITICAL VIOLATION] {v}", file=sys.stderr)
-        print("==================================================================", file=sys.stderr)
+        print(
+            "==================================================================",
+            file=sys.stderr,
+        )
         return 1
 
 

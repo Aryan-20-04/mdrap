@@ -145,6 +145,7 @@ _SEQ_WINDOW_MASK = (1 << _SEQ_WINDOW_BITS) - 1
 @dataclass
 class ChannelSequenceState:
     """Deterministic sequence and epoch tracker scoped to a specific (gateway, symbol) channel."""
+
     channel_key: str
     gateway_id: Optional[str] = None
     symbol: Optional[str] = None
@@ -388,7 +389,11 @@ class VenueQuote:
     @property
     def is_crossed(self) -> bool:
         """True if order book is inverted (bid > ask) or locked (bid == ask)."""
-        return self.bid_price > 0 and self.ask_price > 0 and self.bid_price >= self.ask_price
+        return (
+            self.bid_price > 0
+            and self.ask_price > 0
+            and self.bid_price >= self.ask_price
+        )
 
     @property
     def spread(self) -> float:
@@ -468,6 +473,7 @@ class TradePrint:
 @dataclass
 class StreamHealth:
     """Tracks sequence continuity of the transport broadcast stream (daemon/shm sequence domain)."""
+
     last_seq: int = -1
     gaps: int = 0
     duplicates: int = 0
@@ -524,7 +530,9 @@ class VenueHealth:
     feed_seq_unavailable: int = 0
     gateway_unscoped: int = 0
     invalid_numeric_events: int = 0
-    latencies_us: collections.deque = field(default_factory=lambda: collections.deque(maxlen=1000))
+    latencies_us: collections.deque = field(
+        default_factory=lambda: collections.deque(maxlen=1000)
+    )
     channels: dict[str, ChannelSequenceState] = field(default_factory=dict)
     _last_active_channel: Optional[str] = None
     _lock: Optional[threading.RLock] = field(default=None, repr=False, compare=False)
@@ -543,7 +551,10 @@ class VenueHealth:
     def last_feed_seq(self) -> int:
         if self._lock is not None:
             with self._lock:
-                if self._last_active_channel and self._last_active_channel in self.channels:
+                if (
+                    self._last_active_channel
+                    and self._last_active_channel in self.channels
+                ):
                     return self.channels[self._last_active_channel].last_feed_seq
                 if "default:ALL" in self.channels:
                     return self.channels["default:ALL"].last_feed_seq
@@ -706,7 +717,9 @@ class VenueHealth:
     ) -> SequenceDisposition:
         self.events_received += 1
 
-        if gateway_id is None and any(ch.gateway_id is not None for ch in self.channels.values()):
+        if gateway_id is None and any(
+            ch.gateway_id is not None for ch in self.channels.values()
+        ):
             self.gateway_unscoped += 1
 
         channel_key = f"{gateway_id or 'default'}:{symbol or 'ALL'}"
@@ -714,11 +727,16 @@ class VenueHealth:
         if seq is None:
             existing_ch = self.channels.get(channel_key)
             if existing_ch is not None:
-                disposition = existing_ch.update(seq=None, epoch_id=epoch_id, is_snapshot=is_snapshot)
+                disposition = existing_ch.update(
+                    seq=None, epoch_id=epoch_id, is_snapshot=is_snapshot
+                )
                 self.feed_seq_unavailable += 1
                 if disposition == SequenceDisposition.STALE_EPOCH:
                     return disposition
-                if existing_ch.has_sequence_feed or existing_ch.current_epoch_id is not None:
+                if (
+                    existing_ch.has_sequence_feed
+                    or existing_ch.current_epoch_id is not None
+                ):
                     # Channel expects sequences/epochs; do not mark CONNECTED on missing identity
                     return SequenceDisposition.UNAVAILABLE
             else:
@@ -733,7 +751,9 @@ class VenueHealth:
                 self.feed_type = feed_type
             return SequenceDisposition.UNAVAILABLE
 
-        ch = self._get_or_create_channel(channel_key, gateway_id=gateway_id, symbol=symbol)
+        ch = self._get_or_create_channel(
+            channel_key, gateway_id=gateway_id, symbol=symbol
+        )
         disposition = ch.update(seq=seq, epoch_id=epoch_id, is_snapshot=is_snapshot)
         if disposition == SequenceDisposition.ACCEPTED:
             self.last_seen_ts = time.time()
@@ -758,7 +778,10 @@ class VenueHealth:
     def check_stale(self, max_stale_s: float = 3.0) -> None:
         if self._lock is not None:
             with self._lock:
-                if self.last_seen_ts > 0 and (time.time() - self.last_seen_ts) > max_stale_s:
+                if (
+                    self.last_seen_ts > 0
+                    and (time.time() - self.last_seen_ts) > max_stale_s
+                ):
                     self.status = "STALE"
             return
         if self.last_seen_ts > 0 and (time.time() - self.last_seen_ts) > max_stale_s:
@@ -808,16 +831,19 @@ class ObserverState:
       for observational analytics, not guaranteed exchange-reported aggressor-side truth.
     """
 
-    def __init__(self, max_trades: int = 50, stale_threshold_s: float = 3.0, subscription_filter: str = "ALL"):
+    def __init__(
+        self,
+        max_trades: int = 50,
+        stale_threshold_s: float = 3.0,
+        subscription_filter: str = "ALL",
+    ):
         self._lock = threading.RLock()
         self.max_trades = max_trades
         self.stale_threshold_s = stale_threshold_s
         self.subscription_filter = subscription_filter
         self.stream_health = StreamHealth()
         self.quotes: dict[str, dict[str, VenueQuote]] = {
-            asset: {
-                venue: VenueQuote(venue=venue, symbol=asset) for venue in VENUES
-            }
+            asset: {venue: VenueQuote(venue=venue, symbol=asset) for venue in VENUES}
             for asset in CORE_ASSETS
         }
         self.trades: dict[str, collections.deque[TradePrint]] = {
@@ -829,14 +855,30 @@ class ObserverState:
         self._last_trade_price: dict[str, float] = {}
         self._last_trade_side: dict[str, str] = {}
         self._start_time = time.time()
-        self._event_timestamps: collections.deque[float] = collections.deque(maxlen=5000)
+        self._event_timestamps: collections.deque[float] = collections.deque(
+            maxlen=5000
+        )
 
     def _parse_event(self, event: dict[str, Any] | Any, now: float) -> _ParsedEvent:
         """Stage 1: Parse and validate raw dict or object attributes without mutating state."""
         if isinstance(event, dict):
-            raw_source = str(_first_present_dict(event, ("venue", "source")) or "").strip().upper()
-            symbol = str(_first_present_dict(event, ("sym", "symbol", "instrument_id")) or "").strip().upper()
-            event_type = str(_first_present_dict(event, ("event", "event_type")) or "TICK").strip().upper()
+            raw_source = (
+                str(_first_present_dict(event, ("venue", "source")) or "")
+                .strip()
+                .upper()
+            )
+            symbol = (
+                str(
+                    _first_present_dict(event, ("sym", "symbol", "instrument_id")) or ""
+                )
+                .strip()
+                .upper()
+            )
+            event_type = (
+                str(_first_present_dict(event, ("event", "event_type")) or "TICK")
+                .strip()
+                .upper()
+            )
             stream_seq = _safe_int(event.get("seq"), default=0)
 
             raw_feed_seq = _first_present_dict(
@@ -852,7 +894,9 @@ class ObserverState:
                 or "SNAPSHOT" in event_type
             )
             epoch_id = _first_present_dict(event, ("epoch_id", "session_id"))
-            gateway_id = _first_present_dict(event, ("gateway_id", "channel_id", "channel"))
+            gateway_id = _first_present_dict(
+                event, ("gateway_id", "channel_id", "channel")
+            )
 
             raw_price = event.get("price")
             raw_size = _first_present_dict(event, ("size", "quantity", "volume"))
@@ -862,19 +906,30 @@ class ObserverState:
             raw_ask_sz = event.get("ask_size")
             raw_ts = _first_present_dict(event, ("timestamp", "exchange_ts"))
         else:
-            raw_source = str(_first_present_attr(event, ("source", "venue")) or "").strip().upper()
-            symbol = str(_first_present_attr(event, ("instrument_id", "symbol")) or "").strip().upper()
-            event_type = str(getattr(event, "event_type", "TICK") or "TICK").strip().upper()
+            raw_source = (
+                str(_first_present_attr(event, ("source", "venue")) or "")
+                .strip()
+                .upper()
+            )
+            symbol = (
+                str(_first_present_attr(event, ("instrument_id", "symbol")) or "")
+                .strip()
+                .upper()
+            )
+            event_type = (
+                str(getattr(event, "event_type", "TICK") or "TICK").strip().upper()
+            )
             stream_seq = _safe_int(getattr(event, "seq", 0), default=0)
 
-            raw_feed_seq = _first_present_attr(event, ("sequence_number", "venue_seq", "feed_seq"))
+            raw_feed_seq = _first_present_attr(
+                event, ("sequence_number", "venue_seq", "feed_seq")
+            )
             if raw_feed_seq is None and stream_seq == 0:
                 raw_feed_seq = getattr(event, "sequence", None)
 
             feed_seq = _parse_optional_int(raw_feed_seq)
             is_snapshot = bool(
-                getattr(event, "is_snapshot", False)
-                or "SNAPSHOT" in event_type
+                getattr(event, "is_snapshot", False) or "SNAPSHOT" in event_type
             )
             epoch_id = _first_present_attr(event, ("epoch_id", "session_id"))
             gateway_id = _first_present_attr(event, ("gateway_id", "channel_id"))
@@ -885,7 +940,9 @@ class ObserverState:
             raw_ask = _first_present_attr(event, ("ask", "ask_price"))
             raw_bid_sz = getattr(event, "bid_size", None)
             raw_ask_sz = getattr(event, "ask_size", None)
-            raw_ts = _first_present_attr(event, ("timestamp", "exchange_ts", "exchange_timestamp"))
+            raw_ts = _first_present_attr(
+                event, ("timestamp", "exchange_ts", "exchange_timestamp")
+            )
 
         if isinstance(epoch_id, bool):
             epoch_id = None
@@ -906,7 +963,15 @@ class ObserverState:
         ts_val, ts_ok = _parse_optional_nonneg_finite_float(raw_ts)
         ts = ts_val if (ts_ok and ts_val is not None and ts_val > 0.0) else now
 
-        numeric_valid = price_ok and size_ok and bid_ok and ask_ok and bid_sz_ok and ask_sz_ok and ts_ok
+        numeric_valid = (
+            price_ok
+            and size_ok
+            and bid_ok
+            and ask_ok
+            and bid_sz_ok
+            and ask_sz_ok
+            and ts_ok
+        )
 
         return _ParsedEvent(
             raw_source=raw_source,
@@ -971,7 +1036,11 @@ class ObserverState:
         parsed = self._parse_event(event, now)
 
         # Stage 2: Venue matching and canonical symbol normalization
-        feed_type = "SIMULATED" if any(k in parsed.raw_source for k in ("SIM", "DEMO", "TEST", "FEED")) else "LIVE"
+        feed_type = (
+            "SIMULATED"
+            if any(k in parsed.raw_source for k in ("SIM", "DEMO", "TEST", "FEED"))
+            else "LIVE"
+        )
         venue = self._match_venue(parsed.raw_source)
         if not venue:
             return
@@ -1003,7 +1072,10 @@ class ObserverState:
             existing_ch = self.health[venue].channels.get(channel_key)
             channel_expects_seq_or_epoch = bool(
                 existing_ch is not None
-                and (existing_ch.has_sequence_feed or existing_ch.current_epoch_id is not None)
+                and (
+                    existing_ch.has_sequence_feed
+                    or existing_ch.current_epoch_id is not None
+                )
             )
 
             feed_disposition = self.health[venue].update_sequence(
@@ -1033,7 +1105,9 @@ class ObserverState:
 
             quote = self.quotes[asset][venue]
             quote.last_update_ts = parsed.ts
-            quote.sequence = parsed.stream_seq if parsed.stream_seq > 0 else (parsed.feed_seq or 0)
+            quote.sequence = (
+                parsed.stream_seq if parsed.stream_seq > 0 else (parsed.feed_seq or 0)
+            )
 
             if parsed.bid is not None and parsed.bid > 0.0:
                 quote.bid_price = parsed.bid
@@ -1042,7 +1116,11 @@ class ObserverState:
                 quote.ask_price = parsed.ask
                 quote.ask_size = parsed.ask_size if parsed.ask_size is not None else 1.0
 
-            if "TRADE" in parsed.event_type and parsed.price is not None and parsed.price > 0.0:
+            if (
+                "TRADE" in parsed.event_type
+                and parsed.price is not None
+                and parsed.price > 0.0
+            ):
                 side = self._infer_aggressor_side_lee_ready(asset, quote, parsed.price)
                 self._last_trade_price[asset] = parsed.price
                 self._last_trade_side[asset] = side
@@ -1093,14 +1171,18 @@ class ObserverState:
 
         return best_bid, best_bid_sz, best_ask, best_ask_sz
 
-    def get_consolidated_nbbo(self, asset: str, usdt_fx_rate: float | None = None) -> tuple[float, float, float, float]:
+    def get_consolidated_nbbo(
+        self, asset: str, usdt_fx_rate: float | None = None
+    ) -> tuple[float, float, float, float]:
         """
         Returns best consolidated (best_bid, best_bid_sz, best_ask, best_ask_sz)
         within the specified currency pair.
         Never blends USD and USDT unless explicit usdt_fx_rate is provided.
         """
         with self._lock:
-            return self._get_consolidated_nbbo_unlocked(asset, usdt_fx_rate=usdt_fx_rate)
+            return self._get_consolidated_nbbo_unlocked(
+                asset, usdt_fx_rate=usdt_fx_rate
+            )
 
     def check_all_stale(self) -> None:
         """Trigger stale checks across all tracked venue health records atomically."""
@@ -1208,6 +1290,7 @@ class ObserverState:
         """Query current process Resident Set Size (RSS) in MiB."""
         try:
             import psutil
+
             return psutil.Process().memory_info().rss / (1024.0 * 1024.0)
         except Exception:
             return 32.5

@@ -25,6 +25,7 @@ Model Overview:
    - Detects SUSPICIOUS ticks (sudden 6-sigma price jumps, stale quotes) and activates
      a 3x spread expansion defense to prevent toxic adverse selection.
 """
+
 from __future__ import annotations
 
 import os
@@ -89,7 +90,9 @@ def run_avellaneda_stoikov_simulation(
 
     # 2. Initialize Native C Fastpath Quality Engine
     has_native = is_available()
-    print(f"[*] Data Quality Shield:    {'Native C Accelerator (_fastpath_native.dll)' if has_native else 'Pure Python Engine'}")
+    print(
+        f"[*] Data Quality Shield:    {'Native C Accelerator (_fastpath_native.dll)' if has_native else 'Pure Python Engine'}"
+    )
     quality_engine = FastQualityEngine()
 
     # 3. Simulate Deterministic Market Feed
@@ -150,9 +153,13 @@ def run_avellaneda_stoikov_simulation(
     print("\n" + "=" * 76)
     print(f"  STRATEGY EXECUTION TEAR-SHEET: {strategy.name.upper()}")
     print("=" * 76)
-    print(f"  Throughput Speed:         {events_count / elapsed_s:,.0f} events/sec ({elapsed_s * 1000:.2f} ms total)")
+    print(
+        f"  Throughput Speed:         {events_count / elapsed_s:,.0f} events/sec ({elapsed_s * 1000:.2f} ms total)"
+    )
     print(f"  Valid Ticks Processed:    {valid_count:,}")
-    print(f"  Crossed Quotes Shielded:  {quarantined_count:,} (quarantined, zero bad fills)")
+    print(
+        f"  Crossed Quotes Shielded:  {quarantined_count:,} (quarantined, zero bad fills)"
+    )
     print(f"  Toxic Spikes Defended:    {suspicious_count:,} (spread widened by 3x)")
     print("-" * 76)
     print(f"  Executed Trades (Fills):  {summary['total_trades']:,}")
@@ -163,12 +170,16 @@ def run_avellaneda_stoikov_simulation(
     print(f"  Ending Account Equity:    ${summary['final_equity']:,.2f}")
     print(f"  Return on Capital:        {summary['return_pct']:+.2f}%")
     print(f"  Mean Execution Slippage:  {summary['avg_slippage_bps']:.2f} bps")
-    print(f"  Ending Open Position:     {summary['positions'].get(symbol, 0.0):.0f} shares")
+    print(
+        f"  Ending Open Position:     {summary['positions'].get(symbol, 0.0):.0f} shares"
+    )
     print("=" * 76)
 
     # 5. Export Execution Audit Trail
     os.makedirs("data/reports", exist_ok=True)
-    export_path = strategy.export_executions("data/reports/avellaneda_stoikov_fills.csv", format="csv")
+    export_path = strategy.export_executions(
+        "data/reports/avellaneda_stoikov_fills.csv", format="csv"
+    )
     print(f"[+] Detailed execution ledger exported to: {export_path}")
 
     return summary

@@ -37,6 +37,7 @@ from mdrap.adapters.kraken import KrakenAdapter
 # 1. Kraken Incremental Orderbook & Trade Tests
 # ===========================================================================
 
+
 def test_kraken_orderbook_snapshot_and_incremental_updates():
     """Verify that Kraken book snapshots and incremental level updates maintain state."""
     canon = "BTC/USD"
@@ -46,8 +47,14 @@ def test_kraken_orderbook_snapshot_and_incremental_updates():
     snap_frame = [
         42,
         {
-            "as": [["60010.0", "1.5", "1700000000.100"], ["60020.0", "2.0", "1700000000.100"]],
-            "bs": [["60000.0", "1.0", "1700000000.100"], ["59990.0", "3.0", "1700000000.100"]],
+            "as": [
+                ["60010.0", "1.5", "1700000000.100"],
+                ["60020.0", "2.0", "1700000000.100"],
+            ],
+            "bs": [
+                ["60000.0", "1.0", "1700000000.100"],
+                ["59990.0", "3.0", "1700000000.100"],
+            ],
         },
         "book-10",
         "XBT/USD",
@@ -104,7 +111,7 @@ def test_kraken_orderbook_snapshot_and_incremental_updates():
 def test_kraken_adapter_incremental_orderbook_parity():
     """Verify KrakenAdapter parses incremental book frames identically."""
     adapter = KrakenAdapter(symbol="BTC/USD")
-    
+
     # 1. Snapshot
     snap_frame = [
         42,
@@ -158,6 +165,7 @@ def test_kraken_public_trade_frame_parsing():
 # ===========================================================================
 # 2. Public Trade Parsing Across Venues
 # ===========================================================================
+
 
 def test_binance_trade_and_combined_stream_parsing():
     """Verify Binance trade frames in direct and combined stream wrappers."""
@@ -277,6 +285,7 @@ def test_bybit_public_trade_channel_parsing():
 # 3. Channel-Scoped Sequence Tracking Isolation Tests
 # ===========================================================================
 
+
 def test_sequence_tracking_isolates_trades_from_quotes():
     """
     Verify that trade IDs and quote update IDs do not collide.
@@ -284,18 +293,22 @@ def test_sequence_tracking_isolates_trades_from_quotes():
     caused continuous SEQUENCE_GAP and OUT_OF_ORDER false positives.
     """
     crypto_feed = LiveCryptoFeed()
-    
-    trade_scope = SequenceScope(venue="COINBASE", instrument="BTC/USD", channel="matches", epoch=0)
-    quote_scope = SequenceScope(venue="COINBASE", instrument="BTC/USD", channel="ticker", epoch=0)
+
+    trade_scope = SequenceScope(
+        venue="COINBASE", instrument="BTC/USD", channel="matches", epoch=0
+    )
+    quote_scope = SequenceScope(
+        venue="COINBASE", instrument="BTC/USD", channel="ticker", epoch=0
+    )
 
     # Interleave 10 trade events and 10 quote events with vastly different ID ranges
     for i in range(10):
         trade_id = 1_500_000_000 + i
         quote_id = 45_000_000_000 + i
-        
+
         gap_trade = crypto_feed.check_sequence_gap(trade_scope, trade_id)
         gap_quote = crypto_feed.check_sequence_gap(quote_scope, quote_id)
-        
+
         # Zero gaps should be flagged across both isolated streams
         assert not gap_trade
         assert not gap_quote
@@ -307,12 +320,14 @@ def test_sequence_tracking_isolates_trades_from_quotes():
 def test_sampled_channels_skip_sequence_gap_accumulation():
     """Verify that sampled ticker streams do not accumulate false sequence gaps."""
     crypto_feed = LiveCryptoFeed()
-    ticker_scope = SequenceScope(venue="BINANCE", instrument="BTC/USD", channel="ticker", epoch=0)
+    ticker_scope = SequenceScope(
+        venue="BINANCE", instrument="BTC/USD", channel="ticker", epoch=0
+    )
 
     # Sampled sequences jump by 50 or 100
     crypto_feed.check_sequence_gap(ticker_scope, 100)
     gap = crypto_feed.check_sequence_gap(ticker_scope, 150)
-    
+
     # Should NOT be counted as a missing event gap
     assert not gap
     assert crypto_feed.missing_events_count[ticker_scope.key()] == 0
@@ -322,15 +337,18 @@ def test_sampled_channels_skip_sequence_gap_accumulation():
 # 4. Heartbeat Liveness & Freshness Telemetry Tests
 # ===========================================================================
 
+
 def test_heartbeat_updates_freshness_and_prevents_stale_state():
     """Verify that heartbeat frames keep connector freshness under threshold."""
-    mgr = WebSocketFeedManager(symbols=["BTC/USD"], venues=["KRAKEN"], stale_timeout_ms=5000)
-    
+    mgr = WebSocketFeedManager(
+        symbols=["BTC/USD"], venues=["KRAKEN"], stale_timeout_ms=5000
+    )
+
     # Simulate connection
     mgr._stats["KRAKEN"]["connected"] = True
     now = time.time()
     mgr._provider_meta["KRAKEN"]["last_received_ts"] = now
-    
+
     telemetry = mgr.get_provider_telemetry()
     assert telemetry["KRAKEN"].state.value == "CONNECTED"
     assert telemetry["KRAKEN"].feed_freshness_ms is not None
@@ -341,6 +359,7 @@ def test_heartbeat_updates_freshness_and_prevents_stale_state():
 # 5. Backpressure Tombstone Capacity & Drop Accounting Tests
 # ===========================================================================
 
+
 def test_backpressure_tombstone_capacity_and_accounting():
     """Verify that queue drops retain up to max_tombstones without silent loss."""
     # Create manager with bounded queue of size 5 and 50,000 tombstone capacity
@@ -350,7 +369,7 @@ def test_backpressure_tombstone_capacity_and_accounting():
         max_queue_size=5,
         max_tombstones=10_000,
     )
-    
+
     # Overfill queue with 200 frames
     for i in range(200):
         ev = RawEvent(
@@ -377,7 +396,7 @@ def test_backpressure_tombstone_capacity_and_accounting():
     assert summary["total_drops"] == 195
     assert summary["per_venue"]["BINANCE"] == 195
     assert summary["retained_tombstones"] == 195
-    
+
     tombstones = mgr.get_tombstones()
     assert len(tombstones) == 195
     assert tombstones[0].source == "BINANCE"
@@ -386,6 +405,7 @@ def test_backpressure_tombstone_capacity_and_accounting():
 # ===========================================================================
 # 6. End-to-End Quality Evaluation & Python/C Parity Tests
 # ===========================================================================
+
 
 def test_live_feed_events_evaluate_valid_without_pervasive_suspicious():
     """
@@ -399,36 +419,73 @@ def test_live_feed_events_evaluate_valid_without_pervasive_suspicious():
 
     # Simulate 5 realistic events from the 5 venues
     from datetime import datetime, timezone
+
     t_now = time.time()
     iso_now = datetime.now(timezone.utc).isoformat()
     frames = [
         # Binance Quote
         parse_binance_frame(
-            {"bids": [["60000.00", "1.5"]], "asks": [["60002.00", "2.0"]], "E": int(t_now * 1000)},
+            {
+                "bids": [["60000.00", "1.5"]],
+                "asks": [["60002.00", "2.0"]],
+                "E": int(t_now * 1000),
+            },
             "BTC/USD",
             t_recv=t_now,
         ),
         # Coinbase Quote
         parse_coinbase_frame(
-            {"type": "ticker", "sequence": 1001, "price": "60001.00", "best_bid": "60000.50", "best_ask": "60001.50", "best_bid_size": "1.0", "best_ask_size": "1.0", "time": iso_now},
+            {
+                "type": "ticker",
+                "sequence": 1001,
+                "price": "60001.00",
+                "best_bid": "60000.50",
+                "best_ask": "60001.50",
+                "best_bid_size": "1.0",
+                "best_ask_size": "1.0",
+                "time": iso_now,
+            },
             "BTC/USD",
             t_recv=t_now,
         ),
         # Kraken Quote
         parse_kraken_frame(
-            [42, {"as": [["60002.50", "1.0", str(t_now)]], "bs": [["60000.25", "1.0", str(t_now)]]}, "book-10", "XBT/USD"],
+            [
+                42,
+                {
+                    "as": [["60002.50", "1.0", str(t_now)]],
+                    "bs": [["60000.25", "1.0", str(t_now)]],
+                },
+                "book-10",
+                "XBT/USD",
+            ],
             "BTC/USD",
             t_recv=t_now,
         ),
         # OKX Trade
         parse_okx_frame(
-            {"arg": {"channel": "trades"}, "data": [{"tradeId": "901", "px": "60001.00", "sz": "0.1", "side": "buy", "ts": str(int(t_now * 1000))}]},
+            {
+                "arg": {"channel": "trades"},
+                "data": [
+                    {
+                        "tradeId": "901",
+                        "px": "60001.00",
+                        "sz": "0.1",
+                        "side": "buy",
+                        "ts": str(int(t_now * 1000)),
+                    }
+                ],
+            },
             "BTC/USD",
             t_recv=t_now,
         ),
         # Bybit Quote
         parse_bybit_frame(
-            {"topic": "orderbook.1.BTCUSDT", "ts": int(t_now * 1000), "data": {"b": [["60000.10", "2.0"]], "a": [["60001.90", "2.0"]]}},
+            {
+                "topic": "orderbook.1.BTCUSDT",
+                "ts": int(t_now * 1000),
+                "data": {"b": [["60000.10", "2.0"]], "a": [["60001.90", "2.0"]]},
+            },
             "BTC/USD",
             t_recv=t_now,
         ),
@@ -437,10 +494,12 @@ def test_live_feed_events_evaluate_valid_without_pervasive_suspicious():
     for raw in frames:
         assert raw is not None
         canon = gateway.normalize(raw)
-        
+
         # Evaluate with pure Python engine
         py_canon = py_engine.evaluate(canon)
-        assert py_canon.quality_status == QualityStatus.VALID, f"Failed on {canon.source}: {py_canon.reasons}"
+        assert py_canon.quality_status == QualityStatus.VALID, (
+            f"Failed on {canon.source}: {py_canon.reasons}"
+        )
 
         # Evaluate with C Fastpath engine (if available)
         if c_engine is not None:

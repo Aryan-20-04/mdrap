@@ -46,11 +46,17 @@ async def test_broadcast_cached_entitlement_avoids_hmac_dos():
     st.subscriber_loops[ws] = loop
 
     # Track calls to get_entitlement and _hash_candidates
-    with patch.object(sec, "get_entitlement", wraps=sec.get_entitlement) as mock_get_ent:
-        with patch.object(sec._api_keys, "_hash_candidates", wraps=sec._api_keys._hash_candidates) as mock_hash:
+    with patch.object(
+        sec, "get_entitlement", wraps=sec.get_entitlement
+    ) as mock_get_ent:
+        with patch.object(
+            sec._api_keys, "_hash_candidates", wraps=sec._api_keys._hash_candidates
+        ) as mock_hash:
             # Broadcast 20 events
             for i in range(20):
-                await st.broadcast_event({"instrument_id": "BTC-USD", "price": 50000.0 + i})
+                await st.broadcast_event(
+                    {"instrument_id": "BTC-USD", "price": 50000.0 + i}
+                )
 
             # Invariant: get_entitlement and _hash_candidates are NOT called during broadcast
             assert mock_get_ent.call_count == 0

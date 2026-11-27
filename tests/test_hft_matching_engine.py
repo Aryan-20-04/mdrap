@@ -37,7 +37,9 @@ def test_queue_ahead_tracking():
         config=MatchingEngineConfig(network_latency_ms=0.0, matching_delay_ms=0.0)
     )
     # Seed order book with 5.0 resting bid at 100.0
-    engine.update_book("BTC-USDT", bids=[(100.0, 5.0)], asks=[(100.2, 5.0)], timestamp=1.0)
+    engine.update_book(
+        "BTC-USDT", bids=[(100.0, 5.0)], asks=[(100.2, 5.0)], timestamp=1.0
+    )
 
     # Submit limit buy order at 100.0 for 2.0 qty
     order = engine.submit_order(
@@ -55,12 +57,16 @@ def test_queue_ahead_tracking():
     assert order.queue_ahead_qty == 5.0  # 5.0 volume resting ahead in queue
 
     # Trade occurs at 100.0 for 3.0 qty (insufficient to clear queue)
-    fills1 = engine.process_market_trade("BTC-USDT", trade_price=100.0, trade_size=3.0, timestamp=2.0)
+    fills1 = engine.process_market_trade(
+        "BTC-USDT", trade_price=100.0, trade_size=3.0, timestamp=2.0
+    )
     assert len(fills1) == 0
     assert order.queue_ahead_qty == 2.0  # 2.0 still ahead
 
     # Next trade occurs at 100.0 for 3.0 qty (clears 2.0 ahead + fills 1.0 of our order)
-    fills2 = engine.process_market_trade("BTC-USDT", trade_price=100.0, trade_size=3.0, timestamp=3.0)
+    fills2 = engine.process_market_trade(
+        "BTC-USDT", trade_price=100.0, trade_size=3.0, timestamp=3.0
+    )
     assert len(fills2) == 1
     assert fills2[0]["quantity"] == 1.0
     assert order.status == SimOrderStatus.PARTIALLY_FILLED
@@ -68,7 +74,9 @@ def test_queue_ahead_tracking():
     assert order.queue_ahead_qty == 0.0
 
     # Next trade at 100.0 for 1.0 qty finishes our order
-    fills3 = engine.process_market_trade("BTC-USDT", trade_price=100.0, trade_size=1.0, timestamp=4.0)
+    fills3 = engine.process_market_trade(
+        "BTC-USDT", trade_price=100.0, trade_size=1.0, timestamp=4.0
+    )
     assert len(fills3) == 1
     assert fills3[0]["quantity"] == 1.0
     assert order.status == SimOrderStatus.FILLED
@@ -80,7 +88,9 @@ def test_latency_modeling():
     engine = RealisticMatchingEngine(
         config=MatchingEngineConfig(network_latency_ms=10.0, matching_delay_ms=0.0)
     )
-    engine.update_book("BTC-USDT", bids=[(100.0, 5.0)], asks=[(100.2, 5.0)], timestamp=1.0)
+    engine.update_book(
+        "BTC-USDT", bids=[(100.0, 5.0)], asks=[(100.2, 5.0)], timestamp=1.0
+    )
 
     # Submit at t=1.000s, arrival will be at t=1.010s
     order = engine.submit_order(
@@ -109,7 +119,9 @@ def test_cancel_fill_race_condition():
     engine = RealisticMatchingEngine(
         config=MatchingEngineConfig(network_latency_ms=10.0, matching_delay_ms=0.0)
     )
-    engine.update_book("BTC-USDT", bids=[(100.0, 0.0)], asks=[(100.2, 5.0)], timestamp=1.0)
+    engine.update_book(
+        "BTC-USDT", bids=[(100.0, 0.0)], asks=[(100.2, 5.0)], timestamp=1.0
+    )
 
     # Order sent at t=1.000s, arrives at t=1.010s
     order = engine.submit_order(
@@ -132,7 +144,9 @@ def test_cancel_fill_race_condition():
     assert order.status == SimOrderStatus.ACCEPTED
 
     # Trade occurs at t=1.012s (BEFORE cancel arrives at t=1.015s!)
-    fills = engine.process_market_trade("BTC-USDT", trade_price=100.0, trade_size=1.0, timestamp=1.012)
+    fills = engine.process_market_trade(
+        "BTC-USDT", trade_price=100.0, trade_size=1.0, timestamp=1.012
+    )
     assert len(fills) == 1
     assert order.status == SimOrderStatus.FILLED
 
@@ -145,9 +159,13 @@ def test_maker_taker_fee_calculation():
     """Verify maker vs taker fee schedules."""
     fees = FeeSchedule(maker_fee_bps=2.0, taker_fee_bps=5.0)
     engine = RealisticMatchingEngine(
-        config=MatchingEngineConfig(network_latency_ms=0.0, matching_delay_ms=0.0, fee_schedule=fees)
+        config=MatchingEngineConfig(
+            network_latency_ms=0.0, matching_delay_ms=0.0, fee_schedule=fees
+        )
     )
-    engine.update_book("BTC-USDT", bids=[(100.0, 0.0)], asks=[(100.2, 5.0)], timestamp=1.0)
+    engine.update_book(
+        "BTC-USDT", bids=[(100.0, 0.0)], asks=[(100.2, 5.0)], timestamp=1.0
+    )
 
     # Passive maker order
     maker_ord = engine.submit_order(
@@ -162,7 +180,9 @@ def test_maker_taker_fee_calculation():
     engine.process_time_slice(current_time=1.0)
 
     # Fill as maker
-    fills = engine.process_market_trade("BTC-USDT", trade_price=100.0, trade_size=2.0, timestamp=2.0)
+    fills = engine.process_market_trade(
+        "BTC-USDT", trade_price=100.0, trade_size=2.0, timestamp=2.0
+    )
     assert len(fills) == 1
     # 2.0 bps of ($100 * 2.0 = $200) = $0.04
     assert pytest.approx(maker_ord.fees_paid, 0.001) == 0.04
@@ -188,7 +208,9 @@ def test_adverse_selection_markout():
     engine = RealisticMatchingEngine(
         config=MatchingEngineConfig(network_latency_ms=0.0, matching_delay_ms=0.0)
     )
-    engine.update_book("BTC-USDT", bids=[(100.0, 1.0)], asks=[(100.2, 1.0)], timestamp=1.000)
+    engine.update_book(
+        "BTC-USDT", bids=[(100.0, 1.0)], asks=[(100.2, 1.0)], timestamp=1.000
+    )
 
     # Buy order fills at 100.2 at t=1.000s
     engine.submit_order(
@@ -202,7 +224,9 @@ def test_adverse_selection_markout():
     engine.process_time_slice(current_time=1.000)
 
     # Future mid price moves down at t=1.100s (adverse selection: bought and price immediately dropped)
-    engine.update_book("BTC-USDT", bids=[(99.0, 1.0)], asks=[(99.2, 1.0)], timestamp=1.100)
+    engine.update_book(
+        "BTC-USDT", bids=[(99.0, 1.0)], asks=[(99.2, 1.0)], timestamp=1.100
+    )
 
     markouts = engine.compute_adverse_selection_markout(horizon_ms=100.0)
     assert len(markouts) == 1
@@ -216,10 +240,14 @@ def test_post_only_execution():
     """Verify Post-Only enforcement: crossing orders rejected, non-crossing orders rest and fill passively."""
     fees = FeeSchedule(maker_fee_bps=1.0, taker_fee_bps=4.0)
     engine = RealisticMatchingEngine(
-        config=MatchingEngineConfig(network_latency_ms=0.0, matching_delay_ms=0.0, fee_schedule=fees)
+        config=MatchingEngineConfig(
+            network_latency_ms=0.0, matching_delay_ms=0.0, fee_schedule=fees
+        )
     )
     # Market: Bid 100.0 (size 5.0), Ask 100.5 (size 5.0)
-    engine.update_book("BTC-USDT", bids=[(100.0, 5.0)], asks=[(100.5, 5.0)], timestamp=1.0)
+    engine.update_book(
+        "BTC-USDT", bids=[(100.0, 5.0)], asks=[(100.5, 5.0)], timestamp=1.0
+    )
 
     # Case 1: Post-Only order crosses ask (marketable buy at 100.5)
     po_cross_order = engine.submit_order(
@@ -254,7 +282,9 @@ def test_post_only_execution():
     events2 = engine.process_time_slice(current_time=2.0)
     assert regular_cross_order.status == SimOrderStatus.FILLED
     assert regular_cross_order.is_maker is False
-    assert pytest.approx(regular_cross_order.fees_paid, 0.001) == 100.5 * 1.0 * (4.0 / 10000.0)
+    assert pytest.approx(regular_cross_order.fees_paid, 0.001) == 100.5 * 1.0 * (
+        4.0 / 10000.0
+    )
 
     # Case 3: Post-Only passive order does not cross (buy at 100.0) -> enqueued as maker
     po_passive_order = engine.submit_order(
@@ -272,12 +302,16 @@ def test_post_only_execution():
     assert po_passive_order.queue_ahead_qty == 5.0  # 5.0 resting ahead from book
 
     # Market trade of 5.0 clears queue ahead
-    engine.process_market_trade("BTC-USDT", trade_price=100.0, trade_size=5.0, timestamp=3.1)
+    engine.process_market_trade(
+        "BTC-USDT", trade_price=100.0, trade_size=5.0, timestamp=3.1
+    )
     assert po_passive_order.queue_ahead_qty == 0.0
     assert po_passive_order.filled_quantity == 0.0
 
     # Next market trade of 2.0 fills our resting post-only order
-    fills = engine.process_market_trade("BTC-USDT", trade_price=100.0, trade_size=2.0, timestamp=3.2)
+    fills = engine.process_market_trade(
+        "BTC-USDT", trade_price=100.0, trade_size=2.0, timestamp=3.2
+    )
     assert len(fills) == 1
     assert po_passive_order.status == SimOrderStatus.FILLED
     assert po_passive_order.is_maker is True
@@ -290,7 +324,9 @@ def test_chronological_cancel_prevents_zombie_order():
     engine = RealisticMatchingEngine(
         config=MatchingEngineConfig(network_latency_ms=2.0, matching_delay_ms=0.5)
     )
-    engine.update_book("BTC-USDT", bids=[(100.0, 0.0)], asks=[(100.5, 5.0)], timestamp=1.0)
+    engine.update_book(
+        "BTC-USDT", bids=[(100.0, 0.0)], asks=[(100.5, 5.0)], timestamp=1.0
+    )
 
     # Submitted at t=1.000 -> arrives at t=1.0025 (no process_time_slice called yet)
     order = engine.submit_order(
@@ -308,7 +344,11 @@ def test_chronological_cancel_prevents_zombie_order():
 
     # Trade arrives at t=3.005 (after both order arrival 1.0025 and cancel arrival 3.002)
     events = engine.process_market_trade(
-        "BTC-USDT", trade_price=99.0, trade_size=5.0, timestamp=3.005, aggressor_side=SimOrderSide.SELL
+        "BTC-USDT",
+        trade_price=99.0,
+        trade_size=5.0,
+        timestamp=3.005,
+        aggressor_side=SimOrderSide.SELL,
     )
     assert order.status == SimOrderStatus.CANCELLED
     assert order.filled_quantity == 0.0
@@ -323,7 +363,9 @@ def test_cancel_before_arrival_race():
     engine = RealisticMatchingEngine(
         config=MatchingEngineConfig(network_latency_ms=10.0, matching_delay_ms=5.0)
     )
-    engine.update_book("BTC-USDT", bids=[(100.0, 0.0)], asks=[(100.5, 5.0)], timestamp=1.0)
+    engine.update_book(
+        "BTC-USDT", bids=[(100.0, 0.0)], asks=[(100.5, 5.0)], timestamp=1.0
+    )
 
     # Order arrives at 1.015; cancel arrives at 1.011 (< 1.015)
     order = engine.submit_order(
@@ -338,7 +380,11 @@ def test_cancel_before_arrival_race():
     engine.cancel_order("ORD-EARLY-CANCEL", current_time=1.001)
 
     events = engine.process_market_trade(
-        "BTC-USDT", trade_price=100.0, trade_size=5.0, timestamp=1.020, aggressor_side=SimOrderSide.SELL
+        "BTC-USDT",
+        trade_price=100.0,
+        trade_size=5.0,
+        timestamp=1.020,
+        aggressor_side=SimOrderSide.SELL,
     )
     assert order.status == SimOrderStatus.CANCELLED
     assert order.filled_quantity == 0.0
@@ -350,7 +396,9 @@ def test_partial_fill_then_cancel_blocks_subsequent_fills():
     engine = RealisticMatchingEngine(
         config=MatchingEngineConfig(network_latency_ms=2.0, matching_delay_ms=0.0)
     )
-    engine.update_book("BTC-USDT", bids=[(100.0, 0.0)], asks=[(100.5, 5.0)], timestamp=1.0)
+    engine.update_book(
+        "BTC-USDT", bids=[(100.0, 0.0)], asks=[(100.5, 5.0)], timestamp=1.0
+    )
 
     order = engine.submit_order(
         order_id="ORD-PART-CANCEL",
@@ -366,7 +414,11 @@ def test_partial_fill_then_cancel_blocks_subsequent_fills():
 
     # First trade partially fills 0.8
     fills1 = engine.process_market_trade(
-        "BTC-USDT", trade_price=100.0, trade_size=0.8, timestamp=1.010, aggressor_side=SimOrderSide.SELL
+        "BTC-USDT",
+        trade_price=100.0,
+        trade_size=0.8,
+        timestamp=1.010,
+        aggressor_side=SimOrderSide.SELL,
     )
     assert len([e for e in fills1 if e["event"] == "FILL"]) == 1
     assert order.status == SimOrderStatus.PARTIALLY_FILLED
@@ -376,7 +428,11 @@ def test_partial_fill_then_cancel_blocks_subsequent_fills():
     # Cancel initiated at 1.011 (arrives at 1.013) before second trade at 1.015
     engine.cancel_order("ORD-PART-CANCEL", current_time=1.011)
     fills2 = engine.process_market_trade(
-        "BTC-USDT", trade_price=100.0, trade_size=5.0, timestamp=1.015, aggressor_side=SimOrderSide.SELL
+        "BTC-USDT",
+        trade_price=100.0,
+        trade_size=5.0,
+        timestamp=1.015,
+        aggressor_side=SimOrderSide.SELL,
     )
     assert order.status == SimOrderStatus.CANCELLED
     assert pytest.approx(order.filled_quantity, 1e-6) == 0.8
@@ -388,7 +444,9 @@ def test_order_expiration_chronological():
     engine = RealisticMatchingEngine(
         config=MatchingEngineConfig(network_latency_ms=0.0, matching_delay_ms=0.0)
     )
-    engine.update_book("BTC-USDT", bids=[(100.0, 0.0)], asks=[(100.5, 5.0)], timestamp=1.0)
+    engine.update_book(
+        "BTC-USDT", bids=[(100.0, 0.0)], asks=[(100.5, 5.0)], timestamp=1.0
+    )
 
     order = engine.submit_order(
         order_id="ORD-EXP",
@@ -402,14 +460,22 @@ def test_order_expiration_chronological():
     )
     # Partial fill before expiration
     engine.process_market_trade(
-        "BTC-USDT", trade_price=100.0, trade_size=0.5, timestamp=1.5, aggressor_side=SimOrderSide.SELL
+        "BTC-USDT",
+        trade_price=100.0,
+        trade_size=0.5,
+        timestamp=1.5,
+        aggressor_side=SimOrderSide.SELL,
     )
     assert order.status == SimOrderStatus.PARTIALLY_FILLED
     assert pytest.approx(order.filled_quantity, 1e-6) == 0.5
 
     # Trade after expiration timestamp (2.5 > 2.0): expiration must fire first
     events = engine.process_market_trade(
-        "BTC-USDT", trade_price=100.0, trade_size=5.0, timestamp=2.5, aggressor_side=SimOrderSide.SELL
+        "BTC-USDT",
+        trade_price=100.0,
+        trade_size=5.0,
+        timestamp=2.5,
+        aggressor_side=SimOrderSide.SELL,
     )
     assert order.status == SimOrderStatus.EXPIRED
     assert pytest.approx(order.filled_quantity, 1e-6) == 0.5
@@ -423,15 +489,27 @@ def test_cumulative_queue_consumption_fifo_and_side_filtering():
         config=MatchingEngineConfig(network_latency_ms=0.0, matching_delay_ms=0.0)
     )
     # 1.0 external resting bid at 100.0
-    engine.update_book("BTC-USDT", bids=[(100.0, 1.0)], asks=[(100.5, 1.0)], timestamp=1.0)
+    engine.update_book(
+        "BTC-USDT", bids=[(100.0, 1.0)], asks=[(100.5, 1.0)], timestamp=1.0
+    )
 
     ord_a = engine.submit_order(
-        order_id="FIFO-A", symbol="BTC-USDT", side=SimOrderSide.BUY,
-        order_type=SimOrderType.LIMIT, price=100.0, quantity=0.5, current_time=1.0,
+        order_id="FIFO-A",
+        symbol="BTC-USDT",
+        side=SimOrderSide.BUY,
+        order_type=SimOrderType.LIMIT,
+        price=100.0,
+        quantity=0.5,
+        current_time=1.0,
     )
     ord_b = engine.submit_order(
-        order_id="FIFO-B", symbol="BTC-USDT", side=SimOrderSide.BUY,
-        order_type=SimOrderType.LIMIT, price=100.0, quantity=0.5, current_time=1.0,
+        order_id="FIFO-B",
+        symbol="BTC-USDT",
+        side=SimOrderSide.BUY,
+        order_type=SimOrderType.LIMIT,
+        price=100.0,
+        quantity=0.5,
+        current_time=1.0,
     )
     engine.process_time_slice(1.0)
     assert pytest.approx(ord_a.queue_ahead_qty, 1e-6) == 1.0
@@ -439,7 +517,11 @@ def test_cumulative_queue_consumption_fifo_and_side_filtering():
 
     # 1. Eligible SELL trade of 0.4 decrements both queue-ahead counters cumulatively
     f1 = engine.process_market_trade(
-        "BTC-USDT", trade_price=100.0, trade_size=0.4, timestamp=1.1, aggressor_side=SimOrderSide.SELL
+        "BTC-USDT",
+        trade_price=100.0,
+        trade_size=0.4,
+        timestamp=1.1,
+        aggressor_side=SimOrderSide.SELL,
     )
     assert len(f1) == 0
     assert pytest.approx(ord_a.queue_ahead_qty, 1e-6) == 0.6
@@ -447,7 +529,11 @@ def test_cumulative_queue_consumption_fifo_and_side_filtering():
 
     # 2. Wrong aggressor side (BUY lifting ask) must NOT consume bid queue
     f2 = engine.process_market_trade(
-        "BTC-USDT", trade_price=100.0, trade_size=5.0, timestamp=1.2, aggressor_side=SimOrderSide.BUY
+        "BTC-USDT",
+        trade_price=100.0,
+        trade_size=5.0,
+        timestamp=1.2,
+        aggressor_side=SimOrderSide.BUY,
     )
     assert len(f2) == 0
     assert pytest.approx(ord_a.queue_ahead_qty, 1e-6) == 0.6
@@ -455,25 +541,39 @@ def test_cumulative_queue_consumption_fifo_and_side_filtering():
 
     # 3. Wrong price (trade at 100.5 > our bid 100.0) must NOT consume bid queue
     f3 = engine.process_market_trade(
-        "BTC-USDT", trade_price=100.5, trade_size=5.0, timestamp=1.3, aggressor_side=SimOrderSide.SELL
+        "BTC-USDT",
+        trade_price=100.5,
+        trade_size=5.0,
+        timestamp=1.3,
+        aggressor_side=SimOrderSide.SELL,
     )
     assert len(f3) == 0
     assert pytest.approx(ord_a.queue_ahead_qty, 1e-6) == 0.6
 
     # 4. Eligible SELL trade of 0.8 clears remaining 0.6 external + partially fills FIFO-A by 0.2; FIFO-B gets 0
     f4 = engine.process_market_trade(
-        "BTC-USDT", trade_price=100.0, trade_size=0.8, timestamp=1.4, aggressor_side=SimOrderSide.SELL
+        "BTC-USDT",
+        trade_price=100.0,
+        trade_size=0.8,
+        timestamp=1.4,
+        aggressor_side=SimOrderSide.SELL,
     )
     assert len([e for e in f4 if e["event"] == "FILL"]) == 1
     assert ord_a.status == SimOrderStatus.PARTIALLY_FILLED
     assert pytest.approx(ord_a.filled_quantity, 1e-6) == 0.2
     assert pytest.approx(ord_a.remaining_quantity, 1e-6) == 0.3
     assert ord_b.filled_quantity == 0.0
-    assert pytest.approx(ord_b.queue_ahead_qty, 1e-6) == 0.3  # Exactly FIFO-A's remaining qty
+    assert (
+        pytest.approx(ord_b.queue_ahead_qty, 1e-6) == 0.3
+    )  # Exactly FIFO-A's remaining qty
 
     # 5. Eligible SELL trade of 0.5 finishes FIFO-A (0.3) and partially fills FIFO-B (0.2)
     f5 = engine.process_market_trade(
-        "BTC-USDT", trade_price=100.0, trade_size=0.5, timestamp=1.5, aggressor_side=SimOrderSide.SELL
+        "BTC-USDT",
+        trade_price=100.0,
+        trade_size=0.5,
+        timestamp=1.5,
+        aggressor_side=SimOrderSide.SELL,
     )
     assert len([e for e in f5 if e["event"] == "FILL"]) == 2
     assert ord_a.status == SimOrderStatus.FILLED
@@ -486,15 +586,27 @@ def test_cancel_ahead_advances_trailing_fifo_queue():
     engine = RealisticMatchingEngine(
         config=MatchingEngineConfig(network_latency_ms=0.0, matching_delay_ms=0.0)
     )
-    engine.update_book("BTC-USDT", bids=[(100.0, 1.0)], asks=[(100.5, 1.0)], timestamp=1.0)
+    engine.update_book(
+        "BTC-USDT", bids=[(100.0, 1.0)], asks=[(100.5, 1.0)], timestamp=1.0
+    )
 
     ord_a = engine.submit_order(
-        order_id="A-FIRST", symbol="BTC-USDT", side=SimOrderSide.BUY,
-        order_type=SimOrderType.LIMIT, price=100.0, quantity=2.0, current_time=1.0,
+        order_id="A-FIRST",
+        symbol="BTC-USDT",
+        side=SimOrderSide.BUY,
+        order_type=SimOrderType.LIMIT,
+        price=100.0,
+        quantity=2.0,
+        current_time=1.0,
     )
     ord_b = engine.submit_order(
-        order_id="B-SECOND", symbol="BTC-USDT", side=SimOrderSide.BUY,
-        order_type=SimOrderType.LIMIT, price=100.0, quantity=1.0, current_time=1.0,
+        order_id="B-SECOND",
+        symbol="BTC-USDT",
+        side=SimOrderSide.BUY,
+        order_type=SimOrderType.LIMIT,
+        price=100.0,
+        quantity=1.0,
+        current_time=1.0,
     )
     engine.process_time_slice(1.0)
     assert pytest.approx(ord_b.queue_ahead_qty, 1e-6) == 3.0
@@ -503,5 +615,3 @@ def test_cancel_ahead_advances_trailing_fifo_queue():
     engine.process_time_slice(1.1)
     assert ord_a.status == SimOrderStatus.CANCELLED
     assert pytest.approx(ord_b.queue_ahead_qty, 1e-6) == 1.0
-
-

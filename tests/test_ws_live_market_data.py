@@ -30,15 +30,17 @@ from mdrap.ws_feed import (
 
 def test_binance_depth_parsing():
     """Verify Binance depth update parsing."""
-    raw = json.dumps({
-        "e": "depthUpdate",
-        "E": 1672531199000,
-        "s": "BTCUSDT",
-        "U": 1001,
-        "u": 1005,
-        "b": [["50000.00", "1.500"]],
-        "a": [["50001.00", "2.300"]],
-    })
+    raw = json.dumps(
+        {
+            "e": "depthUpdate",
+            "E": 1672531199000,
+            "s": "BTCUSDT",
+            "U": 1001,
+            "u": 1005,
+            "b": [["50000.00", "1.500"]],
+            "a": [["50001.00", "2.300"]],
+        }
+    )
     res = parse_binance_depth_payload(raw)
     assert res is not None
     assert res.bid_price == 50000.0
@@ -50,17 +52,19 @@ def test_binance_depth_parsing():
 
 def test_coinbase_ticker_parsing():
     """Verify Coinbase ticker format parsing."""
-    raw = json.dumps({
-        "type": "ticker",
-        "sequence": 987654321,
-        "product_id": "BTC-USD",
-        "price": "50050.00",
-        "best_bid": "50049.50",
-        "best_bid_size": "3.5",
-        "best_ask": "50050.50",
-        "best_ask_size": "4.2",
-        "time": "2023-01-01T00:00:00.000000Z",
-    })
+    raw = json.dumps(
+        {
+            "type": "ticker",
+            "sequence": 987654321,
+            "product_id": "BTC-USD",
+            "price": "50050.00",
+            "best_bid": "50049.50",
+            "best_bid_size": "3.5",
+            "best_ask": "50050.50",
+            "best_ask_size": "4.2",
+            "time": "2023-01-01T00:00:00.000000Z",
+        }
+    )
     res = parse_coinbase_ticker_payload(raw)
     assert res is not None
     assert res.bid_price == 50049.50
@@ -73,15 +77,17 @@ def test_coinbase_ticker_parsing():
 def test_kraken_ticker_parsing():
     """Verify Kraken WebSocket array format parsing."""
     # Kraken WS v1 sends [channelID, data, channelName, pair]
-    raw = json.dumps([
-        342,
-        {
-            "b": ["50020.10000", 2, "2.500"],
-            "a": ["50021.30000", 1, "1.200"],
-        },
-        "ticker",
-        "XBT/USD",
-    ])
+    raw = json.dumps(
+        [
+            342,
+            {
+                "b": ["50020.10000", 2, "2.500"],
+                "a": ["50021.30000", 1, "1.200"],
+            },
+            "ticker",
+            "XBT/USD",
+        ]
+    )
     res = parse_kraken_ticker_payload(raw)
     assert res is not None
     assert res.bid_price == 50020.1
@@ -92,15 +98,19 @@ def test_kraken_ticker_parsing():
 
 def test_okx_bbo_parsing():
     """Verify OKX BBO format parsing."""
-    raw = json.dumps({
-        "arg": {"channel": "bbo-tbt", "instId": "BTC-USDT"},
-        "data": [{
-            "bids": [["50010.0", "0.8"]],
-            "asks": [["50011.0", "1.1"]],
-            "ts": "1672531199123",
-            "seqId": 54321,
-        }],
-    })
+    raw = json.dumps(
+        {
+            "arg": {"channel": "bbo-tbt", "instId": "BTC-USDT"},
+            "data": [
+                {
+                    "bids": [["50010.0", "0.8"]],
+                    "asks": [["50011.0", "1.1"]],
+                    "ts": "1672531199123",
+                    "seqId": 54321,
+                }
+            ],
+        }
+    )
     res = parse_okx_bbo_payload(raw)
     assert res is not None
     assert res.bid_price == 50010.0
@@ -112,18 +122,20 @@ def test_okx_bbo_parsing():
 
 def test_bybit_bbo_parsing():
     """Verify Bybit orderbook topic parsing."""
-    raw = json.dumps({
-        "topic": "orderbook.1.BTCUSDT",
-        "type": "delta",
-        "ts": 1672531199456,
-        "data": {
-            "s": "BTCUSDT",
-            "b": [["50015.00", "5.0"]],
-            "a": [["50016.00", "2.0"]],
-            "u": 78910,
-            "seq": 11223344,
-        },
-    })
+    raw = json.dumps(
+        {
+            "topic": "orderbook.1.BTCUSDT",
+            "type": "delta",
+            "ts": 1672531199456,
+            "data": {
+                "s": "BTCUSDT",
+                "b": [["50015.00", "5.0"]],
+                "a": [["50016.00", "2.0"]],
+                "u": 78910,
+                "seq": 11223344,
+            },
+        }
+    )
     res = parse_bybit_bbo_payload(raw)
     assert res is not None
     assert res.bid_price == 50015.0

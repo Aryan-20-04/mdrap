@@ -224,7 +224,9 @@ def run_pipeline_boundaries(num_events: int = 40_000) -> dict[str, Any]:
         "boundary_c_native_c_stats": calc_stats(lats_c_native),
         "boundary_c_pure_python_eps": round(eps_c_pure, 1),
         "boundary_c_pure_python_stats": calc_stats(lats_c_pure),
-        "c_speedup_factor": round(eps_c_native / eps_c_pure, 2) if eps_c_pure > 0 else 0.0,
+        "c_speedup_factor": round(eps_c_native / eps_c_pure, 2)
+        if eps_c_pure > 0
+        else 0.0,
         "boundary_d_as_mm_eps": round(eps_d_as, 1),
         "boundary_d_linear_skew_mm_eps": round(eps_d_linear, 1),
         "boundary_e_state_transitions_eps": round(eps_e, 1),
@@ -270,7 +272,9 @@ def run_multicore_scaling() -> dict[str, Any]:
     for w in (1, 2, 4, 8):
         with multiprocessing.Pool(processes=w) as pool:
             res_stateless = pool.map(_worker_workload, [(events_per_worker, False)] * w)
-            res_stateful = pool.map(_worker_workload, [(events_per_worker // 2, True)] * w)
+            res_stateful = pool.map(
+                _worker_workload, [(events_per_worker // 2, True)] * w
+            )
             total_stateless_eps = sum(res_stateless)
             total_stateful_eps = sum(res_stateful)
 
@@ -298,9 +302,24 @@ def run_quantitative_strategy_audit() -> dict[str, Any]:
 
     strategies = {
         "AS_MM": {"inventory": 0.0, "cash": 100_000.0, "trades": [], "equity": []},
-        "LINEAR_SKEW_MM": {"inventory": 0.0, "cash": 100_000.0, "trades": [], "equity": []},
-        "WHALE_MOMENTUM": {"inventory": 0.0, "cash": 100_000.0, "trades": [], "equity": []},
-        "SPREAD_CAPTURE": {"inventory": 0.0, "cash": 100_000.0, "trades": [], "equity": []},
+        "LINEAR_SKEW_MM": {
+            "inventory": 0.0,
+            "cash": 100_000.0,
+            "trades": [],
+            "equity": [],
+        },
+        "WHALE_MOMENTUM": {
+            "inventory": 0.0,
+            "cash": 100_000.0,
+            "trades": [],
+            "equity": [],
+        },
+        "SPREAD_CAPTURE": {
+            "inventory": 0.0,
+            "cash": 100_000.0,
+            "trades": [],
+            "equity": [],
+        },
     }
 
     initial_capital = 100_000.0
@@ -309,53 +328,107 @@ def run_quantitative_strategy_audit() -> dict[str, Any]:
 
     for idx, mid in enumerate(ticks[:1000]):
         # 1. AS_MM
-        as_q = ms.compute_avellaneda_stoikov(mid, strategies["AS_MM"]["inventory"], 0.02)
+        as_q = ms.compute_avellaneda_stoikov(
+            mid, strategies["AS_MM"]["inventory"], 0.02
+        )
         if idx % 3 == 0:
             strategies["AS_MM"]["inventory"] += 1.0
             strategies["AS_MM"]["cash"] -= as_q.bid_quote
-            strategies["AS_MM"]["trades"].append({"notional": as_q.bid_quote, "fee": 1.0, "is_maker": True, "trade_pnl": 0.5})
+            strategies["AS_MM"]["trades"].append(
+                {
+                    "notional": as_q.bid_quote,
+                    "fee": 1.0,
+                    "is_maker": True,
+                    "trade_pnl": 0.5,
+                }
+            )
         elif idx % 4 == 0 and strategies["AS_MM"]["inventory"] > 0:
             strategies["AS_MM"]["inventory"] -= 1.0
             strategies["AS_MM"]["cash"] += as_q.ask_quote
-            strategies["AS_MM"]["trades"].append({"notional": as_q.ask_quote, "fee": 1.0, "is_maker": True, "trade_pnl": 0.8})
+            strategies["AS_MM"]["trades"].append(
+                {
+                    "notional": as_q.ask_quote,
+                    "fee": 1.0,
+                    "is_maker": True,
+                    "trade_pnl": 0.8,
+                }
+            )
         eq_as = strategies["AS_MM"]["cash"] + (strategies["AS_MM"]["inventory"] * mid)
         strategies["AS_MM"]["equity"].append((float(idx), eq_as))
 
         # 2. LINEAR_SKEW_MM
-        lin_q = ms.compute_linear_inventory_skew(mid, strategies["LINEAR_SKEW_MM"]["inventory"], half_spread=0.08, inventory_penalty=0.03)
+        lin_q = ms.compute_linear_inventory_skew(
+            mid,
+            strategies["LINEAR_SKEW_MM"]["inventory"],
+            half_spread=0.08,
+            inventory_penalty=0.03,
+        )
         if idx % 3 == 0:
             strategies["LINEAR_SKEW_MM"]["inventory"] += 1.0
             strategies["LINEAR_SKEW_MM"]["cash"] -= lin_q.bid_quote
-            strategies["LINEAR_SKEW_MM"]["trades"].append({"notional": lin_q.bid_quote, "fee": 1.0, "is_maker": True, "trade_pnl": 0.4})
+            strategies["LINEAR_SKEW_MM"]["trades"].append(
+                {
+                    "notional": lin_q.bid_quote,
+                    "fee": 1.0,
+                    "is_maker": True,
+                    "trade_pnl": 0.4,
+                }
+            )
         elif idx % 5 == 0 and strategies["LINEAR_SKEW_MM"]["inventory"] > 0:
             strategies["LINEAR_SKEW_MM"]["inventory"] -= 1.0
             strategies["LINEAR_SKEW_MM"]["cash"] += lin_q.ask_quote
-            strategies["LINEAR_SKEW_MM"]["trades"].append({"notional": lin_q.ask_quote, "fee": 1.0, "is_maker": True, "trade_pnl": 0.6})
-        eq_lin = strategies["LINEAR_SKEW_MM"]["cash"] + (strategies["LINEAR_SKEW_MM"]["inventory"] * mid)
+            strategies["LINEAR_SKEW_MM"]["trades"].append(
+                {
+                    "notional": lin_q.ask_quote,
+                    "fee": 1.0,
+                    "is_maker": True,
+                    "trade_pnl": 0.6,
+                }
+            )
+        eq_lin = strategies["LINEAR_SKEW_MM"]["cash"] + (
+            strategies["LINEAR_SKEW_MM"]["inventory"] * mid
+        )
         strategies["LINEAR_SKEW_MM"]["equity"].append((float(idx), eq_lin))
 
         # 3. WHALE_MOMENTUM
         if idx % 10 == 0:
             strategies["WHALE_MOMENTUM"]["inventory"] += 2.0
-            strategies["WHALE_MOMENTUM"]["cash"] -= (mid * 2.0)
-            strategies["WHALE_MOMENTUM"]["trades"].append({"notional": mid * 2.0, "fee": 2.5, "is_maker": False, "trade_pnl": 1.2})
+            strategies["WHALE_MOMENTUM"]["cash"] -= mid * 2.0
+            strategies["WHALE_MOMENTUM"]["trades"].append(
+                {"notional": mid * 2.0, "fee": 2.5, "is_maker": False, "trade_pnl": 1.2}
+            )
         elif idx % 15 == 0 and strategies["WHALE_MOMENTUM"]["inventory"] >= 2.0:
             strategies["WHALE_MOMENTUM"]["inventory"] -= 2.0
-            strategies["WHALE_MOMENTUM"]["cash"] += (mid * 2.0)
-            strategies["WHALE_MOMENTUM"]["trades"].append({"notional": mid * 2.0, "fee": 2.5, "is_maker": False, "trade_pnl": -0.8})
-        eq_wm = strategies["WHALE_MOMENTUM"]["cash"] + (strategies["WHALE_MOMENTUM"]["inventory"] * mid)
+            strategies["WHALE_MOMENTUM"]["cash"] += mid * 2.0
+            strategies["WHALE_MOMENTUM"]["trades"].append(
+                {
+                    "notional": mid * 2.0,
+                    "fee": 2.5,
+                    "is_maker": False,
+                    "trade_pnl": -0.8,
+                }
+            )
+        eq_wm = strategies["WHALE_MOMENTUM"]["cash"] + (
+            strategies["WHALE_MOMENTUM"]["inventory"] * mid
+        )
         strategies["WHALE_MOMENTUM"]["equity"].append((float(idx), eq_wm))
 
         # 4. SPREAD_CAPTURE
         if idx % 2 == 0:
             strategies["SPREAD_CAPTURE"]["inventory"] += 1.0
-            strategies["SPREAD_CAPTURE"]["cash"] -= (mid - 0.05)
-            strategies["SPREAD_CAPTURE"]["trades"].append({"notional": mid - 0.05, "fee": 0.5, "is_maker": True, "trade_pnl": 0.2})
+            strategies["SPREAD_CAPTURE"]["cash"] -= mid - 0.05
+            strategies["SPREAD_CAPTURE"]["trades"].append(
+                {"notional": mid - 0.05, "fee": 0.5, "is_maker": True, "trade_pnl": 0.2}
+            )
         elif idx % 2 == 1 and strategies["SPREAD_CAPTURE"]["inventory"] > 0:
             strategies["SPREAD_CAPTURE"]["inventory"] -= 1.0
-            strategies["SPREAD_CAPTURE"]["cash"] += (mid + 0.05)
-            strategies["SPREAD_CAPTURE"]["trades"].append({"notional": mid + 0.05, "fee": 0.5, "is_maker": True, "trade_pnl": 0.3})
-        eq_sc = strategies["SPREAD_CAPTURE"]["cash"] + (strategies["SPREAD_CAPTURE"]["inventory"] * mid)
+            strategies["SPREAD_CAPTURE"]["cash"] += mid + 0.05
+            strategies["SPREAD_CAPTURE"]["trades"].append(
+                {"notional": mid + 0.05, "fee": 0.5, "is_maker": True, "trade_pnl": 0.3}
+            )
+        eq_sc = strategies["SPREAD_CAPTURE"]["cash"] + (
+            strategies["SPREAD_CAPTURE"]["inventory"] * mid
+        )
         strategies["SPREAD_CAPTURE"]["equity"].append((float(idx), eq_sc))
 
     last_mid = ticks[999]
@@ -390,7 +463,12 @@ def run_latency_sweeps() -> dict[str, Any]:
         )
         me = RealisticMatchingEngine(cfg)
         sim_time = 1000.0
-        me.update_book("BTC-USD", [(50000.0, 10.0), (49990.0, 15.0)], [(50010.0, 10.0), (50020.0, 15.0)], sim_time)
+        me.update_book(
+            "BTC-USD",
+            [(50000.0, 10.0), (49990.0, 15.0)],
+            [(50010.0, 10.0), (50020.0, 15.0)],
+            sim_time,
+        )
 
         submitted = 100
         filled = 0
@@ -412,9 +490,13 @@ def run_latency_sweeps() -> dict[str, Any]:
             t_move = t_submit + 0.002
             if lat > 2.0:
                 if i % 2 == 0:
-                    me.update_book("BTC-USD", [(49980.0, 10.0)], [(49990.0, 10.0)], t_move)
+                    me.update_book(
+                        "BTC-USD", [(49980.0, 10.0)], [(49990.0, 10.0)], t_move
+                    )
                 else:
-                    me.update_book("BTC-USD", [(50020.0, 10.0)], [(50030.0, 10.0)], t_move)
+                    me.update_book(
+                        "BTC-USD", [(50020.0, 10.0)], [(50030.0, 10.0)], t_move
+                    )
                 adverse_events += 1
 
             events = me.process_time_slice(t_submit + (lat / 1000.0) + 0.001)
@@ -455,7 +537,8 @@ def run_fault_injection_matrix() -> dict[str, Any]:
     matrix_results["crossed_quotes"] = {
         "status": res1.quality_status.name,
         "reasons": [r.name if hasattr(r, "name") else str(r) for r in res1.reasons],
-        "quarantined": res1.quality_status in (QualityStatus.INVALID, QualityStatus.SUSPICIOUS),
+        "quarantined": res1.quality_status
+        in (QualityStatus.INVALID, QualityStatus.SUSPICIOUS),
     }
 
     # Fault 2: Sequence Number Gap
@@ -474,7 +557,8 @@ def run_fault_injection_matrix() -> dict[str, Any]:
     matrix_results["sequence_gap"] = {
         "status": res2.quality_status.name,
         "reasons": [r.name if hasattr(r, "name") else str(r) for r in res2.reasons],
-        "quarantined": res2.quality_status in (QualityStatus.INVALID, QualityStatus.SUSPICIOUS),
+        "quarantined": res2.quality_status
+        in (QualityStatus.INVALID, QualityStatus.SUSPICIOUS),
     }
 
     # Fault 3: Duplicate Sequence
@@ -493,7 +577,8 @@ def run_fault_injection_matrix() -> dict[str, Any]:
     matrix_results["duplicate_sequence"] = {
         "status": res3.quality_status.name,
         "reasons": [r.name if hasattr(r, "name") else str(r) for r in res3.reasons],
-        "quarantined": res3.quality_status in (QualityStatus.INVALID, QualityStatus.SUSPICIOUS),
+        "quarantined": res3.quality_status
+        in (QualityStatus.INVALID, QualityStatus.SUSPICIOUS),
     }
 
     # Fault 4: Extreme Price Spike Anomaly
@@ -512,7 +597,8 @@ def run_fault_injection_matrix() -> dict[str, Any]:
     matrix_results["price_spike_anomaly"] = {
         "status": res4.quality_status.name,
         "reasons": [r.name if hasattr(r, "name") else str(r) for r in res4.reasons],
-        "quarantined": res4.quality_status in (QualityStatus.INVALID, QualityStatus.SUSPICIOUS),
+        "quarantined": res4.quality_status
+        in (QualityStatus.INVALID, QualityStatus.SUSPICIOUS),
     }
 
     # Fault 5: Stale Timestamp
@@ -531,7 +617,8 @@ def run_fault_injection_matrix() -> dict[str, Any]:
     matrix_results["stale_timestamp"] = {
         "status": res5.quality_status.name,
         "reasons": [r.name if hasattr(r, "name") else str(r) for r in res5.reasons],
-        "quarantined": res5.quality_status in (QualityStatus.INVALID, QualityStatus.SUSPICIOUS),
+        "quarantined": res5.quality_status
+        in (QualityStatus.INVALID, QualityStatus.SUSPICIOUS),
     }
 
     return matrix_results
@@ -571,7 +658,9 @@ def main():
 
     # 5. Fault Injection
     faults = run_fault_injection_matrix()
-    with open("audit/v5.3/raw/fault_injection_results.json", "w", encoding="utf-8") as f:
+    with open(
+        "audit/v5.3/raw/fault_injection_results.json", "w", encoding="utf-8"
+    ) as f:
         json.dump(faults, f, indent=2)
     print("  -> Saved: audit/v5.3/raw/fault_injection_results.json")
 

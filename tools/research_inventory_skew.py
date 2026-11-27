@@ -10,6 +10,7 @@ from run_shadow_trading import BaseShadowStrategy, NoTradeBaseline
 from mdrap_strategies.matching_engine import SimOrderSide, SimOrderType, SimOrderStatus
 from mdrap_strategies.fx_basis import DenominationAwareValuator
 
+
 class ResearchInventorySkewMM(BaseShadowStrategy):
     """
     Modular Research Strategy for Inventory-Skewed Market Making.
@@ -53,9 +54,13 @@ class ResearchInventorySkewMM(BaseShadowStrategy):
         self._prev_bbo: dict[str, tuple[float, float, float, float]] = {}
         self._ofi_ema: dict[str, float] = collections.defaultdict(float)
         self._depth_ema: dict[str, float] = collections.defaultdict(lambda: 1.0)
-        self._ewma_var: dict[str, float] = collections.defaultdict(lambda: 2.5e-7)  # (0.0005)^2
+        self._ewma_var: dict[str, float] = collections.defaultdict(
+            lambda: 2.5e-7
+        )  # (0.0005)^2
         self._prev_mid: dict[str, float] = {}
-        self._trade_history: dict[str, collections.deque] = collections.defaultdict(lambda: collections.deque(maxlen=20))
+        self._trade_history: dict[str, collections.deque] = collections.defaultdict(
+            lambda: collections.deque(maxlen=20)
+        )
         self._toxic_block_until: dict[str, tuple[float, str]] = {}
 
     def on_validated_trade(
@@ -111,7 +116,7 @@ class ResearchInventorySkewMM(BaseShadowStrategy):
         if prev_m > 0:
             ret = (mid - prev_m) / prev_m
             old_var = self._ewma_var[key]
-            new_var = 0.95 * old_var + 0.05 * (ret ** 2)
+            new_var = 0.95 * old_var + 0.05 * (ret**2)
             self._ewma_var[key] = new_var
         else:
             new_var = self._ewma_var[key]
@@ -125,8 +130,12 @@ class ResearchInventorySkewMM(BaseShadowStrategy):
         ofi_metric = 0.0
         if key in self._prev_bbo:
             pb_px, pb_sz, pa_px, pa_sz = self._prev_bbo[key]
-            d_bid = bid_sz if bid > pb_px else (bid_sz - pb_sz if bid == pb_px else -pb_sz)
-            d_ask = -ask_sz if ask < pa_px else (ask_sz - pa_sz if ask == pa_px else pa_sz)
+            d_bid = (
+                bid_sz if bid > pb_px else (bid_sz - pb_sz if bid == pb_px else -pb_sz)
+            )
+            d_ask = (
+                -ask_sz if ask < pa_px else (ask_sz - pa_sz if ask == pa_px else pa_sz)
+            )
             raw_ofi = d_bid - d_ask
             depth_delta = abs(d_bid) + abs(d_ask) + 1e-4
 
@@ -134,21 +143,25 @@ class ResearchInventorySkewMM(BaseShadowStrategy):
             self._depth_ema[key] = 0.90 * self._depth_ema[key] + 0.10 * depth_delta
 
             if self._depth_ema[key] > 0:
-                ofi_metric = max(-1.0, min(1.0, self._ofi_ema[key] / self._depth_ema[key]))
+                ofi_metric = max(
+                    -1.0, min(1.0, self._ofi_ema[key] / self._depth_ema[key])
+                )
         self._prev_bbo[key] = (bid, bid_sz, ask, ask_sz)
 
         # 3. Reservation Price
         u = max(-1.0, min(1.0, q / max_inv)) if max_inv > 0 else 0.0
 
         if self.use_nonlinear:
-            skew_shift = math.copysign(1.0, u) * half_spread * (abs(u) + 3.0 * (abs(u) ** 3))
+            skew_shift = (
+                math.copysign(1.0, u) * half_spread * (abs(u) + 3.0 * (abs(u) ** 3))
+            )
             reservation = mid - skew_shift
         else:
             penalty = self.penalty_rate * (mid * 0.001)
             reservation = mid - (q * penalty)
 
         if self.use_ofi:
-            reservation -= (ofi_metric * half_spread * 0.75)
+            reservation -= ofi_metric * half_spread * 0.75
 
         # 4. Spreads & Quotes
         if self.use_asymmetric:
@@ -205,22 +218,54 @@ class ResearchInventorySkewMM(BaseShadowStrategy):
 
         bid_id, ask_id = "", ""
         if q < max_inv and not block_buy:
-            chk = self.risk_engine.validate_order(symbol, "BUY", "LIMIT", quote_qty, bid_px, mid, timestamp, venue, current_time=timestamp)
+            chk = self.risk_engine.validate_order(
+                symbol,
+                "BUY",
+                "LIMIT",
+                quote_qty,
+                bid_px,
+                mid,
+                timestamp,
+                venue,
+                current_time=timestamp,
+            )
             if chk.passed:
                 b_ord = self.engine.submit_order(
-                    self.next_order_id(), key, SimOrderSide.BUY, SimOrderType.LIMIT,
-                    quote_qty, bid_px, timestamp, f"InvSkew Bid (q={q:.3f})",
+                    self.next_order_id(),
+                    key,
+                    SimOrderSide.BUY,
+                    SimOrderType.LIMIT,
+                    quote_qty,
+                    bid_px,
+                    timestamp,
+                    f"InvSkew Bid (q={q:.3f})",
                     post_only=True,
                 )
                 b_ord.venue = venue
                 bid_id = b_ord.order_id
 
         if q > -max_inv and not block_sell:
-            chk = self.risk_engine.validate_order(symbol, "SELL", "LIMIT", quote_qty, ask_px, mid, timestamp, venue, current_time=timestamp)
+            chk = self.risk_engine.validate_order(
+                symbol,
+                "SELL",
+                "LIMIT",
+                quote_qty,
+                ask_px,
+                mid,
+                timestamp,
+                venue,
+                current_time=timestamp,
+            )
             if chk.passed:
                 a_ord = self.engine.submit_order(
-                    self.next_order_id(), key, SimOrderSide.SELL, SimOrderType.LIMIT,
-                    quote_qty, ask_px, timestamp, f"InvSkew Ask (q={q:.3f})",
+                    self.next_order_id(),
+                    key,
+                    SimOrderSide.SELL,
+                    SimOrderType.LIMIT,
+                    quote_qty,
+                    ask_px,
+                    timestamp,
+                    f"InvSkew Ask (q={q:.3f})",
                     post_only=True,
                 )
                 a_ord.venue = venue
@@ -228,14 +273,19 @@ class ResearchInventorySkewMM(BaseShadowStrategy):
 
         self._active_quotes[key] = (bid_id, ask_id)
 
-    def sync_fills(self, current_time: float, mid_prices: dict[str, float], sync_orders: bool = False) -> None:
+    def sync_fills(
+        self,
+        current_time: float,
+        mid_prices: dict[str, float],
+        sync_orders: bool = False,
+    ) -> None:
         """Optimized O(1) incremental fill sync avoiding full ledger copying."""
         self.engine.process_time_slice(current_time)
         ledger = self.engine._trade_ledger
         if len(ledger) <= self._processed_fills_idx:
             return
 
-        new_trades = ledger[self._processed_fills_idx:]
+        new_trades = ledger[self._processed_fills_idx :]
         self._processed_fills_idx = len(ledger)
 
         for trade in new_trades:
@@ -262,7 +312,9 @@ class ResearchInventorySkewMM(BaseShadowStrategy):
             base_sym = sym.split(":")[-1] if ":" in sym else sym
             ref_mid = mid_prices.get(base_sym, px)
             if ref_mid > 0:
-                slip = ((px - ref_mid) if is_buy else (ref_mid - px)) / ref_mid * 10000.0
+                slip = (
+                    ((px - ref_mid) if is_buy else (ref_mid - px)) / ref_mid * 10000.0
+                )
                 self.metrics.slippage_bps.append(slip)
 
             venue_tag = sym.split(":")[0] if ":" in sym else "UNKNOWN"
@@ -278,18 +330,26 @@ class ResearchInventorySkewMM(BaseShadowStrategy):
                     self.metrics.realized_pnl += closed * (cur_cost - px)
                 new_pos = cur_pos + qty
                 if new_pos > 0:
-                    self.avg_costs[base_sym] = ((cur_pos * cur_cost) + (qty * px)) / new_pos if cur_pos > 0 else px
+                    self.avg_costs[base_sym] = (
+                        ((cur_pos * cur_cost) + (qty * px)) / new_pos
+                        if cur_pos > 0
+                        else px
+                    )
                 self.metrics.positions[base_sym] = new_pos
-                self.metrics.cash -= (notional + fee)
+                self.metrics.cash -= notional + fee
             else:
                 if cur_pos > 0:
                     closed = min(cur_pos, qty)
                     self.metrics.realized_pnl += closed * (px - cur_cost)
                 new_pos = cur_pos - qty
                 if new_pos < 0:
-                    self.avg_costs[base_sym] = ((abs(cur_pos) * cur_cost) + (qty * px)) / abs(new_pos) if cur_pos < 0 else px
+                    self.avg_costs[base_sym] = (
+                        ((abs(cur_pos) * cur_cost) + (qty * px)) / abs(new_pos)
+                        if cur_pos < 0
+                        else px
+                    )
                 self.metrics.positions[base_sym] = new_pos
-                self.metrics.cash += (notional - fee)
+                self.metrics.cash += notional - fee
 
             cur_abs_inv = abs(self.metrics.positions[base_sym])
             if cur_abs_inv > self.metrics.peak_inventory[base_sym]:
@@ -315,7 +375,9 @@ class ResearchInventorySkewMM(BaseShadowStrategy):
         self.risk_engine.update_portfolio_equity(total_equity)
 
 
-def fast_compute_markouts_summary(ledger, price_history, horizons_ms=[100.0, 1000.0, 5000.0, 10000.0]):
+def fast_compute_markouts_summary(
+    ledger, price_history, horizons_ms=[100.0, 1000.0, 5000.0, 10000.0]
+):
     hist_ts = {}
     hist_mids = {}
     for sym, hist in price_history.items():
@@ -344,7 +406,7 @@ def fast_compute_markouts_summary(ledger, price_history, horizons_ms=[100.0, 100
 
     summary = {}
     for h, vals in results_by_horizon.items():
-        summary[f"{int(h)}ms"] = round(sum(vals)/len(vals) if vals else 0.0, 4)
+        summary[f"{int(h)}ms"] = round(sum(vals) / len(vals) if vals else 0.0, 4)
     return summary
 
 
@@ -426,7 +488,10 @@ def run_inventory_research(
     last_ex_ts = 0.0
 
     print(f"\n==================================================", flush=True)
-    print(f"Starting {dataset_label} Research Run (Frames {start_frame} to {end_frame or 'END'})...", flush=True)
+    print(
+        f"Starting {dataset_label} Research Run (Frames {start_frame} to {end_frame or 'END'})...",
+        flush=True,
+    )
     print(f"==================================================", flush=True)
 
     for frame in stream_captured_frames(cap_path):
@@ -439,8 +504,13 @@ def run_inventory_research(
             continue
 
         if count % 200000 == 0:
-            pct = ((count - start_frame) / ((end_frame or 3683381) - start_frame)) * 100.0
-            print(f"Progress: frame {count} ({pct:.1f}%), elapsed {time.time()-t0:.1f}s", flush=True)
+            pct = (
+                (count - start_frame) / ((end_frame or 3683381) - start_frame)
+            ) * 100.0
+            print(
+                f"Progress: frame {count} ({pct:.1f}%), elapsed {time.time() - t0:.1f}s",
+                flush=True,
+            )
         if not events:
             continue
 
@@ -463,16 +533,38 @@ def run_inventory_research(
                 current_mids[sym_key] = mid_usd
 
                 for strat in strategies:
-                    strat.engine.update_book(sym_key, [(bb_usd, bb_sz)], [(ba_usd, ba_sz)], ev.exchange_ts)
-                    strat.on_validated_quote(ev.venue, ev.instrument, bb_usd, ba_usd, bb_sz, ba_sz, ev.exchange_ts)
+                    strat.engine.update_book(
+                        sym_key, [(bb_usd, bb_sz)], [(ba_usd, ba_sz)], ev.exchange_ts
+                    )
+                    strat.on_validated_quote(
+                        ev.venue,
+                        ev.instrument,
+                        bb_usd,
+                        ba_usd,
+                        bb_sz,
+                        ba_sz,
+                        ev.exchange_ts,
+                    )
                     strat.engine.process_time_slice(ev.exchange_ts)
 
-            elif ev.event_kind == "TRADE" and ev.price is not None and ev.quantity is not None and not ev.duplicate:
+            elif (
+                ev.event_kind == "TRADE"
+                and ev.price is not None
+                and ev.quantity is not None
+                and not ev.duplicate
+            ):
                 tr_px_usd = ev.price * fx_mult
                 agg_side_str = ev.aggressor_side.value if ev.aggressor_side else None
                 for strat in strategies:
                     if hasattr(strat, "on_validated_trade"):
-                        strat.on_validated_trade(ev.venue, ev.instrument, tr_px_usd, ev.quantity, agg_side_str, ev.exchange_ts)
+                        strat.on_validated_trade(
+                            ev.venue,
+                            ev.instrument,
+                            tr_px_usd,
+                            ev.quantity,
+                            agg_side_str,
+                            ev.exchange_ts,
+                        )
                     strat.engine.process_market_trade(
                         symbol=sym_key,
                         trade_price=tr_px_usd,
@@ -482,7 +574,10 @@ def run_inventory_research(
                     )
                     strat.sync_fills(ev.exchange_ts, current_mids)
 
-    print(f"Simulation completed in {time.time()-t0:.2f}s! Collating results...", flush=True)
+    print(
+        f"Simulation completed in {time.time() - t0:.2f}s! Collating results...",
+        flush=True,
+    )
 
     results: dict[str, Any] = {
         "dataset_label": dataset_label,
@@ -504,7 +599,9 @@ def run_inventory_research(
         gross_pnl = net_pnl + m.total_fees_paid
         tot_fills = m.maker_fills + m.taker_fills
         maker_pct = (m.maker_fills / tot_fills * 100.0) if tot_fills > 0 else 0.0
-        fill_prob = (tot_fills / m.orders_submitted * 100.0) if m.orders_submitted > 0 else 0.0
+        fill_prob = (
+            (tot_fills / m.orders_submitted * 100.0) if m.orders_submitted > 0 else 0.0
+        )
 
         peak_eq = strat.initial_capital
         max_dd_usd = 0.0
@@ -520,7 +617,11 @@ def run_inventory_research(
                 max_dd_pct = dd_pct
 
         ledger = strat.engine.get_ledger()
-        markouts = fast_compute_markouts_summary(ledger, strat.engine._price_history) if ledger else {}
+        markouts = (
+            fast_compute_markouts_summary(ledger, strat.engine._price_history)
+            if ledger
+            else {}
+        )
 
         # Instrument and venue breakdowns
         btc_fills = len([t for t in ledger if "BTC" in t["symbol"]])
@@ -553,11 +654,19 @@ def run_inventory_research(
         results["strategies"][strat.name] = res_entry
 
         print(f"\n--- {strat.name} ---")
-        print(f"  Fills: {tot_fills} (Maker%: {maker_pct:.1f}%), Fill Prob: {fill_prob:.2f}%")
-        print(f"  Gross PnL: ${gross_pnl:+.2f}, Fees: ${m.total_fees_paid:.2f}, Net PnL: ${net_pnl:+.2f}")
-        print(f"  Max DD: ${max_dd_usd:.2f} ({max_dd_pct:.2f}%), End Pos: {m.positions.get('BTC/USD', 0.0):+.4f} BTC, {m.positions.get('ETH/USD', 0.0):+.4f} ETH")
+        print(
+            f"  Fills: {tot_fills} (Maker%: {maker_pct:.1f}%), Fill Prob: {fill_prob:.2f}%"
+        )
+        print(
+            f"  Gross PnL: ${gross_pnl:+.2f}, Fees: ${m.total_fees_paid:.2f}, Net PnL: ${net_pnl:+.2f}"
+        )
+        print(
+            f"  Max DD: ${max_dd_usd:.2f} ({max_dd_pct:.2f}%), End Pos: {m.positions.get('BTC/USD', 0.0):+.4f} BTC, {m.positions.get('ETH/USD', 0.0):+.4f} ETH"
+        )
         if markouts:
-            print(f"  Markouts (bps): 100ms={markouts.get('100ms', 0):+.3f}, 1s={markouts.get('1000ms', 0):+.3f}, 5s={markouts.get('5000ms', 0):+.3f}, 10s={markouts.get('10000ms', 0):+.3f}")
+            print(
+                f"  Markouts (bps): 100ms={markouts.get('100ms', 0):+.3f}, 1s={markouts.get('1000ms', 0):+.3f}, 5s={markouts.get('5000ms', 0):+.3f}, 10s={markouts.get('10000ms', 0):+.3f}"
+            )
 
     if out_json_path:
         os.makedirs(os.path.dirname(out_json_path), exist_ok=True)
@@ -567,10 +676,14 @@ def run_inventory_research(
 
     return results
 
+
 if __name__ == "__main__":
     import argparse
+
     parser = argparse.ArgumentParser(description="MDRAP Inventory Skew Research Runner")
-    parser.add_argument("--mode", choices=["in_sample", "holdout", "smoke"], default="smoke")
+    parser.add_argument(
+        "--mode", choices=["in_sample", "holdout", "smoke"], default="smoke"
+    )
     parser.add_argument("--cap", default="audit/v6.0.4/l2_capture_2hour.jsonl.gz")
     args = parser.parse_args()
 

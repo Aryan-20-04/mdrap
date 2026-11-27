@@ -12,7 +12,9 @@ import pytest
 
 def test_package_data_excludes_compiled_binaries():
     """Verify package-data in pyproject.toml excludes compiled binary libraries (MDRAP-PKG-01)."""
-    pyproject_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "pyproject.toml")
+    pyproject_path = os.path.join(
+        os.path.dirname(os.path.dirname(__file__)), "pyproject.toml"
+    )
     with open(pyproject_path, "r", encoding="utf-8") as f:
         content = f.read()
 
@@ -26,7 +28,9 @@ def test_package_data_excludes_compiled_binaries():
         "fastpath.dylib",
     ]
     for ext in banned_extensions:
-        assert ext not in content, f"Compiled binary '{ext}' found in pyproject.toml package-data!"
+        assert ext not in content, (
+            f"Compiled binary '{ext}' found in pyproject.toml package-data!"
+        )
 
 
 def test_mdrap_require_native_ci_gate_hook(monkeypatch):

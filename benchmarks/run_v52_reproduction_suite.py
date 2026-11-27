@@ -39,12 +39,22 @@ from mdrap.ingestlog import IngestLog
 
 def calc_latency_stats(latencies_us: list[float]) -> dict[str, float]:
     if not latencies_us:
-        return {"p50": 0.0, "p90": 0.0, "p95": 0.0, "p99": 0.0, "p99_9": 0.0, "mean": 0.0, "max": 0.0}
+        return {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0,
+            "p99_9": 0.0,
+            "mean": 0.0,
+            "max": 0.0,
+        }
     s = sorted(latencies_us)
     n = len(s)
+
     def p(pct: float) -> float:
         idx = min(int(n * pct / 100.0), n - 1)
         return s[idx]
+
     return {
         "mean": round(sum(s) / n, 2),
         "p50": round(p(50.0), 2),
@@ -172,7 +182,9 @@ def bench_wal_persistence(num_events: int = 25_000) -> dict[str, Any]:
     with tempfile.TemporaryDirectory() as tmpdir2:
         # 2. Durable Mode (fsync_policy="always", fsync on every append) - run 1,000 events
         num_durable = min(1_000, num_events)
-        log_dur = IngestLog(tmpdir2, max_segment_bytes=10_000_000, fsync_policy="always")
+        log_dur = IngestLog(
+            tmpdir2, max_segment_bytes=10_000_000, fsync_policy="always"
+        )
         t0_d = time.perf_counter()
         lats_dur = []
         for e in events[:num_durable]:
@@ -270,7 +282,9 @@ def _worker_workload(args: tuple[int, int]) -> int:
     return processed
 
 
-def bench_multiprocess_scaling(worker_counts: list[int] = [1, 2, 4, 8], events_per_worker: int = 15_000) -> dict[int, dict[str, Any]]:
+def bench_multiprocess_scaling(
+    worker_counts: list[int] = [1, 2, 4, 8], events_per_worker: int = 15_000
+) -> dict[int, dict[str, Any]]:
     """Measures scaling across multiple pre-warmed worker processes."""
     results = {}
     base_eps = None
@@ -309,55 +323,77 @@ def main():
     results = {}
 
     # 1. Native C vs Pure Python
-    print("\n[1/5] Running Native C vs Pure Python Validation Benchmark (50,000 events)...")
+    print(
+        "\n[1/5] Running Native C vs Pure Python Validation Benchmark (50,000 events)..."
+    )
     res_c_py = bench_native_c_vs_python(num_events=50_000)
     results["native_c_vs_python"] = res_c_py
-    print(f"  -> Native C Fastpath:  {res_c_py['native_c']['throughput_eps']:>10,.1f} EPS (mean: {res_c_py['native_c']['latencies_us']['mean']} µs)")
-    print(f"  -> Pure Python:        {res_c_py['pure_python']['throughput_eps']:>10,.1f} EPS (mean: {res_c_py['pure_python']['latencies_us']['mean']} µs)")
+    print(
+        f"  -> Native C Fastpath:  {res_c_py['native_c']['throughput_eps']:>10,.1f} EPS (mean: {res_c_py['native_c']['latencies_us']['mean']} µs)"
+    )
+    print(
+        f"  -> Pure Python:        {res_c_py['pure_python']['throughput_eps']:>10,.1f} EPS (mean: {res_c_py['pure_python']['latencies_us']['mean']} µs)"
+    )
     print(f"  -> Speedup:            {res_c_py['native_speedup']}x")
 
     # 2. Shared Memory IPC
     print("\n[2/5] Running SHM v3 Seqlock Ring Buffer Benchmark (50,000 events)...")
     res_shm = bench_shm_v3(num_events=50_000)
     results["shm_v3"] = res_shm
-    print(f"  -> SHM v3 IPC:         {res_shm['throughput_eps']:>10,.1f} EPS (p50: {res_shm['latencies_us']['p50']} µs, p99: {res_shm['latencies_us']['p99']} µs)")
+    print(
+        f"  -> SHM v3 IPC:         {res_shm['throughput_eps']:>10,.1f} EPS (p50: {res_shm['latencies_us']['p50']} µs, p99: {res_shm['latencies_us']['p99']} µs)"
+    )
 
     # 3. WAL Persistence
     print("\n[3/5] Running WAL Persistence Benchmark (Buffered vs Fsync)...")
     res_wal = bench_wal_persistence(num_events=25_000)
     results["wal_persistence"] = res_wal
-    print(f"  -> Buffered WAL:       {res_wal['buffered']['throughput_eps']:>10,.1f} EPS (p50: {res_wal['buffered']['latencies_us']['p50']} µs)")
-    print(f"  -> Direct fsync WAL:   {res_wal['durable_fsync']['throughput_eps']:>10,.1f} EPS (p50: {res_wal['durable_fsync']['latencies_us']['p50']} µs)")
+    print(
+        f"  -> Buffered WAL:       {res_wal['buffered']['throughput_eps']:>10,.1f} EPS (p50: {res_wal['buffered']['latencies_us']['p50']} µs)"
+    )
+    print(
+        f"  -> Direct fsync WAL:   {res_wal['durable_fsync']['throughput_eps']:>10,.1f} EPS (p50: {res_wal['durable_fsync']['latencies_us']['p50']} µs)"
+    )
 
     # 4. Full E2E Pipeline
     print("\n[4/5] Running Full E2E Pipeline Benchmark (Ingest -> Engine -> SHM)...")
     res_e2e = bench_full_e2e_pipeline(num_events=25_000)
     results["full_e2e_pipeline"] = res_e2e
-    print(f"  -> Full Pipeline E2E:  {res_e2e['throughput_eps']:>10,.1f} EPS (p50: {res_e2e['latencies_us']['p50']} µs, p99: {res_e2e['latencies_us']['p99']} µs)")
+    print(
+        f"  -> Full Pipeline E2E:  {res_e2e['throughput_eps']:>10,.1f} EPS (p50: {res_e2e['latencies_us']['p50']} µs, p99: {res_e2e['latencies_us']['p99']} µs)"
+    )
 
     # 5. Multiprocessing Worker Scaling
-    print("\n[5/5] Running Multiprocess Worker Scaling (1, 2, 4, 8 workers, 15,000 ev/worker)...")
+    print(
+        "\n[5/5] Running Multiprocess Worker Scaling (1, 2, 4, 8 workers, 15,000 ev/worker)..."
+    )
     res_mp = bench_multiprocess_scaling([1, 2, 4, 8], events_per_worker=15_000)
     results["multiprocess_scaling"] = {str(k): v for k, v in res_mp.items()}
     for w, r in res_mp.items():
-        print(f"  -> {w} Worker(s):        {r['throughput_eps']:>10,.1f} EPS ({r['speedup']}x speedup)")
+        print(
+            f"  -> {w} Worker(s):        {r['throughput_eps']:>10,.1f} EPS ({r['speedup']}x speedup)"
+        )
 
     # Save to JSON
     out_dir = ROOT / "audit" / "v5.2"
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / "RAW_BENCHMARK_RESULTS.json"
     with open(out_path, "w", encoding="utf-8") as f:
-        json.dump({
-            "timestamp": time.time(),
-            "environment": {
-                "os": "Windows 11 AMD64",
-                "python": "3.13.1",
-                "cpu": "Intel Core i5-1135G7",
-                "cores": 4,
-                "threads": 8,
+        json.dump(
+            {
+                "timestamp": time.time(),
+                "environment": {
+                    "os": "Windows 11 AMD64",
+                    "python": "3.13.1",
+                    "cpu": "Intel Core i5-1135G7",
+                    "cores": 4,
+                    "threads": 8,
+                },
+                "benchmarks": results,
             },
-            "benchmarks": results,
-        }, f, indent=2)
+            f,
+            indent=2,
+        )
     print(f"\n[OK] Raw benchmark results saved to {out_path}")
 
 

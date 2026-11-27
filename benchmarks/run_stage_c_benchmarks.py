@@ -29,8 +29,17 @@ os.environ["MDRAP_API_KEY_SALT"] = "stage_c_benchmark_salt_12345"
 os.environ["MDRAP_DEMO"] = "1"
 
 # Ensure src and observer in sys.path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "external_sidecar", "mdrap_observer")))
+sys.path.insert(
+    0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src"))
+)
+sys.path.insert(
+    0,
+    os.path.abspath(
+        os.path.join(
+            os.path.dirname(__file__), "..", "external_sidecar", "mdrap_observer"
+        )
+    ),
+)
 
 import psutil
 
@@ -99,7 +108,14 @@ def run_benchmark_1_throughput() -> Dict[str, Any]:
         events = [
             RawEvent(
                 source="BINANCE",
-                payload={"instrument": "BTCUSDT", "event_type": "TICK", "price": 65000.0 + (i % 100) * 0.5, "size": 1.0, "t": time.time(), "s": i},
+                payload={
+                    "instrument": "BTCUSDT",
+                    "event_type": "TICK",
+                    "price": 65000.0 + (i % 100) * 0.5,
+                    "size": 1.0,
+                    "t": time.time(),
+                    "s": i,
+                },
             )
             for i in range(1, num_events + 1)
         ]
@@ -110,7 +126,9 @@ def run_benchmark_1_throughput() -> Dict[str, Any]:
         t_elapsed = time.perf_counter() - t_start
 
         engine_eps = num_events / t_elapsed
-        print(f"Engine Ingestion: {num_events:,} events in {t_elapsed:.3f}s -> {engine_eps:,.0f} EPS")
+        print(
+            f"Engine Ingestion: {num_events:,} events in {t_elapsed:.3f}s -> {engine_eps:,.0f} EPS"
+        )
         results["engine_ingestion"] = {
             "events": num_events,
             "elapsed_s": round(t_elapsed, 4),
@@ -123,7 +141,7 @@ def run_benchmark_1_throughput() -> Dict[str, Any]:
             os.remove(daemon_db)
 
     # 1.2 SHM Zero-Copy Throughput
-    ring_name = f"mdrap_stage_c_shm_{int(time.time()*1000)%100000}"
+    ring_name = f"mdrap_stage_c_shm_{int(time.time() * 1000) % 100000}"
     writer = SHMWriter(ring_name, slot_count=65536)
     reader = SHMReader(ring_name)
 
@@ -193,7 +211,9 @@ def run_benchmark_1_throughput() -> Dict[str, Any]:
             state.process_event(evt)
             received_count += 1
 
-        client = ObserverClient(mode="tcp", host="127.0.0.1", port=port, on_event_callback=on_evt)
+        client = ObserverClient(
+            mode="tcp", host="127.0.0.1", port=port, on_event_callback=on_evt
+        )
         client.start()
         time.sleep(0.3)
 
@@ -211,7 +231,14 @@ def run_benchmark_1_throughput() -> Dict[str, Any]:
             for i in range(window_events):
                 raw = RawEvent(
                     source="BINANCE",
-                    payload={"instrument": "BTCUSDT", "event_type": "TICK", "price": 65000.0 + (i % 50), "size": 0.5, "t": time.time(), "s": i + 1},
+                    payload={
+                        "instrument": "BTCUSDT",
+                        "event_type": "TICK",
+                        "price": 65000.0 + (i % 50),
+                        "size": 0.5,
+                        "t": time.time(),
+                        "s": i + 1,
+                    },
                 )
                 daemon._process_and_broadcast(raw)
 
@@ -220,21 +247,27 @@ def run_benchmark_1_throughput() -> Dict[str, Any]:
             w_elapsed = time.perf_counter() - w_start
             w_recv = received_count - prev_recv
             w_eps = w_recv / w_elapsed
-            window_stats.append({
-                "window_idx": w + 1,
-                "sent": window_events,
-                "received": w_recv,
-                "elapsed_s": round(w_elapsed, 4),
-                "throughput_eps": round(w_eps, 1),
-            })
-            print(f"Window {w+1}: sent={window_events}, recv={w_recv}, throughput={w_eps:,.0f} EPS")
+            window_stats.append(
+                {
+                    "window_idx": w + 1,
+                    "sent": window_events,
+                    "received": w_recv,
+                    "elapsed_s": round(w_elapsed, 4),
+                    "throughput_eps": round(w_eps, 1),
+                }
+            )
+            print(
+                f"Window {w + 1}: sent={window_events}, recv={w_recv}, throughput={w_eps:,.0f} EPS"
+            )
 
         client.stop()
         daemon.stop()
 
         throughput_list = [w["throughput_eps"] for w in window_stats]
         mean_eps = sum(throughput_list) / len(throughput_list)
-        variance = sum((x - mean_eps) ** 2 for x in throughput_list) / len(throughput_list)
+        variance = sum((x - mean_eps) ** 2 for x in throughput_list) / len(
+            throughput_list
+        )
         std_dev = math.sqrt(variance)
         cv_pct = (std_dev / mean_eps) * 100.0 if mean_eps > 0 else 0.0
 
@@ -256,13 +289,17 @@ def run_benchmark_1_throughput() -> Dict[str, Any]:
     # 1.4 Exporter Disk Persistence Throughput
     export_tmp = tempfile.mkdtemp(prefix="mdrap_exp_bench_")
     try:
-        exp = ObserverExporter(output_dir=export_tmp, flush_interval_s=0.2, queue_size=100_000)
+        exp = ObserverExporter(
+            output_dir=export_tmp, flush_interval_s=0.2, queue_size=100_000
+        )
         exp.start()
         n_exp = 50_000
         max_q = 0
         t_exp_start = time.perf_counter()
         for i in range(1, n_exp + 1):
-            exp.record_event({"seq": i, "sym": "BTCUSDT", "p": 65000.0, "s": 1.0, "ts": time.time()})
+            exp.record_event(
+                {"seq": i, "sym": "BTCUSDT", "p": 65000.0, "s": 1.0, "ts": time.time()}
+            )
             q = exp._queue.qsize()
             if q > max_q:
                 max_q = q
@@ -272,7 +309,9 @@ def run_benchmark_1_throughput() -> Dict[str, Any]:
         t_exp_elapsed = time.perf_counter() - t_exp_start
         exp.stop()
         exp_eps = exp.events_written / t_exp_elapsed if t_exp_elapsed > 0 else 0.0
-        print(f"Exporter Persistence: {exp.events_written:,} events in {t_exp_elapsed:.3f}s -> {exp_eps:,.0f} EPS (Max Queue: {max_q})")
+        print(
+            f"Exporter Persistence: {exp.events_written:,} events in {t_exp_elapsed:.3f}s -> {exp_eps:,.0f} EPS (Max Queue: {max_q})"
+        )
         results["exporter_throughput"] = {
             "events_recorded": n_exp,
             "events_written": exp.events_written,
@@ -296,7 +335,9 @@ def run_benchmark_2_latency() -> Dict[str, Any]:
 
     # 2.1 Clock Overhead
     clock_overhead = measure_clock_overhead(iterations=100_000)
-    print(f"Clock overhead (time.perf_counter_ns): p50={clock_overhead['p50_ns']}ns, p99={clock_overhead['p99_ns']}ns, max={clock_overhead['max_ns']}ns")
+    print(
+        f"Clock overhead (time.perf_counter_ns): p50={clock_overhead['p50_ns']}ns, p99={clock_overhead['p99_ns']}ns, max={clock_overhead['max_ns']}ns"
+    )
     results["clock_overhead"] = clock_overhead
 
     # 2.2 Live Pipeline Monotonic Multi-Stage Latency
@@ -337,7 +378,9 @@ def run_benchmark_2_latency() -> Dict[str, Any]:
             if abs(sum_comp - e2e) > 0.05:  # Tolerance for float rounding
                 telescoping_errors += 1
 
-    client = ObserverClient(mode="tcp", host="127.0.0.1", port=port, on_event_callback=on_event)
+    client = ObserverClient(
+        mode="tcp", host="127.0.0.1", port=port, on_event_callback=on_event
+    )
     client.start()
     time.sleep(0.3)
 
@@ -376,10 +419,18 @@ def run_benchmark_2_latency() -> Dict[str, Any]:
     transport_summary = tracker.transport.summary()
     e2e_summary = tracker.e2e.summary()
 
-    print(f"Ingress Latency:  p50={ingress_summary['p50_us']}us, p95={ingress_summary['p95_us']}us, p99={ingress_summary['p99_us']}us, max={ingress_summary['all_event_max_us']}us")
-    print(f"Engine Latency:   p50={engine_summary['p50_us']}us, p95={engine_summary['p95_us']}us, p99={engine_summary['p99_us']}us, max={engine_summary['all_event_max_us']}us")
-    print(f"Transport Latency: p50={transport_summary['p50_us']}us, p95={transport_summary['p95_us']}us, p99={transport_summary['p99_us']}us, max={transport_summary['all_event_max_us']}us")
-    print(f"End-to-End Latency: p50={e2e_summary['p50_us']}us, p95={e2e_summary['p95_us']}us, p99={e2e_summary['p99_us']}us, max={e2e_summary['all_event_max_us']}us")
+    print(
+        f"Ingress Latency:  p50={ingress_summary['p50_us']}us, p95={ingress_summary['p95_us']}us, p99={ingress_summary['p99_us']}us, max={ingress_summary['all_event_max_us']}us"
+    )
+    print(
+        f"Engine Latency:   p50={engine_summary['p50_us']}us, p95={engine_summary['p95_us']}us, p99={engine_summary['p99_us']}us, max={engine_summary['all_event_max_us']}us"
+    )
+    print(
+        f"Transport Latency: p50={transport_summary['p50_us']}us, p95={transport_summary['p95_us']}us, p99={transport_summary['p99_us']}us, max={transport_summary['all_event_max_us']}us"
+    )
+    print(
+        f"End-to-End Latency: p50={e2e_summary['p50_us']}us, p95={e2e_summary['p95_us']}us, p99={e2e_summary['p99_us']}us, max={e2e_summary['all_event_max_us']}us"
+    )
     print(f"Telescoping errors: {telescoping_errors} / {total_measured}")
 
     results["stages"] = {
@@ -391,13 +442,41 @@ def run_benchmark_2_latency() -> Dict[str, Any]:
     results["telescoping_identity"] = {
         "total_measured": total_measured,
         "telescoping_discrepancies": telescoping_errors,
-        "identity_satisfied_pct": round((total_measured - telescoping_errors) / total_measured * 100.0, 2) if total_measured > 0 else 100.0,
+        "identity_satisfied_pct": round(
+            (total_measured - telescoping_errors) / total_measured * 100.0, 2
+        )
+        if total_measured > 0
+        else 100.0,
     }
 
     # 2.3 Single-Count Invalid Inversion Injection Check
-    tracker.record_event_latencies({"ingest_ts_ns": 5000, "t0_ns": 2000, "broadcast_ts_ns": 6000, "engine_ns": 4000}, t_recv_ns=7000)
-    tracker.record_event_latencies({"ingest_ts_ns": 2000, "t0_ns": 5000, "broadcast_ts_ns": 4000, "engine_ns": None}, t_recv_ns=7000)
-    tracker.record_event_latencies({"ingest_ts_ns": 2000, "t0_ns": 3000, "broadcast_ts_ns": 9000, "engine_ns": 1000}, t_recv_ns=6000)
+    tracker.record_event_latencies(
+        {
+            "ingest_ts_ns": 5000,
+            "t0_ns": 2000,
+            "broadcast_ts_ns": 6000,
+            "engine_ns": 4000,
+        },
+        t_recv_ns=7000,
+    )
+    tracker.record_event_latencies(
+        {
+            "ingest_ts_ns": 2000,
+            "t0_ns": 5000,
+            "broadcast_ts_ns": 4000,
+            "engine_ns": None,
+        },
+        t_recv_ns=7000,
+    )
+    tracker.record_event_latencies(
+        {
+            "ingest_ts_ns": 2000,
+            "t0_ns": 3000,
+            "broadcast_ts_ns": 9000,
+            "engine_ns": 1000,
+        },
+        t_recv_ns=6000,
+    )
 
     results["anomaly_accounting_audit"] = {
         "ingress_invalid_count": tracker.ingress.invalid_count,
@@ -438,17 +517,22 @@ def run_benchmark_3_memory_cpu() -> Dict[str, Any]:
     app_daemon_overhead = rss_post_init - rss_baseline
 
     state = ObserverState()
-    exporter = ObserverExporter(output_dir=export_dir, flush_interval_s=0.5, queue_size=50_000)
+    exporter = ObserverExporter(
+        output_dir=export_dir, flush_interval_s=0.5, queue_size=50_000
+    )
     exporter.start()
 
     recv_count = 0
+
     def on_evt(evt):
         nonlocal recv_count
         state.process_event(evt)
         exporter.record_event(evt)
         recv_count += 1
 
-    client = ObserverClient(mode="tcp", host="127.0.0.1", port=port, on_event_callback=on_evt)
+    client = ObserverClient(
+        mode="tcp", host="127.0.0.1", port=port, on_event_callback=on_evt
+    )
     client.start()
     time.sleep(0.3)
 
@@ -460,7 +544,9 @@ def run_benchmark_3_memory_cpu() -> Dict[str, Any]:
     peak_rss = rss_harness_init
     max_exporter_queue_depth = 0
 
-    print(f"Injecting sustained load of {burst_events:,} events to observe steady-state and peak RSS...")
+    print(
+        f"Injecting sustained load of {burst_events:,} events to observe steady-state and peak RSS..."
+    )
     for i in range(1, burst_events + 1):
         raw = RawEvent(
             source=VENUES[i % len(VENUES)],
@@ -516,7 +602,9 @@ def run_benchmark_3_memory_cpu() -> Dict[str, Any]:
     print(f"Peak RSS:           {peak_rss:.2f} MB")
     print(f"Steady-State RSS:   {rss_steady_state:.2f} MB")
     print(f"Post-Teardown RSS:  {rss_post_teardown:.2f} MB")
-    print(f"CPU Utilization:    {cpu_utilization_pct:.1f}% ({total_cpu_time:.2f}s CPU time over {t_elapsed:.2f}s)")
+    print(
+        f"CPU Utilization:    {cpu_utilization_pct:.1f}% ({total_cpu_time:.2f}s CPU time over {t_elapsed:.2f}s)"
+    )
     print(f"Max Exporter Queue: {max_exporter_queue_depth} / 50000")
 
     results["memory"] = {
@@ -529,7 +617,9 @@ def run_benchmark_3_memory_cpu() -> Dict[str, Any]:
         "net_growth_post_teardown_mb": round(rss_post_teardown - rss_baseline, 2),
         "max_exporter_queue_depth": max_exporter_queue_depth,
         "exporter_queue_capacity": 50_000,
-        "exporter_queue_saturation_pct": round(max_exporter_queue_depth / 50_000 * 100.0, 2),
+        "exporter_queue_saturation_pct": round(
+            max_exporter_queue_depth / 50_000 * 100.0, 2
+        ),
         "rss_trend_samples_mb": [round(x, 2) for x in rss_samples],
     }
     results["cpu"] = {
@@ -575,7 +665,18 @@ def main():
         "benchmark_3_memory_cpu": bm3,
     }
 
-    out_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "audit", "benchmark", "final_assessment", "stage_c", "raw", "stage_c_benchmarks.json"))
+    out_path = os.path.abspath(
+        os.path.join(
+            os.path.dirname(__file__),
+            "..",
+            "audit",
+            "benchmark",
+            "final_assessment",
+            "stage_c",
+            "raw",
+            "stage_c_benchmarks.json",
+        )
+    )
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(manifest, f, indent=2)

@@ -118,14 +118,18 @@ def run_strategy_backtest(
             b_sz = evt.bid_size or 50.0
             a_sz = evt.ask_size or 50.0
             current_mid = (b_px + a_px) / 2.0
-            matching.update_book(symbol, bids=[(b_px, b_sz)], asks=[(a_px, a_sz)], timestamp=t_now)
+            matching.update_book(
+                symbol, bids=[(b_px, b_sz)], asks=[(a_px, a_sz)], timestamp=t_now
+            )
             matching.process_time_slice(t_now)
 
         elif evt.event_type == EventType.TRADE:
             tr_px = evt.price or current_mid
             tr_sz = evt.quantity or 10.0
             current_mid = tr_px
-            matching.process_market_trade(symbol, trade_price=tr_px, trade_size=tr_sz, timestamp=t_now)
+            matching.process_market_trade(
+                symbol, trade_price=tr_px, trade_size=tr_sz, timestamp=t_now
+            )
 
         # 2. Process Newly Executed Fills
         ledger = matching.get_ledger()
@@ -140,9 +144,9 @@ def run_strategy_backtest(
                 fee = fill["fee"]
                 cash -= fee
                 if side == "BUY":
-                    cash -= (sz * px)
+                    cash -= sz * px
                 else:
-                    cash += (sz * px)
+                    cash += sz * px
                 risk.update_position(symbol, fill_qty=sz, fill_price=px, side=side)
 
                 unrealized = sum(
@@ -174,13 +178,21 @@ def run_strategy_backtest(
                 order_id_counter += 1
                 oid = f"BnH-{order_id_counter}"
                 v_res = risk.validate_order(
-                    symbol=symbol, side="BUY", order_type="MARKET", quantity=200.0,
-                    price=current_mid, prevailing_mid=current_mid
+                    symbol=symbol,
+                    side="BUY",
+                    order_type="MARKET",
+                    quantity=200.0,
+                    price=current_mid,
+                    prevailing_mid=current_mid,
                 )
                 if v_res.passed:
                     ord_obj = matching.submit_order(
-                        order_id=oid, symbol=symbol, side=SimOrderSide.BUY,
-                        order_type=SimOrderType.MARKET, quantity=200.0, current_time=t_now
+                        order_id=oid,
+                        symbol=symbol,
+                        side=SimOrderSide.BUY,
+                        order_type=SimOrderType.MARKET,
+                        quantity=200.0,
+                        current_time=t_now,
                     )
                     open_orders[oid] = ord_obj
                     orders_submitted += 1
@@ -189,7 +201,10 @@ def run_strategy_backtest(
         elif strategy_type in ("AS_MM", "INVENTORY_SKEWED_MM"):
             if evt.event_type == EventType.QUOTE:
                 for old_oid in list(open_orders.keys()):
-                    if open_orders[old_oid].status in (SimOrderStatus.ACCEPTED, SimOrderStatus.PENDING):
+                    if open_orders[old_oid].status in (
+                        SimOrderStatus.ACCEPTED,
+                        SimOrderStatus.PENDING,
+                    ):
                         matching.cancel_order(old_oid, current_time=t_now)
                         open_orders.pop(old_oid, None)
 
@@ -204,36 +219,64 @@ def run_strategy_backtest(
                     time_remaining=t_rem,
                 )
 
-                spread_mult = 1.5 if evt.quality_status == QualityStatus.SUSPICIOUS else 1.0
-                bid_px = round(as_quotes.reservation_price - (as_quotes.optimal_half_spread * spread_mult), 2)
-                ask_px = round(as_quotes.reservation_price + (as_quotes.optimal_half_spread * spread_mult), 2)
+                spread_mult = (
+                    1.5 if evt.quality_status == QualityStatus.SUSPICIOUS else 1.0
+                )
+                bid_px = round(
+                    as_quotes.reservation_price
+                    - (as_quotes.optimal_half_spread * spread_mult),
+                    2,
+                )
+                ask_px = round(
+                    as_quotes.reservation_price
+                    + (as_quotes.optimal_half_spread * spread_mult),
+                    2,
+                )
 
                 if abs(bid_px - current_mid) / current_mid * 10_000.0 <= 150.0:
                     v_bid = risk.validate_order(
-                        symbol=symbol, side="BUY", order_type="LIMIT", quantity=25.0,
-                        price=bid_px, prevailing_mid=current_mid
+                        symbol=symbol,
+                        side="BUY",
+                        order_type="LIMIT",
+                        quantity=25.0,
+                        price=bid_px,
+                        prevailing_mid=current_mid,
                     )
                     if v_bid.passed:
                         order_id_counter += 1
                         b_id = f"AS-B-{order_id_counter}"
                         o_b = matching.submit_order(
-                            order_id=b_id, symbol=symbol, side=SimOrderSide.BUY,
-                            order_type=SimOrderType.LIMIT, quantity=25.0, price=bid_px, current_time=t_now
+                            order_id=b_id,
+                            symbol=symbol,
+                            side=SimOrderSide.BUY,
+                            order_type=SimOrderType.LIMIT,
+                            quantity=25.0,
+                            price=bid_px,
+                            current_time=t_now,
                         )
                         open_orders[b_id] = o_b
                         orders_submitted += 1
 
                 if abs(ask_px - current_mid) / current_mid * 10_000.0 <= 150.0:
                     v_ask = risk.validate_order(
-                        symbol=symbol, side="SELL", order_type="LIMIT", quantity=25.0,
-                        price=ask_px, prevailing_mid=current_mid
+                        symbol=symbol,
+                        side="SELL",
+                        order_type="LIMIT",
+                        quantity=25.0,
+                        price=ask_px,
+                        prevailing_mid=current_mid,
                     )
                     if v_ask.passed:
                         order_id_counter += 1
                         a_id = f"AS-A-{order_id_counter}"
                         o_a = matching.submit_order(
-                            order_id=a_id, symbol=symbol, side=SimOrderSide.SELL,
-                            order_type=SimOrderType.LIMIT, quantity=25.0, price=ask_px, current_time=t_now
+                            order_id=a_id,
+                            symbol=symbol,
+                            side=SimOrderSide.SELL,
+                            order_type=SimOrderType.LIMIT,
+                            quantity=25.0,
+                            price=ask_px,
+                            current_time=t_now,
                         )
                         open_orders[a_id] = o_a
                         orders_submitted += 1
@@ -241,7 +284,10 @@ def run_strategy_backtest(
         elif strategy_type == "FIXED_SPREAD_MM":
             if evt.event_type == EventType.QUOTE:
                 for old_oid in list(open_orders.keys()):
-                    if open_orders[old_oid].status in (SimOrderStatus.ACCEPTED, SimOrderStatus.PENDING):
+                    if open_orders[old_oid].status in (
+                        SimOrderStatus.ACCEPTED,
+                        SimOrderStatus.PENDING,
+                    ):
                         matching.cancel_order(old_oid, current_time=t_now)
                         open_orders.pop(old_oid, None)
 
@@ -250,19 +296,49 @@ def run_strategy_backtest(
                 bid_px = round(current_mid - half_spread, 2)
                 ask_px = round(current_mid + half_spread, 2)
 
-                v_bid = risk.validate_order(symbol=symbol, side="BUY", order_type="LIMIT", quantity=25.0, price=bid_px, prevailing_mid=current_mid)
+                v_bid = risk.validate_order(
+                    symbol=symbol,
+                    side="BUY",
+                    order_type="LIMIT",
+                    quantity=25.0,
+                    price=bid_px,
+                    prevailing_mid=current_mid,
+                )
                 if v_bid.passed:
                     order_id_counter += 1
                     b_id = f"FS-B-{order_id_counter}"
-                    o_b = matching.submit_order(order_id=b_id, symbol=symbol, side=SimOrderSide.BUY, order_type=SimOrderType.LIMIT, quantity=25.0, price=bid_px, current_time=t_now)
+                    o_b = matching.submit_order(
+                        order_id=b_id,
+                        symbol=symbol,
+                        side=SimOrderSide.BUY,
+                        order_type=SimOrderType.LIMIT,
+                        quantity=25.0,
+                        price=bid_px,
+                        current_time=t_now,
+                    )
                     open_orders[b_id] = o_b
                     orders_submitted += 1
 
-                v_ask = risk.validate_order(symbol=symbol, side="SELL", order_type="LIMIT", quantity=25.0, price=ask_px, prevailing_mid=current_mid)
+                v_ask = risk.validate_order(
+                    symbol=symbol,
+                    side="SELL",
+                    order_type="LIMIT",
+                    quantity=25.0,
+                    price=ask_px,
+                    prevailing_mid=current_mid,
+                )
                 if v_ask.passed:
                     order_id_counter += 1
                     a_id = f"FS-A-{order_id_counter}"
-                    o_a = matching.submit_order(order_id=a_id, symbol=symbol, side=SimOrderSide.SELL, order_type=SimOrderType.LIMIT, quantity=25.0, price=ask_px, current_time=t_now)
+                    o_a = matching.submit_order(
+                        order_id=a_id,
+                        symbol=symbol,
+                        side=SimOrderSide.SELL,
+                        order_type=SimOrderType.LIMIT,
+                        quantity=25.0,
+                        price=ask_px,
+                        current_time=t_now,
+                    )
                     open_orders[a_id] = o_a
                     orders_submitted += 1
 
@@ -273,20 +349,34 @@ def run_strategy_backtest(
                 notional = px * sz
                 if notional >= 50_000.0 or sz >= 400.0:
                     side_aggressor = classify_trade_lee_ready(
-                        trade_price=px, prev_trade_price=prev_trade_px,
-                        bid_price=current_mid - 0.05, ask_price=current_mid + 0.05
+                        trade_price=px,
+                        prev_trade_price=prev_trade_px,
+                        bid_price=current_mid - 0.05,
+                        ask_price=current_mid + 0.05,
                     )
-                    sim_side = SimOrderSide.BUY if side_aggressor == "BUY" else SimOrderSide.SELL
+                    sim_side = (
+                        SimOrderSide.BUY
+                        if side_aggressor == "BUY"
+                        else SimOrderSide.SELL
+                    )
                     v_res = risk.validate_order(
-                        symbol=symbol, side=sim_side.value, order_type="MARKET",
-                        quantity=50.0, price=px, prevailing_mid=current_mid
+                        symbol=symbol,
+                        side=sim_side.value,
+                        order_type="MARKET",
+                        quantity=50.0,
+                        price=px,
+                        prevailing_mid=current_mid,
                     )
                     if v_res.passed:
                         order_id_counter += 1
                         w_id = f"WHALE-{order_id_counter}"
                         ord_obj = matching.submit_order(
-                            order_id=w_id, symbol=symbol, side=sim_side,
-                            order_type=SimOrderType.MARKET, quantity=50.0, current_time=t_now
+                            order_id=w_id,
+                            symbol=symbol,
+                            side=sim_side,
+                            order_type=SimOrderType.MARKET,
+                            quantity=50.0,
+                            current_time=t_now,
                         )
                         open_orders[w_id] = ord_obj
                         orders_submitted += 1
@@ -294,17 +384,27 @@ def run_strategy_backtest(
 
         elif strategy_type == "RANDOM_SIGNAL":
             if rng.random() < 0.05:
-                side_choice = SimOrderSide.BUY if rng.random() < 0.5 else SimOrderSide.SELL
+                side_choice = (
+                    SimOrderSide.BUY if rng.random() < 0.5 else SimOrderSide.SELL
+                )
                 v_res = risk.validate_order(
-                    symbol=symbol, side=side_choice.value, order_type="MARKET",
-                    quantity=20.0, price=current_mid, prevailing_mid=current_mid
+                    symbol=symbol,
+                    side=side_choice.value,
+                    order_type="MARKET",
+                    quantity=20.0,
+                    price=current_mid,
+                    prevailing_mid=current_mid,
                 )
                 if v_res.passed:
                     order_id_counter += 1
                     r_id = f"RND-{order_id_counter}"
                     ord_obj = matching.submit_order(
-                        order_id=r_id, symbol=symbol, side=side_choice,
-                        order_type=SimOrderType.MARKET, quantity=20.0, current_time=t_now
+                        order_id=r_id,
+                        symbol=symbol,
+                        side=side_choice,
+                        order_type=SimOrderType.MARKET,
+                        quantity=20.0,
+                        current_time=t_now,
                     )
                     open_orders[r_id] = ord_obj
                     orders_submitted += 1
@@ -355,11 +455,15 @@ def run_strategy_backtest(
         "total_trades": len(trade_ledger),
         "trade_returns": trade_returns,
         "resampled_returns": resampled_returns,
-        "adverse_markouts": matching.compute_adverse_selection_markout(horizon_ms=100.0),
+        "adverse_markouts": matching.compute_adverse_selection_markout(
+            horizon_ms=100.0
+        ),
     }
 
 
-def forensic_sharpe_analysis(returns: list[float], label: str = "AS-MM") -> dict[str, Any]:
+def forensic_sharpe_analysis(
+    returns: list[float], label: str = "AS-MM"
+) -> dict[str, Any]:
     """
     Forensically analyzes Sharpe ratio under different annualization multipliers and sampling assumptions.
     """
@@ -417,7 +521,11 @@ def main():
 
     # 1. Generate 5,000 Canonical Events (seed=42)
     print("\n[1/5] Generating dataset (5,000 events)...")
-    sim = FeedSimulator(SimulatorConfig(seed=42, num_events=5000, instruments=["AAPL"], sources=["FEEDX", "FEEDY"]))
+    sim = FeedSimulator(
+        SimulatorConfig(
+            seed=42, num_events=5000, instruments=["AAPL"], sources=["FEEDX", "FEEDY"]
+        )
+    )
     events = []
     fqe = FastQualityEngine()
     for raw, _ in sim.generate():
@@ -436,47 +544,82 @@ def main():
     train_events = events[:idx_train]
     val_events = events[idx_train:idx_val]
     test_events = events[idx_val:]
-    print(f"Data Split: Train = {len(train_events):,} (60%), Validation = {len(val_events):,} (20%), Test = {len(test_events):,} (20%)")
+    print(
+        f"Data Split: Train = {len(train_events):,} (60%), Validation = {len(val_events):,} (20%), Test = {len(test_events):,} (20%)"
+    )
 
     # 3. Sharpe Ratio Forensics on AS-MM
     print("\n[2/5] Running AS-MM Sharpe Ratio Forensic Analysis...")
     res_as_full = run_strategy_backtest("AS_MM", events)
-    sharpe_forensics = forensic_sharpe_analysis(res_as_full["trade_returns"], label="AS-MM Full Sample")
-    print(f"  -> Reported Fallacy Sharpe (252*23400 sqrt):  {sharpe_forensics['fallacy_reported_sharpe']}")
-    print(f"  -> Honest Daily Annualized Sharpe (sqrt 252): {sharpe_forensics['annualized_daily_sharpe']}")
-    print(f"  -> Unannualized Base Sharpe:                   {sharpe_forensics['unannualized_sharpe']}")
-    print(f"  -> Student's t-statistic:                      {sharpe_forensics['t_statistic']} (p = {sharpe_forensics['p_value']})")
-    print(f"  -> 95% Confidence Interval:                    {sharpe_forensics['sharpe_95_ci']}")
+    sharpe_forensics = forensic_sharpe_analysis(
+        res_as_full["trade_returns"], label="AS-MM Full Sample"
+    )
+    print(
+        f"  -> Reported Fallacy Sharpe (252*23400 sqrt):  {sharpe_forensics['fallacy_reported_sharpe']}"
+    )
+    print(
+        f"  -> Honest Daily Annualized Sharpe (sqrt 252): {sharpe_forensics['annualized_daily_sharpe']}"
+    )
+    print(
+        f"  -> Unannualized Base Sharpe:                   {sharpe_forensics['unannualized_sharpe']}"
+    )
+    print(
+        f"  -> Student's t-statistic:                      {sharpe_forensics['t_statistic']} (p = {sharpe_forensics['p_value']})"
+    )
+    print(
+        f"  -> 95% Confidence Interval:                    {sharpe_forensics['sharpe_95_ci']}"
+    )
 
     # 4. Out-of-Sample Walk-Forward Validation (Train -> Validation -> Test)
     print("\n[3/5] Running Walk-Forward Validation (Train / Val / Test)...")
     wf_results = {}
-    for seg_name, seg_events in [("train_60pct", train_events), ("val_20pct", val_events), ("test_20pct", test_events)]:
+    for seg_name, seg_events in [
+        ("train_60pct", train_events),
+        ("val_20pct", val_events),
+        ("test_20pct", test_events),
+    ]:
         r = run_strategy_backtest("AS_MM", seg_events)
         wf_results[seg_name] = {
             "events": len(seg_events),
             "net_pnl": r["net_pnl"],
             "return_pct": r["return_pct"],
             "trades": r["total_trades"],
-            "pnl_per_trade": round(r["net_pnl"] / r["total_trades"], 2) if r["total_trades"] > 0 else 0.0,
+            "pnl_per_trade": round(r["net_pnl"] / r["total_trades"], 2)
+            if r["total_trades"] > 0
+            else 0.0,
             "max_dd_pct": r["max_drawdown_pct"],
         }
-        print(f"  -> {seg_name:<12}: Net PnL = ${r['net_pnl']:>8.2f} | Trades = {r['total_trades']:>4} | PnL/Trade = ${wf_results[seg_name]['pnl_per_trade']:>5.2f} | MaxDD = {r['max_drawdown_pct']}%")
+        print(
+            f"  -> {seg_name:<12}: Net PnL = ${r['net_pnl']:>8.2f} | Trades = {r['total_trades']:>4} | PnL/Trade = ${wf_results[seg_name]['pnl_per_trade']:>5.2f} | MaxDD = {r['max_drawdown_pct']}%"
+        )
 
     # 5. Parameter Stress Tests on AS-MM
     print("\n[4/5] Executing Parameter Stress Tests on AS-MM...")
     stress_scenarios = {
-        "Base Case (2 bps maker, 1ms latency)": {"maker_fee": 2.0, "latency": 1.0, "vol": 0.015},
-        "2x Maker Fees (4 bps)":                {"maker_fee": 4.0, "latency": 1.0, "vol": 0.015},
-        "5x Latency Delay (5ms)":               {"maker_fee": 2.0, "latency": 5.0, "vol": 0.015},
-        "10x Latency Delay (10ms)":             {"maker_fee": 2.0, "latency": 10.0, "vol": 0.015},
-        "High Volatility Shock (sigma = 0.05)": {"maker_fee": 2.0, "latency": 1.0, "vol": 0.050},
-        "Combined Stress (4 bps + 10ms lat)":   {"maker_fee": 4.0, "latency": 10.0, "vol": 0.015},
+        "Base Case (2 bps maker, 1ms latency)": {
+            "maker_fee": 2.0,
+            "latency": 1.0,
+            "vol": 0.015,
+        },
+        "2x Maker Fees (4 bps)": {"maker_fee": 4.0, "latency": 1.0, "vol": 0.015},
+        "5x Latency Delay (5ms)": {"maker_fee": 2.0, "latency": 5.0, "vol": 0.015},
+        "10x Latency Delay (10ms)": {"maker_fee": 2.0, "latency": 10.0, "vol": 0.015},
+        "High Volatility Shock (sigma = 0.05)": {
+            "maker_fee": 2.0,
+            "latency": 1.0,
+            "vol": 0.050,
+        },
+        "Combined Stress (4 bps + 10ms lat)": {
+            "maker_fee": 4.0,
+            "latency": 10.0,
+            "vol": 0.015,
+        },
     }
     stress_results = {}
     for name, params in stress_scenarios.items():
         st_res = run_strategy_backtest(
-            "AS_MM", events,
+            "AS_MM",
+            events,
             maker_fee_bps=params["maker_fee"],
             network_latency_ms=params["latency"],
             volatility=params["vol"],
@@ -487,10 +630,14 @@ def main():
             "trades": st_res["total_trades"],
             "max_dd_pct": st_res["max_drawdown_pct"],
         }
-        print(f"  -> {name:<36}: Net PnL = ${st_res['net_pnl']:>8.2f} | Fees = ${st_res['fees_paid']:>7.2f} | MaxDD = {st_res['max_drawdown_pct']}%")
+        print(
+            f"  -> {name:<36}: Net PnL = ${st_res['net_pnl']:>8.2f} | Fees = ${st_res['fees_paid']:>7.2f} | MaxDD = {st_res['max_drawdown_pct']}%"
+        )
 
     # 6. Complete 7-Strategy Comparison
-    print("\n[5/5] Re-evaluating 7 Strategies & Baselines under identical conditions...")
+    print(
+        "\n[5/5] Re-evaluating 7 Strategies & Baselines under identical conditions..."
+    )
     all_7_strats = [
         "AS_MM",
         "INVENTORY_SKEWED_MM",
@@ -502,7 +649,9 @@ def main():
     ]
     comparison_results = {}
     print("\n" + "=" * 95)
-    print(f"{'Strategy / Model':<22} | {'Gross PnL':>10} | {'Fees Paid':>10} | {'Net PnL':>10} | {'MaxDD %':>8} | {'Trades':>6}")
+    print(
+        f"{'Strategy / Model':<22} | {'Gross PnL':>10} | {'Fees Paid':>10} | {'Net PnL':>10} | {'MaxDD %':>8} | {'Trades':>6}"
+    )
     print("-" * 95)
     for s_name in all_7_strats:
         res = run_strategy_backtest(s_name, events)
@@ -524,13 +673,17 @@ def main():
     out_dir.mkdir(parents=True, exist_ok=True)
     out_json = out_dir / "RAW_STRATEGY_TELEMETRY.json"
     with open(out_json, "w", encoding="utf-8") as f:
-        json.dump({
-            "timestamp": time.time(),
-            "sharpe_forensics": sharpe_forensics,
-            "walk_forward_validation": wf_results,
-            "stress_tests": stress_results,
-            "strategy_comparison": comparison_results,
-        }, f, indent=2)
+        json.dump(
+            {
+                "timestamp": time.time(),
+                "sharpe_forensics": sharpe_forensics,
+                "walk_forward_validation": wf_results,
+                "stress_tests": stress_results,
+                "strategy_comparison": comparison_results,
+            },
+            f,
+            indent=2,
+        )
     print(f"\n[OK] Raw strategy telemetry saved to {out_json}")
 
 

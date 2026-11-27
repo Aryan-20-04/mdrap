@@ -54,14 +54,16 @@ def run_statistical_integrity_verification(
             t = h_data["t_stat"]
             # Two-tailed p-value from t-stat
             p_val = 2.0 * (1.0 - stats.norm.cdf(abs(t))) if abs(t) > 0 else 1.0
-            p_val_records.append({
-                "signal": sig,
-                "horizon": h,
-                "spearman_ic": h_data["spearman_ic"],
-                "mean_return_bps": h_data["mean_return_bps"],
-                "t_stat": t,
-                "p_val_raw": float(p_val),
-            })
+            p_val_records.append(
+                {
+                    "signal": sig,
+                    "horizon": h,
+                    "spearman_ic": h_data["spearman_ic"],
+                    "mean_return_bps": h_data["mean_return_bps"],
+                    "t_stat": t,
+                    "p_val_raw": float(p_val),
+                }
+            )
 
     # Sort for Benjamini-Hochberg and Holm-Bonferroni
     p_val_records.sort(key=lambda x: x["p_val_raw"])
@@ -87,16 +89,24 @@ def run_statistical_integrity_verification(
         rec["sig_bh_fdr"] = bool(raw_p <= bh_thresh)
 
     print(f"\n--- 1. Multiple-Testing Correction Audit ({m} hypotheses tested) ---")
-    print(f"{'Signal':<30} | {'Horiz':<7} | {'t-stat':<7} | {'Raw p-val':<11} | {'Bonferroni p':<12} | {'FDR Sig?':<8}")
+    print(
+        f"{'Signal':<30} | {'Horiz':<7} | {'t-stat':<7} | {'Raw p-val':<11} | {'Bonferroni p':<12} | {'FDR Sig?':<8}"
+    )
     print("-" * 85)
     for rec in p_val_records[:15]:
-        p_str = f"{rec['p_val_raw']:.2e}" if rec['p_val_raw'] > 0 else "< 1e-100"
-        bonf_str = f"{rec['p_bonferroni']:.2e}" if rec['p_bonferroni'] > 0 else "< 1e-100"
-        fdr_sig = "YES (p<Q)" if rec['sig_bh_fdr'] else "NO"
-        print(f"{rec['signal'][:30]:<30} | {rec['horizon']:<7} | {rec['t_stat']:>6.2f}  | {p_str:<11} | {bonf_str:<12} | {fdr_sig}")
+        p_str = f"{rec['p_val_raw']:.2e}" if rec["p_val_raw"] > 0 else "< 1e-100"
+        bonf_str = (
+            f"{rec['p_bonferroni']:.2e}" if rec["p_bonferroni"] > 0 else "< 1e-100"
+        )
+        fdr_sig = "YES (p<Q)" if rec["sig_bh_fdr"] else "NO"
+        print(
+            f"{rec['signal'][:30]:<30} | {rec['horizon']:<7} | {rec['t_stat']:>6.2f}  | {p_str:<11} | {bonf_str:<12} | {fdr_sig}"
+        )
 
     # 2. Extract Holdout Samples for Depth Imbalance & Momentum 100ms for HAC and Block Bootstrap
-    print("\n--- 2. Streaming Holdout Frames for Autocorrelation, HAC & Block Bootstrap ---")
+    print(
+        "\n--- 2. Streaming Holdout Frames for Autocorrelation, HAC & Block Bootstrap ---"
+    )
     reconstructor = L2BookReconstructor()
     valuator = DenominationAwareValuator()
 
@@ -121,7 +131,11 @@ def run_statistical_integrity_verification(
             continue
 
         for ev in events:
-            if ev.event_kind == "CONTROL" or ev.venue != "BINANCE" or ev.instrument != "BTC/USD":
+            if (
+                ev.event_kind == "CONTROL"
+                or ev.venue != "BINANCE"
+                or ev.instrument != "BTC/USD"
+            ):
                 continue
 
             rate = valuator.get_fx_rate("USDT")
@@ -142,13 +156,17 @@ def run_statistical_integrity_verification(
                 if ts - last_sample_t >= 0.50:
                     last_sample_t = ts
                     s_depth = (bb_sz - ba_sz) / (bb_sz + ba_sz)
-                    sample_records.append({
-                        "ts": ts,
-                        "mid": mid,
-                        "s_depth": s_depth,
-                    })
+                    sample_records.append(
+                        {
+                            "ts": ts,
+                            "mid": mid,
+                            "s_depth": s_depth,
+                        }
+                    )
 
-    print(f"Collected {len(sample_records)} high-resolution Holdout samples on BINANCE:BTC/USD.")
+    print(
+        f"Collected {len(sample_records)} high-resolution Holdout samples on BINANCE:BTC/USD."
+    )
 
     # Calculate returns at 1s and 5s
     lat = 0.0025
@@ -213,8 +231,12 @@ def run_statistical_integrity_verification(
         return se_ols, se_hac, n_eff
 
     # Lag truncation: L = ceil(tau / dt)
-    se_ols_1s, se_hac_1s, n_eff_1s = compute_newey_west(dir_rets_1s, lag_L=2)   # 1s with 0.5s dt -> L=2
-    se_ols_5s, se_hac_5s, n_eff_5s = compute_newey_west(dir_rets_5s, lag_L=10)  # 5s with 0.5s dt -> L=10
+    se_ols_1s, se_hac_1s, n_eff_1s = compute_newey_west(
+        dir_rets_1s, lag_L=2
+    )  # 1s with 0.5s dt -> L=2
+    se_ols_5s, se_hac_5s, n_eff_5s = compute_newey_west(
+        dir_rets_5s, lag_L=10
+    )  # 5s with 0.5s dt -> L=10
 
     t_ols_1s = mean_1s / se_ols_1s if se_ols_1s > 0 else 0.0
     t_hac_1s = mean_1s / se_hac_1s if se_hac_1s > 0 else 0.0
@@ -233,12 +255,20 @@ def run_statistical_integrity_verification(
     for _ in range(B):
         # Sample block starting indices with replacement
         start_indices = np.random.randint(0, N - block_len + 1, size=num_blocks)
-        boot_idx = np.concatenate([np.arange(idx, idx + block_len) for idx in start_indices])
+        boot_idx = np.concatenate(
+            [np.arange(idx, idx + block_len) for idx in start_indices]
+        )
         boot_means_1s.append(np.mean(dir_rets_1s[boot_idx]))
         boot_means_5s.append(np.mean(dir_rets_5s[boot_idx]))
 
-    ci95_boot_1s = [float(np.percentile(boot_means_1s, 2.5)), float(np.percentile(boot_means_1s, 97.5))]
-    ci95_boot_5s = [float(np.percentile(boot_means_5s, 2.5)), float(np.percentile(boot_means_5s, 97.5))]
+    ci95_boot_1s = [
+        float(np.percentile(boot_means_1s, 2.5)),
+        float(np.percentile(boot_means_1s, 97.5)),
+    ]
+    ci95_boot_5s = [
+        float(np.percentile(boot_means_5s, 2.5)),
+        float(np.percentile(boot_means_5s, 97.5)),
+    ]
 
     integrity_audit = {
         "sample_metadata": {
@@ -289,8 +319,12 @@ def run_statistical_integrity_verification(
         "multiple_testing": {
             "total_hypotheses": m,
             "bonferroni_critical_alpha": bonf_alpha,
-            "significant_hypotheses_bonferroni": sum(1 for r in p_val_records if r["sig_bonferroni"]),
-            "significant_hypotheses_fdr_q05": sum(1 for r in p_val_records if r["sig_bh_fdr"]),
+            "significant_hypotheses_bonferroni": sum(
+                1 for r in p_val_records if r["sig_bonferroni"]
+            ),
+            "significant_hypotheses_fdr_q05": sum(
+                1 for r in p_val_records if r["sig_bh_fdr"]
+            ),
             "rankings": p_val_records[:15],
         },
     }
@@ -302,11 +336,21 @@ def run_statistical_integrity_verification(
     print("ECONOMETRIC & STATISTICAL INTEGRITY SCORECARD")
     print("=" * 80)
     print(f"Nominal Sample Size N: {N:,}")
-    print(f"1-Second Horizon:  SE_OLS = {se_ols_1s:.5f} | SE_HAC = {se_hac_1s:.5f} (x{se_hac_1s/se_ols_1s:.2f}) | t_HAC = {t_hac_1s:.2f} | N_eff = {n_eff_1s:,.0f}")
-    print(f"1-Second Block Bootstrap 95% CI: [{ci95_boot_1s[0]:+.4f}, {ci95_boot_1s[1]:+.4f}] bps")
-    print(f"5-Second Horizon:  SE_OLS = {se_ols_5s:.5f} | SE_HAC = {se_hac_5s:.5f} (x{se_hac_5s/se_ols_5s:.2f}) | t_HAC = {t_hac_5s:.2f} | N_eff = {n_eff_5s:,.0f}")
-    print(f"5-Second Block Bootstrap 95% CI: [{ci95_boot_5s[0]:+.4f}, {ci95_boot_5s[1]:+.4f}] bps")
-    print(f"Multiple Testing: {integrity_audit['multiple_testing']['significant_hypotheses_fdr_q05']} / {m} hypotheses survive Benjamini-Hochberg FDR (Q=0.05).")
+    print(
+        f"1-Second Horizon:  SE_OLS = {se_ols_1s:.5f} | SE_HAC = {se_hac_1s:.5f} (x{se_hac_1s / se_ols_1s:.2f}) | t_HAC = {t_hac_1s:.2f} | N_eff = {n_eff_1s:,.0f}"
+    )
+    print(
+        f"1-Second Block Bootstrap 95% CI: [{ci95_boot_1s[0]:+.4f}, {ci95_boot_1s[1]:+.4f}] bps"
+    )
+    print(
+        f"5-Second Horizon:  SE_OLS = {se_ols_5s:.5f} | SE_HAC = {se_hac_5s:.5f} (x{se_hac_5s / se_ols_5s:.2f}) | t_HAC = {t_hac_5s:.2f} | N_eff = {n_eff_5s:,.0f}"
+    )
+    print(
+        f"5-Second Block Bootstrap 95% CI: [{ci95_boot_5s[0]:+.4f}, {ci95_boot_5s[1]:+.4f}] bps"
+    )
+    print(
+        f"Multiple Testing: {integrity_audit['multiple_testing']['significant_hypotheses_fdr_q05']} / {m} hypotheses survive Benjamini-Hochberg FDR (Q=0.05)."
+    )
     print("=" * 80)
     print(f"Audit results successfully written to: {output_json}")
 

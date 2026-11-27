@@ -18,7 +18,9 @@ import pytest
 os.environ["MDRAP_API_KEY_SALT"] = "test_release_readiness_salt_secret_123"
 
 # Ensure repo root and tools in path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
+sys.path.insert(
+    0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src"))
+)
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import mdrap
@@ -39,7 +41,10 @@ from mdrap.shm import (
     SHMWriter,
 )
 from mdrap.storage import Store
-from mdrap_strategies.backends.testnet import ExchangeTestnetBackend, SecurityViolationError
+from mdrap_strategies.backends.testnet import (
+    ExchangeTestnetBackend,
+    SecurityViolationError,
+)
 from mdrap_strategies.risk_engine import InstitutionalRiskEngine
 from tools.run_shadow_trading import STRATEGY_REGISTRY
 

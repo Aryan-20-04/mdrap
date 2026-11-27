@@ -7,6 +7,7 @@ import argparse
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 from mdrap.cli import build_parser
 
+
 def generate_cli_reference():
     parser = build_parser()
     sub_action = [a for a in parser._actions if a.dest == "command"][0]
@@ -25,7 +26,9 @@ def generate_cli_reference():
             continue
         seen.add(sp)
         prog = sp.prog.split()[-1]
-        aliases = sorted([k for k, v in sub_action.choices.items() if v is sp and k != prog])
+        aliases = sorted(
+            [k for k, v in sub_action.choices.items() if v is sp and k != prog]
+        )
         cmd_help = help_map.get(prog, sp.description or "")
         commands.append((prog, aliases, sp, cmd_help))
 
@@ -35,7 +38,9 @@ def generate_cli_reference():
     lines = []
     lines.append("# MDRAP CLI Reference Manual")
     lines.append("")
-    lines.append("Complete, authoritative reference for the `mdrap` command-line interface, generated directly from the live `argparse` definition.")
+    lines.append(
+        "Complete, authoritative reference for the `mdrap` command-line interface, generated directly from the live `argparse` definition."
+    )
     lines.append("")
     lines.append(f"Total commands documented: **{len(commands)}**.")
     lines.append("")
@@ -44,8 +49,12 @@ def generate_cli_reference():
     lines.append("| Flag | Description |")
     lines.append("| --- | --- |")
     lines.append("| `--json` | Output structured JSON instead of formatted tables. |")
-    lines.append("| `--pretty` | Force rich terminal UI formatting even in non-interactive/redirected contexts. |")
-    lines.append("| `--no-color`, `--plain` | Suppress ANSI colors and styling (honors `NO_COLOR=1`). |")
+    lines.append(
+        "| `--pretty` | Force rich terminal UI formatting even in non-interactive/redirected contexts. |"
+    )
+    lines.append(
+        "| `--no-color`, `--plain` | Suppress ANSI colors and styling (honors `NO_COLOR=1`). |"
+    )
     lines.append("| `-h`, `--help` | Display help and exit. |")
     lines.append("")
     lines.append("## Command Index")
@@ -90,7 +99,11 @@ def generate_cli_reference():
             opts = ", ".join(f"`{opt}`" for opt in action.option_strings)
             help_text = (action.help or "").strip()
             default_val = action.default
-            if default_val is not None and default_val != "" and not isinstance(default_val, bool):
+            if (
+                default_val is not None
+                and default_val != ""
+                and not isinstance(default_val, bool)
+            ):
                 default_str = f" (default: `{default_val}`)"
             else:
                 default_str = ""
@@ -124,6 +137,7 @@ def generate_cli_reference():
         lines.append("")
 
     return "\n".join(lines)
+
 
 if __name__ == "__main__":
     out_path = Path(__file__).resolve().parent.parent / "docs" / "cli-reference.md"

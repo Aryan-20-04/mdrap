@@ -50,7 +50,9 @@ def test_concurrent_sqlite_readers_no_cursor_collision():
                     try:
                         max_row = store.get_max_rowid("canonical_events")
                         assert max_row > 0
-                        recs = store.query_canonical_after_rowid(max(0, max_row - 10), limit=10)
+                        recs = store.query_canonical_after_rowid(
+                            max(0, max_row - 10), limit=10
+                        )
                         assert isinstance(recs, list)
                         events = store.query_events("BTC-USD", limit=5)
                         assert isinstance(events, list)
@@ -93,7 +95,9 @@ def test_concurrent_sqlite_readers_no_cursor_collision():
                 t.join(timeout=3.0)
 
             # Invariant: ZERO cursor collisions or ProgrammingError
-            assert len(errors) == 0, f"Concurrent SQLite reader/writer encountered errors: {errors}"
+            assert len(errors) == 0, (
+                f"Concurrent SQLite reader/writer encountered errors: {errors}"
+            )
         finally:
             store.close()
 
@@ -124,7 +128,9 @@ def test_bounded_reader_pool_parallel_reads_and_thread_churn(tmp_path):
         # Repeated short-lived workers must reuse bounded idle connections.
         for _ in range(8):
             with ThreadPoolExecutor(max_workers=8) as pool:
-                list(pool.map(lambda _: store.query_events("BTC-USD", limit=1), range(8)))
+                list(
+                    pool.map(lambda _: store.query_events("BTC-USD", limit=1), range(8))
+                )
         stats = store.reader_pool_stats
         assert stats["connections"] <= 16
         assert stats["active"] == 0

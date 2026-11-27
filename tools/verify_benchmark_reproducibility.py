@@ -25,11 +25,15 @@ import time
 from typing import Any
 
 # Ensure project root in sys.path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
+sys.path.insert(
+    0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src"))
+)
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 
-def run_single_benchmark(use_fastpath: bool, seed: int = 42, events: int = 50000) -> dict[str, Any]:
+def run_single_benchmark(
+    use_fastpath: bool, seed: int = 42, events: int = 50000
+) -> dict[str, Any]:
     """Execute cli.py benchmark and parse resulting JSON."""
     label = "hardened" if use_fastpath else "baseline"
     cmd = [
@@ -108,14 +112,22 @@ def compute_series_stats(series: list[float]) -> dict[str, float]:
     }
 
 
-def run_alternating_benchmarks(num_runs: int = 7, events: int = 50000) -> dict[str, Any]:
+def run_alternating_benchmarks(
+    num_runs: int = 7, events: int = 50000
+) -> dict[str, Any]:
     """Execute alternating runs: Baseline (Pure-Python), Hardened (Native C)."""
     baseline_runs: list[dict[str, Any]] = []
     hardened_runs: list[dict[str, Any]] = []
 
-    print(f"\n================================================================================")
-    print(f"MDRAP 6.0.7: Executing {num_runs} Alternating Benchmark Runs per Revision ({events} events each)")
-    print(f"================================================================================\n")
+    print(
+        f"\n================================================================================"
+    )
+    print(
+        f"MDRAP 6.0.7: Executing {num_runs} Alternating Benchmark Runs per Revision ({events} events each)"
+    )
+    print(
+        f"================================================================================\n"
+    )
 
     for i in range(1, num_runs + 1):
         print(f"--- Alternating Pair {i}/{num_runs} ---")
@@ -124,13 +136,17 @@ def run_alternating_benchmarks(num_runs: int = 7, events: int = 50000) -> dict[s
         print(f"  [Run {i}A] Baseline (Pure-Python)... ", end="", flush=True)
         res_b = run_single_benchmark(use_fastpath=False, seed=42, events=events)
         baseline_runs.append(res_b)
-        print(f"Throughput: {res_b['throughput_eps']:,.1f} eps | p50: {res_b['proc_p50_us']} μs | p99: {res_b['proc_p99_us']} μs | Elapsed: {res_b['benchmark_elapsed_s']} s")
+        print(
+            f"Throughput: {res_b['throughput_eps']:,.1f} eps | p50: {res_b['proc_p50_us']} μs | p99: {res_b['proc_p99_us']} μs | Elapsed: {res_b['benchmark_elapsed_s']} s"
+        )
 
         # 2. Run Hardened (Native C fastpath)
         print(f"  [Run {i}B] Hardened (Native C)...   ", end="", flush=True)
         res_h = run_single_benchmark(use_fastpath=True, seed=42, events=events)
         hardened_runs.append(res_h)
-        print(f"Throughput: {res_h['throughput_eps']:,.1f} eps | p50: {res_h['proc_p50_us']} μs | p99: {res_h['proc_p99_us']} μs | Elapsed: {res_h['benchmark_elapsed_s']} s")
+        print(
+            f"Throughput: {res_h['throughput_eps']:,.1f} eps | p50: {res_h['proc_p50_us']} μs | p99: {res_h['proc_p99_us']} μs | Elapsed: {res_h['benchmark_elapsed_s']} s"
+        )
 
     # Aggregate metric series
     def extract(runs: list[dict[str, Any]], key: str) -> list[float]:
@@ -141,30 +157,54 @@ def run_alternating_benchmarks(num_runs: int = 7, events: int = 50000) -> dict[s
         "events_per_run": events,
         "baseline": {
             "runs": baseline_runs,
-            "throughput_eps": compute_series_stats(extract(baseline_runs, "throughput_eps")),
-            "elapsed_s": compute_series_stats(extract(baseline_runs, "benchmark_elapsed_s")),
+            "throughput_eps": compute_series_stats(
+                extract(baseline_runs, "throughput_eps")
+            ),
+            "elapsed_s": compute_series_stats(
+                extract(baseline_runs, "benchmark_elapsed_s")
+            ),
             "proc_p50_us": compute_series_stats(extract(baseline_runs, "proc_p50_us")),
             "proc_p95_us": compute_series_stats(extract(baseline_runs, "proc_p95_us")),
             "proc_p99_us": compute_series_stats(extract(baseline_runs, "proc_p99_us")),
             "proc_max_us": compute_series_stats(extract(baseline_runs, "proc_max_us")),
-            "ingest_p50_us": compute_series_stats(extract(baseline_runs, "ingest_p50_us")),
-            "quality_p50_us": compute_series_stats(extract(baseline_runs, "quality_p50_us")),
-            "reconcile_p50_us": compute_series_stats(extract(baseline_runs, "reconcile_p50_us")),
-            "enqueue_p50_us": compute_series_stats(extract(baseline_runs, "enqueue_p50_us")),
+            "ingest_p50_us": compute_series_stats(
+                extract(baseline_runs, "ingest_p50_us")
+            ),
+            "quality_p50_us": compute_series_stats(
+                extract(baseline_runs, "quality_p50_us")
+            ),
+            "reconcile_p50_us": compute_series_stats(
+                extract(baseline_runs, "reconcile_p50_us")
+            ),
+            "enqueue_p50_us": compute_series_stats(
+                extract(baseline_runs, "enqueue_p50_us")
+            ),
             "max_rss_mb": compute_series_stats(extract(baseline_runs, "max_rss_mb")),
         },
         "hardened": {
             "runs": hardened_runs,
-            "throughput_eps": compute_series_stats(extract(hardened_runs, "throughput_eps")),
-            "elapsed_s": compute_series_stats(extract(hardened_runs, "benchmark_elapsed_s")),
+            "throughput_eps": compute_series_stats(
+                extract(hardened_runs, "throughput_eps")
+            ),
+            "elapsed_s": compute_series_stats(
+                extract(hardened_runs, "benchmark_elapsed_s")
+            ),
             "proc_p50_us": compute_series_stats(extract(hardened_runs, "proc_p50_us")),
             "proc_p95_us": compute_series_stats(extract(hardened_runs, "proc_p95_us")),
             "proc_p99_us": compute_series_stats(extract(hardened_runs, "proc_p99_us")),
             "proc_max_us": compute_series_stats(extract(hardened_runs, "proc_max_us")),
-            "ingest_p50_us": compute_series_stats(extract(hardened_runs, "ingest_p50_us")),
-            "quality_p50_us": compute_series_stats(extract(hardened_runs, "quality_p50_us")),
-            "reconcile_p50_us": compute_series_stats(extract(hardened_runs, "reconcile_p50_us")),
-            "enqueue_p50_us": compute_series_stats(extract(hardened_runs, "enqueue_p50_us")),
+            "ingest_p50_us": compute_series_stats(
+                extract(hardened_runs, "ingest_p50_us")
+            ),
+            "quality_p50_us": compute_series_stats(
+                extract(hardened_runs, "quality_p50_us")
+            ),
+            "reconcile_p50_us": compute_series_stats(
+                extract(hardened_runs, "reconcile_p50_us")
+            ),
+            "enqueue_p50_us": compute_series_stats(
+                extract(hardened_runs, "enqueue_p50_us")
+            ),
             "max_rss_mb": compute_series_stats(extract(hardened_runs, "max_rss_mb")),
         },
     }
@@ -178,18 +218,40 @@ def run_alternating_benchmarks(num_runs: int = 7, events: int = 50000) -> dict[s
     h_p50 = summary["hardened"]["proc_p50_us"]["median"]
     p50_delta = ((h_p50 - b_p50) / b_p50) * 100.0
 
-    print("\n================================================================================")
+    print(
+        "\n================================================================================"
+    )
     print("7-RUN REPRODUCIBILITY SUMMARY SCORECARD (MEDIANS & VARIABILITY)")
-    print("================================================================================")
-    print(f"Metric                       | Baseline (Pure Python)   | Hardened (Native C)      | Delta")
-    print(f"-----------------------------+--------------------------+--------------------------+----------")
-    print(f"Throughput Median (eps)      | {b_tp:12,.1f} (CV: {summary['baseline']['throughput_eps']['cv_pct']:4.1f}%) | {h_tp:12,.1f} (CV: {summary['hardened']['throughput_eps']['cv_pct']:4.1f}%) | {tp_delta:+6.1f}%")
-    print(f"Processing Latency p50 (μs)  | {b_p50:12.1f} (CV: {summary['baseline']['proc_p50_us']['cv_pct']:4.1f}%) | {h_p50:12.1f} (CV: {summary['hardened']['proc_p50_us']['cv_pct']:4.1f}%) | {p50_delta:+6.1f}%")
-    print(f"Processing Latency p95 (μs)  | {summary['baseline']['proc_p95_us']['median']:12.1f}             | {summary['hardened']['proc_p95_us']['median']:12.1f}             | {((summary['hardened']['proc_p95_us']['median'] - summary['baseline']['proc_p95_us']['median']) / summary['baseline']['proc_p95_us']['median']) * 100.0:+6.1f}%")
-    print(f"Processing Latency p99 (μs)  | {summary['baseline']['proc_p99_us']['median']:12.1f}             | {summary['hardened']['proc_p99_us']['median']:12.1f}             | {((summary['hardened']['proc_p99_us']['median'] - summary['baseline']['proc_p99_us']['median']) / summary['baseline']['proc_p99_us']['median']) * 100.0:+6.1f}%")
-    print(f"Quality Stage p50 (μs)       | {summary['baseline']['quality_p50_us']['median']:12.1f}             | {summary['hardened']['quality_p50_us']['median']:12.1f}             | {((summary['hardened']['quality_p50_us']['median'] - summary['baseline']['quality_p50_us']['median']) / summary['baseline']['quality_p50_us']['median']) * 100.0:+6.1f}%")
-    print(f"Max RSS Memory (MB)          | {summary['baseline']['max_rss_mb']['median']:12.1f}             | {summary['hardened']['max_rss_mb']['median']:12.1f}             | {((summary['hardened']['max_rss_mb']['median'] - summary['baseline']['max_rss_mb']['median']) / summary['baseline']['max_rss_mb']['median']) * 100.0:+6.1f}%")
-    print(f"================================================================================\n")
+    print(
+        "================================================================================"
+    )
+    print(
+        f"Metric                       | Baseline (Pure Python)   | Hardened (Native C)      | Delta"
+    )
+    print(
+        f"-----------------------------+--------------------------+--------------------------+----------"
+    )
+    print(
+        f"Throughput Median (eps)      | {b_tp:12,.1f} (CV: {summary['baseline']['throughput_eps']['cv_pct']:4.1f}%) | {h_tp:12,.1f} (CV: {summary['hardened']['throughput_eps']['cv_pct']:4.1f}%) | {tp_delta:+6.1f}%"
+    )
+    print(
+        f"Processing Latency p50 (μs)  | {b_p50:12.1f} (CV: {summary['baseline']['proc_p50_us']['cv_pct']:4.1f}%) | {h_p50:12.1f} (CV: {summary['hardened']['proc_p50_us']['cv_pct']:4.1f}%) | {p50_delta:+6.1f}%"
+    )
+    print(
+        f"Processing Latency p95 (μs)  | {summary['baseline']['proc_p95_us']['median']:12.1f}             | {summary['hardened']['proc_p95_us']['median']:12.1f}             | {((summary['hardened']['proc_p95_us']['median'] - summary['baseline']['proc_p95_us']['median']) / summary['baseline']['proc_p95_us']['median']) * 100.0:+6.1f}%"
+    )
+    print(
+        f"Processing Latency p99 (μs)  | {summary['baseline']['proc_p99_us']['median']:12.1f}             | {summary['hardened']['proc_p99_us']['median']:12.1f}             | {((summary['hardened']['proc_p99_us']['median'] - summary['baseline']['proc_p99_us']['median']) / summary['baseline']['proc_p99_us']['median']) * 100.0:+6.1f}%"
+    )
+    print(
+        f"Quality Stage p50 (μs)       | {summary['baseline']['quality_p50_us']['median']:12.1f}             | {summary['hardened']['quality_p50_us']['median']:12.1f}             | {((summary['hardened']['quality_p50_us']['median'] - summary['baseline']['quality_p50_us']['median']) / summary['baseline']['quality_p50_us']['median']) * 100.0:+6.1f}%"
+    )
+    print(
+        f"Max RSS Memory (MB)          | {summary['baseline']['max_rss_mb']['median']:12.1f}             | {summary['hardened']['max_rss_mb']['median']:12.1f}             | {((summary['hardened']['max_rss_mb']['median'] - summary['baseline']['max_rss_mb']['median']) / summary['baseline']['max_rss_mb']['median']) * 100.0:+6.1f}%"
+    )
+    print(
+        f"================================================================================\n"
+    )
 
     return summary
 
@@ -199,4 +261,6 @@ if __name__ == "__main__":
     os.makedirs("benchmarks", exist_ok=True)
     with open("benchmarks/alternating_benchmark_reproducibility.json", "w") as f:
         json.dump(summary, f, indent=2)
-    print("Benchmark results saved to benchmarks/alternating_benchmark_reproducibility.json")
+    print(
+        "Benchmark results saved to benchmarks/alternating_benchmark_reproducibility.json"
+    )

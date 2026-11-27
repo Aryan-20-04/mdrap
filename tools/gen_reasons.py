@@ -3,6 +3,7 @@
 Reads `src/mdrap/rules.def` and ensures `src/mdrap/models.py` and `src/mdrap/fastpath.c` remain in
 perfect synchronization with the canonical X-macro definitions.
 """
+
 import argparse
 import os
 import re
@@ -28,7 +29,12 @@ def parse_rules_def(rules_path: str):
     with open(rules_path, "r", encoding="utf-8") as f:
         for line_no, line in enumerate(f, 1):
             line = line.strip()
-            if not line or line.startswith("/*") or line.startswith("*") or line.startswith("//"):
+            if (
+                not line
+                or line.startswith("/*")
+                or line.startswith("*")
+                or line.startswith("//")
+            ):
                 continue
             m = RULE_REGEX.search(line)
             if m:
@@ -38,7 +44,9 @@ def parse_rules_def(rules_path: str):
                 if name in seen_names:
                     raise ValueError(f"Duplicate rule name '{name}' at line {line_no}")
                 if bit in seen_bits:
-                    raise ValueError(f"Duplicate rule bit '{bit}' for '{name}' at line {line_no}")
+                    raise ValueError(
+                        f"Duplicate rule bit '{bit}' for '{name}' at line {line_no}"
+                    )
 
                 if bit < 0 or bit > USER_BIT_MAX:
                     raise ValueError(f"Bit {bit} out of range [0, 63] for '{name}'")
@@ -74,7 +82,9 @@ def check_sync(rules, repo_root: str) -> list[str]:
             for name, bit, desc in rules:
                 expected_assign = f"{name} ="
                 if expected_assign not in enum_block:
-                    errors.append(f"Rule '{name}' defined in rules.def is missing from models.py Reason enum")
+                    errors.append(
+                        f"Rule '{name}' defined in rules.def is missing from models.py Reason enum"
+                    )
 
     # 2. Check fastpath.c includes rules.def
     if not os.path.exists(fastpath_c_path):
@@ -82,8 +92,11 @@ def check_sync(rules, repo_root: str) -> list[str]:
     else:
         with open(fastpath_c_path, "r", encoding="utf-8") as f:
             c_content = f.read()
-        if '#include "rules.def"' not in c_content and '#include \"rules.def\"' not in c_content:
-            errors.append("src/mdrap/fastpath.c does not #include \"rules.def\"")
+        if (
+            '#include "rules.def"' not in c_content
+            and '#include "rules.def"' not in c_content
+        ):
+            errors.append('src/mdrap/fastpath.c does not #include "rules.def"')
 
     return errors
 
@@ -112,7 +125,9 @@ def sync_models(rules, repo_root: str):
 
 def main():
     parser = argparse.ArgumentParser(description="MDRAP Rule Generator & Checker")
-    parser.add_argument("--check", action="store_true", help="Check for drift without modifying files")
+    parser.add_argument(
+        "--check", action="store_true", help="Check for drift without modifying files"
+    )
     args = parser.parse_args()
 
     repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -127,12 +142,16 @@ def main():
     if args.check:
         errors = check_sync(rules, repo_root)
         if errors:
-            print("[DRIFT DETECTED] The following rule synchronization issues were found:")
+            print(
+                "[DRIFT DETECTED] The following rule synchronization issues were found:"
+            )
             for err in errors:
                 print(f"  - {err}")
             sys.exit(1)
         else:
-            print(f"[OK] rules.def ({len(rules)} rules) is in complete sync with models.py and fastpath.c")
+            print(
+                f"[OK] rules.def ({len(rules)} rules) is in complete sync with models.py and fastpath.c"
+            )
             sys.exit(0)
     else:
         sync_models(rules, repo_root)

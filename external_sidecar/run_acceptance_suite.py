@@ -24,7 +24,9 @@ SIDECAR_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SIDECAR_DIR)
 
 os.environ["MDRAP_API_KEY_SALT"] = "external_acceptance_test_salt_12345"
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s"
+)
 logger = logging.getLogger("acceptance_suite")
 
 from consumer_app import IndependentSidecarConsumer
@@ -155,8 +157,12 @@ def test_dual_interface_ingestion(
             f"Torn Reads: {stats['shm']['torn_reads']} | Seq Gaps: {stats['shm']['seq_gaps']} | Consistency Passed: {stats['consistency']['passed']}"
         )
 
-        assert stats["shm"]["total_events"] > 500, f"Expected > 500 SHM events, got {stats['shm']['total_events']}"
-        assert stats["tcp"]["ticks"] > 500, f"Expected > 500 TCP ticks, got {stats['tcp']['ticks']}"
+        assert stats["shm"]["total_events"] > 500, (
+            f"Expected > 500 SHM events, got {stats['shm']['total_events']}"
+        )
+        assert stats["tcp"]["ticks"] > 500, (
+            f"Expected > 500 TCP ticks, got {stats['tcp']['ticks']}"
+        )
         assert stats["shm"]["torn_reads"] == 0, "Torn reads detected!"
         assert stats["shm"]["seq_gaps"] == 0, "Sequence gaps detected in SHM!"
         assert stats["consistency"]["failed"] == 0, "L1/L2 consistency failure!"
@@ -196,11 +202,11 @@ def test_protocol_and_malformed_fuzz(
         fuzz_tests_passed = 0
         fuzz_payloads = [
             b"GARBAGE_NON_PROTOCOL_COMMAND\n",
-            b"\x00\xFF\xFE\xFD" * 256 + b"\n",  # Binary garbage
+            b"\x00\xff\xfe\xfd" * 256 + b"\n",  # Binary garbage
             b"FORMAT " + b"A" * 10000 + b"\n",  # Oversized command
-            b"SUB " + b"X" * 50000 + b"\n",     # Buffer exhaustion attack
-            b"REPLAY -99999 999999999\n",        # Invalid range attack
-            b"AUTH '; DROP TABLE events; --\n", # SQL injection attempt
+            b"SUB " + b"X" * 50000 + b"\n",  # Buffer exhaustion attack
+            b"REPLAY -99999 999999999\n",  # Invalid range attack
+            b"AUTH '; DROP TABLE events; --\n",  # SQL injection attempt
             b'{"malformed": true, "unclosed": \n',
         ]
 
@@ -298,10 +304,13 @@ def test_failure_and_recovery_scenarios(
 
         # C. Slow Consumer Overrun & Lap Handling (ring buffer wraparound)
         from mdrap.shm import SHMWriter
+
         lap_shm_name = f"{shm_name}_lap_test"
         writer_lap = SHMWriter(name=lap_shm_name, slot_count=64)
         for i in range(1, 80):
-            writer_lap.write_tick(seq=i, symbol="BTC/USD", source="BINANCE", price=50000.0, size=1.0)
+            writer_lap.write_tick(
+                seq=i, symbol="BTC/USD", source="BINANCE", price=50000.0, size=1.0
+            )
         reader_lap = SHMReader(name=lap_shm_name)
         # Attempt to read slot 2 when head is 80 (80 - 2 = 78 > 64 -> lapped!)
         lapped_slot = reader_lap.read_slot(2)
@@ -330,9 +339,7 @@ def test_failure_and_recovery_scenarios(
             s["shm"]["total_events"] > 100 and s["shm"]["torn_reads"] == 0
             for s in multi_stats
         )
-        results["multiple_independent_consumers"] = (
-            "PASS" if all_passed else "FAIL"
-        )
+        results["multiple_independent_consumers"] = "PASS" if all_passed else "FAIL"
 
         # E. Publisher Restart and Epoch Change Recovery
         # Consumer is running while publisher 1 is running
@@ -363,7 +370,9 @@ def test_failure_and_recovery_scenarios(
             # Verify consumer detected restart/reattached and resumed consuming
             c_stats2 = consumer.stats()
             consumer.stop()
-            new_events = c_stats2["shm"]["total_events"] - c_stats1["shm"]["total_events"]
+            new_events = (
+                c_stats2["shm"]["total_events"] - c_stats1["shm"]["total_events"]
+            )
             results["publisher_restart_epoch_recovery"] = (
                 "PASS"
                 if (new_events > 0 or c_stats2["shm"]["reconnects"] > 0)
@@ -441,16 +450,10 @@ def test_bounded_reliability_soak(
             f"Torn Reads: {stats['shm']['torn_reads']} | Seq Gaps: {stats['shm']['seq_gaps']} | Overruns: {stats['shm']['laps']}"
         )
 
-        assert (
-            total_shm > 2000
-        ), f"Expected > 2000 SHM events, got {total_shm}"
-        assert (
-            total_tcp > 2000
-        ), f"Expected > 2000 TCP ticks, got {total_tcp}"
+        assert total_shm > 2000, f"Expected > 2000 SHM events, got {total_shm}"
+        assert total_tcp > 2000, f"Expected > 2000 TCP ticks, got {total_tcp}"
         assert stats["shm"]["torn_reads"] == 0, "Torn reads detected during soak!"
-        assert (
-            abs(rss_end - rss_start) < 25.0
-        ), "Excessive memory growth detected!"
+        assert abs(rss_end - rss_start) < 25.0, "Excessive memory growth detected!"
 
         return {
             "status": "PASS",
@@ -513,7 +516,9 @@ def main():
         json.dump(results, f, indent=2)
 
     logger.info("=====================================================================")
-    logger.info(f"ALL ACCEPTANCE TESTS COMPLETED SUCCESSFULLY! Results saved to {out_file}")
+    logger.info(
+        f"ALL ACCEPTANCE TESTS COMPLETED SUCCESSFULLY! Results saved to {out_file}"
+    )
     logger.info("=====================================================================")
 
 

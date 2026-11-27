@@ -2,6 +2,7 @@
 Script to materialize all 9 multi-agent audit reports into audit/v5.3.0/agents/
 Each agent gets FINDINGS.md, EVIDENCE.md, and RECOMMENDATIONS.md.
 """
+
 from pathlib import Path
 
 BASE = Path(r"c:\Users\KIIT0001\Desktop\Projects\mdrap\audit\v5.3.0\agents")
@@ -169,7 +170,7 @@ Audited pipeline data flow, module dependency graph, tier separation, entry poin
    - Remove dead code `_CORE_MODULES` in `src/mdrap_build.py`.
 7. **Fix Shadowed Struct in `src/mdrap/eurex.py`**:
    - Delete dead line 27.
-"""
+""",
     },
     "market_data": {
         "title": "Agent 2: Market Data & Live Feed Integrity",
@@ -310,7 +311,7 @@ Audited all market data ingestion paths: live WebSocket streams, REST polling co
    - Use `resolve_venue_symbols(symbol)["kraken"]` rather than naive string slicing.
 8. **Add Optional Live Network Integration Tests (MED-03)**:
    - Add `@pytest.mark.live_network` tests for public endpoints.
-"""
+""",
     },
     "performance": {
         "title": "Agent 3: Performance & Latency Engineering",
@@ -420,7 +421,7 @@ Audited benchmark infrastructure, hot path micro-optimizations, throughput claim
 ## Priority 2 (Memory Bounds)
 5. **Bound `_inst_map` in `FastQualityEngine` (F-PERF-06)**:
    - Apply LRU capacity limit matching `QualityEngine.max_tracked_instruments` (100,000).
-"""
+""",
     },
     "native_concurrency": {
         "title": "Agent 4: Native C, SIMD & Concurrency",
@@ -523,7 +524,7 @@ Audited C source files (`fastpath.c`, `mdrap_core.c`, `_fastpath_c.c`), build sy
    - Ensure clean error handling before returning PyObjects.
 7. **Thread-Local Scratch Arrays in `FastQualityEngine` (F-NAT-07)**:
    - Use `threading.local()` for ctypes scratch buffers or lock `evaluate_batch()`.
-"""
+""",
     },
     "persistence": {
         "title": "Agent 5: Persistence, WAL & Data Integrity",
@@ -627,7 +628,7 @@ Audited `storage.py`, `storage_schema.py`, `ingestlog.py`, `journal.py`, `journa
 ## Priority 2 (Lineage & Schema)
 5. **Wire Lineage Emission in `Engine` (F-PER-05)**:
    - Persist lineage records during `Engine` projection updates.
-"""
+""",
     },
     "security": {
         "title": "Agent 6: Security & Threat Modeling",
@@ -723,7 +724,7 @@ Audited API security, secrets management, cryptographic algorithms, injection ri
    - Probe database via `read_conn` or cached heartbeat rather than acquiring write lock.
 6. **Harden SHM Permissions Creation (F-SEC-05)**:
    - Wrap creation with `umask(0o077)` to guarantee atomic 0600 mode.
-"""
+""",
     },
     "testing_release": {
         "title": "Agent 7: Testing, Build & Release Engineering",
@@ -816,7 +817,7 @@ Audited test suite architecture (304 files, ~1,735 tests), golden oracle parity 
 6. **Run Full Test Suite Under Pure Python Fallback in CI (F-TST-07)**.
 7. **Harden Shared Memory Test Lifecycle (F-TST-06)**:
    - Wrap SHM allocations in fixtures with deterministic unlink.
-"""
+""",
     },
     "quantitative_risk": {
         "title": "Agent 8: Quantitative, Trading Risk & Strategy",
@@ -908,7 +909,7 @@ Audited market microstructure engines, algorithmic strategy SDK, risk management
    - Implement true sliding window or rename to `ExpandingVolatilityTracker`.
 5. **Bridge Pre-Trade Risk to Core Engine (F-QNT-03)**:
    - Expose active order validation interface in core.
-"""
+""",
     },
     "adversarial": {
         "title": "Agent 9: Independent Adversarial Reviewer",
@@ -1006,25 +1007,27 @@ Audited all public claims against ground-truth source code, benchmark outputs, a
 7. **Delete Dead Modules (F-ADV-08)**:
    - Remove `trading_cli.py`, `shm_drainer.py`, `scheduler.py`, `journal.py`.
 8. **Remove Hardcoded Demo Token (F-ADV-09)**.
-"""
-    }
+""",
+    },
 }
+
 
 def main():
     for area, data in AGENTS.items():
         area_dir = BASE / area
         area_dir.mkdir(parents=True, exist_ok=True)
-        
+
         findings_path = area_dir / "FINDINGS.md"
         findings_path.write_text(data["findings"].strip() + "\\n", encoding="utf-8")
-        
+
         evidence_path = area_dir / "EVIDENCE.md"
         evidence_path.write_text(data["evidence"].strip() + "\\n", encoding="utf-8")
-        
+
         recs_path = area_dir / "RECOMMENDATIONS.md"
         recs_path.write_text(data["recommendations"].strip() + "\\n", encoding="utf-8")
-        
+
         print(f"Materialized {area}: FINDINGS.md, EVIDENCE.md, RECOMMENDATIONS.md")
+
 
 if __name__ == "__main__":
     main()

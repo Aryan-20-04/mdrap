@@ -36,7 +36,9 @@ def run_fanout_stress_campaign():
     # 1. Concurrency Tiers (1, 25, 50, 100 clients)
     for n_clients in [1, 25, 50, 100]:
         # Register consumers with adequate buffer capacity
-        mgr = AsyncFanoutManager(max_buffer_per_client=10000, eviction_drop_threshold=5000)
+        mgr = AsyncFanoutManager(
+            max_buffer_per_client=10000, eviction_drop_threshold=5000
+        )
         cids = [f"client_{i:03d}" for i in range(n_clients)]
         for cid in cids:
             mgr.register_consumer(cid)
@@ -104,7 +106,9 @@ def run_fanout_stress_campaign():
                 "p99": round(latencies_us[int(n * 0.99)], 2),
             },
             "frames_delivered": total_delivered,
-            "delivery_rate_percent": round((total_delivered / (num_events * n_clients)) * 100.0, 2),
+            "delivery_rate_percent": round(
+                (total_delivered / (num_events * n_clients)) * 100.0, 2
+            ),
         }
         stress_results["tiers"][f"{n_clients}_clients"] = tier_data
         print(
@@ -114,7 +118,9 @@ def run_fanout_stress_campaign():
 
     # 2. Noisy Neighbor Mixed Workload (90 fast clients, 10 stalled clients)
     print("\nRunning Noisy-Neighbor Mixed Workload (90 fast, 10 stalled)...")
-    mgr_mixed = AsyncFanoutManager(max_buffer_per_client=5000, eviction_drop_threshold=25)
+    mgr_mixed = AsyncFanoutManager(
+        max_buffer_per_client=5000, eviction_drop_threshold=25
+    )
     fast_ids = [f"fast_{i:02d}" for i in range(90)]
     slow_ids = [f"slow_{i:02d}" for i in range(10)]
 
@@ -180,6 +186,7 @@ def run_fanout_stress_campaign():
     # 3. Continuous Soak Testing Run (25,000 events stream with memory tracking)
     print("\nRunning Continuous Fan-Out Soak Test (25,000 events)...")
     import tracemalloc
+
     tracemalloc.start()
     mem_start_bytes = tracemalloc.get_traced_memory()[0]
 
@@ -244,13 +251,13 @@ def run_fanout_stress_campaign():
 The asynchronous fan-out engine maintains bounded memory and predictable throughput over sustained streaming without unbounded queue accumulation or resource leakage.
 """
 
-    out_soak = os.path.join(
-        _REPO_ROOT, "audit", "phase9", "fanout_soak_results.md"
-    )
+    out_soak = os.path.join(_REPO_ROOT, "audit", "phase9", "fanout_soak_results.md")
     with open(out_soak, "w", encoding="utf-8") as f:
         f.write(soak_markdown)
     print(f"[OK] Saved fanout soak results to: {out_soak}")
-    print(f"Soak completed: {soak_events_total} events in {soak_duration:.2f}s ({soak_rate_eps:.1f} eps) | Mem Delta: {mem_delta_mb:.3f} MB")
+    print(
+        f"Soak completed: {soak_events_total} events in {soak_duration:.2f}s ({soak_rate_eps:.1f} eps) | Mem Delta: {mem_delta_mb:.3f} MB"
+    )
 
     return stress_results
 

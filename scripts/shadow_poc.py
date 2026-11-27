@@ -26,7 +26,9 @@ from mdrap.models import RawEvent
 from mdrap.shadow import ShadowModeEvaluator, ShadowEvaluationResult
 
 
-def generate_synthetic_poc_feed(count: int = 10000) -> tuple[list[RawEvent], dict[str, dict]]:
+def generate_synthetic_poc_feed(
+    count: int = 10000,
+) -> tuple[list[RawEvent], dict[str, dict]]:
     """Generate a realistic test stream with injected market anomalies for PoC demonstration."""
     import random
 
@@ -86,7 +88,10 @@ def generate_synthetic_poc_feed(count: int = 10000) -> tuple[list[RawEvent], dic
                 "price": 65000.0,
                 "quantity": 0.5,
             }
-            baseline[raw_id] = {"is_anomaly": True, "reason": "Stale historical timestamp"}
+            baseline[raw_id] = {
+                "is_anomaly": True,
+                "reason": "Stale historical timestamp",
+            }
         else:
             p = {
                 "instrument": inst,
@@ -131,9 +136,7 @@ def parse_jsonl_stream(filepath: str, limit: int | None = None) -> list[RawEvent
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Run MDRAP Shadow-Mode PoC Evaluation"
-    )
+    parser = argparse.ArgumentParser(description="Run MDRAP Shadow-Mode PoC Evaluation")
     parser.add_argument(
         "--input",
         type=str,
@@ -176,7 +179,9 @@ def main() -> None:
         print(f"[*] Loading raw event stream from: {args.input}")
         events = parse_jsonl_stream(args.input, limit=args.limit)
     else:
-        print("[*] No input file specified. Generating 10,000-event synthetic demo stream...")
+        print(
+            "[*] No input file specified. Generating 10,000-event synthetic demo stream..."
+        )
         events, baseline_tags = generate_synthetic_poc_feed(count=args.limit or 10000)
 
     print(f"[*] Starting shadow evaluation on {len(events):,} events...")

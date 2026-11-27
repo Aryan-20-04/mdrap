@@ -27,7 +27,9 @@ def test_exporter_writes_and_parses_jsonl():
 
         # Record health snapshots
         for i in range(5):
-            exporter.record_health({"status": "CONNECTED", "eps": 500.0 + i, "rss_mb": 42.1})
+            exporter.record_health(
+                {"status": "CONNECTED", "eps": 500.0 + i, "rss_mb": 42.1}
+            )
 
         # Wait for flush and stop
         time.sleep(0.3)
@@ -181,7 +183,9 @@ def test_exporter_midstream_write_oserror(monkeypatch):
         assert event_seqs == [0, 3, 4, 5]
 
         with real_open(exporter.health_file, "r", encoding="utf-8") as f:
-            health_idxs = [json.loads(line)["data"]["idx"] for line in f if line.strip()]
+            health_idxs = [
+                json.loads(line)["data"]["idx"] for line in f if line.strip()
+            ]
         assert health_idxs == [0, 1]
 
 
@@ -340,7 +344,9 @@ def test_exporter_slow_fsync_exceeding_5s_drains_completely(monkeypatch):
         monkeypatch.setattr(builtins, "open", patched_open)
 
         exporter.start()
-        for i in range(50):  # 50 * 0.11s = 5.5s write work (> 5.0s legacy stop join timeout)
+        for i in range(
+            50
+        ):  # 50 * 0.11s = 5.5s write work (> 5.0s legacy stop join timeout)
             exporter.record_event({"seq": i})
         exporter.record_health({"status": "CONNECTED"})
 
@@ -371,7 +377,9 @@ def test_exporter_slow_fsync_exceeding_5s_drains_completely(monkeypatch):
 def test_exporter_stop_timeout_reports_incomplete_drain(monkeypatch):
     """If stop(timeout_s=...) expires early, return explicit incomplete status or raise TimeoutError."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        exporter = ObserverExporter(output_dir=tmpdir, flush_interval_s=60.0, queue_size=200)
+        exporter = ObserverExporter(
+            output_dir=tmpdir, flush_interval_s=60.0, queue_size=200
+        )
         real_open = builtins.open
         first_started = threading.Event()
         release_blocker = threading.Event()
@@ -429,6 +437,7 @@ def test_exporter_stop_timeout_reports_incomplete_drain(monkeypatch):
 
 def test_exporter_fsync_and_close_failures_truthful_accounting(monkeypatch):
     """fsync/close OSErrors must increment write_errors without advancing fsynced counters."""
+
     def failing_fsync(fd: int) -> None:
         raise OSError("Simulated fsync OSError")
 
@@ -495,7 +504,9 @@ def test_exporter_full_accounting_reconciliation(monkeypatch):
         assert res["submitted_records"] == 17
         assert res["accepted_records"] == 10
         assert res["dropped_records"] == 7
-        assert res["submitted_records"] == res["accepted_records"] + res["dropped_records"]
+        assert (
+            res["submitted_records"] == res["accepted_records"] + res["dropped_records"]
+        )
         assert res["failed_records"] == 2
         assert res["written_records"] == 8
         assert res["accepted_records"] == (

@@ -26,8 +26,17 @@ import time
 from typing import Any, Dict, List, Set
 
 # Ensure paths
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "external_sidecar", "mdrap_observer")))
+sys.path.insert(
+    0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src"))
+)
+sys.path.insert(
+    0,
+    os.path.abspath(
+        os.path.join(
+            os.path.dirname(__file__), "..", "external_sidecar", "mdrap_observer"
+        )
+    ),
+)
 
 from mdrap.models import RawEvent
 from mdrap.service import MarketDataDaemon
@@ -39,6 +48,7 @@ from observer.state import ObserverState, VENUES
 def get_process_rss_mb() -> float:
     try:
         import psutil
+
         return psutil.Process(os.getpid()).memory_info().rss / (1024.0 * 1024.0)
     except Exception:
         return 0.0
@@ -51,7 +61,9 @@ def run_soak_drill(
     out_json_path: str = "audit/benchmark/phase2/raw/soak_30min.json",
 ) -> Dict[str, Any]:
     print("=" * 80)
-    print(f" MDRAP Phase 2 Soak Harness: duration={duration_s:.1f}s ({duration_s/60:.1f}m), target={target_eps:.0f} EPS")
+    print(
+        f" MDRAP Phase 2 Soak Harness: duration={duration_s:.1f}s ({duration_s / 60:.1f}m), target={target_eps:.0f} EPS"
+    )
     print("=" * 80)
 
     os.environ["MDRAP_API_KEY_SALT"] = "soak_bench_salt_phase2_98765"
@@ -74,7 +86,9 @@ def run_soak_drill(
     port = daemon.port
 
     state = ObserverState()
-    exporter = ObserverExporter(output_dir=export_dir, flush_interval_s=0.25, queue_size=100000)
+    exporter = ObserverExporter(
+        output_dir=export_dir, flush_interval_s=0.25, queue_size=100000
+    )
     exporter.start()
 
     # Event tracking and reconciliation data structures
@@ -114,7 +128,9 @@ def run_soak_drill(
                 all_latencies_us.append(lat)
                 window_latencies.append(lat)
 
-    client = ObserverClient(mode="tcp", host="127.0.0.1", port=port, on_event_callback=on_event)
+    client = ObserverClient(
+        mode="tcp", host="127.0.0.1", port=port, on_event_callback=on_event
+    )
     client.start()
     time.sleep(0.3)
 
@@ -134,6 +150,7 @@ def run_soak_drill(
 
     try:
         import psutil
+
         proc = psutil.Process(os.getpid())
         proc.cpu_percent(interval=None)  # prime cpu percent
     except Exception:
@@ -149,15 +166,23 @@ def run_soak_drill(
                 break
 
             # Controlled interruption injection if configured
-            if interruption_at_s and elapsed >= interruption_at_s and not interruption_occurred:
-                print(f"\n  [INJECT] Inducing controlled TCP link reset at T+{elapsed:.1f}s...")
+            if (
+                interruption_at_s
+                and elapsed >= interruption_at_s
+                and not interruption_occurred
+            ):
+                print(
+                    f"\n  [INJECT] Inducing controlled TCP link reset at T+{elapsed:.1f}s..."
+                )
                 if client._current_client and client._current_client.sock:
                     try:
                         client._current_client.sock.close()
                     except Exception:
                         pass
                 interruption_occurred = True
-                print("  [INJECT] Client socket closed. Verifying automatic reconnect...")
+                print(
+                    "  [INJECT] Client socket closed. Verifying automatic reconnect..."
+                )
 
             # Inject batch
             for _ in range(batch_size):
@@ -203,7 +228,9 @@ def run_soak_drill(
                     "elapsed_s": round(elapsed, 1),
                     "events_sent": window_sent,
                     "events_received": window_received,
-                    "throughput_eps": round(window_received / max(0.001, w_duration), 1),
+                    "throughput_eps": round(
+                        window_received / max(0.001, w_duration), 1
+                    ),
                     "cpu_percent": round(cpu_pct, 1),
                     "rss_mb": round(rss_mb, 2),
                     "queue_depth_instant": exporter._queue.qsize(),
@@ -212,12 +239,24 @@ def run_soak_drill(
                     "write_errors": exporter.write_errors,
                     "reconnect_count": client.reconnect_count,
                     "latency_us": {
-                        "p50": round(window_latencies[int(wn * 0.50)], 2) if wn > 1 else 0.0,
-                        "p90": round(window_latencies[int(wn * 0.90)], 2) if wn > 1 else 0.0,
-                        "p95": round(window_latencies[int(wn * 0.95)], 2) if wn > 1 else 0.0,
-                        "p99": round(window_latencies[int(wn * 0.99)], 2) if wn > 1 else 0.0,
-                        "p99_9": round(window_latencies[int(wn * 0.999)], 2) if wn > 1 else 0.0,
-                        "max": round(window_latencies[-1], 2) if window_latencies else 0.0,
+                        "p50": round(window_latencies[int(wn * 0.50)], 2)
+                        if wn > 1
+                        else 0.0,
+                        "p90": round(window_latencies[int(wn * 0.90)], 2)
+                        if wn > 1
+                        else 0.0,
+                        "p95": round(window_latencies[int(wn * 0.95)], 2)
+                        if wn > 1
+                        else 0.0,
+                        "p99": round(window_latencies[int(wn * 0.99)], 2)
+                        if wn > 1
+                        else 0.0,
+                        "p99_9": round(window_latencies[int(wn * 0.999)], 2)
+                        if wn > 1
+                        else 0.0,
+                        "max": round(window_latencies[-1], 2)
+                        if window_latencies
+                        else 0.0,
                     },
                     "stream_gaps": state.stream_health.gaps,
                     "feed_gaps": sum(v.feed_gaps for v in state.health.values()),
@@ -250,7 +289,10 @@ def run_soak_drill(
                 next_batch_time = time.perf_counter()
 
     finally:
-        print("\n[SOAK] Injection phase complete. Allowing queues and socket to drain...", flush=True)
+        print(
+            "\n[SOAK] Injection phase complete. Allowing queues and socket to drain...",
+            flush=True,
+        )
         time.sleep(1.5)
         client.stop()
         daemon.stop()
@@ -265,35 +307,53 @@ def run_soak_drill(
         w_duration = max(0.001, t_total - (current_minute - 1) * 60.0)
         window_latencies.sort()
         wn = len(window_latencies) or 1
-        minute_summaries.append({
-            "minute": current_minute,
-            "elapsed_s": round(t_total, 1),
-            "events_sent": window_sent,
-            "events_received": window_received,
-            "throughput_eps": round(window_received / w_duration, 1),
-            "cpu_percent": round(proc.cpu_percent(interval=None) if proc else 0.0, 1),
-            "rss_mb": round(final_rss, 2),
-            "queue_depth_instant": exporter._queue.qsize(),
-            "queue_depth_max": max_queue_depth_observed,
-            "dropped_records": exporter.dropped_records,
-            "write_errors": exporter.write_errors,
-            "reconnect_count": client.reconnect_count,
-            "latency_us": {
-                "p50": round(window_latencies[int(wn * 0.50)], 2) if wn > 1 else 0.0,
-                "p90": round(window_latencies[int(wn * 0.90)], 2) if wn > 1 else 0.0,
-                "p95": round(window_latencies[int(wn * 0.95)], 2) if wn > 1 else 0.0,
-                "p99": round(window_latencies[int(wn * 0.99)], 2) if wn > 1 else 0.0,
-                "p99_9": round(window_latencies[int(wn * 0.999)], 2) if wn > 1 else 0.0,
-                "max": round(window_latencies[-1], 2) if window_latencies else 0.0,
-            },
-            "stream_gaps": state.stream_health.gaps,
-            "feed_gaps": sum(v.feed_gaps for v in state.health.values()),
-        })
+        minute_summaries.append(
+            {
+                "minute": current_minute,
+                "elapsed_s": round(t_total, 1),
+                "events_sent": window_sent,
+                "events_received": window_received,
+                "throughput_eps": round(window_received / w_duration, 1),
+                "cpu_percent": round(
+                    proc.cpu_percent(interval=None) if proc else 0.0, 1
+                ),
+                "rss_mb": round(final_rss, 2),
+                "queue_depth_instant": exporter._queue.qsize(),
+                "queue_depth_max": max_queue_depth_observed,
+                "dropped_records": exporter.dropped_records,
+                "write_errors": exporter.write_errors,
+                "reconnect_count": client.reconnect_count,
+                "latency_us": {
+                    "p50": round(window_latencies[int(wn * 0.50)], 2)
+                    if wn > 1
+                    else 0.0,
+                    "p90": round(window_latencies[int(wn * 0.90)], 2)
+                    if wn > 1
+                    else 0.0,
+                    "p95": round(window_latencies[int(wn * 0.95)], 2)
+                    if wn > 1
+                    else 0.0,
+                    "p99": round(window_latencies[int(wn * 0.99)], 2)
+                    if wn > 1
+                    else 0.0,
+                    "p99_9": round(window_latencies[int(wn * 0.999)], 2)
+                    if wn > 1
+                    else 0.0,
+                    "max": round(window_latencies[-1], 2) if window_latencies else 0.0,
+                },
+                "stream_gaps": state.stream_health.gaps,
+                "feed_gaps": sum(v.feed_gaps for v in state.health.values()),
+            }
+        )
 
     # Reconcile event IDs
     missing_ids = producer_sent_ids - received_event_ids
     unexpected_ids = received_event_ids - producer_sent_ids
-    reconciliation_matched = (len(missing_ids) == 0 and len(unexpected_ids) == 0 and producer_sent == received_count)
+    reconciliation_matched = (
+        len(missing_ids) == 0
+        and len(unexpected_ids) == 0
+        and producer_sent == received_count
+    )
 
     # 10-minute memory trend summaries
     memory_10min_trends = []
@@ -305,13 +365,15 @@ def run_soak_drill(
             m_end = chunk[-1]["rss_mb"]
             growth = m_end - m_start
             rate = growth / max(1, len(chunk))
-            memory_10min_trends.append({
-                "window": f"Min {chunk[0]['minute']} - Min {chunk[-1]['minute']}",
-                "start_rss_mb": m_start,
-                "end_rss_mb": m_end,
-                "net_change_mb": round(growth, 2),
-                "growth_rate_mb_per_min": round(rate, 3),
-            })
+            memory_10min_trends.append(
+                {
+                    "window": f"Min {chunk[0]['minute']} - Min {chunk[-1]['minute']}",
+                    "start_rss_mb": m_start,
+                    "end_rss_mb": m_end,
+                    "net_change_mb": round(growth, 2),
+                    "growth_rate_mb_per_min": round(rate, 3),
+                }
+            )
 
     # Latency drift: compare first 10 minutes vs final 10 minutes
     initial_10m_lats = []
@@ -387,7 +449,9 @@ def run_soak_drill(
             "stream_duplicates": state.stream_health.duplicates,
             "feed_gaps": sum(v.feed_gaps for v in state.health.values()),
             "feed_duplicates": sum(v.feed_duplicates for v in state.health.values()),
-            "feed_out_of_order": sum(v.feed_out_of_order for v in state.health.values()),
+            "feed_out_of_order": sum(
+                v.feed_out_of_order for v in state.health.values()
+            ),
         },
         "queues_and_backpressure": {
             "max_queue_depth_observed": max_queue_depth_observed,
@@ -397,14 +461,18 @@ def run_soak_drill(
         "transport_reconnects": {
             "reconnect_count": client.reconnect_count,
             "interruption_injected": interruption_occurred,
-            "reconnected_cleanly": (client.reconnect_count > 0 if interruption_occurred else True),
+            "reconnected_cleanly": (
+                client.reconnect_count > 0 if interruption_occurred else True
+            ),
         },
         "latency_overall_us": {
             "p50": round(all_latencies_us[int(tot_n * 0.50)], 2) if tot_n > 1 else 0.0,
             "p90": round(all_latencies_us[int(tot_n * 0.90)], 2) if tot_n > 1 else 0.0,
             "p95": round(all_latencies_us[int(tot_n * 0.95)], 2) if tot_n > 1 else 0.0,
             "p99": round(all_latencies_us[int(tot_n * 0.99)], 2) if tot_n > 1 else 0.0,
-            "p99_9": round(all_latencies_us[int(tot_n * 0.999)], 2) if tot_n > 1 else 0.0,
+            "p99_9": round(all_latencies_us[int(tot_n * 0.999)], 2)
+            if tot_n > 1
+            else 0.0,
             "max": round(all_latencies_us[-1], 2) if all_latencies_us else 0.0,
         },
         "latency_drift": latency_drift,
@@ -435,14 +503,22 @@ def run_soak_drill(
     print(f" Events Sent:        {results['total_producer_events']:,}")
     print(f" Events Received:    {results['total_observer_events']:,}")
     print(f" Delivery Rate:      {results['delivery_rate_pct']:.4f}%")
-    print(f" Reconciliation:     {'MATCHED (100%)' if reconciliation_matched else 'FAILED'}")
+    print(
+        f" Reconciliation:     {'MATCHED (100%)' if reconciliation_matched else 'FAILED'}"
+    )
     print(f" Latency p50:        {results['latency_overall_us']['p50']:.1f} us")
     print(f" Latency p99:        {results['latency_overall_us']['p99']:.1f} us")
-    print(f" Peak RSS:           {results['memory_progression_mb']['peak']:.1f} MB (Net: {results['memory_progression_mb']['net_growth']:+.1f} MB)")
-    print(f" Max Queue Depth:    {results['queues_and_backpressure']['max_queue_depth_observed']}")
+    print(
+        f" Peak RSS:           {results['memory_progression_mb']['peak']:.1f} MB (Net: {results['memory_progression_mb']['net_growth']:+.1f} MB)"
+    )
+    print(
+        f" Max Queue Depth:    {results['queues_and_backpressure']['max_queue_depth_observed']}"
+    )
     print(f" Stream Gaps:        {results['sequence_domains']['stream_gaps']}")
     print(f" Feed Gaps:          {results['sequence_domains']['feed_gaps']}")
-    print(f" JSONL Valid:        {results['jsonl_audit']['is_valid_json']} ({results['jsonl_audit']['lines_verified']:,} lines)")
+    print(
+        f" JSONL Valid:        {results['jsonl_audit']['is_valid_json']} ({results['jsonl_audit']['lines_verified']:,} lines)"
+    )
     print(f" Saved To:           {out_json_path}")
     print("=" * 80)
 
@@ -451,10 +527,30 @@ def run_soak_drill(
 
 def main():
     parser = argparse.ArgumentParser(description="MDRAP Phase 2 Soak Testing Harness")
-    parser.add_argument("--duration", type=float, default=1800.0, help="Duration in seconds (default: 1800 = 30m)")
-    parser.add_argument("--rate", type=float, default=1000.0, help="Target ingestion rate EPS (default: 1000)")
-    parser.add_argument("--interruption-at", type=float, default=None, help="Inject controlled interruption at T+seconds")
-    parser.add_argument("--out", type=str, default="audit/benchmark/phase2/raw/soak_30min.json", help="Output path")
+    parser.add_argument(
+        "--duration",
+        type=float,
+        default=1800.0,
+        help="Duration in seconds (default: 1800 = 30m)",
+    )
+    parser.add_argument(
+        "--rate",
+        type=float,
+        default=1000.0,
+        help="Target ingestion rate EPS (default: 1000)",
+    )
+    parser.add_argument(
+        "--interruption-at",
+        type=float,
+        default=None,
+        help="Inject controlled interruption at T+seconds",
+    )
+    parser.add_argument(
+        "--out",
+        type=str,
+        default="audit/benchmark/phase2/raw/soak_30min.json",
+        help="Output path",
+    )
     args = parser.parse_args()
 
     run_soak_drill(

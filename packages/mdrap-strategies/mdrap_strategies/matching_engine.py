@@ -96,10 +96,16 @@ class MatchingEngineConfig:
     network_latency_ms: float = 2.0  # Wire latency from strategy to exchange
     matching_delay_ms: float = 0.5  # Exchange matching engine queue delay
     fee_schedule: FeeSchedule = field(default_factory=FeeSchedule)
-    adverse_selection_bias: float = 0.25  # Probability that informed flow hits resting order
+    adverse_selection_bias: float = (
+        0.25  # Probability that informed flow hits resting order
+    )
     market_impact_coefficient: float = 0.1  # Almgren-Chriss permanent impact constant
-    require_aggressor_side: bool = False  # If True, refuse silent price-only matching when aggressor_side is None
-    queue_priority_model: str = "L2_ESTIMATED"  # "L2_ESTIMATED" (aggregate depth) vs "L3_VERIFIED" (MBO)
+    require_aggressor_side: bool = (
+        False  # If True, refuse silent price-only matching when aggressor_side is None
+    )
+    queue_priority_model: str = (
+        "L2_ESTIMATED"  # "L2_ESTIMATED" (aggregate depth) vs "L3_VERIFIED" (MBO)
+    )
 
 
 class RealisticMatchingEngine:
@@ -123,14 +129,20 @@ class RealisticMatchingEngine:
         # In-flight orders scheduled for future arrival
         self._in_flight_orders: list[tuple[float, str]] = []  # (arrival_ts, order_id)
         # In-flight cancellations
-        self._in_flight_cancels: list[tuple[float, str]] = []  # (cancel_arrival_ts, order_id)
+        self._in_flight_cancels: list[
+            tuple[float, str]
+        ] = []  # (cancel_arrival_ts, order_id)
         # Scheduled order expirations
-        self._in_flight_expirations: list[tuple[float, str]] = []  # (expires_at, order_id)
+        self._in_flight_expirations: list[
+            tuple[float, str]
+        ] = []  # (expires_at, order_id)
         # Level-2 Order Books: symbol -> bids {px: sz}, asks {px: sz}
         self._market_bids: dict[str, dict[float, float]] = collections.defaultdict(dict)
         self._market_asks: dict[str, dict[float, float]] = collections.defaultdict(dict)
         self._mid_prices: dict[str, float] = {}
-        self._price_history: dict[str, list[tuple[float, float]]] = collections.defaultdict(list)  # (ts, mid)
+        self._price_history: dict[str, list[tuple[float, float]]] = (
+            collections.defaultdict(list)
+        )  # (ts, mid)
         self._trade_ledger: list[dict[str, Any]] = []
         self.kill_switch_active: bool = False
         self.max_stale_data_s: float = 0.0  # 0.0 means disabled
@@ -157,8 +169,12 @@ class RealisticMatchingEngine:
             if px > 0 and sz > 0:
                 self._market_asks[symbol][round(px, 4)] = float(sz)
 
-        best_bid = max(self._market_bids[symbol].keys()) if self._market_bids[symbol] else 0.0
-        best_ask = min(self._market_asks[symbol].keys()) if self._market_asks[symbol] else 0.0
+        best_bid = (
+            max(self._market_bids[symbol].keys()) if self._market_bids[symbol] else 0.0
+        )
+        best_ask = (
+            min(self._market_asks[symbol].keys()) if self._market_asks[symbol] else 0.0
+        )
         if best_bid > 0 and best_ask > 0:
             mid = (best_bid + best_ask) / 2.0
             self._mid_prices[symbol] = mid
@@ -264,7 +280,9 @@ class RealisticMatchingEngine:
                 self.orders[order_id] = rejected_order
                 return rejected_order
 
-        latency_s = (self.config.network_latency_ms + self.config.matching_delay_ms) / 1000.0
+        latency_s = (
+            self.config.network_latency_ms + self.config.matching_delay_ms
+        ) / 1000.0
         arrival_ts = now + latency_s
 
         order = SimulatedOrder(
@@ -310,9 +328,19 @@ class RealisticMatchingEngine:
         executed_events: list[dict[str, Any]] = []
 
         while True:
-            next_ord_ts = self._in_flight_orders[0][0] if self._in_flight_orders else float("inf")
-            next_can_ts = self._in_flight_cancels[0][0] if self._in_flight_cancels else float("inf")
-            next_exp_ts = self._in_flight_expirations[0][0] if self._in_flight_expirations else float("inf")
+            next_ord_ts = (
+                self._in_flight_orders[0][0] if self._in_flight_orders else float("inf")
+            )
+            next_can_ts = (
+                self._in_flight_cancels[0][0]
+                if self._in_flight_cancels
+                else float("inf")
+            )
+            next_exp_ts = (
+                self._in_flight_expirations[0][0]
+                if self._in_flight_expirations
+                else float("inf")
+            )
 
             earliest = min(next_ord_ts, next_can_ts, next_exp_ts)
             if earliest > current_time:
@@ -329,21 +357,25 @@ class RealisticMatchingEngine:
                 if order.expires_at is not None and arr_ts >= order.expires_at:
                     order.status = SimOrderStatus.EXPIRED
                     order.cancel_in_flight = False
-                    executed_events.append({
-                        "event": "ORDER_EXPIRED",
-                        "order_id": order.order_id,
-                        "timestamp": order.expires_at,
-                        "remaining_qty": order.remaining_quantity,
-                    })
+                    executed_events.append(
+                        {
+                            "event": "ORDER_EXPIRED",
+                            "order_id": order.order_id,
+                            "timestamp": order.expires_at,
+                            "remaining_qty": order.remaining_quantity,
+                        }
+                    )
                     continue
 
                 # Accept order at exchange
                 order.status = SimOrderStatus.ACCEPTED
-                executed_events.append({
-                    "event": "ORDER_ACCEPTED",
-                    "order_id": order.order_id,
-                    "timestamp": arr_ts,
-                })
+                executed_events.append(
+                    {
+                        "event": "ORDER_ACCEPTED",
+                        "order_id": order.order_id,
+                        "timestamp": arr_ts,
+                    }
+                )
 
                 # Immediate execution check for MARKET orders or crossing LIMIT orders
                 if order.order_type == SimOrderType.MARKET:
@@ -354,12 +386,14 @@ class RealisticMatchingEngine:
                         if order.post_only:
                             order.status = SimOrderStatus.CANCELLED
                             order.reject_reason = "POST_ONLY_RESTRICTED"
-                            executed_events.append({
-                                "event": "ORDER_CANCELLED",
-                                "order_id": order.order_id,
-                                "timestamp": arr_ts,
-                                "reason": "POST_ONLY_RESTRICTED",
-                            })
+                            executed_events.append(
+                                {
+                                    "event": "ORDER_CANCELLED",
+                                    "order_id": order.order_id,
+                                    "timestamp": arr_ts,
+                                    "reason": "POST_ONLY_RESTRICTED",
+                                }
+                            )
                         else:
                             fills = self._match_market_order(order, arr_ts)
                             executed_events.extend(fills)
@@ -375,22 +409,29 @@ class RealisticMatchingEngine:
                     # Cancel arrived before order entered book: cancel immediately so it is never orphaned
                     order.status = SimOrderStatus.CANCELLED
                     order.cancel_in_flight = False
-                    executed_events.append({
-                        "event": "ORDER_CANCELLED",
-                        "order_id": order.order_id,
-                        "timestamp": arr_ts,
-                        "remaining_qty": order.remaining_quantity,
-                    })
-                elif order.status in (SimOrderStatus.ACCEPTED, SimOrderStatus.PARTIALLY_FILLED):
+                    executed_events.append(
+                        {
+                            "event": "ORDER_CANCELLED",
+                            "order_id": order.order_id,
+                            "timestamp": arr_ts,
+                            "remaining_qty": order.remaining_quantity,
+                        }
+                    )
+                elif order.status in (
+                    SimOrderStatus.ACCEPTED,
+                    SimOrderStatus.PARTIALLY_FILLED,
+                ):
                     self._remove_from_queue(order)
                     order.status = SimOrderStatus.CANCELLED
                     order.cancel_in_flight = False
-                    executed_events.append({
-                        "event": "ORDER_CANCELLED",
-                        "order_id": order.order_id,
-                        "timestamp": arr_ts,
-                        "remaining_qty": order.remaining_quantity,
-                    })
+                    executed_events.append(
+                        {
+                            "event": "ORDER_CANCELLED",
+                            "order_id": order.order_id,
+                            "timestamp": arr_ts,
+                            "remaining_qty": order.remaining_quantity,
+                        }
+                    )
                 else:
                     order.cancel_in_flight = False
 
@@ -404,16 +445,21 @@ class RealisticMatchingEngine:
                     SimOrderStatus.ACCEPTED,
                     SimOrderStatus.PARTIALLY_FILLED,
                 ):
-                    if order.status in (SimOrderStatus.ACCEPTED, SimOrderStatus.PARTIALLY_FILLED):
+                    if order.status in (
+                        SimOrderStatus.ACCEPTED,
+                        SimOrderStatus.PARTIALLY_FILLED,
+                    ):
                         self._remove_from_queue(order)
                     order.status = SimOrderStatus.EXPIRED
                     order.cancel_in_flight = False
-                    executed_events.append({
-                        "event": "ORDER_EXPIRED",
-                        "order_id": order.order_id,
-                        "timestamp": exp_ts,
-                        "remaining_qty": order.remaining_quantity,
-                    })
+                    executed_events.append(
+                        {
+                            "event": "ORDER_EXPIRED",
+                            "order_id": order.order_id,
+                            "timestamp": exp_ts,
+                            "remaining_qty": order.remaining_quantity,
+                        }
+                    )
 
         return executed_events
 
@@ -441,7 +487,10 @@ class RealisticMatchingEngine:
             level_used = 0.0
             matched_orders = list(q)
             for order in matched_orders:
-                if order.status not in (SimOrderStatus.ACCEPTED, SimOrderStatus.PARTIALLY_FILLED):
+                if order.status not in (
+                    SimOrderStatus.ACCEPTED,
+                    SimOrderStatus.PARTIALLY_FILLED,
+                ):
                     continue
 
                 order.touch_count += 1
@@ -457,7 +506,9 @@ class RealisticMatchingEngine:
                 if order.queue_ahead_qty <= 1e-12 and vol_reaching > 1e-12:
                     order.queue_ahead_qty = 0.0
                     fill_qty = min(order.remaining_quantity, vol_reaching)
-                    fill_res = self._execute_fill(order, lvl_px, fill_qty, timestamp, is_maker=True)
+                    fill_res = self._execute_fill(
+                        order, lvl_px, fill_qty, timestamp, is_maker=True
+                    )
                     fill_events.append(fill_res)
 
                 used_here = consumed + fill_qty
@@ -497,17 +548,33 @@ class RealisticMatchingEngine:
         # 1. Match resting BUY limit orders if trade executed at or below our buy limit
         if match_bids and symbol in self._bid_queues:
             buy_levels = sorted(
-                [px for px, q in self._bid_queues[symbol].items() if q and px >= trade_px],
+                [
+                    px
+                    for px, q in self._bid_queues[symbol].items()
+                    if q and px >= trade_px
+                ],
                 reverse=True,
             )
-            self._consume_side_queues(self._bid_queues[symbol], buy_levels, trade_size, timestamp, fill_events)
+            self._consume_side_queues(
+                self._bid_queues[symbol], buy_levels, trade_size, timestamp, fill_events
+            )
 
         # 2. Match resting SELL limit orders if trade executed at or above our sell limit
         if match_asks and symbol in self._ask_queues:
             sell_levels = sorted(
-                [px for px, q in self._ask_queues[symbol].items() if q and px <= trade_px],
+                [
+                    px
+                    for px, q in self._ask_queues[symbol].items()
+                    if q and px <= trade_px
+                ],
             )
-            self._consume_side_queues(self._ask_queues[symbol], sell_levels, trade_size, timestamp, fill_events)
+            self._consume_side_queues(
+                self._ask_queues[symbol],
+                sell_levels,
+                trade_size,
+                timestamp,
+                fill_events,
+            )
 
         return fill_events
 
@@ -534,7 +601,11 @@ class RealisticMatchingEngine:
         """Remove order from resting price level queue, updating FIFO queue-ahead for trailing orders."""
         if order.price is None:
             return
-        queues = self._bid_queues[order.symbol] if order.side == SimOrderSide.BUY else self._ask_queues[order.symbol]
+        queues = (
+            self._bid_queues[order.symbol]
+            if order.side == SimOrderSide.BUY
+            else self._ask_queues[order.symbol]
+        )
         q = queues.get(order.price)
         if q:
             found = False
@@ -544,7 +615,9 @@ class RealisticMatchingEngine:
                     found = True
                     continue
                 if found and removed_rem > 0.0:
-                    existing.queue_ahead_qty = max(0.0, existing.queue_ahead_qty - removed_rem)
+                    existing.queue_ahead_qty = max(
+                        0.0, existing.queue_ahead_qty - removed_rem
+                    )
             if found:
                 try:
                     q.remove(order)
@@ -559,26 +632,42 @@ class RealisticMatchingEngine:
         if order.price is None:
             return False
         if order.side == SimOrderSide.BUY:
-            best_ask = min(self._market_asks[sym].keys()) if self._market_asks[sym] else float("inf")
+            best_ask = (
+                min(self._market_asks[sym].keys())
+                if self._market_asks[sym]
+                else float("inf")
+            )
             return order.price >= best_ask
         else:
-            best_bid = max(self._market_bids[sym].keys()) if self._market_bids[sym] else 0.0
+            best_bid = (
+                max(self._market_bids[sym].keys()) if self._market_bids[sym] else 0.0
+            )
             return order.price <= best_bid
 
-    def _match_market_order(self, order: SimulatedOrder, timestamp: float) -> list[dict[str, Any]]:
+    def _match_market_order(
+        self, order: SimulatedOrder, timestamp: float
+    ) -> list[dict[str, Any]]:
         """Walk market book depth to execute immediate taker order."""
         sym = order.symbol
         fills = []
         is_buy = order.side == SimOrderSide.BUY
 
         book = self._market_asks[sym] if is_buy else self._market_bids[sym]
-        sorted_prices = sorted(book.keys()) if is_buy else sorted(book.keys(), reverse=True)
+        sorted_prices = (
+            sorted(book.keys()) if is_buy else sorted(book.keys(), reverse=True)
+        )
 
         if not sorted_prices:
             # No liquidity available: reject order
             order.status = SimOrderStatus.REJECTED
             order.reject_reason = "No liquidity available in order book"
-            return [{"event": "ORDER_REJECTED", "order_id": order.order_id, "reason": order.reject_reason}]
+            return [
+                {
+                    "event": "ORDER_REJECTED",
+                    "order_id": order.order_id,
+                    "reason": order.reject_reason,
+                }
+            ]
 
         rem = order.remaining_quantity
         for px in sorted_prices:
@@ -642,7 +731,9 @@ class RealisticMatchingEngine:
             "quantity": fill_qty,
             "notional": notional,
             "is_maker": is_maker,
-            "queue_priority_model": self.config.queue_priority_model if is_maker else "TAKER_BOOK_WALK",
+            "queue_priority_model": self.config.queue_priority_model
+            if is_maker
+            else "TAKER_BOOK_WALK",
             "fee": fee,
             "timestamp": timestamp,
             "mid_at_fill": self._mid_prices.get(order.symbol, fill_price),
@@ -682,17 +773,19 @@ class RealisticMatchingEngine:
                 direction = 1.0 if trade["side"] == "BUY" else -1.0
                 markout = direction * (mid_future - mid_t)
                 markout_bps = (markout / mid_t) * 10_000.0 if mid_t > 0 else 0.0
-                results.append({
-                    "order_id": trade["order_id"],
-                    "symbol": sym,
-                    "side": trade["side"],
-                    "fill_price": trade["price"],
-                    "mid_fill": mid_t,
-                    "mid_future": mid_future,
-                    "horizon_ms": horizon_ms,
-                    "markout": markout,
-                    "markout_bps": markout_bps,
-                })
+                results.append(
+                    {
+                        "order_id": trade["order_id"],
+                        "symbol": sym,
+                        "side": trade["side"],
+                        "fill_price": trade["price"],
+                        "mid_fill": mid_t,
+                        "mid_future": mid_future,
+                        "horizon_ms": horizon_ms,
+                        "markout": markout,
+                        "markout_bps": markout_bps,
+                    }
+                )
         return results
 
     def get_ledger(self) -> list[dict[str, Any]]:
